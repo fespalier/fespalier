@@ -58,6 +58,9 @@ pub struct Variable {
     /// Set when the initializer is a map from string literals to constructor
     /// calls, like `const tabOptions = {'search': TabOptions(preload: true)};`.
     pub objects: Option<Vec<ObjectEntry>>,
+    /// The initializer as written, with its whitespace removed:
+    /// `const navigator = RouteNavigator.root;` is `RouteNavigator.root`.
+    pub value: Option<String>,
     /// Declared with `const` (not `final`, `var` or `late`).
     pub is_const: bool,
     pub span: Span,
@@ -352,7 +355,8 @@ impl Reader<'_> {
                 let call = value.and_then(|v| self.call(v));
                 let strings = value.and_then(|v| self.strings(v));
                 let objects = value.and_then(|v| self.objects(v));
-                out.push(Variable { name: self.text(name).to_string(), call, strings, objects, is_const, span: Span::of(name) });
+                let value = value.map(|v| self.text(v).split_whitespace().collect::<String>());
+                out.push(Variable { name: self.text(name).to_string(), call, strings, objects, value, is_const, span: Span::of(name) });
             }
         }
         out

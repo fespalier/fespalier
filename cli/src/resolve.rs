@@ -40,6 +40,9 @@ pub enum Bind {
     PageKey,
     /// A transition's `GoRouterState`.
     State,
+    /// A transition's `bool shell`: whether it builds the page of a layout's shell
+    /// (`true`) or of a route (`false`).
+    IsShell,
     /// A page's `extra` parameter: the object passed to `go(..., extra:)`.
     Extra,
 }
@@ -96,6 +99,15 @@ pub struct Transition {
     pub import: usize,
     /// `Bind::Child` is the page as it would be built without a transition.
     pub args: Vec<Arg>,
+}
+
+/// What a folder's `navigator.dart` says: `const navigator = RouteNavigator.root;`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Navigator {
+    /// Render on the root navigator, above every shell.
+    Root,
+    /// Back to the enclosing shell's navigator.
+    Shell,
 }
 
 /// A `guard()` or `redirect()` function and the arguments to call it with.
@@ -157,8 +169,22 @@ pub struct Route {
     pub guard: Option<Guard>,
     /// A `redirect.dart` in place of a page: the route only redirects.
     pub redirect: Option<Guard>,
-    /// The nearest transition.dart at or above this folder; only for pages.
+    /// The nearest transition.dart at or above this folder; only for pages, and
+    /// not for one that has a `present.dart`.
     pub transition: Option<Transition>,
+    /// This folder's own `present()`: the app builds the route's page itself. Not inherited.
+    pub present: Option<Transition>,
+    /// The `navigator.dart` in this folder, when it has a valid one.
+    pub navigator: Option<Navigator>,
+    /// Whether this folder's routes are on the root navigator: its own `navigator.dart`, or
+    /// `present.dart` (which implies it), or else what the folder above says. A layout is a
+    /// navigator of its own, so below one nothing is inherited. For a folder with a layout, it
+    /// is the layout's shell that goes on the root navigator.
+    pub root: bool,
+    /// The nearest transition.dart at or above a layout folder: the page of its shell.
+    pub shell_transition: Option<Transition>,
+    /// A tab layout with a top-level `container` function: the branch container.
+    pub container: bool,
     /// Query parameters any of this route's files ask for: (name, Dart type),
     /// the type being `T?` or `List<T>`.
     pub query: Vec<(String, String)>,
@@ -281,6 +307,8 @@ struct Inherited {
     loading: Option<Fallback>,
     error: Option<Fallback>,
     transition: Option<Transition>,
+    /// Whether a root-navigator declaration above is in effect: not reset by a layout.
+    root: bool,
     /// The data.dart files of the sections above, outermost first.
     sections: Vec<SectionRef>,
     not_found: Option<Widget>,
@@ -386,6 +414,11 @@ impl Resolver<'_> {
             guard: None,
             redirect: None,
             transition: None,
+            present: None,
+            navigator: None,
+            root: false,
+            shell_transition: None,
+            container: false,
             query: vec![],
             layout_query: vec![],
             guard_query: vec![],
@@ -477,6 +510,7 @@ impl Resolver<'_> {
             loading: up.loading.clone(),
             error: up.error.clone(),
             transition: up.transition.clone(),
+            root: up.root,
             sections: up.sections.clone(),
             not_found: up.not_found.clone(),
         };
@@ -493,8 +527,27 @@ impl Resolver<'_> {
         }
         // Likewise transition.dart, once for the whole subtree.
         if let Some(m) = modules.get(&Kind::Transition) {
-            here.transition = self.transition(m, node).or(here.transition);
+            here.transition = self.transition(m, node, Kind::Transition, "transition").or(here.transition);
         }
+        // present.dart is this route's page alone; navigator.dart is inherited, like transition.dart.
+        let present = modules.get(&Kind::Present).and_then(|m| self.transition(m, node, Kind::Present, "present"));
+        let navigator = modules.get(&Kind::Navigator).and_then(|m| self.navigator(m, node));
+        if present.is_some() && !node.files.contains_key(&Kind::Page) {
+            let msg = "present.dart builds this folder's page, but there is no page.dart here; it is ignored";
+            self.diags.warn(&node.rel(Kind::Present), None, msg);
+        }
+        let present = present.filter(|_| node.files.contains_key(&Kind::Page));
+        if navigator == Some(Navigator::Shell) && up.root {
+            let msg = "`RouteNavigator.shell` can't go back to a shell below a root-navigator route: go_router only lets its descendants use the root navigator or one above it. Put a layout.dart between the two, or drop this file";
+            self.diags.error(&node.rel(Kind::Navigator), None, msg);
+        }
+        let root = match (navigator, &present) {
+            (Some(n), _) => n == Navigator::Root,
+            (None, Some(_)) => true,
+            (None, None) => up.root,
+        };
+        // A layout is a navigator of its own: what is below it isn't on the root one.
+        here.root = root && !node.files.contains_key(&Kind::Layout);
         let (loading, error) = if data.is_some() {
             let covering = show_dir(&node.dir);
             let bind = |r: &mut Self, f: &Option<Fallback>, role| {
@@ -600,10 +653,12 @@ impl Resolver<'_> {
         self.app.routes[id].not_found = not_found;
         self.app.routes[id].meta = modules.get(&Kind::Meta).and_then(|m| self.meta(m, node, has_route));
         self.app.routes[id].extra = extra;
-        let transition = here.transition.clone().filter(|_| has_page);
+        let transition = here.transition.clone().filter(|_| has_page && present.is_none());
+        let shell_transition = here.transition.clone().filter(|_| layout.is_some());
         let r = &mut self.app.routes[id];
         (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard, r.redirect, r.transition) =
             (segs, url, page, name, data, loading, error, layout, guard, redirect, transition);
+        (r.present, r.navigator, r.root, r.shell_transition) = (present, navigator, root, shell_transition);
 
         let mut children = vec![];
         let mut with_routes = vec![];
@@ -625,11 +680,18 @@ impl Resolver<'_> {
             let tabs = self.tabs(node, modules.get(&Kind::Layout), has_page, &with_routes);
             let options = self.tab_options(node, modules.get(&Kind::Layout), id, has_page, &with_routes, &tabs);
             self.app.routes[id].tabs = Some(tabs);
+            self.app.routes[id].container = self.container(node, modules.get(&Kind::Layout));
             if self.app.routes[id].redirect.is_some() {
                 let msg = "a tab layout folder can't hold a redirect.dart; put the redirect in a subfolder";
                 self.diags.error(&node.rel(Kind::Redirect), None, msg);
             }
             self.app.routes[id].tab_options = options;
+        }
+        if !is_tabs {
+            if let Some(f) = modules.get(&Kind::Layout).and_then(|m| m.functions.iter().find(|f| f.name == "container")) {
+                let msg = "container() is only used by a tab layout (one that takes a `StatefulNavigationShell`); it is ignored here";
+                self.diags.warn(&node.rel(Kind::Layout), Some(&f.span), msg);
+            }
         }
         if self.app.routes[id].guard.is_some() && !any_route {
             let msg = "guard.dart guards no routes: there is no page.dart or redirect.dart at or below this folder";
@@ -848,6 +910,80 @@ impl Resolver<'_> {
             return None;
         }
         Some(file)
+    }
+
+    /// `const navigator = RouteNavigator.root;` in a folder's navigator.dart: the navigator
+    /// its routes render on. Read from the source, like `tabs`, so it must be one of the two
+    /// enum values, spelled out.
+    fn navigator(&mut self, m: &Module, node: &Node) -> Option<Navigator> {
+        let file = node.rel(Kind::Navigator);
+        let mut found = m.variables.iter().filter(|v| v.name == "navigator");
+        let Some(v) = found.next() else {
+            self.diags.error(&file, None, "expected `const navigator = RouteNavigator.root;` (or `RouteNavigator.shell`)");
+            return None;
+        };
+        if let Some(again) = found.next() {
+            self.diags.error(&file, Some(&again.span), "`navigator` is declared twice");
+        }
+        if !v.is_const {
+            self.diags.error(&file, Some(&v.span), "`navigator` must be `const`: write `const navigator = RouteNavigator.root;`");
+            return None;
+        }
+        // An import prefix (`fsp.RouteNavigator.root`) is fine.
+        let parts: Vec<&str> = v.value.as_deref().unwrap_or_default().split('.').collect();
+        let ident = |p: &str| p.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') && p.chars().all(|c| c.is_alphanumeric() || c == '_');
+        let value = match parts.as_slice() {
+            ["RouteNavigator", which] => Some(*which),
+            [prefix, "RouteNavigator", which] if ident(prefix) => Some(*which),
+            _ => None,
+        };
+        match value {
+            Some("root") => Some(Navigator::Root),
+            Some("shell") => Some(Navigator::Shell),
+            _ => {
+                let msg = "`navigator` must be `RouteNavigator.root` or `RouteNavigator.shell`, written out: fsp reads it from the source";
+                self.diags.error(&file, Some(&v.span), msg);
+                None
+            }
+        }
+    }
+
+    /// `Widget container(BuildContext context, StatefulNavigationShell shell, List<Widget> children)`
+    /// in a tab layout.dart: the `navigatorContainerBuilder` of its `StatefulShellRoute`. The
+    /// parameters are positional with fixed types (their names mean nothing here).
+    fn container(&mut self, node: &Node, layout: Option<&Module>) -> bool {
+        let Some(f) = layout.and_then(|m| m.functions.iter().find(|f| f.name == "container")) else { return false };
+        let file = node.rel(Kind::Layout);
+        let want: [(&str, &[&str]); 3] = [
+            ("the BuildContext", &["BuildContext"]),
+            ("the StatefulNavigationShell", &["StatefulNavigationShell"]),
+            ("the branch navigators, a List<Widget>", &["List<Widget>", "Iterable<Widget>"]),
+        ];
+        let signature = "container() takes three positional parameters: `Widget container(BuildContext context, StatefulNavigationShell shell, List<Widget> children)`";
+        if f.params.len() != 3 || f.params.iter().any(|p| p.named || !p.required || p.is_super) {
+            self.diags.error(&file, Some(&f.span), signature);
+            return false;
+        }
+        let mut ok = true;
+        for (p, (gets, accepts)) in f.params.iter().zip(want) {
+            match &p.ty {
+                None => {
+                    self.diags.error(&file, Some(&p.span), format!("give `{}` a type: it gets {gets}", p.name));
+                    ok = false;
+                }
+                Some(ty) if !accepts.contains(&bare_type(&ty.text)) => {
+                    let msg = format!("`{}` gets {gets}, but it's declared {}", p.name, ty.text);
+                    self.diags.error(&file, Some(&p.span), msg);
+                    ok = false;
+                }
+                Some(_) => {}
+            }
+        }
+        if f.ret.as_ref().is_some_and(|r| bare_type(&r.text) != "Widget") {
+            self.diags.error(&file, Some(&f.span), "container() must return a Widget: the container of the branch navigators");
+            ok = false;
+        }
+        ok
     }
 
     /// The one public widget class a view file exports.
@@ -1243,16 +1379,17 @@ impl Resolver<'_> {
         args
     }
 
-    /// `Page<void> transition(LocalKey key, Widget child)`: parameters are
-    /// filled by name, then by type; other optional ones keep their default.
-    fn transition(&mut self, m: &Module, node: &Node) -> Option<Transition> {
-        let file = node.rel(Kind::Transition);
-        let Some(f) = m.functions.iter().find(|f| f.name == "transition") else {
-            self.diags.error(&file, None, "expected `Page<void> transition(LocalKey key, Widget child)`");
+    /// `Page<void> transition(LocalKey key, Widget child)`, or `present(...)` in a
+    /// present.dart, which is bound the same way: parameters are filled by name, then
+    /// by type; other optional ones keep their default.
+    fn transition(&mut self, m: &Module, node: &Node, kind: Kind, name: &str) -> Option<Transition> {
+        let file = node.rel(kind);
+        let Some(f) = m.functions.iter().find(|f| f.name == name) else {
+            self.diags.error(&file, None, format!("expected `Page<void> {name}(LocalKey key, Widget child)`"));
             return None;
         };
         if !f.ret.as_ref().is_some_and(|r| r.generic().0.ends_with("Page")) {
-            self.diags.error(&file, Some(&f.span), "transition() must return a Page, e.g. `Page<void>`");
+            self.diags.error(&file, Some(&f.span), format!("{name}() must return a Page, e.g. `Page<void>`"));
             return None;
         }
         let mut args = vec![];
@@ -1261,7 +1398,7 @@ impl Resolver<'_> {
             let bind = if !p.named && positional_gap { None } else { transition_bind(p) };
             let Some(bind) = bind else {
                 if p.required {
-                    let msg = format!("can't fill `{}`: transition() gets `key`, `child` and `state`", p.name);
+                    let msg = format!("can't fill `{}`: {name}() gets `key`, `child` and `state`", p.name);
                     self.diags.error(&file, Some(&p.span), msg);
                 } else if !p.named {
                     positional_gap = true;
@@ -1274,7 +1411,7 @@ impl Resolver<'_> {
             args.push(Arg { name: p.name.clone(), named: p.named, bind });
         }
         if !args.iter().any(|a| a.bind == Bind::Child) {
-            self.diags.error(&file, Some(&f.span), "transition() must take the page as `Widget child`");
+            self.diags.error(&file, Some(&f.span), format!("{name}() must take the page as `Widget child`"));
             return None;
         }
         Some(Transition { import: self.import(&file), args })
@@ -1348,6 +1485,7 @@ fn transition_bind(p: &dart::Param) -> Option<Bind> {
         "key" => Some(Bind::PageKey),
         "child" => Some(Bind::Child),
         "state" => Some(Bind::State),
+        "shell" | "isShell" => Some(Bind::IsShell),
         _ => None,
     };
     by_name.or_else(|| match p.ty.as_ref()?.text.trim_end_matches('?') {
@@ -1356,6 +1494,11 @@ fn transition_bind(p: &dart::Param) -> Option<Bind> {
         "GoRouterState" => Some(Bind::State),
         _ => None,
     })
+}
+
+/// A type without an import prefix: `w.Widget` is `Widget`, `List<w.Widget>` is left alone.
+fn bare_type(text: &str) -> &str {
+    text.rsplit_once('.').filter(|(p, t)| !format!("{p}{t}").contains(['<', '(', ' '])).map_or(text, |(_, t)| t)
 }
 
 /// A parameter bound by name gets a fixed value; say so when it's declared as
@@ -1373,6 +1516,7 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
             &["LocalKey", "Key", "ValueKey", "ValueKey<String>", "ValueKey<Object>", "ValueKey<dynamic>"],
         ),
         Bind::State => ("the GoRouterState", &["GoRouterState"]),
+        Bind::IsShell => ("whether the page is a layout's shell, a bool", &["bool"]),
         Bind::Extra => {
             let ok = ty.text.ends_with('?') || ty.text == "dynamic";
             return (!ok).then(|| {

@@ -1,5 +1,10 @@
 ## Unreleased
 
+- `RouteNavigator` (`root`, `shell`): the values of a folder's `navigator.dart`, read by `fsp gen`.
+- `RoutePresentation.root` and `.custom`: a page on the root navigator, and one a `present.dart`
+  builds.
+- Regenerate `lib/app.g.dart` with the matching `fsp`: `AppRoutes` has `rootNavigatorKey`, and
+  `router()` and `mount()` take a `navigatorKey`; layouts' shells use the nearest `transition.dart`.
 - `RouteInfo<M>`, `RouteParam` (with `catchAll`), `RouteTab`, `RoutePresentation`, `routeTemplate`
   and `lookupRoute`: what the generated route manifest (`AppManifest.all`, `byType`, `byPath`) is
   made of, with `metaAs<T>()` for a route's `meta.dart`.

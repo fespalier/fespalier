@@ -58,6 +58,13 @@ struct TreeCx {
     /// What an unparsable segment shows.
     not_found: String,
     transition: Option<TransitionCx>,
+    /// `parentNavigatorKey: rootNavigatorKey`: a page (or a shell) that goes on the root navigator.
+    root: bool,
+    /// Where `root` comes from, for the error when go_router can't honour it.
+    #[serde(skip)]
+    root_at: Option<(String, Option<Span>)>,
+    /// A tab shell's `navigatorContainerBuilder`, when its layout.dart has a `container`.
+    container: Option<String>,
     routes: Vec<TreeCx>,
     /// Starts with a `:segment` (or, for a ShellRoute, holds a route that does).
     #[serde(skip)]
@@ -123,6 +130,8 @@ struct LayoutCx {
     not_found: String,
     /// The Navigator's `restorationScopeId`, from the layout's folder.
     restoration_id: String,
+    /// The nearest transition.dart builds the shell's page, under a key made from `restoration_id`.
+    transition: Option<TransitionCx>,
 }
 
 /// A not_found.dart below the root: its URL prefix (`['products', ':id']`) and widget.
@@ -147,16 +156,24 @@ struct TransitionArgCx {
     value: Option<String>,
 }
 
-fn transition_cx(t: &Transition) -> TransitionCx {
+/// The page hook `name` (`transition` or `present`) called for a route's page, or, with
+/// `shell` holding the restoration id, for a layout's shell: which is keyed by that id, a
+/// key that stays the same when the app restarts and while the routes inside the shell change.
+fn transition_cx(t: &Transition, name: &str, shell: Option<&str>) -> TransitionCx {
+    let value = |b: &Bind| match (b, shell) {
+        (Bind::PageKey, Some(id)) => format!("const ValueKey<String>({id})"),
+        (Bind::IsShell, _) => shell.is_some().to_string(),
+        _ => in_builder(b),
+    };
     let args = t
         .args
         .iter()
         .map(|a| TransitionArgCx {
             prefix: if a.named { format!("{}: ", a.name) } else { String::new() },
-            value: (a.bind != Bind::Child).then(|| in_builder(&a.bind)),
+            value: (a.bind != Bind::Child).then(|| value(&a.bind)),
         })
         .collect();
-    TransitionCx { call: format!("_i{}.transition", t.import), args }
+    TransitionCx { call: format!("_i{}.{name}", t.import), args }
 }
 
 #[derive(Serialize)]
@@ -252,6 +269,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let tree = routes_of(app, 0, true, "", &[], &mut fns);
     check_order(&tree, diags);
     check_tab_starts(&tree, diags);
+    check_root_children(&tree, diags);
     // With no `output_manifest:` the manifest lives here, and imports its meta.dart files here.
     let (manifest, metas) = match cfg.output_manifest {
         None => {
@@ -295,6 +313,7 @@ fn in_builder(b: &Bind) -> String {
         Bind::Uri => "uri".into(),
         Bind::PageKey => "state.pageKey".into(),
         Bind::State => "state".into(),
+        Bind::IsShell => "false".into(),
         // Typed by the parameter it fills.
         Bind::Extra => "extraOf(state)".into(),
     }
@@ -363,6 +382,9 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize],
             data: None,
             not_found: String::new(),
             transition: None,
+            root: r.root,
+            root_at: r.root.then(|| (rel(r, Kind::Layout), None)),
+            container: None,
             dynamic: out.iter().any(|r| r.dynamic),
             catch_all: out.iter().any(|r| r.catch_all),
             serves: None,
@@ -409,8 +431,10 @@ fn layout_cx(app: &App, id: usize, layout: &resolve::Widget, fns: &mut BTreeSet<
         fns.insert(ParamsFn::Layout(id));
         ParamsFn::Layout(id).name()
     });
+    let restoration_id = dart_str(&format!("layout:{}", folder_id(&r.dir)));
     LayoutCx {
-        restoration_id: dart_str(&format!("layout:{}", folder_id(&r.dir))),
+        transition: r.shell_transition.as_ref().map(|t| transition_cx(t, "transition", Some(&restoration_id))),
+        restoration_id,
         seg_fn,
         page: wrapped,
         data: section.map(|d| ViewDataCx {
@@ -532,6 +556,7 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
     };
     let seg_fn = own_seg_fn(app, id, fns);
     let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
+    let root_key = r.root && r.layout.is_none();
     let data = r.data.as_ref().map(|d| ViewDataCx {
         provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
         invalidate: invalidate_expr(app, id, r, d),
@@ -548,7 +573,14 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
         page: with_sections(app, &page.args, page.call(in_builder)),
         data,
         not_found: not_found_call(r),
-        transition: r.transition.as_ref().map(transition_cx),
+        transition: match &r.present {
+            Some(p) => Some(transition_cx(p, "present", None)),
+            None => r.transition.as_ref().map(|t| transition_cx(t, "transition", None)),
+        },
+        // A layout's shell is what goes on the root navigator; its pages are inside it.
+        root: root_key,
+        root_at: root_key.then(|| (rel(r, Kind::Page), r.page_span.clone())),
+        container: None,
         routes,
         dynamic: path.contains(':'),
         catch_all: path.contains("(.+)"),
@@ -574,6 +606,9 @@ fn redirect_route(app: &App, id: usize, top: bool, path: &str, inherited: &[usiz
         data: None,
         not_found: not_found_call(r),
         transition: None,
+        root: false,
+        root_at: None,
+        container: None,
         routes: vec![],
         dynamic: path.contains(':'),
         catch_all: path.contains("(.+)"),
@@ -634,6 +669,9 @@ fn tab_routes(
         data: None,
         not_found: String::new(),
         transition: None,
+        root: app.routes[id].root,
+        root_at: app.routes[id].root.then(|| (rel(&app.routes[id], Kind::Layout), None)),
+        container: app.routes[id].container.then(|| format!("_i{}.container", layout.import)),
         serves: None,
         has_params: false,
         routes: vec![],
@@ -730,6 +768,39 @@ fn check_tab_starts(tree: &[TreeCx], diags: &mut Diags) {
         }
         check_tab_starts(&r.routes, diags);
     }
+}
+
+/// go_router puts a route on the root navigator by lifting it out of the shell that
+/// would hold it, and can only do that for a route below another route: a direct child of
+/// a `ShellRoute` or a tab (`StatefulShellBranch`) with a `parentNavigatorKey` of its own is
+/// an assertion at startup.
+fn check_root_children(tree: &[TreeCx], diags: &mut Diags) {
+    fn direct(routes: &[TreeCx], holder: &str, diags: &mut Diags) {
+        for r in routes {
+            if let Some((file, span)) = r.root_at.as_ref().filter(|_| r.root) {
+                let msg = format!(
+                    "this route is on the root navigator, but it sits directly in {holder}, and go_router can't lift a direct child out of a shell (it is the first route of a tab, or one beside the others). Put it below a page.dart that stays in the layout, or move its folder out of the layout's folder"
+                );
+                diags.error(file, span.as_ref(), msg);
+            }
+        }
+    }
+    fn walk(tree: &[TreeCx], diags: &mut Diags) {
+        for r in tree {
+            if r.layout.is_some() {
+                let what = if r.branches.is_empty() { "a layout" } else { "a tab layout" };
+                direct(&r.routes, what, diags);
+                for b in &r.branches {
+                    direct(&b.routes, "a tab layout", diags);
+                }
+            }
+            walk(&r.routes, diags);
+            for b in &r.branches {
+                walk(&b.routes, diags);
+            }
+        }
+    }
+    walk(tree, diags);
 }
 
 /// `ref.invalidate(<provider>)`. A selected provider is only known as a
@@ -1001,6 +1072,32 @@ fn extra_imports(app: &App, cfg: &Config) -> Vec<String> {
     out
 }
 
+/// What a route has besides its page: the tags of the route table, in `fsp routes` too.
+pub fn tags(r: &Route) -> Vec<&'static str> {
+    let mut tags = vec![];
+    if r.redirect.is_some() {
+        tags.push("redirect");
+    }
+    if r.data.is_some() {
+        tags.push("data");
+    }
+    if r.guard.is_some() {
+        tags.push("guard");
+    }
+    if r.layout.is_some() {
+        tags.push("layout");
+    }
+    if r.present.is_some() {
+        tags.push("present");
+    } else if r.transition.is_some() {
+        tags.push("transition");
+    }
+    if r.root && r.page.is_some() {
+        tags.push("root");
+    }
+    tags
+}
+
 /// The route table in the header of app.g.dart; `fsp routes` prints the same rows.
 pub fn table(app: &App) -> Vec<String> {
     let rows: Vec<(String, String, String)> = app
@@ -1008,22 +1105,7 @@ pub fn table(app: &App) -> Vec<String> {
         .iter()
         .filter(|r| r.is_route())
         .map(|r| {
-            let mut tags = vec![];
-            if r.redirect.is_some() {
-                tags.push("redirect");
-            }
-            if r.data.is_some() {
-                tags.push("data");
-            }
-            if r.guard.is_some() {
-                tags.push("guard");
-            }
-            if r.layout.is_some() {
-                tags.push("layout");
-            }
-            if r.transition.is_some() {
-                tags.push("transition");
-            }
+            let tags = tags(r);
             let tags = if tags.is_empty() { String::new() } else { format!("  ({})", tags.join(", ")) };
             let name = format!("{}Route", r.name.as_deref().unwrap_or("?"));
             (resolve::pattern(&r.url), name, format!("{}{tags}", rel(r, if r.page.is_some() { Kind::Page } else { Kind::Redirect })))

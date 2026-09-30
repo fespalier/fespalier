@@ -16,7 +16,8 @@
 //! `file` and `meta` are relative to the project root (`meta` is the route's
 //! meta.dart, or null); `folder`, `layouts` and `tabs[].layout` are relative to
 //! the app folder, with `""` for the app folder itself. `in` is `path` or
-//! `query`; `presentation` is `page` or `redirect`.
+//! `query`; `presentation` is `page`, `redirect`, `root` (on the root navigator, from a
+//! `navigator.dart`) or `custom` (a `present.dart` builds its page).
 
 use std::path::Path;
 
@@ -52,27 +53,6 @@ fn pages(app: &App) -> impl Iterator<Item = &Route> {
     app.routes.iter().filter(|r| r.is_route())
 }
 
-/// What the route has besides its page; the same tags as the header of `app.g.dart`.
-fn tags(r: &Route) -> Vec<&'static str> {
-    let mut tags = vec![];
-    if r.redirect.is_some() {
-        tags.push("redirect");
-    }
-    if r.data.is_some() {
-        tags.push("data");
-    }
-    if r.guard.is_some() {
-        tags.push("guard");
-    }
-    if r.layout.is_some() {
-        tags.push("layout");
-    }
-    if r.transition.is_some() {
-        tags.push("transition");
-    }
-    tags
-}
-
 pub fn table(app: &App) -> Vec<String> {
     emit::table(app)
 }
@@ -90,10 +70,10 @@ pub fn json_lines(app: &App, app_dir: &str) -> Vec<String> {
                 "pattern": i.path,
                 "route": i.class,
                 "file": format!("{app_dir}/{}", i.file),
-                "tags": tags(r),
+                "tags": emit::tags(r),
                 "params": path.chain(query).collect::<Vec<_>>(),
                 "folder": i.folder,
-                "presentation": if i.redirect { "redirect" } else { "page" },
+                "presentation": i.presentation.unwrap_or("page"),
                 "groups": i.groups,
                 "layouts": i.layouts,
                 "tabs": tabs,

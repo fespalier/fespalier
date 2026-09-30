@@ -297,6 +297,57 @@ path, so a tab made only of dynamic routes, or a tab layout placed directly in a
 `$folder`, is an error (put the layout in a `(group)` below that folder instead); and `tabs` in a tab layout must be string literals, so name another list of destinations
 something else. See `examples/tabs`.
 
+**Nested tab layouts.** A tab layout can sit inside a tab of another one: put a
+`layout.dart` that takes a `StatefulNavigationShell` in a folder that is a branch of the
+outer layout. Each layout has its own `tabs` list, its own navigation stacks and its own
+`StatefulNavigationShell`, and the outer layout keeps the whole inner one alive while you
+look at another outer tab, so an inner tab's state survives switching outer tabs. The same
+rules apply at each level: an inner tab can't start on a route with a `:segment` in its
+path, and a tab layout in a `$folder` is an error.
+
+```
+lib/app/(tabs)/
+  layout.dart              const tabs = ['(home)', 'search', 'library']; takes a shell
+  (home)/page.dart
+  search/page.dart
+  library/                 the third outer tab...
+    layout.dart            ...is itself a tab layout: const tabs = ['books', 'authors'];
+    books/page.dart          /library/books
+    authors/page.dart        /library/authors
+```
+
+`library/` has no page of its own here, so its inner layout is what the outer tab shows.
+Give it a `page.dart` and that page becomes the inner layout's first tab, like any tab
+layout's own page. In `examples/tabs` the Library tab is built this way; its tests check
+that a counter in an inner tab survives switching inner and outer tabs.
+
+**Tab options.** A tab layout can set go_router's `StatefulShellBranch` options per tab in
+a top-level `const tabOptions` map, next to `tabs`. Keys are the tab names `tabs` uses
+(`'.'` for the layout's own page), and each value is a `TabOptions` from
+`package:fespalier/fespalier.dart`:
+
+```dart
+const tabOptions = {
+  'search': TabOptions(preload: true),
+  'profile': TabOptions(initialLocation: '/profile/edit'),
+};
+```
+
+- `preload: true` builds the tab as soon as the layout first shows, instead of on its
+  first visit.
+- `initialLocation` is where the tab opens the first time, and where tapping its current
+  tab goes with `goBranch(i, initialLocation: true)`, instead of the tab's first route. It's
+  an app location such as `/profile/edit` (with `?query` if you like), written as a
+  string literal. It must be a route inside that tab, and `fsp` checks that (dynamic routes
+  match any value: `/items/1` for `items/$id`). It also lets a tab that has only dynamic
+  routes work, since go_router then doesn't need a first route without a `:segment`. When
+  mounted with `AppRoutes.mount(at: '/x')`, the mount point is added for you.
+
+Like `tabs`, `tabOptions` is read from the source, not run: it must be a map literal with
+string-literal keys and `TabOptions(...)` values with `true`/`false` and string-literal
+arguments. Unknown tabs, repeated tabs, unknown options and other values are errors that
+point at the offending entry. Only tabs that need options are listed.
+
 ### Transitions
 
 `transition.dart` says how a route animates in. It applies to its folder's route and
@@ -305,12 +356,46 @@ app-wide default; any folder or `(group)` folder can override it for its own rou
 
 The function returns a `Page`, and takes the page's key as `LocalKey key`, the page
 itself as `Widget child`, and optionally `GoRouterState state`. `Transitions` has
-ready-made ones: `fade`, `slide`, `none`, `material` and `cupertino`.
+ready-made ones: `fade`, `slide`, `none`, `material`, `cupertino`, and `dialog`, `sheet`
+and `fullscreenDialog` (below).
 
 ```dart
 // lib/app/transition.dart: every route fades in, unless a folder overrides it
 Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);
 ```
+
+**Dialogs and sheets.** `Transitions.dialog`, `Transitions.sheet` and
+`Transitions.fullscreenDialog` make a route open over the previous page instead of
+replacing it. The page's widget is what shows up: for `dialog` it is the dialog itself
+(an `AlertDialog`, a `Dialog` or your own card, as in `showDialog`'s builder), for `sheet`
+the sheet's content (wrapped in a `Material`), and `fullscreenDialog` is a Material page
+that slides up, with a close button in its `AppBar`.
+
+```dart
+// lib/app/photos/$id/transition.dart: /photos/:id is a dialog over /photos
+Page<void> transition(LocalKey key, Widget child) => Transitions.dialog(key, child);
+
+// lib/app/photos/sort/transition.dart
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.sheet(key, child, showDragHandle: true);
+```
+
+They are real Navigator routes (a `DialogRoute` and a `ModalBottomSheetRoute` made by the
+page), so everything works as it does for `showDialog`: `context.pop()`, the back button
+and the barrier pop the route, and `dialog` and `sheet` take options such as
+`barrierDismissible`, `isScrollControlled` and `enableDrag`. A few things to know:
+
+- **Put the route below a page.** The page underneath stays built and visible. go_router
+  builds a deep link's stack from the parents that have a page, so with `photos/page.dart`
+  above `photos/$id/`, `/photos/7` opens the dialog over `/photos`. Without a parent page,
+  the dialog opens over an empty screen.
+- **They cover their own navigator only.** Inside a tab, a dialog covers that tab's
+  navigator, not the tab layout's navigation bar; the same goes for a `layout.dart`'s
+  body. Put the route outside the layout's folder to cover the whole screen.
+- **They need `MaterialLocalizations`,** like `showDialog` and `showModalBottomSheet`: a
+  `MaterialApp` (or a `Localizations` with the Material delegate) above the router.
+- The route's `transition.dart` also covers routes below it, so give a dialog route its own
+  folder.
 
 Routes with no `transition.dart` above them keep go_router's default for your app type:
 the platform transition under a Material or Cupertino app, none otherwise (see the go_router
@@ -467,9 +552,12 @@ by two segments, query parameters (in a page, `data.dart` and a layout), a page 
 view bound by type, a layout and guard that take segments, a user-written
 `AsyncNotifierProvider`, and `Stream` data.
 
-`examples/tabs` is a bottom navigation bar built as a tab layout: three tabs (one with a
-nested page), a counter that survives switching tabs, and a full-screen route outside
-them.
+`examples/tabs` is a bottom navigation bar built as a tab layout: four tabs (one with a
+nested page, and a Library tab that is a tab layout of its own, with two inner tabs), a
+counter that survives switching tabs, `tabOptions`, and a full-screen route outside them.
+
+`examples/features` also has `/photos`, with a dialog route (`/photos/:id`), a bottom sheet
+(`/photos/sort`) and a full-screen dialog (`/photos/upload`) opening over it.
 
 ## Development
 
@@ -534,12 +622,12 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 86 tests (79 unit, 7 CLI integration) cover parsing, every binding rule and contract error, query
+- **Generator:** 97 tests (90 unit, 7 CLI integration) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, transitions, both data
   forms, scaffolding, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 44 Flutter tests (the package 8, `shop` 12,
-  `features` 17, `tabs` 7); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 61 Flutter tests (the package 15, `shop` 12,
+  `features` 22, `tabs` 12); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

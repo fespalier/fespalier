@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use heck::ToUpperCamelCase;
 
-use crate::dart::{self, Class, Module, Span, Ty};
+use crate::dart::{self, Class, Lit, Module, Span, Ty};
 use crate::diag::Diags;
 use crate::scan::{Kind, Node, Seg};
 
@@ -103,6 +103,14 @@ pub enum Branch {
     Folder(usize),
 }
 
+/// What `tabOptions` in a tab layout sets for one tab.
+#[derive(Debug, Clone, Default)]
+pub struct BranchOptions {
+    pub preload: bool,
+    /// An app location inside the tab, as written (`/profile/edit`).
+    pub initial_location: Option<String>,
+}
+
 #[derive(Debug)]
 pub struct Route {
     pub dir: String,
@@ -131,6 +139,8 @@ pub struct Route {
     pub layout_query: Vec<(String, String)>,
     /// Set when the layout asks for a `StatefulNavigationShell`: its tabs, in order.
     pub tabs: Option<Vec<Branch>>,
+    /// The options of each tab, in the same order as `tabs`.
+    pub tab_options: Vec<BranchOptions>,
 }
 
 #[derive(Debug, Default)]
@@ -292,6 +302,7 @@ impl Resolver<'_> {
             query: vec![],
             layout_query: vec![],
             tabs: None,
+            tab_options: vec![],
         });
 
         let mut segs = up.segs.clone();
@@ -448,7 +459,9 @@ impl Resolver<'_> {
         let is_tabs = self.app.routes[id].layout.as_ref().is_some_and(|w| w.args.iter().any(|a| a.bind == Bind::Shell));
         if is_tabs {
             let tabs = self.tabs(node, modules.get(&Kind::Layout), has_page, &with_routes);
+            let options = self.tab_options(node, modules.get(&Kind::Layout), id, has_page, &with_routes, &tabs);
             self.app.routes[id].tabs = Some(tabs);
+            self.app.routes[id].tab_options = options;
         }
         if !any_route && node.children.is_empty() && !node.dir.is_empty() && !node.files.contains_key(&Kind::Page) {
             self.diags.warn(&node.dir, None, "folder has no page.dart and no routes below it; skipped");
@@ -461,15 +474,8 @@ impl Resolver<'_> {
     /// holds routes, or the order `const tabs = [...]` in layout.dart gives.
     fn tabs(&mut self, node: &Node, layout: Option<&Module>, has_page: bool, with_routes: &[usize]) -> Vec<Branch> {
         let file = node.rel(Kind::Layout);
-        let name_of = |r: &Self, b: Branch| match b {
-            Branch::Own => ".".to_string(),
-            Branch::Folder(c) => r.app.routes[c].dir.rsplit('/').next().unwrap_or_default().to_string(),
-        };
-        let mut all: Vec<Branch> = vec![];
-        if has_page {
-            all.push(Branch::Own);
-        }
-        all.extend(with_routes.iter().map(|&c| Branch::Folder(c)));
+        let name_of = |r: &Self, b: Branch| r.tab_name(b);
+        let all = all_tabs(has_page, with_routes);
         let Some(var) = layout.and_then(|m| m.variables.iter().find(|v| v.name == "tabs")) else { return all };
         let Some(listed) = &var.strings else {
             self.diags.error(&file, Some(&var.span), "`tabs` must be a list of string literals naming the branches, e.g. `const tabs = ['home', 'search'];`");
@@ -496,6 +502,117 @@ impl Resolver<'_> {
             }
         }
         order
+    }
+
+    /// How a tab is named in `tabs` and `tabOptions`: its folder, or `.` for the layout's own page.
+    fn tab_name(&self, b: Branch) -> String {
+        match b {
+            Branch::Own => ".".to_string(),
+            Branch::Folder(c) => self.app.routes[c].dir.rsplit('/').next().unwrap_or_default().to_string(),
+        }
+    }
+
+    /// The URLs of the pages inside a tab.
+    fn tab_urls(&self, layout: usize, b: Branch) -> Vec<&[Seg]> {
+        fn walk<'a>(app: &'a App, id: usize, out: &mut Vec<&'a [Seg]>) {
+            let r = &app.routes[id];
+            if r.page.is_some() {
+                out.push(&r.url);
+            }
+            for &c in &r.children {
+                walk(app, c, out);
+            }
+        }
+        let mut out = vec![];
+        match b {
+            Branch::Own => out.push(self.app.routes[layout].url.as_slice()),
+            Branch::Folder(c) => walk(&self.app, c, &mut out),
+        }
+        out
+    }
+
+    /// `const tabOptions = {'search': TabOptions(preload: true)};` in layout.dart,
+    /// as the options of each tab in `order`.
+    fn tab_options(
+        &mut self,
+        node: &Node,
+        layout: Option<&Module>,
+        layout_id: usize,
+        has_page: bool,
+        with_routes: &[usize],
+        order: &[Branch],
+    ) -> Vec<BranchOptions> {
+        let mut out = vec![BranchOptions::default(); order.len()];
+        let Some(var) = layout.and_then(|m| m.variables.iter().find(|v| v.name == "tabOptions")) else { return out };
+        let file = node.rel(Kind::Layout);
+        let Some(entries) = &var.objects else {
+            let msg = "`tabOptions` must be a map from tab names to `TabOptions(...)` calls with literal arguments, e.g. `const tabOptions = {'search': TabOptions(preload: true)};`";
+            self.diags.error(&file, Some(&var.span), msg);
+            return out;
+        };
+        let all = all_tabs(has_page, with_routes);
+        let known: Vec<String> = all.iter().map(|&b| self.tab_name(b)).collect();
+        let mut seen: Vec<&str> = vec![];
+        for e in entries {
+            let Some(i) = known.iter().position(|k| *k == e.key) else {
+                let msg = format!("`tabOptions` lists `{}`, which is not a branch here; the branches are {}", e.key, show_list(&known));
+                self.diags.error(&file, Some(&e.key_span), msg);
+                continue;
+            };
+            if seen.contains(&e.key.as_str()) {
+                self.diags.error(&file, Some(&e.key_span), format!("`tabOptions` lists `{}` twice", e.key));
+                continue;
+            }
+            seen.push(&e.key);
+            if e.class != "TabOptions" {
+                let msg = format!("`tabOptions` gives `{}` a `{}`; it takes `TabOptions(...)`", e.key, e.class);
+                self.diags.error(&file, Some(&e.key_span), msg);
+                continue;
+            }
+            let mut opts = BranchOptions::default();
+            for a in &e.args {
+                match (a.name.as_str(), &a.value) {
+                    ("preload", Lit::Bool(b)) => opts.preload = *b,
+                    ("preload", _) => self.diags.error(&file, Some(&a.span), "`preload` must be `true` or `false`"),
+                    ("initialLocation", Lit::Str(loc)) => {
+                        let path = loc.split(['?', '#']).next().unwrap_or_default();
+                        let want: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+                        let urls = self.tab_urls(layout_id, all[i]);
+                        let matches = |u: &[Seg]| {
+                            let segs: Vec<&Seg> = u.iter().filter(|s| !matches!(s, Seg::Group(_))).collect();
+                            segs.len() == want.len()
+                                && segs.iter().zip(&want).all(|(s, w)| match s {
+                                    Seg::Static(x) => x == w,
+                                    _ => true,
+                                })
+                        };
+                        if !loc.starts_with('/') {
+                            let msg = format!("`initialLocation` is an app location and starts with `/`, e.g. `/{}`", loc.trim_start_matches('.'));
+                            self.diags.error(&file, Some(&a.span), msg);
+                        } else if !urls.iter().any(|u| matches(u)) {
+                            let routes: Vec<String> = urls.iter().map(|u| pattern(u)).collect();
+                            let msg = format!(
+                                "`initialLocation` `{loc}` is not a route in the `{}` tab; go_router needs one of them: {}",
+                                e.key,
+                                show_list(&routes)
+                            );
+                            self.diags.error(&file, Some(&a.span), msg);
+                        } else {
+                            opts.initial_location = Some(loc.clone());
+                        }
+                    }
+                    ("initialLocation", _) => self.diags.error(&file, Some(&a.span), "`initialLocation` must be a string literal without `$`, e.g. `'/profile/edit'`"),
+                    (other, _) => {
+                        let msg = format!("`TabOptions` has no `{other}`; it takes `preload` and `initialLocation`");
+                        self.diags.error(&file, Some(&a.span), msg);
+                    }
+                }
+            }
+            if let Some(at) = order.iter().position(|&b| b == all[i]) {
+                out[at] = opts;
+            }
+        }
+        out
     }
 
     /// The one public widget class a view file exports.
@@ -949,6 +1066,12 @@ fn show_segs(segs: &[(String, usize)]) -> String {
         return "it has none".into();
     }
     segs.iter().map(|(n, _)| format!("${n}")).collect::<Vec<_>>().join(", ")
+}
+
+/// Every tab a layout could have: its own page, then each subfolder holding routes.
+fn all_tabs(has_page: bool, with_routes: &[usize]) -> Vec<Branch> {
+    let own = has_page.then_some(Branch::Own);
+    own.into_iter().chain(with_routes.iter().map(|&c| Branch::Folder(c))).collect()
 }
 
 fn show_list(names: &[String]) -> String {

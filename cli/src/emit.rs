@@ -57,6 +57,22 @@ type Serves = (Vec<Seg>, String, Option<Span>);
 #[derive(Serialize)]
 struct BranchCx {
     routes: Vec<TreeCx>,
+    /// A Dart expression: the app location joined to the mount point.
+    initial_location: Option<String>,
+    preload: bool,
+}
+
+/// `'it\'s'`: a Dart string literal for `s`.
+fn dart_str(s: &str) -> String {
+    let mut out = String::from("'");
+    for c in s.chars() {
+        if matches!(c, '\'' | '\\' | '$') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('\'');
+    out
 }
 
 /// go_router takes the first route that matches, so `/about` must come
@@ -312,13 +328,20 @@ fn tab_routes(
 ) -> Vec<TreeCx> {
     // The tabs are siblings of the folder's page, so they share its path.
     let next = if path.is_empty() { String::new() } else { format!("{path}/") };
+    let options = &app.routes[id].tab_options;
     let branches: Vec<BranchCx> = tabs
         .iter()
-        .map(|b| BranchCx {
+        .enumerate()
+        .map(|(i, b)| BranchCx {
             routes: match *b {
                 Branch::Own => vec![page_route(app, id, top, path, false, fns)],
                 Branch::Folder(c) => static_first(routes_of(app, c, top, &next, fns)),
             },
+            initial_location: options
+                .get(i)
+                .and_then(|o| o.initial_location.as_ref())
+                .map(|l| format!("joinLocation(at, {})", dart_str(l))),
+            preload: options.get(i).is_some_and(|o| o.preload),
         })
         .filter(|b| !b.routes.is_empty())
         .collect();
@@ -395,7 +418,9 @@ fn check_tab_starts(tree: &[TreeCx], diags: &mut Diags) {
     }
     for r in tree {
         for b in &r.branches {
-            if let Some((url, file, span)) = first_route(&b.routes).filter(|f| f.has_params).and_then(|f| f.serves.as_ref()) {
+            // With an `initialLocation`, go_router doesn't look at the tab's first route.
+            let first = first_route(&b.routes).filter(|f| f.has_params && b.initial_location.is_none());
+            if let Some((url, file, span)) = first.and_then(|f| f.serves.as_ref()) {
                 diags.error(
                     file,
                     span.as_ref(),

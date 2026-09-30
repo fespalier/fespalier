@@ -9,11 +9,6 @@ What fespalier doesn't do yet. Released features are in CHANGELOG.md.
 - `redirect.dart`: routes that only redirect (`/old` → `/new`).
 - A helper to send users back after a redirect (e.g. `?from=`).
 
-**Navigation**
-- Tab layouts nested inside tab layouts.
-- Per-tab options: `initialLocation`, `preload`.
-- Dialog and bottom-sheet routes.
-
 **Route API and testing**
 - Typed helpers on route instances: `ProductRoute(id: 2).watch(ref)`, `.read(ref)`, `.prefetch(ref)`.
 - `data.dart` next to a layout, shared by the section below it.

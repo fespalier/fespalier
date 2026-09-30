@@ -31,6 +31,18 @@
 - Fix: static routes now sort before dynamic siblings below a page-less folder
   (`shops/new` before `shops/$id`); before, both were kept in folder order and `shops/new`
   could be reported unreachable. Regenerate `app.g.dart`: routes may move.
+- Nested tab layouts: a tab layout inside a branch of another one generates a nested
+  `StatefulShellRoute.indexedStack`. Each level has its own `tabs`, and an inner tab keeps
+  its state while you switch outer tabs. `examples/tabs` gets a Library tab with two inner
+  tabs.
+- Per-tab options: a `const tabOptions = {'search': TabOptions(preload: true), ...}` map in
+  a tab layout sets each `StatefulShellBranch`'s `preload` and `initialLocation` (the mount
+  point is added for you). Checked like `tabs`; an `initialLocation` must be a route inside
+  its tab. A tab with an `initialLocation` may start with a dynamic route.
+- `Transitions.dialog`, `Transitions.sheet` and `Transitions.fullscreenDialog`: a
+  `transition.dart` can make a route open as a dialog or bottom sheet over the previous page
+  (`examples/features` has `/photos`, `/photos/:id`, `/photos/sort`, `/photos/upload`).
+- New runtime export: `TabOptions`.
 
 ## 0.1.1 — 2026-09-30
 

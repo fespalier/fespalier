@@ -14,4 +14,5 @@ export 'src/data_view.dart';
 export 'src/guards.dart';
 export 'src/location.dart';
 export 'src/segments.dart';
+export 'src/tab_options.dart';
 export 'src/transitions.dart';

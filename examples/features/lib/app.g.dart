@@ -11,6 +11,10 @@
 //   /login                  LoginRoute         login/page.dart  (transition)
 //   /old-search             OldSearchRoute     old-search/redirect.dart  (redirect)
 //   /old-shops/:shop        OldShopsShopRoute  old-shops/$shop/redirect.dart  (redirect)
+//   /photos                 PhotosRoute        photos/page.dart  (transition)
+//   /photos/:id             PhotoRoute         photos/$id/page.dart  (transition)
+//   /photos/sort            SortRoute          photos/sort/page.dart  (transition)
+//   /photos/upload          UploadRoute        photos/upload/page.dart  (transition)
 //   /search                 SearchRoute        search/page.dart  (data, transition)
 //   /shops/:shop            ShopRoute          shops/$shop/page.dart  (guard, layout, transition)
 //   /shops/:shop/items/:id  ItemRoute          shops/$shop/items/$id/page.dart  (data, transition)
@@ -36,17 +40,24 @@ import 'app/counter/page.dart' as _i13;
 import 'app/login/page.dart' as _i14;
 import 'app/old-search/redirect.dart' as _i15;
 import 'app/old-shops/\$shop/redirect.dart' as _i16;
-import 'app/search/data.dart' as _i17;
-import 'app/search/page.dart' as _i18;
-import 'app/shops/\$shop/page.dart' as _i19;
-import 'app/shops/\$shop/layout.dart' as _i20;
-import 'app/shops/\$shop/guard.dart' as _i21;
-import 'app/shops/\$shop/items/\$id/data.dart' as _i22;
-import 'app/shops/\$shop/items/\$id/page.dart' as _i23;
-import 'app/shops/\$shop/items/\$id/error.dart' as _i24;
-import 'app/ticks/data.dart' as _i25;
-import 'app/ticks/page.dart' as _i26;
-import 'app/ticks/transition.dart' as _i27;
+import 'app/photos/page.dart' as _i17;
+import 'app/photos/\$id/page.dart' as _i18;
+import 'app/photos/\$id/transition.dart' as _i19;
+import 'app/photos/sort/page.dart' as _i20;
+import 'app/photos/sort/transition.dart' as _i21;
+import 'app/photos/upload/page.dart' as _i22;
+import 'app/photos/upload/transition.dart' as _i23;
+import 'app/search/data.dart' as _i24;
+import 'app/search/page.dart' as _i25;
+import 'app/shops/\$shop/page.dart' as _i26;
+import 'app/shops/\$shop/layout.dart' as _i27;
+import 'app/shops/\$shop/guard.dart' as _i28;
+import 'app/shops/\$shop/items/\$id/data.dart' as _i29;
+import 'app/shops/\$shop/items/\$id/page.dart' as _i30;
+import 'app/shops/\$shop/items/\$id/error.dart' as _i31;
+import 'app/ticks/data.dart' as _i32;
+import 'app/ticks/page.dart' as _i33;
+import 'app/ticks/transition.dart' as _i34;
 
 /// The file tree under lib/app/, ready to mount.
 abstract final class AppRoutes {
@@ -159,15 +170,49 @@ abstract final class AppRoutes {
                 ),
               ),
               GoRoute(
+                path: 'photos',
+                pageBuilder: (context, state) => _i1.transition(
+                  state.pageKey,
+                  _i17.PhotosPage(),
+                ),
+                routes: [
+                  GoRoute(
+                    path: 'sort',
+                    pageBuilder: (context, state) => _i21.transition(
+                      state.pageKey,
+                      _i20.SortPage(),
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'upload',
+                    pageBuilder: (context, state) => _i23.transition(
+                      state.pageKey,
+                      _i22.UploadPage(),
+                    ),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    pageBuilder: (context, state) => _i19.transition(
+                      state.pageKey,
+                      buildWithParams(
+                        () => _params14(state),
+                        (v) => _i18.PhotoPage(id: v.id),
+                        () => notFound(state.uri),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              GoRoute(
                 path: 'search',
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
                   buildWithParams(
-                    () => _params13(state),
+                    () => _params17(state),
                     (v) => DataView(
-                      watch: (ref) => ref.watch(_data13((q: v.q, page: v.page))),
-                      refresh: (ref) => ref.invalidate(_data13((q: v.q, page: v.page))),
-                      data: (d) => _i18.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
+                      watch: (ref) => ref.watch(_data17((q: v.q, page: v.page))),
+                      refresh: (ref) => ref.invalidate(_data17((q: v.q, page: v.page))),
+                      data: (d) => _i25.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
                     ),
@@ -177,12 +222,12 @@ abstract final class AppRoutes {
               ),
               GoRoute(
                 path: 'ticks',
-                pageBuilder: (context, state) => _i27.transition(
+                pageBuilder: (context, state) => _i34.transition(
                   state.pageKey,
                   DataView(
-                    watch: (ref) => ref.watch(_data18),
-                    refresh: (ref) => ref.invalidate(_data18),
-                    data: (d) => _i26.TicksPage(data: d),
+                    watch: (ref) => ref.watch(_data22),
+                    refresh: (ref) => ref.invalidate(_data22),
+                    data: (d) => _i33.TicksPage(data: d),
                     loading: () => const DefaultLoading(),
                     error: (e, st, retry) => DefaultError(error: e, retry: retry),
                   ),
@@ -208,22 +253,22 @@ abstract final class AppRoutes {
               ),
               ShellRoute(
                 builder: (context, state, child) => buildWithParams(
-                  () => _layout15(state),
-                  (v) => _i20.ShopLayout(shop: v.shop, child: child),
+                  () => _layout19(state),
+                  (v) => _i27.ShopLayout(shop: v.shop, child: child),
                   () => notFound(state.uri),
                 ),
                 routes: [
                   GoRoute(
                     path: 'shops/:shop',
                     redirect: (context, state) => guardWithParams(
-                      () => _params15(state),
-                      (v) => _i21.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
+                      () => _params19(state),
+                      (v) => _i28.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
                     ),
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       buildWithParams(
-                        () => _params15(state),
-                        (v) => _i19.ShopPage(shop: v.shop),
+                        () => _params19(state),
+                        (v) => _i26.ShopPage(shop: v.shop),
                         () => notFound(state.uri),
                       ),
                     ),
@@ -233,13 +278,13 @@ abstract final class AppRoutes {
                         pageBuilder: (context, state) => _i1.transition(
                           state.pageKey,
                           buildWithParams(
-                            () => _params17(state),
+                            () => _params21(state),
                             (v) => DataView(
-                              watch: (ref) => ref.watch(_data17((shop: v.shop, id: v.id))),
-                              refresh: (ref) => ref.invalidate(_data17((shop: v.shop, id: v.id))),
-                              data: (d) => _i23.ItemPage(d),
+                              watch: (ref) => ref.watch(_data21((shop: v.shop, id: v.id))),
+                              refresh: (ref) => ref.invalidate(_data21((shop: v.shop, id: v.id))),
+                              data: (d) => _i30.ItemPage(d),
                               loading: () => const DefaultLoading(),
-                              error: (e, st, retry) => _i24.ItemError(e, retry),
+                              error: (e, st, retry) => _i31.ItemError(e, retry),
                             ),
                             () => notFound(state.uri),
                           ),
@@ -355,6 +400,40 @@ final class OldShopsShopRoute extends TypedLocation {
   String get location => joinLocation(AppRoutes.base, '/old-shops/${Uri.encodeComponent(shop)}');
 }
 
+/// `/photos` → photos/page.dart
+final class PhotosRoute extends TypedLocation {
+  const PhotosRoute();
+
+  @override
+  String get location => joinLocation(AppRoutes.base, '/photos');
+}
+
+/// `/photos/:id` → photos/$id/page.dart
+final class PhotoRoute extends TypedLocation {
+  const PhotoRoute({required this.id});
+
+  final int id;
+
+  @override
+  String get location => joinLocation(AppRoutes.base, '/photos/$id');
+}
+
+/// `/photos/sort` → photos/sort/page.dart
+final class SortRoute extends TypedLocation {
+  const SortRoute();
+
+  @override
+  String get location => joinLocation(AppRoutes.base, '/photos/sort');
+}
+
+/// `/photos/upload` → photos/upload/page.dart
+final class UploadRoute extends TypedLocation {
+  const UploadRoute();
+
+  @override
+  String get location => joinLocation(AppRoutes.base, '/photos/upload');
+}
+
 /// `/search` → search/page.dart
 final class SearchRoute extends TypedLocation {
   const SearchRoute({this.q, this.page, this.tags = const []});
@@ -364,7 +443,7 @@ final class SearchRoute extends TypedLocation {
   final List<String> tags;
 
   /// search/data.dart as a Riverpod provider keyed by `(q, page)`.
-  static final data = _data13;
+  static final data = _data17;
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/search'), {'q': q, 'page': page, 'tags': tags});
@@ -391,7 +470,7 @@ final class ItemRoute extends TypedLocation {
   final int id;
 
   /// shops/$shop/items/$id/data.dart as a Riverpod provider keyed by `(shop, id)`.
-  static final data = _data17;
+  static final data = _data21;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/shops/${Uri.encodeComponent(shop)}/items/$id');
@@ -405,7 +484,7 @@ final class TicksRoute extends TypedLocation {
   const TicksRoute();
 
   /// ticks/data.dart as a Riverpod provider.
-  static final data = _data18;
+  static final data = _data22;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/ticks');
@@ -424,30 +503,32 @@ final class TicksRoute extends TypedLocation {
 
 ({String shop}) _params12(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
 
-({String? q, int? page, List<String> tags}) _params13(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'));
+({int id}) _params14(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
-({String shop}) _params15(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
+({String? q, int? page, List<String> tags}) _params17(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'));
 
-({String shop, int id}) _params17(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'));
+({String shop}) _params19(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
+
+({String shop, int id}) _params21(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'));
 
 ({String? banner}) _layout0(GoRouterState s) => (banner: Query.asString(s, 'banner'));
 
-({String shop}) _layout15(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
-
-final _data13 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String? q, int? page}) k) => _i17.data(ref, q: k.q, page: k.page),
-  // No automatic retry: error.dart and its Retry button are the retry UX.
-  retry: (retryCount, error) => null,
-);
+({String shop}) _layout19(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
 
 final _data17 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String shop, int id}) k) => _i22.data(ref, shop: k.shop, id: k.id),
+  (Ref ref, ({String? q, int? page}) k) => _i24.data(ref, q: k.q, page: k.page),
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
 );
 
-final _data18 = StreamProvider.autoDispose(
-  (Ref ref) => _i25.data(ref),
+final _data21 = FutureProvider.autoDispose.family(
+  (Ref ref, ({String shop, int id}) k) => _i29.data(ref, shop: k.shop, id: k.id),
+  // No automatic retry: error.dart and its Retry button are the retry UX.
+  retry: (retryCount, error) => null,
+);
+
+final _data22 = StreamProvider.autoDispose(
+  (Ref ref) => _i32.data(ref),
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
 );

@@ -281,4 +281,6 @@ fn watch(project: &Path) -> Result<()> {
 #[cfg(test)]
 mod cli_tests;
 #[cfg(test)]
+mod nav_tests;
+#[cfg(test)]
 mod tests;

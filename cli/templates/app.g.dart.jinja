@@ -46,6 +46,12 @@ StatefulShellRoute.indexedStack(
   branches: [
 {% for b in r.branches %}
     StatefulShellBranch(
+{% if b.initial_location %}
+      initialLocation: {{ b.initial_location }},
+{% endif %}
+{% if b.preload %}
+      preload: true,
+{% endif %}
       routes: [
 {% for c in b.routes %}
         {{ route(c) | indent(8) }},

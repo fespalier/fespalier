@@ -2,26 +2,6 @@
 
 ## Unreleased
 
-### `data.dart` can select a provider you already have
-
-- **New third `data.dart` form: a selector.**
-  `ProviderListenable<AsyncValue<ProductView>> data({required String productId}) => productProvider(productId);`
-  is recognised by its return type (and no `Ref` parameter). Its named parameters are segments
-  and query parameters exactly as in the function form (any other parameter is an error at
-  it), and `T` from `AsyncValue<T>` is what a page's parameter is bound to by type. Nothing is
-  wrapped: `XRoute.data` is the selected provider (`ProductDetailRoute.data('x') ==
-  productProvider('x')`), `DataView` watches it directly, and `watch`, `read`, `prefetch` and
-  `refresh` target it, so a `riverpod_generator` provider is fetched once per navigation, keeps
-  its own `retry`, `keepAlive` and dependencies, and keeps the error it holds while it retries.
-  `data_retry` doesn't apply to it. `refresh` and `error.dart`'s retry invalidate the selected
-  provider (`refresh` also reads it, so it runs once) through new runtime helpers,
-  `invalidateSelected`, `refreshSelected` and `readSelected` on `WidgetRef`, which check at
-  run time that the listenable is a provider and throw a `StateError` naming the fix if not.
-  Regenerate `app.g.dart` (the generated `DataView` calls `invalidateSelected` for selectors).
-- `package:fespalier/fespalier.dart` re-exports `ProviderListenable`; `prefetchData` takes any
-  `ProviderListenable<AsyncValue<…>>`.
-- README: `data.dart` has three forms now, with when to use each.
-
 ### Data refresh and retry
 
 - **Behaviour change: generated `data()` providers no longer switch off Riverpod's retry.**
@@ -63,6 +43,76 @@
 - **pub.dev.** `flutter pub publish --dry-run` is clean and checked in CI (the package gains
   a shorter description and `example/README.md`). New `Publish to pub.dev` workflow: publishes
   through GitHub OIDC automated publishing when run from the `v<version>` tag.
+
+### `data.dart` can select a provider you already have
+
+- **New third `data.dart` form: a selector.**
+  `ProviderListenable<AsyncValue<ProductView>> data({required String productId}) => productProvider(productId);`
+  is recognised by its return type (and no `Ref` parameter). Its named parameters are segments
+  and query parameters exactly as in the function form (any other parameter is an error at
+  it), and `T` from `AsyncValue<T>` is what a page's parameter is bound to by type. Nothing is
+  wrapped: `XRoute.data` is the selected provider (`ProductDetailRoute.data('x') ==
+  productProvider('x')`), `DataView` watches it directly, and `watch`, `read`, `prefetch` and
+  `refresh` target it, so a `riverpod_generator` provider is fetched once per navigation, keeps
+  its own `retry`, `keepAlive` and dependencies, and keeps the error it holds while it retries.
+  `data_retry` doesn't apply to it. `refresh` and `error.dart`'s retry invalidate the selected
+  provider (`refresh` also reads it, so it runs once) through new runtime helpers,
+  `invalidateSelected`, `refreshSelected` and `readSelected` on `WidgetRef`, which check at
+  run time that the listenable is a provider and throw a `StateError` naming the fix if not.
+  Regenerate `app.g.dart` (the generated `DataView` calls `invalidateSelected` for selectors).
+- `package:fespalier/fespalier.dart` re-exports `ProviderListenable`; `prefetchData` takes any
+  `ProviderListenable<AsyncValue<…>>`.
+- A selector can be keyed by a catch-all segment like the function form: the key is the
+  encoded path (`restKey`) and the selector function gets the `List<String>` back (`restParts`).
+- README: `data.dart` has three forms now, with when to use each.
+
+### Paths
+
+- **Catch-all segments.** A folder `$$rest` matches one or more remaining segments and
+  `$$$rest` zero or more; the page takes them as a `List<String>`, each part decoded on
+  its own. It is a go_router parameter with its own pattern (`docs/:rest(.+)`), so deep
+  links, guards and redirects work as for any route; `$$$rest` is two routes with one builder
+  (`/files` and `/files/:path(.+)`). The typed route is `DocsRoute(rest: ['a', 'b c'])`
+  (`/docs/a/b%20c`, each part encoded). Siblings are ordered static, dynamic, then catch-all,
+  and the unreachable-route check knows catch-alls. `data.dart` can be keyed by one (the
+  provider takes the path as an encoded string: new `restKey` / `restParts`). Limits: last
+  segment only, `List<String>` only, nothing below it, no `not_found.dart` in it.
+  `fsp new 'docs/[...rest]'` and `'docs/[[...rest]]'` scaffold them. Runtime: `Segment.asRest`,
+  `restPath`, `restKey`, `restParts`. `fsp routes` shows `/docs/*rest` and `/files/*path?`.
+- **`case_sensitive: false`** under `fespalier:` in pubspec.yaml emits `caseSensitive: false` on
+  every route, so `/Products` reaches `/products` (parameters keep their case). The
+  nearest-`not_found.dart` lookup (`nearestNotFound(..., caseSensitive:)`) follows it. The default
+  is unchanged.
+- **Trailing slashes** need no option: go_router drops them before matching, so `/products/`
+  and `/products/?page=2` reach `/products` (checked on go_router 17.5 and 18, and now tested).
+- **Typed `extra`.** A page parameter called `extra` receives what `context.go(location,
+  extra: obj)` passed, and the typed route takes it: `NoteRoute(id: 3).go(context, extra:
+  note)` (also `push` and `replace`), checked at compile time. The parameter must be nullable:
+  the URL alone can't produce it, so a deep link or a reload gets `null`. The generated file
+  imports the type by name (`show`) from `page.dart`'s imports, the one place it names one of
+  your types. Runtime: `extraOf<T>(state)`. New reserved name: `extra` can't be a segment.
+### `dart run fespalier`: pinned checksums, offline, "generate, don't commit"
+
+- **Checksums are pinned inside the package.** `lib/src/release_checksums.dart` holds the
+  SHA-256 of every `fsp` archive of the package's own version, and `dart run fespalier`
+  refuses a download that doesn't match (before, the `.sha256` came from the same release as
+  the binary, so it caught corruption but not a tampered release). A package with no pins for
+  its version (a development build from a branch) still checks the release's `.sha256` and
+  prints one warning line.
+- **Two-phase release.** The *Release* workflow (manual publish) builds the five targets, then
+  commits the pins to `main` as `Pin fsp <version> checksums` (`scripts/pin_checksums.py`,
+  tested by `scripts/test_pin_checksums.py`), and creates the `v<version>` tag and the Release
+  at that commit, so a git dependency on the tag carries the pins. The binaries are built from
+  the parent commit and differ only by that one file. Manual publish must now run on the
+  default branch, and the workflow needs to be able to push to it. After a version bump, run
+  `python3 scripts/pin_checksums.py --reset`; `cli/tests/versions.rs` checks that the file pins
+  nothing or the pubspec's version.
+- **Offline with an empty cache** stops with one line: `fespalier: fsp 0.3.0 isn't cached and
+  the download failed (offline?); run once online or set FSP_BINARY`. A cached binary never
+  touches the network.
+- README: a "Generate, don't commit" mode (gitignore `lib/app.g.dart`, run
+  `dart run fespalier gen` before `flutter analyze` in CI; the generator follows
+  `pubspec.lock`), next to the committed mode with `fsp check`, which still writes nothing.
 
 ## 0.2.0 — 2026-09-30
 

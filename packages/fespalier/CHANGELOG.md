@@ -1,3 +1,11 @@
+## Unreleased
+
+- `dart run fespalier` checks its download against SHA-256 checksums pinned in this package
+  (`lib/src/release_checksums.dart`) and refuses a mismatch. A build from a branch, with no
+  pins for its version, falls back to the release's `.sha256` with a warning.
+- Offline with nothing cached, it stops with one line naming the missing `fsp` version; a
+  cached binary never touches the network.
+
 ## 0.2.0 - 2026-09-30
 
 - Guards: `firstRedirect(guards)` chains the guards above a route (outermost first, the first

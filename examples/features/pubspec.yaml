@@ -21,3 +21,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+# Paths match by case: /Docs/Guide is /docs/guide.
+fespalier:
+  case_sensitive: false

@@ -266,3 +266,30 @@ fn data_retry_none_leaves_a_selected_provider_alone() {
     // Nothing of ours to configure: the app's provider keeps its own retry and keepAlive.
     lacks(&code_with(&cfg, &files), &["retryCount", "No automatic retry"]);
 }
+
+#[test]
+fn a_selector_keyed_by_a_catch_all_gets_the_list_back() {
+    // Lists compare by identity, so the key is the encoded path as one string, as in the
+    // function form; the app's own function gets the parts back.
+    let data = "ProviderListenable<AsyncValue<Article>> data({required List<String> rest, int? page}) => articleProvider(rest, page);";
+    let p = "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest, required this.article}); final List<String> rest; final Article article; }";
+    let c = code(&[("docs/$$rest/page.dart", p), ("docs/$$rest/data.dart", data)]);
+    has(
+        &c,
+        &[
+            "final _data2 = (({String rest, int? page}) k) => _i0.data(rest: restParts(k.rest), page: k.page);",
+            "ref.watch(_data2((rest: restKey(v.rest), page: v.page)))",
+            "ref.invalidateSelected(_data2((rest: restKey(v.rest), page: v.page)))",
+            "Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data((rest: restKey(rest), page: page)));",
+        ],
+    );
+    lacks(&c, &["QueryList"]);
+
+    // Alone, the key is the string itself.
+    let data = "ProviderListenable<AsyncValue<Article>> data({required List<String> rest}) => articleProvider(rest);";
+    let c = code(&[("docs/$$rest/page.dart", p), ("docs/$$rest/data.dart", data)]);
+    has(
+        &c,
+        &["final _data2 = (String rest) => _i0.data(rest: restParts(rest));", "ref.watch(_data2(restKey(v.rest)))"],
+    );
+}

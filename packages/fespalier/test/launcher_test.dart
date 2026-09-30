@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fespalier/src/launcher.dart';
+import 'package:fespalier/src/release_checksums.dart' as pinned;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -176,6 +177,26 @@ void main() {
     });
   });
 
+  test('the pinned checksums are none, or belong to this package version', () {
+    final version = parsePubspecVersion(
+      File('pubspec.yaml').readAsStringSync(),
+    );
+    if (pinned.pinnedVersion.isEmpty) {
+      expect(pinned.pinnedChecksums, isEmpty);
+    } else {
+      expect(pinned.pinnedVersion, version);
+      for (final target in [
+        'x86_64-unknown-linux-gnu',
+        'aarch64-unknown-linux-gnu',
+        'x86_64-apple-darwin',
+        'aarch64-apple-darwin',
+        'x86_64-pc-windows-msvc',
+      ]) {
+        expect(pinned.pinnedChecksums[target], matches(r'^[0-9a-f]{64}$'));
+      }
+    }
+  });
+
   test('reads the version from the package pubspec', () async {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final lib = Directory.current.uri.resolve('lib/fespalier.dart');
@@ -187,12 +208,14 @@ void main() {
     late Directory cache;
     late List<Uri> fetched;
     late List<String> probed;
+    late List<String> logs;
 
     setUp(() {
       tmp = Directory.systemTemp.createTempSync('launcher');
       cache = Directory('${tmp.path}/cache')..createSync();
       fetched = [];
       probed = [];
+      logs = [];
     });
     tearDown(() => tmp.deleteSync(recursive: true));
 
@@ -201,6 +224,8 @@ void main() {
       Fetch? fetch,
       String? pathVersion,
       String target = 'x86_64-unknown-linux-gnu',
+      String pinnedVersion = '',
+      Map<String, String> pins = const {},
     }) => Launcher(
       version: '0.1.1',
       target: target,
@@ -210,7 +235,9 @@ void main() {
         fetched.add(url);
         return fetch == null ? throw LauncherException('offline') : fetch(url);
       },
-      log: (_) {},
+      log: logs.add,
+      pinnedVersion: pinnedVersion,
+      pins: pins,
       probe: (exe) async {
         probed.add(exe);
         return pathVersion == null ? null : 'fsp $pathVersion\n';
@@ -220,9 +247,8 @@ void main() {
     /// A `.tar.gz` holding a shell script called `fsp`, and a fetch that serves it.
     Future<Fetch> release({String? sum, String file = 'fsp'}) async {
       final src = Directory('${tmp.path}/src')..createSync();
-      File(
-        '${src.path}/$file',
-      ).writeAsStringSync('#!/bin/sh\necho "fsp 0.1.1"\n');
+      File('${src.path}/$file')
+          .writeAsStringSync('#!/bin/sh\necho "fsp 0.1.1"\n');
       await Process.run('chmod', ['+x', '${src.path}/$file']);
       final archive = File('${tmp.path}/fsp.tar.gz');
       final r = await Process.run('tar', [
@@ -311,6 +337,145 @@ void main() {
       expect(await launcher().locate(), path);
       expect(fetched, isEmpty, reason: 'second run reads the cache');
     }, skip: unix ? false : 'needs a unix shell');
+
+    group('pinned checksums', () {
+      const linux = 'x86_64-unknown-linux-gnu';
+
+      test(
+        'are the hard check; the release .sha256 is not even fetched',
+        () async {
+          final serve = await release();
+          final bytes = await serve(Uri.parse('http://x/v/fsp-$linux.tar.gz'));
+          final l = launcher(
+            fetch: serve,
+            pinnedVersion: '0.1.1',
+            pins: {linux: sha256Hex(bytes)},
+          );
+          await l.locate();
+          expect(fetched.map((u) => u.pathSegments.last), [
+            'fsp-$linux.tar.gz',
+          ]);
+          expect(logs.where((m) => m.contains('warning')), isEmpty);
+          expect(l.cachedBinary.existsSync(), isTrue);
+        },
+        skip: unix ? false : 'needs a unix shell',
+      );
+
+      test(
+        'reject a release whose own .sha256 agrees with a tampered archive',
+        () async {
+          // The attacker replaces the archive and its .sha256; the pin in the package still wins.
+          final l = launcher(
+            fetch: await release(),
+            pinnedVersion: '0.1.1',
+            pins: {linux: 'b' * 64},
+          );
+          await expectLater(
+            l.locate(),
+            throwsA(
+              isA<LauncherException>().having(
+                (e) => e.message,
+                'message',
+                contains('checksum mismatch'),
+              ),
+            ),
+          );
+          expect(l.cachedBinary.parent.existsSync(), isFalse);
+        },
+        skip: unix ? false : 'needs a unix shell',
+      );
+
+      test(
+        'of another version do not apply: falls back to .sha256 with a warning',
+        () async {
+          final l = launcher(
+            fetch: await release(),
+            pinnedVersion: '0.0.9',
+            pins: {linux: 'b' * 64},
+          );
+          await l.locate();
+          expect(fetched, hasLength(2));
+          expect(logs.where((m) => m.contains('warning')), hasLength(1));
+          expect(
+            logs.singleWhere((m) => m.contains('warning')),
+            allOf(contains('0.1.1'), contains('.sha256')),
+          );
+        },
+        skip: unix ? false : 'needs a unix shell',
+      );
+
+      test(
+        'without an entry for the target are an error, not a fallback',
+        () async {
+          final l = launcher(
+            fetch: await release(),
+            pinnedVersion: '0.1.1',
+            pins: {'aarch64-apple-darwin': 'b' * 64},
+          );
+          await expectLater(
+            l.locate(),
+            throwsA(
+              isA<LauncherException>().having(
+                (e) => e.message,
+                'message',
+                allOf(contains('0.1.1'), contains(linux)),
+              ),
+            ),
+          );
+          expect(l.cachedBinary.existsSync(), isFalse);
+        },
+      );
+    });
+
+    group('offline', () {
+      Fetch down() =>
+          (url) async => throw const SocketException('Failed host lookup');
+
+      test('with a cold cache is one line naming the version', () async {
+        final l = launcher(fetch: down());
+        await expectLater(
+          l.locate(),
+          throwsA(
+            isA<LauncherException>().having(
+              (e) => e.message,
+              'message',
+              "fsp 0.1.1 isn't cached and the download failed (offline?); "
+                  'run once online or set FSP_BINARY',
+            ),
+          ),
+        );
+        expect(l.cachedBinary.parent.existsSync(), isFalse);
+      });
+
+      test('says the same when only the .sha256 is unreachable', () async {
+        final serve = await release();
+        final l = launcher(
+          fetch: (url) => url.path.endsWith('.sha256')
+              ? Future.error(const SocketException('gone'))
+              : serve(url),
+        );
+        await expectLater(
+          l.locate(),
+          throwsA(
+            isA<LauncherException>().having(
+              (e) => e.message,
+              'message',
+              contains("fsp 0.1.1 isn't cached"),
+            ),
+          ),
+        );
+        expect(l.cachedBinary.existsSync(), isFalse);
+      }, skip: unix ? false : 'needs a unix shell');
+
+      test('with a warm cache never touches the network', () async {
+        final l = launcher(fetch: down());
+        l.cachedBinary
+          ..createSync(recursive: true)
+          ..writeAsStringSync('');
+        expect(await l.locate(), l.cachedBinary.path);
+        expect(fetched, isEmpty);
+      });
+    });
 
     test('FSP_BASE_URL redirects the download', () async {
       final l = launcher(

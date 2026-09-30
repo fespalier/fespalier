@@ -32,6 +32,7 @@ lib/app/
   old-products/$id/
     redirect.dart        String redirect({required int id})            → /old-products/:id redirects
   greet/$name/page.dart  GreetPage({required String name})
+  docs/$$rest/page.dart  DocsPage({required List<String> rest})       → /docs/a, /docs/a/b, …
   (account)/             a group: its layout wraps profile/ and settings/,
     layout.dart            but adds nothing to their URLs (/profile, /settings)
     profile/page.dart
@@ -105,7 +106,11 @@ fespalier <command>` runs `fsp` for you, so use it wherever this README says `fs
 run downloads the `fsp` release that matches the package's version, checks its SHA-256 and
 keeps it in your user cache (`~/.cache/fespalier` on Linux, `~/Library/Caches/fespalier` on
 macOS, `%LOCALAPPDATA%\fespalier` on Windows; `FSP_CACHE_DIR` moves it), so later runs start
-at once. It needs `tar`, which macOS, Linux and Windows 10+ include. Set `FSP_BINARY=/path/to/fsp`
+at once. The download is checked against the SHA-256 that this package carries for its own
+version, so a tampered release is refused (a package built from a branch has no pins yet; it
+then checks the release's `.sha256` file instead and says so). Offline with an empty cache it
+stops with one line naming the missing version; with a warm cache it never uses the network.
+It needs `tar`, which macOS, Linux and Windows 10+ include. Set `FSP_BINARY=/path/to/fsp`
 to run a binary of your own, e.g. a build from source. An `fsp` on your `PATH` is used too when its
 version is the package's, so nothing is downloaded when you have both. The package and the
 binary are versioned together, and this is what keeps them in step.
@@ -170,8 +175,11 @@ fsp new 'orders/[id]' --data --loading    # scaffold a route, then regenerate ap
 `fsp new` runs `gen` right away, so the new route is usable as soon as it returns. See
 "The generator" for all flags.
 
-Commit `lib/app.g.dart`: it's plain code, meant to be read, and the app builds without
-`fsp` installed. In CI, run `fsp check`. It writes nothing and exits non-zero on errors:
+**Two ways to keep `app.g.dart`.** Pick one.
+
+*Commit it* (the default). `lib/app.g.dart` is plain code, meant to be read, and the app
+builds without `fsp` installed. In CI, run `fsp check`. It writes nothing (it never touches
+`app.g.dart`) and exits non-zero on routing errors:
 
 ```yaml
 - run: curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
@@ -180,6 +188,32 @@ Commit `lib/app.g.dart`: it's plain code, meant to be read, and the app builds w
 ```
 
 or, with nothing to install (after `flutter pub get`): `- run: dart run fespalier check`.
+
+*Generate, don't commit.* For projects that never commit generated code (`**/*.g.dart` is
+ignored already, and every generator runs before analysis). Add the file to `.gitignore`:
+
+```gitignore
+lib/app.g.dart
+```
+
+and generate it wherever the app is analyzed, tested or built: on a fresh clone, and in CI
+**before** `flutter analyze`, because `app.g.dart` doesn't exist until then:
+
+```yaml
+- run: flutter pub get
+- run: dart run fespalier gen   # writes lib/app.g.dart; fails on routing errors
+- run: flutter analyze
+- run: flutter test
+```
+
+The generator version needs no pin of its own: `dart run fespalier` runs the `fsp` release
+that matches the `fespalier` package your `pubspec.lock` resolved, so the generator and the
+runtime `app.g.dart` imports can't drift apart, and bumping the package bumps the generator.
+The first run downloads it (SHA-256 pinned in the package, see above) into the user cache;
+keep `~/.cache/fespalier` (`FSP_CACHE_DIR`) between CI runs with `actions/cache`, keyed on
+`pubspec.lock`, to skip that. Set `FSP_BINARY` to use a binary you built. Locally,
+`dart run fespalier watch` keeps the file current. `fsp check` still works in this mode
+(it checks the routing and writes nothing), and doesn't need the generated file to exist.
 
 **Config.** `fsp` needs no configuration. To move things, add this optional section to
 `pubspec.yaml`. Both paths are relative to the project root and must be under `lib/`, and
@@ -190,11 +224,13 @@ fespalier:
   app_dir: lib/app
   output: lib/app.g.dart
   format: false
+  case_sensitive: true
   data_retry: inherit
   keep_previous: true
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
+`case_sensitive: false` makes paths match in any case (see [Case and trailing slashes](#case-and-trailing-slashes)).
 `data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
 [Retries and reloads](#retries-and-reloads).
 
@@ -231,7 +267,7 @@ top-level function.
 
 | File | Exports | Its constructor / signature can ask for |
 |---|---|---|
-| `page.dart` | a widget | segments; query; what `data.dart` yields |
+| `page.dart` | a widget | segments; query; what `data.dart` yields; the navigation [`extra`](#typed-extra) |
 | `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data) | segments, query (named; a section's takes segments only) |
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
@@ -247,8 +283,8 @@ The generator reads each constructor (named or positional, `this.x` or typed) an
 every parameter:
 
 1. **By name.** A parameter named like a `$segment` in the path gets that segment.
-   `data`, `child`, `navigationShell` (or `shell`), `error`, `stackTrace`, `retry` and `uri`
-   get what their name says, in the files where they make sense.
+   `data`, `child`, `navigationShell` (or `shell`), `error`, `stackTrace`, `retry`, `uri`
+   and, in a page, `extra` get what their name says, in the files where they make sense.
 2. **Query.** An *optional* parameter that is nullable or a `List` of
    `String`/`int`/`double`/`bool` is a query parameter: `int? page` gets `?page=2`, and
    `List<String> tags = const []` gets every `?tags=`.
@@ -278,6 +314,80 @@ is a `String`. Segments are `String`, `int`, `double` or `bool`.
 `fsp new` scaffolds every segment as a `String`: `fsp new 'products/[id]' --data` writes
 `data(Ref ref, {required String id})`. To make `$id` an `int`, change the parameter type
 in each file that asks for it, then run `fsp gen` (or let `fsp watch` do it).
+
+### Catch-all segments
+
+`$$rest` matches **one or more** remaining segments, and `$$$rest` (three `$`) **zero or
+more**. The page takes them as a `List<String>`, each part decoded on its own:
+
+```
+docs/page.dart            /docs                      the index, beside the catch-all
+docs/new/page.dart        /docs/new                  a static sibling: tried first
+docs/$$rest/page.dart      /docs/guide/setup/linux    rest == ['guide', 'setup', 'linux']
+files/$$$path/page.dart   /files, /files/a/b         path == [] or ['a', 'b']
+```
+
+```dart
+class DocsPage extends StatelessWidget {
+  const DocsPage({super.key, required this.rest});
+  final List<String> rest;      // `rest` is the segment: a List<String>, nothing else
+  …
+}
+
+const DocsRoute(rest: ['guide', 'a b']).go(context);   // → /docs/guide/a%20b, each part encoded
+const FilesRoute().location;                            // '/files'
+```
+
+How it works: go_router matches a path pattern with a regular expression, and a `:name`
+parameter can carry its own (`:rest(.+)`, which may span `/`). A catch-all folder becomes a
+route with that pattern, `docs/:rest(.+)`, so deep links, redirects and `go` all use go_router's
+normal matching. `$$$rest` is two routes with one builder: the folder's path (`/files`) and
+the same with `:path(.+)`. Reading the parts takes go_router's decoded string apart *by the
+requested location*, so an encoded slash (`/docs/a%2Fb/c` is `['a/b', 'c']`) survives.
+
+- Siblings are tried in this order: static, then dynamic (`docs/$id`), then the catch-all,
+  whatever the folder order. A page that another route always catches first is still
+  reported as unreachable, including by a catch-all (`(wiki)/docs/$$rest` behind
+  `$a/$$rest`).
+- `guard.dart`, `redirect.dart`, `layout.dart`, `loading.dart` and `error.dart` can take the
+  parts like any segment (`{required List<String> rest}`).
+- `data.dart` can be keyed by them. Lists compare by identity, so the generated provider is
+  keyed by the encoded path as one string (`restKey`) and `data()` gets the list back
+  (`restParts`). `ref.watch(DocsRoute.data(restKey(rest)))` is what the route does; the
+  typed `DocsRoute.watch(ref, rest: [...])` takes the list. A provider you write yourself
+  (`final data = FutureProvider.family<…>`) can't be keyed by a catch-all: use the function
+  or a [selector](#datadart-a-function-a-selector-or-a-provider), whose `data({required List<String> rest})`
+  gets the list back the same way.
+- `$$$rest` and a `page.dart` in the folder above would both serve `/docs`: an error. Use
+  `$$rest` beside the page.
+
+Limits: a catch-all is always the last segment and a `List<String>` (no `List<int>`); nothing
+can be below its folder, and it can't have a `not_found.dart` (it matches every URL under
+it). A catch-all as a tab's first route needs a `tabOptions` `initialLocation`, like any
+route with a parameter. A part of `.` or `..` is read as a dot segment by the URL parser, so
+`DocsRoute(rest: ['..'])` doesn't reach a `..` part. `fsp new 'docs/[...rest]'` and
+`'docs/[[...rest]]'` write the folders, so you don't have to quote `$`.
+
+### Case and trailing slashes
+
+**Trailing slashes.** `/products/` reaches `/products`: go_router drops a trailing slash
+before it matches (also in front of a query, `/products/?page=2`), whether it comes from a
+deep link, `initialLocation` or `context.go`. There is nothing to configure, and typed
+locations never end in one. (Checked against go_router 17.5 and 18.)
+
+**Case.** Paths are case-sensitive, like go_router's default: `/Products` isn't
+`/products`. Set `case_sensitive: false` in the pubspec's `fespalier:` section to emit
+`caseSensitive: false` on every route:
+
+```yaml
+fespalier:
+  case_sensitive: false
+```
+
+Static parts then match in any case (`/PRODUCTS/Guide` finds `products/guide`), and the
+parts you take out of the URL (a `$segment`, a catch-all) keep the case they had. The
+nearest-`not_found.dart` lookup compares folder names the same way. Typed routes still write
+the paths as the folders spell them. The option is global; there is no per-folder setting.
 
 ### `(group)` folders
 
@@ -571,6 +681,41 @@ class SearchPage extends StatelessWidget {
   …
 }
 ```
+
+### Typed `extra`
+
+go_router can carry an object with a navigation, `context.go(location, extra: product)`,
+that isn't part of the URL. A page asks for it with a parameter called `extra`, and the
+typed route takes it as an optional argument:
+
+```dart
+// notes/$id/page.dart
+class NotePage extends StatelessWidget {
+  const NotePage({super.key, required this.id, this.extra});
+  final int id;
+  final Note? extra;      // nullable: the URL alone can't produce it
+  …
+}
+
+NoteRoute(id: 3).go(context, extra: note);      // also push<T>(…, extra:) and replace(…, extra:)
+NoteRoute(id: 3).go(context, extra: 'oops');    // compile error: a String isn't a Note?
+```
+
+The parameter **must be nullable** (`Note?`, `Object?` or `dynamic`; anything else is an
+error at that parameter). The object isn't in the URL, so a deep link, a reload, a page
+opened from `context.go('/notes/3')` and a restored state all get `null`: build the page
+from the URL (`id`) and treat `extra` as a shortcut, not the source of truth. Passing an
+object of the wrong type around the typed route (a plain `context.go(location, extra: …)`)
+is an assertion error in debug builds and reads as `null` in release builds.
+
+`extra` is a page-only name: a segment can't be called `extra`, and a query parameter of
+that name is the extra, not `?extra=`. The generated file has to name the type for the
+typed arguments, which is the one place it copies from your imports: it imports the type
+`show`ing that name from each of `page.dart`'s imports (a library that doesn't export it is
+ignored; a type declared in `page.dart` itself, or under an import prefix, is found too),
+so the type must be reachable from `page.dart`'s own imports. The built-in `dart:core`
+types need nothing. Only pages take an `extra`; go_router's `extra` isn't restored on web
+reloads unless you give the router an `extraCodec`.
 
 ### `data.dart`: a function, a selector or a provider
 
@@ -883,12 +1028,14 @@ It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
 
 - **Types are never re-spelled.** The generator doesn't copy your imports. Values flow
   through inference, and each route's provider is a `static final` whose type is inferred.
+  The one exception is a page's [typed `extra`](#typed-extra), whose type the typed route
+  has to name; it imports that type by name from `page.dart`'s imports.
 - **Segments and query parameters are parsed into a record** (`({int id, int? page})`).
   Records compare by value, so providers are keyed by them directly.
 - **Page-less folders** fold into their children's paths (`greet/$name` → `'greet/:name'`).
   `(group)` folders fold away completely, apart from the ShellRoute their layout adds.
-- **Static routes come first** among siblings, so go_router's first match is the most
-  specific one.
+- **Static routes come first** among siblings, then dynamic ones, then a
+  [catch-all](#catch-all-segments), so go_router's first match is the most specific one.
 - **`AppRoutes.mount(at:)`** only changes the root path. Typed routes read `AppRoutes.base`,
   so `.location` stays correct when mounted under `/shop`.
 
@@ -928,7 +1075,8 @@ route (`/photos/:id`), a bottom sheet (`/photos/sort`) and a full-screen dialog
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
 editors/vscode/      the VS Code extension (TypeScript): fsp diagnostics in the Problems panel
-scripts/             packaging.py renders the Homebrew formula and Scoop manifest for a release
+scripts/             packaging.py renders the Homebrew formula and Scoop manifest for a release;
+                     pin_checksums.py writes the release's checksums into the Dart package
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
@@ -949,11 +1097,12 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
 with `fsp new` and runs `flutter analyze` on the result, runs `dart run fespalier` against a
 freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
-rendering (`python3 scripts/test_packaging.py`), runs `flutter pub publish --dry-run` on the
+rendering and checksum pinning (`python3 scripts/test_packaging.py`,
+`python3 scripts/test_pin_checksums.py`), runs `flutter pub publish --dry-run` on the
 package, and checks that the version agrees everywhere it is spelled out
 (`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`, the `ref:` that
 `fsp init` prints, and the READMEs' `ref:`, `--tag` and `FSP_VERSION`; the launcher reads its
-version from the pubspec). To release, bump those together. After changing the emitter or a
+version from the pubspec, and `release_checksums.dart` pins nothing or this version). To release, bump those together. After changing the emitter or a
 template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
 a committed `app.g.dart` is stale.
 
@@ -967,6 +1116,25 @@ Maintainers only. Bump the version everywhere (see the version checks above), up
    `fsp-<target>.tar.gz` / `.zip` with their `.sha256` files. It also renders `fsp.rb`
    (Homebrew formula) and `fsp.json` (Scoop manifest) from those checksums with
    `scripts/packaging.py` and attaches them to the release.
+
+   **Checksum pinning.** A manual publish runs in two phases. It builds the five targets from
+   the commit you dispatched it on (which must be the default branch); then a `pin` job writes
+   their SHA-256s to `packages/fespalier/lib/src/release_checksums.dart`
+   (`scripts/pin_checksums.py`), commits it to `main` as `Pin fsp <version> checksums`, and the
+   `v<version>` tag and the Release are created at *that* commit. A git dependency on
+   the `v<version>` tag, and the package published to pub.dev from the tag, therefore carry the
+   pins, and `dart run fespalier` refuses any download that doesn't match them (a checksum
+   served next to the binary can be replaced together with it; one in the package can't). The
+   binaries were built from the parent commit; the two commits differ only by that file, which
+   the `fsp` build doesn't read, so the code is identical. The workflow needs `contents:
+   write` and pushes with `GITHUB_TOKEN`: if `main` requires pull requests or status checks,
+   let the `github-actions` bot bypass them, or the `pin` job fails and nothing is published.
+   If `main` moved during the run, the push is rejected and you run it again. That push doesn't
+   start CI. Pushing a `v*` tag by hand still publishes, but the tag can't hold pins, so that
+   release's `dart run fespalier` falls back to its `.sha256` file with a warning.
+   After bumping the version for the next release, run `python3 scripts/pin_checksums.py
+   --reset` (`cli/tests/versions.rs` fails while the file pins another version); a version with
+   no pins is what development builds have.
 2. **pub.dev.** Run the *Publish to pub.dev* workflow from that tag: *Run workflow*, then
    *Use workflow from* > *Tag* > `v<version>`. It publishes `packages/fespalier` through
    pub.dev's GitHub OIDC automated publishing, with no stored token. It refuses to run from
@@ -1053,13 +1221,13 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 154 tests (137 unit, 13 CLI integration, 4 version checks) cover parsing, every binding rule and contract error, query
-  parameters, `(group)` folders and route order, tab layouts, transitions, both data
+- **Generator:** 207 tests (189 unit, 13 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+  parameters, `(group)` folders and route order, tab layouts, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects,
   scaffolding, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 133 Flutter tests (the package 59, `shop` 20,
-  `features` 42, `tabs` 12); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 204 Flutter tests (the package 92, `shop` 23,
+  `features` 77, `tabs` 12); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

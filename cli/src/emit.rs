@@ -27,6 +27,10 @@ struct FileCx {
     routes: Vec<RouteCx>,
     params_fns: Vec<ParamsFnCx>,
     providers: Vec<ProviderCx>,
+    /// `import '...' show Product;` lines for the types of typed `extra`s.
+    extra_imports: Vec<String>,
+    /// Whether routes match paths by case.
+    case_sensitive: bool,
     /// `keep_previous` from the config: the DataViews' `keepPrevious`.
     keep_previous: bool,
 }
@@ -55,6 +59,9 @@ struct TreeCx {
     /// Starts with a `:segment` (or, for a ShellRoute, holds a route that does).
     #[serde(skip)]
     dynamic: bool,
+    /// Ends in a catch-all `:rest(.+)` (or a shell holds a route that does): tried last.
+    #[serde(skip)]
+    catch_all: bool,
     /// For a GoRoute: its URL, page file and page class, to check matching order.
     #[serde(skip)]
     serves: Option<Serves>,
@@ -86,10 +93,11 @@ fn dart_str(s: &str) -> String {
     out
 }
 
-/// go_router takes the first route that matches, so `/about` must come
-/// before `/:id`. The sort is stable: otherwise folders keep their order.
+/// go_router takes the first route that matches, so `/about` must come before
+/// `/:id`, and both before a catch-all `/:rest(.+)`. The sort is stable:
+/// otherwise folders keep their order.
 fn static_first(mut routes: Vec<TreeCx>) -> Vec<TreeCx> {
-    routes.sort_by_key(|r| r.dynamic);
+    routes.sort_by_key(|r| (r.catch_all, r.dynamic));
     routes
 }
 
@@ -162,6 +170,10 @@ struct RouteCx {
     fields: Vec<FieldCx>,
     data: Option<TypedDataCx>,
     location: String,
+    /// A catch-all that can't be empty: `location` checks it.
+    location_assert: Option<String>,
+    /// The type of the page's `extra`, when it takes one.
+    extra: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -246,6 +258,8 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         routes: app.routes.iter().enumerate().filter_map(|(id, r)| typed_route(app, id, r)).collect(),
         params_fns: fns.into_iter().map(|f| params_fn(app, f)).collect(),
         providers: app.routes.iter().enumerate().filter_map(|(id, r)| provider(app, cfg, id, r)).collect(),
+        extra_imports: extra_imports(app, cfg),
+        case_sensitive: cfg.case_sensitive,
         keep_previous: cfg.keep_previous,
     };
     templates::render("app.g.dart", &cx)
@@ -265,6 +279,8 @@ fn in_builder(b: &Bind) -> String {
         Bind::Uri => "uri".into(),
         Bind::PageKey => "state.pageKey".into(),
         Bind::State => "state".into(),
+        // Typed by the parameter it fills.
+        Bind::Extra => "extraOf(state)".into(),
     }
 }
 
@@ -278,6 +294,8 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize],
         None | Some(Seg::Group(_)) => String::new(),
         Some(Seg::Static(s)) => s.clone(),
         Some(Seg::Dynamic(n)) => format!(":{n}"),
+        // A catch-all is a parameter with its own pattern: one or more segments.
+        Some(Seg::CatchAll(n, _)) => format!(":{n}(.+)"),
     };
     let path = match (prefix.is_empty(), own.is_empty()) {
         (_, true) => prefix.trim_end_matches('/').to_string(),
@@ -293,11 +311,24 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize],
     let mut below = inherited.to_vec();
     below.extend(r.guard.as_ref().map(|_| id));
     let next = if path.is_empty() { String::new() } else { format!("{path}/") };
+    // An optional catch-all is two routes: one for the path without it, one with.
+    let parent = matches!(&r.seg, Some(Seg::CatchAll(_, true))).then(|| prefix.trim_end_matches('/').to_string());
     let mut out = match (&r.page, &r.redirect) {
-        (Some(_), _) => vec![page_route(app, id, top, &path, true, inherited, fns)],
+        (Some(_), _) => {
+            let mut out: Vec<TreeCx> = parent
+                .iter()
+                .map(|p| without_catch_all(page_route(app, id, top, p, false, inherited, fns), r))
+                .collect();
+            out.push(page_route(app, id, top, &path, true, inherited, fns));
+            out
+        }
         // A redirect route always redirects, so what is below it can't nest inside it.
         (None, Some(_)) => {
-            let mut out = vec![redirect_route(app, id, top, &path, inherited, fns)];
+            let mut out: Vec<TreeCx> = parent
+                .iter()
+                .map(|p| without_catch_all(redirect_route(app, id, top, p, inherited, fns), r))
+                .collect();
+            out.push(redirect_route(app, id, top, &path, inherited, fns));
             out.extend(r.children.iter().flat_map(|&c| routes_of(app, c, top, &next, &below, fns)));
             static_first(out)
         }
@@ -317,12 +348,21 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize],
             not_found: String::new(),
             transition: None,
             dynamic: out.iter().any(|r| r.dynamic),
+            catch_all: out.iter().any(|r| r.catch_all),
             serves: None,
             has_params: false,
             routes: out,
         }];
     }
     out
+}
+
+/// The route for the path above an optional catch-all: it serves that URL, not the folder's.
+fn without_catch_all(mut t: TreeCx, r: &Route) -> TreeCx {
+    if let (Some((_, file, span)), Some((_, parent))) = (t.serves.take(), r.url.split_last()) {
+        t.serves = Some((parent.to_vec(), file, span));
+    }
+    t
 }
 
 /// What a folder's layout builds: the layout widget, behind its section's data.dart when
@@ -397,7 +437,7 @@ fn not_founds(app: &App) -> Vec<NotFoundCx> {
                 .iter()
                 .filter_map(|s| match s {
                     Seg::Static(s) => Some(format!("'{s}'")),
-                    Seg::Dynamic(d) => Some(format!("':{d}'")),
+                    Seg::Dynamic(d) | Seg::CatchAll(d, _) => Some(format!("':{d}'")),
                     Seg::Group(_) => None,
                 })
                 .collect();
@@ -481,6 +521,7 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
         transition: r.transition.as_ref().map(transition_cx),
         routes,
         dynamic: path.contains(':'),
+        catch_all: path.contains("(.+)"),
         serves: Some((r.url.clone(), rel(r, Kind::Page), r.page_span.clone())),
         has_params: path.contains(':'),
     }
@@ -497,7 +538,7 @@ fn redirect_route(app: &App, id: usize, top: bool, path: &str, inherited: &[usiz
         path: if top { format!("joinLocation(at, '/{path}')") } else { format!("'{path}'") },
         redirects,
         // Only a segment that isn't a String can fail to parse.
-        not_found_builder: app.typed_segs(r).iter().any(|(_, t)| t != "String"),
+        not_found_builder: app.typed_segs(r).iter().any(|(_, t)| t != "String" && t != "List<String>"),
         seg_fn,
         page: String::new(),
         data: None,
@@ -505,6 +546,7 @@ fn redirect_route(app: &App, id: usize, top: bool, path: &str, inherited: &[usiz
         transition: None,
         routes: vec![],
         dynamic: path.contains(':'),
+        catch_all: path.contains("(.+)"),
         serves: Some((r.url.clone(), rel(r, Kind::Redirect), r.page_span.clone())),
         has_params: path.contains(':'),
     }
@@ -551,6 +593,7 @@ fn tab_routes(
     vec![TreeCx {
         layout: Some(layout_cx(app, id, layout, fns)),
         dynamic: branches.iter().flat_map(|b| &b.routes).any(|r| r.dynamic),
+        catch_all: branches.iter().flat_map(|b| &b.routes).any(|r| r.catch_all),
         branches,
         path: String::new(),
         redirects: vec![],
@@ -582,8 +625,24 @@ fn check_order(tree: &[TreeCx], diags: &mut Diags) {
     }
     let mut order = vec![];
     walk(tree, &mut order);
+    // `a` matches every URL `b` does: `/:x` catches `/about`, `/docs/*rest` catches `/docs/a/:b`.
     let catches = |a: &[Seg], b: &[Seg]| {
-        a.len() == b.len() && a.iter().zip(b).all(|(x, y)| matches!(x, Seg::Dynamic(_)) || x == y)
+        let (a_rest, a_fixed) = split_catch_all(a);
+        let (b_rest, b_fixed) = split_catch_all(b);
+        let covered = |n: usize| a_fixed.iter().zip(b_fixed).take(n).all(|(x, y)| matches!(x, Seg::Dynamic(_)) || x == y);
+        match a_rest {
+            None => b_rest.is_none() && a_fixed.len() == b_fixed.len() && covered(a_fixed.len()),
+            Some(optional) => {
+                // Every URL of `b` must have enough left over for `a`'s catch-all.
+                let left = b_fixed.len().checked_sub(a_fixed.len());
+                let enough = match left {
+                    Some(0) => optional || b_rest == Some(false),
+                    Some(_) => true,
+                    None => false,
+                };
+                enough && covered(a_fixed.len())
+            }
+        }
     };
     for (j, (url, file, span)) in order.iter().enumerate() {
         if let Some((first, first_file, _)) = order[..j].iter().find(|(u, ..)| u != url && catches(u, url)) {
@@ -597,6 +656,14 @@ fn check_order(tree: &[TreeCx], diags: &mut Diags) {
                 ),
             );
         }
+    }
+}
+
+/// A URL without its trailing catch-all: `Some(optional)` when it has one.
+fn split_catch_all(url: &[Seg]) -> (Option<bool>, &[Seg]) {
+    match url.split_last() {
+        Some((Seg::CatchAll(_, optional), fixed)) => (Some(*optional), fixed),
+        _ => (None, url),
     }
 }
 
@@ -645,21 +712,42 @@ fn provider_expr(id: usize, d: &Data) -> String {
     if d.provider { format!("_i{}.data", d.import) } else { format!("_data{id}") }
 }
 
+/// The names of a route's catch-all segments.
+fn catch_alls(app: &App, r: &Route) -> Vec<String> {
+    r.segs.iter().filter(|(_, f)| app.is_catch_all(*f)).map(|(n, _)| n.clone()).collect()
+}
+
 /// The keys of a `data()` function that are `List` query parameters. A list compares by
 /// identity, so the provider is keyed by a `QueryList` (equal when its elements are).
+/// (A catch-all is a list too, but keyed by its path: see `key_expr`.)
 fn list_keys(app: &App, r: &Route, d: &Data) -> Vec<String> {
     if d.provider {
         return vec![];
     }
     // A selector's function takes a plain `List` too; a `QueryList` is one, and it gives
     // the app's family the value equality a list key needs.
-    app.url_params(r).into_iter().filter(|(n, t)| d.keys.contains(n) && t.starts_with("List<")).map(|(n, _)| n).collect()
+    let rest = catch_alls(app, r);
+    app.url_params(r)
+        .into_iter()
+        .filter(|(n, t)| d.keys.contains(n) && t.starts_with("List<") && !rest.contains(n))
+        .map(|(n, _)| n)
+        .collect()
 }
 
-/// The family argument: nothing, `(v.id)`, or `((a: v.a, b: v.b))`; `QueryList(v.tags)` for lists.
+/// The family argument: nothing, `(v.id)`, or `((a: v.a, b: v.b))`; `QueryList(v.tags)` for
+/// lists, and a catch-all as its path in one string (`restKey(v.rest)`).
 fn key_expr(app: &App, r: &Route, d: &Data, prefix: &str) -> String {
     let lists = list_keys(app, r, d);
-    let value = |k: &String| if lists.contains(k) { format!("QueryList({prefix}{k})") } else { format!("{prefix}{k}") };
+    let rest = catch_alls(app, r);
+    let value = |k: &String| {
+        if rest.contains(k) {
+            format!("restKey({prefix}{k})")
+        } else if lists.contains(k) {
+            format!("QueryList({prefix}{k})")
+        } else {
+            format!("{prefix}{k}")
+        }
+    };
     match (d.keys.as_slice(), d.record) {
         ([], _) => String::new(),
         ([k], false) => format!("({})", value(k)),
@@ -699,7 +787,10 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
             .url_params(r)
             .into_iter()
             .map(|(name, ty)| {
-                let param = if r.query.iter().any(|(q, _)| *q == name) {
+                let optional_rest = matches!(r.url.last(), Some(Seg::CatchAll(n, true)) if *n == name);
+                let param = if optional_rest {
+                    format!("this.{name} = const []")
+                } else if r.query.iter().any(|(q, _)| *q == name) {
                     if ty.starts_with("List<") { format!("this.{name} = const []") } else { format!("this.{name}") }
                 } else {
                     format!("required this.{name}")
@@ -709,6 +800,14 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
             .collect(),
         data,
         location: with_query(r, format!("joinLocation(AppRoutes.base, {})", location(app, r))),
+        location_assert: match r.url.last() {
+            Some(Seg::CatchAll(n, false)) => Some(format!(
+                "assert({n}.isNotEmpty, '{name}Route needs at least one part in `{n}`; the path without it isn\\'t this route')",
+                name = r.name.as_deref().unwrap_or("?")
+            )),
+            _ => None,
+        },
+        extra: r.extra.as_ref().map(|e| e.ty.clone()),
     })
 }
 
@@ -756,11 +855,19 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
             p
         }
     };
+    let owner = match f {
+        ParamsFn::Route(id) | ParamsFn::Layout(id) | ParamsFn::Guard(id) => &app.routes[id],
+    };
+    let catch_all = |n: &str| owner.segs.iter().any(|(m, folder)| m == n && app.is_catch_all(*folder));
     let types: Vec<String> = params.iter().map(|(n, t)| format!("{t} {n}")).collect();
     let values: Vec<String> = params
         .iter()
         .map(|(n, t)| {
-            // `int` → Segment.asInt, `int?` → Query.asInt, `List<int>` → Query.asIntList.
+            // `int` → Segment.asInt, `int?` → Query.asInt, `List<int>` → Query.asIntList,
+            // a catch-all `List<String>` → Segment.asRest.
+            if catch_all(n) {
+                return format!("{n}: Segment.asRest(s, '{n}')");
+            }
             let (reader, base, list) = match (t.strip_suffix('?'), t.strip_prefix("List<").and_then(|l| l.strip_suffix('>'))) {
                 (_, Some(inner)) => ("Query", inner, "List"),
                 (Some(inner), _) => ("Query", inner, ""),
@@ -778,10 +885,21 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
     ParamsFnCx { name: f.name(), record: format!("({{{}}})", types.join(", ")), parse: format!("({})", values.join(", ")) }
 }
 
+/// The type a provider's family takes for a key: a catch-all as a `String`.
+fn key_ty(rest: &[String], name: &str, ty: &str) -> String {
+    if rest.iter().any(|q| q == name) { "String".into() } else { ty.into() }
+}
+
+/// What `data()` is called with for a key: a catch-all's path parted again.
+fn key_arg(rest: &[String], name: &str, value: &str) -> String {
+    if rest.iter().any(|q| q == name) { format!("restParts({value})") } else { value.into() }
+}
+
 /// The parameters a `data()` provider is keyed by, as its `create` function takes them
 /// (without the `Ref`), and the named arguments to hand on to `data()`.
 ///
-/// A list key is a `QueryList` (see `list_keys`); `data()` still takes a `List`.
+/// A list key is a `QueryList` (see `list_keys`); `data()` still takes a `List`. A catch-all
+/// key is its path as one string (see `key_expr`), taken apart again for `data()`.
 fn key_params(app: &App, r: &Route, d: &Data) -> (String, Vec<String>) {
     let types: Vec<(String, String)> = app
         .url_params(r)
@@ -792,12 +910,16 @@ fn key_params(app: &App, r: &Route, d: &Data) -> (String, Vec<String>) {
             (n, t)
         })
         .collect();
+    let rest = catch_alls(app, r);
     match (types.as_slice(), d.record) {
         ([], _) => (String::new(), vec![]),
-        ([(n, t)], false) => (format!("{t} {n}"), vec![format!("{n}: {n}")]),
+        ([(n, t)], false) => (format!("{} {n}", key_ty(&rest, n, t)), vec![format!("{n}: {}", key_arg(&rest, n, n))]),
         (many, _) => {
-            let fields: Vec<String> = many.iter().map(|(n, t)| format!("{t} {n}")).collect();
-            (format!("({{{}}}) k", fields.join(", ")), many.iter().map(|(n, _)| format!("{n}: k.{n}")).collect())
+            let fields: Vec<String> = many.iter().map(|(n, t)| format!("{} {n}", key_ty(&rest, n, t))).collect();
+            (
+                format!("({{{}}}) k", fields.join(", ")),
+                many.iter().map(|(n, _)| format!("{n}: {}", key_arg(&rest, n, &format!("k.{n}")))).collect(),
+            )
         }
     }
 }
@@ -823,6 +945,29 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
         no_retry: !d.selector && cfg.data_retry == DataRetry::None,
         selector: d.selector,
     })
+}
+
+/// The imports that let the generated file name the types of typed `extra`s
+/// (see `extra.rs`), one line per library.
+fn extra_imports(app: &App, cfg: &Config) -> Vec<String> {
+    use std::collections::BTreeMap;
+    let dart_uri = |uri: String| uri.replace('\\', "\\\\").replace('$', "\\$").replace('\'', "\\'");
+    let mut shown: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut aliased = BTreeSet::new();
+    for e in app.routes.iter().filter_map(|r| r.extra.as_ref()) {
+        for (_, uri, alias) in &e.aliased {
+            aliased.insert(format!("import '{}' as {alias};", dart_uri(cfg.import_from_file(&e.file, uri))));
+        }
+        for uri in e.imports.iter().filter(|_| !e.shown.is_empty()) {
+            shown.entry(dart_uri(cfg.import_from_file(&e.file, uri))).or_default().extend(e.shown.iter().cloned());
+        }
+    }
+    let mut out: Vec<String> = shown
+        .into_iter()
+        .map(|(uri, names)| format!("import '{uri}' show {};", names.into_iter().collect::<Vec<_>>().join(", ")))
+        .collect();
+    out.extend(aliased);
+    out
 }
 
 /// The route table in the header of app.g.dart; `fsp routes` prints the same rows.
@@ -865,8 +1010,8 @@ pub fn rel(r: &Route, kind: Kind) -> String {
 /// A Dart string literal for the route's location, e.g. `'/products/$id'`.
 fn location(app: &App, r: &Route) -> String {
     let types = app.typed_segs(r);
-    let parts: Vec<String> = r
-        .url
+    let (rest, fixed) = split_catch_all(&r.url);
+    let parts: Vec<String> = fixed
         .iter()
         .filter_map(|s| match s {
             Seg::Static(s) => Some(s.clone()),
@@ -874,8 +1019,14 @@ fn location(app: &App, r: &Route) -> String {
                 Some(format!("${{Uri.encodeComponent({n})}}"))
             }
             Seg::Dynamic(n) => Some(format!("${n}")),
-            Seg::Group(_) => None,
+            Seg::CatchAll(..) | Seg::Group(_) => None,
         })
         .collect();
-    format!("'/{}'", parts.join("/"))
+    let path = parts.join("/");
+    match (r.url.last(), rest) {
+        // Each part encoded on its own; nothing at all for none.
+        (Some(Seg::CatchAll(n, _)), _) if !path.is_empty() => format!("'/{path}${{restPath({n})}}'"),
+        (Some(Seg::CatchAll(n, _)), _) => format!("'/${{restKey({n})}}'"),
+        _ => format!("'/{path}'"),
+    }
 }

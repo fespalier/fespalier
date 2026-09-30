@@ -388,7 +388,7 @@ impl Resolver<'_> {
         if let Some(seg @ (Seg::Static(_) | Seg::Dynamic(_))) = &node.seg {
             url.push(seg.clone());
         }
-        let modules: BTreeMap<Kind, Module> = node.files.iter().map(|(k, src)| (*k, dart::parse(src))).collect();
+        let modules: BTreeMap<Kind, Module> = node.files.iter().map(|(k, src)| (*k, crate::parse_cache::parse(src))).collect();
         // The grammar may lag newer Dart, so this is a warning: the Dart compiler has the last word.
         for (kind, m) in &modules {
             if let Some(span) = &m.parse_error {

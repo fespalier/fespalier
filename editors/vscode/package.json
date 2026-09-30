@@ -1,0 +1,87 @@
+{
+  "name": "fespalier",
+  "displayName": "fespalier",
+  "description": "Shows fespalier route-tree errors and warnings in the Problems panel, and runs fsp gen.",
+  "version": "0.2.0",
+  "publisher": "vaam-apps",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vaam-apps/fespalier.git",
+    "directory": "editors/vscode"
+  },
+  "homepage": "https://github.com/vaam-apps/fespalier#readme",
+  "bugs": "https://github.com/vaam-apps/fespalier/issues",
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "flutter",
+    "dart",
+    "router",
+    "go_router",
+    "fespalier"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./out/src/extension.js",
+  "activationEvents": [
+    "workspaceContains:**/pubspec.yaml"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "fespalier.generate",
+        "title": "fespalier: generate"
+      },
+      {
+        "command": "fespalier.check",
+        "title": "fespalier: check"
+      }
+    ],
+    "configuration": {
+      "title": "fespalier",
+      "properties": {
+        "fespalier.runner": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "fsp",
+            "dart"
+          ],
+          "enumDescriptions": [
+            "Use fsp when it is on PATH, otherwise dart run fespalier.",
+            "Always run the fsp binary.",
+            "Always run dart run fespalier (the package downloads the matching fsp)."
+          ],
+          "default": "auto",
+          "description": "How to run the fespalier generator."
+        },
+        "fespalier.fspPath": {
+          "type": "string",
+          "default": "fsp",
+          "description": "The fsp executable to run (a name on PATH, or a full path)."
+        },
+        "fespalier.checkOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run fsp check when a file under the app folder (fespalier: app_dir in pubspec.yaml, lib/app by default) is saved."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "test": "npm run compile && node --test \"out/test/**/*.test.js\"",
+    "package": "npm run compile && vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.9.0"
+  }
+}

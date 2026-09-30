@@ -10,10 +10,10 @@ What fespalier doesn't do yet. Released features are in CHANGELOG.md.
 - State restoration (`restorationScopeId`).
 - Keep showing old data while `data.dart` refreshes (a section's data reloading now shows loading for the whole section).
 - Case-insensitive paths and trailing slashes.
-- Editor extension (VS Code / IntelliJ) on top of the JSON diagnostics.
-- Publishing to pub.dev; Homebrew and Scoop packages.
+- Publish the VS Code extension to the Marketplace; an IntelliJ plugin on top of the JSON diagnostics.
+- The one-time pub.dev, Homebrew tap and Scoop bucket setup described in README's "Releasing", then the first publish.
 - Localized paths.
-- Incremental parsing for very large apps.
+- Incremental scan/resolve/emit for very large apps (`fsp watch` already reuses parse results).
 - `List` query parameters as `data.dart` keys.
 - Instance methods `ProductRoute(id: 2).watch(ref)` / `.read(ref)`: needs the generated file to name the data type (or Dart macros); `watch` and `read` are static for now.
 - A section's `data.dart` keyed by query parameters, and a typed handle (`.data`, `.refresh`) for it.

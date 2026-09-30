@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **`fsp watch` parses only what changed.** It keeps the parse results of every file between
+  runs, keyed by the file's source, so a save re-parses the file you saved and nothing else.
+  On a synthetic 1,000-route app a regeneration after a one-file edit takes about 32 ms
+  instead of about 50 ms in a release build (the rest is scanning, resolving and emitting).
+  `gen` and `check` are unchanged.
+- **VS Code extension** (`editors/vscode/`, not published yet): `fsp check --json` on save
+  becomes Problems panel diagnostics, plus `fespalier: generate`, `fespalier: check` and a
+  status bar item. Runs `fsp`, or `dart run fespalier` when `fsp` isn't on `PATH`.
+- **Homebrew and Scoop.** Each release attaches `fsp.rb` and `fsp.json`, rendered from the
+  archives' checksums by `scripts/packaging.py`, and pushes them to a tap and bucket when
+  the `PACKAGING_TOKEN` secret exists.
+- **pub.dev.** `flutter pub publish --dry-run` is clean and checked in CI (the package gains
+  a shorter description and `example/README.md`). New `Publish to pub.dev` workflow: publishes
+  through GitHub OIDC automated publishing when run from the `v<version>` tag.
+
 ## 0.2.0 — 2026-09-30
 
 ### Guards and redirects

@@ -91,6 +91,14 @@ any platform:
 cargo install --git https://github.com/vaam-apps/fespalier --tag v0.2.0 fespalier
 ```
 
+With Homebrew (macOS, Linux) or Scoop (Windows), once the maintainers have set up the tap and
+bucket (see [Releasing](#releasing)):
+
+```sh
+brew install vaam-apps/tap/fsp
+scoop bucket add vaam-apps https://github.com/vaam-apps/scoop-bucket && scoop install fsp
+```
+
 **Or install nothing.** Once the package is in your `pubspec.yaml` (step 2), `dart run
 fespalier <command>` runs `fsp` for you, so use it wherever this README says `fsp`:
 `dart run fespalier init`, `dart run fespalier watch`, `dart run fespalier check`. The first
@@ -724,6 +732,13 @@ there is nothing to report:
 `line` and `column` count from 1 (the column counts characters, not bytes) and are `null` for
 a diagnostic that isn't about a place in a file. `severity` is `error` or `warning`.
 
+**Editor support.** `editors/vscode/` is a VS Code extension that runs `fsp check --json` when
+you save a file under the app folder and puts the diagnostics in the Problems panel, with a
+`fespalier: generate` command and a status bar item. It is not on the Marketplace yet: build
+it with `npm install && npm test && npx @vscode/vsce package` in that folder and install the
+`.vsix` (see `editors/vscode/README.md`). It uses `fsp` from your `PATH`, or `dart run
+fespalier` when there is none (`fespalier.runner` chooses).
+
 **Formatting.** The generated file is not formatted by default, so a committed
 `app.g.dart` doesn't depend on which Dart SDK ran `fsp`. `fsp gen --format`, or `format: true` in
 the pubspec section, pipes it through `dart format` (which needs `dart` on your `PATH`; without
@@ -740,7 +755,8 @@ What the commands print:
 - `fsp check`: `✓ 12 routes, no errors`.
 - `fsp watch`: the `gen` line once at startup, then a line each time a save changes
   `lib/app.g.dart`. An edit that doesn't (a widget's `build` method, say) prints nothing.
-  It ignores its own output and file reads, so it doesn't loop while idle.
+  It ignores its own output and file reads, so it doesn't loop while idle. It keeps the parse
+  results of files that didn't change, so a save parses only the file you saved.
 
 Errors point at the parameter or declaration at fault, and `app.g.dart` is left
 untouched while there are any. A file that can't be fully parsed gets a warning instead
@@ -816,6 +832,8 @@ route (`/photos/:id`), a bottom sheet (`/photos/sort`) and a full-screen dialog
 ```
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
+editors/vscode/      the VS Code extension (TypeScript): fsp diagnostics in the Problems panel
+scripts/             packaging.py renders the Homebrew formula and Scoop manifest for a release
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
@@ -835,12 +853,55 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 
 CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
 with `fsp new` and runs `flutter analyze` on the result, runs `dart run fespalier` against a
-freshly built `fsp`, and checks that the version agrees everywhere it is spelled out
+freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
+rendering (`python3 scripts/test_packaging.py`), runs `flutter pub publish --dry-run` on the
+package, and checks that the version agrees everywhere it is spelled out
 (`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`, the `ref:` that
 `fsp init` prints, and the READMEs' `ref:`, `--tag` and `FSP_VERSION`; the launcher reads its
 version from the pubspec). To release, bump those together. After changing the emitter or a
 template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
 a committed `app.g.dart` is stale.
+
+### Releasing
+
+Maintainers only. Bump the version everywhere (see the version checks above), update
+`CHANGELOG.md`, and merge. Then:
+
+1. **GitHub Release and binaries.** Run the *Release* workflow with `publish` ticked (or
+   push the tag `v<version>`). It builds `fsp` for five targets and attaches
+   `fsp-<target>.tar.gz` / `.zip` with their `.sha256` files. It also renders `fsp.rb`
+   (Homebrew formula) and `fsp.json` (Scoop manifest) from those checksums with
+   `scripts/packaging.py` and attaches them to the release.
+2. **pub.dev.** Run the *Publish to pub.dev* workflow from that tag: *Run workflow*, then
+   *Use workflow from* > *Tag* > `v<version>`. It publishes `packages/fespalier` through
+   pub.dev's GitHub OIDC automated publishing, with no stored token. It refuses to run from
+   a branch or when the tag isn't `v` plus the pubspec version. After the first release on
+   pub.dev, change the install snippets in the READMEs from the Git dependency to
+   `fespalier: ^<version>` (and `cli/tests/versions.rs`, which checks them).
+3. **Homebrew and Scoop.** Copy `fsp.rb` from the release into the `Formula/` folder of a tap
+   repository and `fsp.json` into the `bucket/` folder of a bucket repository, or let the
+   workflow do it (below).
+
+One-time setup:
+
+- **pub.dev.** Automated publishing only works for an existing package, so publish the first
+  version by hand: `cd packages/fespalier && flutter pub publish`. Then, on the package's
+  *Admin* tab under *Automated publishing*, enable *Publishing from GitHub Actions*,
+  repository `vaam-apps/fespalier`, tag pattern `v{{version}}`. Optionally tick *Require
+  GitHub Actions environment*, create an environment named `pub.dev` in the repository's
+  settings (add required reviewers there), and uncomment `environment: pub.dev` in
+  `.github/workflows/publish.yml`. Check what will be uploaded any time with
+  `flutter pub publish --dry-run` (CI does).
+- **Homebrew tap.** Create the repository `vaam-apps/homebrew-tap` (the `homebrew-` prefix
+  is what lets `brew install vaam-apps/tap/fsp` find it) with a `Formula/` folder.
+- **Scoop bucket.** Create `vaam-apps/scoop-bucket` with a `bucket/` folder. The manifest's
+  `checkver` and `autoupdate` let Scoop's own tooling keep it current too.
+- **Automatic updates (optional).** Create a fine-grained personal access token with
+  *Contents: read and write* on those two repositories and save it as the
+  `PACKAGING_TOKEN` secret of this repository. Each published release then commits
+  `Formula/fsp.rb` and `bucket/fsp.json` to them. Without the secret the step is skipped.
+  Different repository names go in the `HOMEBREW_TAP_REPO` and `SCOOP_BUCKET_REPO`
+  repository variables.
 
 ### Testing
 

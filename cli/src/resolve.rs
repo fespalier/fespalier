@@ -388,7 +388,7 @@ impl Resolver<'_> {
                     self.app.not_found = Some(self.bind(&c, &cx));
                 }
             } else {
-                self.diags.error(&file, None, "not_found.dart only works at the root of lib/app");
+                self.diags.error(&file, None, "not_found.dart only works at the root of the app folder");
             }
         }
 

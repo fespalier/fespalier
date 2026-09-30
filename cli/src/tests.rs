@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{build, gen, scaffold};
+use crate::config::Config;
+use crate::{build, gen, init, scaffold};
 
 fn example() -> PathBuf {
     examples("shop")
@@ -25,13 +26,13 @@ fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
 
 fn diags(files: &[(&str, &str)]) -> Vec<String> {
     let dir = project(files);
-    let (_, diags, _) = build(&dir.path().join("lib/app")).unwrap();
+    let (_, diags, _) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
     diags.0.iter().map(|d| d.to_string()).collect()
 }
 
 fn code(files: &[(&str, &str)]) -> String {
     let dir = project(files);
-    let (code, diags, _) = build(&dir.path().join("lib/app")).unwrap();
+    let (code, diags, _) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
     assert!(diags.0.is_empty(), "{:?}", diags.0);
     code
 }
@@ -46,7 +47,7 @@ const HOME: &str = "class HomePage extends StatelessWidget { const HomePage({sup
 
 #[test]
 fn example_app_generates_cleanly() {
-    let (code, diags, routes) = build(&example().join("lib/app")).unwrap();
+    let (code, diags, routes) = build(&example().join("lib/app"), &Config::default()).unwrap();
     assert!(diags.0.is_empty(), "{:?}", diags.0);
     assert_eq!(routes, 6);
     has(
@@ -79,7 +80,7 @@ fn example_app_generates_cleanly() {
 #[test]
 fn committed_output_is_up_to_date() {
     for name in ["shop", "features"] {
-        let (code, diags, _) = build(&examples(name).join("lib/app")).unwrap();
+        let (code, diags, _) = build(&examples(name).join("lib/app"), &Config::default()).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
         let committed = fs::read_to_string(examples(name).join("lib/app.g.dart")).unwrap_or_default();
         assert!(committed == code, "examples/{name}/lib/app.g.dart is stale; run `fsp gen --project examples/{name}`");
@@ -578,4 +579,178 @@ fn scaffold_writes_a_transition() {
     gen(dir.path(), true).expect("scaffolded transition should check cleanly");
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
     has(&code, &["(transition)", "pageBuilder: (context, state) => _i2.transition("]);
+}
+
+// --- configuration ---------------------------------------------------------
+
+fn config(yaml: &str) -> anyhow::Result<Config> {
+    Ok(crate::config::Pubspec::parse(yaml)?.config)
+}
+
+/// A project whose pubspec carries `extra` (a `fespalier:` section), with the
+/// given files under `app_dir`.
+fn configured(extra: &str, app_dir: &str, files: &[(&str, &str)]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("pubspec.yaml"), format!("name: demo\n{extra}")).unwrap();
+    for (rel, body) in files {
+        let p = dir.path().join(app_dir).join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, body).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn config_defaults_and_custom_paths() {
+    assert_eq!(config("name: demo\n").unwrap(), Config::default());
+    assert_eq!(config("").unwrap(), Config::default());
+    assert_eq!(config("name: demo\nfespalier:\n").unwrap(), Config::default());
+    let c = config("name: demo\nfespalier:\n  app_dir: lib/pages/\n").unwrap();
+    assert_eq!((c.app_dir.as_str(), c.output.as_str()), ("lib/pages", "lib/app.g.dart"));
+    let c = config("fespalier:\n  app_dir: ./lib/pages\n  output: lib/router/routes.g.dart\n").unwrap();
+    assert_eq!((c.app_dir.as_str(), c.output.as_str()), ("lib/pages", "lib/router/routes.g.dart"));
+    assert_eq!(c.output_in_lib(), "router/routes.g.dart");
+    // Other pubspec keys don't matter.
+    let p = crate::config::Pubspec::parse("name: demo\ndependencies:\n  fespalier:\n    path: ../x\nflutter:\n  uses-material-design: true\n").unwrap();
+    assert!(p.has_dependency);
+    assert_eq!(p.name.as_deref(), Some("demo"));
+    assert!(!crate::config::Pubspec::parse("name: demo\ndev_dependencies:\n  fespalier: any\n").unwrap().has_dependency);
+}
+
+#[test]
+fn config_errors_are_clear() {
+    let e = format!("{:#}", config("fespalier:\n  app_dirr: lib/x\n").unwrap_err());
+    assert!(e.contains("unknown field `app_dirr`"), "{e}");
+    for bad in ["app", "../app", "lib/../app", "/lib/app", "lib", "test/app"] {
+        let e = format!("{:#}", config(&format!("fespalier:\n  app_dir: {bad}\n")).unwrap_err());
+        assert!(e.contains("`fespalier.app_dir` must be a path under lib/"), "{bad}: {e}");
+        let e = format!("{:#}", config(&format!("fespalier:\n  output: {bad}\n")).unwrap_err());
+        assert!(e.contains("`fespalier.output` must be a path under lib/"), "{bad}: {e}");
+    }
+    let e = format!("{:#}", config("fespalier:\n  output: lib/routes\n").unwrap_err());
+    assert!(e.contains("must be a .dart file"), "{e}");
+    // Loading from disk names the file.
+    let dir = configured("fespalier:\n  bogus: 1\n", "lib/app", &[]);
+    let e = format!("{:#}", Config::load(dir.path()).unwrap_err());
+    assert!(e.contains("pubspec.yaml") && e.contains("unknown field `bogus`"), "{e}");
+}
+
+#[test]
+fn import_paths_are_relative_to_the_output() {
+    let at = |app_dir: &str, output: &str| Config { app_dir: app_dir.into(), output: output.into() };
+    assert_eq!(Config::default().import_path("page.dart"), "app/page.dart");
+    assert_eq!(at("lib/pages", "lib/router/routes.g.dart").import_path("a/page.dart"), "../pages/a/page.dart");
+    assert_eq!(at("lib/features/app", "lib/features/routes.g.dart").import_path("page.dart"), "app/page.dart");
+    assert_eq!(at("lib/app", "lib/a/b/routes.g.dart").import_path("page.dart"), "../../app/page.dart");
+    assert_eq!(at("lib/app", "lib/app/routes.g.dart").import_path("page.dart"), "page.dart");
+}
+
+#[test]
+fn custom_app_dir_and_output() {
+    let dir = configured(
+        "fespalier:\n  app_dir: lib/pages\n  output: lib/router/routes.g.dart\n",
+        "lib/pages",
+        &[("page.dart", HOME), ("$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.id}); final String id; }")],
+    );
+    let o = gen(dir.path(), true).unwrap();
+    assert_eq!(o.routes, 2);
+    assert!(!dir.path().join("lib/app.g.dart").exists());
+    let code = fs::read_to_string(dir.path().join("lib/router/routes.g.dart")).unwrap();
+    has(
+        &code,
+        &[
+            "// GENERATED by fespalier from lib/pages/. Do not edit; run `fsp gen`.",
+            "/// The file tree under lib/pages/, ready to mount.",
+            "import '../pages/page.dart' as _i0;",
+            "import '../pages/\\$id/page.dart' as _i1;",
+        ],
+    );
+    assert!(!code.contains("'app/"), "{code}");
+    // A second run has nothing to write.
+    assert!(!gen(dir.path(), true).unwrap().wrote);
+}
+
+#[test]
+fn diagnostics_show_the_configured_folder() {
+    let dir = configured("fespalier:\n  app_dir: lib/pages\n", "lib/pages", &[("page.dart", "class P extends StatelessWidget { const P({required this.x}); final int x; }")]);
+    let e = gen(dir.path(), true).unwrap_err().to_string();
+    assert!(e.contains("lib/app.g.dart left unchanged"), "{e}");
+    let missing = configured("fespalier:\n  app_dir: lib/pages\n", "lib/app", &[]);
+    let e = gen(missing.path(), true).unwrap_err().to_string();
+    assert!(e.contains("lib/pages not found"), "{e}");
+}
+
+#[test]
+fn scaffold_honours_app_dir() {
+    let dir = configured("fespalier:\n  app_dir: lib/pages\n  output: lib/router.g.dart\n", "lib/pages", &[("page.dart", HOME)]);
+    let args = scaffold::NewArgs {
+        route: "docs/[slug]".into(),
+        name: None,
+        data: false,
+        loading: false,
+        error: false,
+        layout: true,
+        guard: false,
+        transition: false,
+    };
+    scaffold::new_route(dir.path(), &args).unwrap();
+    assert!(dir.path().join("lib/pages/docs/$slug/page.dart").exists());
+    assert!(dir.path().join("lib/pages/docs/$slug/layout.dart").exists());
+    assert!(!dir.path().join("lib/app").exists());
+    gen(dir.path(), true).expect("scaffolded route should check cleanly");
+    let code = fs::read_to_string(dir.path().join("lib/router.g.dart")).unwrap();
+    has(&code, &["import 'pages/docs/\\$slug/page.dart'", "from lib/pages/."]);
+}
+
+// --- init ------------------------------------------------------------------
+
+#[test]
+fn init_creates_starters_that_pass_gen() {
+    let dir = configured("", "lib", &[]);
+    init::run(dir.path()).unwrap();
+    for f in ["layout", "page", "not_found"] {
+        assert!(dir.path().join(format!("lib/app/{f}.dart")).exists(), "{f}");
+    }
+    let layout = fs::read_to_string(dir.path().join("lib/app/layout.dart")).unwrap();
+    assert!(layout.contains("const AppLayout({super.key, required this.child});"), "{layout}");
+    assert!(layout.contains("Scaffold(body: SafeArea(child: child))"), "{layout}");
+    let page = fs::read_to_string(dir.path().join("lib/app/page.dart")).unwrap();
+    assert!(page.contains("class HomePage") && page.contains("Center(child: Text('Hello from fespalier'))"), "{page}");
+    let nf = fs::read_to_string(dir.path().join("lib/app/not_found.dart")).unwrap();
+    assert!(nf.contains("const NotFoundPage({super.key, required this.uri});"), "{nf}");
+    assert!(nf.contains("'Nothing at ${uri.path}'"), "{nf}");
+
+    let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    has(&code, &["_i1.AppLayout(child: child)", "_i0.HomePage()", "_i2.NotFoundPage(uri: uri)"]);
+    // And the result is stable under check.
+    assert!(!gen(dir.path(), false).unwrap().wrote);
+}
+
+#[test]
+fn init_skips_existing_files_and_honours_config() {
+    let dir = configured(
+        "fespalier:\n  app_dir: lib/pages\n  output: lib/router/routes.g.dart\n",
+        "lib/pages",
+        &[("page.dart", HOME)],
+    );
+    init::run(dir.path()).unwrap();
+    // The existing page is untouched.
+    assert_eq!(fs::read_to_string(dir.path().join("lib/pages/page.dart")).unwrap(), HOME);
+    assert!(dir.path().join("lib/pages/layout.dart").exists());
+    assert!(dir.path().join("lib/pages/not_found.dart").exists());
+    assert!(!dir.path().join("lib/app").exists());
+    let code = fs::read_to_string(dir.path().join("lib/router/routes.g.dart")).unwrap();
+    has(&code, &["import '../pages/layout.dart'", "import '../pages/page.dart'", "import '../pages/not_found.dart'"]);
+    // Running again changes nothing.
+    init::run(dir.path()).unwrap();
+}
+
+#[test]
+fn init_needs_a_pubspec_with_a_name() {
+    let empty = tempfile::tempdir().unwrap();
+    let e = init::run(empty.path()).unwrap_err().to_string();
+    assert!(e.contains("no pubspec.yaml"), "{e}");
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("pubspec.yaml"), "description: x\n").unwrap();
+    assert!(init::run(dir.path()).unwrap_err().to_string().contains("no `name:`"));
 }

@@ -1,0 +1,11 @@
+import 'package:flutter/material.dart';
+
+/// Wraps every page below this folder; `child` is the page.
+class AppLayout extends StatelessWidget {
+  const AppLayout({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(body: SafeArea(child: child));
+}

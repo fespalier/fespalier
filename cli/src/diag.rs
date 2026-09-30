@@ -21,7 +21,7 @@ pub enum Level {
 #[derive(Debug, Clone)]
 pub struct Diag {
     pub level: Level,
-    /// Relative to `lib/app`.
+    /// Relative to the app folder (`lib/app` by default).
     pub file: String,
     pub span: Option<Span>,
     pub msg: String,
@@ -70,7 +70,8 @@ impl fmt::Display for Diag {
 }
 
 /// Prints diagnostics to stderr, with the offending source when there is a span.
-pub fn render(app_dir: &Path, diags: &Diags) {
+/// `shown` is the app folder as the user spells it (`lib/app`).
+pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
     let color = if std::io::stderr().is_terminal() { ColorChoice::Auto } else { ColorChoice::Never };
     let out = StandardStream::stderr(color);
     let config = term::Config::default();
@@ -80,7 +81,7 @@ pub fn render(app_dir: &Path, diags: &Diags) {
             Level::Error => Diagnostic::error(),
             Level::Warning => Diagnostic::warning(),
         };
-        let shown = format!("lib/app/{}", d.file);
+        let shown = format!("{shown}/{}", d.file);
         let source = d.span.as_ref().and_then(|_| std::fs::read_to_string(app_dir.join(&d.file)).ok());
         let diagnostic = match (&d.span, source) {
             (Some(span), Some(src)) => {

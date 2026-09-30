@@ -1,5 +1,5 @@
-//! Writes `lib/app.g.dart`: one readable, committed file that federates the
-//! tree into `AppRoutes.router()` / `AppRoutes.mount(at:)` plus typed routes.
+//! Writes the generated file (`lib/app.g.dart` by default): one readable,
+//! committed file that federates the tree into `AppRoutes.router()` / `AppRoutes.mount(at:)` plus typed routes.
 //!
 //! This module works out every expression; `templates/app.g.dart.jinja` owns
 //! the layout of the file.
@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 
 use serde::Serialize;
 
+use crate::config::Config;
 use crate::resolve::{self, App, Bind, Data, Route, Transition};
 use crate::diag::Diags;
 use crate::scan::{Kind, Seg};
@@ -15,6 +16,7 @@ use crate::templates;
 
 #[derive(Serialize)]
 struct FileCx {
+    app_dir: String,
     table: Vec<String>,
     imports: Vec<String>,
     tree: Vec<TreeCx>,
@@ -151,13 +153,14 @@ struct ProviderCx {
     call: String,
 }
 
-pub fn emit(app: &App, diags: &mut Diags) -> String {
+pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let mut fns = BTreeSet::new();
     let tree = routes_of(app, 0, true, "", &mut fns);
     check_order(&tree, diags);
     let cx = FileCx {
+        app_dir: cfg.app_dir.clone(),
         table: table(app),
-        imports: app.imports.iter().map(|rel| format!("app/{}", rel.replace('$', "\\$"))).collect(),
+        imports: app.imports.iter().map(|rel| cfg.import_path(&rel.replace('$', "\\$"))).collect(),
         tree,
         not_found: match &app.not_found {
             Some(w) => w.call(|_| "uri".into()),

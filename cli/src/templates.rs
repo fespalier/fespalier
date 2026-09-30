@@ -1,12 +1,12 @@
 //! The minijinja environment for everything fespalier writes: `app.g.dart`
-//! and the files `fsp new` scaffolds. Templates live in `cli/templates/`.
+//! and the files `fsp new` and `fsp init` scaffold. Templates live in `cli/templates/`.
 
 use std::sync::OnceLock;
 
 use minijinja::Environment;
 use serde::Serialize;
 
-const TEMPLATES: [(&str, &str); 8] = [
+const TEMPLATES: [(&str, &str); 11] = [
     ("app.g.dart", include_str!("../templates/app.g.dart.jinja")),
     ("new/page.dart", include_str!("../templates/new/page.dart.jinja")),
     ("new/data.dart", include_str!("../templates/new/data.dart.jinja")),
@@ -15,6 +15,9 @@ const TEMPLATES: [(&str, &str); 8] = [
     ("new/layout.dart", include_str!("../templates/new/layout.dart.jinja")),
     ("new/guard.dart", include_str!("../templates/new/guard.dart.jinja")),
     ("new/transition.dart", include_str!("../templates/new/transition.dart.jinja")),
+    ("init/layout.dart", include_str!("../templates/init/layout.dart.jinja")),
+    ("init/page.dart", include_str!("../templates/init/page.dart.jinja")),
+    ("init/not_found.dart", include_str!("../templates/init/not_found.dart.jinja")),
 ];
 
 fn env() -> &'static Environment<'static> {

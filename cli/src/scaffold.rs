@@ -8,6 +8,7 @@ use anyhow::{bail, Result};
 use clap::Args;
 use serde::Serialize;
 
+use crate::config::Config;
 use crate::diag::Diags;
 use crate::resolve::{self, pascal};
 use crate::scan::{self, parse_segment, Seg};
@@ -15,7 +16,7 @@ use crate::templates;
 
 #[derive(Args)]
 pub struct NewArgs {
-    /// Route path under lib/app. `[id]` and `:id` are accepted for `$id`
+    /// Route path under the app folder (lib/app). `[id]` and `:id` are accepted for `$id`
     /// so you don't have to quote `$` in the shell.
     pub route: String,
     /// Class name stem (default: from the path, e.g. `ProductsId`)
@@ -53,7 +54,8 @@ struct SegCx {
 }
 
 pub fn new_route(project: &Path, a: &NewArgs) -> Result<()> {
-    let app_dir = project.join("lib/app");
+    let cfg = Config::load(project)?;
+    let app_dir = project.join(&cfg.app_dir);
     let parts: Vec<String> = a
         .route
         .trim_matches('/')
@@ -115,7 +117,7 @@ pub fn new_route(project: &Path, a: &NewArgs) -> Result<()> {
             continue;
         }
         let path = dir.join(format!("{kind}.dart"));
-        let shown = format!("lib/app/{}{kind}.dart", if rel.is_empty() { String::new() } else { format!("{rel}/") });
+        let shown = format!("{}/{}{kind}.dart", cfg.app_dir, if rel.is_empty() { String::new() } else { format!("{rel}/") });
         if path.exists() {
             eprintln!("  skip  {shown} (exists)");
             continue;

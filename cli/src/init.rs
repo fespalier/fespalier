@@ -8,7 +8,7 @@ use anyhow::{bail, Context, Result};
 use crate::config::Pubspec;
 use crate::templates;
 
-const STARTERS: [&str; 3] = ["layout", "page", "not_found"];
+const STARTERS: [&str; 4] = ["layout", "page", "not_found", "transition"];
 
 pub fn run(project: &Path) -> Result<()> {
     if !project.join("pubspec.yaml").is_file() {

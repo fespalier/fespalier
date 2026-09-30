@@ -60,17 +60,19 @@ fn example_app_generates_cleanly() {
             "path: ':id'",
             "path: 'greet/:name'",
             "path: joinLocation(at, '/')",
-            "builder: (context, state, child) => _i3.AppLayout(child: child),",
+            // The root transition.dart covers every route.
+            "pageBuilder: (context, state) => _i3.transition(",
+            "builder: (context, state, child) => _i4.AppLayout(child: child),",
             "({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
-            "_i8.GreetPage(name: v.name)",
-            "data: (d) => _i13.ProductPage(product: d),",
-            "error: (e, st, retry) => _i14.ProductError(id: v.id, error: e, retry: retry),",
+            "_i9.GreetPage(name: v.name)",
+            "data: (d) => _i14.ProductPage(product: d),",
+            "error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),",
             // products/data.dart exports its own provider; it's used as-is.
-            "watch: (ref) => ref.watch(_i9.data),",
-            "static final data = _i9.data;",
-            "(Ref ref, int id) => _i12.data(ref, id: id),",
+            "watch: (ref) => ref.watch(_i10.data),",
+            "static final data = _i10.data;",
+            "(Ref ref, int id) => _i13.data(ref, id: id),",
             "Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);",
-            "redirect: (context, state) => _i7.guard(ProviderScope.containerOf(context, listen: false)),",
+            "redirect: (context, state) => _i8.guard(ProviderScope.containerOf(context, listen: false)),",
             "String get location => joinLocation(AppRoutes.base, '/products/$id');",
             "'/greet/${Uri.encodeComponent(name)}'",
         ],
@@ -970,7 +972,7 @@ fn scaffold_honours_app_dir() {
 fn init_creates_starters_that_pass_gen() {
     let dir = configured("", "lib", &[]);
     init::run(dir.path()).unwrap();
-    for f in ["layout", "page", "not_found"] {
+    for f in ["layout", "page", "not_found", "transition"] {
         assert!(dir.path().join(format!("lib/app/{f}.dart")).exists(), "{f}");
     }
     let layout = fs::read_to_string(dir.path().join("lib/app/layout.dart")).unwrap();
@@ -981,9 +983,12 @@ fn init_creates_starters_that_pass_gen() {
     let nf = fs::read_to_string(dir.path().join("lib/app/not_found.dart")).unwrap();
     assert!(nf.contains("const NotFoundPage({super.key, required this.uri});"), "{nf}");
     assert!(nf.contains("'Nothing at ${uri.path}'"), "{nf}");
+    let tr = fs::read_to_string(dir.path().join("lib/app/transition.dart")).unwrap();
+    assert!(tr.contains("Page<void> transition(LocalKey key, Widget child) =>"), "{tr}");
+    assert!(tr.contains("Transitions.material(key, child)"), "{tr}");
 
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
-    has(&code, &["_i1.AppLayout(child: child)", "_i0.HomePage()", "_i2.NotFoundPage(uri: uri)"]);
+    has(&code, &["_i2.AppLayout(child: child)", "_i0.HomePage()", "_i3.NotFoundPage(uri: uri)", "_i1.transition("]);
     // And the result is stable under check.
     assert!(!gen(dir.path(), false).unwrap().wrote);
 }
@@ -1000,6 +1005,7 @@ fn init_skips_existing_files_and_honours_config() {
     assert_eq!(fs::read_to_string(dir.path().join("lib/pages/page.dart")).unwrap(), HOME);
     assert!(dir.path().join("lib/pages/layout.dart").exists());
     assert!(dir.path().join("lib/pages/not_found.dart").exists());
+    assert!(dir.path().join("lib/pages/transition.dart").exists());
     assert!(!dir.path().join("lib/app").exists());
     let code = fs::read_to_string(dir.path().join("lib/router/routes.g.dart")).unwrap();
     has(&code, &["import '../pages/layout.dart'", "import '../pages/page.dart'", "import '../pages/not_found.dart'"]);

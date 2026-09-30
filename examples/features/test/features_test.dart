@@ -145,11 +145,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(settings('Tick 42'), isA<NoTransitionPage<void>>());
 
-    // No transition.dart above /search: go_router's default page.
+    // Nothing closer to /search: the root transition.dart, Transitions.material.
     await boot(tester, '/search');
     await tester.pumpAndSettle();
     expect(settings('everything, page 1: apple, apricot'),
-        isNot(isA<CustomTransitionPage<void>>()));
+        isA<MaterialPage<void>>());
   });
 
   testWidgets('a route with a transition fades in', (tester) async {

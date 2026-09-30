@@ -94,8 +94,9 @@ It depends on go_router (17 or 18), hooks_riverpod 3 and flutter_hooks, and
 fsp init
 ```
 
-It creates `lib/app/layout.dart`, `page.dart` and `not_found.dart`, and writes
-`lib/app.g.dart`. It never overwrites a file that exists: those are reported as `skip`.
+It creates `lib/app/layout.dart`, `page.dart`, `not_found.dart` and `transition.dart` (every
+route animates with the Material transition), and writes `lib/app.g.dart`. It never
+overwrites a file that exists: those are reported as `skip`.
 It then prints what is left to do (the dependency block above, if `pubspec.yaml` doesn't
 have it yet, and this `main.dart`):
 
@@ -155,17 +156,18 @@ fespalier:
   `transition.dart` don't animate at all, and go_router's own error screen is unstyled.
   go_router 17 checks Flutter's `MaterialApp` and has no such problem. There are two ways
   around it:
-  - Add a root `lib/app/transition.dart` that says how routes animate, e.g.
+  - Have a root `lib/app/transition.dart` that says how routes animate, e.g.
     `Page<void> transition(LocalKey key, Widget child) => Transitions.material(key, child);`
-    (or `cupertino`). This works with either `MaterialApp`. It's the easy fix.
+    (or `cupertino`). `fsp init` already adds this file. It works with either
+    `MaterialApp`, and it's the easy fix.
   - Or use `MaterialApp` from `package:material_ui` (add `material_ui` to `dependencies`).
     It has its own `Theme` and localizations, which widgets from
     `package:flutter/material.dart` don't read, so it only makes sense if you import
     `package:material_ui/material_ui.dart` everywhere. Mixing the two loses your theme.
 
   Or stay on go_router 17 by adding `go_router: ^17.0.0` to your `dependencies`. The
-  examples use Flutter's `MaterialApp`, so on go_router 18 their routes don't animate
-  unless a `transition.dart` says how.
+  examples use Flutter's `MaterialApp` and each has a root `transition.dart` returning
+  `Transitions.material`, so their routes animate on both go_router 17 and 18.
 
 ## File kinds
 

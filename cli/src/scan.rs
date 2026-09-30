@@ -21,10 +21,11 @@ pub enum Kind {
     Transition,
     NotFound,
     Meta,
+    Route,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 10] = [
+    pub const ALL: [Kind; 11] = [
         Kind::Page,
         Kind::Data,
         Kind::Loading,
@@ -35,6 +36,7 @@ impl Kind {
         Kind::Transition,
         Kind::NotFound,
         Kind::Meta,
+        Kind::Route,
     ];
 
     pub fn file(self) -> &'static str {
@@ -49,6 +51,7 @@ impl Kind {
             Kind::Transition => "transition.dart",
             Kind::NotFound => "not_found.dart",
             Kind::Meta => "meta.dart",
+            Kind::Route => "route.dart",
         }
     }
 
@@ -80,7 +83,8 @@ pub enum Seg {
     Static(String),
     Dynamic(String),
     /// `$$name` (one or more remaining segments) or `$$$name` (zero or more, the
-    /// flag): the rest of the path, as a `List<String>`.
+    /// flag): the rest of the path, as a `List<String>` (or a `List` of another
+    /// simple type: see `resolve::CATCH_ALL_ITEMS`).
     CatchAll(String, bool),
     /// `(name)`: groups routes (for a layout, loading or error view) without
     /// adding to the URL.

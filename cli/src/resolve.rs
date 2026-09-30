@@ -20,6 +20,15 @@ use crate::scan::{Kind, Node, Seg, ROUTE_MEMBERS};
 
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
 
+/// What the parts of a catch-all can be, as `List<T>`: each part is read like one segment of
+/// that type (`num` and `DateTime` with `num.tryParse` and `DateTime.tryParse`).
+pub const CATCH_ALL_ITEMS: [&str; 6] = ["String", "int", "double", "num", "bool", "DateTime"];
+
+/// `int` for `List<int>`.
+pub fn list_item(ty: &str) -> Option<&str> {
+    ty.strip_prefix("List<")?.strip_suffix('>')
+}
+
 /// What a parameter receives.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Bind {
@@ -178,6 +187,9 @@ pub struct Route {
     pub meta: Option<String>,
     /// The type of the page's `extra` parameter, when it takes one.
     pub extra: Option<ExtraType>,
+    /// Whether this folder's paths match by case: the nearest `route.dart`'s
+    /// `caseSensitive` at or above it, else the pubspec's `case_sensitive`.
+    pub case_sensitive: bool,
 }
 
 impl Route {
@@ -193,6 +205,8 @@ impl Route {
 pub struct ScopedNotFound {
     pub url: Vec<Seg>,
     pub widget: Widget,
+    /// Whether the folder's own path matches by case (see [`Route::case_sensitive`]).
+    pub case_sensitive: bool,
 }
 
 #[derive(Debug, Default)]
@@ -284,6 +298,8 @@ struct Inherited {
     /// The data.dart files of the sections above, outermost first.
     sections: Vec<SectionRef>,
     not_found: Option<Widget>,
+    /// The nearest route.dart's `caseSensitive`, else the config's.
+    case_sensitive: bool,
 }
 
 /// A section's data.dart, as the files below its layout can receive it.
@@ -316,7 +332,8 @@ struct BindCx<'a> {
     scope: Option<Scope>,
 }
 
-pub fn resolve(root: &Node, diags: &mut Diags) -> App {
+/// `case_sensitive` is the config's default, for folders with no `route.dart` at or above them.
+pub fn resolve(root: &Node, case_sensitive: bool, diags: &mut Diags) -> App {
     let mut r = Resolver {
         app: App::default(),
         import_ix: HashMap::new(),
@@ -328,7 +345,7 @@ pub fn resolve(root: &Node, diags: &mut Diags) -> App {
         query_order: vec![],
         diags,
     };
-    r.node(root, &Inherited::default());
+    r.node(root, &Inherited { case_sensitive, ..Inherited::default() });
     r.settle_segment_types();
     for (scope, name) in std::mem::take(&mut r.query_order) {
         let ty = r.queries[&(scope, name.clone())].0.clone();
@@ -394,6 +411,7 @@ impl Resolver<'_> {
             tab_options: vec![],
             meta: None,
             extra: None,
+            case_sensitive: up.case_sensitive,
         });
 
         let mut segs = up.segs.clone();
@@ -489,6 +507,10 @@ impl Resolver<'_> {
             w
         });
 
+        // route.dart's `caseSensitive` covers this folder and every folder below.
+        let case_sensitive = modules.get(&Kind::Route).and_then(|m| self.route_config(m, node)).unwrap_or(up.case_sensitive);
+        self.app.routes[id].case_sensitive = case_sensitive;
+
         // loading.dart / error.dart apply here and to every folder below.
         let mut here = Inherited {
             segs: segs.clone(),
@@ -498,6 +520,7 @@ impl Resolver<'_> {
             transition: up.transition.clone(),
             sections: up.sections.clone(),
             not_found: up.not_found.clone(),
+            case_sensitive,
         };
         if let (true, Some(d)) = (section, &data) {
             here.sections.push(SectionRef { id, ty: d.ty.clone(), file: node.rel(Kind::Data) });
@@ -602,7 +625,7 @@ impl Resolver<'_> {
                                 let msg = format!("{at} already has {prev}; (group) folders don't add to the URL, so move or rename one");
                                 self.diags.error(&file, None, msg);
                             }
-                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone() }),
+                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone(), case_sensitive }),
                         }
                     }
                     not_found = Some(w);
@@ -882,6 +905,26 @@ impl Resolver<'_> {
             return None;
         }
         Some(file)
+    }
+
+    /// `const caseSensitive = false;` in a folder's route.dart: whether paths match by case
+    /// in this folder and below. It is read from the source, so it must be a `true` or `false`
+    /// literal.
+    fn route_config(&mut self, m: &Module, node: &Node) -> Option<bool> {
+        let file = node.rel(Kind::Route);
+        let mut found = m.variables.iter().filter(|v| v.name == "caseSensitive");
+        let Some(v) = found.next() else {
+            self.diags.error(&file, None, "expected `const caseSensitive = false;` (or `true`)");
+            return None;
+        };
+        if let Some(again) = found.next() {
+            self.diags.error(&file, Some(&again.span), "`caseSensitive` is declared twice");
+        }
+        if v.boolean.is_none() {
+            let msg = "`caseSensitive` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it";
+            self.diags.error(&file, Some(&v.span), msg);
+        }
+        v.boolean
     }
 
     /// The one public widget class a view file exports, or the top-level function named
@@ -1196,7 +1239,7 @@ impl Resolver<'_> {
             if let Some((name, _)) = segs.iter().find(|(n, f)| keys.contains(n) && self.app.is_catch_all(*f)) {
                 let msg = format!(
                     "`{name}` is a catch-all, a List that a provider can't be keyed by (lists compare by identity); \
-                     write `Future<{ty}> data(Ref ref, {{required List<String> {name}}})` and fespalier keys it by the path"
+                     write `Future<{ty}> data(Ref ref, {{required List<T> {name}}})` (T being the parts' type) and fespalier keys it by the path"
                 );
                 self.diags.error(&file, Some(&v.span), msg);
             }
@@ -1348,8 +1391,11 @@ impl Resolver<'_> {
         let mut first: HashMap<usize, (String, String, usize)> = HashMap::new();
         for c in &self.constraints {
             if self.app.is_catch_all(c.folder) {
-                if c.ty.text != "List<String>" {
-                    let msg = format!("`{} {}`: a catch-all segment is the rest of the path, a `List<String>`", c.ty.text, c.name);
+                if !list_item(&c.ty.text).is_some_and(|i| CATCH_ALL_ITEMS.contains(&i)) {
+                    let msg = format!(
+                        "`{} {}`: a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime",
+                        c.ty.text, c.name
+                    );
                     self.diags.error(&c.file, Some(&c.span), msg);
                     continue;
                 }

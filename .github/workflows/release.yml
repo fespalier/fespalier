@@ -1,20 +1,76 @@
 # Builds the `fsp` binary for every supported platform so Flutter developers can
 # install it without Rust (see install.sh).
 #   - push of a `v*` tag: verify the tag matches cli/Cargo.toml, build, publish a GitHub Release
-#   - manual run (workflow_dispatch): build only, archives are kept as workflow artifacts
+#   - manual run (workflow_dispatch): build only, archives are kept as workflow artifacts;
+#     with `publish` ticked it also publishes the Release for the cli/Cargo.toml version,
+#     creating its v<version> tag at the dispatched commit (for when tags cannot be pushed)
 name: Release
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: >-
+          Publish a GitHub Release for the version in cli/Cargo.toml,
+          creating its v<version> tag at this commit
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
+  # Decides once whether to publish and which tag to use; later jobs only read the outputs.
+  plan:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.resolve.outputs.publish }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: resolve
+        env:
+          PUBLISH_INPUT: ${{ inputs.publish }}
+        run: |
+          # `version = "x.y.z"` from the [package] section
+          crate_version=$(sed -n '/^\[package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' cli/Cargo.toml | head -n 1)
+          if [ -z "$crate_version" ]; then
+            echo "::error::could not read the version from cli/Cargo.toml"
+            exit 1
+          fi
+
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [[ "$GITHUB_REF_NAME" == v* ]]; then
+            # Tag push: the tag must match Cargo.toml
+            if [ "${GITHUB_REF_NAME#v}" != "$crate_version" ]; then
+              echo "::error::tag ${GITHUB_REF_NAME} does not match cli/Cargo.toml version ${crate_version}"
+              exit 1
+            fi
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$PUBLISH_INPUT" = "true" ]; then
+            # Manual publish: the tag is created at this commit, but never over an existing one
+            tag="v${crate_version}"
+            if [ -n "$(git ls-remote --tags origin "refs/tags/${tag}")" ]; then
+              echo "::error::tag ${tag} already exists; bump the version in cli/Cargo.toml"
+              exit 1
+            fi
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          else
+            # Build-only run
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build ${{ matrix.target }}
+    needs: plan
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -27,17 +83,6 @@ jobs:
           - { target: x86_64-pc-windows-msvc,    os: windows-latest }
     steps:
       - uses: actions/checkout@v4
-
-      - name: Check tag matches cli/Cargo.toml version
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          crate_version=$(sed -n 's/^version *= *"\(.*\)"/\1/p' cli/Cargo.toml | head -n 1)
-          tag_version="${GITHUB_REF_NAME#v}"
-          if [ "$tag_version" != "$crate_version" ]; then
-            echo "::error::tag ${GITHUB_REF_NAME} does not match cli/Cargo.toml version ${crate_version}"
-            exit 1
-          fi
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -83,8 +128,8 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    if: needs.plan.outputs.publish == 'true'
+    needs: [plan, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -100,5 +145,9 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.plan.outputs.tag }}
+          # Creates the tag at this commit when it does not exist yet (manual publish)
+          target_commitish: ${{ github.sha }}
+          name: ${{ needs.plan.outputs.tag }}
           files: dist/*
           generate_release_notes: true

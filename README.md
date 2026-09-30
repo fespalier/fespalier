@@ -2062,24 +2062,24 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 ```
 
 ```sh
-(cd cli && cargo test && cargo clippy --all-targets -- -D warnings)
-(cd cli && cargo run -- check --project ../examples/minimal)
-(cd cli && cargo run -- check --project ../examples/shop)
-(cd cli && cargo run -- check --project ../examples/tabs)
-(cd packages/fespalier && flutter pub get && flutter analyze && flutter test)
-(cd examples/minimal && flutter pub get && flutter analyze && dart format --set-exit-if-changed . && flutter test)
-(cd examples/shop && flutter pub get && flutter analyze && flutter test)
-(cd examples/features && flutter pub get && flutter analyze && flutter test)
-(cd examples/tabs && flutter pub get && flutter analyze && flutter test)
+just ci          # everything CI runs on the code, locally (needs Flutter, just, cargo-deny)
+just --list      # the individual steps: fmt, lint, test, deny, examples, flutter, packaging
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
-with `fsp new` and runs `flutter analyze` on the result, runs `dart run fespalier` against a
+[AGENTS.md](AGENTS.md) is the contributor and agent guide: the layout, the gate commands,
+how to run each suite, and the conventions (Conventional Commit PR titles, squash merges,
+SHA-pinned actions, regenerating the examples).
+
+CI (`.github/workflows/ci.yml`) runs `just ci`'s steps: `cargo fmt --check`, clippy and the
+tests, `cargo deny check`, `fsp check` on the examples, and `dart format`, `flutter analyze`
+and `flutter test` on the package and every example. It also scaffolds every file kind
+with `fsp new` and `fsp init`, checks the result with `flutter analyze` and `dart format`,
+runs `dart run fespalier` against a
 freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
 rendering, checksum pinning and release staging (`python3 scripts/test_packaging.py`,
 `python3 scripts/test_pin_checksums.py`, `python3 scripts/test_verify_staged.py`,
-`python3 scripts/test_release_assets.py`), runs `flutter pub publish --dry-run` on the
-package, and checks that the version agrees everywhere it is spelled out
+`python3 scripts/test_release_assets.py`),
+and checks that the version agrees everywhere it is spelled out
 (`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`,
 `.release-please-manifest.json`, the `ref:` that `fsp init` prints, and the READMEs' `ref:`,
 `--tag` and `FSP_VERSION`; that each of them is annotated for release-please and listed in
@@ -2294,3 +2294,6 @@ Things to know:
 - go_router builds the whole matched stack, so `/products/abc` also loads `/products`
   underneath the not-found view.
 
+## License
+
+MIT. See [LICENSE](LICENSE).

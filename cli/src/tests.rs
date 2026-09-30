@@ -62,9 +62,8 @@ fn example_app_generates_cleanly() {
             "path: joinLocation(at, '/')",
             // The root transition.dart covers every route.
             "pageBuilder: (context, state) => _i3.transition(",
-            "pageBuilder: (context, state, child) => layoutPage(",
-            "'layout:/',",
-            "_i4.AppLayout(child: child),",
+            // ...and the root layout's shell too, under a key that doesn't change.
+            "pageBuilder: (context, state, child) => _i3.transition(\n          const ValueKey<String>('layout:/'),\n          _i4.AppLayout(child: child),",
             "({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
             "_i9.GreetPage(name: v.name)",
             "data: (d) => _i14.ProductPage(product: d),",
@@ -922,7 +921,7 @@ fn a_tab_holds_nested_routes_data_guards_and_transitions() {
             "loading: () => _i7.Busy(),",
             "pageBuilder: (context, state) => _i0.transition(",
             // A plain layout inside a tab is still a ShellRoute, within the branch.
-            "ShellRoute(\n                pageBuilder: (context, state, child) => layoutPage(\n                  context,\n                  state,\n                  'layout:(tabs)/help/',\n                  _i4.HelpLayout(child: child),\n                ),",
+            "ShellRoute(\n                pageBuilder: (context, state, child) => _i0.transition(\n                  const ValueKey<String>('layout:(tabs)/help/'),\n                  _i4.HelpLayout(child: child),\n                ),",
         ],
     );
     assert!(at(&c, "path: 'cart',") < at(&c, "path: ':id',"), "{c}");

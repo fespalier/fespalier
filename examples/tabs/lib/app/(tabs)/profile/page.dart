@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:tabs/app.g.dart';
+import 'package:tabs/profile_draft.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -11,8 +12,15 @@ class ProfilePage extends StatelessWidget {
           children: [
             const Text('Profile'),
             TextButton(
-              onPressed: () => const EditProfileRoute().go(context),
+              onPressed: () => const EditProfileRoute().go(
+                context,
+                extra: const ProfileDraft(name: 'Ada'),
+              ),
               child: const Text('Edit profile'),
+            ),
+            TextButton(
+              onPressed: () => const SecurityRoute().go(context),
+              child: const Text('Security'),
             ),
             TextButton(
               onPressed: () => const SettingsRoute().go(context),

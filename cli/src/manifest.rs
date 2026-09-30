@@ -39,7 +39,9 @@ pub struct Info {
     pub folder: String,
     /// page.dart or redirect.dart, relative to the app folder.
     pub file: String,
-    pub redirect: bool,
+    /// How the route is served, when it isn't a plain page: `redirect` (a redirect.dart),
+    /// `custom` (a present.dart builds the page) or `root` (on the root navigator).
+    pub presentation: Option<&'static str>,
     /// `(buyer)`, outermost first.
     pub groups: Vec<String>,
     /// The folders of the layouts that wrap it, outermost first.
@@ -91,7 +93,12 @@ pub fn collect(app: &App) -> Vec<Info> {
                 path: resolve::pattern(&r.url),
                 folder: r.dir.clone(),
                 file: rel(r, kind),
-                redirect: r.page.is_none(),
+                presentation: match (r.page.is_some(), r.present.is_some(), r.root) {
+                    (false, ..) => Some("redirect"),
+                    (_, true, _) => Some("custom"),
+                    (_, _, true) => Some("root"),
+                    _ => None,
+                },
                 groups,
                 layouts,
                 segments: app.typed_segs(r),
@@ -137,8 +144,57 @@ fn tabs_of(app: &App) -> HashMap<usize, Vec<TabInfo>> {
     out
 }
 
-/// `fespalier: { meta: required }`: a route without a meta.dart is an error.
+/// The checks on `meta.dart` files the config asks for: `meta: required` and `meta_unique`.
 pub fn check(app: &App, cfg: &Config, diags: &mut Diags) {
+    check_required(app, cfg, diags);
+    check_unique(app, cfg, diags);
+}
+
+/// `fespalier: { meta_unique: [code, slug] }`: no two routes pass the same literal to
+/// that named argument of `meta`'s constructor call. Only literals (a string, a number,
+/// a bool) are compared; an argument that is an expression, or that a route leaves out,
+/// says nothing.
+fn check_unique(app: &App, cfg: &Config, diags: &mut Diags) {
+    use crate::dart::Lit;
+    for key in &cfg.meta_unique {
+        // (kind, value) of each literal → the first meta.dart that had it.
+        let mut seen: HashMap<(&str, &str), &str> = HashMap::new();
+        let mut any = false;
+        for r in app.routes.iter().filter(|r| r.is_route()) {
+            let Some(file) = r.meta.as_deref() else { continue };
+            let Some(arg) = r.meta_args.iter().find(|a| a.name == *key) else { continue };
+            let (kind, value, shown) = match &arg.value {
+                Lit::Str(v) => ("string", v.as_str(), dart_str(v)),
+                Lit::Num(v) => ("number", v.as_str(), v.clone()),
+                Lit::Bool(b) => ("bool", if *b { "true" } else { "false" }, b.to_string()),
+                Lit::Other => continue,
+            };
+            any = true;
+            match seen.get(&(kind, value)) {
+                Some(first) => {
+                    let msg = format!(
+                        "`{key}: {shown}` is also in {first}; `meta_unique: [{}]` in pubspec.yaml wants every route's `{key}` to differ",
+                        cfg.meta_unique.join(", ")
+                    );
+                    diags.error(file, Some(&arg.span), msg);
+                }
+                None => {
+                    seen.insert((kind, value), file);
+                }
+            }
+        }
+        let has_meta = app.routes.iter().any(|r| r.is_route() && r.meta.is_some());
+        if has_meta && !any {
+            let msg = format!(
+                "`meta_unique` in pubspec.yaml lists `{key}`, but no meta.dart passes a literal `{key}:` to its constructor call (`const meta = Meta({key}: 'x');`), so there is nothing to compare"
+            );
+            diags.warn("pubspec.yaml", None, msg);
+        }
+    }
+}
+
+/// `fespalier: { meta: required }`: a route without a meta.dart is an error.
+fn check_required(app: &App, cfg: &Config, diags: &mut Diags) {
     if !cfg.meta_required {
         return;
     }
@@ -173,7 +229,8 @@ struct RouteInfoCx {
     class: String,
     path: String,
     folder: String,
-    redirect: bool,
+    /// `redirect`, `root` or `custom`: a `RoutePresentation`; `None` for a plain page.
+    presentation: Option<&'static str>,
     groups: Option<String>,
     layouts: Option<String>,
     segments: Option<String>,
@@ -219,7 +276,7 @@ pub fn cx(app: &App, first_import: usize) -> (ManifestCx, Vec<String>) {
                 class: i.class,
                 path: dart_str(&i.path),
                 folder: dart_str(&i.folder),
-                redirect: i.redirect,
+                presentation: i.presentation,
                 groups: list(i.groups.iter().map(|g| dart_str(g)).collect()),
                 layouts: list(i.layouts.iter().map(|l| dart_str(l)).collect()),
                 segments: list(

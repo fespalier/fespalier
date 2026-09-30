@@ -274,6 +274,32 @@ fn add_and_remove_a_layout() {
 }
 
 #[test]
+fn route_dart_extra_codec_and_extra_on_layouts_follow() {
+    let mut sim = Sim::new(&app(60), NO_CONFIG, 10);
+    sim.same("the first run");
+    sim.write("s1/route.dart", "const caseSensitive = false;");
+    let r = sim.same("a route.dart");
+    assert!(r.ok && r.wrote && r.outputs[0].as_ref().unwrap().contains("caseSensitive: false"), "{r:?}");
+    sim.write("s1/route.dart", "const caseSensitive = true;");
+    assert!(sim.same("turning it back on").ok);
+    sim.write("s1/route.dart", "final caseSensitive = maybe();");
+    assert!(!sim.same("a route.dart that isn't a literal").ok);
+    sim.remove("s1/route.dart");
+    assert!(sim.same("removing it").ok);
+    sim.write("extra_codec.dart", "import 'package:fespalier/fespalier.dart';\nfinal extraCodec = ExtraCodec({});");
+    let r = sim.same("an extra_codec.dart");
+    assert!(r.ok && r.outputs[0].as_ref().unwrap().contains("extraCodec"), "{r:?}");
+    sim.remove("extra_codec.dart");
+    assert!(sim.same("removing it").ok);
+    // A layout's `extra` is filled; a parameter that isn't one of ours is not.
+    sim.write("s1/layout.dart", &layout("S1Layout", ", this.extra"));
+    sim.same("a layout that takes extra");
+    sim.write("s1/layout.dart", &layout("S1Layout", ", required this.mystery"));
+    let r = sim.same("a layout that wants something it can't get");
+    assert!(!r.ok && r.diags.iter().any(|d| d.contains("mystery")), "{r:?}");
+}
+
+#[test]
 fn touch_a_group_folder() {
     let mut sim = Sim::new(&app(60), NO_CONFIG, 6);
     sim.same("the first run");
@@ -355,7 +381,7 @@ impl Sim {
         let dirs = self.dirs();
         let pages: Vec<&String> = files.keys().filter(|f| f.ends_with("page.dart")).collect();
         let parent_of = |f: &str| f.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_default();
-        match self.rng.below(14) {
+        match self.rng.below(16) {
             0 | 1 => {
                 // A route: static or dynamic, sometimes a duplicate route name.
                 let mut sections = vec![String::new()];
@@ -477,6 +503,29 @@ impl Sim {
                 let f = self.rng.pick(&files.keys().collect::<Vec<_>>()).to_string();
                 self.remove(&f);
                 format!("deleting {f}")
+            }
+            13 => {
+                // A folder's `route.dart`: add one (either way) or take it away.
+                let d = self.rng.pick(&dirs).clone();
+                let f = format!("{d}/route.dart");
+                if files.contains_key(&f) {
+                    self.remove(&f);
+                    format!("removing {f}")
+                } else {
+                    let on = self.rng.below(2) == 0;
+                    self.write(&f, &format!("const caseSensitive = {on};"));
+                    format!("adding {f} ({on})")
+                }
+            }
+            14 => {
+                // The root's `extra_codec.dart`: add it or take it away.
+                if files.contains_key("extra_codec.dart") {
+                    self.remove("extra_codec.dart");
+                    "removing extra_codec.dart".into()
+                } else {
+                    self.write("extra_codec.dart", "import 'package:fespalier/fespalier.dart';\nfinal extraCodec = ExtraCodec({});");
+                    "adding extra_codec.dart".into()
+                }
             }
             _ => "nothing".into(),
         }

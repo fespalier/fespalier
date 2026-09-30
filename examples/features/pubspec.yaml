@@ -25,3 +25,5 @@ flutter:
 # Paths match by case: /Docs/Guide is /docs/guide.
 fespalier:
   case_sensitive: false
+  # No two routes may pass the same literal `code:` to their meta.
+  meta_unique: [code]

@@ -91,7 +91,7 @@ void main() {
         AppRoutes.router(),
         overrides: [apiProvider.overrideWithValue(api)],
       );
-      const ProductRoute(id: 2).prefetch(rootRef(tester));
+      final handle = const ProductRoute(id: 2).prefetch(rootRef(tester));
       await tester.pump(const Duration(seconds: 1));
 
       ProductRoute(id: 2).go(tester.element(find.text('Browse products')));
@@ -101,8 +101,26 @@ void main() {
       expect(find.text('€12.00'), findsOneWidget);
       expect(api.productCalls, 1);
       await tester.pump(const Duration(seconds: 1));
-      // Nothing waits behind it: the timer that keeps the data ends with the test.
-      await tester.pump(prefetchKeepAlive);
+      // The handle keeps the data for as long as the app wants; nothing else waits.
+      handle.close();
+      // Let what is still loading (the list behind the page) finish.
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('the handle keeps the data until it is closed', (tester) async {
+      final api = CountingApi();
+      final container = await pumpRouter(
+        tester,
+        AppRoutes.router(),
+        overrides: [apiProvider.overrideWithValue(api)],
+      );
+      final handle = const ProductRoute(id: 2).prefetch(rootRef(tester));
+      await tester.pump(const Duration(minutes: 2));
+      expect(container.exists(ProductRoute.data(2)), isTrue);
+
+      handle.close();
+      await tester.pump();
+      expect(container.exists(ProductRoute.data(2)), isFalse);
     });
 
     testWidgets('without it the same navigation shows loading first',
@@ -141,11 +159,11 @@ void main() {
         AppRoutes.router(),
         overrides: [apiProvider.overrideWithValue(api)],
       );
-      const ProductRoute(id: 99).prefetch(rootRef(tester));
+      final handle = const ProductRoute(id: 99).prefetch(rootRef(tester));
       await tester.pump(const Duration(seconds: 1));
       await tester.pump();
       expect(container.exists(ProductRoute.data(99)), isFalse);
-      await tester.pump(prefetchKeepAlive);
+      expect(handle.isClosed, isTrue);
     });
   });
 }

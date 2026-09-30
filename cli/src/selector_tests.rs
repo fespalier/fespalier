@@ -71,7 +71,7 @@ fn the_return_type_makes_a_selector_and_nothing_wraps_it() {
             "static final data = _data2;",
             "static final read = (WidgetRef ref, {required String productId}) => ref.readSelected(data(productId));",
             "static final watch = (WidgetRef ref, {required String productId}) => ref.watch(data(productId));",
-            "void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(productId), keepFor: keepFor);",
+            "PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(productId), keepFor: keepFor);",
             "Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data(productId));",
         ],
     );
@@ -241,22 +241,6 @@ fn a_section_can_select_a_provider_too() {
             "watch: (ref) => ref.watch(_data2(v.teamId)),",
         ],
     );
-}
-
-#[test]
-fn a_section_selector_cannot_take_query_parameters() {
-    let e = errors(&[
-        (
-            "teams/$teamId/data.dart",
-            "ProviderListenable<AsyncValue<Team>> data({required String teamId, String? tab}) => teamProvider(teamId);",
-        ),
-        (
-            "teams/$teamId/layout.dart",
-            "class TeamLayout extends StatelessWidget { const TeamLayout({super.key, required this.team, required this.child}); final Team team; final Widget child; }",
-        ),
-        ("teams/$teamId/settings/page.dart", "class SettingsPage extends StatelessWidget { const SettingsPage({super.key}); }"),
-    ]);
-    assert!(e.iter().any(|m| m.contains("a section's data.dart can only take segments")), "{e:?}");
 }
 
 #[test]

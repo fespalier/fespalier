@@ -1,5 +1,6 @@
 //! Typed `extra`: how the generated file can name the type of a page's `extra`
-//! parameter (`Product? extra`), so a typed route can take `extra: Product?`.
+//! parameter (`Product? extra`), so a typed route can take `extra: Product?`, and
+//! whether the `extra` types of a guard, a layout and the routes below them agree.
 //!
 //! The generated file doesn't import what page.dart imports, and the syntax tree
 //! doesn't say which import a type comes from. So the type is found the way the
@@ -22,6 +23,8 @@ pub struct Import {
 /// The type of an `extra` parameter, ready for the generated file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExtraType {
+    /// The type as written in the file that declares it: `Product?`, `m.Product?`.
+    pub source: String,
     /// The type as the generated file spells it: `Product?`, `_i9.Local?`, `_e3_m.Product?`.
     pub ty: String,
     /// Names to `show` from each of page.dart's unprefixed imports.
@@ -85,6 +88,26 @@ pub fn declares(src: &str, name: &str) -> bool {
     })
 }
 
+/// Whether an `extra` of this type takes whatever comes: `Object?`, `Object` or `dynamic`.
+/// (Nothing has to be nullable to be one; a non-nullable `extra` is an error elsewhere.)
+pub fn takes_any(ty: &str) -> bool {
+    matches!(ty.trim_end_matches('?'), "Object" | "dynamic")
+}
+
+/// Whether an `extra` parameter of a guard or layout can read what a route's own `extra`
+/// (a page's or a redirect's) holds: the same type (nullability aside), or `Object?`, which
+/// reads anything. A guard for `Product?` under a route for `Object?` would silently miss
+/// what isn't a `Product`, so it isn't one.
+pub fn fits(reader: &str, route: &str) -> bool {
+    takes_any(reader) || reader.trim_end_matches('?') == route.trim_end_matches('?')
+}
+
+/// Whether two guards and layouts above a route that takes no `extra` of its own can read
+/// the same object: the same type, or one of them takes anything.
+pub fn agree(a: &str, b: &str) -> bool {
+    takes_any(a) || takes_any(b) || a.trim_end_matches('?') == b.trim_end_matches('?')
+}
+
 /// A type name inside a type: `Product` or `m.Product`.
 struct TypeRef {
     prefix: Option<String>,
@@ -133,8 +156,10 @@ fn type_refs(ty: &str) -> Vec<TypeRef> {
 }
 
 /// Works out the generated spelling of `ty`, the type of `extra` in `src` (the
-/// source of the page at `file`, whose import in the generated file is `_i{import}`).
-pub fn extra_type(ty: &str, src: &str, file: &str, import: usize, route: usize) -> ExtraType {
+/// source of the page, layout, guard or redirect at `file`, whose import in the generated
+/// file is `_i{import}`). `tag` keeps the aliases of one use apart from another's:
+/// the route's id for a page, `g3` for the guard of route 3.
+pub fn extra_type(ty: &str, src: &str, file: &str, import: usize, tag: &str) -> ExtraType {
     let all = imports(src);
     let mut spelled = String::new();
     let mut last = 0;
@@ -145,7 +170,7 @@ pub fn extra_type(ty: &str, src: &str, file: &str, import: usize, route: usize) 
         match &r.prefix {
             Some(p) => match all.iter().find(|i| i.prefix.as_deref() == Some(p)) {
                 Some(i) => {
-                    let alias = format!("_e{route}_{p}");
+                    let alias = format!("_e{tag}_{p}");
                     if !aliased.iter().any(|(q, ..)| q == p) {
                         aliased.push((p.clone(), i.uri.clone(), alias.clone()));
                     }
@@ -164,6 +189,7 @@ pub fn extra_type(ty: &str, src: &str, file: &str, import: usize, route: usize) 
     }
     spelled.push_str(&ty[last..]);
     ExtraType {
+        source: ty.to_string(),
         ty: spelled,
         shown,
         aliased,
@@ -197,19 +223,19 @@ mod tests {
 
     #[test]
     fn spells_types_for_the_generated_file() {
-        let t = extra_type("Map<String, Product>?", SRC, "a/page.dart", 4, 2);
+        let t = extra_type("Map<String, Product>?", SRC, "a/page.dart", 4, "2");
         assert_eq!(t.ty, "Map<String, Product>?");
         assert_eq!(t.shown, ["Product"]);
-        let t = extra_type("Local?", SRC, "a/page.dart", 4, 2);
+        let t = extra_type("Local?", SRC, "a/page.dart", 4, "2");
         assert_eq!(t.ty, "_i4.Local?");
         assert!(t.shown.is_empty());
-        let t = extra_type("List<m.Thing>?", SRC, "a/page.dart", 4, 2);
+        let t = extra_type("List<m.Thing>?", SRC, "a/page.dart", 4, "2");
         assert_eq!(t.ty, "List<_e2_m.Thing>?");
         assert_eq!(t.aliased, [("m".to_string(), "x.dart".to_string(), "_e2_m".to_string())]);
-        let t = extra_type("({int id, Product p})?", SRC, "a/page.dart", 4, 2);
+        let t = extra_type("({int id, Product p})?", SRC, "a/page.dart", 4, "2");
         assert_eq!(t.ty, "({int id, Product p})?");
         assert_eq!(t.shown, ["Product"]);
-        let t = extra_type("String?", SRC, "a/page.dart", 4, 2);
+        let t = extra_type("String?", SRC, "a/page.dart", 4, "2");
         assert!(t.shown.is_empty());
     }
 }

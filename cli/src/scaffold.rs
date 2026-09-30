@@ -112,12 +112,12 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
 
     // Segments that already exist keep the type the tree gives them.
     let mut diags = Diags::default();
-    let app = resolve::resolve(&scan::scan(&app_dir, &mut diags)?, &mut diags);
+    let app = resolve::resolve(&scan::scan(&app_dir, &mut diags)?, true, &mut diags);
     let known: HashMap<&str, &str> = app
         .routes
         .iter()
         .enumerate()
-        .filter(|(_, r)| matches!(r.seg, Some(Seg::Dynamic(_))))
+        .filter(|(_, r)| matches!(r.seg, Some(Seg::Dynamic(_) | Seg::CatchAll(..))))
         .map(|(id, r)| (r.dir.as_str(), app.seg_type(id)))
         .collect();
     let mut seg_cx = vec![];
@@ -128,7 +128,11 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
                 let ty = known.get(dir.as_str()).copied().unwrap_or("String").to_string();
                 seg_cx.push(SegCx { name: name.clone(), ty });
             }
-            Seg::CatchAll(name, _) => seg_cx.push(SegCx { name: name.clone(), ty: "List<String>".into() }),
+            Seg::CatchAll(name, _) => {
+                let dir = parts[..=i].join("/");
+                let ty = known.get(dir.as_str()).copied().unwrap_or("List<String>").to_string();
+                seg_cx.push(SegCx { name: name.clone(), ty });
+            }
             _ => {}
         }
     }
@@ -155,6 +159,9 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
     // A group has no URL of its own, so it can't serve a page (and one would
     // collide with the page of the folder above it).
     let is_group = matches!(segs.last(), Some(Seg::Group(_)));
+    if a.not_found && matches!(segs.last(), Some(Seg::CatchAll(..))) {
+        bail!("a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown");
+    }
     let wanted = [
         ("page", !no_page && !is_group),
         ("data", a.data),

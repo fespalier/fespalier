@@ -20,7 +20,7 @@ Future<void> boot(WidgetTester tester, String location) async {
   await tester.pumpAndSettle();
 }
 
-/// Catch-all segments, case-insensitive paths, trailing slashes and `extra`.
+/// Catch-all segments (typed too), case-insensitive paths, trailing slashes and `extra`.
 void main() {
   group('catch-all segments', () {
     testWidgets('\$\$rest takes one or more segments', (tester) async {
@@ -30,14 +30,16 @@ void main() {
       expect(find.text('Doc guide > setup > linux'), findsOneWidget);
     });
 
-    testWidgets('the folder\'s own page serves the path without it',
-        (tester) async {
+    testWidgets('the folder\'s own page serves the path without it', (
+      tester,
+    ) async {
       await boot(tester, '/docs');
       expect(find.text('Docs index'), findsOneWidget);
     });
 
-    testWidgets('static siblings win, but only for their own path',
-        (tester) async {
+    testWidgets('static siblings win, but only for their own path', (
+      tester,
+    ) async {
       await boot(tester, '/docs/new');
       expect(find.text('New doc'), findsOneWidget);
       await boot(tester, '/docs/new/draft');
@@ -58,8 +60,9 @@ void main() {
       expect(() => const DocsRoute(rest: []).location, throwsAssertionError);
     });
 
-    testWidgets('an optional catch-all also matches without a part',
-        (tester) async {
+    testWidgets('an optional catch-all also matches without a part', (
+      tester,
+    ) async {
       await boot(tester, '/files');
       expect(find.text('Files root'), findsOneWidget);
       await boot(tester, '/files/a/b.txt');
@@ -74,8 +77,9 @@ void main() {
       expect(const WikiRoute(article: ['a', 'b c']).location, '/wiki/a/b%20c');
     });
 
-    testWidgets('a deep link and navigation reach the same page',
-        (tester) async {
+    testWidgets('a deep link and navigation reach the same page', (
+      tester,
+    ) async {
       await boot(tester, '/');
       const DocsRoute(rest: ['guide', 'setup'])
           .go(tester.element(find.text('Home')));
@@ -84,9 +88,61 @@ void main() {
     });
   });
 
+  group('typed catch-alls', () {
+    testWidgets('List<int> reads every part as an int', (tester) async {
+      await boot(tester, '/compare/3/7/12');
+      expect(find.text('Compare 3 vs 7 vs 12 (total 22)'), findsOneWidget);
+      await boot(tester, '/compare/-4');
+      expect(find.text('Compare -4 (total -4)'), findsOneWidget);
+    });
+
+    testWidgets('a part that is not an int is not found, like a segment', (
+      tester,
+    ) async {
+      await boot(tester, '/compare/3/x/5');
+      expect(find.text('Nothing at /compare/3/x/5'), findsOneWidget);
+      await boot(tester, '/compare/1.5');
+      expect(find.text('Nothing at /compare/1.5'), findsOneWidget);
+    });
+
+    testWidgets('the typed route takes the list and writes each part', (
+      tester,
+    ) async {
+      const route = CompareRoute(ids: [3, 7, 12]);
+      expect(route.location, '/compare/3/7/12');
+      expect(() => const CompareRoute(ids: []).location, throwsAssertionError);
+
+      await boot(tester, '/');
+      route.go(tester.element(find.text('Home')));
+      await tester.pumpAndSettle();
+      expect(find.text('Compare 3 vs 7 vs 12 (total 22)'), findsOneWidget);
+    });
+
+    testWidgets('data.dart is keyed by the list and gets it back typed', (
+      tester,
+    ) async {
+      // The provider's key is the path, and `data()` reads the ints out of it.
+      await boot(tester, '/compare/10/20');
+      final context = tester.element(find.textContaining('Compare'));
+      final container = ProviderScope.containerOf(context);
+      expect(
+        container.read(CompareRoute.data(restKey(const [10, 20]))).value,
+        30,
+      );
+    });
+
+    testWidgets('the manifest knows the type', (tester) async {
+      final info = AppManifest.byType[CompareRoute]!;
+      expect(info.path, '/compare/*ids');
+      expect(info.segments.single.type, 'List<int>');
+      expect(info.segments.single.catchAll, isTrue);
+    });
+  });
+
   group('case and trailing slashes', () {
-    testWidgets('paths match in any case (case_sensitive: false)',
-        (tester) async {
+    testWidgets('paths match in any case (case_sensitive: false)', (
+      tester,
+    ) async {
       await boot(tester, '/DOCS/Guide/Setup');
       // Static parts match in any case; the catch-all keeps what was typed.
       expect(find.text('Doc Guide > Setup'), findsOneWidget);
@@ -94,6 +150,38 @@ void main() {
       expect(find.text('New doc'), findsOneWidget);
       await boot(tester, '/Login');
       expect(find.text('Sign in'), findsOneWidget);
+    });
+
+    testWidgets('the location stays as it was requested', (tester) async {
+      await boot(tester, '/DOCS/Guide/Setup?Tab=Info');
+      final context = tester.element(find.text('Doc Guide > Setup'));
+      // Matching is case-insensitive; nothing is lowercased or rewritten.
+      expect(
+        GoRouterState.of(context).uri.toString(),
+        '/DOCS/Guide/Setup?Tab=Info',
+      );
+      expect(
+        GoRouter.of(context).routeInformationProvider.value.uri.toString(),
+        '/DOCS/Guide/Setup?Tab=Info',
+      );
+      // A typed route, on the other hand, writes the folders' spelling.
+      expect(const DocsRoute(rest: ['Guide']).location, '/docs/Guide');
+    });
+
+    testWidgets('a route.dart makes one folder case-sensitive again', (
+      tester,
+    ) async {
+      // files/route.dart says `const caseSensitive = true;`, whatever the pubspec says.
+      await boot(tester, '/files/README.md');
+      expect(find.text('File README.md'), findsOneWidget);
+      await boot(tester, '/Files/README.md');
+      expect(find.text('Nothing at /Files/README.md'), findsOneWidget);
+      // (`/FILES` alone is caught by the root `$slug` page, which matches in any case.)
+      await boot(tester, '/FILES');
+      expect(find.text('Files root'), findsNothing);
+      // The rest of the app still matches in any case.
+      await boot(tester, '/DOCS/Guide');
+      expect(find.text('Doc Guide'), findsOneWidget);
     });
 
     testWidgets('a trailing slash reaches the same page', (tester) async {
@@ -126,14 +214,14 @@ void main() {
 
     testWidgets('push and replace pass it too', (tester) async {
       await boot(tester, '/');
-      const NoteRoute(id: 4).push<void>(tester.element(find.text('Home')),
-          extra: const Note('A'));
+      const NoteRoute(
+        id: 4,
+      ).push<void>(tester.element(find.text('Home')), extra: const Note('A'));
       await tester.pumpAndSettle();
       expect(find.text('Note 4: A'), findsOneWidget);
-      const NoteRoute(id: 5).replace(
-        tester.element(find.text('Note 4: A')),
-        extra: const Note('B'),
-      );
+      const NoteRoute(
+        id: 5,
+      ).replace(tester.element(find.text('Note 4: A')), extra: const Note('B'));
       await tester.pumpAndSettle();
       expect(find.text('Note 5: B'), findsOneWidget);
     });
@@ -150,8 +238,34 @@ void main() {
       expect(find.text('Note 6: no extra'), findsOneWidget);
     });
 
-    testWidgets('an object of another type is an error in debug builds',
-        (tester) async {
+    testWidgets('a layout gets the extra of the location it shows', (
+      tester,
+    ) async {
+      await boot(tester, '/');
+      const NoteRoute(id: 3)
+          .go(tester.element(find.text('Home')), extra: const Note('Hello'));
+      await tester.pumpAndSettle();
+      expect(find.text('Notes frame: Hello'), findsOneWidget);
+      expect(find.text('Note 3: Hello'), findsOneWidget);
+
+      await boot(tester, '/notes/3');
+      expect(find.text('Notes frame: no extra'), findsOneWidget);
+    });
+
+    testWidgets('and so does a guard: a draft goes home', (tester) async {
+      await boot(tester, '/');
+      const NoteRoute(id: 3).go(
+        tester.element(find.text('Home')),
+        extra: const Note('draft'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Notes frame: draft'), findsNothing);
+      expect(find.text('Home'), findsOneWidget);
+    });
+
+    testWidgets('an object of another type is an error in debug builds', (
+      tester,
+    ) async {
       await boot(tester, '/');
       // Only possible around the typed route, with a plain location.
       GoRouter.of(tester.element(find.text('Home')))

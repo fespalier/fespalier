@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:fespalier/fespalier.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabs/app.g.dart';
 import 'package:tabs/app.routes.g.dart';
@@ -9,7 +10,7 @@ import 'package:tabs/review.dart';
 // it is `AppManifest`, not `AppRoutes.byType`, and only tests import it.
 void main() {
   test('lists the routes with the tabs they sit in', () {
-    expect(AppManifest.all, hasLength(7));
+    expect(AppManifest.all, hasLength(8));
 
     final home = AppManifest.byType[HomeRoute]!;
     expect(home.path, '/');
@@ -27,6 +28,14 @@ void main() {
       books.tabs.map((t) => '${t.layout}:${t.index}:${t.branch}'),
       ['(tabs):3:library', '(tabs)/library:0:books'],
     );
+
+    // navigator.dart: /profile/edit is in the Profile tab but on the root navigator;
+    // /profile/security stays inside the tab's own.
+    expect(AppManifest.byType[EditProfileRoute]!.presentation,
+        RoutePresentation.root);
+    expect(AppManifest.byType[EditProfileRoute]!.tabs.single.branch, 'profile');
+    expect(AppManifest.byType[SecurityRoute]!.presentation,
+        RoutePresentation.page);
 
     // Outside `(tabs)/`: full screen, in no tab.
     final settings = AppManifest.byType[SettingsRoute]!;

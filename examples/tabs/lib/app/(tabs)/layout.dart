@@ -1,5 +1,6 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
+import 'package:tabs/cross_fade.dart';
 
 /// Asking for a `StatefulNavigationShell` instead of a `child` makes this a
 /// tab layout: each branch keeps its own navigation stack and state.
@@ -15,6 +16,17 @@ const tabOptions = {
   'search': TabOptions(preload: true),
   'library': TabOptions(initialLocation: '/library/authors'),
 };
+
+/// Optional: how the tabs' navigators are put together. With it, the layout is a
+/// `StatefulShellRoute(navigatorContainerBuilder: container)`; without it, an
+/// `indexedStack`. The parameters are positional with these types (the names
+/// are yours). Here the tabs cross-fade, and each keeps its state.
+Widget container(
+  BuildContext context,
+  StatefulNavigationShell shell,
+  List<Widget> children,
+) =>
+    CrossFadeContainer(currentIndex: shell.currentIndex, children: children);
 
 class TabsLayout extends StatelessWidget {
   const TabsLayout({super.key, required this.navigationShell});

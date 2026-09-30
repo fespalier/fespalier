@@ -7,6 +7,15 @@ enum RoutePresentation {
 
   /// A `redirect.dart`: no page, it only sends the visitor elsewhere.
   redirect,
+
+  /// A `page.dart` on the root navigator, above every layout and tab bar
+  /// (`navigator.dart` with `RouteNavigator.root`, in its folder or above).
+  root,
+
+  /// A `page.dart` whose `Page` the app builds itself (`present.dart`): fespalier
+  /// can't know whether it is a sheet, a dialog or something else. It is on the
+  /// root navigator, unless a `navigator.dart` beside it says otherwise.
+  custom,
 }
 
 /// A segment (`$id`) or a query parameter a route reads, as the generated

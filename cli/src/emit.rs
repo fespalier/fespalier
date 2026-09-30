@@ -26,13 +26,19 @@ struct FileCx {
     /// not_found.dart files below the root, deepest first.
     not_founds: Vec<NotFoundCx>,
     routes: Vec<RouteCx>,
+    /// A typed handle for each section's data.dart.
+    sections: Vec<SectionCx>,
+    /// How `AppRoutes.matchUrl` matches a location to a route, most specific first.
+    matchers: Vec<MatcherCx>,
     params_fns: Vec<ParamsFnCx>,
     providers: Vec<ProviderCx>,
     /// The route manifest, unless `output_manifest:` moves it to its own library.
     manifest: Option<ManifestCx>,
     /// `import '...' show Product;` lines for the types of typed `extra`s.
     extra_imports: Vec<String>,
-    /// Whether routes match paths by case.
+    /// `_i9.extraCodec`, from the app folder's `extra_codec.dart`: `router()` hands it to GoRouter.
+    extra_codec: Option<String>,
+    /// Whether the root matches paths by case: what the mount point is compared with.
     case_sensitive: bool,
     /// `keep_previous` from the config: the DataViews' `keepPrevious`.
     keep_previous: bool,
@@ -58,6 +64,13 @@ struct TreeCx {
     /// What an unparsable segment shows.
     not_found: String,
     transition: Option<TransitionCx>,
+    /// `parentNavigatorKey: rootNavigatorKey`: a page (or a shell) that goes on the root navigator.
+    root: bool,
+    /// Where `root` comes from, for the error when go_router can't honour it.
+    #[serde(skip)]
+    root_at: Option<(String, Option<Span>)>,
+    /// A tab shell's `navigatorContainerBuilder`, when its layout.dart has a `container`.
+    container: Option<String>,
     routes: Vec<TreeCx>,
     /// Starts with a `:segment` (or, for a ShellRoute, holds a route that does).
     #[serde(skip)]
@@ -71,6 +84,8 @@ struct TreeCx {
     /// For a GoRoute: its own `path:` has a `:segment`.
     #[serde(skip)]
     has_params: bool,
+    /// For a GoRoute: whether its whole path matches by case (`caseSensitive: false` when not).
+    case_sensitive: bool,
 }
 
 type Serves = (Vec<Seg>, String, Option<Span>);
@@ -123,6 +138,8 @@ struct LayoutCx {
     not_found: String,
     /// The Navigator's `restorationScopeId`, from the layout's folder.
     restoration_id: String,
+    /// The nearest transition.dart builds the shell's page, under a key made from `restoration_id`.
+    transition: Option<TransitionCx>,
 }
 
 /// A not_found.dart below the root: its URL prefix (`['products', ':id']`) and widget.
@@ -130,6 +147,8 @@ struct LayoutCx {
 struct NotFoundCx {
     prefix: String,
     call: String,
+    /// Whether the folder's own path matches by case.
+    case_sensitive: bool,
 }
 
 /// `_i2.transition(...)`, with the page where `Bind::Child` goes.
@@ -147,16 +166,24 @@ struct TransitionArgCx {
     value: Option<String>,
 }
 
-fn transition_cx(t: &Transition) -> TransitionCx {
+/// The page hook `name` (`transition` or `present`) called for a route's page, or, with
+/// `shell` holding the restoration id, for a layout's shell: which is keyed by that id, a
+/// key that stays the same when the app restarts and while the routes inside the shell change.
+fn transition_cx(t: &Transition, name: &str, shell: Option<&str>) -> TransitionCx {
+    let value = |b: &Bind| match (b, shell) {
+        (Bind::PageKey, Some(id)) => format!("const ValueKey<String>({id})"),
+        (Bind::IsShell, _) => shell.is_some().to_string(),
+        _ => in_builder(b),
+    };
     let args = t
         .args
         .iter()
         .map(|a| TransitionArgCx {
             prefix: if a.named { format!("{}: ", a.name) } else { String::new() },
-            value: (a.bind != Bind::Child).then(|| in_builder(&a.bind)),
+            value: (a.bind != Bind::Child).then(|| value(&a.bind)),
         })
         .collect();
-    TransitionCx { call: format!("_i{}.transition", t.import), args }
+    TransitionCx { call: format!("_i{}.{name}", t.import), args }
 }
 
 #[derive(Serialize)]
@@ -206,6 +233,40 @@ struct TypedDataCx {
     args: String,
 }
 
+/// One route as `AppRoutes.matchUrl` tries it.
+#[derive(Serialize)]
+struct MatcherCx {
+    /// A Dart list of the path's parts: `['products', ':id']`.
+    pattern: String,
+    /// The statements that parse the URL, one per line.
+    lines: Vec<String>,
+    /// `ProductRoute(id: p.id)`.
+    route: String,
+    /// `{'id': p.id}`.
+    params: String,
+    /// `[_data1(l1.shop), _data3(p.id)]`: the section data, then the route's own.
+    data: String,
+    /// Whether the route's path matches by case (its `route.dart`, else the config).
+    case_sensitive: bool,
+}
+
+/// The typed handle of a section's data.dart: `AccountSection.watch(ref, ...)`.
+#[derive(Serialize)]
+struct SectionCx {
+    name: String,
+    /// The section's folder, as a comment shows it.
+    folder: String,
+    file: String,
+    keyed: String,
+    expr: String,
+    verb: &'static str,
+    selector: bool,
+    key: String,
+    /// `{required int id}` (or nothing) and, for `prefetch`, with `keepFor`.
+    args: String,
+    prefetch_args: String,
+}
+
 /// Parses what a route (or layout) reads from the URL into a record.
 #[derive(Serialize)]
 struct ParamsFnCx {
@@ -252,6 +313,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let tree = routes_of(app, 0, true, "", &[], &mut fns);
     check_order(&tree, diags);
     check_tab_starts(&tree, diags);
+    check_root_children(&tree, diags);
     // With no `output_manifest:` the manifest lives here, and imports its meta.dart files here.
     let (manifest, metas) = match cfg.output_manifest {
         None => {
@@ -260,6 +322,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         }
         Some(_) => (None, vec![]),
     };
+    let matchers = matchers(app, &mut fns);
     let cx = FileCx {
         app_dir: cfg.app_dir.clone(),
         table: table(app),
@@ -272,10 +335,13 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         },
         not_founds: not_founds(app),
         routes: app.routes.iter().enumerate().filter_map(|(id, r)| typed_route(app, id, r)).collect(),
+        sections: sections(app, diags),
+        matchers,
         params_fns: fns.into_iter().map(|f| params_fn(app, f)).collect(),
         providers: app.routes.iter().enumerate().filter_map(|(id, r)| provider(app, cfg, id, r)).collect(),
         extra_imports: extra_imports(app, cfg),
-        case_sensitive: cfg.case_sensitive,
+        extra_codec: app.extra_codec.as_ref().map(|c| format!("_i{}.extraCodec", c.import)),
+        case_sensitive: app.routes[0].case_sensitive,
         keep_previous: cfg.keep_previous,
     };
     templates::render("app.g.dart", &cx)
@@ -295,8 +361,21 @@ fn in_builder(b: &Bind) -> String {
         Bind::Uri => "uri".into(),
         Bind::PageKey => "state.pageKey".into(),
         Bind::State => "state".into(),
+        Bind::IsShell => "false".into(),
         // Typed by the parameter it fills.
         Bind::Extra => "extraOf(state)".into(),
+        // Only a not_found.dart takes these; `not_found_call` spells them.
+        Bind::Raw(n) => format!("state.pathParameters['{n}']!"),
+    }
+}
+
+/// Like [`in_builder`] for what sees the extra of routes that aren't its own: a layout, a
+/// guard or a redirect. What isn't the type it asks for reads as `null`, where a page
+/// (whose route the extra was passed to) asserts.
+fn in_hook(b: &Bind) -> String {
+    match b {
+        Bind::Extra => "extraOrNull(state)".into(),
+        _ => in_builder(b),
     }
 }
 
@@ -363,10 +442,14 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize],
             data: None,
             not_found: String::new(),
             transition: None,
+            root: r.root,
+            root_at: r.root.then(|| (rel(r, Kind::Layout), None)),
+            container: None,
             dynamic: out.iter().any(|r| r.dynamic),
             catch_all: out.iter().any(|r| r.catch_all),
             serves: None,
             has_params: false,
+            case_sensitive: true,
             routes: out,
         }];
     }
@@ -400,17 +483,19 @@ fn layout_cx(app: &App, id: usize, layout: &resolve::Widget, fns: &mut BTreeSet<
     let r = &app.routes[id];
     let section = r.data.as_ref().filter(|_| r.is_section());
     let has_params = !r.segs.is_empty() || !r.layout_query.is_empty();
-    let wrapped = with_sections(app, &layout.args, layout.call(in_builder));
+    let wrapped = with_sections(app, &layout.args, layout.call(in_hook), fns, false);
     let reads_url = has_params
         && (section.is_some()
-            || wrapped != layout.call(in_builder)
+            || wrapped != layout.call(in_hook)
             || layout.args.iter().any(|a| matches!(a.bind, Bind::Segment(_) | Bind::Query(_))));
     let seg_fn = reads_url.then(|| {
         fns.insert(ParamsFn::Layout(id));
         ParamsFn::Layout(id).name()
     });
+    let restoration_id = dart_str(&format!("layout:{}", folder_id(&r.dir)));
     LayoutCx {
-        restoration_id: dart_str(&format!("layout:{}", folder_id(&r.dir))),
+        transition: r.shell_transition.as_ref().map(|t| transition_cx(t, "transition", Some(&restoration_id))),
+        restoration_id,
         seg_fn,
         page: wrapped,
         data: section.map(|d| ViewDataCx {
@@ -426,7 +511,7 @@ fn layout_cx(app: &App, id: usize, layout: &resolve::Widget, fns: &mut BTreeSet<
 /// Wraps `inner` in a `SectionView` for each section above that its widget takes data
 /// from (`Bind::Section`): the section's layout has loaded it, so it's read from the
 /// same provider.
-fn with_sections(app: &App, args: &[resolve::Arg], inner: String) -> String {
+fn with_sections(app: &App, args: &[resolve::Arg], inner: String, fns: &mut BTreeSet<ParamsFn>, in_page: bool) -> String {
     let mut ids: Vec<usize> = vec![];
     for a in args {
         if let Bind::Section(id) = a.bind {
@@ -436,11 +521,21 @@ fn with_sections(app: &App, args: &[resolve::Arg], inner: String) -> String {
         }
     }
     ids.into_iter().rev().fold(inner, |acc, sid| {
-        let d = app.routes[sid].data.as_ref().expect("a section has data");
+        let r = &app.routes[sid];
+        let d = r.data.as_ref().expect("a section has data");
+        // A page has the section's segments and the query parameters it is keyed by in its own
+        // record. A layout below the section only has its own: it reads a query parameter
+        // the section is keyed by with the section's parser, from the same URL.
+        let prefix = if in_page || d.keys.iter().all(|k| r.segs.iter().any(|(s, _)| s == k)) {
+            "v.".to_string()
+        } else {
+            fns.insert(ParamsFn::Layout(sid));
+            format!("{}(state).", ParamsFn::Layout(sid).name())
+        };
         format!(
             "SectionView(\n  watch: (ref) => ref.watch({}{}),\n  data: (s{sid}) => {},\n)",
             provider_expr(sid, d),
-            key_expr(app, &app.routes[sid], d, "v."),
+            key_expr(app, r, d, &prefix),
             acc.replace('\n', "\n  ")
         )
     })
@@ -449,7 +544,12 @@ fn with_sections(app: &App, args: &[resolve::Arg], inner: String) -> String {
 /// What an unparsable segment shows: the nearest not_found.dart below the root, or the
 /// root's, which `notFound` picks.
 fn not_found_call(r: &Route) -> String {
-    r.not_found.as_ref().map_or("notFound(state.uri)".into(), |w| w.call(|_| "state.uri".into()))
+    r.not_found.as_ref().map_or("notFound(state.uri)".into(), |w| {
+        w.call(|b| match b {
+            Bind::Raw(n) => format!("state.pathParameters['{n}']!"),
+            _ => "state.uri".into(),
+        })
+    })
 }
 
 /// The not_found.dart files below the root, deepest first, static folders before
@@ -471,7 +571,15 @@ fn not_founds(app: &App) -> Vec<NotFoundCx> {
                     Seg::Group(_) => None,
                 })
                 .collect();
-            NotFoundCx { prefix: format!("[{}]", parts.join(", ")), call: n.widget.call(|_| "uri".into()) }
+            // A segment above the file, as the URL has it: the part of the path at its position.
+            let call = n.widget.call(|b| match b {
+                Bind::Raw(name) => {
+                    let at = n.url.iter().position(|s| matches!(s, Seg::Dynamic(d) if d == name)).unwrap_or(0);
+                    format!("pathPart(uri, base, {at})")
+                }
+                _ => "uri".into(),
+            });
+            NotFoundCx { prefix: format!("[{}]", parts.join(", ")), call, case_sensitive: n.case_sensitive }
         })
         .collect()
 }
@@ -507,7 +615,7 @@ fn hook_call(h: &Guard, name: &str, seg_fn: Option<String>) -> CallCx {
     }
     args.extend(h.args.iter().map(|a| match a.bind {
         Bind::Uri => format!("{}: state.uri", a.name),
-        _ => format!("{}: {}", a.name, in_builder(&a.bind)),
+        _ => format!("{}: {}", a.name, in_hook(&a.bind)),
     }));
     CallCx { seg_fn, call: format!("_i{}.{name}({})", h.import, args.join(", ")) }
 }
@@ -532,6 +640,7 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
     };
     let seg_fn = own_seg_fn(app, id, fns);
     let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
+    let root_key = r.root && r.layout.is_none();
     let data = r.data.as_ref().map(|d| ViewDataCx {
         provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
         invalidate: invalidate_expr(app, id, r, d),
@@ -545,15 +654,23 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
         redirects,
         not_found_builder: false,
         seg_fn,
-        page: with_sections(app, &page.args, page.call(in_builder)),
+        page: with_sections(app, &page.args, page.call(in_builder), fns, true),
         data,
         not_found: not_found_call(r),
-        transition: r.transition.as_ref().map(transition_cx),
+        transition: match &r.present {
+            Some(p) => Some(transition_cx(p, "present", None)),
+            None => r.transition.as_ref().map(|t| transition_cx(t, "transition", None)),
+        },
+        // A layout's shell is what goes on the root navigator; its pages are inside it.
+        root: root_key,
+        root_at: root_key.then(|| (rel(r, Kind::Page), r.page_span.clone())),
+        container: None,
         routes,
         dynamic: path.contains(':'),
         catch_all: path.contains("(.+)"),
         serves: Some((r.url.clone(), rel(r, Kind::Page), r.page_span.clone())),
         has_params: path.contains(':'),
+        case_sensitive: r.case_sensitive,
     }
 }
 
@@ -574,11 +691,15 @@ fn redirect_route(app: &App, id: usize, top: bool, path: &str, inherited: &[usiz
         data: None,
         not_found: not_found_call(r),
         transition: None,
+        root: false,
+        root_at: None,
+        container: None,
         routes: vec![],
         dynamic: path.contains(':'),
         catch_all: path.contains("(.+)"),
         serves: Some((r.url.clone(), rel(r, Kind::Redirect), r.page_span.clone())),
         has_params: path.contains(':'),
+        case_sensitive: r.case_sensitive,
     }
 }
 
@@ -634,8 +755,12 @@ fn tab_routes(
         data: None,
         not_found: String::new(),
         transition: None,
+        root: app.routes[id].root,
+        root_at: app.routes[id].root.then(|| (rel(&app.routes[id], Kind::Layout), None)),
+        container: app.routes[id].container.then(|| format!("_i{}.container", layout.import)),
         serves: None,
         has_params: false,
+        case_sensitive: true,
         routes: vec![],
     }]
 }
@@ -701,7 +826,9 @@ fn catches(a: &[Seg], b: &[Seg]) -> bool {
 /// catch-all can catch a different URL (an all-static one matches just itself), and it can
 /// only catch one that starts with the same static segment or with a `:param`: so the
 /// catching URLs are kept in order, under their first static segment, or in `wild` when they
-/// start with a param or a catch-all.
+/// start with a param or a catch-all. Segments are compared exactly, as [`catches`] does
+/// (`caseSensitive: false` isn't looked at); if that ever changes, key the buckets by the
+/// lowercased segment, and keep the differential test in step.
 fn first_catchers(urls: &[&[Seg]]) -> Vec<Option<usize>> {
     let mut wild: Vec<usize> = vec![];
     let mut by_first: HashMap<&str, Vec<usize>> = HashMap::new();
@@ -769,6 +896,39 @@ fn check_tab_starts(tree: &[TreeCx], diags: &mut Diags) {
     }
 }
 
+/// go_router puts a route on the root navigator by lifting it out of the shell that
+/// would hold it, and can only do that for a route below another route: a direct child of
+/// a `ShellRoute` or a tab (`StatefulShellBranch`) with a `parentNavigatorKey` of its own is
+/// an assertion at startup.
+fn check_root_children(tree: &[TreeCx], diags: &mut Diags) {
+    fn direct(routes: &[TreeCx], holder: &str, diags: &mut Diags) {
+        for r in routes {
+            if let Some((file, span)) = r.root_at.as_ref().filter(|_| r.root) {
+                let msg = format!(
+                    "this route is on the root navigator, but it sits directly in {holder}, and go_router can't lift a direct child out of a shell (it is the first route of a tab, or one beside the others). Put it below a page.dart that stays in the layout, or move its folder out of the layout's folder"
+                );
+                diags.error(file, span.as_ref(), msg);
+            }
+        }
+    }
+    fn walk(tree: &[TreeCx], diags: &mut Diags) {
+        for r in tree {
+            if r.layout.is_some() {
+                let what = if r.branches.is_empty() { "a layout" } else { "a tab layout" };
+                direct(&r.routes, what, diags);
+                for b in &r.branches {
+                    direct(&b.routes, "a tab layout", diags);
+                }
+            }
+            walk(&r.routes, diags);
+            for b in &r.branches {
+                walk(&b.routes, diags);
+            }
+        }
+    }
+    walk(tree, diags);
+}
+
 /// `ref.invalidate(<provider>)`. A selected provider is only known as a
 /// `ProviderListenable`, so the runtime checks that it is one.
 fn invalidate_expr(app: &App, id: usize, r: &Route, d: &Data) -> String {
@@ -795,7 +955,7 @@ fn list_keys(app: &App, r: &Route, d: &Data) -> Vec<String> {
     // A selector's function takes a plain `List` too; a `QueryList` is one, and it gives
     // the app's family the value equality a list key needs.
     let rest = catch_alls(app, r);
-    app.url_params(r)
+    data_params(app, r)
         .into_iter()
         .filter(|(n, t)| d.keys.contains(n) && t.starts_with("List<") && !rest.contains(n))
         .map(|(n, _)| n)
@@ -826,17 +986,128 @@ fn key_expr(app: &App, r: &Route, d: &Data, prefix: &str) -> String {
     }
 }
 
+/// ` keyed by `id``, ` keyed by `(id, q)``, or nothing.
+fn keyed_label(d: &Data) -> String {
+    match d.keys.as_slice() {
+        [] => String::new(),
+        [k] if !d.record => format!(" keyed by `{k}`"),
+        keys => format!(" keyed by `({})`", keys.join(", ")),
+    }
+}
+
+/// The typed handle of each section's data.dart (`AccountSection`).
+fn sections(app: &App, diags: &mut Diags) -> Vec<SectionCx> {
+    let mut taken: Vec<(String, String)> = vec![];
+    let mut out = vec![];
+    for (id, r) in app.routes.iter().enumerate().filter(|(_, r)| r.is_section()) {
+        let d = r.data.as_ref().expect("a section has data");
+        let stem = resolve::pascal(&r.dir);
+        let stem = match stem.chars().next() {
+            None => "Root".to_string(),
+            Some(c) if c.is_ascii_digit() => format!("Path{stem}"),
+            _ => stem,
+        };
+        let name = format!("{stem}Section");
+        let file = rel(r, Kind::Data);
+        if let Some((_, first)) = taken.iter().find(|(n, _)| *n == name) {
+            let msg = format!("the section's typed handle `{name}` is already taken by {first}; (group) folders don't add to the name, so rename a folder");
+            diags.error(&file, None, msg);
+            continue;
+        }
+        taken.push((name.clone(), file.clone()));
+        let mut prefetch = keyed_param_list(app, r, d);
+        prefetch.push("Duration? keepFor".to_string());
+        out.push(SectionCx {
+            name,
+            folder: if r.dir.is_empty() { "the app folder".into() } else { format!("`{}/`", r.dir) },
+            file,
+            keyed: keyed_label(d),
+            expr: provider_expr(id, d),
+            verb: if d.stream { "Restarts" } else { "Re-runs" },
+            selector: d.selector,
+            key: key_expr(app, r, d, ""),
+            args: keyed_params(app, r, d),
+            prefetch_args: format!(", {{{}}}", prefetch.join(", ")),
+        });
+    }
+    out
+}
+
+/// How `AppRoutes.matchUrl` reads each route: its path, then what it builds from the
+/// parsed URL. Most specific first (static parts, then `:params`, then catch-alls), which is
+/// the order go_router tries them in.
+fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
+    let mut all: Vec<(Vec<u8>, MatcherCx)> = vec![];
+    for (id, r) in app.routes.iter().enumerate() {
+        let Some(name) = r.name.as_ref().filter(|_| r.is_route()) else { continue };
+        let ranks: Vec<u8> = r
+            .url
+            .iter()
+            .filter_map(|s| match s {
+                Seg::Static(_) => Some(0),
+                Seg::Dynamic(_) => Some(1),
+                Seg::CatchAll(..) => Some(2),
+                Seg::Group(_) => None,
+            })
+            .collect();
+        let parts: Vec<String> = r
+            .url
+            .iter()
+            .filter_map(|s| match s {
+                Seg::Static(s) => Some(dart_str(s)),
+                Seg::Dynamic(n) => Some(dart_str(&format!(":{n}"))),
+                Seg::CatchAll(n, optional) => Some(dart_str(&format!("*{n}{}", if *optional { "?" } else { "" }))),
+                Seg::Group(_) => None,
+            })
+            .collect();
+        let params = app.url_params(r);
+        let mut lines = vec![];
+        if !params.is_empty() {
+            fns.insert(ParamsFn::Route(id));
+            lines.push(format!("final p = {}(s);", ParamsFn::Route(id).name()));
+        }
+        // The data of each section above, outermost first, then the route's own: the very
+        // providers the page and its layouts watch.
+        let mut data = vec![];
+        for &sid in &r.sections {
+            let sec = &app.routes[sid];
+            let d = sec.data.as_ref().expect("a section has data");
+            // The route takes the section's segments, and the query parameters it is keyed by.
+            data.push(format!("{}{}", provider_expr(sid, d), key_expr(app, sec, d, "p.")));
+        }
+        if let Some(d) = &r.data {
+            data.push(format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "p.")));
+        }
+        let route = if params.is_empty() {
+            format!("const {name}Route()")
+        } else {
+            let args: Vec<String> = params.iter().map(|(n, _)| format!("{n}: p.{n}")).collect();
+            format!("{name}Route({})", args.join(", "))
+        };
+        let map: Vec<String> = params.iter().map(|(n, _)| format!("{}: p.{n}", dart_str(n))).collect();
+        all.push((
+            ranks,
+            MatcherCx {
+                pattern: format!("[{}]", parts.join(", ")),
+                lines,
+                route,
+                params: format!("{{{}}}", map.join(", ")),
+                data: format!("[{}]", data.join(", ")),
+                case_sensitive: r.case_sensitive,
+            },
+        ));
+    }
+    all.sort_by(|a, b| a.0.cmp(&b.0));
+    all.into_iter().map(|(_, m)| m).collect()
+}
+
 fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
     let name = r.name.clone()?;
     if !r.is_route() {
         return None;
     }
     let data = r.data.as_ref().map(|d| {
-        let keyed = match d.keys.as_slice() {
-            [] => String::new(),
-            [k] if !d.record => format!(" keyed by `{k}`"),
-            keys => format!(" keyed by `({})`", keys.join(", ")),
-        };
+        let keyed = keyed_label(d);
         TypedDataCx {
             file: rel(r, Kind::Data),
             keyed,
@@ -879,19 +1150,40 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
     })
 }
 
-/// `, {required int id, int? page}` for the parameters `data.dart` is keyed by.
-fn keyed_params(app: &App, r: &Route, d: &Data) -> String {
-    let typed = app.url_params(r);
-    let params: Vec<String> = d
-        .keys
+/// What a route's `data.dart` can be keyed by: its segments and query parameters; for a
+/// section, the segments above it and the query parameters its layout reads.
+fn data_params(app: &App, r: &Route) -> Vec<(String, String)> {
+    if r.is_section() {
+        let mut out = app.typed_segs(r);
+        out.extend(r.layout_query.iter().cloned());
+        out
+    } else {
+        app.url_params(r)
+    }
+}
+
+/// The query parameters among [`data_params`].
+fn data_query(r: &Route) -> &[(String, String)] {
+    if r.is_section() { &r.layout_query } else { &r.query }
+}
+
+/// The named parameters for the parameters `data.dart` is keyed by: `required int id, int? page`.
+fn keyed_param_list(app: &App, r: &Route, d: &Data) -> Vec<String> {
+    let typed = data_params(app, r);
+    d.keys
         .iter()
         .filter_map(|k| typed.iter().find(|(n, _)| n == k))
-        .map(|(n, ty)| match (r.query.iter().any(|(q, _)| q == n), ty.starts_with("List<")) {
+        .map(|(n, ty)| match (data_query(r).iter().any(|(q, _)| q == n), ty.starts_with("List<")) {
             (true, true) => format!("{ty} {n} = const []"),
             (true, false) => format!("{ty} {n}"),
             _ => format!("required {ty} {n}"),
         })
-        .collect();
+        .collect()
+}
+
+/// `, {required int id, int? page}` for the parameters `data.dart` is keyed by.
+fn keyed_params(app: &App, r: &Route, d: &Data) -> String {
+    let params = keyed_param_list(app, r, d);
     if params.is_empty() { String::new() } else { format!(", {{{}}}", params.join(", ")) }
 }
 
@@ -932,9 +1224,12 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
         .iter()
         .map(|(n, t)| {
             // `int` → Segment.asInt, `int?` → Query.asInt, `List<int>` → Query.asIntList,
-            // a catch-all `List<String>` → Segment.asRest.
+            // a catch-all `List<String>` → Segment.asRest, `List<int>` → Segment.asIntRest.
             if catch_all(n) {
-                return format!("{n}: Segment.asRest(s, '{n}')");
+                return match resolve::list_item(t) {
+                    Some(item) if item != "String" => format!("{n}: Segment.as{}Rest(s, '{n}')", upper_first(item)),
+                    _ => format!("{n}: Segment.asRest(s, '{n}')"),
+                };
             }
             let (reader, base, list) = match (t.strip_suffix('?'), t.strip_prefix("List<").and_then(|l| l.strip_suffix('>'))) {
                 (_, Some(inner)) => ("Query", inner, "List"),
@@ -953,14 +1248,31 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
     ParamsFnCx { name: f.name(), record: format!("({{{}}})", types.join(", ")), parse: format!("({})", values.join(", ")) }
 }
 
-/// The type a provider's family takes for a key: a catch-all as a `String`.
-fn key_ty(rest: &[String], name: &str, ty: &str) -> String {
-    if rest.iter().any(|q| q == name) { "String".into() } else { ty.into() }
+fn upper_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }
 
-/// What `data()` is called with for a key: a catch-all's path parted again.
-fn key_arg(rest: &[String], name: &str, value: &str) -> String {
-    if rest.iter().any(|q| q == name) { format!("restParts({value})") } else { value.into() }
+/// The type a provider's family takes for a key: a catch-all as a `String`, a query list
+/// as a `QueryList`.
+fn key_ty(rest: &[String], name: &str, ty: &str) -> String {
+    if rest.iter().any(|q| q == name) {
+        "String".into()
+    } else {
+        ty.strip_prefix("List<").map_or(ty.into(), |inner| format!("QueryList<{inner}"))
+    }
+}
+
+/// What `data()` is called with for a key: a catch-all's path parted again, each part read
+/// as the list's type (`int.parse` for a `List<int>`: the path was built from parts that parsed).
+fn key_arg(rest: &[String], name: &str, ty: &str, value: &str) -> String {
+    if !rest.iter().any(|q| q == name) {
+        return value.into();
+    }
+    match resolve::list_item(ty) {
+        Some(item) if item != "String" => format!("restParts({value}).map({item}.parse).toList()"),
+        _ => format!("restParts({value})"),
+    }
 }
 
 /// The parameters a `data()` provider is keyed by, as its `create` function takes them
@@ -969,24 +1281,19 @@ fn key_arg(rest: &[String], name: &str, value: &str) -> String {
 /// A list key is a `QueryList` (see `list_keys`); `data()` still takes a `List`. A catch-all
 /// key is its path as one string (see `key_expr`), taken apart again for `data()`.
 fn key_params(app: &App, r: &Route, d: &Data) -> (String, Vec<String>) {
-    let types: Vec<(String, String)> = app
-        .url_params(r)
+    let types: Vec<(String, String)> = data_params(app, r)
         .into_iter()
         .filter(|(n, _)| d.keys.contains(n))
-        .map(|(n, t)| {
-            let t = t.strip_prefix("List<").map_or(t.clone(), |inner| format!("QueryList<{inner}"));
-            (n, t)
-        })
         .collect();
     let rest = catch_alls(app, r);
     match (types.as_slice(), d.record) {
         ([], _) => (String::new(), vec![]),
-        ([(n, t)], false) => (format!("{} {n}", key_ty(&rest, n, t)), vec![format!("{n}: {}", key_arg(&rest, n, n))]),
+        ([(n, t)], false) => (format!("{} {n}", key_ty(&rest, n, t)), vec![format!("{n}: {}", key_arg(&rest, n, t, n))]),
         (many, _) => {
             let fields: Vec<String> = many.iter().map(|(n, t)| format!("{} {n}", key_ty(&rest, n, t))).collect();
             (
                 format!("({{{}}}) k", fields.join(", ")),
-                many.iter().map(|(n, _)| format!("{n}: {}", key_arg(&rest, n, &format!("k.{n}")))).collect(),
+                many.iter().map(|(n, t)| format!("{n}: {}", key_arg(&rest, n, t, &format!("k.{n}")))).collect(),
             )
         }
     }
@@ -1038,6 +1345,32 @@ fn extra_imports(app: &App, cfg: &Config) -> Vec<String> {
     out
 }
 
+/// What a route has besides its page: the tags of the route table, in `fsp routes` too.
+pub fn tags(r: &Route) -> Vec<&'static str> {
+    let mut tags = vec![];
+    if r.redirect.is_some() {
+        tags.push("redirect");
+    }
+    if r.data.is_some() {
+        tags.push("data");
+    }
+    if r.guard.is_some() {
+        tags.push("guard");
+    }
+    if r.layout.is_some() {
+        tags.push("layout");
+    }
+    if r.present.is_some() {
+        tags.push("present");
+    } else if r.transition.is_some() {
+        tags.push("transition");
+    }
+    if r.root && r.page.is_some() {
+        tags.push("root");
+    }
+    tags
+}
+
 /// The route table in the header of app.g.dart; `fsp routes` prints the same rows.
 pub fn table(app: &App) -> Vec<String> {
     let rows: Vec<(String, String, String)> = app
@@ -1045,22 +1378,7 @@ pub fn table(app: &App) -> Vec<String> {
         .iter()
         .filter(|r| r.is_route())
         .map(|r| {
-            let mut tags = vec![];
-            if r.redirect.is_some() {
-                tags.push("redirect");
-            }
-            if r.data.is_some() {
-                tags.push("data");
-            }
-            if r.guard.is_some() {
-                tags.push("guard");
-            }
-            if r.layout.is_some() {
-                tags.push("layout");
-            }
-            if r.transition.is_some() {
-                tags.push("transition");
-            }
+            let tags = tags(r);
             let tags = if tags.is_empty() { String::new() } else { format!("  ({})", tags.join(", ")) };
             let name = format!("{}Route", r.name.as_deref().unwrap_or("?"));
             (resolve::pattern(&r.url), name, format!("{}{tags}", rel(r, if r.page.is_some() { Kind::Page } else { Kind::Redirect })))

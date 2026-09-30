@@ -175,14 +175,17 @@ fn a_catch_all_takes_the_rest_of_the_path() {
 }
 
 #[test]
-fn a_catch_all_is_a_list_of_strings() {
-    for (ty, ok) in [("List<String>", true), ("List<int>", false), ("String", false), ("int", false)] {
+fn a_catch_all_is_a_list_of_simple_values() {
+    for ty in ["List<String>", "List<int>", "List<double>", "List<num>", "List<bool>", "List<DateTime>"] {
         let p = page_with("Docs", "required this.rest", &format!("final {ty} rest;"));
         let e = errors(&[("docs/$$rest/page.dart", &p)]);
-        assert_eq!(e.is_empty(), ok, "{ty}: {e:?}");
-        if !ok {
-            assert!(e.iter().any(|m| m.contains("a catch-all segment is the rest of the path, a `List<String>`")), "{e:?}");
-        }
+        assert!(e.is_empty(), "{ty}: {e:?}");
+    }
+    for ty in ["String", "int", "List<Object>", "List<int?>", "List<int>?", "Set<int>", "List<List<int>>"] {
+        let p = page_with("Docs", "required this.rest", &format!("final {ty} rest;"));
+        let e = errors(&[("docs/$$rest/page.dart", &p)]);
+        let want = "a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime";
+        assert!(e.iter().any(|m| m.contains(want)), "{ty}: {e:?}");
     }
     // Nobody asking for it is fine too: it is still the rest of the path.
     let c = code(&[("docs/$$rest/page.dart", &page("Docs"))]);
@@ -434,10 +437,14 @@ fn the_extra_type_comes_from_wherever_the_page_gets_it() {
 }
 
 #[test]
-fn only_pages_take_an_extra() {
-    let layout = "class ShopLayout extends StatelessWidget { const ShopLayout({super.key, required this.child, this.extra}); final Widget child; final Object? extra; }";
-    let e = errors(&[("shop/layout.dart", layout), ("shop/page.dart", &page("Shop"))]);
-    assert!(e.is_empty() || e.iter().all(|m| !m.contains("extra")), "an optional one is left at its default: {e:?}");
+fn loading_and_error_views_take_no_extra() {
+    // Layouts, guards and redirects do (see `extra_tests.rs`); a view built while data loads
+    // has no route of its own to have passed one to, so an optional one is left at its default.
+    let loading = "class ShopLoading extends StatelessWidget { const ShopLoading({super.key, this.extra}); final Object? extra; }";
+    let data = "Future<String> data(Ref ref) async => '';";
+    let shop = "class ShopPage extends StatelessWidget { const ShopPage({super.key, required this.data}); final String data; }";
+    let e = errors(&[("shop/loading.dart", loading), ("shop/data.dart", data), ("shop/page.dart", shop)]);
+    assert!(e.is_empty() || e.iter().all(|m| !m.contains("extra")), "{e:?}");
     let c = code(&[("page.dart", HOME)]);
     lacks(&c, &["extraOf", "extra:"]);
 }

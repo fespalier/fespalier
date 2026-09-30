@@ -18,6 +18,7 @@ lib/app/
   error.dart             RootError({required Object error, required VoidCallback retry})
   not_found.dart         NotFoundPage({required Uri uri})               (optional, in any folder)
   transition.dart        Page<void> transition(LocalKey key, Widget child)  (inherited)
+  route.dart             const caseSensitive = false;                   (inherited: this folder and below match in any case)
   products/
     data.dart            final data = FutureProvider<List<Product>>(…)
     page.dart            ProductsPage({required List<Product> products})  → /products
@@ -34,6 +35,7 @@ lib/app/
     redirect.dart        String redirect({required int id})            → /old-products/:id redirects
   greet/$name/page.dart  GreetPage({required String name})
   docs/$$rest/page.dart  DocsPage({required List<String> rest})       → /docs/a, /docs/a/b, …
+  compare/$$ids/page.dart  ComparePage({required List<int> ids})       → /compare/3/7 (each part an int)
   (account)/             a group: its layout wraps profile/ and settings/,
     layout.dart            but adds nothing to their URLs (/profile, /settings)
     profile/page.dart
@@ -61,8 +63,12 @@ const SearchRoute(q: 'ap', page: 2).go(context);   // → /search?q=ap&page=2
 ref.watch(ProductRoute.data(42));
 ProductRoute.watch(ref, id: 42);             // the same, typed: AsyncValue<Product>
 await ProductRoute.read(ref, id: 42);        // Future<Product>
-ProductRoute(id: 42).prefetch(ref);          // start loading before navigating
+final warm = ProductRoute(id: 42).prefetch(ref);   // start loading before navigating; warm.close() lets go
 await const ProductsRoute().refresh(ref);
+
+// from a location to what it reads (an app's own prefetch queue, tests): no guard runs, no widget is built
+AppRoutes.dataAt(Uri.parse('/products/42'));    // [ProductRoute.data(42)]; null when no route fits
+AppRoutes.match(Uri.parse('/products/42'));     // RouteMatch: the RouteInfo, the parsed params, the data
 ```
 
 ## Getting started
@@ -164,8 +170,16 @@ replaced, so `flutter analyze` fails on it. Delete it, or rewrite it (see
 Already have a `GoRouter`? Mount the tree inside it instead. `at` is the URL prefix:
 
 ```dart
-GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])
+GoRouter(
+  navigatorKey: rootKey,
+  routes: [...yourRoutes, ...AppRoutes.mount(at: '/x', navigatorKey: rootKey)],
+)
 ```
+
+Pass `mount` your `GoRouter`'s own `navigatorKey`: routes that render on the
+[root navigator](#the-root-navigator-navigatordart) name it as their `parentNavigatorKey`,
+which go_router requires to be an ancestor navigator's. (`AppRoutes.router()` takes a
+`navigatorKey:` too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 **4. Day to day.**
 
@@ -231,16 +245,21 @@ fespalier:
   keep_previous: true
   file_style: snake
   meta: optional            # `required`: every route needs a meta.dart
+  # meta_unique: [code]       # no two routes may pass the same literal `code:` to `meta`
   # output_manifest: lib/app.routes.g.dart   # no default: the manifest lives in `output`
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
-`case_sensitive: false` makes paths match in any case (see [Case and trailing slashes](#case-and-trailing-slashes)).
+`case_sensitive: false` makes paths match in any case, and a [`route.dart`](#case-and-trailing-slashes) sets that
+per folder (see [Case and trailing slashes](#case-and-trailing-slashes)).
 `data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
 [Retries and reloads](#retries-and-reloads). `file_style: kebab` makes `fsp init` and `fsp new`
 write `not-found.dart` instead of `not_found.dart` (see [File names](#file-names)).
-`meta: required` makes a route without a [`meta.dart`](#route-manifest-and-metadart) an error, and
+`meta: required` makes a route without a [`meta.dart`](#route-manifest-and-metadart) an error,
+`meta_unique` makes a duplicate value in it one, and
 `output_manifest` writes the route manifest to a library of its own (same section).
+The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
+found by its name, like the other files.
 
 **Platform notes.**
 
@@ -279,12 +298,16 @@ that returns a widget. Function files export one top-level function.
 | `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data) | segments, query (named; a section's takes segments only) |
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
-| `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside |
-| `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder | `uri`; segments at or above its folder; query (named) |
-| `redirect.dart` | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `ProviderContainer c` first | `uri`; segments; query (named) |
-| `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
+| `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs. A tab layout can also export a [`container`](#tab-layouts) function | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside; the navigation [`extra`](#typed-extra) |
+| `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder | `uri`; segments at or above its folder; query (named); `extra` |
+| `redirect.dart` | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `ProviderContainer c` first | `uri`; segments; query (named); `extra` |
+| `transition.dart` | `Page<…> transition(…)`; applies to this folder and below, layouts' shells included | `key`, `child`, `state`, `shell` (a `bool`) |
+| `present.dart` | `Page<…> present(…)`: the app builds this route's own page (a sheet, say), on the [root navigator](#presentdart-a-page-of-your-own); this folder only | `key`, `child`, `state` |
+| `navigator.dart` | `const navigator = RouteNavigator.root;`: this folder and below [render on the root navigator](#the-root-navigator-navigatordart) | nothing: it is data |
 | `not_found.dart` | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
 | `meta.dart` | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart) | nothing: it is data |
+| `extra_codec.dart` | at the root of the app folder only: a top-level `extraCodec`, the `Codec<Object?, Object?>` the router saves an [`extra`](#restoring-extra-on-the-web) with | nothing: it is data |
+| `route.dart` | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`. Read from the source, never imported | nothing: it is data |
 
 ### Function views
 
@@ -360,7 +383,8 @@ every parameter:
 
 1. **By name.** A parameter named like a `$segment` in the path gets that segment.
    `data`, `child`, `navigationShell` (or `shell`), `error`, `stackTrace`, `retry`, `uri`
-   and, in a page, `extra` get what their name says, in the files where they make sense.
+   and `extra` (in a page, a layout, a guard or a redirect) get what their name says, in the
+   files where they make sense.
 2. **Query.** An *optional* parameter that is nullable or a `List` of
    `String`/`int`/`double`/`bool` is a query parameter: `int? page` gets `?page=2`, and
    `List<String> tags = const []` gets every `?tags=`.
@@ -385,7 +409,8 @@ A segment's type comes from the parameters that ask for it: `{required int id}` 
 `products/$id/data.dart` makes `$id` an `int` everywhere. That covers the typed
 `ProductRoute(id: 42)`, the page, and parsing: `/products/abc` goes to `not_found.dart`.
 Every file that asks for `$id` must agree on its type. When nobody gives one, a segment
-is a `String`. Segments are `String`, `int`, `double` or `bool`.
+is a `String`. Segments are `String`, `int`, `double` or `bool`. (A [catch-all](#catch-all-segments)
+is a `List` of those, or of `num` or `DateTime`.)
 
 `fsp new` scaffolds every segment as a `String`: `fsp new 'products/[id]' --data` writes
 `data(Ref ref, {required String id})`. To make `$id` an `int`, change the parameter type
@@ -394,7 +419,8 @@ in each file that asks for it, then run `fsp gen` (or let `fsp watch` do it).
 ### Catch-all segments
 
 `$$rest` matches **one or more** remaining segments, and `$$$rest` (three `$`) **zero or
-more**. The page takes them as a `List<String>`, each part decoded on its own:
+more**. The page takes them as a `List<String>` (or a [typed list](#typed-catch-alls)), each part
+decoded on its own:
 
 ```
 docs/page.dart            /docs                      the index, beside the catch-all
@@ -406,7 +432,7 @@ files/$$$path/page.dart   /files, /files/a/b         path == [] or ['a', 'b']
 ```dart
 class DocsPage extends StatelessWidget {
   const DocsPage({super.key, required this.rest});
-  final List<String> rest;      // `rest` is the segment: a List<String>, nothing else
+  final List<String> rest;      // `rest` is the segment: a List, of Strings by default
   …
 }
 
@@ -437,12 +463,49 @@ requested location*, so an encoded slash (`/docs/a%2Fb/c` is `['a/b', 'c']`) sur
 - `$$$rest` and a `page.dart` in the folder above would both serve `/docs`: an error. Use
   `$$rest` beside the page.
 
-Limits: a catch-all is always the last segment and a `List<String>` (no `List<int>`); nothing
+Limits: a catch-all is always the last segment and a `List`; nothing
 can be below its folder, and it can't have a `not_found.dart` (it matches every URL under
 it). A catch-all as a tab's first route needs a `tabOptions` `initialLocation`, like any
 route with a parameter. A part of `.` or `..` is read as a dot segment by the URL parser, so
 `DocsRoute(rest: ['..'])` doesn't reach a `..` part. `fsp new 'docs/[...rest]'` and
 `'docs/[[...rest]]'` write the folders, so you don't have to quote `$`.
+
+#### Typed catch-alls
+
+Like a segment, a catch-all takes its type from the parameters that ask for it, and a
+`List<String>` is the default. Ask for a `List<int>`, `List<double>`, `List<num>`, `List<bool>`
+or `List<DateTime>` and every part is read like one segment of that type:
+
+```
+compare/$$ids/page.dart   /compare/3/7/12           ids == [3, 7, 12]
+                          /compare/3/x              not found: `x` isn't an int
+```
+
+```dart
+class ComparePage extends StatelessWidget {
+  const ComparePage({super.key, required this.ids});
+  final List<int> ids;
+}
+
+const CompareRoute(ids: [3, 7, 12]).go(context);   // → /compare/3/7/12
+```
+
+- **A part that doesn't parse** sends the whole route to `not_found.dart`, like a bad `int`
+  segment (`/products/abc`): the page is never built, and a guard is skipped. `bool` parts are
+  `true` and `false`; `num` reads `1` as an int and `2.5` as a double; a `DateTime` part is what
+  `DateTime.tryParse` reads, and the typed route writes it as ISO 8601 (`2024-12-31T10:30:00.000Z`,
+  colons encoded).
+- **`.location` joins the encoded parts**, each on its own (`restPath`), whatever their type.
+  `$$$rest` is an empty list when the path has no part, as with strings.
+- **The type must agree across files**, as for any segment: a `page.dart` with `List<int> ids`
+  and a `data.dart` with `List<String> ids` is an error with a code frame at the second, naming
+  the first (`` `$ids` is List<String> in data.dart:1 but List<int> here ``). Anything else
+  (`List<Object>`, `List<int?>`, `Set<int>`) is an error that lists what a catch-all can be.
+- **`data.dart`** takes the typed list too: the provider is keyed by the encoded path, and
+  `data()` gets the list back as a `List<int>`.
+- Enums aren't supported, for catch-alls or for ordinary segments.
+
+`examples/features` has one at `compare/$$ids` (with a `data.dart`), and a widget test.
 
 ### Case and trailing slashes
 
@@ -461,9 +524,41 @@ fespalier:
 ```
 
 Static parts then match in any case (`/PRODUCTS/Guide` finds `products/guide`), and the
-parts you take out of the URL (a `$segment`, a catch-all) keep the case they had. The
-nearest-`not_found.dart` lookup compares folder names the same way. Typed routes still write
-the paths as the folders spell them. The option is global; there is no per-folder setting.
+parts you take out of the URL (a `$segment`, a catch-all) keep the case they had.
+
+**Per folder.** A `route.dart` overrides that for its folder and everything below it, and the
+nearest one wins over the parent's and over the pubspec:
+
+```dart
+// lib/app/files/route.dart: /files/README.md isn't /files/readme.md, whatever the pubspec says
+const caseSensitive = true;
+```
+
+It works both ways: `false` in one folder of an otherwise exact app, or `true` in one folder
+of a `case_sensitive: false` one (`examples/features` does the second). Like `meta.dart` it is
+read from the source when the tree is generated, never imported or run, so it must be a `true`
+or `false` literal: anything else, a missing `caseSensitive`, or two of them is an error with a
+code frame. Unlike `meta.dart` it needs no page beside it, is inherited (`(group)` folders and
+folders without a page pass it on) and can sit at the root, where it replaces the pubspec's
+value for the whole app. A `route.dart` doesn't add or remove any route.
+(It's a file of its own because `meta.dart` describes one route and is never inherited,
+`transition.dart` is a function, and `layout.dart` only exists where a layout does.)
+
+go_router has one flag per route, and a folder's routes are the whole path down to its page, so
+a folder with no page above one that has (`docs/` above `docs/guide/page.dart`) is part of that
+route: the flag is the one in effect at the page's folder, for the whole path. The
+nearest-`not_found.dart` lookup compares each folder by that folder's own setting, and the mount
+point (`AppRoutes.mount(at: '/Shop')`) by the root's.
+
+**The requested case is kept.** go_router matches a case-insensitive route in any case and
+leaves the location as it was asked for. Navigating or deep-linking to `/Products/2` leaves
+`GoRouterState.uri` and the router's own location (`currentLocation(tester)` in a test) as
+`/Products/2`; nothing is lowercased or redirected, and a `$segment` or catch-all keeps what
+was typed. Only `state.matchedLocation` is spelled by the route (`/products/2`, with the
+parameters as typed). A typed route has no requested case: `ProductRoute(id: 2).location` always
+writes the folders' spelling, so `.location` is unchanged by the setting, and if you want the
+canonical spelling in the address bar you have to navigate to it yourself. (Checked against
+go_router 17.5 and 18.0, in `packages/fespalier/test/paths_test.dart` and `examples/features`.)
 
 ### `(group)` folders
 
@@ -488,7 +583,8 @@ error: /settings is unreachable: $slug/page.dart (/:slug) comes first and matche
 
 A `layout.dart` that asks for a `StatefulNavigationShell` (named `navigationShell` or
 `shell`, or by that type) instead of a `Widget child` is a tab layout. It becomes a
-go_router `StatefulShellRoute.indexedStack`, so each tab keeps its own navigation stack
+go_router `StatefulShellRoute.indexedStack` (or, with a [`container`](#tab-layouts), your own
+`navigatorContainerBuilder`), so each tab keeps its own navigation stack
 and state while you look at another one. Asking for both a child and a shell is an error.
 
 ```dart
@@ -525,7 +621,8 @@ query parameters like any other layout. A tab layout folder without its own `pag
 no route at its own path: link to one of its tabs' routes instead.
 
 Routes outside the layout's folder aren't in any tab, so they cover the whole screen: in
-`examples/tabs`, `/settings` has no navigation bar and `/profile/edit` does. Two things to
+`examples/tabs`, `/settings` has no navigation bar. To cover the screen while the URL stays in
+a tab (`/profile/edit`), use [`navigator.dart`](#the-root-navigator-navigatordart). Two things to
 know: go_router opens a tab on its first route, which can't have a `:segment` in its own
 path, so a tab made only of dynamic routes, or a tab layout placed directly in a
 `$folder`, is an error (put the layout in a `(group)` below that folder instead); and `tabs` in a tab layout must be string literals, so name another list of destinations
@@ -582,6 +679,26 @@ string-literal keys and `TabOptions(...)` values with `true`/`false` and string-
 arguments. Unknown tabs, repeated tabs, unknown options and other values are errors that
 point at the offending entry. Only tabs that need options are listed.
 
+**Container.** By default the tabs' navigators sit in an `IndexedStack`. A tab layout can
+export a top-level `container` function to arrange them itself, say to cross-fade or slide
+between tabs:
+
+```dart
+// lib/app/(tabs)/layout.dart
+Widget container(BuildContext context, StatefulNavigationShell shell, List<Widget> children) =>
+    CrossFadeContainer(currentIndex: shell.currentIndex, children: children);
+```
+
+The generated route is then `StatefulShellRoute(navigatorContainerBuilder: _i1.container, …)`
+instead of `.indexedStack(…)`; a layout without `container` generates exactly what it did
+before. The three parameters are positional, and their **types are fixed** (`BuildContext`,
+`StatefulNavigationShell`, `List<Widget>`; the names are yours): a wrong type, a missing or an
+extra parameter, or a return type that isn't `Widget` is an error at the parameter. `children`
+holds one navigator per tab in the layout's tab order, and the container must keep them all in the
+tree (`Offstage`, `Opacity` or a `Stack`, as `IndexedStack` does) or the tabs lose their state.
+A `container` in a layout that isn't a tab layout is ignored with a warning. `examples/tabs`
+cross-fades, and its tests check that a tab's state survives.
+
 ### Guards
 
 `guard.dart` exports `GuardResult guard(ProviderContainer c, {…})`. It returns a location to
@@ -599,7 +716,7 @@ GuardResult guard(ProviderContainer c, {required Uri uri}) =>
   folder with a page and its own guard keeps its guard for that page and everything nested
   in it; guards above it run first.
 - **Parameters.** The `ProviderContainer` comes first, then named parameters: `uri` (the
-  requested location, a `Uri`), the segments of the guard's own folder and the ones above
+  requested location, a `Uri`), `extra` (see [Typed `extra`](#typed-extra)), the segments of the guard's own folder and the ones above
   it (`{required String shop}`), and query parameters (optional and nullable, `String? ref`).
   A guard above `$id` can't ask for `id`: that's an error at the parameter. Segments are
   typed like everywhere else. A guard's query parameters stay its own: they don't become
@@ -667,7 +784,15 @@ the nearest wins, for two things:
 - **Unparsable segments.** `/teams/a/members/abc`, where a member's id is an `int`, shows the
   nearest `not_found.dart` above that route (a `(group)`'s counts here).
 
-It still only gets `Uri uri`. A `(group)` folder adds nothing to the URL, so its
+**What it gets.** `Uri uri`, and the segments of its own path as `String`s, as the URL spells
+them (`teams/$teamId/not_found.dart` can take `String teamId`). They are raw on purpose: a
+segment that didn't parse (`abc` where an id is an `int`) is often the reason you are here, so
+a not_found.dart can't ask for it typed, and one that declares `int teamId` is an error that says
+so. The value is the decoded path part: `/teams/Acme%20Co/members/x` gives `Acme Co`. It gets
+no query parameters and no data. `fsp new members --not-found` scaffolds one (with the segments
+it can take).
+
+A `(group)` folder adds nothing to the URL, so its
 `not_found.dart` can't be picked for unknown URLs: only for its own routes' bad segments.
 Two folders with the same URL (`(a)/x` and `(b)/x`) can't both have one; that's an error.
 When the tree is mounted under a prefix (`mount(at: '/shop')`), the prefix is skipped when
@@ -688,6 +813,21 @@ and `fullscreenDialog` (below).
 // lib/app/transition.dart: every route fades in, unless a folder overrides it
 Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);
 ```
+
+**A layout's shell is a page too.** The `ShellRoute` a `layout.dart` makes, and a tab layout's
+`StatefulShellRoute`, take the nearest `transition.dart` (the layout folder's own included) as
+their `pageBuilder`, so a layout moves like any other page when a route on the
+[root navigator](#the-root-navigator-navigatordart) opens over it. The shell's page key is
+`ValueKey<String>('layout:(tabs)/')`, made from the layout's folder: it is the same on every
+launch (its restoration id, see [State restoration](#state-restoration)) and while you
+switch routes inside the shell, so **only entering or leaving the shell animates it**, not going
+from one page of the layout to another. A layout with no `transition.dart` above it keeps
+`layoutPage(…)`. Since `fsp init` writes a root `transition.dart`, that means most apps' shells now
+have a `pageBuilder` of their transition's making: regenerate and check your layouts.
+
+A `transition()` that needs to tell a shell from a route (to wrap a route's page in something
+its shell shouldn't get) can take `bool shell` (or `isShell`): `true` for a layout's shell, `false`
+for a route's page. It is the only extra parameter besides `key`, `child` and `state`.
 
 **Dialogs and sheets.** `Transitions.dialog`, `Transitions.sheet` and
 `Transitions.fullscreenDialog` make a route open over the previous page instead of
@@ -716,7 +856,9 @@ and the barrier pop the route, and `dialog` and `sheet` take options such as
   the dialog opens over an empty screen.
 - **They cover their own navigator only.** Inside a tab, a dialog covers that tab's
   navigator, not the tab layout's navigation bar; the same goes for a `layout.dart`'s
-  body. Put the route outside the layout's folder to cover the whole screen.
+  body. Put the route outside the layout's folder to cover the whole screen, or give it a
+  [`present.dart`](#presentdart-a-page-of-your-own) (which puts it on the root navigator) or a
+  [`navigator.dart`](#the-root-navigator-navigatordart) beside its `transition.dart`.
 - **They need `MaterialLocalizations`,** like `showDialog` and `showModalBottomSheet`: a
   `MaterialApp` (or a `Localizations` with the Material delegate) above the router.
 - The route's `transition.dart` also covers routes below it, so give a dialog route its own
@@ -725,6 +867,79 @@ and the barrier pop the route, and `dialog` and `sheet` take options such as
 Routes with no `transition.dart` above them keep go_router's default for your app type:
 the platform transition under a Material or Cupertino app, none otherwise (see the go_router
 18 note in [Getting started](#getting-started)). Scaffold one with `fsp new … --transition`.
+
+### The root navigator (`navigator.dart`)
+
+A route's URL and the navigator it renders on are two decisions. A tab layout puts every route
+in its folder on a tab's navigator, under the navigation bar. `navigator.dart` says that a
+folder renders on the **root** navigator instead, above every layout and tab bar, without
+moving its URL:
+
+```dart
+// lib/app/(tabs)/profile/edit/navigator.dart
+const navigator = RouteNavigator.root;
+```
+
+`/profile/edit` is still under `/profile` (a deep link builds the Profile tab beneath it, and back
+returns to it, with its state), and the page covers the whole screen. The declaration applies to
+its folder's routes and to **every folder below it**, and the nearest one wins, like
+`transition.dart`; a page-less `(group)` folder can hold it too, for the routes inside. `fsp gen`
+emits `parentNavigatorKey: rootNavigatorKey` on the route and on all its descendants (go_router puts a
+route on its enclosing shell's navigator unless it says otherwise, so a child pushed from the page
+would land *under* it), and the route table marks them `(root)`.
+
+The generated file owns the key: `AppRoutes.rootNavigatorKey` is a `GlobalKey<NavigatorState>` the
+app can read; `AppRoutes.router(navigatorKey: …)` uses one you supply; and
+`AppRoutes.mount(at:, navigatorKey: …)` takes the **host** `GoRouter`'s own key, since a
+`parentNavigatorKey` must name an ancestor navigator.
+
+- `fsp` reads the file from the source, like `tabs`: a `const navigator` that is
+  `RouteNavigator.root` or `RouteNavigator.shell`, spelled out; anything else is an error at it.
+- **A layout is a navigator of its own.** A `layout.dart` below a root folder becomes a
+  `ShellRoute(parentNavigatorKey: rootNavigatorKey, …)` (or the `StatefulShellRoute`); the routes
+  inside it sit on its own navigator, since go_router doesn't allow a key other than the shell's
+  there. Below a layout nothing is inherited, and `RouteNavigator.shell` is what a folder says to
+  be explicit about it. Below a root route with **no** layout in between, `.shell` is an error:
+  go_router only lets a descendant use the root navigator or a navigator above it.
+- **A root route can't be a direct child of a shell.** go_router lifts a route out of its shell
+  only from below another route, so a root route that is the first route of a tab, or sits beside
+  others directly in a layout, is an error (put it below a `page.dart` that stays in the layout, or
+  move its folder out of the layout's folder).
+- The typed route is unchanged: `EditProfileRoute().push(context)` and `.go(context)` as before.
+
+`examples/tabs` does this for `/profile/edit`; its tests check that there is no `NavigationBar`, that
+back returns to the tab, and that a deep link builds the tab underneath.
+
+### `present.dart`: a page of your own
+
+`present.dart` builds **this route's own `Page`**. It is for a sheet (or a dialog, or any page
+class the app owns) with a URL: `/products/:id/buy` opens a sheet over `/products/:id`, from a
+link or a deep link.
+
+```dart
+// lib/app/products/$productId/buy/present.dart
+Page<void> present(LocalKey key, Widget child) => SheetPage(key: key, child: child);
+```
+
+It is bound like `transition.dart` (`key`, `child`, `state`), and what it returns is used
+**verbatim**: fespalier adds no scrim, handle or shape, and ships no sheet widget. Unlike
+`transition.dart`:
+
+- it applies to **its own folder only**: a folder below keeps the nearest `transition.dart` for
+  its own page;
+- it puts the route on the **root navigator**, over a tab bar and any `layout.dart`, and its
+  descendants too (the [`navigator.dart`](#the-root-navigator-navigatordart) rules, so a child of
+  a sheet renders above it, never under it, and go_router never builds the shell twice). A
+  `navigator.dart` in the same folder overrides that (`RouteNavigator.shell` keeps a sheet in
+  a tab);
+- it needs a `page.dart` (a warning and no effect otherwise), and, to have a parent underneath on a
+  deep link, the sheet's folder should sit below the parent page's folder.
+
+The route table marks it `(present, root)`, and the manifest's `presentation` is
+`RoutePresentation.custom` (fespalier can't know it is a sheet: say so in a `meta.dart` if you want
+to). `examples/features` has `/photos/share`, with an app-owned `SheetPage` in `lib/`, a
+child page above it, and tests for the deep link, the parent's state after popping, and the root
+navigator.
 
 ### Query parameters
 
@@ -778,20 +993,111 @@ NoteRoute(id: 3).go(context, extra: 'oops');    // compile error: a String isn't
 ```
 
 The parameter **must be nullable** (`Note?`, `Object?` or `dynamic`; anything else is an
-error at that parameter). The object isn't in the URL, so a deep link, a reload, a page
-opened from `context.go('/notes/3')` and a restored state all get `null`: build the page
-from the URL (`id`) and treat `extra` as a shortcut, not the source of truth. Passing an
-object of the wrong type around the typed route (a plain `context.go(location, extra: …)`)
-is an assertion error in debug builds and reads as `null` in release builds.
+error at that parameter). The object isn't in the URL, so a deep link, a page opened from
+`context.go('/notes/3')` and (without an [`extraCodec`](#restoring-extra-on-the-web)) a
+reload or a restored state all get `null`: build the page from the URL (`id`) and treat
+`extra` as a shortcut, not the source of truth. Passing an object of the wrong type around
+the typed route (a plain `context.go(location, extra: …)`) is an assertion error in debug
+builds and reads as `null` in release builds.
 
-`extra` is a page-only name: a segment can't be called `extra`, and a query parameter of
+`extra` is a reserved name: a segment can't be called `extra`, and a query parameter of
 that name is the extra, not `?extra=`. The generated file has to name the type for the
 typed arguments, which is the one place it copies from your imports: it imports the type
-`show`ing that name from each of `page.dart`'s imports (a library that doesn't export it is
-ignored; a type declared in `page.dart` itself, or under an import prefix, is found too),
-so the type must be reachable from `page.dart`'s own imports. The built-in `dart:core`
-types need nothing. Only pages take an `extra`; go_router's `extra` isn't restored on web
-reloads unless you give the router an `extraCodec`.
+`show`ing that name from each of the file's imports (a library that doesn't export it is
+ignored; a type declared in the file itself, or under an import prefix, is found too),
+so the type must be reachable from the file's own imports. The built-in `dart:core`
+types need nothing.
+
+**Layouts, guards and redirects take it too.** A `layout.dart`, a `guard.dart` or a
+`redirect.dart` can ask for `extra` the same way (a nullable type; a guard and a redirect take
+it as a named parameter). Each gets the extra of the location it is at now, `state.extra`:
+
+```dart
+// notes/layout.dart: the frame above every note
+class NotesLayout extends StatelessWidget {
+  const NotesLayout({super.key, required this.child, this.extra});
+  final Widget child;
+  final Note? extra;
+  …
+}
+
+// notes/$id/guard.dart: a draft isn't shown yet
+GuardResult guard(ProviderContainer c, {Note? extra}) =>
+    extra?.title == 'draft' ? const HomeRoute().location : null;
+```
+
+A layout or a guard sees the extra of *every* route it covers, so its type has to fit theirs,
+or it's an error at its parameter, with a code frame that lists the routes:
+
+- A guard or layout takes `Object?` (or `dynamic`) to accept anything, or **the type of the
+  routes it covers**: `Note?` above pages that take `Note?`. Nullability aside, the names have
+  to match. A route that takes no extra puts no condition on it.
+- So a layout above routes with different extra types must take `Object?`; otherwise the
+  routes that don't fit are listed:
+
+  ```
+  error: `extra` is `Note?` here, but the routes it covers take other types: `/notes/:id/print`
+         (notes/$id/print/page.dart takes `Receipt?`); a layout sees the extra of every route it
+         covers, so declare it as `Object?` to accept any of them, or as their type when they share one
+    ┌─ lib/app/notes/layout.dart:3:53
+  ```
+
+  A page's or redirect's own type decides for a route; on a route without one, the guards and
+  layouts above it must agree with each other. A layout isn't compared with a `redirect.dart`
+  route below it, which never shows it.
+- A route that takes no extra of its own gets the type its guards and layouts agree on, so
+  `NoteRoute(...).go(context, extra: note)` is typed even if the page ignores it.
+  `Object?` says nothing about a type: it adds no typed argument.
+- **A wrong type never crashes them.** A layout, a guard or a redirect sees extras meant for
+  other routes, so an object that isn't a `Note` reads as `null` (`extraOrNull`), and so does an
+  extra that isn't there. Only a page asserts, as above. The type is nullable so that `null`
+  always fits.
+
+#### Restoring `extra` on the web
+
+go_router keeps a navigation's `extra` next to its location, for the browser's history and for
+state restoration, but can only save what is JSON. Without help, an object with a `toJson()`
+comes back as the JSON `jsonEncode` made of it (a `Map`), and any other object is dropped
+(and go_router logs a warning): neither is your type, so a page that asks for a `Note?` gets
+`null` in release builds and, for the `Map`, an assertion in debug builds. To get the object
+back, give the router an `extraCodec`.
+
+Put a top-level `extraCodec` in `lib/app/extra_codec.dart`, at the root of the app folder (a
+`const`, a `final` or a getter; `fsp` only looks for the name). The generated
+`AppRoutes.router()` passes it as `GoRouter(extraCodec: …)`:
+
+```dart
+// lib/app/extra_codec.dart
+import 'package:fespalier/fespalier.dart';
+
+final extraCodec = ExtraCodec({
+  Note: (toJson: (Note n) => n.toJson(), fromJson: Note.fromJson),
+  Mode: (toJson: (Mode m) => m.name, fromJson: Mode.values.byName),
+});
+```
+
+`ExtraCodec` takes each type and how it becomes JSON and back (annotate the parameter of
+`toJson`; a constructor tear-off does for `fromJson`), and saves an object under its type's
+name. `null`, strings, numbers, booleans and plain JSON lists and maps need no entry. It
+never breaks navigation: an object whose type isn't registered is saved as `null`, and saved
+data that no longer reads (the type was removed, or `fromJson` throws) comes back as `null`,
+so a page falls back to what the URL says. Pass `strict: true` to throw instead, in a test that
+checks you registered every type.
+
+- The type is looked up by its exact runtime type: register each subclass of a sealed class.
+- The name is `Type.toString()`, which a release build for the web minifies (stable within a
+  build, different in the next). To keep saved data readable across deployments, name the types:
+  `ExtraCodec({...}, names: {Note: 'note'})`.
+- Write your own `Codec<Object?, Object?>` instead if you like (`const extraCodec = MyCodec();`).
+- `AppRoutes.mount()` doesn't take it: a router you build yourself passes
+  `extraCodec: extraCodec` (imported from that file) to `GoRouter`. A router restores only what
+  it is given a `restorationScopeId` for (see [State restoration](#state-restoration)).
+- `extra_codec.dart` in a subfolder is a warning, and a file without an `extraCodec` is an
+  error.
+
+`examples/tabs` does this for a `ProfileDraft` passed to its edit page, and its restoration test
+restarts the app and checks the draft is still there (and, for contrast, what a router without the
+codec restores). `examples/features` has a layout and a guard that read a `Note?` extra.
 
 ### `data.dart`: a function, a selector or a provider
 
@@ -914,7 +1220,7 @@ A route with a `data.dart` has three more helpers next to `.data` and `.refresh`
 ```dart
 final product = ProductRoute.watch(ref, id: 42);   // AsyncValue<Product>, for build()
 final p = await ProductRoute.read(ref, id: 42);    // Future<Product>, for callbacks
-ProductRoute(id: 42).prefetch(ref);                // void, before navigating
+final warm = ProductRoute(id: 42).prefetch(ref);   // a PrefetchHandle, before navigating
 ```
 
 `watch` and `read` are *static*, and take the keys the provider uses as named arguments
@@ -922,29 +1228,91 @@ ProductRoute(id: 42).prefetch(ref);                // void, before navigating
 none for a route without keys). They can't be instance methods: `ProductRoute(id: 42).watch(ref)`
 would have to write `AsyncValue<Product>` into the generated file, and the generator never
 copies your imports. A static function value takes its type from the provider by
-inference, so `Product` flows through and is never `dynamic`.
+inference, so `Product` flows through and is never `dynamic`. (More in
+[Design notes](#design-notes).)
 
 `read` keeps the provider alive until it completes, which a plain `ref.read(p.future)`
 doesn't for an `autoDispose` provider. Don't call it from `build`.
 
-`prefetch(ref, {keepFor})` starts the load and keeps the result for `keepFor` (30 seconds
-by default), so the page you navigate to next shows it at once. The generated providers
-are `autoDispose`, so a prefetch nobody watches would be dropped in the same frame; this is
-why it holds on to it, and it lets go when the time is up. A failed load isn't kept:
-the page starts a fresh one instead. Call it before `go`, e.g. on hover:
+`prefetch(ref)` starts the load and returns a `PrefetchHandle` that **keeps the provider alive
+until you call `close()`** on it, so the page you navigate to next shows the value at once. The
+generated providers are `autoDispose`, so a prefetch nobody watches would be dropped in the same
+frame; the handle is what holds it, and how long is yours to decide: an app's prefetch queue
+holds one per lease and closes it when the lease ends. `keepFor:` is an optional auto-close
+(`prefetch(ref, keepFor: Duration(seconds: 30))` closes the handle after that long). A failed
+load isn't kept (the handle closes itself): the page starts a fresh one instead. Call it before
+`go`, e.g. on hover:
 
 ```dart
 MouseRegion(
-  onEnter: (_) => ProductRoute(id: p.id).prefetch(ref),
+  onEnter: (_) => _warm = ProductRoute(id: p.id).prefetch(ref),
+  onExit: (_) => _warm?.close(),
   child: ListTile(onTap: () => ProductRoute(id: p.id).go(context), …),
 )
 ```
 
-Two things to know: it lives as long as the widget whose `ref` you pass (a widget that is
-disposed ends it), and it holds a timer, so a widget test that prefetches should `pump`
-past `keepFor` (or pass `keepFor: Duration.zero`, which starts the load and keeps nothing).
+A few things to know: closing twice is fine, and `handle.isClosed` tells; the subscription
+also ends when the widget whose `ref` you pass is disposed; `keepFor` holds a timer, so a widget
+test that uses it should `pump` past it (or pass `Duration.zero`, which starts the load and keeps
+nothing); and *the default changed*: a prefetch used to lapse after 30 seconds without a
+`keepFor`, and now lasts until closed (a `prefetch(ref)` whose handle is dropped lasts as
+long as the widget behind `ref`). `prefetchKeepAlive` is gone.
 Because these are members of the route class, `watch`, `read`, `prefetch`, `refresh`, `ref`
 and `keepFor` can't be segment or query names.
+
+### From a location to its data
+
+An app's own prefetch layer often starts from a *location* (the next page a list points at),
+not from a route it built by hand. Two generated functions on `AppRoutes` answer that from the
+tree, without a table of your own:
+
+```dart
+final providers = AppRoutes.dataAt(Uri.parse('/products/42'));
+// [ProductRoute.data(42)]: the provider the page watches, so warming it warms the page.
+final handle = ref.prefetchAll(providers ?? const []);   // one PrefetchHandle for them all
+// ... later, when your queue's lease ends:
+handle.close();
+```
+
+`dataAt(uri)` is a `List<ProviderListenable<AsyncValue<Object?>>>?`, **outermost first**: the
+`data.dart` of each [section](#section-data) above the route, then its own. It is:
+
+- `null` when no route fits the location, or when a segment doesn't parse (`/products/abc`
+  where the id is an `int`): the rule that shows `not_found.dart`;
+- empty for a route without data (a page, or a catch-all with nothing behind it): a match, with
+  nothing to warm.
+
+The key is built by the same parser the route uses, so `dataAt(Uri.parse('/products/42')).single
+== ProductRoute.data(42)`, and for a `data.dart` that [selects a provider](#datadart-a-function-a-selector-or-a-provider)
+it is the selected provider itself (your own `productProvider('42')`). Query-keyed data is keyed by
+the query of the location (`/search?q=ap&page=2` is `SearchRoute.data((q: 'ap', page: 2, …))`,
+lists as the `QueryList` the page's key uses), a [catch-all](#catch-all-segments) by its decoded
+path. The mount point (`AppRoutes.mount(at: '/shop')`) is taken off first, a location outside it
+is `null`, and each route matches its path by its own case setting (`case_sensitive: false`, or its folder's `route.dart`). A [typed catch-all](#catch-all-segments) (`List<int>`) parses each part like the page does, so one that fails is no match. Nothing else runs: no
+`guard.dart`, no `redirect.dart`, no widget. (A guard may well send the user somewhere else
+when they arrive; prefetching what they asked for is your queue's call, and never
+triggers it.)
+
+`AppRoutes.match(uri)` is what `dataAt` is a shortcut for (`match(uri)?.data`, over the same
+matching, so it isn't written twice). It returns a `RouteMatch`, or `null` under the same rules:
+
+```dart
+final m = AppRoutes.match(Uri.parse('/shops/acme/items/7'))!;
+m.info;      // the RouteInfo from the manifest: path '/shops/:shop/items/:id', folder, meta, ...
+m.params;    // {'shop': 'acme', 'id': 7}: the segments and query parameters, parsed
+m.route;     // ItemRoute(shop: 'acme', id: 7), typed; m.route.location is its canonical spelling
+m.data;      // the providers, as dataAt returns them
+m.uri;       // the location it was given
+```
+
+Routes are tried most specific first (static parts, then `:param`s, then catch-alls), the order
+go_router uses. `match` lives on the manifest (`AppManifest.match`, forwarded by `AppRoutes`,
+like `all`), so with [`output_manifest:`](#route-manifest-and-metadart) it is in the manifest
+library; `AppRoutes.dataAt` and `AppRoutes.matchUrl` (a `UrlMatch`: the route, params and data
+without the `RouteInfo`) stay in `app.g.dart`, which never imports a `meta.dart`.
+`RouteMatch` is fespalier's: `package:fespalier/fespalier.dart` hides go_router's own
+`RouteMatch` (an internal of its parser) to make room for it, so import
+`package:go_router/go_router.dart` if you need that one.
 
 ### Section data
 
@@ -984,9 +1352,27 @@ class MembersPage extends StatelessWidget {
   data.dart that yields that type, and it is an error if two do (a page's own and a
   section's, or two sections'): name the parameter `data` for the nearest, or give one of
   them another type. A page can have its own `data.dart` and take a section's by type.
-- **Keys.** A section's `data()` takes segments only (at or above its folder), not query
-  parameters: the pages below have to compute the same key. It has no typed route class of
-  its own; write `final data = FutureProvider…` yourself if you need to reach it elsewhere.
+- **Keys.** A section's `data()` takes segments (at or above its folder) and, like a page's,
+  query parameters: `Future<Report> data(Ref ref, {String? period})` keys the section by
+  `?period=` of the location. The layout reads it from the URL like any layout query parameter.
+  Every route below the section is then keyed by it too: `period` becomes a query parameter of
+  each of their typed routes (`MonthlyReportRoute(period: '2026-01')` writes
+  `/reports/monthly?period=2026-01`), so the pages below read the same provider the layout
+  loaded. A page that declares the same name with another type is an error, as anywhere.
+- **Typed handle.** A section has no route of its own, so it gets a class named after its
+  folder, with `Section` on the end (`teams/$teamId` is `TeamsTeamIdSection`, `(shop)` is
+  `ShopSection`, the app folder `RootSection`; two folders that name the same class are an
+  error). Its members are static and take the section's keys as named arguments, like a route's:
+
+  ```dart
+  TeamsTeamIdSection.data('acme');                         // the provider
+  TeamsTeamIdSection.watch(ref, teamId: 'acme');           // AsyncValue<Team>
+  await TeamsTeamIdSection.read(ref, teamId: 'acme');      // Future<Team>
+  final h = TeamsTeamIdSection.prefetch(ref, teamId: 'acme');   // PrefetchHandle
+  await TeamsTeamIdSection.refresh(ref, teamId: 'acme');
+  ```
+
+  A key can't be called `ref`, `keepFor` or another of the handle's members.
 - **Where it applies.** A layout of any kind can be a section's, tab layouts included. A
   `data.dart` beside a `page.dart` keeps feeding that page, so the folder that holds the
   section's layout mustn't have a page.
@@ -1008,6 +1394,8 @@ AppRoutes.all;  // every route, in the order of the table at the top of app.g.da
 
 `AppRoutes.all`, `byType` (typed-route class → info) and `byPath` (path template → info) are
 generated as `AppManifest`, a `const` list of `RouteInfo`s, and forwarded by `AppRoutes`.
+`AppManifest.match(uri)` finds the entry for a *location* ([From a location to its
+data](#from-a-location-to-its-data)).
 Each `RouteInfo<M>` has:
 
 | Field | |
@@ -1015,10 +1403,10 @@ Each `RouteInfo<M>` has:
 | `type` | the typed-route class: `ProductRoute` |
 | `path` | the path template, without the mount point: `/products/:id`; a [catch-all](#catch-all-segments) is `/docs/*rest`, or `/files/*path?` when optional (as in `fsp routes`). Case-insensitive paths (`case_sensitive: false`) don't change it |
 | `folder` | the route's folder relative to the app folder: `(buyer)/products/$id` (empty for the app folder itself) |
-| `presentation` | `RoutePresentation.page`, or `.redirect` for a `redirect.dart` (`isRedirect`). Whether a page opens as a dialog or sheet is up to its `transition.dart` at runtime, so it isn't listed |
+| `presentation` | `RoutePresentation.page`; `.redirect` for a `redirect.dart` (`isRedirect`); `.root` for a page on the [root navigator](#the-root-navigator-navigatordart) through `navigator.dart`; `.custom` for a page a [`present.dart`](#presentdart-a-page-of-your-own) builds (it is on the root navigator too, unless a `navigator.dart` beside it says otherwise). Whether a page opens as a dialog or sheet is up to its `transition.dart` or `present.dart` at runtime, so it isn't listed |
 | `groups` | the `(group)` folders above it, outermost first, parentheses included |
 | `layouts` | the folders of the layouts that wrap it, outermost first (`''` is the app folder's own layout) |
-| `segments`, `query` | `RouteParam(name, type)`: `('id', 'int')`, `('page', 'int?')`, `('tags', 'List<String>')`. A catch-all is the last segment, a `List<String>` with `catchAll: true` |
+| `segments`, `query` | `RouteParam(name, type)`: `('id', 'int')`, `('page', 'int?')`, `('tags', 'List<String>')`. A catch-all is the last segment, a `List<String>` (or the `List` type it is typed with) with `catchAll: true` |
 | `tabs` | the tabs it sits in, outermost first: `RouteTab(layout, index, branch)`, where `branch` is the name `tabs` and `tabOptions` use (`.` for the layout's own page); empty outside tab layouts |
 | `dataKeys` | what its `data.dart` is keyed by; `null` without one |
 | `meta` | its `meta.dart`, as declared |
@@ -1043,8 +1431,15 @@ const meta = PageMeta(code: 'B04', slug: 'product-detail', title: 'Product');
 - **It can be required.** With `fespalier: { meta: required }` in `pubspec.yaml`, a route without a
   `meta.dart` is an error that names its folder:
   `` `products/$id/` has no meta.dart ``. fespalier never numbers, derives or defaults
-  anything in it: a review code is yours, and finding a duplicate is a few lines in a test over
-  `AppRoutes.all` and `metaAs`.
+  anything in it: a review code is yours.
+- **Its values can be unique.** `meta_unique: [code, slug]` in the same section makes a
+  duplicate an error: it reads the *literal* named arguments of `meta`'s constructor call
+  (`const meta = PageMeta(code: 'B04', slug: 'product-detail')`, a string, number or bool) in
+  every route's `meta.dart` and reports a value that two routes share, naming both files
+  (`` `code: 'B04'` is also in products/meta.dart ``). An argument that is an expression, or
+  that a route leaves out, is skipped (nothing is compared for it), and a listed name no
+  `meta.dart` gives a literal is a warning, in case it is a typo. Anything more (a pattern for
+  the code, unique across tabs only) is a few lines in a test over `AppRoutes.all` and `metaAs`.
 - **Read it typed** with `info.metaAs<PageMeta>()` (null when the route has none, or it is
   another type), or check `info.meta is PageMeta`. The list holds `RouteInfo<Object?>`.
 
@@ -1103,11 +1498,11 @@ are relative to the project root; `folder`, `layouts` and `tabs[].layout` to the
 {"pattern":"/products/:id","route":"ProductRoute","file":"lib/app/(buyer)/products/$id/page.dart","tags":["data"],"params":[{"name":"id","type":"int","in":"path"},{"name":"tab","type":"String?","in":"query"}],"folder":"(buyer)/products/$id","presentation":"page","groups":["(buyer)"],"layouts":["(buyer)"],"tabs":[],"data_keys":["id"],"meta":"lib/app/(buyer)/products/$id/meta.dart","catch_all":null}
 ```
 
-`presentation` is `page` or `redirect`; `tabs` is `[{"layout":"(tabs)","index":0,"branch":"search"}]`
+`presentation` is `page`, `redirect`, `root` or `custom` (see the table above); `tabs` is `[{"layout":"(tabs)","index":0,"branch":"search"}]`
 for a route in a tab; `data_keys` and `meta` are `null` when the route has no `data.dart` or
 `meta.dart`. The meta itself is Dart, so JSON only says where it is. `catch_all` is
 `{"name":"rest","optional":false}` for a route that ends in a `$$rest` (or `$$$rest`, `"optional":true`)
-catch-all, else `null`; the catch-all is also in `params` as a `List<String>` path parameter.
+catch-all, else `null`; the catch-all is also in `params` as a path parameter of its `List` type.
 
 ### State restoration
 
@@ -1136,13 +1531,18 @@ a stack), and so does everything below:
 The reason layouts need generated pages: go_router keys the page of a `ShellRoute` or
 `StatefulShellRoute` by the route object's `hashCode` and uses it as the restoration id, which
 changes on every launch, so nothing under it can be found again. The generated router builds
-these pages with `layoutPage(...)`, with an id from the layout's folder instead. It's a
-Material page (a Cupertino one inside a `CupertinoApp`); a layout's page is not where a
-route transition happens, so this changes nothing you see.
+these pages with an id from the layout's folder instead: with a [`transition.dart`](#transitions)
+above the layout, its `Page` under a `ValueKey` made of that id (the `Transitions.*` pages take
+their restoration id from the key); otherwise `layoutPage(...)`, a Material page (a Cupertino one
+inside a `CupertinoApp`) with the id.
+
+- **`extra`.** An object passed with `context.go(…, extra: …)` is saved with the location if the
+  router has an [`extraCodec`](#restoring-extra-on-the-web) that knows its type (the same one
+  the browser's history uses on the web).
 
 Ids come from folder names, so renaming a folder drops what was saved under the old one, once.
-`examples/tabs/test/restoration_test.dart` restores the selected tab, a background tab's stack
-and a page's `RestorableInt` with `tester.restartAndRestore()`. Build the router in a
+`examples/tabs/test/restoration_test.dart` restores the selected tab, a background tab's stack,
+a page's `RestorableInt` and a page's `extra` with `tester.restartAndRestore()`. Build the router in a
 `State`, not a `final`, in such a test: a router remembers where it went.
 
 ## The generator
@@ -1174,7 +1574,8 @@ already exist, and takes its class names from `--name` (default: from the path, 
 `ProductsId`). With `--function` it writes [function views](#function-views) instead of classes,
 and `--name` becomes the `routeName` (an UpperCamelCase name). A segment that already has a
 type elsewhere in the tree keeps it. Pass
-`--no-page` to leave `page.dart` out. A `(group)` target (like `'(account)'`) gets no
+`--no-page` to leave `page.dart` out, and `--not-found` to add a `not_found.dart` that takes the
+segments of its path as `String`s (see [Not-found views](#not-found-views)). A `(group)` target (like `'(account)'`) gets no
 `page.dart` either, since a group has no URL of its own; write one by hand if you want the
 group to serve its parent's URL. It then regenerates `lib/app.g.dart` and prints the
 result line; if that fails, it lists the files it created. After `fsp new '(account)'
@@ -1182,7 +1583,8 @@ result line; if that fails, it lists the files it created. After `fsp new '(acco
 until you add a route inside the group. That's expected.
 
 `fsp routes` prints what the header of `lib/app.g.dart` lists: each route's URL pattern, its typed
-route class, its `page.dart` and its tags (`data`, `guard`, `layout`, `transition`).
+route class, its `page.dart` and its tags (`data`, `guard`, `layout`, `transition`, `present`,
+`root`).
 
 ```
 /products/:id  ProductRoute   products/$id/page.dart  (data, transition)
@@ -1286,16 +1688,17 @@ It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
 
 - **Types are never re-spelled.** The generator doesn't copy your imports. Values flow
   through inference, and each route's provider is a `static final` whose type is inferred.
-  The one exception is a page's [typed `extra`](#typed-extra), whose type the typed route
-  has to name; it imports that type by name from `page.dart`'s imports.
+  The one exception is a page's (or a layout's, guard's or redirect's) [typed `extra`](#typed-extra),
+  whose type the typed route has to name; it imports that type by name from the file's imports.
 - **Segments and query parameters are parsed into a record** (`({int id, int? page})`).
   Records compare by value, so providers are keyed by them directly.
 - **Page-less folders** fold into their children's paths (`greet/$name` → `'greet/:name'`).
   `(group)` folders fold away completely, apart from the ShellRoute their layout adds.
 - **Static routes come first** among siblings, then dynamic ones, then a
   [catch-all](#catch-all-segments), so go_router's first match is the most specific one.
-- **`AppRoutes.mount(at:)`** only changes the root path. Typed routes read `AppRoutes.base`,
-  so `.location` stays correct when mounted under `/shop`.
+- **`AppRoutes.mount(at:)`** only changes the root path (and, with `navigatorKey:`, the
+  root navigator's key). Typed routes read `AppRoutes.base`, so `.location` stays correct when
+  mounted under `/shop`.
 
 ### Performance
 
@@ -1369,17 +1772,22 @@ page, per-route transitions (the group fades in, `/ticks` doesn't animate), data
 by two segments, query parameters (in a page, `data.dart` and a layout), a page and error
 view bound by type, a layout and guard that take segments, a user-written
 `AsyncNotifierProvider`, `Stream` data, and a `teams/$teamId` section whose `data.dart` feeds
-its layout and pages, with a `not_found.dart` at two levels.
+its layout and pages, with a `not_found.dart` at two levels (which takes the team's id), a `reports` section keyed by a
+query parameter, and `AppRoutes.dataAt` / `match` and the prefetch handle in `test/data_at_test.dart`.
 
-`examples/tabs` is a bottom navigation bar built as a tab layout: four tabs (one with a
-nested page, and a Library tab that is a tab layout of its own, with two inner tabs), a
-counter that survives switching tabs, `tabOptions`, and a full-screen route outside them.
+`examples/tabs` is a bottom navigation bar built as a tab layout: four tabs (one with nested
+pages, and a Library tab that is a tab layout of its own, with two inner tabs), a
+counter that survives switching tabs, `tabOptions`, a cross-fading `container`, a full-screen route
+outside them (`/settings`), one that stays under `/profile` but renders on the root navigator
+(`/profile/edit`, `navigator.dart`), and a Cupertino `transition.dart` that also moves the tab layout
+itself aside when one of those opens over it.
 
 `examples/features` also has a guard in a page-less `(members)` group (with a login page that
 returns to where you were), a second guard below it that runs after the first, two
 `redirect.dart` routes (`/old-shops/:shop`, `/old-search`), and `/photos`, with a dialog
-route (`/photos/:id`), a bottom sheet (`/photos/sort`) and a full-screen dialog
-(`/photos/upload`) opening over it. Some of its routes have a `meta.dart` (`PageMeta`), which
+route (`/photos/:id`), a bottom sheet (`/photos/sort`), a full-screen dialog
+(`/photos/upload`) and an app-owned sheet with a URL (`/photos/share`, `present.dart`, with a page
+on top of it at `/photos/share/terms`) opening over it. Some of its routes have a `meta.dart` (`PageMeta`), which
 its root layout reads through the route manifest to set the page title, and its tests join a
 review-code check on `AppRoutes.all`.
 
@@ -1544,17 +1952,32 @@ go_router builds the whole matched stack, so a deep link like `/products/2` also
 for the delays in both (or use `pumpAndSettle`), or the test ends with "A Timer is still
 pending". `examples/*/test/` has working tests for every file kind.
 
+## Design notes
+
+**Why `watch` and `read` are static.** `ProductRoute(id: 42).watch(ref)` would be nicer than
+`ProductRoute.watch(ref, id: 42)`, and it can't be had for what it costs. An instance member has to
+say what it returns, `AsyncValue<Product>`, so the generated file would have to *name* `Product`,
+and it doesn't import what your `data.dart` imports (it can't tell which of its imports a name
+comes from, and it may be a private, aliased or record type). The other ways out don't work: a
+`late final watch = (ref) => ...` field, whose type Dart would infer from the provider, is refused
+in a class with a `const` constructor, and typed routes are `const` (`const SearchRoute(q: 'ap')`);
+an `extension type` or a getter still has to be typed; and returning `AsyncValue<Object?>` would
+lose the very type that is the point. A static function value takes its type from the provider
+by inference, which is why the helpers that return your data are static, and the ones that
+don't (`prefetch`, `refresh`, `go`, `location`) are instance methods. If Dart macros, or naming a
+type through the import machinery that `extra` already uses, become an option, this can be
+reopened; today the trade is a `const` route and a type that is never `dynamic`.
+
 ## Status
 
 This is an early version.
 
-- **Generator:** 281 tests (254 unit, 22 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
-  parameters, `(group)` folders and route order, tab layouts, transitions, all three data
-  forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects,
-  scaffolding, the route manifest, meta.dart and restoration ids, that the committed outputs are up to date, and that `watch`'s incremental runs
-  equal a from-scratch `gen` after random edits. Clippy is clean.
+- **Generator:** 402 tests (370 unit, 27 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+  parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
+  forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
+  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, per-folder case, that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 232 Flutter tests (the package 100, `shop` 23, `features` 92, `tabs` 17); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 326 Flutter tests (the package 138, `shop` 24, `features` 134, `tabs` 30); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

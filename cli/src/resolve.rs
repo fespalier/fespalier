@@ -20,6 +20,15 @@ use crate::scan::{Kind, Node, Seg, ROUTE_MEMBERS};
 
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
 
+/// What the parts of a catch-all can be, as `List<T>`: each part is read like one segment of
+/// that type (`num` and `DateTime` with `num.tryParse` and `DateTime.tryParse`).
+pub const CATCH_ALL_ITEMS: [&str; 6] = ["String", "int", "double", "num", "bool", "DateTime"];
+
+/// `int` for `List<int>`.
+pub fn list_item(ty: &str) -> Option<&str> {
+    ty.strip_prefix("List<")?.strip_suffix('>')
+}
+
 /// What a parameter receives.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Bind {
@@ -40,8 +49,14 @@ pub enum Bind {
     PageKey,
     /// A transition's `GoRouterState`.
     State,
+    /// A transition's `bool shell`: whether it builds the page of a layout's shell
+    /// (`true`) or of a route (`false`).
+    IsShell,
     /// A page's `extra` parameter: the object passed to `go(..., extra:)`.
     Extra,
+    /// A segment above a not_found.dart, as the URL spells it: a `String`, because the
+    /// ones that failed to parse are the reason the file is shown.
+    Raw(String),
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +113,15 @@ pub struct Transition {
     pub args: Vec<Arg>,
 }
 
+/// What a folder's `navigator.dart` says: `const navigator = RouteNavigator.root;`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Navigator {
+    /// Render on the root navigator, above every shell.
+    Root,
+    /// Back to the enclosing shell's navigator.
+    Shell,
+}
+
 /// A `guard()` or `redirect()` function and the arguments to call it with.
 #[derive(Debug, Clone)]
 pub struct Guard {
@@ -105,8 +129,20 @@ pub struct Guard {
     /// Takes a leading `ProviderContainer` (always for `guard()`, optionally for `redirect()`).
     pub container: bool,
     /// The named arguments: segments, then query parameters (each in path or
-    /// declaration order), then `uri`.
+    /// declaration order), then `uri` and `extra`.
     pub args: Vec<Arg>,
+    /// The `extra` parameter, when it takes one.
+    pub extra: Option<HookExtra>,
+}
+
+/// The `extra` parameter of a layout, guard or redirect: what the navigation carried, as
+/// the location it is at gets it (`state.extra`). A wrong type reads as `null`.
+#[derive(Debug, Clone)]
+pub struct HookExtra {
+    pub ty: ExtraType,
+    /// The parameter, for a diagnostic that points at it.
+    pub span: Span,
+    pub file: String,
 }
 
 impl Guard {
@@ -157,8 +193,22 @@ pub struct Route {
     pub guard: Option<Guard>,
     /// A `redirect.dart` in place of a page: the route only redirects.
     pub redirect: Option<Guard>,
-    /// The nearest transition.dart at or above this folder; only for pages.
+    /// The nearest transition.dart at or above this folder; only for pages, and
+    /// not for one that has a `present.dart`.
     pub transition: Option<Transition>,
+    /// This folder's own `present()`: the app builds the route's page itself. Not inherited.
+    pub present: Option<Transition>,
+    /// The `navigator.dart` in this folder, when it has a valid one.
+    pub navigator: Option<Navigator>,
+    /// Whether this folder's routes are on the root navigator: its own `navigator.dart`, or
+    /// `present.dart` (which implies it), or else what the folder above says. A layout is a
+    /// navigator of its own, so below one nothing is inherited. For a folder with a layout, it
+    /// is the layout's shell that goes on the root navigator.
+    pub root: bool,
+    /// The nearest transition.dart at or above a layout folder: the page of its shell.
+    pub shell_transition: Option<Transition>,
+    /// A tab layout with a top-level `container` function: the branch container.
+    pub container: bool,
     /// Query parameters any of this route's files ask for: (name, Dart type),
     /// the type being `T?` or `List<T>`.
     pub query: Vec<(String, String)>,
@@ -176,8 +226,19 @@ pub struct Route {
     /// The folder's `meta.dart` (relative to the app folder) when it has a valid
     /// one and a route to describe. Not inherited: it belongs to this route alone.
     pub meta: Option<String>,
-    /// The type of the page's `extra` parameter, when it takes one.
+    /// The type of the `extra` a navigation to this route can carry: the page's or the
+    /// redirect's own, or else the one type the guards and layouts above it ask for.
     pub extra: Option<ExtraType>,
+    /// The `extra` parameter of this folder's layout.
+    pub layout_extra: Option<HookExtra>,
+    /// The literal named arguments of `const meta = Meta(code: 'x', ...)`, for `meta_unique`.
+    pub meta_args: Vec<dart::ObjectArg>,
+    /// The sections (route ids) above this folder, outermost first, whose data.dart the
+    /// layouts above load: what `AppRoutes.dataAt` lists before the route's own data.
+    pub sections: Vec<usize>,
+    /// Whether this folder's paths match by case: the nearest `route.dart`'s
+    /// `caseSensitive` at or above it, else the pubspec's `case_sensitive`.
+    pub case_sensitive: bool,
 }
 
 impl Route {
@@ -193,6 +254,8 @@ impl Route {
 pub struct ScopedNotFound {
     pub url: Vec<Seg>,
     pub widget: Widget,
+    /// Whether the folder's own path matches by case (see [`Route::case_sensitive`]).
+    pub case_sensitive: bool,
 }
 
 #[derive(Debug, Default)]
@@ -204,6 +267,14 @@ pub struct App {
     pub not_founds: Vec<ScopedNotFound>,
     /// Type of each dynamic segment, keyed by the folder that declares it.
     pub seg_types: HashMap<usize, String>,
+    /// The `extra_codec.dart` at the root of the app folder: `GoRouter(extraCodec:)`.
+    pub extra_codec: Option<ExtraCodec>,
+}
+
+/// The app folder's `extra_codec.dart`, which exports `extraCodec`.
+#[derive(Debug, Clone)]
+pub struct ExtraCodec {
+    pub import: usize,
 }
 
 impl Route {
@@ -281,9 +352,13 @@ struct Inherited {
     loading: Option<Fallback>,
     error: Option<Fallback>,
     transition: Option<Transition>,
+    /// Whether a root-navigator declaration above is in effect: not reset by a layout.
+    root: bool,
     /// The data.dart files of the sections above, outermost first.
     sections: Vec<SectionRef>,
     not_found: Option<Widget>,
+    /// The nearest route.dart's `caseSensitive`, else the config's.
+    case_sensitive: bool,
 }
 
 /// A section's data.dart, as the files below its layout can receive it.
@@ -316,7 +391,8 @@ struct BindCx<'a> {
     scope: Option<Scope>,
 }
 
-pub fn resolve(root: &Node, diags: &mut Diags) -> App {
+/// `case_sensitive` is the config's default, for folders with no `route.dart` at or above them.
+pub fn resolve(root: &Node, case_sensitive: bool, diags: &mut Diags) -> App {
     let mut r = Resolver {
         app: App::default(),
         import_ix: HashMap::new(),
@@ -328,8 +404,10 @@ pub fn resolve(root: &Node, diags: &mut Diags) -> App {
         query_order: vec![],
         diags,
     };
-    r.node(root, &Inherited::default());
+    r.node(root, &Inherited { case_sensitive, ..Inherited::default() });
+    r.extra_codec(root);
     r.settle_segment_types();
+    r.settle_extras();
     for (scope, name) in std::mem::take(&mut r.query_order) {
         let ty = r.queries[&(scope, name.clone())].0.clone();
         match scope {
@@ -386,6 +464,11 @@ impl Resolver<'_> {
             guard: None,
             redirect: None,
             transition: None,
+            present: None,
+            navigator: None,
+            root: false,
+            shell_transition: None,
+            container: false,
             query: vec![],
             layout_query: vec![],
             guard_query: vec![],
@@ -394,6 +477,10 @@ impl Resolver<'_> {
             tab_options: vec![],
             meta: None,
             extra: None,
+            layout_extra: None,
+            meta_args: vec![],
+            sections: up.sections.iter().map(|s| s.id).collect(),
+            case_sensitive: up.case_sensitive,
         });
 
         let mut segs = up.segs.clone();
@@ -415,6 +502,11 @@ impl Resolver<'_> {
                 let msg = "couldn't fully parse this file; if it doesn't compile, the Dart compiler will say where";
                 self.diags.warn(&node.rel(*kind), Some(span), msg);
             }
+        }
+
+        if !node.dir.is_empty() && node.files.contains_key(&Kind::ExtraCodec) {
+            let msg = "extra_codec.dart is only read at the root of the app folder, so this one is ignored";
+            self.diags.warn(&node.rel(Kind::ExtraCodec), None, msg);
         }
 
         // page.dart names the route; data.dart feeds it.
@@ -440,17 +532,20 @@ impl Resolver<'_> {
             };
             self.claim(&url, n, &page_file, &c.span, &fix);
         }
-        let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs, id));
         // Without a page.dart, a data.dart with a layout.dart beside it is the data of the
-        // section that layout wraps.
-        let section = data.is_some() && !node.files.contains_key(&Kind::Page) && node.files.contains_key(&Kind::Layout);
+        // section that layout wraps; the query parameters it takes are the layout's.
+        let section_folder = !node.files.contains_key(&Kind::Page) && node.files.contains_key(&Kind::Layout);
+        let data_scope = if section_folder { Scope::Layout(id) } else { Scope::Route(id) };
+        let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs, data_scope));
+        let section = data.is_some() && section_folder;
         if data.is_some() && !section && !node.files.contains_key(&Kind::Page) {
             let msg = "data.dart has no page.dart to feed; with a layout.dart beside it, it would be the data of the section below that layout";
             self.diags.error(&node.rel(Kind::Data), None, msg);
         }
         if let (true, Some(d)) = (section, &data) {
-            if let Some(q) = d.keys.iter().find(|k| !segs.iter().any(|(s, _)| s == *k)) {
-                let msg = format!("`{q}`: a section's data.dart can only take segments, not query parameters; the pages below it can't see them");
+            // The section's typed handle (`AccountSection.watch(ref, {...keys})`) takes them as named parameters.
+            if let Some(k) = d.keys.iter().find(|k| ROUTE_MEMBERS.contains(&k.as_str())) {
+                let msg = format!("`{k}` can't be a key of a section's data.dart: the section's typed handle has a member called `{k}`; rename it");
                 self.diags.error(&node.rel(Kind::Data), None, msg);
             }
         }
@@ -470,7 +565,7 @@ impl Resolver<'_> {
             let w = self.bind(&c, &cx);
             if let (Some(ty), Some(src)) = (&extra_ty, node.files.get(&Kind::Page)) {
                 if w.args.iter().any(|a| a.bind == Bind::Extra) {
-                    extra = Some(extra::extra_type(&ty.text, src, &page_file, w.import, id));
+                    extra = Some(extra::extra_type(&ty.text, src, &page_file, w.import, &id.to_string()));
                 }
             }
             if let Some(d) = &data {
@@ -489,6 +584,10 @@ impl Resolver<'_> {
             w
         });
 
+        // route.dart's `caseSensitive` covers this folder and every folder below.
+        let case_sensitive = modules.get(&Kind::Route).and_then(|m| self.route_config(m, node)).unwrap_or(up.case_sensitive);
+        self.app.routes[id].case_sensitive = case_sensitive;
+
         // loading.dart / error.dart apply here and to every folder below.
         let mut here = Inherited {
             segs: segs.clone(),
@@ -496,8 +595,10 @@ impl Resolver<'_> {
             loading: up.loading.clone(),
             error: up.error.clone(),
             transition: up.transition.clone(),
+            root: up.root,
             sections: up.sections.clone(),
             not_found: up.not_found.clone(),
+            case_sensitive,
         };
         if let (true, Some(d)) = (section, &data) {
             here.sections.push(SectionRef { id, ty: d.ty.clone(), file: node.rel(Kind::Data) });
@@ -512,8 +613,27 @@ impl Resolver<'_> {
         }
         // Likewise transition.dart, once for the whole subtree.
         if let Some(m) = modules.get(&Kind::Transition) {
-            here.transition = self.transition(m, node).or(here.transition);
+            here.transition = self.transition(m, node, Kind::Transition, "transition").or(here.transition);
         }
+        // present.dart is this route's page alone; navigator.dart is inherited, like transition.dart.
+        let present = modules.get(&Kind::Present).and_then(|m| self.transition(m, node, Kind::Present, "present"));
+        let navigator = modules.get(&Kind::Navigator).and_then(|m| self.navigator(m, node));
+        if present.is_some() && !node.files.contains_key(&Kind::Page) {
+            let msg = "present.dart builds this folder's page, but there is no page.dart here; it is ignored";
+            self.diags.warn(&node.rel(Kind::Present), None, msg);
+        }
+        let present = present.filter(|_| node.files.contains_key(&Kind::Page));
+        if navigator == Some(Navigator::Shell) && up.root {
+            let msg = "`RouteNavigator.shell` can't go back to a shell below a root-navigator route: go_router only lets its descendants use the root navigator or one above it. Put a layout.dart between the two, or drop this file";
+            self.diags.error(&node.rel(Kind::Navigator), None, msg);
+        }
+        let root = match (navigator, &present) {
+            (Some(n), _) => n == Navigator::Root,
+            (None, Some(_)) => true,
+            (None, None) => up.root,
+        };
+        // A layout is a navigator of its own: what is below it isn't on the root one.
+        here.root = root && !node.files.contains_key(&Kind::Layout);
         let (loading, error) = if data.is_some() {
             let covering = show_dir(&node.dir);
             let bind = |r: &mut Self, f: &Option<Fallback>, role| {
@@ -539,6 +659,7 @@ impl Resolver<'_> {
             (None, None)
         };
 
+        let mut layout_extra = None;
         let layout = modules.get(&Kind::Layout).and_then(|m| {
             let file = node.rel(Kind::Layout);
             let c = self.widget_class(m, &file, Kind::Layout)?;
@@ -556,6 +677,7 @@ impl Resolver<'_> {
                 let msg = format!("{} asks for both a `child` and a navigation shell; a tab layout takes only the `StatefulNavigationShell`", c.display());
                 self.diags.error(&file, Some(&c.span), msg);
             }
+            layout_extra = extra_of(&c.params, &w.args, node.files.get(&Kind::Layout), &file, w.import, &format!("l{id}"));
             Some(w)
         });
         let guard = modules.get(&Kind::Guard).and_then(|m| self.guard(m, node, &segs, id));
@@ -583,7 +705,7 @@ impl Resolver<'_> {
                 }
                 let cx = BindCx {
                     role: Role::NotFound,
-                    segs: &[],
+                    segs: &segs,
                     data: None,
                     sections: &[],
                     file: &file,
@@ -602,7 +724,7 @@ impl Resolver<'_> {
                                 let msg = format!("{at} already has {prev}; (group) folders don't add to the URL, so move or rename one");
                                 self.diags.error(&file, None, msg);
                             }
-                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone() }),
+                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone(), case_sensitive }),
                         }
                     }
                     not_found = Some(w);
@@ -615,14 +737,35 @@ impl Resolver<'_> {
 
         let has_page = page.is_some();
         let has_route = has_page || redirect.is_some();
+        // A section keyed by a query parameter makes every route below it depend on it: it is
+        // one of the route's query parameters too, so its typed route can write it.
+        if has_route {
+            for sec in &up.sections {
+                let keys = self.app.routes[sec.id].data.as_ref().map(|d| d.keys.clone()).unwrap_or_default();
+                for key in keys.iter().filter(|k| !segs.iter().any(|(s, _)| s == *k)) {
+                    if let Some((ty, ..)) = self.queries.get(&(Scope::Layout(sec.id), key.clone())).cloned() {
+                        self.declare_query(Scope::Route(id), key, ty, &sec.file, &Span::default());
+                    }
+                }
+            }
+        }
         self.app.routes[id].page_span = page_span;
         self.app.routes[id].not_found = not_found;
         self.app.routes[id].meta = modules.get(&Kind::Meta).and_then(|m| self.meta(m, node, has_route));
+        // A redirect.dart route can carry an `extra` too, which its redirect reads.
+        let extra = extra.or_else(|| redirect.as_ref().and_then(|g| g.extra.as_ref()).map(|e| e.ty.clone()));
+        if self.app.routes[id].meta.is_some() {
+            let literals = modules.get(&Kind::Meta).and_then(|m| m.variables.iter().find(|v| v.name == "meta")?.ctor_args.clone());
+            self.app.routes[id].meta_args = literals.unwrap_or_default();
+        }
         self.app.routes[id].extra = extra;
-        let transition = here.transition.clone().filter(|_| has_page);
+        self.app.routes[id].layout_extra = layout_extra;
+        let transition = here.transition.clone().filter(|_| has_page && present.is_none());
+        let shell_transition = here.transition.clone().filter(|_| layout.is_some());
         let r = &mut self.app.routes[id];
         (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard, r.redirect, r.transition) =
             (segs, url, page, name, data, loading, error, layout, guard, redirect, transition);
+        (r.present, r.navigator, r.root, r.shell_transition) = (present, navigator, root, shell_transition);
 
         let mut children = vec![];
         let mut with_routes = vec![];
@@ -644,11 +787,18 @@ impl Resolver<'_> {
             let tabs = self.tabs(node, modules.get(&Kind::Layout), has_page, &with_routes);
             let options = self.tab_options(node, modules.get(&Kind::Layout), id, has_page, &with_routes, &tabs);
             self.app.routes[id].tabs = Some(tabs);
+            self.app.routes[id].container = self.container(node, modules.get(&Kind::Layout));
             if self.app.routes[id].redirect.is_some() {
                 let msg = "a tab layout folder can't hold a redirect.dart; put the redirect in a subfolder";
                 self.diags.error(&node.rel(Kind::Redirect), None, msg);
             }
             self.app.routes[id].tab_options = options;
+        }
+        if !is_tabs {
+            if let Some(f) = modules.get(&Kind::Layout).and_then(|m| m.functions.iter().find(|f| f.name == "container")) {
+                let msg = "container() is only used by a tab layout (one that takes a `StatefulNavigationShell`); it is ignored here";
+                self.diags.warn(&node.rel(Kind::Layout), Some(&f.span), msg);
+            }
         }
         if self.app.routes[id].guard.is_some() && !any_route {
             let msg = "guard.dart guards no routes: there is no page.dart or redirect.dart at or below this folder";
@@ -884,6 +1034,100 @@ impl Resolver<'_> {
         Some(file)
     }
 
+    /// `const navigator = RouteNavigator.root;` in a folder's navigator.dart: the navigator
+    /// its routes render on. Read from the source, like `tabs`, so it must be one of the two
+    /// enum values, spelled out.
+    fn navigator(&mut self, m: &Module, node: &Node) -> Option<Navigator> {
+        let file = node.rel(Kind::Navigator);
+        let mut found = m.variables.iter().filter(|v| v.name == "navigator");
+        let Some(v) = found.next() else {
+            self.diags.error(&file, None, "expected `const navigator = RouteNavigator.root;` (or `RouteNavigator.shell`)");
+            return None;
+        };
+        if let Some(again) = found.next() {
+            self.diags.error(&file, Some(&again.span), "`navigator` is declared twice");
+        }
+        if !v.is_const {
+            self.diags.error(&file, Some(&v.span), "`navigator` must be `const`: write `const navigator = RouteNavigator.root;`");
+            return None;
+        }
+        // An import prefix (`fsp.RouteNavigator.root`) is fine.
+        let parts: Vec<&str> = v.value.as_deref().unwrap_or_default().split('.').collect();
+        let ident = |p: &str| p.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') && p.chars().all(|c| c.is_alphanumeric() || c == '_');
+        let value = match parts.as_slice() {
+            ["RouteNavigator", which] => Some(*which),
+            [prefix, "RouteNavigator", which] if ident(prefix) => Some(*which),
+            _ => None,
+        };
+        match value {
+            Some("root") => Some(Navigator::Root),
+            Some("shell") => Some(Navigator::Shell),
+            _ => {
+                let msg = "`navigator` must be `RouteNavigator.root` or `RouteNavigator.shell`, written out: fsp reads it from the source";
+                self.diags.error(&file, Some(&v.span), msg);
+                None
+            }
+        }
+    }
+
+    /// `Widget container(BuildContext context, StatefulNavigationShell shell, List<Widget> children)`
+    /// in a tab layout.dart: the `navigatorContainerBuilder` of its `StatefulShellRoute`. The
+    /// parameters are positional with fixed types (their names mean nothing here).
+    fn container(&mut self, node: &Node, layout: Option<&Module>) -> bool {
+        let Some(f) = layout.and_then(|m| m.functions.iter().find(|f| f.name == "container")) else { return false };
+        let file = node.rel(Kind::Layout);
+        let want: [(&str, &[&str]); 3] = [
+            ("the BuildContext", &["BuildContext"]),
+            ("the StatefulNavigationShell", &["StatefulNavigationShell"]),
+            ("the branch navigators, a List<Widget>", &["List<Widget>", "Iterable<Widget>"]),
+        ];
+        let signature = "container() takes three positional parameters: `Widget container(BuildContext context, StatefulNavigationShell shell, List<Widget> children)`";
+        if f.params.len() != 3 || f.params.iter().any(|p| p.named || !p.required || p.is_super) {
+            self.diags.error(&file, Some(&f.span), signature);
+            return false;
+        }
+        let mut ok = true;
+        for (p, (gets, accepts)) in f.params.iter().zip(want) {
+            match &p.ty {
+                None => {
+                    self.diags.error(&file, Some(&p.span), format!("give `{}` a type: it gets {gets}", p.name));
+                    ok = false;
+                }
+                Some(ty) if !accepts.contains(&bare_type(&ty.text)) => {
+                    let msg = format!("`{}` gets {gets}, but it's declared {}", p.name, ty.text);
+                    self.diags.error(&file, Some(&p.span), msg);
+                    ok = false;
+                }
+                Some(_) => {}
+            }
+        }
+        if f.ret.as_ref().is_some_and(|r| bare_type(&r.text) != "Widget") {
+            self.diags.error(&file, Some(&f.span), "container() must return a Widget: the container of the branch navigators");
+            ok = false;
+        }
+        ok
+    }
+
+    /// `const caseSensitive = false;` in a folder's route.dart: whether paths match by case
+    /// in this folder and below. It is read from the source, so it must be a `true` or `false`
+    /// literal.
+    fn route_config(&mut self, m: &Module, node: &Node) -> Option<bool> {
+        let file = node.rel(Kind::Route);
+        let mut found = m.variables.iter().filter(|v| v.name == "caseSensitive");
+        let Some(v) = found.next() else {
+            self.diags.error(&file, None, "expected `const caseSensitive = false;` (or `true`)");
+            return None;
+        };
+        if let Some(again) = found.next() {
+            self.diags.error(&file, Some(&again.span), "`caseSensitive` is declared twice");
+        }
+        if v.boolean.is_none() {
+            let msg = "`caseSensitive` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it";
+            self.diags.error(&file, Some(&v.span), msg);
+        }
+        v.boolean
+    }
+
     /// The one public widget class a view file exports, or the top-level function named
     /// after the file (`Widget page(...)`) that builds the widget instead.
     fn widget_class(&mut self, m: &Module, file: &str, kind: Kind) -> Option<Class> {
@@ -1071,7 +1315,7 @@ impl Resolver<'_> {
                     "`{}` isn't a segment of this path ({}){}; for a query parameter make it optional and nullable, e.g. `String? {}`",
                     p.name,
                     show_segs(segs),
-                    if hooks { format!(" at or above its folder; {what} can also take `Uri uri`") } else { String::new() },
+                    if hooks { format!(" at or above its folder; {what} can also take `Uri uri` and `extra`") } else { String::new() },
                     p.name
                 );
                 self.diags.error(file, Some(&p.span), msg);
@@ -1092,8 +1336,7 @@ impl Resolver<'_> {
         Some(p.name.clone())
     }
 
-    fn data(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], route: usize) -> Option<Data> {
-        let scope = Scope::Route(route);
+    fn data(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], scope: Scope) -> Option<Data> {
         let file = node.rel(Kind::Data);
         if let Some(f) = m.functions.iter().find(|f| f.name == "data") {
             if let Some(ty) = f.ret.as_ref().and_then(selected_value) {
@@ -1196,7 +1439,7 @@ impl Resolver<'_> {
             if let Some((name, _)) = segs.iter().find(|(n, f)| keys.contains(n) && self.app.is_catch_all(*f)) {
                 let msg = format!(
                     "`{name}` is a catch-all, a List that a provider can't be keyed by (lists compare by identity); \
-                     write `Future<{ty}> data(Ref ref, {{required List<String> {name}}})` and fespalier keys it by the path"
+                     write `Future<{ty}> data(Ref ref, {{required List<T> {name}}})` (T being the parts' type) and fespalier keys it by the path"
                 );
                 self.diags.error(&file, Some(&v.span), msg);
             }
@@ -1254,7 +1497,9 @@ impl Resolver<'_> {
         let has_route = node.files.contains_key(&Kind::Page) || node.files.contains_key(&Kind::Redirect);
         let scope = if has_route { Scope::Route(route) } else { Scope::Guard(route) };
         let args = self.hook_args(&file, f.params.iter().skip(1), segs, scope, "guard()");
-        Some(Guard { import: self.import(&file), container: true, args })
+        let import = self.import(&file);
+        let extra = extra_of(&f.params, &args, node.files.get(&Kind::Guard), &file, import, &format!("g{route}"));
+        Some(Guard { import, container: true, args, extra })
     }
 
     /// `String redirect({...})` in a folder in place of page.dart.
@@ -1271,10 +1516,12 @@ impl Resolver<'_> {
         }
         let container = f.params.first().is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("ProviderContainer")));
         let args = self.hook_args(&file, f.params.iter().skip(usize::from(container)), segs, Scope::Route(route), "redirect()");
-        Some((Guard { import: self.import(&file), container, args }, f.span.clone()))
+        let import = self.import(&file);
+        let extra = extra_of(&f.params, &args, node.files.get(&Kind::Redirect), &file, import, &format!("r{route}"));
+        Some((Guard { import, container, args, extra }, f.span.clone()))
     }
 
-    /// The named parameters of a `guard()` or `redirect()`: `uri`, segments and
+    /// The named parameters of a `guard()` or `redirect()`: `uri`, `extra`, segments and
     /// query parameters, as call arguments.
     fn hook_args<'p>(
         &mut self,
@@ -1284,8 +1531,18 @@ impl Resolver<'_> {
         scope: Scope,
         what: &str,
     ) -> Vec<Arg> {
-        let (mut keys, mut uri) = (vec![], None);
+        let (mut keys, mut uri, mut extra) = (vec![], None, None);
         for p in params {
+            if p.name == "extra" {
+                if !p.named {
+                    self.diags.error(file, Some(&p.span), format!("{what} takes `extra` as a named parameter, e.g. `{{Object? extra}}`"));
+                } else if let Some(msg) = p.ty.as_ref().and_then(|ty| mismatch("extra", &Bind::Extra, ty)) {
+                    self.diags.error(file, Some(&p.span), msg);
+                } else {
+                    extra = Some(Arg { name: "extra".into(), named: true, bind: Bind::Extra });
+                }
+                continue;
+            }
             if p.named && p.name == "uri" {
                 match p.ty.as_ref().and_then(|ty| mismatch("uri", &Bind::Uri, ty)) {
                     Some(msg) => self.diags.error(file, Some(&p.span), msg),
@@ -1303,19 +1560,21 @@ impl Resolver<'_> {
             })
             .collect();
         args.extend(uri);
+        args.extend(extra);
         args
     }
 
-    /// `Page<void> transition(LocalKey key, Widget child)`: parameters are
-    /// filled by name, then by type; other optional ones keep their default.
-    fn transition(&mut self, m: &Module, node: &Node) -> Option<Transition> {
-        let file = node.rel(Kind::Transition);
-        let Some(f) = m.functions.iter().find(|f| f.name == "transition") else {
-            self.diags.error(&file, None, "expected `Page<void> transition(LocalKey key, Widget child)`");
+    /// `Page<void> transition(LocalKey key, Widget child)`, or `present(...)` in a
+    /// present.dart, which is bound the same way: parameters are filled by name, then
+    /// by type; other optional ones keep their default.
+    fn transition(&mut self, m: &Module, node: &Node, kind: Kind, name: &str) -> Option<Transition> {
+        let file = node.rel(kind);
+        let Some(f) = m.functions.iter().find(|f| f.name == name) else {
+            self.diags.error(&file, None, format!("expected `Page<void> {name}(LocalKey key, Widget child)`"));
             return None;
         };
         if !f.ret.as_ref().is_some_and(|r| r.generic().0.ends_with("Page")) {
-            self.diags.error(&file, Some(&f.span), "transition() must return a Page, e.g. `Page<void>`");
+            self.diags.error(&file, Some(&f.span), format!("{name}() must return a Page, e.g. `Page<void>`"));
             return None;
         }
         let mut args = vec![];
@@ -1324,7 +1583,7 @@ impl Resolver<'_> {
             let bind = if !p.named && positional_gap { None } else { transition_bind(p) };
             let Some(bind) = bind else {
                 if p.required {
-                    let msg = format!("can't fill `{}`: transition() gets `key`, `child` and `state`", p.name);
+                    let msg = format!("can't fill `{}`: {name}() gets `key`, `child` and `state`", p.name);
                     self.diags.error(&file, Some(&p.span), msg);
                 } else if !p.named {
                     positional_gap = true;
@@ -1337,10 +1596,91 @@ impl Resolver<'_> {
             args.push(Arg { name: p.name.clone(), named: p.named, bind });
         }
         if !args.iter().any(|a| a.bind == Bind::Child) {
-            self.diags.error(&file, Some(&f.span), "transition() must take the page as `Widget child`");
+            self.diags.error(&file, Some(&f.span), format!("{name}() must take the page as `Widget child`"));
             return None;
         }
         Some(Transition { import: self.import(&file), args })
+    }
+
+    /// `extra_codec.dart` at the root of the app folder: it exports `extraCodec`, a
+    /// `Codec<Object?, Object?>` for `GoRouter(extraCodec:)`, as a variable or a getter.
+    fn extra_codec(&mut self, root: &Node) {
+        let Some(src) = root.files.get(&Kind::ExtraCodec) else { return };
+        let file = root.rel(Kind::ExtraCodec);
+        let m = crate::parse_cache::parse(src);
+        if !m.variables.iter().any(|v| v.name == "extraCodec") && !m.getters.iter().any(|g| g.name == "extraCodec") {
+            let msg = "expected a top-level `extraCodec`: `final extraCodec = ExtraCodec({...});`, `const extraCodec = MyCodec();` or `Codec<Object?, Object?> get extraCodec => ...;`";
+            self.diags.error(&file, None, msg);
+            return;
+        }
+        let import = self.import(&file);
+        self.app.extra_codec = Some(ExtraCodec { import });
+    }
+
+    /// A guard or a layout that takes `extra` sees the extra of every route it covers, so its
+    /// type has to fit theirs: the page's (or redirect's) own, or, on a route that takes none,
+    /// another guard's or layout's above it. `Object?` fits anything. What doesn't fit is an
+    /// error at the guard's or layout's parameter, listing the routes.
+    ///
+    /// A route that takes no `extra` of its own is typed by the one the guards and layouts
+    /// above it agree on, so its typed route can pass it.
+    fn settle_extras(&mut self) {
+        // Outermost first: folders come before the ones below them, and a guard before its layout.
+        let mut readers: Vec<(&str, usize, HookExtra)> = vec![];
+        for (id, r) in self.app.routes.iter().enumerate() {
+            readers.extend(r.guard.as_ref().and_then(|g| g.extra.clone()).map(|e| ("guard", id, e)));
+            readers.extend(r.layout_extra.clone().map(|e| ("layout", id, e)));
+        }
+        if readers.is_empty() {
+            return;
+        }
+        let covers = |folder: &Route, r: &Route| {
+            folder.dir.is_empty() || r.dir == folder.dir || r.dir.strip_prefix(&folder.dir).is_some_and(|rest| rest.starts_with('/'))
+        };
+        let mut clashes: Vec<Vec<String>> = vec![vec![]; readers.len()];
+        let mut typed: Vec<(usize, ExtraType)> = vec![];
+        for (id, r) in self.app.routes.iter().enumerate().filter(|(_, r)| r.is_route()) {
+            // Every guard above the route, and the layouts when it is a page: a redirect shows none.
+            let chain: Vec<usize> = (0..readers.len())
+                .filter(|&i| covers(&self.app.routes[readers[i].1], r) && (readers[i].0 == "guard" || r.page.is_some()))
+                .collect();
+            let own = r.extra.as_ref();
+            for (n, &i) in chain.iter().enumerate() {
+                let want = &readers[i].2.ty.source;
+                if extra::takes_any(want) {
+                    continue;
+                }
+                // The route's own type has the last word; without one, the readers above agree among themselves.
+                let other = match own {
+                    Some(e) => Some((&e.file, &e.source)).filter(|(_, ty)| !extra::fits(want, ty)),
+                    None => chain[..n].iter().map(|&j| &readers[j].2).find(|o| !extra::agree(want, &o.ty.source)).map(|o| (&o.file, &o.ty.source)),
+                };
+                if let Some((file, ty)) = other {
+                    clashes[i].push(format!("`{}` ({file} takes `{ty}`)", pattern(&r.url)));
+                }
+            }
+            if r.extra.is_none() {
+                let first = chain.iter().find(|&&i| !extra::takes_any(&readers[i].2.ty.source));
+                typed.extend(first.map(|&i| (id, readers[i].2.ty.clone())));
+            }
+        }
+        for ((kind, _, e), mut routes) in readers.into_iter().zip(clashes) {
+            if routes.is_empty() {
+                continue;
+            }
+            routes.dedup();
+            let more = routes.len().saturating_sub(5);
+            routes.truncate(5);
+            let list = routes.join(", ") + &if more > 0 { format!(" and {more} more") } else { String::new() };
+            let msg = format!(
+                "`extra` is `{}` here, but the routes it covers take other types: {list}; a {kind} sees the extra of every route it covers, so declare it as `Object?` to accept any of them, or as their type when they share one",
+                e.ty.source
+            );
+            self.diags.error(&e.file, Some(&e.span), msg);
+        }
+        for (id, ty) in typed {
+            self.app.routes[id].extra = Some(ty);
+        }
     }
 
     /// Every file that uses `$id` must agree on its type; nobody saying means String.
@@ -1348,8 +1688,11 @@ impl Resolver<'_> {
         let mut first: HashMap<usize, (String, String, usize)> = HashMap::new();
         for c in &self.constraints {
             if self.app.is_catch_all(c.folder) {
-                if c.ty.text != "List<String>" {
-                    let msg = format!("`{} {}`: a catch-all segment is the rest of the path, a `List<String>`", c.ty.text, c.name);
+                if !list_item(&c.ty.text).is_some_and(|i| CATCH_ALL_ITEMS.contains(&i)) {
+                    let msg = format!(
+                        "`{} {}`: a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime",
+                        c.ty.text, c.name
+                    );
                     self.diags.error(&c.file, Some(&c.span), msg);
                     continue;
                 }
@@ -1373,6 +1716,18 @@ impl Resolver<'_> {
     }
 }
 
+/// The `extra` parameter of a layout, guard or redirect, when one was bound to it: its type
+/// spelled for the generated file. `tag` keeps that spelling's import aliases apart from
+/// the other files' (see `extra::extra_type`).
+fn extra_of(params: &[dart::Param], bound: &[Arg], src: Option<&String>, file: &str, import: usize, tag: &str) -> Option<HookExtra> {
+    if !bound.iter().any(|a| a.bind == Bind::Extra) {
+        return None;
+    }
+    let p = params.iter().find(|p| !p.is_super && p.name == "extra")?;
+    let ty = extra::extra_type(&p.ty.as_ref()?.text, src?, file, import, tag);
+    Some(HookExtra { ty, span: p.span.clone(), file: file.to_string() })
+}
+
 /// What a parameter called `name` receives in this role, going by its name.
 fn by_name(name: &str, cx: &BindCx) -> Option<Bind> {
     match (cx.role, name) {
@@ -1386,10 +1741,14 @@ fn by_name(name: &str, cx: &BindCx) -> Option<Bind> {
         (Role::Layout, "child") => return Some(Bind::Child),
         (Role::Layout, "navigationShell" | "shell") => return Some(Bind::Shell),
         (Role::NotFound, "uri") => return Some(Bind::Uri),
-        (Role::Page, "extra") => return Some(Bind::Extra),
+        (Role::Page | Role::Layout, "extra") => return Some(Bind::Extra),
         _ => {}
     }
-    cx.segs.iter().any(|(n, _)| n == name).then(|| Bind::Segment(name.to_string()))
+    let is_segment = cx.segs.iter().any(|(n, _)| n == name);
+    match cx.role {
+        Role::NotFound => is_segment.then(|| Bind::Raw(name.to_string())),
+        _ => is_segment.then(|| Bind::Segment(name.to_string())),
+    }
 }
 
 /// What a parameter of type `ty` receives in this role, going by its type.
@@ -1411,6 +1770,7 @@ fn transition_bind(p: &dart::Param) -> Option<Bind> {
         "key" => Some(Bind::PageKey),
         "child" => Some(Bind::Child),
         "state" => Some(Bind::State),
+        "shell" | "isShell" => Some(Bind::IsShell),
         _ => None,
     };
     by_name.or_else(|| match p.ty.as_ref()?.text.trim_end_matches('?') {
@@ -1419,6 +1779,11 @@ fn transition_bind(p: &dart::Param) -> Option<Bind> {
         "GoRouterState" => Some(Bind::State),
         _ => None,
     })
+}
+
+/// A type without an import prefix: `w.Widget` is `Widget`, `List<w.Widget>` is left alone.
+fn bare_type(text: &str) -> &str {
+    text.rsplit_once('.').filter(|(p, t)| !format!("{p}{t}").contains(['<', '(', ' '])).map_or(text, |(_, t)| t)
 }
 
 /// A parameter bound by name gets a fixed value; say so when it's declared as
@@ -1436,6 +1801,7 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
             &["LocalKey", "Key", "ValueKey", "ValueKey<String>", "ValueKey<Object>", "ValueKey<dynamic>"],
         ),
         Bind::State => ("the GoRouterState", &["GoRouterState"]),
+        Bind::IsShell => ("whether the page is a layout's shell, a bool", &["bool"]),
         Bind::Extra => {
             let ok = ty.text.ends_with('?') || ty.text == "dynamic";
             return (!ok).then(|| {
@@ -1446,6 +1812,15 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
             });
         }
         // Data has its own message; segments and queries are settled with the segment types.
+        Bind::Raw(_) => {
+            let ok = matches!(ty.text.trim_end_matches('?'), "String" | "Object" | "dynamic");
+            return (!ok).then(|| {
+                format!(
+                    "`{name}` gets the segment as the URL spells it, a String: a segment that doesn't parse as `{}` is why not_found.dart is shown, so declare it `String {name}`",
+                    ty.text.trim_end_matches('?')
+                )
+            });
+        }
         Bind::Data | Bind::Section(_) | Bind::Segment(_) | Bind::Query(_) => return None,
     };
     let bare = ty.text.trim_end_matches('?');
@@ -1469,9 +1844,11 @@ fn unfillable(name: &str, cx: &BindCx) -> String {
             None => format!("can't fill `{name}`: it isn't a segment of this path ({segs}) or a query parameter (optional and nullable)"),
         },
         (Role::Layout, _) => format!(
-            "can't fill `{name}`: a layout gets `Widget child` (or, for tabs, a `StatefulNavigationShell`) and the segments above it ({segs})"
+            "can't fill `{name}`: a layout gets `Widget child` (or, for tabs, a `StatefulNavigationShell`), the segments above it ({segs}) and `extra`"
         ),
-        (Role::NotFound, _) => format!("can't fill `{name}`: not_found.dart only gets `Uri uri`"),
+        (Role::NotFound, _) => format!(
+            "can't fill `{name}`: not_found.dart only gets `Uri uri`, and the segments of its own path as Strings ({segs})"
+        ),
         _ => format!("can't fill `{name}`: it isn't a segment of this path ({segs})"),
     }
 }

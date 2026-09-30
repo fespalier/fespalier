@@ -245,7 +245,7 @@ pub fn analyze(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, res
 /// the configuration alone, which is what lets `watch` skip it for a tree it has seen.
 fn analyze_tree(tree: &scan::Node, cfg: &Config, diags: &mut diag::Diags) -> (String, resolve::App) {
     let _warm = parse_cache::prewarm(tree);
-    let app = resolve::resolve(tree, diags);
+    let app = resolve::resolve(tree, cfg.case_sensitive, diags);
     manifest::check(&app, cfg, diags);
     let code = emit::emit(&app, cfg, diags);
     (code, app)
@@ -328,17 +328,27 @@ fn watch(project: &Path) -> Result<()> {
 #[cfg(test)]
 mod bench;
 #[cfg(test)]
+mod case_tests;
+#[cfg(test)]
 mod cli_tests;
+#[cfg(test)]
+mod extra_tests;
 #[cfg(test)]
 mod incremental_tests;
 #[cfg(test)]
 mod manifest_tests;
 #[cfg(test)]
+mod match_tests;
+#[cfg(test)]
 mod nav_tests;
+#[cfg(test)]
+mod navigator_tests;
 #[cfg(test)]
 mod paths_tests;
 #[cfg(test)]
 mod refresh_tests;
+#[cfg(test)]
+mod rest_types_tests;
 #[cfg(test)]
 mod route_api_tests;
 #[cfg(test)]

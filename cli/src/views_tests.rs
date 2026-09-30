@@ -282,7 +282,7 @@ fn new_function_scaffolds_functions_that_pass_gen() {
     assert!(read(&dir, "orders/$orderId/layout.dart").contains("Widget layout({required Widget child}) => child;"));
     assert!(read(&dir, "orders/$orderId/loading.dart").contains("Widget loading() =>"));
     assert!(read(&dir, "orders/$orderId/error.dart").contains("Widget error({required Object error, required VoidCallback retry})"));
-    assert!(read(&dir, "orders/$orderId/not_found.dart").contains("Widget notFound({required Uri uri})"));
+    assert!(read(&dir, "orders/$orderId/not_found.dart").contains("Widget notFound({required Uri uri, required String orderId})"));
     let (_, diags, routes) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
     assert!(diags.0.iter().all(|d| d.level != crate::diag::Level::Error), "{:?}", diags.0);
     assert_eq!(routes, 2);

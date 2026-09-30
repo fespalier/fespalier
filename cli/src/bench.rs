@@ -47,9 +47,9 @@ fn bench_stages() {
         let (t_parse, _) = time(|| srcs.iter().for_each(|s| drop(crate::dart::parse(s))));
         // Resolve alone: the parses come from the cache.
         parse_cache::enable();
-        resolve::resolve(&tree, &mut Diags::default());
+        resolve::resolve(&tree, cfg.case_sensitive, &mut Diags::default());
         parse_cache::finish_run();
-        let (t_resolve, app) = time(|| resolve::resolve(&tree, &mut Diags::default()));
+        let (t_resolve, app) = time(|| resolve::resolve(&tree, cfg.case_sensitive, &mut Diags::default()));
         parse_cache::disable();
         let (t_check, _) = time(|| manifest::check(&app, &cfg, &mut Diags::default()));
         let (t_emit, code) = time(|| emit::emit(&app, &cfg, &mut Diags::default()));

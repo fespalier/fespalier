@@ -1,5 +1,34 @@
 ## Unreleased
 
+- `ExtraCodec` and `ExtraJson`: a `Codec<Object?, Object?>` for `GoRouter(extraCodec:)` built from
+  a map of type to `toJson` and `fromJson`, so an `extra` survives the browser's history and state
+  restoration. It never throws by default (an unknown or unreadable object is `null`); `names:` and
+  `strict:` are options.
+- `extraOrNull<T>(state)`: what generated layouts, guards and redirects call for their `extra`;
+  unlike `extraOf` it never asserts. Regenerate `lib/app.g.dart` with the matching `fsp`.
+
+- `PrefetchHandle`: what `prefetchData` (and the generated `prefetch`) returns. It keeps the
+  provider alive until `close()`, `keepFor` is an optional auto-close, and a failed load closes
+  it. **The default changed**: no `keepFor` no longer means 30 seconds; `prefetchKeepAlive` is
+  removed. `WidgetRef.prefetchAll(providers)` closes several with one handle.
+- `RouteMatch`, `UrlMatch`, `RouteMatcher` and `matchRoutes`: what the generated
+  `AppRoutes.match(uri)`, `matchUrl(uri)` and `dataAt(uri)` are built on. `fespalier.dart`
+  hides go_router's own `RouteMatch` to export this one.
+- `pathBelow` and `pathPart`: the path of a location below the mount point, for the generated
+  `not_found.dart` calls (which can now take the segments of their path).
+- Regenerate `lib/app.g.dart` with the matching `fsp`: it has `matchUrl` and `dataAt`, typed
+  handles for sections, and `PrefetchHandle prefetch`.
+
+- `RouteNavigator` (`root`, `shell`): the values of a folder's `navigator.dart`, read by `fsp gen`.
+- `RoutePresentation.root` and `.custom`: a page on the root navigator, and one a `present.dart`
+  builds.
+- Regenerate `lib/app.g.dart` with the matching `fsp`: `AppRoutes` has `rootNavigatorKey`, and
+  `router()` and `mount()` take a `navigatorKey`; layouts' shells use the nearest `transition.dart`.
+- `Segment.asIntRest`, `asDoubleRest`, `asNumRest`, `asBoolRest` and `asDateTimeRest`: a
+  catch-all's parts read as a typed list; a part that doesn't parse is a `BadSegment` (not-found).
+  `restPath` and `restKey` take any `Iterable<Object>` (a `DateTime` is written as ISO 8601).
+- `NotFoundScope` has a `caseSensitive` field, so each folder's `route.dart` decides how its own
+  path is compared by `nearestNotFound`. Regenerate `lib/app.g.dart` with the matching `fsp`.
 - `RouteInfo<M>`, `RouteParam` (with `catchAll`), `RouteTab`, `RoutePresentation`, `routeTemplate`
   and `lookupRoute`: what the generated route manifest (`AppManifest.all`, `byType`, `byPath`) is
   made of, with `metaAs<T>()` for a route's `meta.dart`.

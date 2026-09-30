@@ -44,9 +44,9 @@ void main() {
           uri,
           base,
           [
-            (['a', ':id', 'deep'], (uri) => Text('deep ${uri.path}')),
-            (['a', ':id'], (uri) => Text('item ${uri.path}')),
-            (['a'], (uri) => Text('a ${uri.path}')),
+            (['a', ':id', 'deep'], (uri) => Text('deep ${uri.path}'), caseSensitive: true),
+            (['a', ':id'], (uri) => Text('item ${uri.path}'), caseSensitive: true),
+            (['a'], (uri) => Text('a ${uri.path}'), caseSensitive: true),
           ],
           (uri) => Text('root ${uri.path}'),
         );
@@ -98,7 +98,10 @@ void main() {
     testWidgets('prefetchData loads now and keeps the result for keepFor',
         (tester) async {
       final (ref, container) = await boot(tester);
-      ref.prefetchData(slow(2), keepFor: const Duration(seconds: 2));
+      final handle = ref.prefetchData(
+        slow(2),
+        keepFor: const Duration(seconds: 2),
+      );
       await tester.pump(const Duration(milliseconds: 150));
       expect(loads, 1);
 
@@ -107,19 +110,21 @@ void main() {
       expect(container.exists(slow(2)), isTrue);
       expect(container.read(slow(2)).value, 'value 2');
       expect(loads, 1);
+      expect(handle.isClosed, isFalse);
 
       await tester.pump(const Duration(seconds: 2));
       await tester.pump();
       expect(container.exists(slow(2)), isFalse);
+      expect(handle.isClosed, isTrue);
     });
 
     testWidgets('prefetchData does not keep an error', (tester) async {
       final (ref, container) = await boot(tester);
-      ref.prefetchData(slow(-1));
+      final handle = ref.prefetchData(slow(-1));
       await tester.pump(const Duration(milliseconds: 150));
       await tester.pump();
       expect(container.exists(slow(-1)), isFalse);
-      await tester.pump(prefetchKeepAlive);
+      expect(handle.isClosed, isTrue);
     });
 
     testWidgets('a zero keepFor starts the load and keeps nothing',

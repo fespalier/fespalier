@@ -48,6 +48,15 @@ abstract final class AppManifest {
       type: EditProfileRoute,
       path: '/profile/edit',
       folder: '(tabs)/profile/edit',
+      presentation: RoutePresentation.root,
+      groups: ['(tabs)'],
+      layouts: ['(tabs)'],
+      tabs: [RouteTab('(tabs)', 2, 'profile')],
+    ),
+    RouteInfo(
+      type: SecurityRoute,
+      path: '/profile/security',
+      folder: '(tabs)/profile/security',
       groups: ['(tabs)'],
       layouts: ['(tabs)'],
       tabs: [RouteTab('(tabs)', 2, 'profile')],
@@ -83,4 +92,13 @@ abstract final class AppManifest {
   /// page, say). Handy in a layout: `AppManifest.of(GoRouterState.of(context))`.
   static RouteInfo<Object?>? of(GoRouterState state) =>
       lookupRoute(byPath, routeTemplate(state, AppRoutes.base));
+
+  /// [uri] matched to its route: the [RouteInfo], the parameters parsed from the URL and the
+  /// providers of its data (each section's, then the route's own), the same ones the page
+  /// watches. Null when no route fits or a segment doesn't parse (the not-found rule). The
+  /// mount point is taken off; no guard runs and no widget is built.
+  static RouteMatch? match(Uri uri) {
+    final m = AppRoutes.matchUrl(uri);
+    return m == null ? null : RouteMatch(byType[m.type]!, m);
+  }
 }

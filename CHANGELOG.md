@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-09-30
+
+Function views, navigators and presented routes, localized paths, enum and typed catch-all
+segments, `extra` beyond pages, URL → data lookup, and a much faster `fsp watch` on large apps.
+
+### Upgrading from 0.2
+
+- **Regenerate `lib/app.g.dart`** with `fsp` 0.3.0 (`fsp gen`, or `dart run fespalier gen`): the
+  generated code relies on runtime additions from this release.
+- **`prefetch` returns a `PrefetchHandle`.** A prefetch without `keepFor` now lives until you
+  `close()` the handle (it used to lapse after 30 s); `prefetchKeepAlive` is removed.
+- **A `transition.dart` at or above a layout now animates that layout's shell too.** `fsp init`
+  writes one at the root, so most apps see it; switching tabs still doesn't re-animate the shell.
+- **Generated `data()` providers keep Riverpod's automatic retry** unless `data_retry: none`.
+- **`NotFoundScope`** (hand-written `nearestNotFound` scopes) takes a named `caseSensitive:`.
+- **`RouteMatch`:** `package:fespalier/fespalier.dart` hides go_router's own `RouteMatch`.
 
 ### Localized paths
 

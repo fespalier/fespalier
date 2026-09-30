@@ -1,4 +1,4 @@
-## Unreleased
+## 0.3.0 - 2026-09-30
 
 - Localized paths (`const paths = {'fr': 'produits'};` in a folder's `route.dart`):
   `TypedLocation.locationFor(locale)` (canonical `location` unchanged), and `go`, `push` and `replace`

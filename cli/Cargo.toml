@@ -1,6 +1,6 @@
 [package]
 name = "fespalier"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "File-tree routing for Flutter: reads lib/app/, checks how the files fit together, emits one mountable lib/app.g.dart"
 license = "MIT"

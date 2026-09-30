@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Renders the package-manager files for a fespalier release.
 
-    scripts/packaging.py --version 0.2.0 --dist dist --out dist
+    scripts/packaging.py --version 0.3.0 --dist dist --out dist
 
 reads the `fsp-<target>.tar.gz.sha256` / `.zip.sha256` files the release workflow builds
 and writes
@@ -131,7 +131,7 @@ def read_checksums(dist: Path) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--version", required=True, help="release version without the v, e.g. 0.2.0")
+    ap.add_argument("--version", required=True, help="release version without the v, e.g. 0.3.0")
     ap.add_argument("--dist", type=Path, default=Path("dist"), help="folder with the .sha256 files")
     ap.add_argument("--out", type=Path, default=Path("dist"), help="where to write fsp.rb and fsp.json")
     args = ap.parse_args(argv)

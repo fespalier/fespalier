@@ -16,7 +16,8 @@
 //! `file` and `meta` are relative to the project root (`meta` is the route's
 //! meta.dart, or null); `folder`, `layouts` and `tabs[].layout` are relative to
 //! the app folder, with `""` for the app folder itself. `in` is `path` or
-//! `query`; `presentation` is `page`, `redirect`, `root` (on the root navigator, from a
+//! `query`; `type` is the Dart type by name (`int?`, `List<Category>`: an enum without the
+//! import prefix its file gave it); `presentation` is `page`, `redirect`, `root` (on the root navigator, from a
 //! `navigator.dart`) or `custom` (a `present.dart` builds its page).
 
 use std::path::Path;

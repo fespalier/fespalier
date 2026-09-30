@@ -9,9 +9,9 @@ import 'package:material_ui/material_ui.dart' as mui;
 void main() {
   group('the route manifest', () {
     test('lists every route once, by type and by path', () {
-      expect(AppManifest.all, hasLength(37));
-      expect(AppManifest.byType, hasLength(37));
-      expect(AppManifest.byPath, hasLength(37));
+      expect(AppManifest.all, hasLength(39));
+      expect(AppManifest.byType, hasLength(39));
+      expect(AppManifest.byPath, hasLength(39));
       // With the manifest inline, AppRoutes forwards to it.
       expect(AppRoutes.all, same(AppManifest.all));
       expect(AppRoutes.byType, same(AppManifest.byType));
@@ -70,6 +70,17 @@ void main() {
       expect(docs.segments.single.catchAll, isTrue);
       expect(AppManifest.byPath['/files/*path?']!.type, FilesRoute);
       expect(AppManifest.byType[PhotoRoute]!.segments.single.catchAll, isFalse);
+    });
+
+    test('an enum segment, query parameter or catch-all shows its type name', () {
+      final shop = AppManifest.byType[CategoryShopRoute]!;
+      expect(shop.path, '/shop/:category');
+      expect(shop.segments.map((p) => '${p.type} ${p.name}'), ['Category category']);
+      expect(shop.query.map((p) => '${p.type} ${p.name}'), ['Sort? sort']);
+      expect(shop.dataKeys, ['category']);
+      final browse = AppManifest.byType[BrowseRoute]!;
+      expect(browse.segments.single.type, 'List<Category>');
+      expect(browse.segments.single.catchAll, isTrue);
     });
 
     test('a redirect.dart route is a redirect', () {

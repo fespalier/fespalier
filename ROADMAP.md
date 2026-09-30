@@ -10,5 +10,4 @@ maintainer steps (pub.dev, Homebrew tap, Scoop bucket, Marketplace) are in READM
 
 ## Later
 
-- Enum segments, and `List<SomeEnum>` catch-alls: a segment is a `String`, `int`, `double` or `bool` today.
 - Localized paths.

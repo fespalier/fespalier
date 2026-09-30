@@ -25,12 +25,13 @@ class RouteParam {
 
   final String name;
 
-  /// A `$$rest` / `$$$rest` catch-all: the rest of the path, a `List<String>`,
-  /// always the last segment.
+  /// A `$$rest` / `$$$rest` catch-all: the rest of the path, a `List<String>`
+  /// (or a `List` of another type), always the last segment.
   final bool catchAll;
 
   /// The Dart type as the route class spells it: `int`, `String`, `int?`
-  /// (an optional query parameter), `List<String>` (every `?x=` value).
+  /// (an optional query parameter), `List<String>` (every `?x=` value). An enum
+  /// is its name, `Category` or `Sort?`, without the prefix its file imported it under.
   final String type;
 
   @override

@@ -43,6 +43,22 @@ abstract final class Segment {
         final raw => throw BadSegment(name, raw, 'bool'),
       };
 
+  /// A segment that is an enum (`Category category`): the value of [values] (`Category.values`)
+  /// whose `name` the segment spells, so `/shop/shoes` is `Category.shoes`. A segment that names
+  /// no value is a [BadSegment], so the route shows not-found, as `/products/abc` does for an
+  /// `int`. With [caseSensitive] false (the route's paths match in any case) `/shop/SHOES`
+  /// is `Category.shoes` too; a name that matches exactly always wins.
+  static T asEnum<T extends Enum>(
+    GoRouterState s,
+    String name,
+    List<T> values, {
+    bool caseSensitive = true,
+  }) {
+    final raw = asString(s, name);
+    return _enumNamed(values, raw, caseSensitive: caseSensitive) ??
+        (throw BadSegment(name, raw, '$T'));
+  }
+
   /// A catch-all segment (`$$rest`): every remaining part of the path, each
   /// decoded on its own, so `/docs/a%2Fb/c` is `['a/b', 'c']`. Empty when the
   /// route matched without the segment (an optional catch-all, `$$$rest`).
@@ -88,6 +104,19 @@ abstract final class Segment {
   static List<DateTime> asDateTimeRest(GoRouterState s, String name) =>
       _rest(s, name, DateTime.tryParse);
 
+  /// A catch-all of enum values (`List<Category> path`): [asRest], with each part read by
+  /// [asEnum]'s rules. A part that names no value is a [BadSegment] (not-found).
+  static List<T> asEnumRest<T extends Enum>(
+    GoRouterState s,
+    String name,
+    List<T> values, {
+    bool caseSensitive = true,
+  }) => _rest(
+    s,
+    name,
+    (raw) => _enumNamed(values, raw, caseSensitive: caseSensitive),
+  );
+
   static List<T> _rest<T>(
     GoRouterState s,
     String name,
@@ -126,11 +155,53 @@ abstract final class Query {
   static List<bool> asBoolList(GoRouterState s, String name) =>
       [...asStringList(s, name).map(_bool).nonNulls];
 
+  /// A query parameter that is an enum (`Sort? sort`): the value of [values] whose `name` it
+  /// spells, or `null` when it is missing or names none. [caseSensitive] is as for
+  /// [Segment.asEnum].
+  static T? asEnum<T extends Enum>(
+    GoRouterState s,
+    String name,
+    List<T> values, {
+    bool caseSensitive = true,
+  }) => _enumNamed(values, asString(s, name), caseSensitive: caseSensitive);
+
+  /// Every `?name=` value that names a value of [values], in order; the others are left out.
+  static List<T> asEnumList<T extends Enum>(
+    GoRouterState s,
+    String name,
+    List<T> values, {
+    bool caseSensitive = true,
+  }) => [
+    ...asStringList(s, name)
+        .map((raw) => _enumNamed(values, raw, caseSensitive: caseSensitive))
+        .nonNulls,
+  ];
+
   static bool? _bool(String? raw) => switch (raw) {
         'true' => true,
         'false' => false,
         _ => null,
       };
+}
+
+/// The value of [values] whose `name` is [raw], or `null` when there is none. An exact match
+/// wins; with [caseSensitive] false the names are compared without regard to case as well
+/// (an enum with `a` and `A` still tells them apart).
+T? _enumNamed<T extends Enum>(
+  Iterable<T> values,
+  String? raw, {
+  bool caseSensitive = true,
+}) {
+  if (raw == null) return null;
+  for (final v in values) {
+    if (v.name == raw) return v;
+  }
+  if (caseSensitive) return null;
+  final lower = raw.toLowerCase();
+  for (final v in values) {
+    if (v.name.toLowerCase() == lower) return v;
+  }
+  return null;
 }
 
 /// A list with value equality, so a `List` query parameter can key a provider
@@ -156,14 +227,15 @@ final class QueryList<T> extends UnmodifiableListView<T> {
 }
 
 /// Appends a typed route's query parameters to its location. `null` values
-/// and empty lists are left out.
+/// and empty lists are left out. An enum is written as its `name`, which
+/// [Query.asEnum] reads back.
 String withQuery(String location, Map<String, Object?> query) {
   final q = <String, List<String>>{};
   for (final MapEntry(:key, :value) in query.entries) {
     final values = switch (value) {
       null => const <String>[],
-      Iterable<Object?>() => [for (final v in value) '$v'],
-      _ => ['$value'],
+      Iterable<Object?>() => [for (final v in value) _queryPart(v)],
+      _ => [_queryPart(value)],
     };
     if (values.isNotEmpty) q[key] = values;
   }
@@ -171,10 +243,12 @@ String withQuery(String location, Map<String, Object?> query) {
   return '$location?${Uri(queryParameters: q).query}';
 }
 
+String _queryPart(Object? value) => value is Enum ? value.name : '$value';
+
 /// The path of a catch-all's parts, each encoded: `/a/b%20c`, or nothing for none.
 /// A typed route appends it to its location. The parts are strings, numbers,
-/// booleans or dates (a `DateTime` is written as ISO 8601); [Segment.asRest] and
-/// its typed siblings read them back.
+/// booleans, dates (a `DateTime` is written as ISO 8601) or enums (written as their
+/// `name`); [Segment.asRest] and its typed siblings read them back.
 String restPath(Iterable<Object> rest) =>
     [for (final part in rest) '/${_restPart(part)}'].join();
 
@@ -183,8 +257,11 @@ String restPath(Iterable<Object> rest) =>
 String restKey(Iterable<Object> rest) =>
     [for (final part in rest) _restPart(part)].join('/');
 
-String _restPart(Object part) =>
-    Uri.encodeComponent(part is DateTime ? part.toIso8601String() : '$part');
+String _restPart(Object part) => Uri.encodeComponent(switch (part) {
+  DateTime() => part.toIso8601String(),
+  Enum() => part.name,
+  _ => '$part',
+});
 
 /// The parts [restKey] joined.
 List<String> restParts(String key) => [

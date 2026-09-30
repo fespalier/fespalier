@@ -12,6 +12,7 @@ use crate::config::{Config, DataRetry};
 use crate::resolve::{self, App, Bind, Branch, Data, Guard, Route, Transition};
 use crate::dart::Span;
 use crate::diag::Diags;
+use crate::enums;
 use crate::manifest::{self, ManifestCx};
 use crate::scan::{Kind, Seg};
 use crate::templates;
@@ -1180,14 +1181,20 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
         ParamsFn::Route(id) | ParamsFn::Layout(id) | ParamsFn::Guard(id) => &app.routes[id],
     };
     let catch_all = |n: &str| owner.segs.iter().any(|(m, folder)| m == n && app.is_catch_all(*folder));
+    // An enum is matched by the case the route's paths are.
+    let case = if owner.case_sensitive { "" } else { ", caseSensitive: false" };
     let types: Vec<String> = params.iter().map(|(n, t)| format!("{t} {n}")).collect();
     let values: Vec<String> = params
         .iter()
         .map(|(n, t)| {
             // `int` → Segment.asInt, `int?` → Query.asInt, `List<int>` → Query.asIntList,
-            // a catch-all `List<String>` → Segment.asRest, `List<int>` → Segment.asIntRest.
+            // a catch-all `List<String>` → Segment.asRest, `List<int>` → Segment.asIntRest;
+            // an enum → Segment.asEnum, Query.asEnum, Query.asEnumList, Segment.asEnumRest.
             if catch_all(n) {
                 return match resolve::list_item(t) {
+                    Some(item) if enums::enum_base(item).is_some() => {
+                        format!("{n}: Segment.asEnumRest(s, '{n}', {item}.values{case})")
+                    }
                     Some(item) if item != "String" => format!("{n}: Segment.as{}Rest(s, '{n}')", upper_first(item)),
                     _ => format!("{n}: Segment.asRest(s, '{n}')"),
                 };
@@ -1197,6 +1204,9 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
                 (Some(inner), _) => ("Query", inner, ""),
                 _ => ("Segment", t.as_str(), ""),
             };
+            if enums::enum_base(base).is_some() {
+                return format!("{n}: {reader}.asEnum{list}(s, '{n}', {base}.values{case})");
+            }
             let base = match base {
                 "int" => "Int",
                 "double" => "Double",
@@ -1231,6 +1241,8 @@ fn key_arg(rest: &[String], name: &str, ty: &str, value: &str) -> String {
         return value.into();
     }
     match resolve::list_item(ty) {
+        // The path was built from the names of the parts that parsed.
+        Some(item) if enums::enum_base(item).is_some() => format!("restParts({value}).map({item}.values.byName).toList()"),
         Some(item) if item != "String" => format!("restParts({value}).map({item}.parse).toList()"),
         _ => format!("restParts({value})"),
     }
@@ -1283,14 +1295,14 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
     })
 }
 
-/// The imports that let the generated file name the types of typed `extra`s
-/// (see `extra.rs`), one line per library.
+/// The imports that let the generated file name the types of typed `extra`s and of enum
+/// segments and query parameters (see `extra.rs`), one line per library.
 fn extra_imports(app: &App, cfg: &Config) -> Vec<String> {
     use std::collections::BTreeMap;
     let dart_uri = |uri: String| uri.replace('\\', "\\\\").replace('$', "\\$").replace('\'', "\\'");
     let mut shown: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut aliased = BTreeSet::new();
-    for e in app.routes.iter().filter_map(|r| r.extra.as_ref()) {
+    for e in app.routes.iter().filter_map(|r| r.extra.as_ref()).chain(&app.enum_types) {
         for (_, uri, alias) in &e.aliased {
             aliased.insert(format!("import '{}' as {alias};", dart_uri(cfg.import_from_file(&e.file, uri))));
         }
@@ -1365,6 +1377,8 @@ fn location(app: &App, r: &Route) -> String {
             Seg::Dynamic(n) if types.iter().any(|(m, t)| m == n && t == "String") => {
                 Some(format!("${{Uri.encodeComponent({n})}}"))
             }
+            // An enum is written as its name.
+            Seg::Dynamic(n) if types.iter().any(|(m, t)| m == n && enums::enum_base(t).is_some()) => Some(format!("${{{n}.name}}")),
             Seg::Dynamic(n) => Some(format!("${n}")),
             Seg::CatchAll(..) | Seg::Group(_) => None,
         })

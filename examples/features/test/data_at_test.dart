@@ -3,7 +3,9 @@
 // typed handle of a section (reports/, keyed by a query parameter; teams/$teamId/).
 import 'package:features/app.g.dart';
 import 'package:features/app/reports/data.dart' as report_data;
+import 'package:features/app/shop/\$category/page.dart' show Sort;
 import 'package:features/catalog.dart';
+import 'package:features/models/category.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -130,6 +132,39 @@ void main() {
       expect(AppRoutes.match(at('/compare/1/x')), isNull);
     });
 
+    test('an enum segment is read by name; an unknown name is no match', () {
+      expect(dataAt('/shop/hats')!.single, CategoryShopRoute.data(Category.hats));
+      expect(
+        dataAt('/shop/hats')!.single,
+        isNot(CategoryShopRoute.data(Category.shoes)),
+      );
+      // Paths match by case here, and so do the names.
+      expect(
+        dataAt('/SHOP/Shoes?sort=price')!.single,
+        CategoryShopRoute.data(Category.shoes),
+      );
+      expect(dataAt('/shop/socks'), isNull);
+      expect(AppRoutes.match(at('/shop/socks')), isNull);
+      expect(AppRoutes.match(at('/shop/hats'))!.info.path, '/shop/:category');
+    });
+
+    test('an enum catch-all parses each part and keys data by its path', () {
+      expect(
+        dataAt('/browse/shoes/hats')!.single,
+        BrowseRoute.data(restKey([Category.shoes, Category.hats])),
+      );
+      expect(
+        dataAt('/browse/shoes/hats')!.single,
+        isNot(dataAt('/browse/hats/shoes')!.single),
+      );
+      expect(AppRoutes.match(at('/browse/shoes/hats'))!.params, {
+        'categories': [Category.shoes, Category.hats],
+      });
+      expect(dataAt('/browse/shoes/socks'), isNull);
+      // A required catch-all needs a part: /browse is the app's `/:slug`.
+      expect(AppRoutes.match(at('/browse'))!.info.path, '/:slug');
+    });
+
     test('each route matches by its own case setting (route.dart)', () {
       // pubspec.yaml: any case. files/ has a route.dart that says exactly.
       expect(AppRoutes.match(at('/DOCS/a'))!.info.path, '/docs/*rest');
@@ -169,6 +204,19 @@ void main() {
       expect(m.uri, at('/shops/acme/items/7?ignored=1'));
     });
 
+    test('an enum segment and query parameter are the values they name', () {
+      final m = AppRoutes.match(at('/shop/hats?sort=name'))!;
+      expect(m.params, {'category': Category.hats, 'sort': Sort.name});
+      expect(m.route, isA<CategoryShopRoute>());
+      expect(m.route.location, '/shop/hats?sort=name');
+      expect(m.data.single, CategoryShopRoute.data(Category.hats));
+      // A query value that names no value is left out, as the page sees it.
+      expect(AppRoutes.match(at('/shop/hats?sort=size'))!.params, {
+        'category': Category.hats,
+        'sort': null,
+      });
+    });
+
     test('lists the query parameters, absent ones as null', () {
       final m = AppRoutes.match(at('/search?page=2'))!;
       expect(m.params, {'q': null, 'page': 2, 'tags': <String>[]});
@@ -205,6 +253,8 @@ void main() {
         const ItemRoute(shop: 'a', id: 2),
         DocsRoute(rest: ['x', 'y']),
         const SearchRoute(q: 'z'),
+        const CategoryShopRoute(category: Category.hats, sort: Sort.name),
+        const BrowseRoute(categories: [Category.shoes, Category.hats]),
       ];
       for (final r in routes) {
         final m = AppRoutes.match(at(r.location))!;

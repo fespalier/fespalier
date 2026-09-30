@@ -27,8 +27,10 @@ lib/app/
       page.dart          ProductPage({required Product product})       → /products/:id
       error.dart         ProductError({required int id, required Object error, …})
   checkout/
-    guard.dart           GuardResult guard(ProviderContainer c)
+    guard.dart           GuardResult guard(ProviderContainer c)         (guards this and below)
     page.dart
+  old-products/$id/
+    redirect.dart        String redirect({required int id})            → /old-products/:id redirects
   greet/$name/page.dart  GreetPage({required String name})
   (account)/             a group: its layout wraps profile/ and settings/,
     layout.dart            but adds nothing to their URLs (/profile, /settings)
@@ -74,13 +76,31 @@ curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh
 
 It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.1.1`
 to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install
-elsewhere. On Windows, download `fsp-x86_64-pc-windows-msvc.zip` from the
-[Releases page](https://github.com/vaam-apps/fespalier/releases) and put `fsp.exe` on your
-`PATH`. With Rust installed, on any platform:
+elsewhere. On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.ps1 | iex
+```
+
+It puts `fsp.exe` in `%LOCALAPPDATA%\fespalier\bin` (tell it otherwise with
+`$env:FSP_INSTALL_DIR`, pick a release with `$env:FSP_VERSION`), checks the SHA-256, and
+prints how to add that folder to your `PATH` if it isn't there yet. With Rust installed, on
+any platform:
 
 ```sh
 cargo install --git https://github.com/vaam-apps/fespalier --tag v0.1.1 fespalier
 ```
+
+**Or install nothing.** Once the package is in your `pubspec.yaml` (step 2), `dart run
+fespalier <command>` runs `fsp` for you, so use it wherever this README says `fsp`:
+`dart run fespalier init`, `dart run fespalier watch`, `dart run fespalier check`. The first
+run downloads the `fsp` release that matches the package's version, checks its SHA-256 and
+keeps it in your user cache (`~/.cache/fespalier` on Linux, `~/Library/Caches/fespalier` on
+macOS, `%LOCALAPPDATA%\fespalier` on Windows; `FSP_CACHE_DIR` moves it), so later runs start
+at once. It needs `tar`, which macOS, Linux and Windows 10+ include. Set `FSP_BINARY=/path/to/fsp`
+to run a binary of your own, e.g. a build from source. An `fsp` on your `PATH` is used too when its
+version is the package's, so nothing is downloaded when you have both. The package and the
+binary are versioned together, and this is what keeps them in step.
 
 **2. Add the package** to your app's `pubspec.yaml`, then run `flutter pub get`:
 
@@ -151,6 +171,8 @@ Commit `lib/app.g.dart`: it's plain code, meant to be read, and the app builds w
 - run: fsp check
 ```
 
+or, with nothing to install (after `flutter pub get`): `- run: dart run fespalier check`.
+
 **Config.** `fsp` needs no configuration. To move things, add this optional section to
 `pubspec.yaml`. Both paths are relative to the project root and must be under `lib/`, and
 `output` must be a `.dart` file. These are the defaults:
@@ -159,7 +181,10 @@ Commit `lib/app.g.dart`: it's plain code, meant to be read, and the app builds w
 fespalier:
   app_dir: lib/app
   output: lib/app.g.dart
+  format: false
 ```
+
+`format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
 
 **Platform notes.**
 
@@ -199,7 +224,8 @@ top-level function.
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
 | `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside |
-| `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through | segments, query (named) |
+| `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder | `uri`; segments at or above its folder; query (named) |
+| `redirect.dart` | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `ProviderContainer c` first | `uri`; segments; query (named) |
 | `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
 | `not_found.dart` | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
 
@@ -307,6 +333,129 @@ path, so a tab made only of dynamic routes, or a tab layout placed directly in a
 `$folder`, is an error (put the layout in a `(group)` below that folder instead); and `tabs` in a tab layout must be string literals, so name another list of destinations
 something else. See `examples/tabs`.
 
+**Nested tab layouts.** A tab layout can sit inside a tab of another one: put a
+`layout.dart` that takes a `StatefulNavigationShell` in a folder that is a branch of the
+outer layout. Each layout has its own `tabs` list, its own navigation stacks and its own
+`StatefulNavigationShell`, and the outer layout keeps the whole inner one alive while you
+look at another outer tab, so an inner tab's state survives switching outer tabs. The same
+rules apply at each level: an inner tab can't start on a route with a `:segment` in its
+path, and a tab layout in a `$folder` is an error.
+
+```
+lib/app/(tabs)/
+  layout.dart              const tabs = ['(home)', 'search', 'library']; takes a shell
+  (home)/page.dart
+  search/page.dart
+  library/                 the third outer tab...
+    layout.dart            ...is itself a tab layout: const tabs = ['books', 'authors'];
+    books/page.dart          /library/books
+    authors/page.dart        /library/authors
+```
+
+`library/` has no page of its own here, so its inner layout is what the outer tab shows.
+Give it a `page.dart` and that page becomes the inner layout's first tab, like any tab
+layout's own page. In `examples/tabs` the Library tab is built this way; its tests check
+that a counter in an inner tab survives switching inner and outer tabs.
+
+**Tab options.** A tab layout can set go_router's `StatefulShellBranch` options per tab in
+a top-level `const tabOptions` map, next to `tabs`. Keys are the tab names `tabs` uses
+(`'.'` for the layout's own page), and each value is a `TabOptions` from
+`package:fespalier/fespalier.dart`:
+
+```dart
+const tabOptions = {
+  'search': TabOptions(preload: true),
+  'profile': TabOptions(initialLocation: '/profile/edit'),
+};
+```
+
+- `preload: true` builds the tab as soon as the layout first shows, instead of on its
+  first visit.
+- `initialLocation` is where the tab opens the first time, and where tapping its current
+  tab goes with `goBranch(i, initialLocation: true)`, instead of the tab's first route. It's
+  an app location such as `/profile/edit` (with `?query` if you like), written as a
+  string literal. It must be a route inside that tab, and `fsp` checks that (dynamic routes
+  match any value: `/items/1` for `items/$id`). It also lets a tab that has only dynamic
+  routes work, since go_router then doesn't need a first route without a `:segment`. When
+  mounted with `AppRoutes.mount(at: '/x')`, the mount point is added for you.
+
+Like `tabs`, `tabOptions` is read from the source, not run: it must be a map literal with
+string-literal keys and `TabOptions(...)` values with `true`/`false` and string-literal
+arguments. Unknown tabs, repeated tabs, unknown options and other values are errors that
+point at the offending entry. Only tabs that need options are listed.
+
+### Guards
+
+`guard.dart` exports `GuardResult guard(ProviderContainer c, {…})`. It returns a location to
+redirect to, or `null` to let the navigation through, and may be async. It guards every
+route at and below its folder, and the folder needs no `page.dart`: put one in a `(group)` or
+at the root to cover a whole section of the app.
+
+```dart
+// lib/app/(members)/guard.dart: guards /inbox, /admin and everything else in the group
+GuardResult guard(ProviderContainer c, {required Uri uri}) =>
+    c.read(session) ? null : LoginRoute(from: uri.toString()).location;
+```
+
+- **Order.** Guards run outermost first, and the first one to return a location wins. A
+  folder with a page and its own guard keeps its guard for that page and everything nested
+  in it; guards above it run first.
+- **Parameters.** The `ProviderContainer` comes first, then named parameters: `uri` (the
+  requested location, a `Uri`), the segments of the guard's own folder and the ones above
+  it (`{required String shop}`), and query parameters (optional and nullable, `String? ref`).
+  A guard above `$id` can't ask for `id`: that's an error at the parameter. Segments are
+  typed like everywhere else. A guard's query parameters stay its own: they don't become
+  fields of the typed routes below it (unless the guard sits next to a `page.dart`, where
+  they are the page's, as before).
+- **What gets generated.** Each page's `GoRoute` gets a `redirect` that calls, in order, the
+  guards of the page-less folders above it and then its own. Nested pages go through their
+  parent's `redirect`, so no guard runs twice. There's no redirect on `ShellRoute` or
+  `StatefulShellRoute`: go_router runs a matched route's redirect for deep links and for
+  navigation inside a shell, tabs included, so the page routes are enough (and a page-less
+  folder has no route to put one on). When a path has a segment that doesn't parse
+  (`/products/abc`), guards are skipped and not-found is shown.
+- A `guard.dart` with no `page.dart` or `redirect.dart` at or below its folder is a warning.
+
+### `redirect.dart`
+
+A folder can hold `redirect.dart` instead of `page.dart`. It exports `String redirect({…})`
+(or `Future<String>`) returning the location to go to, and the route only redirects: no
+widget, no builder.
+
+```dart
+// lib/app/old-products/$id/redirect.dart: /old-products/3 → /products/3
+String redirect({required int id}) => ProductRoute(id: id).location;
+```
+
+It takes the same parameters as a guard, except that `ProviderContainer c` is optional (put
+it first if you need providers). Segments are typed like anywhere else, so `/old-products/abc`
+shows not-found. It gets a typed route, named after its path (`OldProductsIdRoute(id: 3)`),
+so links to the old URL stay typed; query parameters it asks for are its fields. It takes part in
+route order and unreachable checks like a page, inherits the guards above it, and can sit
+next to a `guard.dart`, which runs first. A folder has a `page.dart` or a `redirect.dart`,
+not both, and a tab layout's own folder can't hold a `redirect.dart`. Routes in subfolders
+sit beside a redirect route rather than inside it, since anything inside would redirect too.
+
+### Sending people back
+
+A guard that redirects to a login page can pass along where the user was going. Ask for
+`Uri uri` (the requested location, query included) and put it in the login route's query:
+
+```dart
+LoginRoute(from: uri.toString()).location   // /login?from=%2Finbox%3Ffolder%3Dsent
+```
+
+`login/page.dart` takes it as a query parameter (`this.from`, a `String?`), and when the
+user is done it calls `returnTo`:
+
+```dart
+context.go(returnTo(from));                  // from if it's a location in the app, else '/'
+```
+
+`returnTo(from, fallback: '/home')` only lets an absolute path through: `https://…`, `//host`
+and the like fall back, so a crafted `?from=` can't send people off your app. Both `uri` and
+the typed routes include the mount prefix when the tree is mounted with `at:`.
+
 ### Not-found views
 
 A `not_found.dart` at the root is the app-wide one. Any other folder can have one too, and
@@ -334,12 +483,46 @@ app-wide default; any folder or `(group)` folder can override it for its own rou
 
 The function returns a `Page`, and takes the page's key as `LocalKey key`, the page
 itself as `Widget child`, and optionally `GoRouterState state`. `Transitions` has
-ready-made ones: `fade`, `slide`, `none`, `material` and `cupertino`.
+ready-made ones: `fade`, `slide`, `none`, `material`, `cupertino`, and `dialog`, `sheet`
+and `fullscreenDialog` (below).
 
 ```dart
 // lib/app/transition.dart: every route fades in, unless a folder overrides it
 Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);
 ```
+
+**Dialogs and sheets.** `Transitions.dialog`, `Transitions.sheet` and
+`Transitions.fullscreenDialog` make a route open over the previous page instead of
+replacing it. The page's widget is what shows up: for `dialog` it is the dialog itself
+(an `AlertDialog`, a `Dialog` or your own card, as in `showDialog`'s builder), for `sheet`
+the sheet's content (wrapped in a `Material`), and `fullscreenDialog` is a Material page
+that slides up, with a close button in its `AppBar`.
+
+```dart
+// lib/app/photos/$id/transition.dart: /photos/:id is a dialog over /photos
+Page<void> transition(LocalKey key, Widget child) => Transitions.dialog(key, child);
+
+// lib/app/photos/sort/transition.dart
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.sheet(key, child, showDragHandle: true);
+```
+
+They are real Navigator routes (a `DialogRoute` and a `ModalBottomSheetRoute` made by the
+page), so everything works as it does for `showDialog`: `context.pop()`, the back button
+and the barrier pop the route, and `dialog` and `sheet` take options such as
+`barrierDismissible`, `isScrollControlled` and `enableDrag`. A few things to know:
+
+- **Put the route below a page.** The page underneath stays built and visible. go_router
+  builds a deep link's stack from the parents that have a page, so with `photos/page.dart`
+  above `photos/$id/`, `/photos/7` opens the dialog over `/photos`. Without a parent page,
+  the dialog opens over an empty screen.
+- **They cover their own navigator only.** Inside a tab, a dialog covers that tab's
+  navigator, not the tab layout's navigation bar; the same goes for a `layout.dart`'s
+  body. Put the route outside the layout's folder to cover the whole screen.
+- **They need `MaterialLocalizations`,** like `showDialog` and `showModalBottomSheet`: a
+  `MaterialApp` (or a `Localizations` with the Material delegate) above the router.
+- The route's `transition.dart` also covers routes below it, so give a dialog route its own
+  folder.
 
 Routes with no `transition.dart` above them keep go_router's default for your app type:
 the platform transition under a Material or Cupertino app, none otherwise (see the go_router
@@ -495,6 +678,8 @@ checkout, run `cd cli && cargo build --release` (→ `cli/target/release/fsp`). 
 ```sh
 fsp init                # first-time setup: starter files, then gen
 fsp gen                 # check lib/app/, write lib/app.g.dart
+fsp gen --format        # ...and run `dart format` on it
+fsp routes              # print the route table (--json: one object per route)
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
@@ -512,6 +697,41 @@ group to serve its parent's URL. It then regenerates `lib/app.g.dart` and prints
 result line; if that fails, it lists the files it created. After `fsp new '(account)'
 --layout`, the generator warns "folder has no page.dart and no routes below it; skipped"
 until you add a route inside the group. That's expected.
+
+`fsp routes` prints what the header of `lib/app.g.dart` lists: each route's URL pattern, its typed
+route class, its `page.dart` and its tags (`data`, `guard`, `layout`, `transition`).
+
+```
+/products/:id  ProductRoute   products/$id/page.dart  (data, transition)
+```
+
+With `--json` it prints one JSON object per line, for scripts and editors, and adds each
+route's parameters; `file` is relative to the project root:
+
+```json
+{"pattern":"/products/:id","route":"ProductRoute","file":"lib/app/products/$id/page.dart","tags":["data","transition"],"params":[{"name":"id","type":"int","in":"path"}]}
+```
+
+**`--json` diagnostics.** `fsp gen --json` and `fsp check --json` print each diagnostic to
+stdout as one JSON object per line, instead of the rendering below, so an editor can turn them
+into squiggles. The success and failure lines still go to stderr, and stdout is empty when
+there is nothing to report:
+
+```json
+{"file":"lib/app/shops/$shop/items/$id/page.dart","line":6,"column":18,"severity":"error","message":"can't fill `label`: ..."}
+```
+
+`line` and `column` count from 1 (the column counts characters, not bytes) and are `null` for
+a diagnostic that isn't about a place in a file. `severity` is `error` or `warning`.
+
+**Formatting.** The generated file is not formatted by default, so a committed
+`app.g.dart` doesn't depend on which Dart SDK ran `fsp`. `fsp gen --format`, or `format: true` in
+the pubspec section, pipes it through `dart format` (which needs `dart` on your `PATH`; without
+it `fsp` warns and writes the unformatted code). It uses your package's language version
+and `analysis_options.yaml` (`formatter: page_width`), like `dart format lib/`, and
+`fsp gen` compares the formatted text with the file on disk, so a formatted file that is up
+to date stays "unchanged". `fsp watch`, `fsp new` and `fsp init` follow `format:` in the
+pubspec. `fsp check` writes and compares nothing, so it never runs `dart`.
 
 What the commands print:
 
@@ -581,16 +801,23 @@ view bound by type, a layout and guard that take segments, a user-written
 `AsyncNotifierProvider`, `Stream` data, and a `teams/$teamId` section whose `data.dart` feeds
 its layout and pages, with a `not_found.dart` at two levels.
 
-`examples/tabs` is a bottom navigation bar built as a tab layout: three tabs (one with a
-nested page), a counter that survives switching tabs, and a full-screen route outside
-them.
+`examples/tabs` is a bottom navigation bar built as a tab layout: four tabs (one with a
+nested page, and a Library tab that is a tab layout of its own, with two inner tabs), a
+counter that survives switching tabs, `tabOptions`, and a full-screen route outside them.
+
+`examples/features` also has a guard in a page-less `(members)` group (with a login page that
+returns to where you were), a second guard below it that runs after the first, two
+`redirect.dart` routes (`/old-shops/:shop`, `/old-search`), and `/photos`, with a dialog
+route (`/photos/:id`), a bottom sheet (`/photos/sort`) and a full-screen dialog
+(`/photos/upload`) opening over it.
 
 ## Development
 
 ```
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
-packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation), and testing.dart
+packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
+                     testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
 examples/features/   every binding rule, section data and nested not_found.dart, with widget tests
 examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
@@ -607,7 +834,11 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
-with `fsp new` and runs `flutter analyze` on the result. After changing the emitter or a
+with `fsp new` and runs `flutter analyze` on the result, runs `dart run fespalier` against a
+freshly built `fsp`, and checks that the version agrees everywhere it is spelled out
+(`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`, the `ref:` that
+`fsp init` prints, and the READMEs' `ref:`, `--tag` and `FSP_VERSION`; the launcher reads its
+version from the pubspec). To release, bump those together. After changing the emitter or a
 template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
 a committed `app.g.dart` is stale.
 
@@ -666,13 +897,13 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 104 tests (97 unit, 7 CLI integration) cover parsing, every binding rule and contract error, query
+- **Generator:** 154 tests (137 unit, 13 CLI integration, 4 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, transitions, both data
-  forms, section data, nested `not_found.dart`, the typed helpers, scaffolding, and that the
-  committed outputs are up to date. Clippy is clean.
+  forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects,
+  scaffolding, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 72 Flutter tests (the package 20, `shop` 20,
-  `features` 25, `tabs` 7); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 133 Flutter tests (the package 59, `shop` 20,
+  `features` 42, `tabs` 12); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

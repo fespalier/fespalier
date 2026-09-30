@@ -2,25 +2,6 @@
 
 What fespalier doesn't do yet. Released features are in CHANGELOG.md.
 
-## In progress (0.2)
-
-**Guards and redirects**
-- `guard.dart` in a folder without a page, a `(group)` or the root, guarding every route below it (parent guards first).
-- `redirect.dart`: routes that only redirect (`/old` → `/new`).
-- A helper to send users back after a redirect (e.g. `?from=`).
-
-**Navigation**
-- Tab layouts nested inside tab layouts.
-- Per-tab options: `initialLocation`, `preload`.
-- Dialog and bottom-sheet routes.
-
-**Tooling and distribution**
-- `dart run fespalier <command>`: runs the matching `fsp` release binary, no curl or Rust needed (Windows included).
-- `install.ps1` for Windows.
-- `fsp routes` (route table, `--json`) and `--json` diagnostics for editors.
-- Optional `dart format` of the generated file.
-- CI check that versions agree (Cargo.toml, pubspec.yaml, `fsp init`'s `ref:`, README).
-
 ## Later
 
 - Catch-all segments (`[...slug]`): go_router parameters don't span `/`.

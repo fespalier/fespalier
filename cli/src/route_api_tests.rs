@@ -415,3 +415,43 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
     assert!(diags.0.is_empty(), "{:?}", diags.0);
     has(&code, &["builder: (context, state, child) => DataView(", "final _data1 = FutureProvider.autoDispose("]);
 }
+
+// --- together with guards, redirects and tab options -----------------------------------
+
+#[test]
+fn a_redirect_route_that_can_fail_to_parse_shows_the_nearest_not_found() {
+    let c = code(&[
+        ("old/not_found.dart", &not_found("OldNotFound")),
+        ("old/$id/redirect.dart", "String redirect({required int id}) => '/new/$id';"),
+        ("new/$id/page.dart", &widget("NewPage", "final int id;", ", required this.id")),
+    ]);
+    has(&c, &["builder: (context, state) => _i1.OldNotFound(uri: state.uri),"]);
+    // A redirect-only route has no data, so no data helpers.
+    lacks(&c, &["static final watch", "prefetch("]);
+}
+
+#[test]
+fn guards_and_section_data_chain_together() {
+    let c = code(&[
+        ("(s)/guard.dart", "GuardResult guard(ProviderContainer c) => null;"),
+        ("(s)/data.dart", "Future<Shop> data(Ref ref) async => Shop();"),
+        ("(s)/layout.dart", &widget("ShopLayout", "final Widget child; final Shop shop;", ", required this.child, required this.shop")),
+        ("(s)/x/$id/page.dart", &widget("XPage", "final Shop shop; final int id;", ", required this.shop, required this.id")),
+    ]);
+    has(&c, &["_i2.guard(ProviderScope.containerOf(context, listen: false))", "XPage(shop: s"]);
+}
+
+#[test]
+fn a_tab_section_keeps_its_tab_options() {
+    let layout = format!(
+        "const tabOptions = {{'one': TabOptions(preload: true)}};\n{}",
+        widget("TabsLayout", "final StatefulNavigationShell navigationShell; final Me me;", ", required this.navigationShell, required this.me")
+    );
+    let c = code(&[
+        ("(tabs)/data.dart", "Future<Me> data(Ref ref) async => Me();"),
+        ("(tabs)/layout.dart", &layout),
+        ("(tabs)/one/page.dart", &widget("OnePage", "", "")),
+        ("(tabs)/two/page.dart", &widget("TwoPage", "", "")),
+    ]);
+    has(&c, &["builder: (context, state, navigationShell) => DataView(", "preload: true,"]);
+}

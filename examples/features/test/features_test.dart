@@ -205,4 +205,128 @@ void main() {
     expect(const ProfileRoute().location, '/profile');
     expect(const SlugRoute(slug: 'x').location, '/x');
   });
+
+  group('dialog, sheet and full-screen routes', () {
+    late GoRouter router;
+
+    Future<void> bootPhotos(WidgetTester tester, String location) async {
+      router = AppRoutes.router(initialLocation: location);
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: mui.MaterialApp.router(
+              routerConfig: router,
+              // Dialogs and sheets read flutter's MaterialLocalizations.
+              localizationsDelegates: const [
+                DefaultMaterialLocalizations.delegate,
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    String location() =>
+        router.routerDelegate.currentConfiguration.last.matchedLocation;
+
+    testWidgets('a route with Transitions.dialog opens over the previous page',
+        (tester) async {
+      await bootPhotos(tester, '/photos');
+      expect(find.byType(AlertDialog), findsNothing);
+
+      await tester.tap(find.text('Open photo 7'));
+      await tester.pumpAndSettle();
+      expect(location(), '/photos/7');
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Photo 7'), findsOneWidget);
+      // The page below is still there, behind the barrier.
+      expect(find.text('Photos'), findsOneWidget);
+      expect(ModalRoute.of(tester.element(find.text('Photo 7'))),
+          isA<DialogRoute<void>>());
+
+      // context.pop() in the dialog returns to the page.
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(location(), '/photos');
+      expect(find.text('Photos'), findsOneWidget);
+    });
+
+    testWidgets('the barrier and the back button pop a dialog route',
+        (tester) async {
+      await bootPhotos(tester, '/photos');
+      await tester.tap(find.text('Open photo 7'));
+      await tester.pumpAndSettle();
+
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(location(), '/photos');
+
+      await tester.tap(find.text('Open photo 7'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(location(), '/photos');
+    });
+
+    testWidgets('a deep link opens the dialog over its parent page',
+        (tester) async {
+      await bootPhotos(tester, '/photos/7');
+      expect(find.text('Photo 7'), findsOneWidget);
+      expect(find.text('Photos'), findsOneWidget);
+
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(location(), '/photos');
+      expect(find.text('Photos'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+
+      expect(const PhotoRoute(id: 7).location, '/photos/7');
+    });
+
+    testWidgets('Transitions.sheet opens a modal bottom sheet',
+        (tester) async {
+      await bootPhotos(tester, '/photos');
+      await tester.tap(find.text('Sort'));
+      await tester.pumpAndSettle();
+      expect(location(), '/photos/sort');
+      expect(find.text('Sort photos by'), findsOneWidget);
+      expect(find.text('Photos'), findsOneWidget);
+      expect(ModalRoute.of(tester.element(find.text('Sort photos by'))),
+          isA<ModalBottomSheetRoute<void>>());
+
+      await tester.tap(find.text('Newest'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sort photos by'), findsNothing);
+      expect(location(), '/photos');
+
+      // Also as a deep link, and dismissed by the barrier.
+      await bootPhotos(tester, '/photos/sort');
+      expect(find.text('Sort photos by'), findsOneWidget);
+      await tester.tapAt(const Offset(400, 20));
+      await tester.pumpAndSettle();
+      expect(find.text('Sort photos by'), findsNothing);
+      expect(location(), '/photos');
+    });
+
+    testWidgets('Transitions.fullscreenDialog slides up with a close button',
+        (tester) async {
+      await bootPhotos(tester, '/photos');
+      await tester.tap(find.text('Upload'));
+      await tester.pumpAndSettle();
+      expect(location(), '/photos/upload');
+      final route = ModalRoute.of(tester.element(find.text('Pick a file')))!;
+      expect(route.settings, isA<MaterialPage<void>>());
+      expect(route.fullscreenDialog, isTrue);
+
+      await tester.tap(find.byType(CloseButton));
+      await tester.pumpAndSettle();
+      expect(location(), '/photos');
+      expect(find.text('Pick a file'), findsNothing);
+    });
+  });
 }

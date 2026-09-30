@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use heck::ToUpperCamelCase;
 
-use crate::dart::{self, Class, Module, Span, Ty};
+use crate::dart::{self, Class, Lit, Module, Span, Ty};
 use crate::diag::Diags;
 use crate::scan::{Kind, Node, Seg, ROUTE_MEMBERS};
 
@@ -91,10 +91,23 @@ pub struct Transition {
     pub args: Vec<Arg>,
 }
 
+/// A `guard()` or `redirect()` function and the arguments to call it with.
 #[derive(Debug, Clone)]
 pub struct Guard {
     pub import: usize,
-    pub keys: Vec<String>,
+    /// Takes a leading `ProviderContainer` (always for `guard()`, optionally for `redirect()`).
+    pub container: bool,
+    /// The named arguments: segments, then query parameters (each in path or
+    /// declaration order), then `uri`.
+    pub args: Vec<Arg>,
+}
+
+impl Guard {
+    /// The segments and query parameters it reads from the URL.
+    pub fn keys(&self) -> Vec<String> {
+        let url = |a: &&Arg| matches!(a.bind, Bind::Segment(_) | Bind::Query(_));
+        self.args.iter().filter(url).map(|a| a.name.clone()).collect()
+    }
 }
 
 /// One tab of a tab layout.
@@ -104,6 +117,14 @@ pub enum Branch {
     Own,
     /// A subfolder holding routes: its route id.
     Folder(usize),
+}
+
+/// What `tabOptions` in a tab layout sets for one tab.
+#[derive(Debug, Clone, Default)]
+pub struct BranchOptions {
+    pub preload: bool,
+    /// An app location inside the tab, as written (`/profile/edit`).
+    pub initial_location: Option<String>,
 }
 
 #[derive(Debug)]
@@ -116,15 +137,19 @@ pub struct Route {
     /// The URL's segments from the root down; `(group)` folders add none.
     pub url: Vec<Seg>,
     pub page: Option<Widget>,
-    /// Where the page's class is declared, for diagnostics that name the route.
+    /// Where the page's class (or the `redirect()` function) is declared, for
+    /// diagnostics that name the route.
     pub page_span: Option<Span>,
-    /// `Product` for `ProductPage`; the typed route is `ProductRoute`.
+    /// `Product` for `ProductPage`; the typed route is `ProductRoute`. A
+    /// `redirect.dart` route is named after its path (`OldProductsId`).
     pub name: Option<String>,
     pub data: Option<Data>,
     pub loading: Option<Widget>,
     pub error: Option<Widget>,
     pub layout: Option<Widget>,
     pub guard: Option<Guard>,
+    /// A `redirect.dart` in place of a page: the route only redirects.
+    pub redirect: Option<Guard>,
     /// The nearest transition.dart at or above this folder; only for pages.
     pub transition: Option<Transition>,
     /// Query parameters any of this route's files ask for: (name, Dart type),
@@ -132,8 +157,12 @@ pub struct Route {
     pub query: Vec<(String, String)>,
     /// Query parameters this folder's layout asks for.
     pub layout_query: Vec<(String, String)>,
+    /// Query parameters a guard asks for when its folder has no route of its own.
+    pub guard_query: Vec<(String, String)>,
     /// Set when the layout asks for a `StatefulNavigationShell`: its tabs, in order.
     pub tabs: Option<Vec<Branch>>,
+    /// The options of each tab, in the same order as `tabs`.
+    pub tab_options: Vec<BranchOptions>,
     /// The nearest not_found.dart below the root at or above this folder: what an
     /// unparsable segment shows. `None` means the root's.
     pub not_found: Option<Widget>,
@@ -165,6 +194,13 @@ pub struct App {
     pub seg_types: HashMap<usize, String>,
 }
 
+impl Route {
+    /// Serves a URL of its own: a page or a redirect.
+    pub fn is_route(&self) -> bool {
+        self.page.is_some() || self.redirect.is_some()
+    }
+}
+
 impl App {
     pub fn seg_type(&self, folder: usize) -> &str {
         self.seg_types.get(&folder).map_or("String", String::as_str)
@@ -188,6 +224,8 @@ impl App {
 enum Scope {
     Route(usize),
     Layout(usize),
+    /// A guard in a folder that has no page or redirect to hang its query on.
+    Guard(usize),
 }
 
 /// `int?` → a nullable int, `List<String>` → every `?x=` value.
@@ -279,6 +317,7 @@ pub fn resolve(root: &Node, diags: &mut Diags) -> App {
         match scope {
             Scope::Route(id) => r.app.routes[id].query.push((name, ty)),
             Scope::Layout(id) => r.app.routes[id].layout_query.push((name, ty)),
+            Scope::Guard(id) => r.app.routes[id].guard_query.push((name, ty)),
         }
     }
     r.app
@@ -327,11 +366,14 @@ impl Resolver<'_> {
             error: None,
             layout: None,
             guard: None,
+            redirect: None,
             transition: None,
             query: vec![],
             layout_query: vec![],
+            guard_query: vec![],
             tabs: None,
             not_found: None,
+            tab_options: vec![],
         });
 
         let mut segs = up.segs.clone();
@@ -358,22 +400,10 @@ impl Resolver<'_> {
         // page.dart names the route; data.dart feeds it.
         let page_file = node.rel(Kind::Page);
         let page_class = modules.get(&Kind::Page).and_then(|m| self.widget_class(m, &page_file));
-        let name = page_class.as_ref().map(|c| route_name(&c.name));
-        let page_span = page_class.as_ref().map(|c| c.span.clone());
+        let mut name = page_class.as_ref().map(|c| route_name(&c.name));
+        let mut page_span = page_class.as_ref().map(|c| c.span.clone());
         if let (Some(n), Some(c)) = (&name, &page_class) {
-            // `(a)/x/page.dart` and `(b)/x/page.dart` would both be /x: one error for that,
-            // and the route-name clash only when the URLs differ.
-            let pattern = pattern(&url);
-            let same_url = self.patterns.insert(pattern.clone(), page_file.clone());
-            let same_name = self.route_names.insert(n.clone(), page_file.clone());
-            if let Some(prev) = same_url {
-                let msg = format!(
-                    "{pattern} is served by both {prev} and {page_file}; (group) folders don't add to the URL, so move or rename one"
-                );
-                self.diags.error(&page_file, Some(&c.span), msg);
-            } else if let Some(prev) = same_name {
-                self.diags.error(&page_file, Some(&c.span), format!("route name `{n}Route` is already taken by {prev}; rename the class"));
-            }
+            self.claim(&url, n, &page_file, &c.span);
         }
         let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs, id));
         // Without a page.dart, a data.dart with a layout.dart beside it is the data of the
@@ -483,6 +513,18 @@ impl Resolver<'_> {
             Some(w)
         });
         let guard = modules.get(&Kind::Guard).and_then(|m| self.guard(m, node, &segs, id));
+        // redirect.dart is a route of its own, named after its path.
+        let mut redirect = None;
+        if let Some(m) = modules.get(&Kind::Redirect) {
+            let file = node.rel(Kind::Redirect);
+            if node.files.contains_key(&Kind::Page) {
+                self.diags.error(&file, None, "a folder has a page.dart or a redirect.dart, not both");
+            } else if let Some((r, span)) = self.redirect(m, node, &segs, id) {
+                let n = redirect_name(&url);
+                self.claim(&url, &n, &file, &span);
+                (redirect, name, page_span) = (Some(r), Some(n), Some(span));
+            }
+        }
         // not_found.dart: the root's is the fallback for everything; one further down covers
         // its folder, for unknown URLs under it and for unparsable segments in its routes.
         let mut not_found = up.not_found.clone();
@@ -522,16 +564,17 @@ impl Resolver<'_> {
 
 
         let has_page = page.is_some();
+        let has_route = has_page || redirect.is_some();
         self.app.routes[id].page_span = page_span;
         self.app.routes[id].not_found = not_found;
         let transition = here.transition.clone().filter(|_| has_page);
         let r = &mut self.app.routes[id];
-        (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard, r.transition) =
-            (segs, url, page, name, data, loading, error, layout, guard, transition);
+        (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard, r.redirect, r.transition) =
+            (segs, url, page, name, data, loading, error, layout, guard, redirect, transition);
 
         let mut children = vec![];
         let mut with_routes = vec![];
-        let mut any_route = has_page;
+        let mut any_route = has_route;
         for c in &node.children {
             let (cid, routes) = self.node(c, &here);
             children.push(cid);
@@ -543,28 +586,50 @@ impl Resolver<'_> {
         let is_tabs = self.app.routes[id].layout.as_ref().is_some_and(|w| w.args.iter().any(|a| a.bind == Bind::Shell));
         if is_tabs {
             let tabs = self.tabs(node, modules.get(&Kind::Layout), has_page, &with_routes);
+            let options = self.tab_options(node, modules.get(&Kind::Layout), id, has_page, &with_routes, &tabs);
             self.app.routes[id].tabs = Some(tabs);
+            if self.app.routes[id].redirect.is_some() {
+                let msg = "a tab layout folder can't hold a redirect.dart; put the redirect in a subfolder";
+                self.diags.error(&node.rel(Kind::Redirect), None, msg);
+            }
+            self.app.routes[id].tab_options = options;
         }
-        if !any_route && node.children.is_empty() && !node.dir.is_empty() && !node.files.contains_key(&Kind::Page) {
+        if self.app.routes[id].guard.is_some() && !any_route {
+            let msg = "guard.dart guards no routes: there is no page.dart or redirect.dart at or below this folder";
+            self.diags.warn(&node.rel(Kind::Guard), None, msg);
+        }
+        let bare = !node.files.contains_key(&Kind::Page) && !node.files.contains_key(&Kind::Guard);
+        if !any_route && node.children.is_empty() && !node.dir.is_empty() && bare {
             self.diags.warn(&node.dir, None, "folder has no page.dart and no routes below it; skipped");
         }
         self.app.routes[id].children = children;
         (id, any_route)
     }
 
+    /// Records the URL and typed-route name a page or redirect takes, and
+    /// reports a clash with an earlier one.
+    fn claim(&mut self, url: &[Seg], name: &str, file: &str, span: &Span) {
+        // `(a)/x/page.dart` and `(b)/x/page.dart` would both be /x: one error for that,
+        // and the route-name clash only when the URLs differ.
+        let pattern = pattern(url);
+        let same_url = self.patterns.insert(pattern.clone(), file.to_string());
+        let same_name = self.route_names.insert(name.to_string(), file.to_string());
+        if let Some(prev) = same_url {
+            let msg = format!(
+                "{pattern} is served by both {prev} and {file}; (group) folders don't add to the URL, so move or rename one"
+            );
+            self.diags.error(file, Some(span), msg);
+        } else if let Some(prev) = same_name {
+            self.diags.error(file, Some(span), format!("route name `{name}Route` is already taken by {prev}; rename the class"));
+        }
+    }
+
     /// The tabs of a tab layout: the folder's own page, then each subfolder that
     /// holds routes, or the order `const tabs = [...]` in layout.dart gives.
     fn tabs(&mut self, node: &Node, layout: Option<&Module>, has_page: bool, with_routes: &[usize]) -> Vec<Branch> {
         let file = node.rel(Kind::Layout);
-        let name_of = |r: &Self, b: Branch| match b {
-            Branch::Own => ".".to_string(),
-            Branch::Folder(c) => r.app.routes[c].dir.rsplit('/').next().unwrap_or_default().to_string(),
-        };
-        let mut all: Vec<Branch> = vec![];
-        if has_page {
-            all.push(Branch::Own);
-        }
-        all.extend(with_routes.iter().map(|&c| Branch::Folder(c)));
+        let name_of = |r: &Self, b: Branch| r.tab_name(b);
+        let all = all_tabs(has_page, with_routes);
         let Some(var) = layout.and_then(|m| m.variables.iter().find(|v| v.name == "tabs")) else { return all };
         let Some(listed) = &var.strings else {
             self.diags.error(&file, Some(&var.span), "`tabs` must be a list of string literals naming the branches, e.g. `const tabs = ['home', 'search'];`");
@@ -591,6 +656,117 @@ impl Resolver<'_> {
             }
         }
         order
+    }
+
+    /// How a tab is named in `tabs` and `tabOptions`: its folder, or `.` for the layout's own page.
+    fn tab_name(&self, b: Branch) -> String {
+        match b {
+            Branch::Own => ".".to_string(),
+            Branch::Folder(c) => self.app.routes[c].dir.rsplit('/').next().unwrap_or_default().to_string(),
+        }
+    }
+
+    /// The URLs of the pages inside a tab.
+    fn tab_urls(&self, layout: usize, b: Branch) -> Vec<&[Seg]> {
+        fn walk<'a>(app: &'a App, id: usize, out: &mut Vec<&'a [Seg]>) {
+            let r = &app.routes[id];
+            if r.page.is_some() {
+                out.push(&r.url);
+            }
+            for &c in &r.children {
+                walk(app, c, out);
+            }
+        }
+        let mut out = vec![];
+        match b {
+            Branch::Own => out.push(self.app.routes[layout].url.as_slice()),
+            Branch::Folder(c) => walk(&self.app, c, &mut out),
+        }
+        out
+    }
+
+    /// `const tabOptions = {'search': TabOptions(preload: true)};` in layout.dart,
+    /// as the options of each tab in `order`.
+    fn tab_options(
+        &mut self,
+        node: &Node,
+        layout: Option<&Module>,
+        layout_id: usize,
+        has_page: bool,
+        with_routes: &[usize],
+        order: &[Branch],
+    ) -> Vec<BranchOptions> {
+        let mut out = vec![BranchOptions::default(); order.len()];
+        let Some(var) = layout.and_then(|m| m.variables.iter().find(|v| v.name == "tabOptions")) else { return out };
+        let file = node.rel(Kind::Layout);
+        let Some(entries) = &var.objects else {
+            let msg = "`tabOptions` must be a map from tab names to `TabOptions(...)` calls with literal arguments, e.g. `const tabOptions = {'search': TabOptions(preload: true)};`";
+            self.diags.error(&file, Some(&var.span), msg);
+            return out;
+        };
+        let all = all_tabs(has_page, with_routes);
+        let known: Vec<String> = all.iter().map(|&b| self.tab_name(b)).collect();
+        let mut seen: Vec<&str> = vec![];
+        for e in entries {
+            let Some(i) = known.iter().position(|k| *k == e.key) else {
+                let msg = format!("`tabOptions` lists `{}`, which is not a branch here; the branches are {}", e.key, show_list(&known));
+                self.diags.error(&file, Some(&e.key_span), msg);
+                continue;
+            };
+            if seen.contains(&e.key.as_str()) {
+                self.diags.error(&file, Some(&e.key_span), format!("`tabOptions` lists `{}` twice", e.key));
+                continue;
+            }
+            seen.push(&e.key);
+            if e.class != "TabOptions" {
+                let msg = format!("`tabOptions` gives `{}` a `{}`; it takes `TabOptions(...)`", e.key, e.class);
+                self.diags.error(&file, Some(&e.key_span), msg);
+                continue;
+            }
+            let mut opts = BranchOptions::default();
+            for a in &e.args {
+                match (a.name.as_str(), &a.value) {
+                    ("preload", Lit::Bool(b)) => opts.preload = *b,
+                    ("preload", _) => self.diags.error(&file, Some(&a.span), "`preload` must be `true` or `false`"),
+                    ("initialLocation", Lit::Str(loc)) => {
+                        let path = loc.split(['?', '#']).next().unwrap_or_default();
+                        let want: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+                        let urls = self.tab_urls(layout_id, all[i]);
+                        let matches = |u: &[Seg]| {
+                            let segs: Vec<&Seg> = u.iter().filter(|s| !matches!(s, Seg::Group(_))).collect();
+                            segs.len() == want.len()
+                                && segs.iter().zip(&want).all(|(s, w)| match s {
+                                    Seg::Static(x) => x == w,
+                                    _ => true,
+                                })
+                        };
+                        if !loc.starts_with('/') {
+                            let msg = format!("`initialLocation` is an app location and starts with `/`, e.g. `/{}`", loc.trim_start_matches('.'));
+                            self.diags.error(&file, Some(&a.span), msg);
+                        } else if !urls.iter().any(|u| matches(u)) {
+                            let routes: Vec<String> = urls.iter().map(|u| pattern(u)).collect();
+                            let msg = format!(
+                                "`initialLocation` `{loc}` is not a route in the `{}` tab; go_router needs one of them: {}",
+                                e.key,
+                                show_list(&routes)
+                            );
+                            self.diags.error(&file, Some(&a.span), msg);
+                        } else {
+                            opts.initial_location = Some(loc.clone());
+                        }
+                    }
+                    ("initialLocation", _) => self.diags.error(&file, Some(&a.span), "`initialLocation` must be a string literal without `$`, e.g. `'/profile/edit'`"),
+                    (other, _) => {
+                        let msg = format!("`TabOptions` has no `{other}`; it takes `preload` and `initialLocation`");
+                        self.diags.error(&file, Some(&a.span), msg);
+                    }
+                }
+            }
+            if let Some(at) = order.iter().position(|&b| b == all[i]) {
+                out[at] = opts;
+            }
+        }
+        out
     }
 
     /// The one public widget class a view file exports.
@@ -737,7 +913,7 @@ impl Resolver<'_> {
         file: &str,
         p: &dart::Param,
         segs: &[(String, usize)],
-        route: usize,
+        scope: Scope,
         what: &str,
         keyed: bool,
     ) -> Option<String> {
@@ -747,10 +923,12 @@ impl Resolver<'_> {
         }
         let Some((_, folder)) = segs.iter().find(|(n, _)| n == &p.name) else {
             let Some(qty) = p.ty.as_ref().and_then(query_type).filter(|_| !p.required) else {
+                let hooks = what == "guard()" || what == "redirect()";
                 let msg = format!(
-                    "`{}` isn't a segment of this path ({}); for a query parameter make it optional and nullable, e.g. `String? {}`",
+                    "`{}` isn't a segment of this path ({}){}; for a query parameter make it optional and nullable, e.g. `String? {}`",
                     p.name,
                     show_segs(segs),
+                    if hooks { format!(" at or above its folder; {what} can also take `Uri uri`") } else { String::new() },
                     p.name
                 );
                 self.diags.error(file, Some(&p.span), msg);
@@ -762,7 +940,7 @@ impl Resolver<'_> {
                 self.diags.error(file, Some(&p.span), msg);
                 return None;
             }
-            return self.declare_query(Scope::Route(route), &p.name, qty, file, &p.span).then(|| p.name.clone());
+            return self.declare_query(scope, &p.name, qty, file, &p.span).then(|| p.name.clone());
         };
         match &p.ty {
             Some(ty) => self.constraints.push(Constraint {
@@ -778,6 +956,7 @@ impl Resolver<'_> {
     }
 
     fn data(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], route: usize) -> Option<Data> {
+        let scope = Scope::Route(route);
         let file = node.rel(Kind::Data);
         if let Some(f) = m.functions.iter().find(|f| f.name == "data") {
             match f.params.first() {
@@ -786,7 +965,7 @@ impl Resolver<'_> {
             }
             let mut keys = vec![];
             for p in f.params.iter().skip(1) {
-                keys.extend(self.url_param(&file, p, segs, route, "data()", true));
+                keys.extend(self.url_param(&file, p, segs, scope, "data()", true));
             }
             let Some(ret) = &f.ret else {
                 self.diags.error(&file, Some(&f.span), "data() needs an explicit return type (Future<T>, Stream<T> or T)");
@@ -846,7 +1025,7 @@ impl Resolver<'_> {
                             is_super: false,
                             span: v.span.clone(),
                         };
-                        keys.extend(self.url_param(&file, &p, segs, route, "the family argument", true));
+                        keys.extend(self.url_param(&file, &p, segs, scope, "the family argument", true));
                     }
                 } else if let [(name, folder)] = segs {
                     keys.push(name.clone());
@@ -877,12 +1056,10 @@ impl Resolver<'_> {
         None
     }
 
+    /// `GuardResult guard(ProviderContainer c, {...})`: runs before every route at
+    /// and below its folder.
     fn guard(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], route: usize) -> Option<Guard> {
         let file = node.rel(Kind::Guard);
-        if !node.files.contains_key(&Kind::Page) {
-            self.diags.error(&file, None, "guard.dart needs a page.dart in the same folder");
-            return None;
-        }
         let Some(f) = m.functions.iter().find(|f| f.name == "guard") else {
             self.diags.error(&file, None, "expected `GuardResult guard(ProviderContainer c, {...segments})`");
             return None;
@@ -898,11 +1075,61 @@ impl Resolver<'_> {
             Some(p) if !p.named && p.ty.as_ref().is_some_and(|t| t.is("ProviderContainer")) => {}
             _ => self.diags.error(&file, Some(&f.span), "guard() must take `ProviderContainer c` first"),
         }
-        let mut keys = vec![];
-        for p in f.params.iter().skip(1) {
-            keys.extend(self.url_param(&file, p, segs, route, "guard()", false));
+        // Its query parameters belong to the folder's own route when it has one
+        // (they show up on the typed route); otherwise to the guard alone.
+        let has_route = node.files.contains_key(&Kind::Page) || node.files.contains_key(&Kind::Redirect);
+        let scope = if has_route { Scope::Route(route) } else { Scope::Guard(route) };
+        let args = self.hook_args(&file, f.params.iter().skip(1), segs, scope, "guard()");
+        Some(Guard { import: self.import(&file), container: true, args })
+    }
+
+    /// `String redirect({...})` in a folder in place of page.dart.
+    fn redirect(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], route: usize) -> Option<(Guard, Span)> {
+        let file = node.rel(Kind::Redirect);
+        let Some(f) = m.functions.iter().find(|f| f.name == "redirect") else {
+            self.diags.error(&file, None, "expected `String redirect({...segments})`");
+            return None;
+        };
+        let ok_ret =
+            f.ret.as_ref().is_some_and(|r| ["String", "FutureOr<String>", "Future<String>"].contains(&r.text.as_str()));
+        if !ok_ret {
+            self.diags.error(&file, Some(&f.span), "redirect() must return the location to go to: a String (or Future<String>)");
         }
-        Some(Guard { import: self.import(&file), keys: in_path_order(keys, segs) })
+        let container = f.params.first().is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("ProviderContainer")));
+        let args = self.hook_args(&file, f.params.iter().skip(usize::from(container)), segs, Scope::Route(route), "redirect()");
+        Some((Guard { import: self.import(&file), container, args }, f.span.clone()))
+    }
+
+    /// The named parameters of a `guard()` or `redirect()`: `uri`, segments and
+    /// query parameters, as call arguments.
+    fn hook_args<'p>(
+        &mut self,
+        file: &str,
+        params: impl Iterator<Item = &'p dart::Param>,
+        segs: &[(String, usize)],
+        scope: Scope,
+        what: &str,
+    ) -> Vec<Arg> {
+        let (mut keys, mut uri) = (vec![], None);
+        for p in params {
+            if p.named && p.name == "uri" {
+                match p.ty.as_ref().and_then(|ty| mismatch("uri", &Bind::Uri, ty)) {
+                    Some(msg) => self.diags.error(file, Some(&p.span), msg),
+                    None => uri = Some(Arg { name: "uri".into(), named: true, bind: Bind::Uri }),
+                }
+                continue;
+            }
+            keys.extend(self.url_param(file, p, segs, scope, what, false));
+        }
+        let mut args: Vec<Arg> = in_path_order(keys, segs)
+            .into_iter()
+            .map(|k| {
+                let bind = if segs.iter().any(|(n, _)| *n == k) { Bind::Segment(k.clone()) } else { Bind::Query(k.clone()) };
+                Arg { name: k, named: true, bind }
+            })
+            .collect();
+        args.extend(uri);
+        args
     }
 
     /// `Page<void> transition(LocalKey key, Widget child)`: parameters are
@@ -1086,12 +1313,36 @@ fn show_segs(segs: &[(String, usize)]) -> String {
     segs.iter().map(|(n, _)| format!("${n}")).collect::<Vec<_>>().join(", ")
 }
 
+/// Every tab a layout could have: its own page, then each subfolder holding routes.
+fn all_tabs(has_page: bool, with_routes: &[usize]) -> Vec<Branch> {
+    let own = has_page.then_some(Branch::Own);
+    own.into_iter().chain(with_routes.iter().map(|&c| Branch::Folder(c))).collect()
+}
+
 fn show_list(names: &[String]) -> String {
     names.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")
 }
 
 fn show_dir(dir: &str) -> String {
     if dir.is_empty() { "/".into() } else { format!("{dir}/") }
+}
+
+/// The typed route's name for a `redirect.dart`, from its URL: `/old-products/:id`
+/// → `OldProductsId` (`OldProductsIdRoute`), the root → `Root`.
+fn redirect_name(url: &[Seg]) -> String {
+    let path: Vec<&str> = url
+        .iter()
+        .filter_map(|s| match s {
+            Seg::Static(n) | Seg::Dynamic(n) => Some(n.as_str()),
+            Seg::Group(_) => None,
+        })
+        .collect();
+    let name = pascal(&path.join("/"));
+    match name.chars().next() {
+        None => "Root".into(),
+        Some(c) if c.is_ascii_digit() => format!("Path{name}"),
+        _ => name,
+    }
 }
 
 /// `ProductPage` → `Product`; also strips `Screen` and `View`.

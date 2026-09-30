@@ -179,6 +179,7 @@ dependencies = [
  "minijinja",
  "notify",
  "serde",
+ "serde_json",
  "serde_yaml_ng",
  "tempfile",
  "tree-sitter",

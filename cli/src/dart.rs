@@ -55,7 +55,36 @@ pub struct Variable {
     /// Set when the initializer is a list of plain string literals, like
     /// `const tabs = ['home', 'search'];`: each string with where it sits.
     pub strings: Option<Vec<(String, Span)>>,
+    /// Set when the initializer is a map from string literals to constructor
+    /// calls, like `const tabOptions = {'search': TabOptions(preload: true)};`.
+    pub objects: Option<Vec<ObjectEntry>>,
     pub span: Span,
+}
+
+/// `'search': TabOptions(preload: true, initialLocation: '/search')`
+#[derive(Debug, Clone)]
+pub struct ObjectEntry {
+    pub key: String,
+    pub key_span: Span,
+    /// The class called: `TabOptions`.
+    pub class: String,
+    pub args: Vec<ObjectArg>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ObjectArg {
+    pub name: String,
+    pub value: Lit,
+    pub span: Span,
+}
+
+/// An argument value the generator can read without evaluating Dart.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Lit {
+    Bool(bool),
+    Str(String),
+    /// Anything else: a number, an interpolated string, an expression.
+    Other,
 }
 
 /// `FutureProvider.autoDispose.family<T, Arg>(...)`
@@ -319,7 +348,8 @@ impl Reader<'_> {
                 let value = d.child_by_field_name("value");
                 let call = value.and_then(|v| self.call(v));
                 let strings = value.and_then(|v| self.strings(v));
-                out.push(Variable { name: self.text(name).to_string(), call, strings, span: Span::of(name) });
+                let objects = value.and_then(|v| self.objects(v));
+                out.push(Variable { name: self.text(name).to_string(), call, strings, objects, span: Span::of(name) });
             }
         }
         out
@@ -337,6 +367,62 @@ impl Reader<'_> {
             match e.kind() {
                 "type_arguments" | "comment" | "documentation_comment" => {}
                 "string_literal" => out.push((string_value(self.text(e))?, Span::of(e))),
+                _ => return None,
+            }
+        }
+        Some(out)
+    }
+
+    /// `{'a': Foo(x: 1), 'b': const Foo()}` (optionally `const` or `<String, Foo>`)
+    /// → its entries. `None` for anything else: a non-string key, a value that
+    /// isn't a constructor call, a positional argument, a spread.
+    fn objects(&self, v: Node) -> Option<Vec<ObjectEntry>> {
+        if v.kind() != "set_or_map_literal" {
+            return None;
+        }
+        let mut out = vec![];
+        let mut cur = v.walk();
+        for e in v.named_children(&mut cur) {
+            match e.kind() {
+                "type_arguments" | "comment" | "documentation_comment" => {}
+                "pair" => {
+                    let key = e.child_by_field_name("key")?;
+                    let value = e.child_by_field_name("value")?;
+                    if key.kind() != "string_literal" {
+                        return None;
+                    }
+                    let (class, args) = match value.kind() {
+                        "call_expression" => (value.child_by_field_name("function")?, value.child_by_field_name("arguments")?),
+                        "const_object_expression" => (value.child_by_field_name("type")?, value.child_by_field_name("arguments")?),
+                        _ => return None,
+                    };
+                    if !matches!(class.kind(), "identifier" | "type") {
+                        return None;
+                    }
+                    let mut parsed = vec![];
+                    let mut c2 = args.walk();
+                    for a in args.named_children(&mut c2) {
+                        if a.kind() != "named_argument" {
+                            return None;
+                        }
+                        let label = first_named(a, "label")?;
+                        let expr = a.named_child(u32::try_from(a.named_child_count().checked_sub(1)?).ok()?)?;
+                        let lit = match expr.kind() {
+                            "true" => Lit::Bool(true),
+                            "false" => Lit::Bool(false),
+                            "string_literal" => string_value(self.text(expr)).map_or(Lit::Other, Lit::Str),
+                            _ => Lit::Other,
+                        };
+                        let name = self.text(label).trim_end_matches(':').trim().to_string();
+                        parsed.push(ObjectArg { name, value: lit, span: Span::of(expr) });
+                    }
+                    out.push(ObjectEntry {
+                        key: string_value(self.text(key))?,
+                        key_span: Span::of(key),
+                        class: self.text(class).to_string(),
+                        args: parsed,
+                    });
+                }
                 _ => return None,
             }
         }
@@ -1078,6 +1164,45 @@ mod tests {
         assert!(strings("data").is_none());
         // Each string knows its line, for diagnostics.
         assert_eq!(m.variables[0].strings.as_ref().unwrap()[0].1.line, 2);
+    }
+
+    #[test]
+    fn reads_top_level_object_maps() {
+        let m = parse(
+            r#"
+            const tabOptions = {
+              'search': TabOptions(preload: true),
+              "profile": const TabOptions(initialLocation: '/profile/edit', preload: false,),
+              'bare': TabOptions(),
+              'odd': TabOptions(preload: flag, initialLocation: 'a$b'),
+            };
+            const typed = <String, TabOptions>{'a': TabOptions(preload: true)};
+            const empty = <String, TabOptions>{};
+            const positional = {'a': TabOptions(true)};
+            const notCalls = {'a': 1};
+            const dynamicKey = {key: TabOptions()};
+            const list = ['a'];
+            "#,
+        );
+        let var = |n: &str| m.variables.iter().find(|v| v.name == n).unwrap();
+        let entries = var("tabOptions").objects.as_ref().unwrap();
+        let keys: Vec<&str> = entries.iter().map(|e| e.key.as_str()).collect();
+        assert_eq!(keys, ["search", "profile", "bare", "odd"]);
+        assert!(entries.iter().all(|e| e.class == "TabOptions"));
+        assert_eq!(entries[0].args.len(), 1);
+        assert_eq!((entries[0].args[0].name.as_str(), &entries[0].args[0].value), ("preload", &Lit::Bool(true)));
+        let profile: Vec<_> = entries[1].args.iter().map(|a| (a.name.as_str(), a.value.clone())).collect();
+        assert_eq!(profile, [("initialLocation", Lit::Str("/profile/edit".into())), ("preload", Lit::Bool(false))]);
+        assert!(entries[2].args.is_empty());
+        // Values it can't read are kept as `Other`, so the caller can point at them.
+        assert!(entries[3].args.iter().all(|a| a.value == Lit::Other));
+        assert_eq!(entries[0].key_span.line, 3);
+        assert_eq!(var("typed").objects.as_ref().unwrap().len(), 1);
+        assert!(var("empty").objects.as_ref().unwrap().is_empty());
+        for bad in ["positional", "notCalls", "dynamicKey", "list"] {
+            assert!(var(bad).objects.is_none(), "{bad}");
+        }
+        assert!(var("list").strings.is_some());
     }
 
     #[test]

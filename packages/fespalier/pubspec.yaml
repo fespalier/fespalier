@@ -11,6 +11,11 @@ topics:
   - riverpod
   - codegen
 
+# `dart run fespalier <command>` runs the fsp generator (bin/fespalier.dart);
+# `dart pub global activate` installs it as `fsp`.
+executables:
+  fsp: fespalier
+
 environment:
   sdk: ^3.8.0
   flutter: ">=3.32.0"

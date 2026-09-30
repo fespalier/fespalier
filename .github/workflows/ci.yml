@@ -22,6 +22,8 @@ jobs:
           workspaces: cli
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+      - name: Versions agree (Cargo.toml, pubspec.yaml, fsp init, READMEs, launcher)
+        run: cargo test --test versions
       - name: Examples check cleanly
         run: |
           cargo run --quiet -- check --project ../examples/shop
@@ -71,3 +73,10 @@ jobs:
           fsp new '(admin)/users' --layout
           flutter pub get
           flutter analyze
+      - name: dart run fespalier runs the given fsp
+        working-directory: examples/shop
+        run: |
+          cargo build --quiet --manifest-path ../../cli/Cargo.toml
+          flutter pub get
+          FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier --version
+          FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier routes

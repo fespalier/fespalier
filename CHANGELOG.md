@@ -24,6 +24,47 @@
   package) as a dependency; the main library doesn't import it.
 - Runtime: `DataRef.readData` / `prefetchData` on `WidgetRef`, `SectionView`,
   `nearestNotFound`, `prefetchKeepAlive`.
+- `dart run fespalier <command>`: runs the `fsp` release that matches the package's version,
+  so nothing needs installing (Windows included). It downloads the release archive on first
+  use, checks its SHA-256 and caches it; `FSP_BINARY` runs a binary of your own, and a matching
+  `fsp` on PATH is used as is.
+- `install.ps1`: installs `fsp.exe` on Windows from PowerShell, like `install.sh`
+  (`FSP_VERSION`, `FSP_INSTALL_DIR`, SHA-256 check).
+- `fsp routes` prints the route table (pattern, route class, file, tags); `--json` prints one
+  object per route, with its parameters, for tools.
+- `fsp gen --json` and `fsp check --json` print diagnostics to stdout as JSON lines (file, line,
+  column, severity, message) instead of the code-frame rendering, for editors.
+- `fsp gen --format`, or `format: true` under `fespalier:` in pubspec.yaml, runs `dart format` on
+  the generated file (needs `dart` on PATH). Off by default, so committed output is unchanged.
+- CI checks that the versions in `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`, `fsp init`'s
+  `ref:` and the READMEs agree, and that `dart run fespalier` runs a freshly built `fsp`.
+- `guard.dart` works in a folder without a `page.dart`, in a `(group)` and at the root, and
+  guards every route at and below its folder. Guards run outermost first and the first
+  location wins. Each page route's `redirect` chains the guards above it (`firstRedirect`).
+  An inherited guard takes the segments at its own folder level and query parameters.
+- Guards can take `Uri uri`, the requested location, to build a return-to link:
+  `LoginRoute(from: uri.toString()).location`. New `returnTo(from, fallback: '/')` in the
+  runtime accepts only in-app locations.
+- `redirect.dart` in place of `page.dart`: `String redirect({...})` makes a route that only
+  redirects (`/old-products/:id` to `/products/:id`). It gets a typed route named after its
+  path (`OldProductsIdRoute`) and takes part in route order checks.
+- A guard with no route at or below its folder is a warning; `guard.dart` no longer needs a
+  `page.dart` next to it.
+- Fix: static routes now sort before dynamic siblings below a page-less folder
+  (`shops/new` before `shops/$id`); before, both were kept in folder order and `shops/new`
+  could be reported unreachable. Regenerate `app.g.dart`: routes may move.
+- Nested tab layouts: a tab layout inside a branch of another one generates a nested
+  `StatefulShellRoute.indexedStack`. Each level has its own `tabs`, and an inner tab keeps
+  its state while you switch outer tabs. `examples/tabs` gets a Library tab with two inner
+  tabs.
+- Per-tab options: a `const tabOptions = {'search': TabOptions(preload: true), ...}` map in
+  a tab layout sets each `StatefulShellBranch`'s `preload` and `initialLocation` (the mount
+  point is added for you). Checked like `tabs`; an `initialLocation` must be a route inside
+  its tab. A tab with an `initialLocation` may start with a dynamic route.
+- `Transitions.dialog`, `Transitions.sheet` and `Transitions.fullscreenDialog`: a
+  `transition.dart` can make a route open as a dialog or bottom sheet over the previous page
+  (`examples/features` has `/photos`, `/photos/:id`, `/photos/sort`, `/photos/upload`).
+- New runtime export: `TabOptions`.
 
 ## 0.1.1 — 2026-09-30
 

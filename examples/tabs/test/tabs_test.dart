@@ -118,6 +118,94 @@ void main() {
     expect(find.byType(NavigationBar), findsNothing);
   });
 
+  group('nested tabs and tab options', () {
+    Future<void> tapInner(WidgetTester tester, String label) async {
+      await tester.tap(find.widgetWithText(ChoiceChip, label));
+      await tester.pumpAndSettle();
+    }
+
+    bool chipSelected(WidgetTester tester, String label) => tester
+        .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label))
+        .selected;
+
+    testWidgets('initialLocation: the Library tab opens on Authors',
+        (tester) async {
+      await boot(tester, '/');
+      await tapTab(tester, 'Library');
+      expect(location, '/library/authors');
+      expect(find.text('Authors list'), findsOneWidget);
+      expect(selected(tester), 3);
+      expect(chipSelected(tester, 'Authors'), isTrue);
+
+      // The tab's own location still works as a deep link.
+      await boot(tester, '/library/books');
+      expect(find.text('Books count 0'), findsOneWidget);
+      expect(selected(tester), 3);
+      expect(chipSelected(tester, 'Books'), isTrue);
+    });
+
+    testWidgets('an inner tab keeps its state, inside a kept outer tab',
+        (tester) async {
+      await boot(tester, '/library/books');
+      await tester.tap(find.byTooltip('+ book'));
+      await tester.tap(find.byTooltip('+ book'));
+      await tester.pump();
+      expect(find.text('Books count 2'), findsOneWidget);
+
+      // Switching inner tabs leaves the counter alone...
+      await tapInner(tester, 'Authors');
+      expect(location, '/library/authors');
+      expect(find.text('Books count 2'), findsNothing);
+      await tapInner(tester, 'Books');
+      expect(location, '/library/books');
+      expect(find.text('Books count 2'), findsOneWidget);
+
+      // ...and so does switching outer tabs, and coming back to the same
+      // inner tab.
+      await tapTab(tester, 'Search');
+      expect(location, '/search');
+      expect(find.text('Books count 2'), findsNothing);
+      await tapTab(tester, 'Library');
+      expect(location, '/library/books');
+      expect(find.text('Books count 2'), findsOneWidget);
+
+      // The inner shell remembers which inner tab was showing, too.
+      await tapInner(tester, 'Authors');
+      await tapTab(tester, 'Home');
+      await tapTab(tester, 'Library');
+      expect(location, '/library/authors');
+      await tapInner(tester, 'Books');
+      expect(find.text('Books count 2'), findsOneWidget);
+    });
+
+    testWidgets('preload builds a tab before it is visited', (tester) async {
+      // Search is preloaded by the outer layout...
+      await boot(tester, '/');
+      expect(find.text('Search count 0'), findsNothing);
+      expect(find.text('Search count 0', skipOffstage: false), findsOneWidget);
+
+      // ...and Books by the inner one, when Library opens on Authors. Profile
+      // is not preloaded.
+      await boot(tester, '/library/authors');
+      expect(find.text('Authors list'), findsOneWidget);
+      expect(find.text('Books count 0'), findsNothing);
+      expect(find.text('Books count 0', skipOffstage: false), findsOneWidget);
+      expect(find.text('Edit profile', skipOffstage: false), findsNothing);
+    });
+
+    testWidgets('an inner tab is not full screen: the outer bar stays',
+        (tester) async {
+      await boot(tester, '/library/authors');
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(ChoiceChip), findsNWidgets(2));
+    });
+
+    test('typed routes', () {
+      expect(const BooksRoute().location, '/library/books');
+      expect(const AuthorsRoute().location, '/library/authors');
+    });
+  });
+
   test('typed routes', () {
     expect(const HomeRoute().location, '/');
     expect(const SearchRoute().location, '/search');

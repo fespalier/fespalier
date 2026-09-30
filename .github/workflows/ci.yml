@@ -91,9 +91,6 @@ jobs:
           -print0 | xargs -0 dart format --output=none --set-exit-if-changed
       - run: flutter analyze
       - run: flutter test
-      - name: Ready for pub.dev (no warnings)
-        if: matrix.dir == 'packages/fespalier'
-        run: flutter pub publish --dry-run
 
   scaffold:
     name: Scaffolded files compile

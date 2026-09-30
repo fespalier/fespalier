@@ -3,6 +3,7 @@ name = "fespalier"
 version = "0.3.0" # x-release-please-version
 edition = "2024"
 rust-version = "1.98.1"
+publish = false
 description = "File-tree routing for Flutter: reads lib/app/, checks how the files fit together, emits one mountable lib/app.g.dart"
 license = "MIT"
 repository = "https://github.com/vaam-apps/fespalier"

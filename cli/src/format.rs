@@ -15,7 +15,13 @@ use std::process::{Command, Stdio};
 pub fn format_dart(code: &str, output: &Path) -> (String, Option<String>) {
     match run(code, output) {
         Ok(formatted) => (formatted, None),
-        Err(why) => (code.to_string(), Some(format!("warning: not formatting {}: {why}", output.display()))),
+        Err(why) => (
+            code.to_string(),
+            Some(format!(
+                "warning: not formatting {}: {why}",
+                output.display()
+            )),
+        ),
     }
 }
 
@@ -38,11 +44,16 @@ fn run(code: &str, output: &Path) -> Result<String, String> {
     let mut stdin = child.stdin.take().ok_or("no stdin")?;
     let input = code.to_string();
     let feeder = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
-    let out = child.wait_with_output().map_err(|e| format!("`dart format` failed: {e}"))?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("`dart format` failed: {e}"))?;
     let _ = feeder.join();
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        return Err(format!("`dart format` failed: {}", err.lines().next().unwrap_or("").trim()));
+        return Err(format!(
+            "`dart format` failed: {}",
+            err.lines().next().unwrap_or("").trim()
+        ));
     }
     String::from_utf8(out.stdout).map_err(|_| "`dart format` printed invalid UTF-8".to_string())
 }

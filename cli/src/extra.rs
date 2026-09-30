@@ -40,9 +40,39 @@ pub struct ExtraType {
 
 /// Names `dart:core` gives every file.
 const CORE: [&str; 33] = [
-    "String", "int", "double", "bool", "num", "Object", "List", "Map", "Set", "Iterable", "Uri", "DateTime",
-    "Duration", "Future", "Stream", "Function", "Type", "Record", "Never", "Null", "BigInt", "RegExp", "Symbol",
-    "Enum", "Comparable", "Exception", "Error", "StackTrace", "Iterator", "Pattern", "Match", "Sink", "Stopwatch",
+    "String",
+    "int",
+    "double",
+    "bool",
+    "num",
+    "Object",
+    "List",
+    "Map",
+    "Set",
+    "Iterable",
+    "Uri",
+    "DateTime",
+    "Duration",
+    "Future",
+    "Stream",
+    "Function",
+    "Type",
+    "Record",
+    "Never",
+    "Null",
+    "BigInt",
+    "RegExp",
+    "Symbol",
+    "Enum",
+    "Comparable",
+    "Exception",
+    "Error",
+    "StackTrace",
+    "Iterator",
+    "Pattern",
+    "Match",
+    "Sink",
+    "Stopwatch",
 ];
 
 /// Whether `dart:core` gives every file a type called `name`.
@@ -66,11 +96,22 @@ pub fn imports(src: &str) -> Vec<Import> {
             continue;
         }
         let stmt = stmt.trim_start();
-        let Some(q) = stmt.chars().next().filter(|c| matches!(c, '\'' | '"')) else { continue };
-        let Some(close) = stmt[1..].find(q) else { continue };
+        let Some(q) = stmt.chars().next().filter(|c| matches!(c, '\'' | '"')) else {
+            continue;
+        };
+        let Some(close) = stmt[1..].find(q) else {
+            continue;
+        };
         let uri = stmt[1..1 + close].to_string();
-        let tail: Vec<&str> = stmt[close + 2..].split(|c: char| c.is_whitespace() || c == ',').filter(|t| !t.is_empty()).collect();
-        let prefix = tail.iter().position(|t| *t == "as").and_then(|i| tail.get(i + 1)).map(|p| p.to_string());
+        let tail: Vec<&str> = stmt[close + 2..]
+            .split(|c: char| c.is_whitespace() || c == ',')
+            .filter(|t| !t.is_empty())
+            .collect();
+        let prefix = tail
+            .iter()
+            .position(|t| *t == "as")
+            .and_then(|i| tail.get(i + 1))
+            .map(|p| p.to_string());
         out.push(Import { uri, prefix });
     }
     out
@@ -79,17 +120,31 @@ pub fn imports(src: &str) -> Vec<Import> {
 /// Whether the file declares a type called `name` (`class`, `enum`, `typedef`, `mixin`
 /// or `extension type`).
 pub fn declares(src: &str, name: &str) -> bool {
-    const MODIFIERS: [&str; 8] = ["abstract", "base", "final", "sealed", "interface", "mixin", "augment", "extension"];
+    const MODIFIERS: [&str; 8] = [
+        "abstract",
+        "base",
+        "final",
+        "sealed",
+        "interface",
+        "mixin",
+        "augment",
+        "extension",
+    ];
     src.lines().any(|line| {
         let line = line.trim_start();
         if line.starts_with("//") {
             return false;
         }
-        let tokens: Vec<&str> = line.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$')).filter(|t| !t.is_empty()).collect();
+        let tokens: Vec<&str> = line
+            .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+            .filter(|t| !t.is_empty())
+            .collect();
         tokens.iter().enumerate().any(|(i, t)| {
             matches!(*t, "class" | "enum" | "typedef" | "mixin" | "type")
                 && tokens.get(i + 1) == Some(&name)
-                && tokens[..i].iter().all(|m| MODIFIERS.contains(m) || *m == "class")
+                && tokens[..i]
+                    .iter()
+                    .all(|m| MODIFIERS.contains(m) || *m == "class")
         })
     })
 }
@@ -145,16 +200,29 @@ fn type_refs(ty: &str) -> Vec<TypeRef> {
         let end = word(i);
         let first: String = chars[i..end].iter().map(|(_, c)| c).collect();
         let bytes_end = |j: usize| chars.get(j).map_or(ty.len(), |(b, _)| *b);
-        if end < chars.len() && chars[end].1 == '.' && end + 1 < chars.len() && is_ident(chars[end + 1].1) {
+        if end < chars.len()
+            && chars[end].1 == '.'
+            && end + 1 < chars.len()
+            && is_ident(chars[end + 1].1)
+        {
             let end2 = word(end + 1);
             let name: String = chars[end + 1..end2].iter().map(|(_, c)| c).collect();
-            out.push(TypeRef { prefix: Some(first), name, at: chars[i].0..bytes_end(end2) });
+            out.push(TypeRef {
+                prefix: Some(first),
+                name,
+                at: chars[i].0..bytes_end(end2),
+            });
             i = end2;
             continue;
         }
-        let is_type = first.starts_with(|c: char| c.is_uppercase()) && !CORE.contains(&first.as_str());
+        let is_type =
+            first.starts_with(|c: char| c.is_uppercase()) && !CORE.contains(&first.as_str());
         if is_type {
-            out.push(TypeRef { prefix: None, name: first, at: chars[i].0..bytes_end(end) });
+            out.push(TypeRef {
+                prefix: None,
+                name: first,
+                at: chars[i].0..bytes_end(end),
+            });
         }
         i = end;
     }
@@ -212,7 +280,11 @@ pub fn extra_type(ty: &str, src: &str, file: &str, import: usize, tag: &str) -> 
         ty: spelled,
         shown,
         aliased,
-        imports: all.into_iter().filter(|i| i.prefix.is_none()).map(|i| i.uri).collect(),
+        imports: all
+            .into_iter()
+            .filter(|i| i.prefix.is_none())
+            .map(|i| i.uri)
+            .collect(),
         file: file.to_string(),
     }
 }
@@ -227,7 +299,15 @@ mod tests {
     fn reads_imports() {
         let i = imports(SRC);
         let uris: Vec<&str> = i.iter().map(|i| i.uri.as_str()).collect();
-        assert_eq!(uris, ["package:flutter/material.dart", "../../models.dart", "x.dart", "dart:async"]);
+        assert_eq!(
+            uris,
+            [
+                "package:flutter/material.dart",
+                "../../models.dart",
+                "x.dart",
+                "dart:async"
+            ]
+        );
         assert_eq!(i[2].prefix.as_deref(), Some("m"));
         assert_eq!(i[1].prefix, None);
     }
@@ -245,7 +325,10 @@ mod tests {
         assert_eq!(unprefixed("List<m.Category>?"), "List<Category>?");
         assert_eq!(unprefixed("Map<a.K, b.V>"), "Map<K, V>");
         assert_eq!(unprefixed("Sort?"), "Sort?");
-        assert_eq!(unprefixed("({int id, m.Product p})"), "({int id, Product p})");
+        assert_eq!(
+            unprefixed("({int id, m.Product p})"),
+            "({int id, Product p})"
+        );
     }
 
     #[test]
@@ -258,7 +341,10 @@ mod tests {
         assert!(t.shown.is_empty());
         let t = extra_type("List<m.Thing>?", SRC, "a/page.dart", 4, "2");
         assert_eq!(t.ty, "List<_e2_m.Thing>?");
-        assert_eq!(t.aliased, [("m".to_string(), "x.dart".to_string(), "_e2_m".to_string())]);
+        assert_eq!(
+            t.aliased,
+            [("m".to_string(), "x.dart".to_string(), "_e2_m".to_string())]
+        );
         let t = extra_type("({int id, Product p})?", SRC, "a/page.dart", 4, "2");
         assert_eq!(t.ty, "({int id, Product p})?");
         assert_eq!(t.shown, ["Product"]);

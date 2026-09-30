@@ -38,7 +38,9 @@ pub struct Files(pub BTreeMap<String, String>);
 
 pub fn page(class: &str, params: &str) -> String {
     let (ctor, fields) = params_code(params);
-    format!("class {class} extends StatelessWidget {{ const {class}({{super.key{ctor}}}); {fields} }}")
+    format!(
+        "class {class} extends StatelessWidget {{ const {class}({{super.key{ctor}}}); {fields} }}"
+    )
 }
 
 /// `"required int id, String? q"` → constructor parameters and the fields they fill.
@@ -98,13 +100,26 @@ impl Files {
         let per = 25;
         let sections = routes.div_ceil(per);
         for s in 0..sections {
-            let dir = if s % 2 == 0 { format!("(g{s})") } else { format!("s{s}") };
-            f.set(&format!("{dir}/layout.dart"), layout(&format!("S{s}Layout"), ""));
+            let dir = if s % 2 == 0 {
+                format!("(g{s})")
+            } else {
+                format!("s{s}")
+            };
+            f.set(
+                &format!("{dir}/layout.dart"),
+                layout(&format!("S{s}Layout"), ""),
+            );
             if s % 3 == 0 {
-                f.set(&format!("{dir}/guard.dart"), "GuardResult guard(ProviderContainer c) => null;");
+                f.set(
+                    &format!("{dir}/guard.dart"),
+                    "GuardResult guard(ProviderContainer c) => null;",
+                );
             }
             if s % 7 == 0 {
-                f.set(&format!("{dir}/transition.dart"), "Page<void> transition(LocalKey key, Widget child) => x;");
+                f.set(
+                    &format!("{dir}/transition.dart"),
+                    "Page<void> transition(LocalKey key, Widget child) => x;",
+                );
             }
             for i in (s * per)..((s + 1) * per).min(routes) {
                 f.add_route(&format!("{dir}/r{i}"), i);
@@ -116,7 +131,11 @@ impl Files {
     /// The files of one route folder; `i` picks which of the optional files it gets.
     pub fn add_route(&mut self, dir: &str, i: usize) {
         let dynamic = i.is_multiple_of(4);
-        let dir = if dynamic { format!("{dir}/$id") } else { dir.to_string() };
+        let dir = if dynamic {
+            format!("{dir}/$id")
+        } else {
+            dir.to_string()
+        };
         let mut params = String::new();
         let mut data_params = vec![];
         if dynamic {
@@ -131,13 +150,26 @@ impl Files {
         if has_data {
             params.push_str("required Item item, ");
         }
-        self.set(&format!("{dir}/page.dart"), page(&format!("R{i}Page"), &params));
+        self.set(
+            &format!("{dir}/page.dart"),
+            page(&format!("R{i}Page"), &params),
+        );
         if has_data {
-            let named = if data_params.is_empty() { String::new() } else { format!(", {{{}}}", data_params.join(", ")) };
-            self.set(&format!("{dir}/data.dart"), format!("Future<Item> data(Ref ref{named}) async => Item();"));
+            let named = if data_params.is_empty() {
+                String::new()
+            } else {
+                format!(", {{{}}}", data_params.join(", "))
+            };
+            self.set(
+                &format!("{dir}/data.dart"),
+                format!("Future<Item> data(Ref ref{named}) async => Item();"),
+            );
         }
         if i.is_multiple_of(8) {
-            self.set(&format!("{dir}/meta.dart"), format!("const meta = 'route {i}';"));
+            self.set(
+                &format!("{dir}/meta.dart"),
+                format!("const meta = 'route {i}';"),
+            );
         }
         if i.is_multiple_of(10) {
             self.set(&format!("{dir}/loading.dart"), format!("class R{i}Loading extends StatelessWidget {{ const R{i}Loading({{super.key}}); }}"));
@@ -148,8 +180,8 @@ impl Files {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
     use crate::build;
+    use crate::config::Config;
 
     #[test]
     fn the_synthetic_app_checks_cleanly() {
@@ -157,7 +189,16 @@ mod tests {
         let files = Files::synth(200);
         files.write_to(dir.path());
         let (_, diags, routes) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
-        assert!(diags.0.is_empty(), "{:?}", diags.0.iter().take(5).map(|d| d.to_string()).collect::<Vec<_>>());
+        assert!(
+            diags.0.is_empty(),
+            "{:?}",
+            diags
+                .0
+                .iter()
+                .take(5)
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+        );
         assert_eq!(routes, 200 + 1);
     }
 }

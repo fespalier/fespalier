@@ -55,8 +55,13 @@ fn group_scaffold_writes_no_page() {
 #[test]
 fn group_with_nothing_to_write_is_an_error() {
     let dir = project();
-    let e = scaffold::new_route_opts(dir.path(), &args("(account)", false), false).unwrap_err().to_string();
-    assert!(e.contains("nothing to create") && e.contains("group"), "{e}");
+    let e = scaffold::new_route_opts(dir.path(), &args("(account)", false), false)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("nothing to create") && e.contains("group"),
+        "{e}"
+    );
     assert!(!dir.path().join("lib/app/(account)/page.dart").exists());
 }
 
@@ -66,7 +71,9 @@ fn no_page_flag() {
     let created = scaffold::new_route_opts(dir.path(), &args("shop", true), true).unwrap();
     assert_eq!(created, vec!["lib/app/shop/layout.dart".to_string()]);
     assert!(!dir.path().join("lib/app/shop/page.dart").exists());
-    let e = scaffold::new_route_opts(dir.path(), &args("other", false), true).unwrap_err().to_string();
+    let e = scaffold::new_route_opts(dir.path(), &args("other", false), true)
+        .unwrap_err()
+        .to_string();
     assert!(e.contains("--no-page"), "{e}");
     // A plain route still gets its page.
     let created = scaffold::new_route_opts(dir.path(), &args("plain", false), false).unwrap();

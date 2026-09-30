@@ -25,7 +25,10 @@ fn diags_with(cfg: &Config, files: &[(&str, &str)]) -> Vec<String> {
 }
 
 fn errors(files: &[(&str, &str)]) -> Vec<String> {
-    diags_with(&Config::default(), files).into_iter().filter(|d| d.starts_with('✗')).collect()
+    diags_with(&Config::default(), files)
+        .into_iter()
+        .filter(|d| d.starts_with('✗'))
+        .collect()
 }
 
 fn code_with(cfg: &Config, files: &[(&str, &str)]) -> String {
@@ -40,12 +43,17 @@ fn code(files: &[(&str, &str)]) -> String {
 }
 
 fn insensitive() -> Config {
-    Config { case_sensitive: false, ..Config::default() }
+    Config {
+        case_sensitive: false,
+        ..Config::default()
+    }
 }
 
 /// The GoRoute with this path: from `path: <path>,` to the next route's.
 fn route<'c>(code: &'c str, path: &str) -> &'c str {
-    let start = code.find(&format!("path: {path},")).unwrap_or_else(|| panic!("no route {path} in:\n{code}"));
+    let start = code
+        .find(&format!("path: {path},"))
+        .unwrap_or_else(|| panic!("no route {path} in:\n{code}"));
     let rest = &code[start..];
     let end = rest[1..].find("GoRoute(").map_or(rest.len(), |i| i + 1);
     &rest[..end]
@@ -68,7 +76,9 @@ fn page(name: &str) -> String {
 }
 
 fn page_with(name: &str, params: &str, fields: &str) -> String {
-    format!("class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, {params}}}); {fields} }}")
+    format!(
+        "class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, {params}}}); {fields} }}"
+    )
 }
 
 const OFF: &str = "const caseSensitive = false;\n";
@@ -83,12 +93,18 @@ fn a_route_dart_makes_its_folder_and_everything_below_it_case_insensitive() {
         ("shop/route.dart", OFF),
         ("shop/page.dart", &page("Shop")),
         ("shop/cart/page.dart", &page("Cart")),
-        ("shop/items/$id/page.dart", &page_with("Item", "required this.id", "final String id;")),
+        (
+            "shop/items/$id/page.dart",
+            &page_with("Item", "required this.id", "final String id;"),
+        ),
     ]);
     // Nested routes are relative paths, so each one carries the flag of its own folder.
     assert!(is_insensitive(&c, "joinLocation(at, '/shop')"), "{c}");
     assert!(is_insensitive(&c, "'cart'"), "{c}");
-    assert!(is_insensitive(&c, "'items/:id'") || is_insensitive(&c, "'items'"), "{c}");
+    assert!(
+        is_insensitive(&c, "'items/:id'") || is_insensitive(&c, "'items'"),
+        "{c}"
+    );
     assert!(!is_insensitive(&c, "joinLocation(at, '/about')"), "{c}");
     // Siblings keep the default: exactly the three shop routes carry the flag.
     assert_eq!(c.matches("caseSensitive: false,").count(), 3, "{c}");
@@ -147,7 +163,11 @@ fn a_group_and_a_folder_without_a_page_pass_it_on() {
     ]);
     for p in ["'/cart'", "'/pay'", "'/docs/guide'", "'/other'"] {
         let want = !p.contains("other");
-        assert_eq!(is_insensitive(&c, &format!("joinLocation(at, {p})")), want, "{p}\n{c}");
+        assert_eq!(
+            is_insensitive(&c, &format!("joinLocation(at, {p})")),
+            want,
+            "{p}\n{c}"
+        );
     }
 }
 
@@ -161,7 +181,10 @@ fn a_route_is_matched_as_one_path_so_the_deepest_folder_decides_for_all_of_it() 
         ("docs/Guide/page.dart", &page("Guide")),
         ("docs/faq/page.dart", &page("Faq")),
     ]);
-    assert!(!is_insensitive(&c, "joinLocation(at, '/docs/Guide')"), "{c}");
+    assert!(
+        !is_insensitive(&c, "joinLocation(at, '/docs/Guide')"),
+        "{c}"
+    );
     assert!(is_insensitive(&c, "joinLocation(at, '/docs/faq')"), "{c}");
 }
 
@@ -174,7 +197,11 @@ fn an_optional_catch_all_and_a_redirect_carry_the_flag_too() {
         ("old/redirect.dart", "String redirect() => '/';"),
     ]);
     // `/files` and `/files/:path(.+)`, and the redirect.
-    for p in ["joinLocation(at, '/files')", "joinLocation(at, '/files/:path(.+)')", "joinLocation(at, '/old')"] {
+    for p in [
+        "joinLocation(at, '/files')",
+        "joinLocation(at, '/files/:path(.+)')",
+        "joinLocation(at, '/old')",
+    ] {
         assert!(is_insensitive(&c, p), "{p}\n{c}");
     }
 }
@@ -201,7 +228,10 @@ fn not_found_scopes_compare_their_folder_by_its_own_setting() {
         ("shop/not_found.dart", NOT_FOUND),
         ("shop/page.dart", &page("Shop")),
         ("shop/$id/not_found.dart", NOT_FOUND),
-        ("shop/$id/page.dart", &page_with("Item", "required this.id", "final int id;")),
+        (
+            "shop/$id/page.dart",
+            &page_with("Item", "required this.id", "final int id;"),
+        ),
         ("help/not_found.dart", NOT_FOUND),
         ("help/page.dart", &page("Help")),
         ("shop/strict/route.dart", ON),
@@ -217,17 +247,36 @@ fn not_found_scopes_compare_their_folder_by_its_own_setting() {
         ],
     );
     // Each scope says how its own prefix is compared.
-    for (prefix, case_sensitive) in [("['shop', 'strict']", true), ("['shop', ':id']", false), ("['shop']", false), ("['help']", true)] {
-        let line = c.lines().find(|l| l.trim_start().starts_with(&format!("({prefix},"))).unwrap_or_else(|| panic!("{prefix} in:\n{c}"));
-        assert!(line.ends_with(&format!("caseSensitive: {case_sensitive}),")), "{line}");
+    for (prefix, case_sensitive) in [
+        ("['shop', 'strict']", true),
+        ("['shop', ':id']", false),
+        ("['shop']", false),
+        ("['help']", true),
+    ] {
+        let line = c
+            .lines()
+            .find(|l| l.trim_start().starts_with(&format!("({prefix},")))
+            .unwrap_or_else(|| panic!("{prefix} in:\n{c}"));
+        assert!(
+            line.ends_with(&format!("caseSensitive: {case_sensitive}),")),
+            "{line}"
+        );
     }
     // The root's own setting (its route.dart, else the config) compares the mount point.
-    assert!(!c.contains("        caseSensitive: false,\n      );"), "{c}");
+    assert!(
+        !c.contains("        caseSensitive: false,\n      );"),
+        "{c}"
+    );
 }
 
 #[test]
 fn a_root_route_dart_decides_the_mount_point_comparison() {
-    let files = [("route.dart", OFF), ("page.dart", &page("Home")[..]), ("a/not_found.dart", NOT_FOUND), ("a/page.dart", &page("A")[..])];
+    let files = [
+        ("route.dart", OFF),
+        ("page.dart", &page("Home")[..]),
+        ("a/not_found.dart", NOT_FOUND),
+        ("a/page.dart", &page("A")[..]),
+    ];
     let files: Vec<(&str, &str)> = files.to_vec();
     let c = code(&files);
     assert!(c.contains("        caseSensitive: false,\n      );"), "{c}");
@@ -235,8 +284,14 @@ fn a_root_route_dart_decides_the_mount_point_comparison() {
     let mut on: Vec<(&str, &str)> = files.clone();
     on[0] = ("route.dart", ON);
     let c = code_with(&insensitive(), &on);
-    assert!(!c.contains("        caseSensitive: false,\n      );"), "{c}");
-    assert!(c.contains("(['a'], (uri) => _i") && c.contains("caseSensitive: true),"), "{c}");
+    assert!(
+        !c.contains("        caseSensitive: false,\n      );"),
+        "{c}"
+    );
+    assert!(
+        c.contains("(['a'], (uri) => _i") && c.contains("caseSensitive: true),"),
+        "{c}"
+    );
 }
 
 #[test]
@@ -248,7 +303,10 @@ fn route_dart_is_read_not_imported() {
 #[test]
 fn a_route_dart_can_sit_in_a_folder_of_its_own() {
     // A folder that only says how the folders below are matched: not a warning.
-    let c = code(&[("(legacy)/route.dart", OFF), ("(legacy)/a/page.dart", &page("A"))]);
+    let c = code(&[
+        ("(legacy)/route.dart", OFF),
+        ("(legacy)/a/page.dart", &page("A")),
+    ]);
     assert!(is_insensitive(&c, "joinLocation(at, '/a')"), "{c}");
 }
 
@@ -262,19 +320,42 @@ fn it_must_be_a_bool_literal() {
         ("const caseSensitive = null;", "null"),
     ] {
         let e = errors(&[("shop/route.dart", body), ("shop/page.dart", &page("Shop"))]);
-        assert!(e.iter().any(|m| m.starts_with("✗ shop/route.dart:1  ")), "{why}: {e:?}");
-        assert!(e.iter().any(|m| m.contains("`caseSensitive` must be a `true` or `false` literal") || m.contains("expected `const caseSensitive")), "{why}: {e:?}");
+        assert!(
+            e.iter().any(|m| m.starts_with("✗ shop/route.dart:1  ")),
+            "{why}: {e:?}"
+        );
+        assert!(
+            e.iter().any(
+                |m| m.contains("`caseSensitive` must be a `true` or `false` literal")
+                    || m.contains("expected `const caseSensitive")
+            ),
+            "{why}: {e:?}"
+        );
     }
     // `final` and a declared type are still literals.
-    for body in ["final caseSensitive = false;", "const bool caseSensitive = false;"] {
-        assert!(errors(&[("shop/route.dart", body), ("shop/page.dart", &page("Shop"))]).is_empty(), "{body}");
+    for body in [
+        "final caseSensitive = false;",
+        "const bool caseSensitive = false;",
+    ] {
+        assert!(
+            errors(&[("shop/route.dart", body), ("shop/page.dart", &page("Shop"))]).is_empty(),
+            "{body}"
+        );
     }
 }
 
 #[test]
 fn a_route_dart_without_the_constant_is_an_error() {
-    let e = errors(&[("shop/route.dart", "const other = true;"), ("shop/page.dart", &page("Shop"))]);
-    assert_eq!(e, ["✗ shop/route.dart  expected `const caseSensitive = false;` (or `true`), or `const paths = {'fr': 'produits'};`"]);
+    let e = errors(&[
+        ("shop/route.dart", "const other = true;"),
+        ("shop/page.dart", &page("Shop")),
+    ]);
+    assert_eq!(
+        e,
+        [
+            "✗ shop/route.dart  expected `const caseSensitive = false;` (or `true`), or `const paths = {'fr': 'produits'};`"
+        ]
+    );
     // A getter isn't a constant: the generator can't read its value.
     for body in ["", "bool get caseSensitive => false;"] {
         let e = errors(&[("shop/route.dart", body), ("shop/page.dart", &page("Shop"))]);
@@ -284,14 +365,26 @@ fn a_route_dart_without_the_constant_is_an_error() {
 
 #[test]
 fn declaring_it_twice_is_an_error_at_the_second() {
-    let e = errors(&[("shop/route.dart", "const caseSensitive = false;\nconst caseSensitive = true;"), ("shop/page.dart", &page("Shop"))]);
-    assert_eq!(e, ["✗ shop/route.dart:2  `caseSensitive` is declared twice"]);
+    let e = errors(&[
+        (
+            "shop/route.dart",
+            "const caseSensitive = false;\nconst caseSensitive = true;",
+        ),
+        ("shop/page.dart", &page("Shop")),
+    ]);
+    assert_eq!(
+        e,
+        ["✗ shop/route.dart:2  `caseSensitive` is declared twice"]
+    );
 }
 
 #[test]
 fn a_bad_route_dart_leaves_the_setting_it_would_have_overridden() {
     // The error stops the generator anyway; what is left is the inherited value, not a guess.
-    let dir = project(&[("shop/route.dart", "const caseSensitive = maybe;"), ("shop/page.dart", &page("Shop"))]);
+    let dir = project(&[
+        ("shop/route.dart", "const caseSensitive = maybe;"),
+        ("shop/page.dart", &page("Shop")),
+    ]);
     let (code, diags, _) = build(&dir.path().join("lib/app"), &insensitive()).unwrap();
     assert!(diags.has_errors());
     assert!(is_insensitive(&code, "joinLocation(at, '/shop')"), "{code}");

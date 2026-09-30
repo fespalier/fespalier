@@ -21,12 +21,12 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use std::{env, fs, process};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 use config::Config;
-use session::{Run, Session};
 use notify::event::ModifyKind;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use session::{Run, Session};
 
 #[derive(Parser)]
 #[command(name = "fsp", version, about = "File-tree routing for Flutter")]
@@ -97,7 +97,9 @@ fn main() {
                     }
                     Err(e) => {
                         let files: String = created.iter().map(|f| format!("\n  {f}")).collect();
-                        Err(anyhow!("{e:#}\n\n`fsp new` created:{files}\nFix or delete them, then run `fsp gen`."))
+                        Err(anyhow!(
+                            "{e:#}\n\n`fsp new` created:{files}\nFix or delete them, then run `fsp gen`."
+                        ))
                     }
                 }
             }
@@ -146,7 +148,11 @@ impl Outcome {
 }
 
 pub fn plural(n: usize, noun: &str) -> String {
-    if n == 1 { format!("1 {noun}") } else { format!("{n} {noun}s") }
+    if n == 1 {
+        format!("1 {noun}")
+    } else {
+        format!("{n} {noun}s")
+    }
 }
 
 /// Scan, check, and (if `write`) emit. Errors are printed per file.
@@ -160,21 +166,36 @@ pub fn gen_with(project: &Path, cfg: &Config, write: bool) -> Result<Outcome> {
 
 /// `json`: diagnostics go to stdout as JSON lines instead of the codespan rendering.
 pub fn gen_opts(project: &Path, cfg: &Config, write: bool, json: bool) -> Result<Outcome> {
-    gen_core(project, cfg, write, &mut Session::default(), |app_dir, diags| {
-        if json {
-            diag::render_json(app_dir, &cfg.app_dir, diags)
-        } else {
-            diag::render(app_dir, &cfg.app_dir, diags)
-        }
-    })
+    gen_core(
+        project,
+        cfg,
+        write,
+        &mut Session::default(),
+        |app_dir, diags| {
+            if json {
+                diag::render_json(app_dir, &cfg.app_dir, diags)
+            } else {
+                diag::render(app_dir, &cfg.app_dir, diags)
+            }
+        },
+    )
 }
 
 /// `show` prints the diagnostics (watch mode skips ones it already showed). `session` is what
 /// `watch` keeps from run to run; every other command passes a new one.
-fn gen_core(project: &Path, cfg: &Config, write: bool, session: &mut Session, show: impl FnOnce(&Path, &diag::Diags)) -> Result<Outcome> {
+fn gen_core(
+    project: &Path,
+    cfg: &Config,
+    write: bool,
+    session: &mut Session,
+    show: impl FnOnce(&Path, &diag::Diags),
+) -> Result<Outcome> {
     let app_dir = project.join(&cfg.app_dir);
     if !app_dir.is_dir() {
-        bail!("{} not found (set `fespalier: app_dir:` in pubspec.yaml, or run `fsp init`)", app_dir.display());
+        bail!(
+            "{} not found (set `fespalier: app_dir:` in pubspec.yaml, or run `fsp init`)",
+            app_dir.display()
+        );
     }
     let mut diags = diag::Diags::default();
     let tree = scan::scan(&app_dir, &mut diags)?;
@@ -192,7 +213,14 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, session: &mut Session, sh
                 files.push((cfg.output.clone(), code));
                 files.extend(cfg.output_manifest.clone().zip(manifest::emit(&app, cfg)));
             }
-            (Run { diags, routes, files }, libs.reads())
+            (
+                Run {
+                    diags,
+                    routes,
+                    files,
+                },
+                libs.reads(),
+            )
         }
     };
     let run = session.last.keep(tree, scan_diags, reads, run);
@@ -202,7 +230,10 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, session: &mut Session, sh
             Some(m) => format!("{} and {m}", cfg.output),
             None => cfg.output.clone(),
         };
-        bail!("{} error(s); {left} left unchanged", run.diags.error_count());
+        bail!(
+            "{} error(s); {left} left unchanged",
+            run.diags.error_count()
+        );
     }
     let mut wrote = false;
     for (path, code) in &run.files {
@@ -211,7 +242,9 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, session: &mut Session, sh
         // before comparing, so a formatted file that is up to date reads "unchanged".
         // `watch` doesn't run `dart` again on code it has formatted before.
         let code = if write && cfg.format {
-            session.formats.get(path, code, |code| format::format_dart(code, &out))
+            session
+                .formats
+                .get(path, code, |code| format::format_dart(code, &out))
         } else {
             code.clone()
         };
@@ -227,7 +260,11 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, session: &mut Session, sh
         Some(m) => format!("{}, {m}", cfg.output),
         None => cfg.output.clone(),
     };
-    Ok(Outcome { wrote, routes: run.routes, output })
+    Ok(Outcome {
+        wrote,
+        routes: run.routes,
+        output,
+    })
 }
 
 pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize)> {
@@ -248,7 +285,12 @@ pub fn analyze(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, res
 /// Everything after the scan: resolve, check the manifest, emit. A function of the tree, the
 /// configuration and the files `libs` reads (see [`enums::Libs::reads`]), which is what lets
 /// `watch` skip it for a tree it has seen.
-fn analyze_tree(tree: &scan::Node, cfg: &Config, libs: &enums::Libs, diags: &mut diag::Diags) -> (String, resolve::App) {
+fn analyze_tree(
+    tree: &scan::Node,
+    cfg: &Config,
+    libs: &enums::Libs,
+    diags: &mut diag::Diags,
+) -> (String, resolve::App) {
     let _warm = parse_cache::prewarm(tree);
     let app = resolve::resolve(tree, cfg.case_sensitive, libs, diags);
     manifest::check(&app, cfg, diags);
@@ -265,10 +307,15 @@ fn analyze_tree(tree: &scan::Node, cfg: &Config, libs: &enums::Libs, diags: &mut
 fn relevant(ev: &Event, outputs: &[PathBuf], app_dir: &Path) -> bool {
     let kind_matters = match ev.kind {
         EventKind::Access(_) | EventKind::Modify(ModifyKind::Metadata(_)) => false,
-        EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_) | EventKind::Any | EventKind::Other => true,
+        EventKind::Create(_)
+        | EventKind::Remove(_)
+        | EventKind::Modify(_)
+        | EventKind::Any
+        | EventKind::Other => true,
     };
     let matters = |p: &PathBuf| {
-        !outputs.contains(p) && (p.starts_with(app_dir) || p.extension().is_none_or(|e| e == "dart"))
+        !outputs.contains(p)
+            && (p.starts_with(app_dir) || p.extension().is_none_or(|e| e == "dart"))
     };
     kind_matters && (ev.paths.is_empty() || ev.paths.iter().any(matters))
 }
@@ -285,7 +332,11 @@ struct Shown {
 fn watch(project: &Path) -> Result<()> {
     let cfg = Config::load(project)?;
     let app_dir = project.join(&cfg.app_dir);
-    let outputs: Vec<PathBuf> = [Some(&cfg.output), cfg.output_manifest.as_ref()].into_iter().flatten().map(|o| project.join(o)).collect();
+    let outputs: Vec<PathBuf> = [Some(&cfg.output), cfg.output_manifest.as_ref()]
+        .into_iter()
+        .flatten()
+        .map(|o| project.join(o))
+        .collect();
     let mut shown = Shown::default();
     // A save changes one file: keep the parse results of the others between runs, and the
     // last run's result and formatted text (see session.rs).
@@ -295,7 +346,11 @@ fn watch(project: &Path) -> Result<()> {
         let t = Instant::now();
         let mut diags = String::new();
         let result = gen_core(project, &cfg, true, &mut session, |dir, d| {
-            diags = d.0.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\n");
+            diags =
+                d.0.iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n");
             if diags != shown.diags {
                 diag::render(dir, &cfg.app_dir, d);
             }
@@ -330,7 +385,11 @@ fn watch(project: &Path) -> Result<()> {
     // The app folder, and the rest of `lib/` too when it is there: that is where the enums are
     // that segments and query parameters name, and editing one must regenerate.
     let lib = project.join("lib");
-    let watched = if app_dir.starts_with(&lib) && lib.is_dir() { lib } else { app_dir.clone() };
+    let watched = if app_dir.starts_with(&lib) && lib.is_dir() {
+        lib
+    } else {
+        app_dir.clone()
+    };
     watcher.watch(&watched, RecursiveMode::Recursive)?;
     eprintln!("watching {}/ …", cfg.app_dir);
     while rx.recv().is_ok() {
@@ -346,9 +405,9 @@ mod bench;
 #[cfg(test)]
 mod case_tests;
 #[cfg(test)]
-mod enum_tests;
-#[cfg(test)]
 mod cli_tests;
+#[cfg(test)]
+mod enum_tests;
 #[cfg(test)]
 mod extra_tests;
 #[cfg(test)]

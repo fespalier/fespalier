@@ -5,8 +5,8 @@ use std::fs;
 
 use crate::build;
 use crate::config::{Config, Pubspec};
-use crate::scan::{parse_segment, Seg};
 use crate::scaffold;
+use crate::scan::{Seg, parse_segment};
 
 fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
@@ -27,7 +27,10 @@ fn diags_with(cfg: &Config, files: &[(&str, &str)]) -> Vec<String> {
 
 /// Just the errors: a warning (a page that doesn't take its data) isn't one.
 fn errors(files: &[(&str, &str)]) -> Vec<String> {
-    diags_with(&Config::default(), files).into_iter().filter(|d| d.starts_with('✗')).collect()
+    diags_with(&Config::default(), files)
+        .into_iter()
+        .filter(|d| d.starts_with('✗'))
+        .collect()
 }
 
 fn code_with(cfg: &Config, files: &[(&str, &str)]) -> String {
@@ -54,7 +57,8 @@ fn lacks(code: &str, needles: &[&str]) {
 }
 
 fn at(code: &str, needle: &str) -> usize {
-    code.find(needle).unwrap_or_else(|| panic!("missing `{needle}` in:\n{code}"))
+    code.find(needle)
+        .unwrap_or_else(|| panic!("missing `{needle}` in:\n{code}"))
 }
 
 fn page(name: &str) -> String {
@@ -62,7 +66,9 @@ fn page(name: &str) -> String {
 }
 
 fn page_with(name: &str, params: &str, fields: &str) -> String {
-    format!("class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, {params}}}); {fields} }}")
+    format!(
+        "class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, {params}}}); {fields} }}"
+    )
 }
 
 const HOME: &str = "class HomePage extends StatelessWidget { const HomePage({super.key}); }";
@@ -73,8 +79,14 @@ const DOCS: &str = "class DocsPage extends StatelessWidget { const DocsPage({sup
 
 #[test]
 fn folder_names_parse_into_catch_alls() {
-    assert_eq!(parse_segment("$$rest"), Ok(Seg::CatchAll("rest".into(), false)));
-    assert_eq!(parse_segment("$$$path"), Ok(Seg::CatchAll("path".into(), true)));
+    assert_eq!(
+        parse_segment("$$rest"),
+        Ok(Seg::CatchAll("rest".into(), false))
+    );
+    assert_eq!(
+        parse_segment("$$$path"),
+        Ok(Seg::CatchAll("path".into(), true))
+    );
     assert_eq!(parse_segment("$id"), Ok(Seg::Dynamic("id".into())));
     for bad in ["$$", "$$$", "$$Rest", "$$1a", "$$a-b", "$$$$x"] {
         let msg = parse_segment(bad).unwrap_err();
@@ -106,8 +118,17 @@ fn a_catch_all_is_a_go_router_parameter_with_its_own_pattern() {
 
 #[test]
 fn a_catch_all_at_the_root_and_at_the_top_level_of_a_mount() {
-    let c = code(&[("$$all/page.dart", &page_with("All", "required this.all", "final List<String> all;"))]);
-    has(&c, &["path: joinLocation(at, '/:all(.+)')", "joinLocation(AppRoutes.base, '/${restKey(all)}')"]);
+    let c = code(&[(
+        "$$all/page.dart",
+        &page_with("All", "required this.all", "final List<String> all;"),
+    )]);
+    has(
+        &c,
+        &[
+            "path: joinLocation(at, '/:all(.+)')",
+            "joinLocation(AppRoutes.base, '/${restKey(all)}')",
+        ],
+    );
     let c = code(&[("docs/$$rest/page.dart", DOCS)]);
     has(&c, &["path: joinLocation(at, '/docs/:rest(.+)')"]);
 }
@@ -117,23 +138,36 @@ fn a_catch_all_is_tried_after_static_and_dynamic_siblings() {
     // `$$rest` sorts before the others by name, and must still come last.
     let c = code(&[
         ("docs/$$rest/page.dart", DOCS),
-        ("docs/$id/page.dart", &page_with("Doc", "required this.id", "final String id;")),
+        (
+            "docs/$id/page.dart",
+            &page_with("Doc", "required this.id", "final String id;"),
+        ),
         ("docs/new/page.dart", &page("NewDoc")),
         ("docs/page.dart", &page("Index")),
     ]);
-    let (new, id, rest) = (at(&c, "path: 'new'"), at(&c, "path: ':id'"), at(&c, "path: ':rest(.+)'"));
+    let (new, id, rest) = (
+        at(&c, "path: 'new'"),
+        at(&c, "path: ':id'"),
+        at(&c, "path: ':rest(.+)'"),
+    );
     assert!(new < id && id < rest, "{c}");
 }
 
 #[test]
 fn a_catch_all_in_a_group_is_tried_after_the_siblings_outside_it() {
     let c = code(&[
-        ("(wiki)/layout.dart", "class WikiLayout extends StatelessWidget { const WikiLayout({super.key, required this.child}); final Widget child; }"),
+        (
+            "(wiki)/layout.dart",
+            "class WikiLayout extends StatelessWidget { const WikiLayout({super.key, required this.child}); final Widget child; }",
+        ),
         ("(wiki)/docs/$$rest/page.dart", DOCS),
         ("docs/new/page.dart", &page("NewDoc")),
     ]);
     // The group is a ShellRoute holding the catch-all, so it goes after the static route.
-    assert!(at(&c, "path: joinLocation(at, '/docs/new')") < at(&c, "ShellRoute("), "{c}");
+    assert!(
+        at(&c, "path: joinLocation(at, '/docs/new')") < at(&c, "ShellRoute("),
+        "{c}"
+    );
 }
 
 #[test]
@@ -143,23 +177,44 @@ fn a_catch_all_behind_a_dynamic_route_in_another_shell_is_unreachable_only_if_it
     let e = errors(&[
         ("(wiki)/layout.dart", layout),
         ("(wiki)/docs/$$rest/page.dart", DOCS),
-        ("$a/$b/page.dart", &page_with("Pair", "required this.a, required this.b", "final String a; final String b;")),
+        (
+            "$a/$b/page.dart",
+            &page_with(
+                "Pair",
+                "required this.a, required this.b",
+                "final String a; final String b;",
+            ),
+        ),
     ]);
     assert!(e.is_empty(), "{e:?}");
     // But `/:a/*rest` outside the group catches all of `/docs/*rest`.
     let e = errors(&[
         ("(wiki)/layout.dart", layout),
         ("(wiki)/docs/$$rest/page.dart", DOCS),
-        ("$a/$$rest/page.dart", &page_with("Deep", "required this.a, required this.rest", "final String a; final List<String> rest;")),
+        (
+            "$a/$$rest/page.dart",
+            &page_with(
+                "Deep",
+                "required this.a, required this.rest",
+                "final String a; final List<String> rest;",
+            ),
+        ),
     ]);
-    assert!(e.iter().any(|m| m.contains("/docs/*rest is unreachable") && m.contains("/:a/*rest")), "{e:?}");
+    assert!(
+        e.iter()
+            .any(|m| m.contains("/docs/*rest is unreachable") && m.contains("/:a/*rest")),
+        "{e:?}"
+    );
 }
 
 #[test]
 fn two_catch_alls_at_one_place_clash() {
     let e = errors(&[
         ("docs/$$rest/page.dart", DOCS),
-        ("docs/$$more/page.dart", &page_with("More", "required this.more", "final List<String> more;")),
+        (
+            "docs/$$more/page.dart",
+            &page_with("More", "required this.more", "final List<String> more;"),
+        ),
     ]);
     assert!(e.iter().any(|m| m.contains("unreachable")), "{e:?}");
 }
@@ -167,21 +222,48 @@ fn two_catch_alls_at_one_place_clash() {
 #[test]
 fn a_catch_all_takes_the_rest_of_the_path() {
     let sub = "class SubPage extends StatelessWidget { const SubPage({super.key}); }";
-    let e = errors(&[("docs/$$rest/page.dart", DOCS), ("docs/$$rest/sub/page.dart", sub)]);
-    assert!(e.iter().any(|m| m.contains("no route can go below it")), "{e:?}");
+    let e = errors(&[
+        ("docs/$$rest/page.dart", DOCS),
+        ("docs/$$rest/sub/page.dart", sub),
+    ]);
+    assert!(
+        e.iter().any(|m| m.contains("no route can go below it")),
+        "{e:?}"
+    );
     let nf = "class NoDoc extends StatelessWidget { const NoDoc({super.key}); }";
-    let e = errors(&[("docs/$$rest/page.dart", DOCS), ("docs/$$rest/not_found.dart", nf)]);
-    assert!(e.iter().any(|m| m.contains("can't have a not_found.dart")), "{e:?}");
+    let e = errors(&[
+        ("docs/$$rest/page.dart", DOCS),
+        ("docs/$$rest/not_found.dart", nf),
+    ]);
+    assert!(
+        e.iter().any(|m| m.contains("can't have a not_found.dart")),
+        "{e:?}"
+    );
 }
 
 #[test]
 fn a_catch_all_is_a_list_of_simple_values() {
-    for ty in ["List<String>", "List<int>", "List<double>", "List<num>", "List<bool>", "List<DateTime>"] {
+    for ty in [
+        "List<String>",
+        "List<int>",
+        "List<double>",
+        "List<num>",
+        "List<bool>",
+        "List<DateTime>",
+    ] {
         let p = page_with("Docs", "required this.rest", &format!("final {ty} rest;"));
         let e = errors(&[("docs/$$rest/page.dart", &p)]);
         assert!(e.is_empty(), "{ty}: {e:?}");
     }
-    for ty in ["String", "int", "List<Object>", "List<int?>", "List<int>?", "Set<int>", "List<List<int>>"] {
+    for ty in [
+        "String",
+        "int",
+        "List<Object>",
+        "List<int?>",
+        "List<int>?",
+        "Set<int>",
+        "List<List<int>>",
+    ] {
         let p = page_with("Docs", "required this.rest", &format!("final {ty} rest;"));
         let e = errors(&[("docs/$$rest/page.dart", &p)]);
         let want = "a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime";
@@ -189,7 +271,13 @@ fn a_catch_all_is_a_list_of_simple_values() {
     }
     // Nobody asking for it is fine too: it is still the rest of the path.
     let c = code(&[("docs/$$rest/page.dart", &page("Docs"))]);
-    has(&c, &["const DocsRoute({required this.rest});", "final List<String> rest;"]);
+    has(
+        &c,
+        &[
+            "const DocsRoute({required this.rest});",
+            "final List<String> rest;",
+        ],
+    );
 }
 
 #[test]
@@ -217,28 +305,55 @@ fn an_optional_catch_all_serves_the_path_without_it_too() {
 #[test]
 fn an_optional_catch_all_and_a_page_above_it_clash() {
     let p = page_with("Files", "this.path = const []", "final List<String> path;");
-    let e = errors(&[("files/page.dart", &page("FilesIndex")), ("files/$$$path/page.dart", &p)]);
-    assert!(e.iter().any(|m| m.contains("/files is served by both") && m.contains("optional catch-all")), "{e:?}");
+    let e = errors(&[
+        ("files/page.dart", &page("FilesIndex")),
+        ("files/$$$path/page.dart", &p),
+    ]);
+    assert!(
+        e.iter()
+            .any(|m| m.contains("/files is served by both") && m.contains("optional catch-all")),
+        "{e:?}"
+    );
     // A required one leaves `/files` to the page above.
-    let e = errors(&[("files/page.dart", &page("FilesIndex")), ("files/$$rest/page.dart", DOCS)]);
+    let e = errors(&[
+        ("files/page.dart", &page("FilesIndex")),
+        ("files/$$rest/page.dart", DOCS),
+    ]);
     assert!(e.is_empty(), "{e:?}");
 }
 
 #[test]
 fn a_catch_all_can_be_a_guards_or_redirects_parameter() {
     let guard = "GuardResult guard(ProviderContainer c, {required List<String> rest}) => rest.first == 'secret' ? '/login' : null;";
-    let c = code(&[("docs/$$rest/page.dart", DOCS), ("docs/$$rest/guard.dart", guard)]);
-    has(&c, &["_i1.guard(ProviderScope.containerOf(context, listen: false), rest: v.rest)"]);
+    let c = code(&[
+        ("docs/$$rest/page.dart", DOCS),
+        ("docs/$$rest/guard.dart", guard),
+    ]);
+    has(
+        &c,
+        &["_i1.guard(ProviderScope.containerOf(context, listen: false), rest: v.rest)"],
+    );
     let redirect = "String redirect({required List<String> rest}) => '/docs/${rest.join('/')}';";
     let c = code(&[("old/$$rest/redirect.dart", redirect)]);
-    has(&c, &["_i0.redirect(rest: v.rest)", "class OldRestRoute", "'/old${restPath(rest)}'"]);
+    has(
+        &c,
+        &[
+            "_i0.redirect(rest: v.rest)",
+            "class OldRestRoute",
+            "'/old${restPath(rest)}'",
+        ],
+    );
 }
 
 #[test]
 fn data_keyed_by_a_catch_all_uses_its_path_as_the_key() {
-    let data = "Future<String> data(Ref ref, {required List<String> rest}) async => rest.join('/');";
+    let data =
+        "Future<String> data(Ref ref, {required List<String> rest}) async => rest.join('/');";
     let p = "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest, required this.data}); final List<String> rest; final String data; }";
-    let c = code(&[("docs/$$rest/page.dart", p), ("docs/$$rest/data.dart", data)]);
+    let c = code(&[
+        ("docs/$$rest/page.dart", p),
+        ("docs/$$rest/data.dart", data),
+    ]);
     has(
         &c,
         &[
@@ -251,7 +366,11 @@ fn data_keyed_by_a_catch_all_uses_its_path_as_the_key() {
     // A provider of its own would be keyed by the list itself.
     let own = "final data = FutureProvider.family<String, ({List<String> rest})>((ref, k) async => k.rest.join('/'));";
     let e = errors(&[("docs/$$rest/page.dart", p), ("docs/$$rest/data.dart", own)]);
-    assert!(e.iter().any(|m| m.contains("is a catch-all, a List that a provider can't be keyed by")), "{e:?}");
+    assert!(
+        e.iter()
+            .any(|m| m.contains("is a catch-all, a List that a provider can't be keyed by")),
+        "{e:?}"
+    );
 }
 
 #[test]
@@ -259,7 +378,10 @@ fn a_catch_all_and_a_list_query_key_the_same_data() {
     // The catch-all is keyed by its path, the query list by a `QueryList`.
     let data = "Future<String> data(Ref ref, {required List<String> rest, List<String> tags = const []}) async => 'x';";
     let p = "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest, required this.data}); final List<String> rest; final String data; }";
-    let c = code(&[("docs/$$rest/page.dart", p), ("docs/$$rest/data.dart", data)]);
+    let c = code(&[
+        ("docs/$$rest/page.dart", p),
+        ("docs/$$rest/data.dart", data),
+    ]);
     has(
         &c,
         &[
@@ -274,8 +396,15 @@ fn a_catch_all_and_a_list_query_key_the_same_data() {
 #[test]
 fn a_catch_all_can_follow_dynamic_segments_and_a_layout() {
     let layout = "class ShopLayout extends StatelessWidget { const ShopLayout({super.key, required this.child}); final Widget child; }";
-    let p = page_with("Item", "required this.shop, required this.rest", "final int shop; final List<String> rest;");
-    let c = code(&[("shops/$shop/layout.dart", layout), ("shops/$shop/items/$$rest/page.dart", &p)]);
+    let p = page_with(
+        "Item",
+        "required this.shop, required this.rest",
+        "final int shop; final List<String> rest;",
+    );
+    let c = code(&[
+        ("shops/$shop/layout.dart", layout),
+        ("shops/$shop/items/$$rest/page.dart", &p),
+    ]);
     has(
         &c,
         &[
@@ -291,9 +420,20 @@ fn a_catch_all_can_follow_dynamic_segments_and_a_layout() {
 #[test]
 fn a_tab_can_start_at_a_catch_all_only_with_an_initial_location() {
     let tabs = "class TabsLayout extends StatelessWidget { const TabsLayout({super.key, required this.navigationShell}); final StatefulNavigationShell navigationShell; }\nconst tabOptions = {'docs': TabOptions(initialLocation: '/docs/intro/start')};";
-    let e = errors(&[("(t)/layout.dart", tabs), ("(t)/docs/$$rest/page.dart", DOCS), ("(t)/home/page.dart", &page("Home"))]);
+    let e = errors(&[
+        ("(t)/layout.dart", tabs),
+        ("(t)/docs/$$rest/page.dart", DOCS),
+        ("(t)/home/page.dart", &page("Home")),
+    ]);
     assert!(e.is_empty(), "{e:?}");
-    let e = errors(&[("(t)/layout.dart", &tabs.replace("/docs/intro/start", "/docs")), ("(t)/docs/$$rest/page.dart", DOCS), ("(t)/home/page.dart", &page("Home"))]);
+    let e = errors(&[
+        (
+            "(t)/layout.dart",
+            &tabs.replace("/docs/intro/start", "/docs"),
+        ),
+        ("(t)/docs/$$rest/page.dart", DOCS),
+        ("(t)/home/page.dart", &page("Home")),
+    ]);
     assert!(e.iter().any(|m| m.contains("initialLocation")), "{e:?}");
 }
 
@@ -349,32 +489,70 @@ fn fsp_new_writes_catch_all_folders() {
 #[test]
 fn case_sensitive_is_a_pubspec_option() {
     assert!(Pubspec::parse("name: a\n").unwrap().config.case_sensitive);
-    assert!(Pubspec::parse("name: a\nfespalier:\n  format: true\n").unwrap().config.case_sensitive);
-    assert!(Pubspec::parse("name: a\nfespalier:\n  case_sensitive: true\n").unwrap().config.case_sensitive);
-    assert!(!Pubspec::parse("name: a\nfespalier:\n  case_sensitive: false\n").unwrap().config.case_sensitive);
+    assert!(
+        Pubspec::parse("name: a\nfespalier:\n  format: true\n")
+            .unwrap()
+            .config
+            .case_sensitive
+    );
+    assert!(
+        Pubspec::parse("name: a\nfespalier:\n  case_sensitive: true\n")
+            .unwrap()
+            .config
+            .case_sensitive
+    );
+    assert!(
+        !Pubspec::parse("name: a\nfespalier:\n  case_sensitive: false\n")
+            .unwrap()
+            .config
+            .case_sensitive
+    );
     assert!(Pubspec::parse("name: a\nfespalier:\n  case_sensitive: maybe\n").is_err());
 }
 
 #[test]
 fn routes_are_case_sensitive_unless_configured() {
-    let files = [("page.dart", HOME), ("docs/$$rest/page.dart", DOCS), ("about/page.dart", &page("About"))];
+    let files = [
+        ("page.dart", HOME),
+        ("docs/$$rest/page.dart", DOCS),
+        ("about/page.dart", &page("About")),
+    ];
     let c = code(&files);
     lacks(&c, &["caseSensitive"]);
-    let cfg = Config { case_sensitive: false, ..Config::default() };
+    let cfg = Config {
+        case_sensitive: false,
+        ..Config::default()
+    };
     let c = code_with(&cfg, &files);
     // Every GoRoute, and the not-found lookup, which compares folder names too.
     assert_eq!(c.matches("caseSensitive: false,").count(), 3, "{c}");
     let nf = "class NoDocs extends StatelessWidget { const NoDocs({super.key, required this.uri}); final Uri uri; }";
-    let c = code_with(&cfg, &[("page.dart", HOME), ("docs/page.dart", &page("Docs")), ("docs/not_found.dart", nf)]);
-    has(&c, &["nearestNotFound(", "        caseSensitive: false,\n      );"]);
+    let c = code_with(
+        &cfg,
+        &[
+            ("page.dart", HOME),
+            ("docs/page.dart", &page("Docs")),
+            ("docs/not_found.dart", nf),
+        ],
+    );
+    has(
+        &c,
+        &[
+            "nearestNotFound(",
+            "        caseSensitive: false,\n      );",
+        ],
+    );
 }
 
 // ---- typed extra ----
 
-const MODEL: &str = "import 'package:flutter/widgets.dart';\nimport '../../../models/product.dart';\n";
+const MODEL: &str =
+    "import 'package:flutter/widgets.dart';\nimport '../../../models/product.dart';\n";
 
 fn product_page(params: &str, fields: &str) -> String {
-    format!("{MODEL}class ProductPage extends StatelessWidget {{ const ProductPage({{super.key, required this.id, {params}}}); final int id; {fields} }}")
+    format!(
+        "{MODEL}class ProductPage extends StatelessWidget {{ const ProductPage({{super.key, required this.id, {params}}}); final int id; {fields} }}"
+    )
 }
 
 #[test]
@@ -403,15 +581,26 @@ fn the_extra_is_not_a_query_parameter_or_a_segment() {
     // Only the segment is read from the URL.
     has(&c, &["({int id}) _params", "(id: Segment.asInt(s, 'id'));"]);
     lacks(&c, &["Query."]);
-    let e = errors(&[("extra/page.dart", &page("Extra")), ("x/$extra/page.dart", &page("X"))]);
-    assert!(e.iter().any(|m| m.contains("`$extra` is reserved")), "{e:?}");
+    let e = errors(&[
+        ("extra/page.dart", &page("Extra")),
+        ("x/$extra/page.dart", &page("X")),
+    ]);
+    assert!(
+        e.iter().any(|m| m.contains("`$extra` is reserved")),
+        "{e:?}"
+    );
 }
 
 #[test]
 fn the_extra_must_be_nullable() {
     let p = product_page("required this.extra", "final Product extra;");
     let e = errors(&[("products/$id/page.dart", &p)]);
-    assert!(e.iter().any(|m| m.contains("a deep link or a reload leaves it null") && m.contains("`Product? extra`")), "{e:?}");
+    assert!(
+        e.iter()
+            .any(|m| m.contains("a deep link or a reload leaves it null")
+                && m.contains("`Product? extra`")),
+        "{e:?}"
+    );
     for ty in ["Product?", "Object?", "dynamic"] {
         let p = product_page("required this.extra", &format!("final {ty} extra;"));
         assert!(errors(&[("products/$id/page.dart", &p)]).is_empty(), "{ty}");
@@ -423,12 +612,21 @@ fn the_extra_type_comes_from_wherever_the_page_gets_it() {
     // Declared in page.dart itself.
     let p = "import 'package:flutter/widgets.dart';\nenum Mode { a, b }\nclass ModePage extends StatelessWidget { const ModePage({super.key, this.extra}); final Mode? extra; }";
     let c = code(&[("mode/page.dart", p)]);
-    has(&c, &["extra: extraOf(state)", "{_i0.Mode? extra, String? locale}"]);
+    has(
+        &c,
+        &["extra: extraOf(state)", "{_i0.Mode? extra, String? locale}"],
+    );
     lacks(&c, &["undefined_shown_name"]);
     // Under an import prefix, and inside a generic type.
     let p = "import 'package:flutter/widgets.dart';\nimport '../models.dart' as m;\nclass ListPage extends StatelessWidget { const ListPage({super.key, this.extra}); final List<m.Item>? extra; }";
     let c = code(&[("list/page.dart", p)]);
-    has(&c, &["import 'app/models.dart' as _e1_m;", "{List<_e1_m.Item>? extra, String? locale}"]);
+    has(
+        &c,
+        &[
+            "import 'app/models.dart' as _e1_m;",
+            "{List<_e1_m.Item>? extra, String? locale}",
+        ],
+    );
     // Built-in types need nothing.
     let p = "import 'package:flutter/widgets.dart';\nclass TextPage extends StatelessWidget { const TextPage({super.key, this.extra}); final String? extra; }";
     let c = code(&[("text/page.dart", p)]);
@@ -443,20 +641,46 @@ fn loading_and_error_views_take_no_extra() {
     let loading = "class ShopLoading extends StatelessWidget { const ShopLoading({super.key, this.extra}); final Object? extra; }";
     let data = "Future<String> data(Ref ref) async => '';";
     let shop = "class ShopPage extends StatelessWidget { const ShopPage({super.key, required this.data}); final String data; }";
-    let e = errors(&[("shop/loading.dart", loading), ("shop/data.dart", data), ("shop/page.dart", shop)]);
-    assert!(e.is_empty() || e.iter().all(|m| !m.contains("extra")), "{e:?}");
+    let e = errors(&[
+        ("shop/loading.dart", loading),
+        ("shop/data.dart", data),
+        ("shop/page.dart", shop),
+    ]);
+    assert!(
+        e.is_empty() || e.iter().all(|m| !m.contains("extra")),
+        "{e:?}"
+    );
     let c = code(&[("page.dart", HOME)]);
     lacks(&c, &["extraOf", "extra:"]);
 }
 
 #[test]
 fn imports_of_the_extra_type_resolve_from_the_output_folder() {
-    let cfg = Pubspec::parse("name: a\nfespalier:\n  app_dir: lib/pages\n  output: lib/router/routes.g.dart\n").unwrap().config;
-    assert_eq!(cfg.import_from_file("a/b/page.dart", "../m.dart"), "../pages/a/m.dart");
-    assert_eq!(cfg.import_from_file("a/b/page.dart", "../../../models/x.dart"), "../models/x.dart");
-    assert_eq!(cfg.import_from_file("a/page.dart", "package:x/y.dart"), "package:x/y.dart");
-    assert_eq!(cfg.import_from_file("a/page.dart", "dart:async"), "dart:async");
+    let cfg = Pubspec::parse(
+        "name: a\nfespalier:\n  app_dir: lib/pages\n  output: lib/router/routes.g.dart\n",
+    )
+    .unwrap()
+    .config;
+    assert_eq!(
+        cfg.import_from_file("a/b/page.dart", "../m.dart"),
+        "../pages/a/m.dart"
+    );
+    assert_eq!(
+        cfg.import_from_file("a/b/page.dart", "../../../models/x.dart"),
+        "../models/x.dart"
+    );
+    assert_eq!(
+        cfg.import_from_file("a/page.dart", "package:x/y.dart"),
+        "package:x/y.dart"
+    );
+    assert_eq!(
+        cfg.import_from_file("a/page.dart", "dart:async"),
+        "dart:async"
+    );
     let same = Config::default();
-    assert_eq!(same.import_from_file("a/page.dart", "./m.dart"), "app/a/m.dart");
+    assert_eq!(
+        same.import_from_file("a/page.dart", "./m.dart"),
+        "app/a/m.dart"
+    );
     assert_eq!(same.import_from_file("page.dart", "../m.dart"), "m.dart");
 }

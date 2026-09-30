@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::config::Pubspec;
 use crate::scan::FileStyle;
@@ -13,7 +13,10 @@ const STARTERS: [&str; 4] = ["layout", "page", "not_found", "transition"];
 
 pub fn run(project: &Path) -> Result<()> {
     if !project.join("pubspec.yaml").is_file() {
-        bail!("no pubspec.yaml in {}; run `fsp init` inside a Flutter project or pass --project", project.display());
+        bail!(
+            "no pubspec.yaml in {}; run `fsp init` inside a Flutter project or pass --project",
+            project.display()
+        );
     }
     let pubspec = Pubspec::load(project)?;
     let Some(package) = pubspec.name.clone() else {
@@ -24,8 +27,15 @@ pub fn run(project: &Path) -> Result<()> {
     fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     for kind in STARTERS {
         // `file_style` picks the spelling; a file in the other one counts as existing.
-        let (snake, kebab) = (format!("{kind}.dart"), format!("{}.dart", kind.replace('_', "-")));
-        let file = if cfg.file_style == FileStyle::Kebab { kebab.clone() } else { snake.clone() };
+        let (snake, kebab) = (
+            format!("{kind}.dart"),
+            format!("{}.dart", kind.replace('_', "-")),
+        );
+        let file = if cfg.file_style == FileStyle::Kebab {
+            kebab.clone()
+        } else {
+            snake.clone()
+        };
         let shown = format!("{}/{file}", cfg.app_dir);
         let path = dir.join(&file);
         if let Some(present) = [&snake, &kebab].into_iter().find(|f| dir.join(f).exists()) {

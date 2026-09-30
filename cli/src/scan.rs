@@ -76,7 +76,9 @@ impl Kind {
     /// `file_style` says: that only picks what `fsp init` and `fsp new` write. Every
     /// multi-word kind gets this, so a future one needs nothing here.
     fn from_file(name: &str) -> Option<Kind> {
-        Kind::ALL.into_iter().find(|k| k.file() == name || k.kebab_file() == name)
+        Kind::ALL
+            .into_iter()
+            .find(|k| k.file() == name || k.kebab_file() == name)
     }
 }
 
@@ -116,7 +118,11 @@ pub struct Node {
 
 impl Node {
     fn in_dir(&self, name: &str) -> String {
-        if self.dir.is_empty() { name.to_string() } else { format!("{}/{}", self.dir, name) }
+        if self.dir.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}/{}", self.dir, name)
+        }
     }
 
     /// Path of a file relative to `lib/app`, e.g. `products/$id/page.dart`, as it is
@@ -131,11 +137,20 @@ impl Node {
 
 /// A span over the first line of a file: where a diagnostic about the whole file points.
 fn first_line(src: &str) -> Span {
-    Span { line: 1, bytes: 0..src.find('\n').unwrap_or(src.len()) }
+    Span {
+        line: 1,
+        bytes: 0..src.find('\n').unwrap_or(src.len()),
+    }
 }
 
 pub fn scan(app_dir: &Path, diags: &mut Diags) -> Result<Node> {
-    let mut root = Node { dir: String::new(), seg: None, files: BTreeMap::new(), spelled: BTreeMap::new(), children: vec![] };
+    let mut root = Node {
+        dir: String::new(),
+        seg: None,
+        files: BTreeMap::new(),
+        spelled: BTreeMap::new(),
+        children: vec![],
+    };
     fill(app_dir, &mut root, diags)?;
     Ok(root)
 }
@@ -162,7 +177,11 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
             if name.starts_with('_') || name.starts_with('.') {
                 continue;
             }
-            let rel = if node.dir.is_empty() { name.clone() } else { format!("{}/{}", node.dir, name) };
+            let rel = if node.dir.is_empty() {
+                name.clone()
+            } else {
+                format!("{}/{}", node.dir, name)
+            };
             let seg = match parse_segment(&name) {
                 Ok(s) => s,
                 Err(msg) => {
@@ -170,7 +189,13 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
                     continue;
                 }
             };
-            let mut child = Node { dir: rel, seg: Some(seg), files: BTreeMap::new(), spelled: BTreeMap::new(), children: vec![] };
+            let mut child = Node {
+                dir: rel,
+                seg: Some(seg),
+                files: BTreeMap::new(),
+                spelled: BTreeMap::new(),
+                children: vec![],
+            };
             fill(&path, &mut child, diags)?;
             node.children.push(child);
         } else if let Some(kind) = Kind::from_file(&name) {
@@ -178,11 +203,27 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
             if node.files.contains_key(&kind) {
                 // `not_found.dart` and `not-found.dart` are one kind: point at each file,
                 // and keep the first.
-                let other = node.spelled.get(&kind).cloned().unwrap_or_else(|| kind.file().to_string());
-                let same = |a: &str, b: &str| format!("`{a}` and `{b}` are the same view and both are in this folder; keep one");
+                let other = node
+                    .spelled
+                    .get(&kind)
+                    .cloned()
+                    .unwrap_or_else(|| kind.file().to_string());
+                let same = |a: &str, b: &str| {
+                    format!(
+                        "`{a}` and `{b}` are the same view and both are in this folder; keep one"
+                    )
+                };
                 let theirs = fs::read_to_string(path.with_file_name(&other)).unwrap_or_default();
-                diags.error(&node.in_dir(&name), Some(&first_line(&src)), same(&name, &other));
-                diags.error(&node.in_dir(&other), Some(&first_line(&theirs)), same(&other, &name));
+                diags.error(
+                    &node.in_dir(&name),
+                    Some(&first_line(&src)),
+                    same(&name, &other),
+                );
+                diags.error(
+                    &node.in_dir(&other),
+                    Some(&first_line(&theirs)),
+                    same(&other, &name),
+                );
                 continue;
             }
             if name != kind.file() {
@@ -197,15 +238,37 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
 /// Names a dynamic segment can't take: they are the parameters fespalier fills
 /// itself, or members of the generated route classes.
 pub const RESERVED: [&str; 22] = [
-    "data", "child", "navigationShell", "shell", "error", "stackTrace", "retry", "uri", "key", "location", "go",
-    "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor", "hashCode", "runtimeType", "extra",
+    "data",
+    "child",
+    "navigationShell",
+    "shell",
+    "error",
+    "stackTrace",
+    "retry",
+    "uri",
+    "key",
+    "location",
+    "go",
+    "push",
+    "replace",
+    "refresh",
+    "watch",
+    "read",
+    "prefetch",
+    "ref",
+    "keepFor",
+    "hashCode",
+    "runtimeType",
+    "extra",
 ];
 
 /// Names a query parameter can't take either: the route class has a member of that name
 /// (or a member's parameter shadows the field). The parameters fespalier fills itself
 /// (`data`, `uri`, ...) are fine: those never reach the query.
-pub const ROUTE_MEMBERS: [&str; 11] =
-    ["location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor", "hashCode"];
+pub const ROUTE_MEMBERS: [&str; 11] = [
+    "location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor",
+    "hashCode",
+];
 
 pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {
     // `$$$rest` (zero or more) and `$$rest` (one or more): the rest of the path.
@@ -219,7 +282,9 @@ pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {
                 ));
             }
             if RESERVED.contains(&p) {
-                return Err(format!("`{name}` is reserved (fespalier fills parameters called `{p}` itself); pick another name"));
+                return Err(format!(
+                    "`{name}` is reserved (fespalier fills parameters called `{p}` itself); pick another name"
+                ));
             }
             return Ok(Seg::CatchAll(p.to_string(), optional));
         }
@@ -228,17 +293,27 @@ pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {
         let valid = p.chars().next().is_some_and(|c| c.is_ascii_lowercase())
             && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
         if !valid {
-            return Err(format!("`${p}`: a dynamic segment must be a lowerCamel Dart identifier, e.g. `$productId`"));
+            return Err(format!(
+                "`${p}`: a dynamic segment must be a lowerCamel Dart identifier, e.g. `$productId`"
+            ));
         }
         if RESERVED.contains(&p) {
-            return Err(format!("`${p}` is reserved (fespalier fills parameters called `{p}` itself); pick another name"));
+            return Err(format!(
+                "`${p}` is reserved (fespalier fills parameters called `{p}` itself); pick another name"
+            ));
         }
         return Ok(Seg::Dynamic(p.to_string()));
     }
-    let plain = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~'));
+    let plain = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~'))
+    };
     if let Some(g) = name.strip_prefix('(').and_then(|n| n.strip_suffix(')')) {
         if !plain(g) {
-            return Err(format!("`{name}`: a group name uses a-z, 0-9, - _ . ~, e.g. `(shop)`"));
+            return Err(format!(
+                "`{name}`: a group name uses a-z, 0-9, - _ . ~, e.g. `(shop)`"
+            ));
         }
         return Ok(Seg::Group(g.to_string()));
     }

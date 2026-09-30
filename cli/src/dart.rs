@@ -48,14 +48,24 @@ impl Class {
 
     /// How diagnostics name it: `ProductPage`, or `page()` for a function.
     pub fn display(&self) -> String {
-        if self.function { format!("{}()", self.name) } else { self.name.clone() }
+        if self.function {
+            format!("{}()", self.name)
+        } else {
+            self.name.clone()
+        }
     }
 }
 
 impl Function {
     /// The function seen as a widget's constructor, for binding its parameters.
     pub fn as_view(&self) -> Class {
-        Class { name: self.name.clone(), superclass: None, params: self.params.clone(), span: self.span.clone(), function: true }
+        Class {
+            name: self.name.clone(),
+            superclass: None,
+            params: self.params.clone(),
+            span: self.span.clone(),
+            function: true,
+        }
     }
 }
 
@@ -180,7 +190,9 @@ impl Ty {
     /// `Future<List<A>>` → ("Future", ["List<A>"]).
     pub fn generic(&self) -> (&str, Vec<&str>) {
         let t = self.text.as_str();
-        let (Some(open), true) = (t.find('<'), t.ends_with('>')) else { return (t, vec![]) };
+        let (Some(open), true) = (t.find('<'), t.ends_with('>')) else {
+            return (t, vec![]);
+        };
         let inner = &t[open + 1..t.len() - 1];
         let (mut args, mut depth, mut start) = (vec![], 0i32, 0);
         for (i, ch) in inner.char_indices() {
@@ -203,7 +215,9 @@ impl Ty {
 fn is_number(t: &str) -> bool {
     let t = t.replace('_', "");
     let t = t.strip_prefix('-').unwrap_or(&t);
-    t.parse::<f64>().is_ok() || t.strip_prefix("0x").is_some_and(|h| !h.is_empty() && h.chars().all(|c| c.is_ascii_hexdigit()))
+    t.parse::<f64>().is_ok()
+        || t.strip_prefix("0x")
+            .is_some_and(|h| !h.is_empty() && h.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 /// Where a declaration sits in its file.
@@ -215,7 +229,10 @@ pub struct Span {
 
 impl Span {
     fn of(n: Node) -> Span {
-        Span { line: n.start_position().row + 1, bytes: n.byte_range() }
+        Span {
+            line: n.start_position().row + 1,
+            bytes: n.byte_range(),
+        }
     }
 }
 
@@ -224,7 +241,9 @@ pub fn parse(src: &str) -> Module {
     parser
         .set_language(&tree_sitter_dart::LANGUAGE.into())
         .expect("tree-sitter-dart grammar is compatible with this tree-sitter");
-    let Some(mut tree) = parser.parse(src, None) else { return Module::default() };
+    let Some(mut tree) = parser.parse(src, None) else {
+        return Module::default();
+    };
     let mut primary = HashMap::new();
     let mut patched = None;
     if tree.root_node().has_error() {
@@ -238,9 +257,15 @@ pub fn parse(src: &str) -> Module {
             }
         }
     }
-    let r = Reader { src: patched.as_deref().unwrap_or(src), primary };
+    let r = Reader {
+        src: patched.as_deref().unwrap_or(src),
+        primary,
+    };
     let root = tree.root_node();
-    let mut m = Module { parse_error: first_error(root, r.src), ..Module::default() };
+    let mut m = Module {
+        parse_error: first_error(root, r.src),
+        ..Module::default()
+    };
     let mut cur = root.walk();
     let top: Vec<Node> = root.named_children(&mut cur).collect();
     for (i, n) in top.iter().enumerate() {
@@ -248,16 +273,25 @@ pub fn parse(src: &str) -> Module {
             "class_declaration" => {
                 // A class the grammar closed too early leaves its later members
                 // at the top level, so its fields show up as plain variables.
-                let rest: Vec<&Node> = top[i + 1..].iter().take_while(|s| s.kind() != "class_declaration").collect();
+                let rest: Vec<&Node> = top[i + 1..]
+                    .iter()
+                    .take_while(|s| s.kind() != "class_declaration")
+                    .collect();
                 let damaged = n.has_error() || rest.iter().any(|s| s.kind() == "ERROR");
-                let orphans = if damaged { r.orphan_fields(&rest) } else { HashMap::new() };
+                let orphans = if damaged {
+                    r.orphan_fields(&rest)
+                } else {
+                    HashMap::new()
+                };
                 m.classes.extend(r.class(*n, &orphans));
             }
             "function_declaration" => m.functions.extend(r.function(*n)),
             "top_level_variable_declaration" => m.variables.extend(r.variables(*n)),
             "getter_declaration" => m.getters.extend(r.getter(*n)),
             "enum_declaration" => m.enums.extend(r.enum_name(*n)),
-            "import_or_export" => m.exports.extend(first_named(*n, "library_export").and_then(|e| r.export(e))),
+            "import_or_export" => m
+                .exports
+                .extend(first_named(*n, "library_export").and_then(|e| r.export(e))),
             _ => {}
         }
     }
@@ -288,9 +322,15 @@ fn first_error(root: Node, src: &str) -> Option<Span> {
     }
     if end <= start {
         // A MISSING node has no text: point at the character it should precede.
-        end = src[start.min(src.len())..].chars().next().map_or(start, |c| start + c.len_utf8());
+        end = src[start.min(src.len())..]
+            .chars()
+            .next()
+            .map_or(start, |c| start + c.len_utf8());
     }
-    Some(Span { line: n.start_position().row + 1, bytes: start..end.max(start) })
+    Some(Span {
+        line: n.start_position().row + 1,
+        bytes: start..end.max(start),
+    })
 }
 
 struct Reader<'a> {
@@ -307,7 +347,9 @@ impl Reader<'_> {
     fn class(&self, n: Node, orphans: &HashMap<String, Ty>) -> Option<Class> {
         let name_node = n.child_by_field_name("name")?;
         let name = self.text(name_node).to_string();
-        let superclass = n.child_by_field_name("superclass").and_then(|s| self.qualified(first_named(s, "type")?));
+        let superclass = n
+            .child_by_field_name("superclass")
+            .and_then(|s| self.qualified(first_named(s, "type")?));
         let body = n.child_by_field_name("body")?;
 
         let mut fields: HashMap<String, Ty> = HashMap::new();
@@ -328,7 +370,8 @@ impl Reader<'_> {
                 if part.kind() == "declaration" && !kids.iter().any(|k| k.kind() == "static") {
                     if let (Some(ty), Some(list)) = (
                         kids.iter().find(|k| k.kind() == "type"),
-                        kids.iter().find(|k| k.kind() == "initialized_identifier_list"),
+                        kids.iter()
+                            .find(|k| k.kind() == "initialized_identifier_list"),
                     ) {
                         let mut c3 = list.walk();
                         for id in list.named_children(&mut c3) {
@@ -354,17 +397,32 @@ impl Reader<'_> {
 
         let params = match ctor.and_then(|c| first_named(c, "formal_parameter_list")) {
             Some(list) => self.params(list, &fields),
-            None => self.primary.get(&name_node.start_byte()).cloned().unwrap_or_default(),
+            None => self
+                .primary
+                .get(&name_node.start_byte())
+                .cloned()
+                .unwrap_or_default(),
         };
-        Some(Class { name, superclass, params, span: Span::of(name_node), function: false })
+        Some(Class {
+            name,
+            superclass,
+            params,
+            span: Span::of(name_node),
+            function: false,
+        })
     }
 
     /// The typed fields of a class cut short by a parse error, which the
     /// grammar left behind as top-level `final int a;` declarations.
     fn orphan_fields(&self, rest: &[&Node]) -> HashMap<String, Ty> {
         let mut out = HashMap::new();
-        for n in rest.iter().filter(|n| n.kind() == "top_level_variable_declaration") {
-            let Some(ty) = first_named(**n, "type") else { continue };
+        for n in rest
+            .iter()
+            .filter(|n| n.kind() == "top_level_variable_declaration")
+        {
+            let Some(ty) = first_named(**n, "type") else {
+                continue;
+            };
             let mut cur = n.walk();
             for list in n.named_children(&mut cur) {
                 let mut c2 = list.walk();
@@ -381,14 +439,21 @@ impl Reader<'_> {
     /// `w.Base<T>` → `w.Base`: the name a class extends, prefix included.
     fn qualified(&self, ty: Node) -> Option<String> {
         let mut cur = ty.walk();
-        let parts: Vec<&str> = ty.named_children(&mut cur).filter(|c| c.kind() == "type_identifier").map(|c| self.text(c)).collect();
+        let parts: Vec<&str> = ty
+            .named_children(&mut cur)
+            .filter(|c| c.kind() == "type_identifier")
+            .map(|c| self.text(c))
+            .collect();
         (!parts.is_empty()).then(|| parts.join("."))
     }
 
     /// `X` for `X(...)`, `X.named` for `X.named(...)`.
     fn ctor_name(&self, sig: Node) -> Option<String> {
         let mut cur = sig.walk();
-        let parts: Vec<&str> = sig.children_by_field_name("name", &mut cur).map(|p| self.text(p)).collect();
+        let parts: Vec<&str> = sig
+            .children_by_field_name("name", &mut cur)
+            .map(|p| self.text(p))
+            .collect();
         (!parts.is_empty()).then(|| parts.join("."))
     }
 
@@ -401,7 +466,12 @@ impl Reader<'_> {
         let params = first_named(sig, "formal_parameter_list")
             .map(|p| self.params(p, &HashMap::new()))
             .unwrap_or_default();
-        Some(Function { name, ret, params, span: Span::of(name_node) })
+        Some(Function {
+            name,
+            ret,
+            params,
+            span: Span::of(name_node),
+        })
     }
 
     fn enum_name(&self, n: Node) -> Option<String> {
@@ -416,8 +486,12 @@ impl Reader<'_> {
     }
 
     fn getter(&self, n: Node) -> Option<Getter> {
-        let name = n.child_by_field_name("signature")?.child_by_field_name("name")?;
-        Some(Getter { name: self.text(name).to_string() })
+        let name = n
+            .child_by_field_name("signature")?
+            .child_by_field_name("name")?;
+        Some(Getter {
+            name: self.text(name).to_string(),
+        })
     }
 
     fn variables(&self, n: Node) -> Vec<Variable> {
@@ -427,7 +501,9 @@ impl Reader<'_> {
         for list in n.named_children(&mut cur) {
             let mut c2 = list.walk();
             for d in list.named_children(&mut c2) {
-                let Some(name) = d.child_by_field_name("name") else { continue };
+                let Some(name) = d.child_by_field_name("name") else {
+                    continue;
+                };
                 let value_node = d.child_by_field_name("value");
                 let call = value_node.and_then(|v| self.call(v));
                 let strings = value_node.and_then(|v| self.strings(v));
@@ -435,13 +511,27 @@ impl Reader<'_> {
                 let pairs = value_node.and_then(|v| self.pairs(v));
                 let ctor_args = value_node.and_then(|v| self.ctor_args(v));
                 let value = value_node.map(|v| self.text(v).split_whitespace().collect::<String>());
-                let string = value_node.filter(|v| v.kind() == "string_literal").and_then(|v| string_value(self.text(v)));
+                let string = value_node
+                    .filter(|v| v.kind() == "string_literal")
+                    .and_then(|v| string_value(self.text(v)));
                 let boolean = value_node.and_then(|v| match v.kind() {
                     "true" => Some(true),
                     "false" => Some(false),
                     _ => None,
                 });
-                out.push(Variable { name: self.text(name).to_string(), call, strings, string, boolean, objects, pairs, ctor_args, value, is_const, span: Span::of(name) });
+                out.push(Variable {
+                    name: self.text(name).to_string(),
+                    call,
+                    strings,
+                    string,
+                    boolean,
+                    objects,
+                    pairs,
+                    ctor_args,
+                    value,
+                    is_const,
+                    span: Span::of(name),
+                });
             }
         }
         out
@@ -510,7 +600,11 @@ impl Reader<'_> {
         if v.kind() != "set_or_map_literal" {
             return None;
         }
-        let literal = |n: Node| (n.kind() == "string_literal").then(|| string_value(self.text(n))).flatten();
+        let literal = |n: Node| {
+            (n.kind() == "string_literal")
+                .then(|| string_value(self.text(n)))
+                .flatten()
+        };
         let mut out = vec![];
         let mut cur = v.walk();
         for e in v.named_children(&mut cur) {
@@ -519,7 +613,12 @@ impl Reader<'_> {
                 "pair" => {
                     let key = e.child_by_field_name("key")?;
                     let value = e.child_by_field_name("value")?;
-                    out.push(StringPair { key: literal(key), key_span: Span::of(key), value: literal(value), value_span: Span::of(value) });
+                    out.push(StringPair {
+                        key: literal(key),
+                        key_span: Span::of(key),
+                        value: literal(value),
+                        value_span: Span::of(value),
+                    });
                 }
                 _ => return None,
             }
@@ -530,8 +629,14 @@ impl Reader<'_> {
     /// The class and argument list of a constructor call: `Foo(...)`, `const Foo(...)`.
     fn ctor_parts<'t>(&self, value: Node<'t>) -> Option<(Node<'t>, Node<'t>)> {
         let (class, args) = match value.kind() {
-            "call_expression" => (value.child_by_field_name("function")?, value.child_by_field_name("arguments")?),
-            "const_object_expression" => (value.child_by_field_name("type")?, value.child_by_field_name("arguments")?),
+            "call_expression" => (
+                value.child_by_field_name("function")?,
+                value.child_by_field_name("arguments")?,
+            ),
+            "const_object_expression" => (
+                value.child_by_field_name("type")?,
+                value.child_by_field_name("arguments")?,
+            ),
             _ => return None,
         };
         matches!(class.kind(), "identifier" | "type").then_some((class, args))
@@ -553,7 +658,11 @@ impl Reader<'_> {
             _ => Lit::Other,
         };
         let name = self.text(label).trim_end_matches(':').trim().to_string();
-        Some(ObjectArg { name, value: lit, span: Span::of(expr) })
+        Some(ObjectArg {
+            name,
+            value: lit,
+            span: Span::of(expr),
+        })
     }
 
     /// `Foo(a: 1, b: 'x')` → its named arguments; positional ones are skipped.
@@ -561,7 +670,11 @@ impl Reader<'_> {
     fn ctor_args(&self, v: Node) -> Option<Vec<ObjectArg>> {
         let (_, args) = self.ctor_parts(v)?;
         let mut cur = args.walk();
-        Some(args.named_children(&mut cur).filter_map(|a| self.named_arg(a)).collect())
+        Some(
+            args.named_children(&mut cur)
+                .filter_map(|a| self.named_arg(a))
+                .collect(),
+        )
     }
 
     /// `A.b.c<T, U>(...)` → chain `[A, b, c]`, type args `[T, U]`.
@@ -574,7 +687,11 @@ impl Reader<'_> {
         if f.kind() == "instantiation_expression" {
             if let Some(ta) = f.child_by_field_name("type_arguments") {
                 let mut cur = ta.walk();
-                type_args = ta.named_children(&mut cur).filter(|t| t.kind() == "type").map(|t| self.ty(t)).collect();
+                type_args = ta
+                    .named_children(&mut cur)
+                    .filter(|t| t.kind() == "type")
+                    .map(|t| self.ty(t))
+                    .collect();
             }
             f = f.child_by_field_name("function")?;
         }
@@ -594,7 +711,10 @@ impl Reader<'_> {
         }
         chain.reverse();
         // `riverpod.FutureProvider(...)`: drop an import prefix.
-        let prefix = chain.iter().take_while(|c| c.starts_with(|ch: char| ch.is_lowercase() || ch == '_')).count();
+        let prefix = chain
+            .iter()
+            .take_while(|c| c.starts_with(|ch: char| ch.is_lowercase() || ch == '_'))
+            .count();
         if prefix < chain.len() && chain[prefix].starts_with(char::is_uppercase) {
             chain.drain(..prefix);
         }
@@ -628,7 +748,13 @@ impl Reader<'_> {
         out
     }
 
-    fn param(&self, p: Node, fields: &HashMap<String, Ty>, named: bool, mut required: bool) -> Option<Param> {
+    fn param(
+        &self,
+        p: Node,
+        fields: &HashMap<String, Ty>,
+        named: bool,
+        mut required: bool,
+    ) -> Option<Param> {
         let span = Span::of(p);
         // The grammar reads a leading `{required this.x` as a type called
         // `required`; treat it as the keyword.
@@ -643,18 +769,41 @@ impl Reader<'_> {
         if let Some(s) = first_named(p, "super_formal_parameter") {
             declared(s);
             let name = self.text(last_named(s, "identifier")?).to_string();
-            return Some(Param { name, ty: None, named, required, is_super: true, span });
+            return Some(Param {
+                name,
+                ty: None,
+                named,
+                required,
+                is_super: true,
+                span,
+            });
         }
         if let Some(c) = first_named(p, "constructor_param") {
             let ty = declared(c);
             let name = self.text(last_named(c, "identifier")?).to_string();
             let ty = ty.or_else(|| fields.get(&name).cloned());
-            return Some(Param { name, ty, named, required, is_super: false, span });
+            return Some(Param {
+                name,
+                ty,
+                named,
+                required,
+                is_super: false,
+                span,
+            });
         }
         // An untyped parameter (`ref`) has no `name` field, just an identifier.
-        let name = p.child_by_field_name("name").or_else(|| last_named(p, "identifier"))?;
+        let name = p
+            .child_by_field_name("name")
+            .or_else(|| last_named(p, "identifier"))?;
         let ty = declared(p);
-        Some(Param { name: self.text(name).to_string(), ty, named, required, is_super: false, span })
+        Some(Param {
+            name: self.text(name).to_string(),
+            ty,
+            named,
+            required,
+            is_super: false,
+            span,
+        })
     }
 
     fn ty(&self, n: Node) -> Ty {
@@ -662,7 +811,10 @@ impl Reader<'_> {
         let mut prev_word = false;
         leaves(n, &mut |leaf| {
             let s = self.text(leaf);
-            let word = s.chars().next().is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$');
+            let word = s
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$');
             if s == "," {
                 text.push_str(", ");
             } else {
@@ -677,9 +829,15 @@ impl Reader<'_> {
         let record = first_named(n, "record_type").map(|r| {
             let mut out = vec![];
             let mut cur = r.walk();
-            for f in r.named_children(&mut cur).filter(|f| f.kind() == "record_type_named_field") {
+            for f in r
+                .named_children(&mut cur)
+                .filter(|f| f.kind() == "record_type_named_field")
+            {
                 if let Some(ti) = first_named(f, "typed_identifier") {
-                    if let (Some(t), Some(name)) = (ti.child_by_field_name("type"), ti.child_by_field_name("name")) {
+                    if let (Some(t), Some(name)) = (
+                        ti.child_by_field_name("type"),
+                        ti.child_by_field_name("name"),
+                    ) {
                         out.push((self.text(name).to_string(), self.ty(t)));
                     }
                 }
@@ -710,7 +868,11 @@ fn string_value(lit: &str) -> Option<String> {
     while let Some(c) = chars.next() {
         match c {
             '$' => return None,
-            '\\' => out.push(chars.next().filter(|n| matches!(n, '$' | '\\' | '\'' | '"'))?),
+            '\\' => out.push(
+                chars
+                    .next()
+                    .filter(|n| matches!(n, '$' | '\\' | '\'' | '"'))?,
+            ),
             c => out.push(c),
         }
     }
@@ -795,7 +957,14 @@ fn primary_header(b: &[u8], mut i: usize) -> Option<(Primary, usize)> {
         return None;
     }
     let close = closer(b, i)?;
-    Some((Primary { konst, name, params: i..close + 1 }, close + 1))
+    Some((
+        Primary {
+            konst,
+            name,
+            params: i..close + 1,
+        },
+        close + 1,
+    ))
 }
 
 fn is_word(c: u8) -> bool {
@@ -803,7 +972,9 @@ fn is_word(c: u8) -> bool {
 }
 
 fn word_at(b: &[u8], i: usize, w: &str) -> bool {
-    b[i..].starts_with(w.as_bytes()) && (i == 0 || !is_word(b[i - 1])) && !b.get(i + w.len()).is_some_and(|c| is_word(*c))
+    b[i..].starts_with(w.as_bytes())
+        && (i == 0 || !is_word(b[i - 1]))
+        && !b.get(i + w.len()).is_some_and(|c| is_word(*c))
 }
 
 /// Skips whitespace and comments.
@@ -857,7 +1028,9 @@ fn closer(b: &[u8], open: usize) -> Option<usize> {
 fn skip_literal(b: &[u8], i: usize) -> Option<usize> {
     let n = b.len();
     match b[i] {
-        b'/' if b.get(i + 1) == Some(&b'/') => Some(b[i..].iter().position(|c| *c == b'\n').map_or(n, |p| i + p)),
+        b'/' if b.get(i + 1) == Some(&b'/') => {
+            Some(b[i..].iter().position(|c| *c == b'\n').map_or(n, |p| i + p))
+        }
         b'/' if b.get(i + 1) == Some(&b'*') => {
             let (mut j, mut depth) = (i + 2, 1);
             while j < n && depth > 0 {
@@ -870,7 +1043,9 @@ fn skip_literal(b: &[u8], i: usize) -> Option<usize> {
             Some(j.min(n))
         }
         c => {
-            let raw = c == b'r' && matches!(b.get(i + 1), Some(b'\'' | b'"')) && (i == 0 || !is_word(b[i - 1]));
+            let raw = c == b'r'
+                && matches!(b.get(i + 1), Some(b'\'' | b'"'))
+                && (i == 0 || !is_word(b[i - 1]));
             let start = i + usize::from(raw);
             let q = *b.get(start).filter(|q| matches!(q, b'\'' | b'"'))?;
             let triple = b.get(start + 1) == Some(&q) && b.get(start + 2) == Some(&q);
@@ -878,9 +1053,13 @@ fn skip_literal(b: &[u8], i: usize) -> Option<usize> {
             while j < n {
                 match b[j] {
                     b'\\' if !raw => j += 2,
-                    b'$' if !raw && b.get(j + 1) == Some(&b'{') => j = closer(b, j + 1).map_or(n, |e| e + 1),
+                    b'$' if !raw && b.get(j + 1) == Some(&b'{') => {
+                        j = closer(b, j + 1).map_or(n, |e| e + 1)
+                    }
                     b'\n' if !triple => return Some(j),
-                    c if c == q && (!triple || b[j..].starts_with(&[q, q, q])) => return Some(j + if triple { 3 } else { 1 }),
+                    c if c == q && (!triple || b[j..].starts_with(&[q, q, q])) => {
+                        return Some(j + if triple { 3 } else { 1 });
+                    }
                     _ => j += 1,
                 }
             }
@@ -892,16 +1071,30 @@ fn skip_literal(b: &[u8], i: usize) -> Option<usize> {
 /// Reads primary-constructor parameter lists apart from the source. Returns the
 /// source with the headers blanked out (same length, same lines), so the class
 /// itself parses as usual, and the parameters by class-name offset.
-fn split_primary(parser: &mut Parser, src: &str, headers: &[Primary]) -> (String, HashMap<usize, Vec<Param>>) {
-    let blank = |b: &mut [u8], r: Range<usize>| b[r].iter_mut().filter(|c| **c != b'\n').for_each(|c| *c = b' ');
+fn split_primary(
+    parser: &mut Parser,
+    src: &str,
+    headers: &[Primary],
+) -> (String, HashMap<usize, Vec<Param>>) {
+    let blank = |b: &mut [u8], r: Range<usize>| {
+        b[r].iter_mut()
+            .filter(|c| **c != b'\n')
+            .for_each(|c| *c = b' ')
+    };
     let mut patched = src.as_bytes().to_vec();
     // A scratch file where each list reads as `Name(params) {}`, at its own offset.
-    let mut scratch: Vec<u8> = src.bytes().map(|c| if c == b'\n' { c } else { b' ' }).collect();
+    let mut scratch: Vec<u8> = src
+        .bytes()
+        .map(|c| if c == b'\n' { c } else { b' ' })
+        .collect();
     for h in headers {
         scratch[h.name.clone()].copy_from_slice(&src.as_bytes()[h.name.clone()]);
         scratch[h.params.clone()].copy_from_slice(&src.as_bytes()[h.params.clone()]);
         // An empty body, in the first two blanks after the list.
-        let blanks = (h.params.end..scratch.len()).filter(|i| scratch[*i] == b' ').take(2).collect::<Vec<_>>();
+        let blanks = (h.params.end..scratch.len())
+            .filter(|i| scratch[*i] == b' ')
+            .take(2)
+            .collect::<Vec<_>>();
         if let [open, close] = blanks[..] {
             (scratch[open], scratch[close]) = (b'{', b'}');
         }
@@ -913,10 +1106,16 @@ fn split_primary(parser: &mut Parser, src: &str, headers: &[Primary]) -> (String
     let mut out = HashMap::new();
     let scratch = String::from_utf8_lossy(&scratch).into_owned();
     if let Some(tree) = parser.parse(&scratch, None) {
-        let r = Reader { src: &scratch, primary: HashMap::new() };
+        let r = Reader {
+            src: &scratch,
+            primary: HashMap::new(),
+        };
         let root = tree.root_node();
         let mut cur = root.walk();
-        for f in root.named_children(&mut cur).filter(|f| f.kind() == "function_declaration") {
+        for f in root
+            .named_children(&mut cur)
+            .filter(|f| f.kind() == "function_declaration")
+        {
             if let Some(f) = r.function(f) {
                 out.insert(f.span.bytes.start, f.params);
             }
@@ -933,7 +1132,10 @@ fn first_named<'t>(n: Node<'t>, kind: &str) -> Option<Node<'t>> {
 
 fn last_named<'t>(n: Node<'t>, kind: &str) -> Option<Node<'t>> {
     let mut cur = n.walk();
-    let found = n.named_children(&mut cur).filter(|c| c.kind() == kind).last();
+    let found = n
+        .named_children(&mut cur)
+        .filter(|c| c.kind() == kind)
+        .last();
     found
 }
 
@@ -971,11 +1173,22 @@ mod tests {
         );
         assert_eq!(m.classes.len(), 2);
         let c = &m.classes[0];
-        assert_eq!((c.name.as_str(), c.superclass.as_deref()), ("ProductPage", Some("HookConsumerWidget")));
+        assert_eq!(
+            (c.name.as_str(), c.superclass.as_deref()),
+            ("ProductPage", Some("HookConsumerWidget"))
+        );
         let p: Vec<_> = c
             .params
             .iter()
-            .map(|p| (p.name.as_str(), p.ty.as_ref().map(|t| t.text.as_str()), p.named, p.required, p.is_super))
+            .map(|p| {
+                (
+                    p.name.as_str(),
+                    p.ty.as_ref().map(|t| t.text.as_str()),
+                    p.named,
+                    p.required,
+                    p.is_super,
+                )
+            })
             .collect();
         assert_eq!(
             p,
@@ -997,21 +1210,41 @@ mod tests {
         );
         let f = &m.functions[0];
         assert_eq!(f.ret.as_ref().unwrap().text, "Future<List<Product>>");
-        assert_eq!(f.ret.as_ref().unwrap().generic(), ("Future", vec!["List<Product>"]));
+        assert_eq!(
+            f.ret.as_ref().unwrap().generic(),
+            ("Future", vec!["List<Product>"])
+        );
         assert_eq!(f.params[2].ty.as_ref().unwrap().text, "({int a, String b})");
         let rec = f.params[2].ty.as_ref().unwrap().record.clone().unwrap();
-        assert_eq!(rec.iter().map(|(n, t)| (n.as_str(), t.text.as_str())).collect::<Vec<_>>(), vec![("a", "int"), ("b", "String")]);
+        assert_eq!(
+            rec.iter()
+                .map(|(n, t)| (n.as_str(), t.text.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("a", "int"), ("b", "String")]
+        );
         assert!(m.functions[1].ret.is_none());
     }
 
     #[test]
     fn reads_grammar_corner_cases() {
-        let m = parse("data(ref, int id) => 1;\nclass P extends StatelessWidget { const P({required this.x}); final int x; }");
+        let m = parse(
+            "data(ref, int id) => 1;\nclass P extends StatelessWidget { const P({required this.x}); final int x; }",
+        );
         let f = &m.functions[0];
-        assert_eq!((f.params[0].name.as_str(), f.params[0].ty.is_none()), ("ref", true));
+        assert_eq!(
+            (f.params[0].name.as_str(), f.params[0].ty.is_none()),
+            ("ref", true)
+        );
         assert_eq!(f.params[1].name, "id");
         let x = &m.classes[0].params[0];
-        assert_eq!((x.name.as_str(), x.required, x.ty.as_ref().map(|t| t.text.as_str())), ("x", true, Some("int")));
+        assert_eq!(
+            (
+                x.name.as_str(),
+                x.required,
+                x.ty.as_ref().map(|t| t.text.as_str())
+            ),
+            ("x", true, Some("int"))
+        );
     }
 
     #[test]
@@ -1022,13 +1255,24 @@ mod tests {
         let konst = |n: &str| m.variables.iter().find(|v| v.name == n).map(|v| v.is_const);
         assert_eq!(
             ["a", "b", "c", "d", "e", "f", "g", "h"].map(konst),
-            [Some(true), Some(false), Some(false), Some(false), Some(true), Some(true), Some(true), None]
+            [
+                Some(true),
+                Some(false),
+                Some(false),
+                Some(false),
+                Some(true),
+                Some(true),
+                Some(true),
+                None
+            ]
         );
     }
 
     #[test]
     fn reads_provider_variables() {
-        let m = parse("final data = FutureProvider.autoDispose.family<Product, ({int id})>((ref, k) => x);");
+        let m = parse(
+            "final data = FutureProvider.autoDispose.family<Product, ({int id})>((ref, k) => x);",
+        );
         let c = m.variables[0].call.as_ref().unwrap();
         assert_eq!(c.chain, ["FutureProvider", "autoDispose", "family"]);
         assert_eq!(c.type_args[0].text, "Product");
@@ -1040,8 +1284,14 @@ mod tests {
         params
             .iter()
             .map(|p| {
-                let name = if p.is_super { format!("super.{}", p.name) } else { p.name.clone() };
-                let ty = p.ty.as_ref().map_or(String::new(), |t| format!(":{}", t.text));
+                let name = if p.is_super {
+                    format!("super.{}", p.name)
+                } else {
+                    p.name.clone()
+                };
+                let ty =
+                    p.ty.as_ref()
+                        .map_or(String::new(), |t| format!(":{}", t.text));
                 match (p.named, p.required) {
                     (true, true) => format!("{{!{name}{ty}}}"),
                     (true, false) => format!("{{{name}{ty}}}"),
@@ -1053,12 +1303,20 @@ mod tests {
     }
 
     fn class_sig<'m>(m: &'m Module, name: &str) -> (Option<&'m str>, Vec<String>) {
-        let c = m.classes.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("no class {name}: {:?}", m.classes));
+        let c = m
+            .classes
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("no class {name}: {:?}", m.classes));
         (c.superclass.as_deref(), sig(&c.params))
     }
 
     fn assert_class(m: &Module, name: &str, sup: &str, params: &[&str]) {
-        assert_eq!(class_sig(m, name), (Some(sup), params.iter().map(|s| s.to_string()).collect()), "{name}");
+        assert_eq!(
+            class_sig(m, name),
+            (Some(sup), params.iter().map(|s| s.to_string()).collect()),
+            "{name}"
+        );
     }
 
     #[test]
@@ -1092,7 +1350,12 @@ mod tests {
         }
         assert_eq!(class_sig(&m, "A7"), (None, vec![]));
         assert_class(&m, "A8", "Base", &["{super.key}"]);
-        assert_class(&m, "ListPage", "StatelessWidget", &["{super.key}", "{!items:List<T>}", "{selected:T?}"]);
+        assert_class(
+            &m,
+            "ListPage",
+            "StatelessWidget",
+            &["{super.key}", "{!items:List<T>}", "{selected:T?}"],
+        );
         assert_class(&m, "Gen", "Base", &["x:T"]);
         assert_class(&m, "Prefixed", "w.StatelessWidget", &["{super.key}"]);
     }
@@ -1114,7 +1377,12 @@ mod tests {
             "#,
         );
         assert_eq!(m.classes.len(), 2);
-        assert_class(&m, "ProductPage", "ConsumerStatefulWidget", &["{super.key}", "{!id:int}"]);
+        assert_class(
+            &m,
+            "ProductPage",
+            "ConsumerStatefulWidget",
+            &["{super.key}", "{!id:int}"],
+        );
         assert_class(&m, "_ProductPageState", "ConsumerState", &[]);
         assert_eq!(m.classes.iter().filter(|c| c.is_public()).count(), 1);
     }
@@ -1177,15 +1445,44 @@ mod tests {
             &m,
             "P2",
             "StatelessWidget",
-            &["{super.key}", "{!id:int}", "{tags:List<String>}", "{m:Map<String, int>}"],
+            &[
+                "{super.key}",
+                "{!id:int}",
+                "{tags:List<String>}",
+                "{m:Map<String, int>}",
+            ],
         );
         assert_class(&m, "P3", "StatelessWidget", &["{key:Key?}", "{!id:int}"]);
         assert_class(&m, "P4", "StatelessWidget", &["{key:Key?}", "{!id:int}"]);
         assert_class(&m, "P5", "StatelessWidget", &["{super.key}", "{!a:int}"]);
-        assert_class(&m, "P6", "StatelessWidget", &["a:int", "b:int", "{super.key}"]);
-        assert_class(&m, "P7", "StatelessWidget", &["super.key", "a:int", "[b:int]"]);
-        assert_class(&m, "P8", "StatelessWidget", &["{super.key}", "{!pair:(int, String)}", "{rec:({int id, String? tab})?}"]);
-        assert_class(&m, "P9", "StatelessWidget", &["{super.key}", "{!a:int}", "{!b:int}"]);
+        assert_class(
+            &m,
+            "P6",
+            "StatelessWidget",
+            &["a:int", "b:int", "{super.key}"],
+        );
+        assert_class(
+            &m,
+            "P7",
+            "StatelessWidget",
+            &["super.key", "a:int", "[b:int]"],
+        );
+        assert_class(
+            &m,
+            "P8",
+            "StatelessWidget",
+            &[
+                "{super.key}",
+                "{!pair:(int, String)}",
+                "{rec:({int id, String? tab})?}",
+            ],
+        );
+        assert_class(
+            &m,
+            "P9",
+            "StatelessWidget",
+            &["{super.key}", "{!a:int}", "{!b:int}"],
+        );
     }
 
     #[test]
@@ -1240,7 +1537,12 @@ mod tests {
             }
             "#,
         );
-        assert_class(&m, "P", "StatelessWidget", &["{super.key}", "{!_id:int}", "{_x:int}", "{!inferred}"]);
+        assert_class(
+            &m,
+            "P",
+            "StatelessWidget",
+            &["{super.key}", "{!_id:int}", "{_x:int}", "{!inferred}"],
+        );
     }
 
     #[test]
@@ -1275,12 +1577,26 @@ mod tests {
         assert_eq!(by("data").ret.as_ref().unwrap().text, "Stream<int>");
         assert_eq!(sig(&by("data").params), ["ref:Ref"]);
         assert_eq!(by("guard").ret.as_ref().unwrap().text, "FutureOr<String?>");
-        assert_eq!(sig(&by("guard").params), ["c:ProviderContainer", "{next:String?}"]);
+        assert_eq!(
+            sig(&by("guard").params),
+            ["c:ProviderContainer", "{next:String?}"]
+        );
         assert_eq!(by("generic").ret.as_ref().unwrap().text, "T");
         assert_eq!(sig(&by("generic").params), ["ref:Ref", "{!id:T}"]);
         assert_eq!(by("pair").ret.as_ref().unwrap().text, "(int, String)");
-        assert_eq!(by("maybe").ret.as_ref().unwrap().text, "Widget Function(BuildContext)?");
-        assert_eq!(sig(&by("transition").params), ["c:BuildContext", "{!child:Widget}", "{a:MainAxisAlignment}", "{p:EdgeInsets}"]);
+        assert_eq!(
+            by("maybe").ret.as_ref().unwrap().text,
+            "Widget Function(BuildContext)?"
+        );
+        assert_eq!(
+            sig(&by("transition").params),
+            [
+                "c:BuildContext",
+                "{!child:Widget}",
+                "{a:MainAxisAlignment}",
+                "{p:EdgeInsets}"
+            ]
+        );
     }
 
     #[test]
@@ -1300,14 +1616,18 @@ mod tests {
         );
         let strings = |n: &str| {
             let v = m.variables.iter().find(|v| v.name == n).unwrap();
-            v.strings.as_ref().map(|s| s.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>())
+            v.strings
+                .as_ref()
+                .map(|s| s.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>())
         };
         assert_eq!(strings("tabs").unwrap(), ["(home)", "search", "profile"]);
         assert_eq!(strings("typed").unwrap(), ["a", "b"]);
         assert_eq!(strings("empty").unwrap(), Vec::<&str>::new());
         assert_eq!(strings("escaped").unwrap(), ["$slug", "$id", "it's"]);
         assert!(strings("bad").is_none());
-        assert!(strings("mixed").is_none() && strings("interp").is_none() && strings("call").is_none());
+        assert!(
+            strings("mixed").is_none() && strings("interp").is_none() && strings("call").is_none()
+        );
         assert!(strings("data").is_none());
         // Each string knows its line, for diagnostics.
         assert_eq!(m.variables[0].strings.as_ref().unwrap()[0].1.line, 2);
@@ -1327,7 +1647,10 @@ mod tests {
             "#,
         );
         let b = |n: &str| m.variables.iter().find(|v| v.name == n).unwrap().boolean;
-        assert_eq!((b("on"), b("off"), b("loud")), (Some(true), Some(false), Some(false)));
+        assert_eq!(
+            (b("on"), b("off"), b("loud")),
+            (Some(true), Some(false), Some(false))
+        );
         for n in ["not", "text", "number", "other"] {
             assert_eq!(b(n), None, "{n}");
         }
@@ -1357,9 +1680,22 @@ mod tests {
         assert_eq!(keys, ["search", "profile", "bare", "odd"]);
         assert!(entries.iter().all(|e| e.class == "TabOptions"));
         assert_eq!(entries[0].args.len(), 1);
-        assert_eq!((entries[0].args[0].name.as_str(), &entries[0].args[0].value), ("preload", &Lit::Bool(true)));
-        let profile: Vec<_> = entries[1].args.iter().map(|a| (a.name.as_str(), a.value.clone())).collect();
-        assert_eq!(profile, [("initialLocation", Lit::Str("/profile/edit".into())), ("preload", Lit::Bool(false))]);
+        assert_eq!(
+            (entries[0].args[0].name.as_str(), &entries[0].args[0].value),
+            ("preload", &Lit::Bool(true))
+        );
+        let profile: Vec<_> = entries[1]
+            .args
+            .iter()
+            .map(|a| (a.name.as_str(), a.value.clone()))
+            .collect();
+        assert_eq!(
+            profile,
+            [
+                ("initialLocation", Lit::Str("/profile/edit".into())),
+                ("preload", Lit::Bool(false))
+            ]
+        );
         assert!(entries[2].args.is_empty());
         // Values it can't read are kept as `Other`, so the caller can point at them.
         assert!(entries[3].args.iter().all(|a| a.value == Lit::Other));
@@ -1392,15 +1728,30 @@ mod tests {
         );
         let var = |n: &str| m.variables.iter().find(|v| v.name == n).unwrap();
         let pairs = var("paths").pairs.as_ref().unwrap();
-        let read: Vec<_> = pairs.iter().map(|p| (p.key.as_deref().unwrap(), p.value.as_deref().unwrap())).collect();
-        assert_eq!(read, [("fr", "produits"), ("de", "produkte"), ("pt-BR", "produtos")]);
+        let read: Vec<_> = pairs
+            .iter()
+            .map(|p| (p.key.as_deref().unwrap(), p.value.as_deref().unwrap()))
+            .collect();
+        assert_eq!(
+            read,
+            [
+                ("fr", "produits"),
+                ("de", "produkte"),
+                ("pt-BR", "produtos")
+            ]
+        );
         assert_eq!((pairs[0].key_span.line, pairs[0].value_span.line), (3, 3));
         assert_eq!(var("typed").pairs.as_ref().unwrap().len(), 1);
         assert_eq!(var("constant").pairs.as_ref().unwrap().len(), 1);
         assert!(var("empty").pairs.as_ref().unwrap().is_empty());
         // A key or value that isn't a plain string literal is kept, as `None`, so the caller can point at it.
         let odd = var("odd").pairs.as_ref().unwrap();
-        assert_eq!(odd.iter().map(|p| (p.key.is_some(), p.value.is_some())).collect::<Vec<_>>(), [(false, true), (true, false), (true, false), (true, true)]);
+        assert_eq!(
+            odd.iter()
+                .map(|p| (p.key.is_some(), p.value.is_some()))
+                .collect::<Vec<_>>(),
+            [(false, true), (true, false), (true, false), (true, true)]
+        );
         // Anything that isn't a literal of pairs is not a map.
         for bad in ["spread", "set", "list"] {
             assert!(var(bad).pairs.is_none(), "{bad}");
@@ -1422,15 +1773,33 @@ mod tests {
             final int plain = 3, other = 4;
             "#,
         );
-        let call = |n: &str| m.variables.iter().find(|v| v.name == n).unwrap().call.clone();
+        let call = |n: &str| {
+            m.variables
+                .iter()
+                .find(|v| v.name == n)
+                .unwrap()
+                .call
+                .clone()
+        };
         let c = call("data").unwrap();
         assert_eq!(c.chain, ["FutureProvider", "autoDispose"]);
-        assert_eq!(c.type_args.iter().map(|t| t.text.as_str()).collect::<Vec<_>>(), ["List<Product>"]);
+        assert_eq!(
+            c.type_args
+                .iter()
+                .map(|t| t.text.as_str())
+                .collect::<Vec<_>>(),
+            ["List<Product>"]
+        );
         let c = call("data2").unwrap();
         assert_eq!(c.chain, ["AsyncNotifierProvider", "autoDispose", "family"]);
         assert_eq!(c.type_args[2].text, "({int id, String? tab})");
         let rec = c.type_args[2].record.as_ref().unwrap();
-        assert_eq!(rec.iter().map(|(n, t)| (n.as_str(), t.text.as_str())).collect::<Vec<_>>(), [("id", "int"), ("tab", "String?")]);
+        assert_eq!(
+            rec.iter()
+                .map(|(n, t)| (n.as_str(), t.text.as_str()))
+                .collect::<Vec<_>>(),
+            [("id", "int"), ("tab", "String?")]
+        );
         assert_eq!(call("data3").unwrap().chain, ["StreamProvider"]);
         assert_eq!(call("data4").unwrap().chain, ["FutureProvider"]);
         assert_eq!(call("data5").unwrap().chain, ["FutureProvider"]);
@@ -1480,8 +1849,17 @@ mod tests {
             "##,
         );
         assert_eq!(m.classes.len(), 1);
-        assert_class(&m, "RealPage", "StatelessWidget", &["{super.key}", "{!id:int}"]);
-        assert!(m.variables.iter().any(|v| v.name == "data" && v.call.is_some()));
+        assert_class(
+            &m,
+            "RealPage",
+            "StatelessWidget",
+            &["{super.key}", "{!id:int}"],
+        );
+        assert!(
+            m.variables
+                .iter()
+                .any(|v| v.name == "data" && v.call.is_some())
+        );
     }
 
     #[test]
@@ -1519,10 +1897,34 @@ mod tests {
                 Future<int> guard(Ref ref, {{required int x}}) async => 1;"
             );
             let m = parse(&src);
-            assert_class(&m, "NewPage", "StatelessWidget", &["{super.key}", "{!id:int}", "{maybe:Widget?}"]);
-            assert_class(&m, "Second", "StatelessWidget", &["{super.key}", "{!zz:int}"]);
-            assert!(m.variables.iter().any(|v| v.name == "data" && v.call.is_some()), "{body}");
-            assert_eq!(sig(&m.functions.iter().find(|f| f.name == "guard").unwrap().params), ["ref:Ref", "{!x:int}"], "{body}");
+            assert_class(
+                &m,
+                "NewPage",
+                "StatelessWidget",
+                &["{super.key}", "{!id:int}", "{maybe:Widget?}"],
+            );
+            assert_class(
+                &m,
+                "Second",
+                "StatelessWidget",
+                &["{super.key}", "{!zz:int}"],
+            );
+            assert!(
+                m.variables
+                    .iter()
+                    .any(|v| v.name == "data" && v.call.is_some()),
+                "{body}"
+            );
+            assert_eq!(
+                sig(&m
+                    .functions
+                    .iter()
+                    .find(|f| f.name == "guard")
+                    .unwrap()
+                    .params),
+                ["ref:Ref", "{!x:int}"],
+                "{body}"
+            );
         }
     }
 
@@ -1553,7 +1955,12 @@ mod tests {
              }
              class Z extends StatelessWidget { const Z(this.q); final int q; }",
         );
-        assert_class(&m, "A", "StatelessWidget", &["{super.key}", "{!id:int}", "{tag:String?}"]);
+        assert_class(
+            &m,
+            "A",
+            "StatelessWidget",
+            &["{super.key}", "{!id:int}", "{tag:String?}"],
+        );
         assert_class(&m, "Z", "StatelessWidget", &["q:int"]);
     }
 
@@ -1582,13 +1989,22 @@ mod tests {
             final data = FutureProvider<int>((ref) => 1);
             "#,
         );
-        assert_class(&m, "A", "StatelessWidget", &["id:int", "{super.key}", "{tag:String?}", "{!xs:List<int>}"]);
+        assert_class(
+            &m,
+            "A",
+            "StatelessWidget",
+            &["id:int", "{super.key}", "{tag:String?}", "{!xs:List<int>}"],
+        );
         assert_class(&m, "B", "StatelessWidget", &["{super.key}", "{!value:T}"]);
         assert_class(&m, "C", "StatelessWidget", &["{super.key}", "{!id:int}"]);
         assert_class(&m, "D", "StatelessWidget", &["a:int", "b:String"]);
         assert_class(&m, "Z", "StatelessWidget", &["{super.key}"]);
         assert_eq!(m.classes.len(), 5);
-        assert!(m.variables.iter().any(|v| v.name == "data" && v.call.is_some()));
+        assert!(
+            m.variables
+                .iter()
+                .any(|v| v.name == "data" && v.call.is_some())
+        );
         // Lines stay put after the rewrite.
         let line = |n: &str| m.classes.iter().find(|c| c.name == n).unwrap().span.line;
         assert_eq!((line("A"), line("B"), line("Z")), (4, 8, 19));
@@ -1608,20 +2024,29 @@ mod tests {
 
     /// The text and line the grammar first gave up at, if it did.
     fn error_at(src: &str) -> Option<(usize, String)> {
-        parse(src).parse_error.map(|s| (s.line, src[s.bytes].to_string()))
+        parse(src)
+            .parse_error
+            .map(|s| (s.line, src[s.bytes].to_string()))
     }
 
     #[test]
     fn reports_where_the_grammar_gives_up() {
-        let (line, text) = error_at("class CartPage extends StatelessWidget {{\n  const CartPage({super.key});\n}\n").unwrap();
+        let (line, text) = error_at(
+            "class CartPage extends StatelessWidget {{\n  const CartPage({super.key});\n}\n",
+        )
+        .unwrap();
         assert_eq!((line, text.as_str()), (1, "{"));
 
         // Cut to the first line, however much the grammar swallows.
-        let (line, text) = error_at("import 'a.dart';\n\nclass A extends B {\n  Widget build( { ;;\n  x\n  y\n").unwrap();
+        let (line, text) =
+            error_at("import 'a.dart';\n\nclass A extends B {\n  Widget build( { ;;\n  x\n  y\n")
+                .unwrap();
         assert!(line >= 3 && !text.contains('\n'), "{line} {text:?}");
 
         // Broken bodies are read anyway.
-        let m = parse("class A extends StatelessWidget { const A({super.key}); Widget build(c) { x = ;; ) } }");
+        let m = parse(
+            "class A extends StatelessWidget { const A({super.key}); Widget build(c) { x = ;; ) } }",
+        );
         assert!(m.parse_error.is_some());
         assert_eq!(m.classes.len(), 1);
     }

@@ -90,8 +90,16 @@ pub fn collect(app: &App) -> Vec<Info> {
                     _ => None,
                 })
                 .collect();
-            let layouts = chain.iter().filter(|&&c| app.routes[c].layout.is_some()).map(|&c| app.routes[c].dir.clone()).collect();
-            let kind = if r.page.is_some() { Kind::Page } else { Kind::Redirect };
+            let layouts = chain
+                .iter()
+                .filter(|&&c| app.routes[c].layout.is_some())
+                .map(|&c| app.routes[c].dir.clone())
+                .collect();
+            let kind = if r.page.is_some() {
+                Kind::Page
+            } else {
+                Kind::Redirect
+            };
             Info {
                 class: format!("{}Route", r.name.as_deref().unwrap_or("?")),
                 path: resolve::pattern(&r.url),
@@ -112,12 +120,20 @@ pub fn collect(app: &App) -> Vec<Info> {
                 },
                 groups,
                 layouts,
-                segments: app.typed_segs(r).into_iter().map(|(n, t)| (n, app.display_type(&t))).collect(),
+                segments: app
+                    .typed_segs(r)
+                    .into_iter()
+                    .map(|(n, t)| (n, app.display_type(&t)))
+                    .collect(),
                 catch_all: match r.url.last() {
                     Some(Seg::CatchAll(n, optional)) => Some((n.clone(), *optional)),
                     _ => None,
                 },
-                query: r.query.iter().map(|(n, t)| (n.clone(), app.display_type(t))).collect(),
+                query: r
+                    .query
+                    .iter()
+                    .map(|(n, t)| (n.clone(), app.display_type(t)))
+                    .collect(),
                 data_keys: r.data.as_ref().map(|d| d.keys.clone()),
                 tabs: tabs.get(&id).cloned().unwrap_or_default(),
                 meta: r.meta.clone(),
@@ -137,18 +153,32 @@ fn tabs_of(app: &App) -> HashMap<usize, Vec<TabInfo>> {
     }
     let mut out: HashMap<usize, Vec<TabInfo>> = HashMap::new();
     for (id, layout) in app.routes.iter().enumerate() {
-        let Some(branches) = &layout.tabs else { continue };
+        let Some(branches) = &layout.tabs else {
+            continue;
+        };
         for (index, b) in branches.iter().enumerate() {
             let (branch, members) = match *b {
                 Branch::Own => (".".to_string(), vec![id]),
                 Branch::Folder(c) => {
                     let mut all = vec![];
                     subtree(app, c, &mut all);
-                    (app.routes[c].dir.rsplit('/').next().unwrap_or_default().to_string(), all)
+                    (
+                        app.routes[c]
+                            .dir
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or_default()
+                            .to_string(),
+                        all,
+                    )
                 }
             };
             for m in members {
-                out.entry(m).or_default().push(TabInfo { layout: layout.dir.clone(), index, branch: branch.clone() });
+                out.entry(m).or_default().push(TabInfo {
+                    layout: layout.dir.clone(),
+                    index,
+                    branch: branch.clone(),
+                });
             }
         }
     }
@@ -172,8 +202,12 @@ fn check_unique(app: &App, cfg: &Config, diags: &mut Diags) {
         let mut seen: HashMap<(&str, &str), &str> = HashMap::new();
         let mut any = false;
         for r in app.routes.iter().filter(|r| r.is_route()) {
-            let Some(file) = r.meta.as_deref() else { continue };
-            let Some(arg) = r.meta_args.iter().find(|a| a.name == *key) else { continue };
+            let Some(file) = r.meta.as_deref() else {
+                continue;
+            };
+            let Some(arg) = r.meta_args.iter().find(|a| a.name == *key) else {
+                continue;
+            };
             let (kind, value, shown) = match &arg.value {
                 Lit::Str(v) => ("string", v.as_str(), dart_str(v)),
                 Lit::Num(v) => ("number", v.as_str(), v.clone()),
@@ -209,10 +243,22 @@ fn check_required(app: &App, cfg: &Config, diags: &mut Diags) {
     if !cfg.meta_required {
         return;
     }
-    for r in app.routes.iter().filter(|r| r.is_route() && r.meta.is_none()) {
+    for r in app
+        .routes
+        .iter()
+        .filter(|r| r.is_route() && r.meta.is_none())
+    {
         // A meta.dart that is broken already has its own error.
-        let kind = if r.page.is_some() { Kind::Page } else { Kind::Redirect };
-        let folder = if r.dir.is_empty() { "the app folder".to_string() } else { format!("`{}/`", r.dir) };
+        let kind = if r.page.is_some() {
+            Kind::Page
+        } else {
+            Kind::Redirect
+        };
+        let folder = if r.dir.is_empty() {
+            "the app folder".to_string()
+        } else {
+            format!("`{}/`", r.dir)
+        };
         let broken = diags.0.iter().any(|d| d.file == rel_meta(r));
         if !broken {
             let msg = format!(
@@ -268,7 +314,11 @@ fn list(items: Vec<String>) -> Option<String> {
 }
 
 fn params(ps: &[(String, String)]) -> Option<String> {
-    list(ps.iter().map(|(n, t)| format!("RouteParam({}, {})", dart_str(n), dart_str(t))).collect())
+    list(
+        ps.iter()
+            .map(|(n, t)| format!("RouteParam({}, {})", dart_str(n), dart_str(t)))
+            .collect(),
+    )
 }
 
 /// The manifest as template data. The meta.dart files it lists are numbered
@@ -289,7 +339,11 @@ pub fn cx(app: &App, first_import: usize) -> (ManifestCx, Vec<String>) {
                 class: i.class,
                 path: dart_str(&i.path),
                 paths: (!i.paths.is_empty()).then(|| {
-                    let entries: Vec<String> = i.paths.iter().map(|(l, p)| format!("{}: {}", dart_str(l), dart_str(p))).collect();
+                    let entries: Vec<String> = i
+                        .paths
+                        .iter()
+                        .map(|(l, p)| format!("{}: {}", dart_str(l), dart_str(p)))
+                        .collect();
                     format!("{{{}}}", entries.join(", "))
                 }),
                 folder: dart_str(&i.folder),
@@ -310,10 +364,22 @@ pub fn cx(app: &App, first_import: usize) -> (ManifestCx, Vec<String>) {
                 tabs: list(
                     i.tabs
                         .iter()
-                        .map(|t| format!("RouteTab({}, {}, {})", dart_str(&t.layout), t.index, dart_str(&t.branch)))
+                        .map(|t| {
+                            format!(
+                                "RouteTab({}, {}, {})",
+                                dart_str(&t.layout),
+                                t.index,
+                                dart_str(&t.branch)
+                            )
+                        })
                         .collect(),
                 ),
-                data_keys: i.data_keys.map(|k| format!("[{}]", k.iter().map(|k| dart_str(k)).collect::<Vec<_>>().join(", "))),
+                data_keys: i.data_keys.map(|k| {
+                    format!(
+                        "[{}]",
+                        k.iter().map(|k| dart_str(k)).collect::<Vec<_>>().join(", ")
+                    )
+                }),
                 meta,
             }
         })
@@ -325,6 +391,17 @@ pub fn cx(app: &App, first_import: usize) -> (ManifestCx, Vec<String>) {
 pub fn emit(app: &App, cfg: &Config) -> Option<String> {
     let app_import = cfg.output_from_manifest()?;
     let (manifest, metas) = cx(app, 0);
-    let imports = metas.iter().map(|f| cfg.import_path_from_manifest(&f.replace('$', "\\$"))).collect();
-    Some(templates::render("manifest.dart", FileCx { app_dir: &cfg.app_dir, app_import, imports, manifest }))
+    let imports = metas
+        .iter()
+        .map(|f| cfg.import_path_from_manifest(&f.replace('$', "\\$")))
+        .collect();
+    Some(templates::render(
+        "manifest.dart",
+        FileCx {
+            app_dir: &cfg.app_dir,
+            app_import,
+            imports,
+            manifest,
+        },
+    ))
 }

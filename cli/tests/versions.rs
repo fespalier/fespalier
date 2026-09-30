@@ -9,7 +9,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
 }
 
 fn read(rel: &str) -> String {
@@ -32,7 +35,10 @@ fn versions_after(text: &str, marker: &str) -> Vec<(usize, String)> {
         let mut rest = line;
         while let Some(at) = rest.find(marker) {
             rest = &rest[at + marker.len()..];
-            let v: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-')).collect();
+            let v: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+                .collect();
             out.push((i + 1, v));
         }
     }
@@ -43,14 +49,20 @@ fn versions_after(text: &str, marker: &str) -> Vec<(usize, String)> {
 fn the_dart_package_has_the_cli_version() {
     let cargo = env!("CARGO_PKG_VERSION");
     let pubspec = pubspec_version(&read("packages/fespalier/pubspec.yaml"));
-    assert_eq!(pubspec, cargo, "packages/fespalier/pubspec.yaml `version:` must equal cli/Cargo.toml");
+    assert_eq!(
+        pubspec, cargo,
+        "packages/fespalier/pubspec.yaml `version:` must equal cli/Cargo.toml"
+    );
 }
 
 #[test]
 fn fsp_init_prints_a_ref_for_this_version() {
     let cargo = env!("CARGO_PKG_VERSION");
     let refs = versions_after(&read("cli/src/init.rs"), "ref: v");
-    assert!(!refs.is_empty(), "cli/src/init.rs no longer prints a `ref: v…`; update this test");
+    assert!(
+        !refs.is_empty(),
+        "cli/src/init.rs no longer prints a `ref: v…`; update this test"
+    );
     for (line, v) in refs {
         assert_eq!(v, cargo, "cli/src/init.rs:{line}: `ref: v{v}`");
     }
@@ -70,7 +82,10 @@ fn the_readmes_pin_this_version() {
     // The main README documents all three: the git dependency, cargo install, and FSP_VERSION.
     let readme = read("README.md");
     for marker in ["ref: v", "--tag v", "FSP_VERSION=v"] {
-        assert!(!versions_after(&readme, marker).is_empty(), "README.md no longer mentions `{marker}…`; update this test");
+        assert!(
+            !versions_after(&readme, marker).is_empty(),
+            "README.md no longer mentions `{marker}…`; update this test"
+        );
     }
 }
 
@@ -78,7 +93,10 @@ fn the_readmes_pin_this_version() {
 fn the_launcher_reads_its_version_from_the_package() {
     // No release number may be spelled out in code (comments may give examples),
     // so `dart run fespalier` can only ever run the fsp that matches its own pubspec.yaml.
-    for file in ["packages/fespalier/bin/fespalier.dart", "packages/fespalier/lib/src/launcher.dart"] {
+    for file in [
+        "packages/fespalier/bin/fespalier.dart",
+        "packages/fespalier/lib/src/launcher.dart",
+    ] {
         let text = read(file);
         for (i, line) in text.lines().enumerate() {
             let code = line.trim_start();
@@ -87,13 +105,27 @@ fn the_launcher_reads_its_version_from_the_package() {
             }
             let has_version = code
                 .split(|c: char| !(c.is_ascii_digit() || c == '.'))
-                .any(|w| w.split('.').count() == 3 && w.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())));
-            assert!(!has_version, "{file}:{}: a version is spelled out here; read it from pubspec.yaml instead: {line}", i + 1);
+                .any(|w| {
+                    w.split('.').count() == 3
+                        && w.split('.')
+                            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+                });
+            assert!(
+                !has_version,
+                "{file}:{}: a version is spelled out here; read it from pubspec.yaml instead: {line}",
+                i + 1
+            );
         }
     }
     let launcher = read("packages/fespalier/lib/src/launcher.dart");
-    assert!(launcher.contains("pubspec.yaml") && launcher.contains("parsePubspecVersion"), "the launcher must read pubspec.yaml");
-    assert!(read("packages/fespalier/bin/fespalier.dart").contains("Launcher.forThisMachine"), "bin/fespalier.dart must use the launcher");
+    assert!(
+        launcher.contains("pubspec.yaml") && launcher.contains("parsePubspecVersion"),
+        "the launcher must read pubspec.yaml"
+    );
+    assert!(
+        read("packages/fespalier/bin/fespalier.dart").contains("Launcher.forThisMachine"),
+        "bin/fespalier.dart must use the launcher"
+    );
 }
 
 #[test]
@@ -115,7 +147,10 @@ fn the_pinned_checksums_belong_to_this_version() {
         .filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()))
         .collect();
     if pinned.is_empty() {
-        assert!(hashes.is_empty(), "{file} has checksums but no pinnedVersion");
+        assert!(
+            hashes.is_empty(),
+            "{file} has checksums but no pinnedVersion"
+        );
         return;
     }
     let pubspec = pubspec_version(&read("packages/fespalier/pubspec.yaml"));
@@ -123,8 +158,16 @@ fn the_pinned_checksums_belong_to_this_version() {
         pinned, pubspec,
         "{file} pins fsp {pinned} but packages/fespalier/pubspec.yaml is at {pubspec}; run `python3 scripts/pin_checksums.py --reset` after a version bump"
     );
-    assert_eq!(hashes.len(), 5, "{file} must pin the five release targets, found {}", hashes.len());
+    assert_eq!(
+        hashes.len(),
+        5,
+        "{file} must pin the five release targets, found {}",
+        hashes.len()
+    );
     for h in &hashes {
-        assert!(h.chars().all(|c| !c.is_ascii_uppercase()), "{file}: checksums are lower-case hex: {h}");
+        assert!(
+            h.chars().all(|c| !c.is_ascii_uppercase()),
+            "{file}: checksums are lower-case hex: {h}"
+        );
     }
 }

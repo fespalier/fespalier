@@ -25,7 +25,10 @@ fn diags(files: &[(&str, &str)]) -> Vec<String> {
 
 /// Just the errors: a warning (a page that doesn't take its data) isn't one.
 fn errors(files: &[(&str, &str)]) -> Vec<String> {
-    diags(files).into_iter().filter(|d| d.starts_with('✗')).collect()
+    diags(files)
+        .into_iter()
+        .filter(|d| d.starts_with('✗'))
+        .collect()
 }
 
 fn code(files: &[(&str, &str)]) -> String {
@@ -50,7 +53,9 @@ fn lacks(code: &str, needles: &[&str]) {
 const HOME: &str = "class HomePage extends StatelessWidget { const HomePage({super.key}); }";
 
 fn widget(class: &str, fields: &str, params: &str) -> String {
-    format!("class {class} extends StatelessWidget {{ const {class}({{super.key{params}}}); {fields} }}")
+    format!(
+        "class {class} extends StatelessWidget {{ const {class}({{super.key{params}}}); {fields} }}"
+    )
 }
 
 // --- typed helpers ---------------------------------------------------------------------
@@ -59,9 +64,18 @@ fn widget(class: &str, fields: &str, params: &str) -> String {
 fn data_routes_get_typed_watch_read_and_prefetch() {
     let c = code(&[
         ("a/data.dart", "Future<int> data(Ref ref) async => 1;"),
-        ("a/page.dart", &widget("APage", "final int n;", ", required this.n")),
-        ("$id/data.dart", "Future<String> data(Ref ref, {required int id, String? q}) async => '';"),
-        ("$id/page.dart", &widget("ItemPage", "final String s;", ", required this.s")),
+        (
+            "a/page.dart",
+            &widget("APage", "final int n;", ", required this.n"),
+        ),
+        (
+            "$id/data.dart",
+            "Future<String> data(Ref ref, {required int id, String? q}) async => '';",
+        ),
+        (
+            "$id/page.dart",
+            &widget("ItemPage", "final String s;", ", required this.s"),
+        ),
     ]);
     has(
         &c,
@@ -83,11 +97,20 @@ fn data_routes_get_typed_watch_read_and_prefetch() {
 #[test]
 fn a_single_key_is_passed_bare_and_routes_without_data_get_no_helpers() {
     let c = code(&[
-        ("$id/data.dart", "Future<int> data(Ref ref, {required int id}) async => id;"),
-        ("$id/page.dart", &widget("ItemPage", "final int n;", ", required this.n")),
+        (
+            "$id/data.dart",
+            "Future<int> data(Ref ref, {required int id}) async => id;",
+        ),
+        (
+            "$id/page.dart",
+            &widget("ItemPage", "final int n;", ", required this.n"),
+        ),
         ("plain/page.dart", HOME.replace("Home", "Plain").as_str()),
     ]);
-    has(&c, &["static final watch = (WidgetRef ref, {required int id}) => ref.watch(data(id));"]);
+    has(
+        &c,
+        &["static final watch = (WidgetRef ref, {required int id}) => ref.watch(data(id));"],
+    );
     // Only ItemRoute has the helpers.
     assert_eq!(c.matches("static final watch").count(), 1, "{c}");
     assert_eq!(c.matches("PrefetchHandle prefetch(").count(), 1, "{c}");
@@ -96,22 +119,47 @@ fn a_single_key_is_passed_bare_and_routes_without_data_get_no_helpers() {
 #[test]
 fn helpers_work_for_a_provider_written_by_hand() {
     let c = code(&[
-        ("data.dart", "final data = FutureProvider<int>((ref) async => 1);"),
-        ("page.dart", &widget("HomePage", "final int n;", ", required this.n")),
+        (
+            "data.dart",
+            "final data = FutureProvider<int>((ref) async => 1);",
+        ),
+        (
+            "page.dart",
+            &widget("HomePage", "final int n;", ", required this.n"),
+        ),
     ]);
-    has(&c, &["static final watch = (WidgetRef ref) => ref.watch(data);", "ref.prefetchData(data,"]);
+    has(
+        &c,
+        &[
+            "static final watch = (WidgetRef ref) => ref.watch(data);",
+            "ref.prefetchData(data,",
+        ],
+    );
 }
 
 #[test]
 fn names_the_helpers_use_are_reserved() {
-    let e = diags(&[("$watch/page.dart", HOME), ("$ref/page.dart", HOME), ("$read/page.dart", HOME)]).join("\n");
+    let e = diags(&[
+        ("$watch/page.dart", HOME),
+        ("$ref/page.dart", HOME),
+        ("$read/page.dart", HOME),
+    ])
+    .join("\n");
     for name in ["watch", "ref", "read"] {
         assert!(e.contains(&format!("`${name}` is reserved")), "{e}");
     }
     // The same goes for query parameters: they're fields of the route class.
-    let e = diags(&[("page.dart", &widget("HomePage", "final bool? read;", ", this.read"))]).join("\n");
+    let e = diags(&[(
+        "page.dart",
+        &widget("HomePage", "final bool? read;", ", this.read"),
+    )])
+    .join("\n");
     assert!(e.contains("`read` can't be a query parameter"), "{e}");
-    let e = diags(&[("page.dart", &widget("HomePage", "final String? go;", ", this.go"))]).join("\n");
+    let e = diags(&[(
+        "page.dart",
+        &widget("HomePage", "final String? go;", ", this.go"),
+    )])
+    .join("\n");
     assert!(e.contains("`go` can't be a query parameter"), "{e}");
 }
 
@@ -120,9 +168,22 @@ fn names_the_helpers_use_are_reserved() {
 /// `(shop)/` is a page-less folder whose layout and data.dart cover the routes in it.
 fn shop_files<'a>(layout_fields: &'a str, layout_params: &'a str) -> Vec<(&'static str, String)> {
     vec![
-        ("(shop)/data.dart", "Future<Shop> data(Ref ref) async => Shop();".into()),
-        ("(shop)/layout.dart", widget("ShopLayout", &format!("final Widget child; {layout_fields}"), &format!(", required this.child{layout_params}"))),
-        ("(shop)/cart/page.dart", widget("CartPage", "final Shop shop;", ", required this.shop")),
+        (
+            "(shop)/data.dart",
+            "Future<Shop> data(Ref ref) async => Shop();".into(),
+        ),
+        (
+            "(shop)/layout.dart",
+            widget(
+                "ShopLayout",
+                &format!("final Widget child; {layout_fields}"),
+                &format!(", required this.child{layout_params}"),
+            ),
+        ),
+        (
+            "(shop)/cart/page.dart",
+            widget("CartPage", "final Shop shop;", ", required this.shop"),
+        ),
         ("(shop)/plain/page.dart", widget("PlainPage", "", "")),
     ]
 }
@@ -139,7 +200,8 @@ fn a_layouts_data_dart_is_the_data_of_its_section() {
         &c,
         &[
             // The layout waits for the data, showing the default loading and error views.
-            "pageBuilder: (context, state, child) => layoutPage(", "DataView(",
+            "pageBuilder: (context, state, child) => layoutPage(",
+            "DataView(",
             "watch: (ref) => ref.watch(_data1),",
             "data: (d) => _i1.ShopLayout(child: child, shop: d),",
             "loading: () => const DefaultLoading(),",
@@ -160,9 +222,22 @@ fn a_layouts_data_dart_is_the_data_of_its_section() {
 #[test]
 fn section_keys_come_from_segments_and_the_layout_reads_the_url() {
     let c = code(&[
-        ("$tid/data.dart", "Future<Team> data(Ref ref, {required int tid}) async => Team();"),
-        ("$tid/layout.dart", &widget("TeamLayout", "final Widget child; final Team t;", ", required this.child, required this.t")),
-        ("$tid/members/page.dart", &widget("MembersPage", "final Team team;", ", required this.team")),
+        (
+            "$tid/data.dart",
+            "Future<Team> data(Ref ref, {required int tid}) async => Team();",
+        ),
+        (
+            "$tid/layout.dart",
+            &widget(
+                "TeamLayout",
+                "final Widget child; final Team t;",
+                ", required this.child, required this.t",
+            ),
+        ),
+        (
+            "$tid/members/page.dart",
+            &widget("MembersPage", "final Team team;", ", required this.team"),
+        ),
     ]);
     has(
         &c,
@@ -182,16 +257,41 @@ fn section_keys_come_from_segments_and_the_layout_reads_the_url() {
 #[test]
 fn a_parameter_called_data_gets_the_nearest_data() {
     let mut files = shop_files("final Shop data;", ", required this.data");
-    files[2] = ("(shop)/cart/page.dart", widget("CartPage", "final Shop data;", ", required this.data"));
+    files[2] = (
+        "(shop)/cart/page.dart",
+        widget("CartPage", "final Shop data;", ", required this.data"),
+    );
     let c = code(&refs(&files));
-    has(&c, &["_i1.ShopLayout(child: child, data: d)", "data: (s1) => _i2.CartPage(data: s1),"]);
+    has(
+        &c,
+        &[
+            "_i1.ShopLayout(child: child, data: d)",
+            "data: (s1) => _i2.CartPage(data: s1),",
+        ],
+    );
 
     // With a data.dart of its own, `data` is that one and the section's is asked for by type.
     let c = code(&[
-        ("(shop)/data.dart", "Future<Shop> data(Ref ref) async => Shop();"),
-        ("(shop)/layout.dart", &widget("ShopLayout", "final Widget child;", ", required this.child")),
-        ("(shop)/item/data.dart", "Future<int> data(Ref ref) async => 1;"),
-        ("(shop)/item/page.dart", &widget("ItemPage", "final int data; final Shop shop;", ", required this.data, required this.shop")),
+        (
+            "(shop)/data.dart",
+            "Future<Shop> data(Ref ref) async => Shop();",
+        ),
+        (
+            "(shop)/layout.dart",
+            &widget("ShopLayout", "final Widget child;", ", required this.child"),
+        ),
+        (
+            "(shop)/item/data.dart",
+            "Future<int> data(Ref ref) async => 1;",
+        ),
+        (
+            "(shop)/item/page.dart",
+            &widget(
+                "ItemPage",
+                "final int data; final Shop shop;",
+                ", required this.data, required this.shop",
+            ),
+        ),
     ]);
     has(&c, &["_i3.ItemPage(data: d, shop: s1)"]);
 }
@@ -200,10 +300,31 @@ fn a_parameter_called_data_gets_the_nearest_data() {
 fn section_data_reaches_nested_sections_and_layouts_below() {
     let c = code(&[
         ("(a)/data.dart", "Future<A> data(Ref ref) async => A();"),
-        ("(a)/layout.dart", &widget("ALayout", "final Widget child; final A a;", ", required this.child, required this.a")),
+        (
+            "(a)/layout.dart",
+            &widget(
+                "ALayout",
+                "final Widget child; final A a;",
+                ", required this.child, required this.a",
+            ),
+        ),
         ("(a)/(b)/data.dart", "Future<B> data(Ref ref) async => B();"),
-        ("(a)/(b)/layout.dart", &widget("BLayout", "final Widget child; final A a; final B b;", ", required this.child, required this.a, required this.b")),
-        ("(a)/(b)/x/page.dart", &widget("BPage", "final A a; final B b;", ", required this.a, required this.b")),
+        (
+            "(a)/(b)/layout.dart",
+            &widget(
+                "BLayout",
+                "final Widget child; final A a; final B b;",
+                ", required this.child, required this.a, required this.b",
+            ),
+        ),
+        (
+            "(a)/(b)/x/page.dart",
+            &widget(
+                "BPage",
+                "final A a; final B b;",
+                ", required this.a, required this.b",
+            ),
+        ),
     ]);
     has(
         &c,
@@ -221,38 +342,85 @@ fn section_data_reaches_nested_sections_and_layouts_below() {
 #[test]
 fn section_loading_and_error_views_apply() {
     let c = code(&[
-        ("(shop)/data.dart", "Future<Shop> data(Ref ref) async => Shop();"),
-        ("(shop)/layout.dart", &widget("ShopLayout", "final Widget child;", ", required this.child")),
+        (
+            "(shop)/data.dart",
+            "Future<Shop> data(Ref ref) async => Shop();",
+        ),
+        (
+            "(shop)/layout.dart",
+            &widget("ShopLayout", "final Widget child;", ", required this.child"),
+        ),
         ("(shop)/loading.dart", &widget("ShopLoading", "", "")),
-        ("(shop)/error.dart", &widget("ShopError", "final Object error; final VoidCallback retry;", ", required this.error, required this.retry")),
+        (
+            "(shop)/error.dart",
+            &widget(
+                "ShopError",
+                "final Object error; final VoidCallback retry;",
+                ", required this.error, required this.retry",
+            ),
+        ),
         ("(shop)/cart/page.dart", widget("CartPage", "", "").as_str()),
     ]);
-    has(&c, &["loading: () => _i1.ShopLoading(),", "error: (e, st, retry) => _i2.ShopError(error: e, retry: retry),"]);
+    has(
+        &c,
+        &[
+            "loading: () => _i1.ShopLoading(),",
+            "error: (e, st, retry) => _i2.ShopError(error: e, retry: retry),",
+        ],
+    );
 }
 
 #[test]
 fn a_tab_layout_can_be_a_section_too() {
     let c = code(&[
-        ("(tabs)/data.dart", "Future<Me> data(Ref ref) async => Me();"),
+        (
+            "(tabs)/data.dart",
+            "Future<Me> data(Ref ref) async => Me();",
+        ),
         (
             "(tabs)/layout.dart",
-            &widget("TabsLayout", "final StatefulNavigationShell navigationShell; final Me me;", ", required this.navigationShell, required this.me"),
+            &widget(
+                "TabsLayout",
+                "final StatefulNavigationShell navigationShell; final Me me;",
+                ", required this.navigationShell, required this.me",
+            ),
         ),
         ("(tabs)/one/page.dart", &widget("OnePage", "", "")),
         ("(tabs)/two/page.dart", &widget("TwoPage", "", "")),
     ]);
-    has(&c, &["StatefulShellRoute.indexedStack(", "pageBuilder: (context, state, navigationShell) => layoutPage(", "DataView(", "_i1.TabsLayout(navigationShell: navigationShell, me: d)"]);
+    has(
+        &c,
+        &[
+            "StatefulShellRoute.indexedStack(",
+            "pageBuilder: (context, state, navigationShell) => layoutPage(",
+            "DataView(",
+            "_i1.TabsLayout(navigationShell: navigationShell, me: d)",
+        ],
+    );
 }
 
 #[test]
 fn section_data_errors() {
     // No layout beside it, and no page to feed.
-    let e = diags(&[("a/data.dart", "Future<int> data(Ref ref) async => 1;"), ("a/b/page.dart", HOME)]).join("\n");
-    assert!(e.contains("a/data.dart  data.dart has no page.dart to feed; with a layout.dart beside it"), "{e}");
+    let e = diags(&[
+        ("a/data.dart", "Future<int> data(Ref ref) async => 1;"),
+        ("a/b/page.dart", HOME),
+    ])
+    .join("\n");
+    assert!(
+        e.contains("a/data.dart  data.dart has no page.dart to feed; with a layout.dart beside it"),
+        "{e}"
+    );
 
     let e = errors(&[
-        ("(s)/data.dart", "Future<int> data(Ref ref, {String? q}) async => 1;"),
-        ("(s)/layout.dart", &widget("SLayout", "final Widget child;", ", required this.child")),
+        (
+            "(s)/data.dart",
+            "Future<int> data(Ref ref, {String? q}) async => 1;",
+        ),
+        (
+            "(s)/layout.dart",
+            &widget("SLayout", "final Widget child;", ", required this.child"),
+        ),
         ("(s)/page.dart", HOME),
     ]);
     // A page next to the layout means data.dart feeds the page, as always.
@@ -261,9 +429,15 @@ fn section_data_errors() {
     // The same type twice is ambiguous by type, but `data` names the nearest.
     let e = diags(&[
         ("(s)/data.dart", "Future<int> data(Ref ref) async => 1;"),
-        ("(s)/layout.dart", &widget("SLayout", "final Widget child;", ", required this.child")),
+        (
+            "(s)/layout.dart",
+            &widget("SLayout", "final Widget child;", ", required this.child"),
+        ),
         ("(s)/x/data.dart", "Future<int> data(Ref ref) async => 2;"),
-        ("(s)/x/page.dart", &widget("XPage", "final int n;", ", required this.n")),
+        (
+            "(s)/x/page.dart",
+            &widget("XPage", "final int n;", ", required this.n"),
+        ),
     ])
     .join("\n");
     assert!(
@@ -272,28 +446,52 @@ fn section_data_errors() {
     );
     let e = errors(&[
         ("(s)/data.dart", "Future<int> data(Ref ref) async => 1;"),
-        ("(s)/layout.dart", &widget("SLayout", "final Widget child;", ", required this.child")),
+        (
+            "(s)/layout.dart",
+            &widget("SLayout", "final Widget child;", ", required this.child"),
+        ),
         ("(s)/x/data.dart", "Future<int> data(Ref ref) async => 2;"),
-        ("(s)/x/page.dart", &widget("XPage", "final int data;", ", required this.data")),
+        (
+            "(s)/x/page.dart",
+            &widget("XPage", "final int data;", ", required this.data"),
+        ),
     ]);
     assert!(e.is_empty(), "{e:?}");
 
     // `data` must be what the section yields.
     let e = diags(&[
         ("(s)/data.dart", "Future<int> data(Ref ref) async => 1;"),
-        ("(s)/layout.dart", &widget("SLayout", "final Widget child;", ", required this.child")),
-        ("(s)/x/page.dart", &widget("XPage", "final String data;", ", required this.data")),
+        (
+            "(s)/layout.dart",
+            &widget("SLayout", "final Widget child;", ", required this.child"),
+        ),
+        (
+            "(s)/x/page.dart",
+            &widget("XPage", "final String data;", ", required this.data"),
+        ),
     ])
     .join("\n");
-    assert!(e.contains("`data` is String but the section's data.dart ((s)/data.dart) yields int"), "{e}");
+    assert!(
+        e.contains("`data` is String but the section's data.dart ((s)/data.dart) yields int"),
+        "{e}"
+    );
 
     // Two sections above yielding the same type are ambiguous, too.
     let e = diags(&[
         ("(a)/data.dart", "Future<int> data(Ref ref) async => 1;"),
-        ("(a)/layout.dart", &widget("ALayout", "final Widget child;", ", required this.child")),
+        (
+            "(a)/layout.dart",
+            &widget("ALayout", "final Widget child;", ", required this.child"),
+        ),
         ("(a)/(b)/data.dart", "Future<int> data(Ref ref) async => 2;"),
-        ("(a)/(b)/layout.dart", &widget("BLayout", "final Widget child;", ", required this.child")),
-        ("(a)/(b)/x/page.dart", &widget("BPage", "final int n;", ", required this.n")),
+        (
+            "(a)/(b)/layout.dart",
+            &widget("BLayout", "final Widget child;", ", required this.child"),
+        ),
+        (
+            "(a)/(b)/x/page.dart",
+            &widget("BPage", "final int n;", ", required this.n"),
+        ),
     ])
     .join("\n");
     assert!(e.contains("`n` is int, which the section's (a)/data.dart and the section's (a)/(b)/data.dart all yield"), "{e}");
@@ -302,13 +500,18 @@ fn section_data_errors() {
 // --- not_found.dart in any folder ------------------------------------------------------
 
 fn not_found(class: &str) -> String {
-    format!("class {class} extends StatelessWidget {{ const {class}({{super.key, required this.uri}}); final Uri uri; }}")
+    format!(
+        "class {class} extends StatelessWidget {{ const {class}({{super.key, required this.uri}}); final Uri uri; }}"
+    )
 }
 
 #[test]
 fn without_nested_not_found_files_nothing_changes() {
     let c = code(&[("page.dart", HOME)]);
-    has(&c, &["static Widget notFound(Uri uri) => DefaultNotFound(uri);"]);
+    has(
+        &c,
+        &["static Widget notFound(Uri uri) => DefaultNotFound(uri);"],
+    );
     lacks(&c, &["nearestNotFound"]);
 }
 
@@ -320,7 +523,10 @@ fn not_found_in_a_folder_covers_the_urls_under_it() {
         ("shop/not_found.dart", &not_found("ShopNotFound")),
         ("shop/page.dart", &widget("ShopPage", "", "")),
         ("shop/$id/not_found.dart", &not_found("ItemNotFound")),
-        ("shop/$id/page.dart", &widget("ItemPage", "final int id;", ", required this.id")),
+        (
+            "shop/$id/page.dart",
+            &widget("ItemPage", "final int id;", ", required this.id"),
+        ),
     ]);
     has(
         &c,
@@ -335,7 +541,10 @@ fn not_found_in_a_folder_covers_the_urls_under_it() {
         ],
     );
     // errorBuilder still calls notFound, which picks.
-    has(&c, &["errorBuilder: (context, state) => notFound(state.uri),"]);
+    has(
+        &c,
+        &["errorBuilder: (context, state) => notFound(state.uri),"],
+    );
     // /shop has no segment to fail on, so it has no fallback to spell.
     assert_eq!(c.matches("buildWithParams(").count(), 1, "{c}");
 }
@@ -344,10 +553,22 @@ fn not_found_in_a_folder_covers_the_urls_under_it() {
 fn a_root_not_found_is_the_fallback_for_routes_below_and_a_folder_one_stays_in_its_folder() {
     let c = code(&[
         ("a/not_found.dart", &not_found("ANotFound")),
-        ("a/$x/page.dart", &widget("APage", "final int x;", ", required this.x")),
-        ("b/$y/page.dart", &widget("BPage", "final int y;", ", required this.y")),
+        (
+            "a/$x/page.dart",
+            &widget("APage", "final int x;", ", required this.x"),
+        ),
+        (
+            "b/$y/page.dart",
+            &widget("BPage", "final int y;", ", required this.y"),
+        ),
     ]);
-    has(&c, &["() => _i0.ANotFound(uri: state.uri),", "(uri) => DefaultNotFound(uri),"]);
+    has(
+        &c,
+        &[
+            "() => _i0.ANotFound(uri: state.uri),",
+            "(uri) => DefaultNotFound(uri),",
+        ],
+    );
     // b/$y has no not_found.dart above it but the root's (here, the default): `notFound` picks.
     has(&c, &["() => notFound(state.uri),"]);
     assert_eq!(c.matches("buildWithParams(").count(), 2, "{c}");
@@ -357,12 +578,24 @@ fn a_root_not_found_is_the_fallback_for_routes_below_and_a_folder_one_stays_in_i
 fn a_groups_not_found_covers_its_routes_but_not_urls() {
     let c = code(&[
         ("(g)/not_found.dart", &not_found("GNotFound")),
-        ("(g)/$n/page.dart", &widget("NPage", "final int n;", ", required this.n")),
-        ("other/$m/page.dart", &widget("MPage", "final int m;", ", required this.m")),
+        (
+            "(g)/$n/page.dart",
+            &widget("NPage", "final int n;", ", required this.n"),
+        ),
+        (
+            "other/$m/page.dart",
+            &widget("MPage", "final int m;", ", required this.m"),
+        ),
     ]);
     // A group adds nothing to the URL, so an unknown URL can't be told to be under it.
     lacks(&c, &["nearestNotFound"]);
-    has(&c, &["() => _i0.GNotFound(uri: state.uri),", "() => notFound(state.uri),"]);
+    has(
+        &c,
+        &[
+            "() => _i0.GNotFound(uri: state.uri),",
+            "() => notFound(state.uri),",
+        ],
+    );
 }
 
 #[test]
@@ -384,12 +617,15 @@ fn a_folders_not_found_only_gets_the_uri() {
         ("a/page.dart", HOME),
     ])
     .join("\n");
-    assert!(e.contains("can't fill `x`: not_found.dart only gets `Uri uri`"), "{e}");
+    assert!(
+        e.contains("can't fill `x`: not_found.dart only gets `Uri uri`"),
+        "{e}"
+    );
 }
 
 #[test]
 fn a_scaffolded_group_with_layout_and_data_is_a_section() {
-    use crate::scaffold::{new_route, NewArgs};
+    use crate::scaffold::{NewArgs, new_route};
     let dir = project(&[("page.dart", HOME)]);
     let args = |route: &str, data: bool, layout: bool| NewArgs {
         route: route.into(),
@@ -408,7 +644,14 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
     new_route(dir.path(), &args("(shop)/cart", false, false)).unwrap();
     let (code, diags, _) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
     assert!(diags.0.is_empty(), "{:?}", diags.0);
-    has(&code, &["pageBuilder: (context, state, child) => layoutPage(", "DataView(", "final _data1 = FutureProvider.autoDispose("]);
+    has(
+        &code,
+        &[
+            "pageBuilder: (context, state, child) => layoutPage(",
+            "DataView(",
+            "final _data1 = FutureProvider.autoDispose(",
+        ],
+    );
 }
 
 // --- together with guards, redirects and tab options -----------------------------------
@@ -417,10 +660,19 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
 fn a_redirect_route_that_can_fail_to_parse_shows_the_nearest_not_found() {
     let c = code(&[
         ("old/not_found.dart", &not_found("OldNotFound")),
-        ("old/$id/redirect.dart", "String redirect({required int id}) => '/new/$id';"),
-        ("new/$id/page.dart", &widget("NewPage", "final int id;", ", required this.id")),
+        (
+            "old/$id/redirect.dart",
+            "String redirect({required int id}) => '/new/$id';",
+        ),
+        (
+            "new/$id/page.dart",
+            &widget("NewPage", "final int id;", ", required this.id"),
+        ),
     ]);
-    has(&c, &["builder: (context, state) => _i1.OldNotFound(uri: state.uri),"]);
+    has(
+        &c,
+        &["builder: (context, state) => _i1.OldNotFound(uri: state.uri),"],
+    );
     // A redirect-only route has no data, so no data helpers.
     lacks(&c, &["static final watch", "prefetch("]);
 }
@@ -428,25 +680,65 @@ fn a_redirect_route_that_can_fail_to_parse_shows_the_nearest_not_found() {
 #[test]
 fn guards_and_section_data_chain_together() {
     let c = code(&[
-        ("(s)/guard.dart", "GuardResult guard(ProviderContainer c) => null;"),
-        ("(s)/data.dart", "Future<Shop> data(Ref ref) async => Shop();"),
-        ("(s)/layout.dart", &widget("ShopLayout", "final Widget child; final Shop shop;", ", required this.child, required this.shop")),
-        ("(s)/x/$id/page.dart", &widget("XPage", "final Shop shop; final int id;", ", required this.shop, required this.id")),
+        (
+            "(s)/guard.dart",
+            "GuardResult guard(ProviderContainer c) => null;",
+        ),
+        (
+            "(s)/data.dart",
+            "Future<Shop> data(Ref ref) async => Shop();",
+        ),
+        (
+            "(s)/layout.dart",
+            &widget(
+                "ShopLayout",
+                "final Widget child; final Shop shop;",
+                ", required this.child, required this.shop",
+            ),
+        ),
+        (
+            "(s)/x/$id/page.dart",
+            &widget(
+                "XPage",
+                "final Shop shop; final int id;",
+                ", required this.shop, required this.id",
+            ),
+        ),
     ]);
-    has(&c, &["_i2.guard(ProviderScope.containerOf(context, listen: false))", "XPage(shop: s"]);
+    has(
+        &c,
+        &[
+            "_i2.guard(ProviderScope.containerOf(context, listen: false))",
+            "XPage(shop: s",
+        ],
+    );
 }
 
 #[test]
 fn a_tab_section_keeps_its_tab_options() {
     let layout = format!(
         "const tabOptions = {{'one': TabOptions(preload: true)}};\n{}",
-        widget("TabsLayout", "final StatefulNavigationShell navigationShell; final Me me;", ", required this.navigationShell, required this.me")
+        widget(
+            "TabsLayout",
+            "final StatefulNavigationShell navigationShell; final Me me;",
+            ", required this.navigationShell, required this.me"
+        )
     );
     let c = code(&[
-        ("(tabs)/data.dart", "Future<Me> data(Ref ref) async => Me();"),
+        (
+            "(tabs)/data.dart",
+            "Future<Me> data(Ref ref) async => Me();",
+        ),
         ("(tabs)/layout.dart", &layout),
         ("(tabs)/one/page.dart", &widget("OnePage", "", "")),
         ("(tabs)/two/page.dart", &widget("TwoPage", "", "")),
     ]);
-    has(&c, &["pageBuilder: (context, state, navigationShell) => layoutPage(", "DataView(", "preload: true,"]);
+    has(
+        &c,
+        &[
+            "pageBuilder: (context, state, navigationShell) => layoutPage(",
+            "DataView(",
+            "preload: true,",
+        ],
+    );
 }

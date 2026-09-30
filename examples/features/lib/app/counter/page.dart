@@ -9,7 +9,7 @@ class CounterPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => TextButton(
-    onPressed: () => ref.read(CounterRoute.data.notifier).increment(),
-    child: Text('Count $count'),
-  );
+        onPressed: () => ref.read(CounterRoute.data.notifier).increment(),
+        child: Text('Count $count'),
+      );
 }

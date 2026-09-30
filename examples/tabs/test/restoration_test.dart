@@ -33,17 +33,19 @@ class _RestorableAppState extends State<RestorableApp> {
 
   @override
   Widget build(BuildContext context) => ProviderScope(
-    // go_router 17 detects flutter's MaterialApp, go_router 18 material_ui's;
-    // nesting both gives Material pages and error screens on either.
-    child: MaterialApp(
-      restorationScopeId: 'app',
-      home: mui.MaterialApp.router(
-        restorationScopeId: 'app',
-        routerConfig: router,
-        localizationsDelegates: const [DefaultMaterialLocalizations.delegate],
-      ),
-    ),
-  );
+        // go_router 17 detects flutter's MaterialApp, go_router 18 material_ui's;
+        // nesting both gives Material pages and error screens on either.
+        child: MaterialApp(
+          restorationScopeId: 'app',
+          home: mui.MaterialApp.router(
+            restorationScopeId: 'app',
+            routerConfig: router,
+            localizationsDelegates: const [
+              DefaultMaterialLocalizations.delegate
+            ],
+          ),
+        ),
+      );
 }
 
 Future<void> tapTab(WidgetTester tester, String label) async {

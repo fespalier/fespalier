@@ -6,7 +6,7 @@ class UploadPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Upload photo')),
-    body: const Center(child: Text('Pick a file')),
-  );
+        appBar: AppBar(title: const Text('Upload photo')),
+        body: const Center(child: Text('Pick a file')),
+      );
 }

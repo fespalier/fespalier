@@ -17,28 +17,28 @@ class LibraryLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-    children: [
-      SafeArea(
-        bottom: false,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            for (final (i, label) in ['Books', 'Authors'].indexed)
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: ChoiceChip(
-                  label: Text(label),
-                  selected: navigationShell.currentIndex == i,
-                  onSelected: (_) => navigationShell.goBranch(
-                    i,
-                    initialLocation: i == navigationShell.currentIndex,
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (final (i, label) in ['Books', 'Authors'].indexed)
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: ChoiceChip(
+                      label: Text(label),
+                      selected: navigationShell.currentIndex == i,
+                      onSelected: (_) => navigationShell.goBranch(
+                        i,
+                        initialLocation: i == navigationShell.currentIndex,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-          ],
-        ),
-      ),
-      Expanded(child: navigationShell),
-    ],
-  );
+              ],
+            ),
+          ),
+          Expanded(child: navigationShell),
+        ],
+      );
 }

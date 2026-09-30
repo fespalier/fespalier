@@ -7,7 +7,7 @@ class TermsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Terms')),
-    body: const Center(child: Text('Terms of sharing')),
-  );
+        appBar: AppBar(title: const Text('Terms')),
+        body: const Center(child: Text('Terms of sharing')),
+      );
 }

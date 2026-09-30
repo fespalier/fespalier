@@ -9,9 +9,9 @@ class ShopLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-    children: [
-      Text('Shop: $shop'),
-      Expanded(child: child),
-    ],
-  );
+        children: [
+          Text('Shop: $shop'),
+          Expanded(child: child),
+        ],
+      );
 }

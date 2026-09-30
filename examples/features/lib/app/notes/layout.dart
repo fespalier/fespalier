@@ -13,9 +13,9 @@ class NotesLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-    children: [
-      Text('Notes frame: ${extra?.title ?? 'no extra'}'),
-      Expanded(child: child),
-    ],
-  );
+        children: [
+          Text('Notes frame: ${extra?.title ?? 'no extra'}'),
+          Expanded(child: child),
+        ],
+      );
 }

@@ -11,21 +11,21 @@ class ProductsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Material(
-    // Pages sit below the layout's Scaffold, so give ListTile ink a
-    // surface of its own (page transitions paint in between).
-    type: MaterialType.transparency,
-    child: RefreshIndicator(
-      onRefresh: () => const ProductsRoute().refresh(ref),
-      child: ListView(
-        children: [
-          for (final p in products)
-            ListTile(
-              title: Text(p.name),
-              trailing: Text('€${p.price.toStringAsFixed(2)}'),
-              onTap: () => ProductRoute(id: p.id).go(context),
-            ),
-        ],
-      ),
-    ),
-  );
+        // Pages sit below the layout's Scaffold, so give ListTile ink a
+        // surface of its own (page transitions paint in between).
+        type: MaterialType.transparency,
+        child: RefreshIndicator(
+          onRefresh: () => const ProductsRoute().refresh(ref),
+          child: ListView(
+            children: [
+              for (final p in products)
+                ListTile(
+                  title: Text(p.name),
+                  trailing: Text('€${p.price.toStringAsFixed(2)}'),
+                  onTap: () => ProductRoute(id: p.id).go(context),
+                ),
+            ],
+          ),
+        ),
+      );
 }

@@ -10,17 +10,18 @@ class ShareSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('Share photos'),
-        TextButton(
-          onPressed: () => const TermsRoute().push(context),
-          child: const Text('Terms'),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Share photos'),
+            TextButton(
+              onPressed: () => const TermsRoute().push(context),
+              child: const Text('Terms'),
+            ),
+            TextButton(
+                onPressed: () => context.pop(), child: const Text('Done')),
+          ],
         ),
-        TextButton(onPressed: () => context.pop(), child: const Text('Done')),
-      ],
-    ),
-  );
+      );
 }

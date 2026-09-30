@@ -9,9 +9,9 @@ class AccountLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-    children: [
-      const Text('Account'),
-      Expanded(child: child),
-    ],
-  );
+        children: [
+          const Text('Account'),
+          Expanded(child: child),
+        ],
+      );
 }

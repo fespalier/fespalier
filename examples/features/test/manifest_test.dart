@@ -134,12 +134,11 @@ void main() {
       labels = [];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-            if (call.method ==
-                'SystemChrome.setApplicationSwitcherDescription') {
-              labels.add((call.arguments as Map)['label'] as String);
-            }
-            return null;
-          });
+        if (call.method == 'SystemChrome.setApplicationSwitcherDescription') {
+          labels.add((call.arguments as Map)['label'] as String);
+        }
+        return null;
+      });
     });
 
     tearDown(() {

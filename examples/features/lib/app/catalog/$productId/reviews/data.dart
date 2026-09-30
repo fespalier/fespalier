@@ -5,4 +5,5 @@ import 'package:fespalier/fespalier.dart';
 ProviderListenable<AsyncValue<List<String>>> data({
   required String productId,
   int? page,
-}) => reviewsProvider((productId: productId, page: page));
+}) =>
+    reviewsProvider((productId: productId, page: page));

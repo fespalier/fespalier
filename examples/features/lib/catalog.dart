@@ -45,7 +45,7 @@ final featuredProvider = FutureProvider.autoDispose<List<String>>((ref) async {
 /// A family keyed by a record, for the route that also takes a query parameter.
 final reviewsProvider = FutureProvider.autoDispose
     .family<List<String>, ({String productId, int? page})>((ref, key) async {
-      reviewFetches++;
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      return ['${key.productId} review, page ${key.page ?? 1}'];
-    });
+  reviewFetches++;
+  await Future<void>.delayed(const Duration(milliseconds: 10));
+  return ['${key.productId} review, page ${key.page ?? 1}'];
+});

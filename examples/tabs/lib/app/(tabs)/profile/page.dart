@@ -7,26 +7,26 @@ class ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('Profile'),
-        TextButton(
-          onPressed: () => const EditProfileRoute().go(
-            context,
-            extra: const ProfileDraft(name: 'Ada'),
-          ),
-          child: const Text('Edit profile'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Profile'),
+            TextButton(
+              onPressed: () => const EditProfileRoute().go(
+                context,
+                extra: const ProfileDraft(name: 'Ada'),
+              ),
+              child: const Text('Edit profile'),
+            ),
+            TextButton(
+              onPressed: () => const SecurityRoute().go(context),
+              child: const Text('Security'),
+            ),
+            TextButton(
+              onPressed: () => const SettingsRoute().go(context),
+              child: const Text('Settings'),
+            ),
+          ],
         ),
-        TextButton(
-          onPressed: () => const SecurityRoute().go(context),
-          child: const Text('Security'),
-        ),
-        TextButton(
-          onPressed: () => const SettingsRoute().go(context),
-          child: const Text('Settings'),
-        ),
-      ],
-    ),
-  );
+      );
 }

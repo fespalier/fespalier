@@ -104,7 +104,8 @@ void main() {
       }
     });
 
-    testWidgets('the parent page is built under the child, as it is without '
+    testWidgets(
+        'the parent page is built under the child, as it is without '
         'localization', (tester) async {
       await boot(tester, '/aide/routing/exemples');
       // `help/$topic/page.dart` is the child's parent: go_router builds its stack.

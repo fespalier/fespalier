@@ -52,24 +52,24 @@ class _CrossFadeContainerState extends State<CrossFadeContainer>
 
   @override
   Widget build(BuildContext context) => Stack(
-    fit: StackFit.expand,
-    children: [
-      for (final (i, navigator) in widget.children.indexed)
-        Offstage(
-          offstage: i != widget.currentIndex && i != _leaving,
-          child: TickerMode(
-            enabled: i == widget.currentIndex,
-            child: IgnorePointer(
-              ignoring: i != widget.currentIndex,
-              child: FadeTransition(
-                opacity: i == widget.currentIndex
-                    ? _fade
-                    : ReverseAnimation(_fade),
-                child: navigator,
+        fit: StackFit.expand,
+        children: [
+          for (final (i, navigator) in widget.children.indexed)
+            Offstage(
+              offstage: i != widget.currentIndex && i != _leaving,
+              child: TickerMode(
+                enabled: i == widget.currentIndex,
+                child: IgnorePointer(
+                  ignoring: i != widget.currentIndex,
+                  child: FadeTransition(
+                    opacity: i == widget.currentIndex
+                        ? _fade
+                        : ReverseAnimation(_fade),
+                    child: navigator,
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-    ],
-  );
+        ],
+      );
 }

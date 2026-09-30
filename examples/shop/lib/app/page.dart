@@ -6,9 +6,9 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: FilledButton(
-      onPressed: () => const ProductsRoute().go(context),
-      child: const Text('Browse products'),
-    ),
-  );
+        child: FilledButton(
+          onPressed: () => const ProductsRoute().go(context),
+          child: const Text('Browse products'),
+        ),
+      );
 }

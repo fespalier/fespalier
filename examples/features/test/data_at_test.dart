@@ -313,7 +313,8 @@ void main() {
       expect(handle.isClosed, isTrue);
     });
 
-    testWidgets('from a location: dataAt feeds prefetchAll, one handle closes '
+    testWidgets(
+        'from a location: dataAt feeds prefetchAll, one handle closes '
         'them all', (tester) async {
       final container = await pumpRouter(
         tester,

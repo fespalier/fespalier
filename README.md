@@ -16,7 +16,7 @@ lib/app/
   page.dart              HomePage()                                   → /
   loading.dart           RootLoading()                                  (inherited)
   error.dart             RootError({required Object error, required VoidCallback retry})
-  not_found.dart         NotFound({required Uri uri})
+  not_found.dart         NotFoundPage({required Uri uri})               (optional)
   transition.dart        Page<void> transition(LocalKey key, Widget child)  (inherited)
   products/
     data.dart            final data = FutureProvider<List<Product>>(…)
@@ -64,14 +64,14 @@ You need Flutter 3.32 or newer (Dart 3.8) for the package. go_router 18 needs Fl
 curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
 ```
 
-It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.1.0`
+It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.1.1`
 to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install
 elsewhere. On Windows, download `fsp-x86_64-pc-windows-msvc.zip` from the
 [Releases page](https://github.com/vaam-apps/fespalier/releases) and put `fsp.exe` on your
 `PATH`. With Rust installed, on any platform:
 
 ```sh
-cargo install --git https://github.com/vaam-apps/fespalier --tag v0.1.0 fespalier
+cargo install --git https://github.com/vaam-apps/fespalier --tag v0.1.1 fespalier
 ```
 
 **2. Add the package** to your app's `pubspec.yaml`, then run `flutter pub get`:
@@ -82,7 +82,7 @@ dependencies:
     git:
       url: https://github.com/vaam-apps/fespalier
       path: packages/fespalier
-      ref: v0.1.0
+      ref: v0.1.1
 ```
 
 It depends on go_router (17 or 18), hooks_riverpod 3 and flutter_hooks, and
@@ -98,7 +98,8 @@ It creates `lib/app/layout.dart`, `page.dart`, `not_found.dart` and `transition.
 route animates with the Material transition), and writes `lib/app.g.dart`. It never
 overwrites a file that exists: those are reported as `skip`.
 It then prints what is left to do (the dependency block above, if `pubspec.yaml` doesn't
-have it yet, and this `main.dart`):
+have it yet, and this `main.dart`). `not_found.dart` is optional: without it, unknown
+paths get a plain "Nothing at /path" view.
 
 ```dart
 import 'package:fespalier/fespalier.dart';
@@ -112,6 +113,10 @@ void main() => runApp(
     );
 ```
 
+`flutter create` also wrote `test/widget_test.dart`, which refers to the `MyApp` you just
+replaced, so `flutter analyze` fails on it. Delete it, or rewrite it (see
+[Testing](#testing)).
+
 Already have a `GoRouter`? Mount the tree inside it instead. `at` is the URL prefix:
 
 ```dart
@@ -122,8 +127,11 @@ GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])
 
 ```sh
 fsp watch                                 # next to `flutter run`: regenerates on every save
-fsp new 'orders/[id]' --data --loading    # scaffold a route; see "The generator" for all flags
+fsp new 'orders/[id]' --data --loading    # scaffold a route, then regenerate app.g.dart
 ```
+
+`fsp new` runs `gen` right away, so the new route is usable as soon as it returns. See
+"The generator" for all flags.
 
 Commit `lib/app.g.dart`: it's plain code, meant to be read, and the app builds without
 `fsp` installed. In CI, run `fsp check`. It writes nothing and exits non-zero on errors:
@@ -182,9 +190,9 @@ top-level function.
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
 | `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query |
-| `guard.dart` | `GuardResult guard(ProviderContainer c, {…})` | segments, query (named) |
+| `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through | segments, query (named) |
 | `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
-| `not_found.dart` | a widget, root only; unknown paths and unparsable segments | `uri` |
+| `not_found.dart` | a widget, root only, optional (without it, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
 
 ### How parameters are filled
 
@@ -205,7 +213,11 @@ every parameter:
 4. **Otherwise**, a required parameter is a generator error pointing at it. An optional
    one is left to its default.
 
-These names are reserved, so segments can't use them.
+These names are reserved, so segments can't use them. Parameters bound by name are
+type-checked: `uri` must be a `Uri`, `child` a `Widget`, `error` an `Object`, `stackTrace`
+a `StackTrace`, `retry` a `VoidCallback`, `navigationShell` a `StatefulNavigationShell`,
+and a transition's `key` and `state` a `LocalKey` and a `GoRouterState`. Declaring one as
+anything else is an error at that parameter (`Object` and `dynamic` always fit).
 
 ### Segment types
 
@@ -271,7 +283,8 @@ its tab. Branches follow folder order, which is alphabetical, unless `tabs` list
 `tabs` is a top-level `const` list of string literals naming each folder as written, and
 `'.'` for the folder's own page. It must list every branch exactly once, and a name that
 is unknown, missing or repeated is an error. A tab layout can also ask for segments and
-query parameters like any other layout.
+query parameters like any other layout. A tab layout folder without its own `page.dart` has
+no route at its own path: link to one of its tabs' routes instead.
 
 Routes outside the layout's folder aren't in any tab, so they cover the whole screen: in
 `examples/tabs`, `/settings` has no navigation bar and `/profile/edit` does. Two things to
@@ -346,6 +359,11 @@ A family provider you write yourself follows the same rule. With several paramet
 with query parameters, its argument is a record naming the ones it uses, e.g.
 `({int id, int? page})`.
 
+**Retries.** Riverpod 3 retries a failed provider with backoff by default. The generated
+`data()` providers turn that off (`retry: (retryCount, error) => null`), so `error.dart`
+shows as soon as `data.dart` fails, and its `retry` callback is the retry path. A
+provider you write yourself keeps Riverpod's default unless you pass `retry:` to it.
+
 ## The generator
 
 `cli/` is a Rust binary, `fsp`. A full scan, check and emit of an example runs in a few
@@ -361,15 +379,30 @@ fsp watch               # same, on every change (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
                         # [id] or :id both mean $id, so no shell quoting of $
+fsp new '(account)' --layout    # a (group) folder: layout only, no page.dart
 ```
 
 All commands take `--project <dir>` (default: the nearest folder with a `pubspec.yaml`).
-`fsp new` always writes `page.dart` (plus the kinds you ask for with flags), skips files
-that already exist, and takes its class names from `--name` (default: from the path, e.g.
-`ProductsId`). A segment that already has a type elsewhere in the tree keeps it.
+`fsp new` writes `page.dart` (plus the kinds you ask for with flags), skips files that
+already exist, and takes its class names from `--name` (default: from the path, e.g.
+`ProductsId`). A segment that already has a type elsewhere in the tree keeps it. Pass
+`--no-page` to leave `page.dart` out. A `(group)` target (like `'(account)'`) gets no
+`page.dart` either, since a group has no URL of its own; write one by hand if you want the
+group to serve its parent's URL. It then regenerates `lib/app.g.dart` and prints the
+result line; if that fails, it lists the files it created.
+
+What the commands print:
+
+- `fsp gen`: `✓ 12 routes → lib/app.g.dart`, or `✓ 12 routes, lib/app.g.dart unchanged`
+  when the output didn't change.
+- `fsp check`: `✓ 12 routes, no errors`.
+- `fsp watch`: the `gen` line once at startup, then quiet until something changes. It
+  ignores its own output and file reads, so it doesn't loop while idle.
 
 Errors point at the parameter or declaration at fault, and `app.g.dart` is left
-untouched while there are any:
+untouched while there are any. A file that can't be fully parsed gets a warning instead
+(the Dart compiler reports the exact error), and the generator works with what it could
+read:
 
 ```
 error: can't fill `label`: it isn't a segment of this path ($shop, $id) or data.dart's String
@@ -389,7 +422,7 @@ It's built on existing libraries rather than hand-rolled parts:
   `app.g.dart` and of every scaffolded file lives in `cli/templates/`.
 - [codespan-reporting](https://github.com/brendanzab/codespan) renders diagnostics.
 - [clap](https://github.com/clap-rs/clap) handles the command line, and
-  [notify-debouncer-mini](https://github.com/notify-rs/notify) drives `watch`.
+  [notify](https://github.com/notify-rs/notify) drives `watch`.
 
 `lib/app.g.dart` is plain go_router + Riverpod code that's meant to be read and committed.
 It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
@@ -440,7 +473,7 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 ```
 
 ```sh
-(cd cli && cargo test && cargo clippy --all-targets)
+(cd cli && cargo test && cargo clippy --all-targets -- -D warnings)
 (cd cli && cargo run -- check --project ../examples/shop)
 (cd cli && cargo run -- check --project ../examples/tabs)
 (cd packages/fespalier && flutter pub get && flutter analyze && flutter test)
@@ -454,16 +487,43 @@ with `fsp new` and runs `flutter analyze` on the result. After changing the emit
 template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
 a committed `app.g.dart` is stale.
 
+### Testing
+
+Boot the app in a widget test by giving the router an initial location:
+
+```dart
+testWidgets('shows a product', (tester) async {
+  await tester.pumpWidget(ProviderScope(
+    child: MaterialApp.router(
+      routerConfig: AppRoutes.router(initialLocation: '/products/2'),
+    ),
+  ));
+  await tester.pumpAndSettle();
+  expect(find.byType(ProductPage), findsOneWidget);
+
+  // navigate with the typed routes, from any widget under the router
+  final context = tester.element(find.byType(ProductPage));
+  const ProductsRoute().go(context);
+  await tester.pumpAndSettle();
+});
+```
+
+go_router builds the whole matched stack, so a deep link like `/products/2` also runs
+`/products`' `data.dart` underneath. If your fakes use `Future.delayed`, pump long enough
+for the delays in both (or use `pumpAndSettle`), or the test ends with "A Timer is still
+pending". `examples/*/test/` has working tests for every file kind.
+
 ## Status
 
 This is an early version.
 
-- **Generator:** 65 tests cover parsing, every binding rule and contract error, query
+- **Generator:** 86 tests (79 unit, 7 CLI integration) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, transitions, both data
   forms, scaffolding, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). The widget tests in the examples drive the
-  generated router through every file kind.
+  hooks_riverpod 3, flutter_hooks 0.21). 44 Flutter tests (the package 8, `shop` 12,
+  `features` 17, `tabs` 7); the example tests drive the generated router through every
+  file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The
   Dart compiler still catches real mismatches in the generated code.

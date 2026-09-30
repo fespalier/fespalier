@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.1 — 2026-09-30
+
+Fixes from first-use testing.
+
+- Generated `data()` providers no longer use Riverpod 3's automatic retry (it took about
+  38 s of backoff before `error.dart` showed). `error.dart` now shows at once, and its
+  `retry` is the retry path. Providers you write yourself keep Riverpod's default unless
+  you pass `retry:`. Regenerate `app.g.dart` to pick this up.
+- `fsp watch` no longer regenerates in a loop while idle: it ignores access and metadata
+  events and its own output, and stays quiet when a run changes nothing.
+- A file the parser can't fully read is now a warning (the Dart compiler reports the exact
+  error) instead of passing silently.
+- Parameters bound by name (`uri`, `child`, `error`, `stackTrace`, `retry`, `shell`, and
+  `transition`'s `key` and `state`) are type-checked.
+- Clearer errors: a URL served by two pages is one error naming both files; unreachable
+  route and tab-start errors carry a code frame; an invalid `page.dart` no longer also
+  warns that its folder has no page.
+- `fsp gen`, `fsp check` and `fsp new` print a success line. `fsp new` regenerates right
+  away, skips `page.dart` for a `(group)` folder, takes `--no-page`, and lists the files it
+  created if generation fails.
+- Docs: `GuardResult`, optional `not_found.dart`, deleting the stale `test/widget_test.dart`
+  after `fsp init`, tab layouts without a page, retries, and a Testing section.
+
 ## 0.1.0 — 2026-09-30
 
 Initial version.

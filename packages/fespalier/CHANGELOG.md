@@ -1,3 +1,10 @@
+## 0.1.1 - 2026-09-30
+
+- Generated `data()` providers turn off Riverpod's automatic retry, so `error.dart` shows
+  as soon as `data.dart` fails and its `retry` callback is the retry path. Regenerate
+  `lib/app.g.dart` with `fsp` 0.1.1 to pick this up.
+- Docs only otherwise; no runtime API changes.
+
 ## 0.1.0 - 2026-09-30
 
 - Initial release: the runtime for the `fsp` file-tree router generator, built on go_router

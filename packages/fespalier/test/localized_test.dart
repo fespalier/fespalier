@@ -3,6 +3,8 @@
 // A localized folder is one go_router route whose segment is a parameter that matches every
 // spelling (`:_l0(products|produits|produkte)`), so these tests build the routes by hand, as
 // `fsp gen` writes them, and check what go_router does with them.
+import 'dart:async';
+
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -153,9 +155,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(router.state.uri.path, '/produits/2');
 
-      const ProductsRoute().push<void>(
-        tester.element(find.text('product 2')),
-        locale: 'de',
+      unawaited(
+        const ProductsRoute().push<void>(
+          tester.element(find.text('product 2')),
+          locale: 'de',
+        ),
       );
       await tester.pumpAndSettle();
       expect(router.state.uri.path, '/produkte');

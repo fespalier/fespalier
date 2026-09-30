@@ -11,10 +11,16 @@ typedef GuardResult = FutureOr<String?>;
 /// Thrown when a path segment can't be parsed into its declared type.
 /// The generated code turns it into the root `not_found.dart`.
 final class BadSegment implements Exception {
+  /// Creates the error for the segment [name] whose [value] isn't a [type].
   const BadSegment(this.name, this.value, this.type);
 
+  /// The segment's name.
   final String name;
+
+  /// The raw value from the URL, or `null` when the segment is missing.
   final String? value;
+
+  /// The Dart type the segment should have been.
   final String type;
 
   @override
@@ -23,19 +29,23 @@ final class BadSegment implements Exception {
 
 /// Typed readers for path segments, used by generated code.
 abstract final class Segment {
+  /// The segment [name] as a string; throws [BadSegment] when it is missing.
   static String asString(GoRouterState s, String name) =>
       s.pathParameters[name] ?? (throw BadSegment(name, null, 'String'));
 
+  /// The segment [name] as an `int`; throws [BadSegment] when it isn't one.
   static int asInt(GoRouterState s, String name) {
     final raw = asString(s, name);
     return int.tryParse(raw) ?? (throw BadSegment(name, raw, 'int'));
   }
 
+  /// The segment [name] as a `double`; throws [BadSegment] when it isn't one.
   static double asDouble(GoRouterState s, String name) {
     final raw = asString(s, name);
     return double.tryParse(raw) ?? (throw BadSegment(name, raw, 'double'));
   }
 
+  /// The segment [name] as a `bool` (`true` or `false`); throws [BadSegment] otherwise.
   static bool asBool(GoRouterState s, String name) =>
       switch (asString(s, name)) {
         'true' => true,
@@ -92,15 +102,19 @@ abstract final class Segment {
   static List<int> asIntRest(GoRouterState s, String name) =>
       _rest(s, name, int.tryParse);
 
+  /// The catch-all [name] as a list of `double`s; throws [BadSegment] when one isn't.
   static List<double> asDoubleRest(GoRouterState s, String name) =>
       _rest(s, name, double.tryParse);
 
+  /// The catch-all [name] as a list of `num`s; throws [BadSegment] when one isn't.
   static List<num> asNumRest(GoRouterState s, String name) =>
       _rest(s, name, num.tryParse);
 
+  /// The catch-all [name] as a list of `bool`s; throws [BadSegment] when one isn't.
   static List<bool> asBoolRest(GoRouterState s, String name) =>
       _rest(s, name, bool.tryParse);
 
+  /// The catch-all [name] as a list of `DateTime`s; throws [BadSegment] when one isn't.
   static List<DateTime> asDateTimeRest(GoRouterState s, String name) =>
       _rest(s, name, DateTime.tryParse);
 
@@ -132,28 +146,39 @@ abstract final class Segment {
 /// Query parameters are optional by nature: a missing or unparsable value is
 /// `null` (or left out of a list), never a not-found.
 abstract final class Query {
+  /// The query parameter [name], or `null` when it is absent.
   static String? asString(GoRouterState s, String name) =>
       s.uri.queryParameters[name];
 
+  /// The query parameter [name] as an `int`, or `null` when it is absent or not one.
   static int? asInt(GoRouterState s, String name) =>
       int.tryParse(asString(s, name) ?? '');
 
+  /// The query parameter [name] as a `double`, or `null` when it is absent or not one.
   static double? asDouble(GoRouterState s, String name) =>
       double.tryParse(asString(s, name) ?? '');
 
+  /// The query parameter [name] as a `bool`, or `null` when it is absent or not one.
   static bool? asBool(GoRouterState s, String name) => _bool(asString(s, name));
 
+  /// Every value of the query parameter [name], in order; empty when it is absent.
   static List<String> asStringList(GoRouterState s, String name) =>
       s.uri.queryParametersAll[name] ?? const [];
 
-  static List<int> asIntList(GoRouterState s, String name) =>
-      [...asStringList(s, name).map(int.tryParse).nonNulls];
+  /// Every value of [name] that is an `int`; the others are left out.
+  static List<int> asIntList(GoRouterState s, String name) => [
+    ...asStringList(s, name).map(int.tryParse).nonNulls,
+  ];
 
-  static List<double> asDoubleList(GoRouterState s, String name) =>
-      [...asStringList(s, name).map(double.tryParse).nonNulls];
+  /// Every value of [name] that is a `double`; the others are left out.
+  static List<double> asDoubleList(GoRouterState s, String name) => [
+    ...asStringList(s, name).map(double.tryParse).nonNulls,
+  ];
 
-  static List<bool> asBoolList(GoRouterState s, String name) =>
-      [...asStringList(s, name).map(_bool).nonNulls];
+  /// Every value of [name] that is a `bool`; the others are left out.
+  static List<bool> asBoolList(GoRouterState s, String name) => [
+    ...asStringList(s, name).map(_bool).nonNulls,
+  ];
 
   /// A query parameter that is an enum (`Sort? sort`): the value of [values] whose `name` it
   /// spells, or `null` when it is missing or names none. [caseSensitive] is as for
@@ -178,10 +203,10 @@ abstract final class Query {
   ];
 
   static bool? _bool(String? raw) => switch (raw) {
-        'true' => true,
-        'false' => false,
-        _ => null,
-      };
+    'true' => true,
+    'false' => false,
+    _ => null,
+  };
 }
 
 /// The value of [values] whose `name` is [raw], or `null` when there is none. An exact match

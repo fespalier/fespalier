@@ -42,7 +42,9 @@ class FakeApi {
       _flakyFailed = true;
       throw Exception('Network hiccup');
     }
-    return _all.firstWhere((p) => p.id == id,
-        orElse: () => throw ProductNotFound(id));
+    return _all.firstWhere(
+      (p) => p.id == id,
+      orElse: () => throw ProductNotFound(id),
+    );
   }
 }

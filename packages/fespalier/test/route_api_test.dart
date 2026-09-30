@@ -40,16 +40,15 @@ void main() {
   setUp(() => loads = 0);
 
   group('nearestNotFound', () {
-    Widget scoped(Uri uri, {String base = '/'}) => nearestNotFound(
-          uri,
-          base,
-          [
-            (['a', ':id', 'deep'], (uri) => Text('deep ${uri.path}'), caseSensitive: true),
-            (['a', ':id'], (uri) => Text('item ${uri.path}'), caseSensitive: true),
-            (['a'], (uri) => Text('a ${uri.path}'), caseSensitive: true),
-          ],
-          (uri) => Text('root ${uri.path}'),
-        );
+    Widget scoped(Uri uri, {String base = '/'}) => nearestNotFound(uri, base, [
+      (
+        ['a', ':id', 'deep'],
+        (uri) => Text('deep ${uri.path}'),
+        caseSensitive: true,
+      ),
+      (['a', ':id'], (uri) => Text('item ${uri.path}'), caseSensitive: true),
+      (['a'], (uri) => Text('a ${uri.path}'), caseSensitive: true),
+    ], (uri) => Text('root ${uri.path}'));
 
     String shown(Widget w) => (w as Text).data!;
 
@@ -67,17 +66,22 @@ void main() {
     });
 
     test('a mount prefix is skipped, and other prefixes are not ours', () {
-      expect(shown(scoped(Uri.parse('/shop/a/1'), base: '/shop')),
-          'item /shop/a/1');
-      expect(shown(scoped(Uri.parse('/other/a/1'), base: '/shop')),
-          'root /other/a/1');
+      expect(
+        shown(scoped(Uri.parse('/shop/a/1'), base: '/shop')),
+        'item /shop/a/1',
+      );
+      expect(
+        shown(scoped(Uri.parse('/other/a/1'), base: '/shop')),
+        'root /other/a/1',
+      );
       expect(shown(scoped(Uri.parse('/shop'), base: '/shop')), 'root /shop');
     });
   });
 
   group('DataRef', () {
-    testWidgets('readData keeps an autoDispose provider alive while it loads',
-        (tester) async {
+    testWidgets('readData keeps an autoDispose provider alive while it loads', (
+      tester,
+    ) async {
       final (ref, container) = await boot(tester);
       final value = ref.readData(slow(1));
       await tester.pump(const Duration(milliseconds: 150));
@@ -95,8 +99,9 @@ void main() {
       await caught;
     });
 
-    testWidgets('prefetchData loads now and keeps the result for keepFor',
-        (tester) async {
+    testWidgets('prefetchData loads now and keeps the result for keepFor', (
+      tester,
+    ) async {
       final (ref, container) = await boot(tester);
       final handle = ref.prefetchData(
         slow(2),
@@ -127,8 +132,9 @@ void main() {
       expect(handle.isClosed, isTrue);
     });
 
-    testWidgets('a zero keepFor starts the load and keeps nothing',
-        (tester) async {
+    testWidgets('a zero keepFor starts the load and keeps nothing', (
+      tester,
+    ) async {
       final (ref, container) = await boot(tester);
       ref.prefetchData(slow(3), keepFor: Duration.zero);
       await tester.pump(const Duration(milliseconds: 150));
@@ -158,18 +164,20 @@ void main() {
   });
 
   group('testing.dart', () {
-    GoRouter router() => GoRouter(routes: [
-          GoRoute(
-            path: '/',
-            builder: (context, state) => Consumer(
-              builder: (context, ref, _) => TextButton(
-                onPressed: () => context.go('/next?x=1'),
-                child: Text('home ${ref.watch(label)}'),
-              ),
+    GoRouter router() => GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => Consumer(
+            builder: (context, ref, _) => TextButton(
+              onPressed: () => context.go('/next?x=1'),
+              child: Text('home ${ref.watch(label)}'),
             ),
           ),
-          GoRoute(path: '/next', builder: (_, __) => const Text('next')),
-        ]);
+        ),
+        GoRoute(path: '/next', builder: (_, _) => const Text('next')),
+      ],
+    );
 
     testWidgets('pumpRouter applies overrides and settles', (tester) async {
       final container = await pumpRouter(
@@ -182,8 +190,9 @@ void main() {
       expect(currentLocation(tester), '/');
     });
 
-    testWidgets('currentLocation follows navigation, query included',
-        (tester) async {
+    testWidgets('currentLocation follows navigation, query included', (
+      tester,
+    ) async {
       await pumpRouter(tester, router());
       await tester.tap(find.byType(TextButton));
       await tester.pumpAndSettle();
@@ -192,7 +201,9 @@ void main() {
     });
 
     testWidgets('pumpRouter can use your own container', (tester) async {
-      final mine = ProviderContainer(overrides: [label.overrideWithValue('mine')]);
+      final mine = ProviderContainer(
+        overrides: [label.overrideWithValue('mine')],
+      );
       addTearDown(mine.dispose);
       final used = await pumpRouter(tester, router(), container: mine);
       expect(identical(used, mine), isTrue);

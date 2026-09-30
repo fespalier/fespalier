@@ -75,7 +75,12 @@ void main() {
       expect(_all.first.metaAs<String>(), isNull);
       expect(_all.last.metaAs<Meta>(), isNull);
       // A typed RouteInfo keeps its type.
-      const typed = RouteInfo<Meta>(type: String, path: '/', folder: '', meta: Meta('A'));
+      const typed = RouteInfo<Meta>(
+        type: String,
+        path: '/',
+        folder: '',
+        meta: Meta('A'),
+      );
       expect(typed.meta!.code, 'A');
     });
   });
@@ -132,7 +137,9 @@ void main() {
       folder: '',
       segments: [RouteParam('all', 'List<String>', catchAll: true)],
     );
-    final byPath = {for (final r in [docs, files, root, _all.first]) r.path: r};
+    final byPath = {
+      for (final r in [docs, files, root, _all.first]) r.path: r,
+    };
 
     test('finds a route by its path, and an optional catch-all without it', () {
       expect(lookupRoute(byPath, '/products/:id'), _all.first);
@@ -164,22 +171,27 @@ void main() {
         expect(p.restorationId, '/products/:id', reason: '${p.runtimeType}');
       }
       // A key that isn't go_router's ValueKey<String> has no id to give.
-      expect(Transitions.none(UniqueKey(), const SizedBox()).restorationId,
-          isNull);
+      expect(
+        Transitions.none(UniqueKey(), const SizedBox()).restorationId,
+        isNull,
+      );
     });
 
-    testWidgets('layoutPage is a Material page with the given id',
-        (tester) async {
+    testWidgets('layoutPage is a Material page with the given id', (
+      tester,
+    ) async {
       late Page<void> page;
-      final router = GoRouter(routes: [
-        GoRoute(
-          path: '/',
-          builder: (context, state) {
-            page = layoutPage(context, state, 'layout:/', const SizedBox());
-            return const SizedBox();
-          },
-        ),
-      ]);
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) {
+              page = layoutPage(context, state, 'layout:/', const SizedBox());
+              return const SizedBox();
+            },
+          ),
+        ],
+      );
       addTearDown(router.dispose);
       await tester.pumpWidget(MaterialApp.router(routerConfig: router));
       expect(page, isA<MaterialPage<void>>());
@@ -187,18 +199,21 @@ void main() {
       expect(page.key, const ValueKey('/'));
     });
 
-    testWidgets('layoutPage is a Cupertino page in a CupertinoApp',
-        (tester) async {
+    testWidgets('layoutPage is a Cupertino page in a CupertinoApp', (
+      tester,
+    ) async {
       late Page<void> page;
-      final router = GoRouter(routes: [
-        GoRoute(
-          path: '/',
-          builder: (context, state) {
-            page = layoutPage(context, state, 'layout:/', const SizedBox());
-            return const SizedBox();
-          },
-        ),
-      ]);
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) {
+              page = layoutPage(context, state, 'layout:/', const SizedBox());
+              return const SizedBox();
+            },
+          ),
+        ],
+      );
       addTearDown(router.dispose);
       await tester.pumpWidget(CupertinoApp.router(routerConfig: router));
       expect(page, isA<CupertinoPage<void>>());

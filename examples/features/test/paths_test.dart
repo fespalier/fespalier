@@ -254,10 +254,8 @@ void main() {
 
     testWidgets('and so does a guard: a draft goes home', (tester) async {
       await boot(tester, '/');
-      const NoteRoute(id: 3).go(
-        tester.element(find.text('Home')),
-        extra: const Note('draft'),
-      );
+      const NoteRoute(id: 3)
+          .go(tester.element(find.text('Home')), extra: const Note('draft'));
       await tester.pumpAndSettle();
       expect(find.text('Notes frame: draft'), findsNothing);
       expect(find.text('Home'), findsOneWidget);

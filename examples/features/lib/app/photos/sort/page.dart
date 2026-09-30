@@ -12,10 +12,7 @@ class SortPage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Sort photos by'),
-            ListTile(
-              title: const Text('Newest'),
-              onTap: () => context.pop(),
-            ),
+            ListTile(title: const Text('Newest'), onTap: () => context.pop()),
           ],
         ),
       );

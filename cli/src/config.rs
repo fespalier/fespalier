@@ -20,7 +20,7 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_yaml_ng::Value;
 
@@ -126,7 +126,11 @@ impl Config {
     /// `lib/pages` with the output in `lib/router/`.
     pub fn import_path(&self, rel: &str) -> String {
         let dir = relative_dir(parent(&self.output), &self.app_dir);
-        if dir.is_empty() { rel.to_string() } else { format!("{dir}/{rel}") }
+        if dir.is_empty() {
+            rel.to_string()
+        } else {
+            format!("{dir}/{rel}")
+        }
     }
 
     /// The import path from the manifest file's folder to the main output file:
@@ -135,14 +139,22 @@ impl Config {
         let manifest = self.output_manifest.as_deref()?;
         let dir = relative_dir(parent(manifest), parent(&self.output));
         let file = self.output.rsplit('/').next().unwrap_or(&self.output);
-        Some(if dir.is_empty() { file.to_string() } else { format!("{dir}/{file}") })
+        Some(if dir.is_empty() {
+            file.to_string()
+        } else {
+            format!("{dir}/{file}")
+        })
     }
 
     /// The import path from the manifest file's folder to `rel` inside the app folder.
     pub fn import_path_from_manifest(&self, rel: &str) -> String {
         let manifest = self.output_manifest.as_deref().unwrap_or(&self.output);
         let dir = relative_dir(parent(manifest), &self.app_dir);
-        if dir.is_empty() { rel.to_string() } else { format!("{dir}/{rel}") }
+        if dir.is_empty() {
+            rel.to_string()
+        } else {
+            format!("{dir}/{rel}")
+        }
     }
 
     /// The import path, from the output file, of `uri` as written in the file `file`
@@ -164,7 +176,11 @@ impl Config {
         }
         let name = parts.pop().unwrap_or_default();
         let dir = relative_dir(parent(&self.output), &parts.join("/"));
-        if dir.is_empty() { name.to_string() } else { format!("{dir}/{name}") }
+        if dir.is_empty() {
+            name.to_string()
+        } else {
+            format!("{dir}/{name}")
+        }
     }
 
     /// The output path relative to `lib/`, as a `package:` import spells it.
@@ -211,15 +227,22 @@ impl Pubspec {
                     bail!("`fespalier.output_manifest` must be a .dart file, got `{m}`");
                 }
                 if path == config.output {
-                    bail!("`fespalier.output_manifest` and `fespalier.output` are the same file (`{path}`); leave `output_manifest` out to keep the manifest in `output`");
+                    bail!(
+                        "`fespalier.output_manifest` and `fespalier.output` are the same file (`{path}`); leave `output_manifest` out to keep the manifest in `output`"
+                    );
                 }
                 config.output_manifest = Some(path);
             }
             for key in c.meta_unique.unwrap_or_default() {
-                let ident = key.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                let ident = key
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
                     && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
                 if !ident {
-                    bail!("`fespalier.meta_unique` lists argument names of `meta`, e.g. `[code, slug]`; `{key}` is not one");
+                    bail!(
+                        "`fespalier.meta_unique` lists argument names of `meta`, e.g. `[code, slug]`; `{key}` is not one"
+                    );
                 }
                 if !config.meta_unique.contains(&key) {
                     config.meta_unique.push(key);
@@ -228,19 +251,35 @@ impl Pubspec {
             match c.meta.as_deref() {
                 None | Some("optional") => {}
                 Some("required") => config.meta_required = true,
-                Some(other) => bail!("`fespalier.meta` must be `required` or `optional`, got `{other}`"),
+                Some(other) => {
+                    bail!("`fespalier.meta` must be `required` or `optional`, got `{other}`")
+                }
             }
         }
-        let has_dependency = matches!(&raw.dependencies, Some(Value::Mapping(m)) if m.contains_key("fespalier"));
-        Ok(Pubspec { name: raw.name, has_dependency, config })
+        let has_dependency =
+            matches!(&raw.dependencies, Some(Value::Mapping(m)) if m.contains_key("fespalier"));
+        Ok(Pubspec {
+            name: raw.name,
+            has_dependency,
+            config,
+        })
     }
 }
 
 /// Normalizes a project-relative path that must sit under `lib/`.
 fn lib_path(key: &str, raw: &str) -> Result<String> {
-    let parts: Vec<&str> = raw.split(['/', '\\']).filter(|p| !p.is_empty() && *p != ".").collect();
-    if raw.starts_with(['/', '\\']) || parts.contains(&"..") || parts.first() != Some(&"lib") || parts.len() < 2 {
-        bail!("`fespalier.{key}` must be a path under lib/ (it is imported as package code), got `{raw}`");
+    let parts: Vec<&str> = raw
+        .split(['/', '\\'])
+        .filter(|p| !p.is_empty() && *p != ".")
+        .collect();
+    if raw.starts_with(['/', '\\'])
+        || parts.contains(&"..")
+        || parts.first() != Some(&"lib")
+        || parts.len() < 2
+    {
+        bail!(
+            "`fespalier.{key}` must be a path under lib/ (it is imported as package code), got `{raw}`"
+        );
     }
     Ok(parts.join("/"))
 }

@@ -1,31 +1,31 @@
+{% from "new/_macros.dart" import classdecl, ctor, func, arrow %}
 import 'package:flutter/material.dart';
 
 {% if function %}
 {% if segs %}
 /// The segments of this folder's path arrive as Strings, as the URL spells them.
-Widget notFound({required Uri uri{% for s in segs %}, required String {{ s.name }}{% endfor %}}) =>
-    Center(child: Text('Nothing at ${uri.path}'));
+{{ func("Widget notFound", [], ["required Uri uri"] + segs|map(attribute="string_param")|list, "", "Center(child: Text('Nothing at ${uri.path}'))") }}
 {% else %}
-Widget notFound({required Uri uri}) => Center(child: Text('Nothing at ${uri.path}'));
+{{ func("Widget notFound", [], ["required Uri uri"], "", "Center(child: Text('Nothing at ${uri.path}'))") }}
 {% endif %}
 {% else %}
 /// Shown for a URL nothing matches under this folder, and for a segment of its routes
 /// that doesn't parse. The segments of its path arrive as Strings, as the URL spells them.
-class {{ stem }}NotFound extends StatelessWidget {
+{{ classdecl(stem ~ "NotFound", "StatelessWidget") }}
 {% if segs %}
-  const {{ stem }}NotFound({super.key, required this.uri{% for s in segs %}, required this.{{ s.name }}{% endfor %}});
+{{ ctor(stem ~ "NotFound", ["super.key", "required this.uri"] + segs|map(attribute="field")|list) }}
 
   final Uri uri;
 {% for s in segs %}
   final String {{ s.name }};
 {% endfor %}
 {% else %}
-  const {{ stem }}NotFound({super.key, required this.uri});
+{{ ctor(stem ~ "NotFound", ["super.key", "required this.uri"]) }}
 
   final Uri uri;
 {% endif %}
 
   @override
-  Widget build(BuildContext context) => Center(child: Text('Nothing at ${uri.path}'));
+{{ arrow("  ", "Widget build(BuildContext context)", "Center(child: Text('Nothing at ${uri.path}'))") }}
 }
 {% endif %}

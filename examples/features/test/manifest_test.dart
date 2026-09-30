@@ -44,15 +44,20 @@ void main() {
 
     test('knows the segments, query parameters and data keys', () {
       final item = AppManifest.byType[ItemRoute]!;
-      expect(item.segments.map((p) => '${p.type} ${p.name}'),
-          ['String shop', 'int id']);
+      expect(item.segments.map((p) => '${p.type} ${p.name}'), [
+        'String shop',
+        'int id',
+      ]);
       expect(item.query, isEmpty);
       expect(item.dataKeys, ['shop', 'id']);
 
       final search = AppManifest.byType[SearchRoute]!;
       expect(search.segments, isEmpty);
-      expect(search.query.map((p) => '${p.type} ${p.name}'),
-          ['String? q', 'int? page', 'List<String> tags']);
+      expect(search.query.map((p) => '${p.type} ${p.name}'), [
+        'String? q',
+        'int? page',
+        'List<String> tags',
+      ]);
       expect(search.dataKeys, ['q', 'page', 'tags']);
 
       // A selector data.dart (it returns a provider) is keyed like any other.
@@ -72,16 +77,21 @@ void main() {
       expect(AppManifest.byType[PhotoRoute]!.segments.single.catchAll, isFalse);
     });
 
-    test('an enum segment, query parameter or catch-all shows its type name', () {
-      final shop = AppManifest.byType[CategoryShopRoute]!;
-      expect(shop.path, '/shop/:category');
-      expect(shop.segments.map((p) => '${p.type} ${p.name}'), ['Category category']);
-      expect(shop.query.map((p) => '${p.type} ${p.name}'), ['Sort? sort']);
-      expect(shop.dataKeys, ['category']);
-      final browse = AppManifest.byType[BrowseRoute]!;
-      expect(browse.segments.single.type, 'List<Category>');
-      expect(browse.segments.single.catchAll, isTrue);
-    });
+    test(
+      'an enum segment, query parameter or catch-all shows its type name',
+      () {
+        final shop = AppManifest.byType[CategoryShopRoute]!;
+        expect(shop.path, '/shop/:category');
+        expect(shop.segments.map((p) => '${p.type} ${p.name}'), [
+          'Category category',
+        ]);
+        expect(shop.query.map((p) => '${p.type} ${p.name}'), ['Sort? sort']);
+        expect(shop.dataKeys, ['category']);
+        final browse = AppManifest.byType[BrowseRoute]!;
+        expect(browse.segments.single.type, 'List<Category>');
+        expect(browse.segments.single.catchAll, isTrue);
+      },
+    );
 
     test('a redirect.dart route is a redirect', () {
       final old = AppManifest.byType[OldSearchRoute]!;
@@ -99,7 +109,10 @@ void main() {
       expect(AppManifest.byType[PhotosRoute]!.metaAs<PageMeta>()!.code, 'B02');
       expect(AppManifest.byType[SortRoute]!.meta, isNull);
       // A redirect route can have one.
-      expect(AppManifest.byType[OldSearchRoute]!.metaAs<PageMeta>()!.code, 'C01');
+      expect(
+        AppManifest.byType[OldSearchRoute]!.metaAs<PageMeta>()!.code,
+        'C01',
+      );
     });
 
     test('a review test can join its own registry on the manifest', () {
@@ -146,8 +159,9 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('comes from the route\'s meta.dart, read in a layout',
-        (tester) async {
+    testWidgets('comes from the route\'s meta.dart, read in a layout', (
+      tester,
+    ) async {
       await boot(tester, '/photos');
       expect(labels.last, 'Photos');
 
@@ -156,8 +170,9 @@ void main() {
       expect(labels.last, 'Features');
     });
 
-    testWidgets('is found for catch-all routes, with or without the rest',
-        (tester) async {
+    testWidgets('is found for catch-all routes, with or without the rest', (
+      tester,
+    ) async {
       await boot(tester, '/docs/guide/setup');
       expect(labels.last, 'Docs');
       // The optional catch-all's route above it is the same route.

@@ -5,21 +5,44 @@ on:
     branches: [main]
   pull_request:
 
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Flutter the examples and the package are built and tested with (Dart 3.13.4). Exact, so a
+  # new stable release cannot turn CI red on its own; bump it here, deliberately.
+  FLUTTER_VERSION: 3.47.5
+
 jobs:
   cli:
     name: Generator (Rust)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: cli
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
+          persist-credentials: false
+      # The toolchain is pinned once, in cli/rust-toolchain.toml; this reads it from there.
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/cli/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: cli
+      - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       - name: Versions agree (Cargo.toml, pubspec.yaml, fsp init, READMEs, launcher)
@@ -30,10 +53,18 @@ jobs:
           cargo run --quiet -- check --project ../examples/features
           cargo run --quiet -- check --project ../examples/tabs
           cargo run --quiet -- check --project ../examples/minimal
+      # Licences, advisories, duplicate versions, sources: cli/deny.toml.
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: cli/Cargo.toml
+          command: check
 
   dart:
     name: Runtime + examples (Flutter)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -42,30 +73,49 @@ jobs:
       run:
         working-directory: ${{ matrix.dir }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get
+      # After pub get: the formatter reads each package's language version from its package
+      # config. Generated files (`*.g.dart`) are left out: fsp writes them unformatted unless
+      # `format: true`, and `fsp gen` compares them byte for byte.
+      - name: Formatted (dart format)
+        run: >-
+          find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*'
+          -print0 | xargs -0 dart format --output=none --set-exit-if-changed
       - run: flutter analyze
       - run: flutter test
-      - name: Ready for pub.dev (no warnings)
-        if: matrix.dir == 'packages/fespalier'
-        run: flutter pub publish --dry-run
 
   scaffold:
     name: Scaffolded files compile
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/cli/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: cli
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - name: Scaffold every file kind into the features example
         working-directory: examples/features
@@ -76,6 +126,27 @@ jobs:
           fsp new 'plain' --data
           fsp new '(admin)/users' --layout
           flutter pub get
+          flutter analyze
+      # `fsp new` and `fsp init` write files that `dart format` leaves alone. The examples
+      # declare an older language version (the formatter would pick the short style from it),
+      # so the current style is asked for explicitly.
+      - name: Scaffolded files are dart format clean
+        working-directory: examples/features
+        run: >-
+          git ls-files --others --exclude-standard -z -- lib/app |
+          xargs -0 dart format --language-version=latest --output=none --set-exit-if-changed
+      - name: fsp init on a fresh app passes dart format and flutter analyze
+        env:
+          FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
+        run: |
+          cargo build --quiet --manifest-path cli/Cargo.toml
+          cd "$RUNNER_TEMP"
+          flutter create --empty --project-name fresh_app --platforms web fresh_app
+          cd fresh_app
+          flutter pub add fespalier --path "$GITHUB_WORKSPACE/packages/fespalier"
+          "$FSP_BIN" init
+          find lib -name '*.dart' ! -name '*.g.dart' -print0 |
+            xargs -0 dart format --output=none --set-exit-if-changed
           flutter analyze
       - name: dart run fespalier runs the given fsp
         working-directory: examples/shop
@@ -88,12 +159,17 @@ jobs:
   vscode:
     name: VS Code extension
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: editors/vscode
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -107,24 +183,29 @@ jobs:
   intellij:
     name: IntelliJ plugin
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: editors/intellij
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # The 2025.2 platform the plugin builds against is compiled for Java 21.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
           validate-wrappers: true
       - name: Compile and test (unit tests, and one headless IDE test)
         run: ./gradlew build --no-daemon
       - name: Package the plugin
         run: ./gradlew buildPlugin verifyPluginStructure --no-daemon
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fespalier-intellij
           path: editors/intellij/build/distributions/*.zip
@@ -133,8 +214,13 @@ jobs:
   packaging:
     name: Homebrew and Scoop files
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Render from fake checksums
         run: python3 scripts/test_packaging.py
       - name: Pin fake checksums in the Dart package

@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 use crate::session::{Formats, Session};
-use crate::synth::{layout, page, Files, Rng};
+use crate::synth::{Files, Rng, layout, page};
 use crate::{gen_core, parse_cache};
 
 /// What a run said: whether it succeeded, the error line, every diagnostic, and the files it
@@ -27,23 +27,36 @@ struct Report {
 
 fn report(project: &Path, cfg: &Config, session: &mut Session) -> Report {
     let mut diags = vec![];
-    let result = gen_core(project, cfg, true, session, |_, d| diags = d.0.iter().map(|d| d.to_string()).collect());
+    let result = gen_core(project, cfg, true, session, |_, d| {
+        diags = d.0.iter().map(std::string::ToString::to_string).collect();
+    });
     let outputs = [Some(&cfg.output), cfg.output_manifest.as_ref()]
         .into_iter()
         .flatten()
         .map(|o| fs::read_to_string(project.join(o)).ok())
         .collect();
-    let (wrote, routes) = result.as_ref().map(|o| (o.wrote, o.routes)).unwrap_or((false, 0));
-    Report { ok: result.is_ok(), error: result.err().map(|e| format!("{e:#}")).unwrap_or_default(), diags, outputs, wrote, routes }
+    let (wrote, routes) = result.as_ref().map_or((false, 0), |o| (o.wrote, o.routes));
+    Report {
+        ok: result.is_ok(),
+        error: result.err().map(|e| format!("{e:#}")).unwrap_or_default(),
+        diags,
+        outputs,
+        wrote,
+        routes,
+    }
 }
 
 /// Every file under `dir`, relative, with `/` separators.
 fn walk(dir: &Path, rel: &str, files: &mut BTreeMap<String, String>, dirs: &mut Vec<String>) {
     let mut entries: Vec<_> = fs::read_dir(dir).unwrap().map(|e| e.unwrap()).collect();
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
     for e in entries {
         let name = e.file_name().to_string_lossy().to_string();
-        let rel = if rel.is_empty() { name } else { format!("{rel}/{name}") };
+        let rel = if rel.is_empty() {
+            name
+        } else {
+            format!("{rel}/{name}")
+        };
         if e.file_type().unwrap().is_dir() {
             dirs.push(rel.clone());
             walk(&e.path(), &rel, files, dirs);
@@ -71,7 +84,14 @@ impl Sim {
         fs::write(dir.path().join("pubspec.yaml"), pubspec).unwrap();
         let cfg = Config::load(dir.path()).unwrap();
         parse_cache::enable();
-        Sim { dir, cfg, session: Session::default(), counter: 0, rng: Rng::new(seed), parses: (0, 0) }
+        Sim {
+            dir,
+            cfg,
+            session: Session::default(),
+            counter: 0,
+            rng: Rng::new(seed),
+            parses: (0, 0),
+        }
     }
 
     fn root(&self) -> PathBuf {
@@ -127,7 +147,11 @@ impl Sim {
     /// cache is off) and with a new session: `gen`.
     fn fresh(&self) -> Report {
         let copy = tempfile::tempdir().unwrap();
-        fs::write(copy.path().join("pubspec.yaml"), fs::read_to_string(self.dir.path().join("pubspec.yaml")).unwrap()).unwrap();
+        fs::write(
+            copy.path().join("pubspec.yaml"),
+            fs::read_to_string(self.dir.path().join("pubspec.yaml")).unwrap(),
+        )
+        .unwrap();
         fs::create_dir_all(copy.path().join("lib")).unwrap();
         fn copy_dir(from: &Path, to: &Path) {
             for e in fs::read_dir(from).unwrap() {
@@ -144,7 +168,9 @@ impl Sim {
         // All of `lib/`: the enums segments name are declared outside the app folder.
         copy_dir(&self.dir.path().join("lib"), &copy.path().join("lib"));
         let cfg = self.cfg.clone();
-        std::thread::spawn(move || report(copy.path(), &cfg, &mut Session::default())).join().unwrap()
+        std::thread::spawn(move || report(copy.path(), &cfg, &mut Session::default()))
+            .join()
+            .unwrap()
     }
 
     /// Regenerates both ways and asserts they agree, however the edit went.
@@ -152,7 +178,10 @@ impl Sim {
         let inc = self.regen();
         let fresh = self.fresh();
         // `wrote` legitimately differs: the session's folder already has an output file.
-        let strip = |r: &Report| Report { wrote: false, ..r.clone() };
+        let strip = |r: &Report| Report {
+            wrote: false,
+            ..r.clone()
+        };
         let (a, b) = (strip(&inc), strip(&fresh));
         // A failed run leaves the output the last good run wrote, which a new folder doesn't have.
         if inc.ok || fresh.ok {
@@ -234,9 +263,16 @@ fn rename_a_folder() {
     sim.same("the first run");
     fs::rename(sim.root().join("s1/r30"), sim.root().join("s1/renamed")).unwrap();
     let r = sim.same("renaming a static folder");
-    assert!(r.ok && r.outputs[0].as_ref().unwrap().contains("/renamed"), "{r:?}");
+    assert!(
+        r.ok && r.outputs[0].as_ref().unwrap().contains("/renamed"),
+        "{r:?}"
+    );
     // Static to dynamic: whatever the generator makes of that, it makes of it either way.
-    fs::rename(sim.root().join("s1/renamed"), sim.root().join("s1/$renamed")).unwrap();
+    fs::rename(
+        sim.root().join("s1/renamed"),
+        sim.root().join("s1/$renamed"),
+    )
+    .unwrap();
     sim.same("making it a dynamic segment");
     fs::rename(sim.root().join("s1/$renamed"), sim.root().join("s1/r30")).unwrap();
     assert!(sim.same("and back").ok);
@@ -252,7 +288,10 @@ fn change_a_data_type() {
     // A route with a data.dart and a `page` query parameter that both files declare.
     let (data, page_file) = ("s1/r30/data.dart", "s1/r30/page.dart");
     let (d, p) = (sim.files()[data].clone(), sim.files()[page_file].clone());
-    assert!(d.contains("int? page") && p.contains("int? page"), "{d}\n{p}");
+    assert!(
+        d.contains("int? page") && p.contains("int? page"),
+        "{d}\n{p}"
+    );
     // Only data.dart changes: the two files disagree.
     sim.write(data, &d.replace("int? page", "String? page"));
     assert!(!sim.same("changing the type in data.dart only").ok);
@@ -273,7 +312,10 @@ fn add_and_remove_a_layout() {
     // Below a section, and on a folder with a page of its own.
     sim.write("s1/r31/layout.dart", &layout("R31Layout", ""));
     assert!(sim.same("adding a layout to a route").ok);
-    sim.write("s1/r33/layout.dart", &layout("R33Layout", ", required this.mystery"));
+    sim.write(
+        "s1/r33/layout.dart",
+        &layout("R33Layout", ", required this.mystery"),
+    );
     sim.same("adding one that wants something it can't get");
     sim.remove("s1/r33/layout.dart");
     sim.same("removing it");
@@ -291,7 +333,14 @@ fn route_dart_extra_codec_and_extra_on_layouts_follow() {
     sim.same("the first run");
     sim.write("s1/route.dart", "const caseSensitive = false;");
     let r = sim.same("a route.dart");
-    assert!(r.ok && r.wrote && r.outputs[0].as_ref().unwrap().contains("caseSensitive: false"), "{r:?}");
+    assert!(
+        r.ok && r.wrote
+            && r.outputs[0]
+                .as_ref()
+                .unwrap()
+                .contains("caseSensitive: false"),
+        "{r:?}"
+    );
     sim.write("s1/route.dart", "const caseSensitive = true;");
     assert!(sim.same("turning it back on").ok);
     sim.write("s1/route.dart", "final caseSensitive = maybe();");
@@ -303,9 +352,15 @@ fn route_dart_extra_codec_and_extra_on_layouts_follow() {
     sim.write("s1/route.dart", "const paths = {'fr': 'section-un'};");
     let r = sim.same("a route.dart with paths");
     assert!(r.ok && r.wrote && out(&r).contains("section-un"), "{r:?}");
-    sim.write("s1/route.dart", "const paths = {'fr': 'section-deux', 'de': 'über'};");
+    sim.write(
+        "s1/route.dart",
+        "const paths = {'fr': 'section-deux', 'de': 'über'};",
+    );
     let r = sim.same("other spellings");
-    assert!(r.ok && out(&r).contains("section-deux") && !out(&r).contains("section-un"), "{r:?}");
+    assert!(
+        r.ok && out(&r).contains("section-deux") && !out(&r).contains("section-un"),
+        "{r:?}"
+    );
     sim.write("s1/r30/route.dart", "const paths = {'fr': 'r31'};");
     assert!(!sim.same("a spelling that collides with another folder").ok);
     sim.write("s1/r30/route.dart", "const paths = {'fr': 'r30-fr'};");
@@ -313,18 +368,33 @@ fn route_dart_extra_codec_and_extra_on_layouts_follow() {
     sim.remove("s1/r30/route.dart");
     sim.remove("s1/route.dart");
     let r = sim.same("removing the paths");
-    assert!(r.ok && !out(&r).contains("section-deux") && !out(&r).contains("r30-fr"), "{r:?}");
-    sim.write("extra_codec.dart", "import 'package:fespalier/fespalier.dart';\nfinal extraCodec = ExtraCodec({});");
+    assert!(
+        r.ok && !out(&r).contains("section-deux") && !out(&r).contains("r30-fr"),
+        "{r:?}"
+    );
+    sim.write(
+        "extra_codec.dart",
+        "import 'package:fespalier/fespalier.dart';\nfinal extraCodec = ExtraCodec({});",
+    );
     let r = sim.same("an extra_codec.dart");
-    assert!(r.ok && r.outputs[0].as_ref().unwrap().contains("extraCodec"), "{r:?}");
+    assert!(
+        r.ok && r.outputs[0].as_ref().unwrap().contains("extraCodec"),
+        "{r:?}"
+    );
     sim.remove("extra_codec.dart");
     assert!(sim.same("removing it").ok);
     // A layout's `extra` is filled; a parameter that isn't one of ours is not.
     sim.write("s1/layout.dart", &layout("S1Layout", ", this.extra"));
     sim.same("a layout that takes extra");
-    sim.write("s1/layout.dart", &layout("S1Layout", ", required this.mystery"));
+    sim.write(
+        "s1/layout.dart",
+        &layout("S1Layout", ", required this.mystery"),
+    );
     let r = sim.same("a layout that wants something it can't get");
-    assert!(!r.ok && r.diags.iter().any(|d| d.contains("mystery")), "{r:?}");
+    assert!(
+        !r.ok && r.diags.iter().any(|d| d.contains("mystery")),
+        "{r:?}"
+    );
 }
 
 const CATEGORY: &str = "enum Category { shoes, hats }\n";
@@ -333,8 +403,14 @@ const CATEGORY: &str = "enum Category { shoes, hats }\n";
 fn with_enum_routes(sim: &Sim) {
     sim.lib_write("models/category.dart", CATEGORY);
     sim.lib_write("models/all.dart", "export 'category.dart';\n");
-    let shop = format!("import 'package:demo/models/category.dart';\n{}", page("ShopCat", "required Category category"));
-    let stock = format!("import 'package:demo/models/all.dart';\n{}", page("StockCat", "required Category category"));
+    let shop = format!(
+        "import 'package:demo/models/category.dart';\n{}",
+        page("ShopCat", "required Category category")
+    );
+    let stock = format!(
+        "import 'package:demo/models/all.dart';\n{}",
+        page("StockCat", "required Category category")
+    );
     sim.write("s1/shop/$category/page.dart", &shop);
     sim.write("s1/stock/$category/page.dart", &stock);
 }
@@ -344,7 +420,13 @@ fn an_enum_outside_the_app_folder_follows() {
     let mut sim = Sim::new(&app(60), NO_CONFIG, 11);
     with_enum_routes(&sim);
     let r = sim.same("the first run");
-    assert!(r.ok && r.outputs[0].as_ref().unwrap().contains("Segment.asEnum(s, 'category', Category.values)"), "{r:?}");
+    assert!(
+        r.ok && r.outputs[0]
+            .as_ref()
+            .unwrap()
+            .contains("Segment.asEnum(s, 'category', Category.values)"),
+        "{r:?}"
+    );
     // The enum's file is read each run and compared, and while it is the same nothing is parsed or resolved.
     sim.regen();
     assert_eq!(sim.parses, (0, 0));
@@ -352,12 +434,18 @@ fn an_enum_outside_the_app_folder_follows() {
     sim.regen();
     assert_eq!(sim.parses, (0, 0));
     // A value added: still an enum.
-    sim.lib_write("models/category.dart", "enum Category { shoes, hats, bags }\n");
+    sim.lib_write(
+        "models/category.dart",
+        "enum Category { shoes, hats, bags }\n",
+    );
     assert!(sim.same("a new enum value").ok);
     // The enum renamed: what the routes name is gone, so both are errors, as from scratch.
     sim.lib_write("models/category.dart", "enum Kind { shoes, hats }\n");
     let r = sim.same("the enum renamed");
-    assert!(!r.ok && r.diags.iter().any(|d| d.contains("Category")), "{r:?}");
+    assert!(
+        !r.ok && r.diags.iter().any(|d| d.contains("Category")),
+        "{r:?}"
+    );
     sim.lib_write("models/category.dart", CATEGORY);
     assert!(sim.same("and back").ok);
     // It stops being an enum, is deleted, is exported from somewhere else.
@@ -371,7 +459,10 @@ fn an_enum_outside_the_app_folder_follows() {
     let r = sim.same("declared in another file, exported by all.dart");
     assert!(!r.ok, "the direct import no longer finds it: {r:?}");
     sim.remove("s1/shop");
-    assert!(sim.same("without the route that imports the deleted file").ok);
+    assert!(
+        sim.same("without the route that imports the deleted file")
+            .ok
+    );
     sim.lib_write("models/all.dart", "// nothing exported\n");
     assert!(!sim.same("the export removed").ok);
 }
@@ -403,7 +494,10 @@ fn an_invalid_folder_name_is_reported_and_then_gone() {
     sim.same("the first run");
     sim.write("bad name/page.dart", &page("BadPage", ""));
     let r = sim.same("a folder that isn't a segment");
-    assert!(!r.ok && r.diags.iter().any(|d| d.contains("bad name")), "{r:?}");
+    assert!(
+        !r.ok && r.diags.iter().any(|d| d.contains("bad name")),
+        "{r:?}"
+    );
     // The tree is the same as before (the folder is left out of it), the diagnostics aren't.
     sim.remove("bad name");
     assert!(sim.same("removing it").ok);
@@ -444,7 +538,10 @@ fn a_deleted_output_is_written_again_even_for_an_unchanged_tree() {
 impl Sim {
     /// A fresh generation's report, but with `wrote` as the session's run had it.
     fn fresh_as_written(&self) -> Report {
-        Report { wrote: true, ..self.fresh() }
+        Report {
+            wrote: true,
+            ..self.fresh()
+        }
     }
 }
 
@@ -457,26 +554,53 @@ impl Sim {
         let files = self.files();
         let dirs = self.dirs();
         let pages: Vec<&String> = files.keys().filter(|f| f.ends_with("page.dart")).collect();
-        let parent_of = |f: &str| f.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_default();
+        let parent_of = |f: &str| {
+            f.rsplit_once('/')
+                .map(|(d, _)| d.to_string())
+                .unwrap_or_default()
+        };
         match self.rng.below(18) {
             0 | 1 => {
                 // A route: static or dynamic, sometimes a duplicate route name.
                 let mut sections = vec![String::new()];
-                sections.extend(dirs.iter().filter(|d| d.matches('/').count() <= 1 && !d.starts_with('_')).cloned());
+                sections.extend(
+                    dirs.iter()
+                        .filter(|d| d.matches('/').count() <= 1 && !d.starts_with('_'))
+                        .cloned(),
+                );
                 let at = self.rng.pick(&sections).clone();
                 let dynamic = self.rng.below(3) == 0;
-                let seg = if dynamic { format!("$p{n}") } else { format!("n{n}") };
-                let class = if self.rng.below(8) == 0 { "R0Page".to_string() } else { format!("N{n}Page") };
-                let params = if dynamic { format!("required int p{n}") } else { "String? q".into() };
-                let dir = if at.is_empty() { seg } else { format!("{at}/{seg}") };
+                let seg = if dynamic {
+                    format!("$p{n}")
+                } else {
+                    format!("n{n}")
+                };
+                let class = if self.rng.below(8) == 0 {
+                    "R0Page".to_string()
+                } else {
+                    format!("N{n}Page")
+                };
+                let params = if dynamic {
+                    format!("required int p{n}")
+                } else {
+                    "String? q".into()
+                };
+                let dir = if at.is_empty() {
+                    seg
+                } else {
+                    format!("{at}/{seg}")
+                };
                 self.write(&format!("{dir}/page.dart"), &page(&class, &params));
                 if self.rng.below(3) == 0 {
-                    self.write(&format!("{dir}/data.dart"), "Future<Item> data(Ref ref) async => Item();");
+                    self.write(
+                        &format!("{dir}/data.dart"),
+                        "Future<Item> data(Ref ref) async => Item();",
+                    );
                 }
                 format!("adding {dir}")
             }
             2 if !pages.is_empty() => {
-                let picked = self.rng.pick(&pages).to_string();
+                let picked = (*self.rng.pick(&pages)).clone();
                 let dir = parent_of(&picked);
                 if dir.is_empty() {
                     return "nothing (the root page stays)".into();
@@ -486,70 +610,99 @@ impl Sim {
             }
             3 if dirs.len() > 1 => {
                 let d = self.rng.pick(&dirs).clone();
-                let parent = d.rsplit_once('/').map(|(p, _)| format!("{p}/")).unwrap_or_default();
+                let parent = d
+                    .rsplit_once('/')
+                    .map(|(p, _)| format!("{p}/"))
+                    .unwrap_or_default();
                 let new = match self.rng.below(4) {
                     0 => format!("$z{n}"),
                     1 => format!("(z{n})"),
                     _ => format!("z{n}"),
                 };
-                fs::rename(self.root().join(&d), self.root().join(format!("{parent}{new}"))).unwrap();
+                fs::rename(
+                    self.root().join(&d),
+                    self.root().join(format!("{parent}{new}")),
+                )
+                .unwrap();
                 format!("renaming {d} to {new}")
             }
             4 => {
-                let datas: Vec<&String> = files.keys().filter(|f| f.ends_with("data.dart")).collect();
+                let datas: Vec<&String> =
+                    files.keys().filter(|f| f.ends_with("data.dart")).collect();
                 if datas.is_empty() {
                     return "nothing (no data.dart)".into();
                 }
-                let data = self.rng.pick(&datas).to_string();
+                let data = (*self.rng.pick(&datas)).clone();
                 let src = files[&data].clone();
                 let both = self.rng.below(2) == 0;
                 let page_file = format!("{}/page.dart", parent_of(&data));
                 if src.contains("int? page") {
                     self.write(&data, &src.replace("int? page", "String? page"));
-                    if both {
-                        if let Some(p) = files.get(&page_file) {
-                            self.write(&page_file, &p.replace("int? page", "String? page"));
-                        }
+                    if both && let Some(p) = files.get(&page_file) {
+                        self.write(&page_file, &p.replace("int? page", "String? page"));
                     }
                 } else {
-                    self.write(&data, &src.replace("Future<Item>", "Future<List<Item>>").replace("Item()", "[Item()]"));
+                    self.write(
+                        &data,
+                        &src.replace("Future<Item>", "Future<List<Item>>")
+                            .replace("Item()", "[Item()]"),
+                    );
                 }
                 format!("changing the type in {data} (both files: {both})")
             }
             5 => {
-                let candidates: Vec<&String> = dirs.iter().filter(|d| !files.contains_key(&format!("{d}/layout.dart"))).collect();
+                let candidates: Vec<&String> = dirs
+                    .iter()
+                    .filter(|d| !files.contains_key(&format!("{d}/layout.dart")))
+                    .collect();
                 if candidates.is_empty() {
                     return "nothing".into();
                 }
-                let d = self.rng.pick(&candidates).to_string();
+                let d = (*self.rng.pick(&candidates)).clone();
                 self.write(&format!("{d}/layout.dart"), &layout(&format!("L{n}"), ""));
                 format!("adding {d}/layout.dart")
             }
             6 => {
-                let layouts: Vec<&String> = files.keys().filter(|f| f.ends_with("layout.dart")).collect();
+                let layouts: Vec<&String> = files
+                    .keys()
+                    .filter(|f| f.ends_with("layout.dart"))
+                    .collect();
                 if layouts.is_empty() {
                     return "nothing".into();
                 }
-                let l = self.rng.pick(&layouts).to_string();
+                let l = (*self.rng.pick(&layouts)).clone();
                 self.remove(&l);
                 format!("removing {l}")
             }
             7 => {
                 // A group folder: rename it, fill it, empty it.
-                let groups: Vec<&String> = dirs.iter().filter(|d| d.rsplit('/').next().is_some_and(|b| b.starts_with('('))).collect();
+                let groups: Vec<&String> = dirs
+                    .iter()
+                    .filter(|d| d.rsplit('/').next().is_some_and(|b| b.starts_with('(')))
+                    .collect();
                 if groups.is_empty() {
                     fs::create_dir_all(self.root().join(format!("(new{n})"))).unwrap();
                     return format!("creating an empty group (new{n})");
                 }
-                let g = self.rng.pick(&groups).to_string();
+                let g = (*self.rng.pick(&groups)).clone();
                 match self.rng.below(3) {
                     0 => {
-                        self.write(&format!("{g}/in{n}/page.dart"), &page(&format!("In{n}Page"), ""));
+                        self.write(
+                            &format!("{g}/in{n}/page.dart"),
+                            &page(&format!("In{n}Page"), ""),
+                        );
                         format!("adding a route in {g}")
                     }
                     1 => {
-                        let parent = g.rsplit_once('/').map(|(p, _)| format!("{p}/")).unwrap_or_default();
-                        fs::rename(self.root().join(&g), self.root().join(format!("{parent}g{n}"))).unwrap();
+                        let parent = g
+                            .rsplit_once('/')
+                            .map(|(p, _)| format!("{p}/"))
+                            .unwrap_or_default();
+                        fs::rename(
+                            self.root().join(&g),
+                            self.root().join(format!("{parent}g{n}")),
+                        )
+                        .unwrap();
                         format!("turning {g} into a folder")
                     }
                     _ => {
@@ -560,9 +713,13 @@ impl Sim {
             }
             8 | 9 => {
                 let dart: Vec<&String> = files.keys().filter(|f| f.ends_with(".dart")).collect();
-                let f = self.rng.pick(&dart).to_string();
+                let f = (*self.rng.pick(&dart)).clone();
                 let src = files[&f].clone();
-                let new = if self.rng.below(2) == 0 { format!("{src}\n// edit {n}\n") } else { src };
+                let new = if self.rng.below(2) == 0 {
+                    format!("{src}\n// edit {n}\n")
+                } else {
+                    src
+                };
                 self.write(&f, &new);
                 format!("rewriting {f}")
             }
@@ -572,12 +729,12 @@ impl Sim {
                 format!("a widget in {d}/_widgets")
             }
             11 if !pages.is_empty() => {
-                let p = self.rng.pick(&pages).to_string();
+                let p = (*self.rng.pick(&pages)).clone();
                 self.write(&p, "class P extends StatelessWidget { const P({super.key, required this.x}); final int x; }");
                 format!("breaking {p}")
             }
             12 => {
-                let f = self.rng.pick(&files.keys().collect::<Vec<_>>()).to_string();
+                let f = (*self.rng.pick(&files.keys().collect::<Vec<_>>())).clone();
                 self.remove(&f);
                 format!("deleting {f}")
             }
@@ -593,13 +750,23 @@ impl Sim {
                     // are not valid, some sit on a folder that can't have them (a `$param`, the root).
                     let words = ["aussen", "über", "a b", "r30", "s1", "x9", "produits"];
                     let word = *self.rng.pick(&words);
-                    let taken: Vec<&str> = dirs.iter().filter_map(|d| d.rsplit('/').next()).filter(|d| !d.is_empty() && !d.starts_with('$')).collect();
-                    let other = if taken.is_empty() { "r30".to_string() } else { self.rng.pick(&taken).to_string() };
+                    let taken: Vec<&str> = dirs
+                        .iter()
+                        .filter_map(|d| d.rsplit('/').next())
+                        .filter(|d| !d.is_empty() && !d.starts_with('$'))
+                        .collect();
+                    let other = if taken.is_empty() {
+                        "r30".to_string()
+                    } else {
+                        self.rng.pick(&taken).to_string()
+                    };
                     let body = match self.rng.below(4) {
                         0 => format!("const paths = {{'fr': '{word}'}};"),
                         1 => format!("const paths = {{'fr': '{other}', 'de': '{word}'}};"),
                         2 => "const paths = names;".to_string(),
-                        _ => format!("const caseSensitive = false;\nconst paths = {{'fr': '{other}'}};"),
+                        _ => format!(
+                            "const caseSensitive = false;\nconst paths = {{'fr': '{other}'}};"
+                        ),
                     };
                     self.write(&f, &body);
                     format!("adding {f} ({body})")
@@ -639,7 +806,11 @@ impl Sim {
                         "deleting models/category.dart".into()
                     }
                     _ => {
-                        let src = if self.rng.below(2) == 0 { "export 'category.dart';\n" } else { "// nothing\n" };
+                        let src = if self.rng.below(2) == 0 {
+                            "export 'category.dart';\n"
+                        } else {
+                            "// nothing\n"
+                        };
                         self.lib_write("models/all.dart", src);
                         format!("models/all.dart is {src:?}")
                     }
@@ -662,8 +833,20 @@ const MODELS: [&str; 2] = ["models/category.dart", "models/all.dart"];
 fn snapshot(sim: &Sim) -> Snapshot {
     let (mut files, mut dirs) = (BTreeMap::new(), vec![]);
     walk(&sim.root(), "", &mut files, &mut dirs);
-    let models = MODELS.iter().map(|m| (*m, fs::read_to_string(sim.dir.path().join("lib").join(m)).ok())).collect();
-    Snapshot { files, dirs, models }
+    let models = MODELS
+        .iter()
+        .map(|m| {
+            (
+                *m,
+                fs::read_to_string(sim.dir.path().join("lib").join(m)).ok(),
+            )
+        })
+        .collect();
+    Snapshot {
+        files,
+        dirs,
+        models,
+    }
 }
 
 fn restore(sim: &Sim, snap: &Snapshot) {
@@ -692,7 +875,9 @@ fn random_edits(seed: u64, config: &str) -> (usize, usize) {
     for step in 0..30 {
         let what = sim.edit();
         log.push(what.clone());
-        let r = sim.same(&format!("step {step} of seed {seed}: {what}\n(steps so far: {log:#?})"));
+        let r = sim.same(&format!(
+            "step {step} of seed {seed}: {what}\n(steps so far: {log:#?})"
+        ));
         if r.ok {
             oks += 1;
             good = snapshot(&sim);
@@ -703,7 +888,9 @@ fn random_edits(seed: u64, config: &str) -> (usize, usize) {
             // Put back the last folder that generated, like undoing a bad save.
             if failing >= 3 {
                 restore(&sim, &good);
-                sim.same(&format!("restoring the last good folder after step {step} of seed {seed}"));
+                sim.same(&format!(
+                    "restoring the last good folder after step {step} of seed {seed}"
+                ));
                 failing = 0;
             }
         }
@@ -715,13 +902,20 @@ fn random_edits(seed: u64, config: &str) -> (usize, usize) {
 fn random_edits_match_a_fresh_generation() {
     let (mut oks, mut errs) = (0, 0);
     for seed in 1..=8 {
-        let config = if seed % 3 == 0 { "name: demo\nfespalier:\n  output_manifest: lib/app.routes.g.dart\n" } else { NO_CONFIG };
+        let config = if seed % 3 == 0 {
+            "name: demo\nfespalier:\n  output_manifest: lib/app.routes.g.dart\n"
+        } else {
+            NO_CONFIG
+        };
         let (o, e) = random_edits(seed, config);
         oks += o;
         errs += e;
     }
     // The edits reach both kinds of run: an app that generates, and one that reports errors.
-    assert!(oks > 60 && errs > 20, "{oks} runs generated, {errs} reported errors");
+    assert!(
+        oks > 60 && errs > 20,
+        "{oks} runs generated, {errs} reported errors"
+    );
 }
 
 // --- the formatted text ------------------------------------------------------
@@ -738,7 +932,11 @@ fn code_is_formatted_once_however_often_it_comes_back() {
     };
     assert_eq!(go(&mut formats, "a.g.dart", "one"), "// formatted\none");
     assert_eq!(go(&mut formats, "a.g.dart", "one"), "// formatted\none");
-    assert_eq!(go(&mut formats, "b.g.dart", "one"), "// formatted\none", "another file is another entry");
+    assert_eq!(
+        go(&mut formats, "b.g.dart", "one"),
+        "// formatted\none",
+        "another file is another entry"
+    );
     assert_eq!(go(&mut formats, "a.g.dart", "two"), "// formatted\ntwo");
     assert_eq!(go(&mut formats, "a.g.dart", "two"), "// formatted\ntwo");
     assert_eq!(calls, 3);
@@ -766,7 +964,8 @@ fn a_symlinked_folder_is_still_a_folder() {
     let outside = tempfile::tempdir().unwrap();
     fs::write(outside.path().join("page.dart"), page("LinkedPage", "")).unwrap();
     std::os::unix::fs::symlink(outside.path(), dir.path().join("lib/app/linked")).unwrap();
-    let (code, diags, routes) = crate::build(&dir.path().join("lib/app"), &Config::default()).unwrap();
+    let (code, diags, routes) =
+        crate::build(&dir.path().join("lib/app"), &Config::default()).unwrap();
     assert!(diags.0.is_empty(), "{:?}", diags.0);
     assert_eq!(routes, 2);
     assert!(code.contains("LinkedRoute"));

@@ -10,9 +10,14 @@ import 'package:shop/app/layout.dart';
 /// The static type of the expression it's given: `dynamic` if inference failed.
 Type staticType<T>(T value) => T;
 
-typedef WatchProduct = AsyncValue<Product> Function(WidgetRef ref,
-    {required int id});
-typedef ReadProduct = Future<Product> Function(WidgetRef ref, {required int id});
+typedef WatchProduct = AsyncValue<Product> Function(
+  WidgetRef ref, {
+  required int id,
+});
+typedef ReadProduct = Future<Product> Function(
+  WidgetRef ref, {
+  required int id,
+});
 typedef WatchProducts = AsyncValue<List<Product>> Function(WidgetRef ref);
 typedef ReadProducts = Future<List<Product>> Function(WidgetRef ref);
 
@@ -40,8 +45,9 @@ void main() {
   });
 
   group('read', () {
-    testWidgets('completes with the typed value, loading it once',
-        (tester) async {
+    testWidgets('completes with the typed value, loading it once', (
+      tester,
+    ) async {
       final api = CountingApi();
       await pumpRouter(
         tester,
@@ -123,8 +129,9 @@ void main() {
       expect(container.exists(ProductRoute.data(2)), isFalse);
     });
 
-    testWidgets('without it the same navigation shows loading first',
-        (tester) async {
+    testWidgets('without it the same navigation shows loading first', (
+      tester,
+    ) async {
       await pumpRouter(tester, AppRoutes.router());
       ProductRoute(id: 2).go(tester.element(find.text('Browse products')));
       await tester.pump();

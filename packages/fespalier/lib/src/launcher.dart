@@ -38,7 +38,10 @@ const defaultBaseUrl =
 
 /// A problem the user can act on; printed without a stack trace.
 class LauncherException implements Exception {
+  /// Creates an exception that prints [message].
   LauncherException(this.message);
+
+  /// What to tell the user.
   final String message;
   @override
   String toString() => message;
@@ -58,6 +61,7 @@ String? fspTarget(String abi) => switch (abi) {
   _ => null,
 };
 
+/// Whether [target] (a release target from [fspTarget]) is a Windows build.
 bool isWindowsTarget(String target) => target.contains('windows');
 
 /// `fsp-<target>.tar.gz`, or `.zip` for Windows.
@@ -120,10 +124,11 @@ String cacheRoot(Map<String, String> env, {required String os}) {
       }
     case 'macos':
       final h = home();
-      if (h == null)
+      if (h == null) {
         throw LauncherException(
           'cannot find a cache directory; set FSP_CACHE_DIR',
         );
+      }
       base = '$h/Library/Caches';
     default:
       final xdg = env['XDG_CACHE_HOME'];
@@ -278,6 +283,7 @@ typedef Fetch = Future<List<int>> Function(Uri url);
 
 /// Finds (or downloads) the `fsp` for [version] and runs it.
 class Launcher {
+  /// Creates a launcher; every argument after [os] defaults to the real thing.
   Launcher({
     required this.version,
     required this.target,
@@ -301,20 +307,30 @@ class Launcher {
 
   /// The release target, `x86_64-unknown-linux-gnu`.
   final String target;
+
+  /// The process environment (`FSP_BINARY`, `FSP_DART`, `PATH`, ...).
   final Map<String, String> env;
 
   /// `Platform.operatingSystem`.
   final String os;
+
+  /// Downloads a URL.
   final Fetch fetch;
+
+  /// Reports progress (stderr by default).
   final void Function(String message) log;
 
   /// What `<executable> --version` printed, or `null` if it couldn't run.
   final Future<String?> Function(String executable) probe;
+
+  /// Unpacks a downloaded archive into a folder.
   final Future<void> Function(File archive, Directory into) extract;
 
   /// The version [pins] belong to (`''` for none), and target -> SHA-256 of its archive.
   /// Defaults to `release_checksums.dart`.
   final String pinnedVersion;
+
+  /// Target -> SHA-256 of that target's release archive, for [pinnedVersion].
   final Map<String, String> pins;
 
   /// A launcher for this machine and this package.
@@ -349,10 +365,11 @@ class Launcher {
   Future<String> locate() async {
     final given = env['FSP_BINARY'];
     if (given != null && given.isNotEmpty) {
-      if (!File(given).existsSync())
+      if (!File(given).existsSync()) {
         throw LauncherException(
           'FSP_BINARY is set to $given, which does not exist',
         );
+      }
       return given;
     }
     final cached = cachedBinary;
@@ -413,14 +430,16 @@ class Launcher {
       final unpacked = File(
         '${tmp.path}${os == 'windows' ? r'\' : '/'}${binaryName(target)}',
       );
-      if (!unpacked.existsSync())
+      if (!unpacked.existsSync()) {
         throw LauncherException('$name did not contain ${binaryName(target)}');
+      }
       if (!isWindowsTarget(target)) {
         final r = await Process.run('chmod', ['+x', unpacked.path]);
-        if (r.exitCode != 0)
+        if (r.exitCode != 0) {
           throw LauncherException(
             'could not make ${unpacked.path} executable: ${r.stderr}',
           );
+        }
       }
       unpacked.renameSync(to.path);
     } finally {
@@ -476,16 +495,18 @@ Future<String> packageVersion({Uri? library}) async {
       await Isolate.resolvePackageUri(
         Uri.parse('package:fespalier/fespalier.dart'),
       );
-  if (lib == null)
+  if (lib == null) {
     throw LauncherException(
       'cannot locate package:fespalier (run `flutter pub get`?)',
     );
+  }
   final pubspec = File.fromUri(lib.resolve('../pubspec.yaml'));
   final version = pubspec.existsSync()
       ? parsePubspecVersion(pubspec.readAsStringSync())
       : null;
-  if (version == null)
+  if (version == null) {
     throw LauncherException('cannot read the version from ${pubspec.path}');
+  }
   return version;
 }
 
@@ -538,10 +559,12 @@ Future<void> extractArchive(File archive, Directory into) async {
       "Expand-Archive -Force -LiteralPath '${archive.path}' -DestinationPath '${into.path}'",
     ]);
   }
-  if (r == null)
+  if (r == null) {
     throw LauncherException('need `tar` on PATH to unpack ${archive.path}');
-  if (r.exitCode != 0)
+  }
+  if (r.exitCode != 0) {
     throw LauncherException('could not unpack ${archive.path}: ${r.stderr}');
+  }
 }
 
 Future<ProcessResult?> _tryRun(String exe, List<String> args) async {

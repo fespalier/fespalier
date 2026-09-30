@@ -21,20 +21,23 @@ Future<void> boot(WidgetTester tester, String location) async {
 
 /// `page()` as a function: two routes, one widget, different constants.
 void main() {
-  testWidgets('the free route builds the screen with the free plan',
-      (tester) async {
+  testWidgets('the free route builds the screen with the free plan', (
+    tester,
+  ) async {
     await boot(tester, '/free');
     expect(find.text('Plan free'), findsOneWidget);
   });
 
-  testWidgets('the pro route builds the same screen with the pro plan',
-      (tester) async {
+  testWidgets('the pro route builds the same screen with the pro plan', (
+    tester,
+  ) async {
     await boot(tester, '/pro');
     expect(find.text('Plan pro'), findsOneWidget);
   });
 
-  testWidgets('the function\'s parameters are bound like a constructor\'s',
-      (tester) async {
+  testWidgets('the function\'s parameters are bound like a constructor\'s', (
+    tester,
+  ) async {
     await boot(tester, '/pro?coupon=SPRING');
     expect(find.text('Plan pro (coupon SPRING)'), findsOneWidget);
   });

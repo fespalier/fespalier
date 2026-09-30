@@ -22,7 +22,7 @@
 
 use std::path::Path;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde_json::json;
 
 use crate::config::Config;
@@ -35,14 +35,21 @@ pub fn run(project: &Path, json: bool) -> Result<()> {
     let cfg = Config::load(project)?;
     let app_dir = project.join(&cfg.app_dir);
     if !app_dir.is_dir() {
-        bail!("{} not found (set `fespalier: app_dir:` in pubspec.yaml, or run `fsp init`)", app_dir.display());
+        bail!(
+            "{} not found (set `fespalier: app_dir:` in pubspec.yaml, or run `fsp init`)",
+            app_dir.display()
+        );
     }
     let (_, diags, app) = analyze(&app_dir, &cfg)?;
     diag::render(&app_dir, &cfg.app_dir, &diags);
     if diags.has_errors() {
         bail!("{} error(s); no route table", diags.error_count());
     }
-    let out = if json { json_lines(&app, &cfg.app_dir) } else { table(&app) };
+    let out = if json {
+        json_lines(&app, &cfg.app_dir)
+    } else {
+        table(&app)
+    };
     for line in out {
         println!("{line}");
     }

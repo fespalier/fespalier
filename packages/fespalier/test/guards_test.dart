@@ -87,56 +87,59 @@ void main() {
     }
 
     GoRouter build(String initial) => GoRouter(
-          initialLocation: initial,
+      initialLocation: initial,
+      routes: [
+        GoRoute(path: '/login', builder: (c, s) => const Text('login')),
+        ShellRoute(
+          builder: (c, s, child) => Column(
+            children: [
+              const Text('shell'),
+              Expanded(child: child),
+            ],
+          ),
           routes: [
-            GoRoute(path: '/login', builder: (c, s) => const Text('login')),
-            ShellRoute(
-              builder: (c, s, child) => Column(children: [
-                const Text('shell'),
-                Expanded(child: child),
+            GoRoute(path: '/', builder: (c, s) => const Text('home')),
+            GoRoute(
+              path: '/members',
+              redirect: (c, s) => firstRedirect([
+                () => login(s.uri.toString(), 'group'),
+                () {
+                  ran.add('own');
+                  return null;
+                },
               ]),
+              builder: (c, s) => const Text('members'),
               routes: [
-                GoRoute(path: '/', builder: (c, s) => const Text('home')),
-                GoRoute(
-                  path: '/members',
-                  redirect: (c, s) => firstRedirect([
-                    () => login(s.uri.toString(), 'group'),
-                    () {
-                      ran.add('own');
-                      return null;
-                    },
-                  ]),
-                  builder: (c, s) => const Text('members'),
-                  routes: [
-                    // Nested in a guarded page: covered by the parent's redirect.
-                    GoRoute(
-                      path: 'sub',
-                      builder: (c, s) => const Text('sub'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            StatefulShellRoute.indexedStack(
-              builder: (c, s, shell) => Column(children: [
-                Text('tabs ${shell.currentIndex}'),
-                Expanded(child: shell),
-              ]),
-              branches: [
-                StatefulShellBranch(routes: [
-                  GoRoute(path: '/a', builder: (c, s) => const Text('a')),
-                ]),
-                StatefulShellBranch(routes: [
-                  GoRoute(
-                    path: '/b',
-                    redirect: (c, s) => login(s.uri.toString(), 'b'),
-                    builder: (c, s) => const Text('b'),
-                  ),
-                ]),
+                // Nested in a guarded page: covered by the parent's redirect.
+                GoRoute(path: 'sub', builder: (c, s) => const Text('sub')),
               ],
             ),
           ],
-        );
+        ),
+        StatefulShellRoute.indexedStack(
+          builder: (c, s, shell) => Column(
+            children: [
+              Text('tabs ${shell.currentIndex}'),
+              Expanded(child: shell),
+            ],
+          ),
+          branches: [
+            StatefulShellBranch(
+              routes: [GoRoute(path: '/a', builder: (c, s) => const Text('a'))],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/b',
+                  redirect: (c, s) => login(s.uri.toString(), 'b'),
+                  builder: (c, s) => const Text('b'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
 
     Future<GoRouter> pump(WidgetTester tester, String initial) async {
       signedIn = false;
@@ -171,8 +174,9 @@ void main() {
       expect(find.text('shell'), findsOneWidget);
     });
 
-    testWidgets('guards run in order and a nested child reuses its parent',
-        (tester) async {
+    testWidgets('guards run in order and a nested child reuses its parent', (
+      tester,
+    ) async {
       final router = await pump(tester, '/');
       signedIn = true;
       ran.clear();

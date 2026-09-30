@@ -301,7 +301,7 @@ void main() {
       ]);
       expect(r.exitCode, 0, reason: '${r.stderr}');
       final bytes = archive.readAsBytesSync();
-      return (url) async {
+      return (Uri url) async {
         final name = url.pathSegments.last;
         if (name == 'fsp-x86_64-unknown-linux-gnu.tar.gz') return bytes;
         if (name == 'fsp-x86_64-unknown-linux-gnu.tar.gz.sha256') {

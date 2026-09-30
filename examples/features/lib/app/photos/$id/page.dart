@@ -13,9 +13,7 @@ class PhotoPage extends StatelessWidget {
         title: Text('Photo $id'),
         actions: [
           TextButton(
-            onPressed: () => context.pop(),
-            child: const Text('Close'),
-          ),
+              onPressed: () => context.pop(), child: const Text('Close')),
         ],
       );
 }

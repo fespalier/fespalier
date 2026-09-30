@@ -21,11 +21,18 @@ fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
 fn diags_with(cfg: &Config, files: &[(&str, &str)]) -> Vec<String> {
     let dir = project(files);
     let (_, diags, _) = build(&dir.path().join("lib/app"), cfg).unwrap();
-    diags.0.iter().map(|d| d.to_string()).collect()
+    diags
+        .0
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect()
 }
 
 fn errors(files: &[(&str, &str)]) -> Vec<String> {
-    diags_with(&Config::default(), files).into_iter().filter(|d| d.starts_with('✗')).collect()
+    diags_with(&Config::default(), files)
+        .into_iter()
+        .filter(|d| d.starts_with('✗'))
+        .collect()
 }
 
 fn code_with(cfg: &Config, files: &[(&str, &str)]) -> String {
@@ -52,12 +59,14 @@ fn lacks(code: &str, needles: &[&str]) {
 }
 
 const PRODUCT: &str = "class ProductPage extends StatelessWidget {\n  const ProductPage({super.key, required this.product});\n  final ProductView product;\n}";
-const SELECT_ONE: &str =
-    "ProviderListenable<AsyncValue<ProductView>> data({required String productId}) => productProvider(productId);";
+const SELECT_ONE: &str = "ProviderListenable<AsyncValue<ProductView>> data({required String productId}) => productProvider(productId);";
 
 #[test]
 fn the_return_type_makes_a_selector_and_nothing_wraps_it() {
-    let c = code(&[("products/$productId/data.dart", SELECT_ONE), ("products/$productId/page.dart", PRODUCT)]);
+    let c = code(&[
+        ("products/$productId/data.dart", SELECT_ONE),
+        ("products/$productId/page.dart", PRODUCT),
+    ]);
     has(
         &c,
         &[
@@ -76,23 +85,49 @@ fn the_return_type_makes_a_selector_and_nothing_wraps_it() {
         ],
     );
     // No provider of ours in front of the app's.
-    lacks(&c, &["FutureProvider", "StreamProvider", ".autoDispose", ".future", "ref.invalidate(", "(Ref ref"]);
+    lacks(
+        &c,
+        &[
+            "FutureProvider",
+            "StreamProvider",
+            ".autoDispose",
+            ".future",
+            "ref.invalidate(",
+            "(Ref ref",
+        ],
+    );
 }
 
 #[test]
 fn the_function_and_provider_forms_are_unchanged() {
     let c = code(&[
-        ("a/$id/data.dart", "Future<int> data(Ref ref, {required int id}) async => id;"),
-        ("a/$id/page.dart", "class APage extends StatelessWidget { const APage(this.n, {super.key}); final int n; }"),
+        (
+            "a/$id/data.dart",
+            "Future<int> data(Ref ref, {required int id}) async => id;",
+        ),
+        (
+            "a/$id/page.dart",
+            "class APage extends StatelessWidget { const APage(this.n, {super.key}); final int n; }",
+        ),
     ]);
-    has(&c, &["ref.invalidate(_data", "ref.readData(", "ref.refresh(data(id).future)"]);
+    has(
+        &c,
+        &[
+            "ref.invalidate(_data",
+            "ref.readData(",
+            "ref.refresh(data(id).future)",
+        ],
+    );
     lacks(&c, &["Selected"]);
 }
 
 #[test]
 fn no_keys_select_the_provider_as_it_is() {
     let c = code(&[
-        ("products/data.dart", "ProviderListenable<AsyncValue<List<ProductView>>> data() => productsProvider;"),
+        (
+            "products/data.dart",
+            "ProviderListenable<AsyncValue<List<ProductView>>> data() => productsProvider;",
+        ),
         (
             "products/page.dart",
             "class ProductsPage extends StatelessWidget { const ProductsPage({super.key, required this.items}); final List<ProductView> items; }",
@@ -140,13 +175,29 @@ fn several_keys_and_query_parameters_key_a_record() {
 #[test]
 fn segment_types_come_from_the_selectors_parameters() {
     let c = code(&[
-        ("p/$id/data.dart", "ProviderListenable<AsyncValue<int>> data({required int id}) => intProvider(id);"),
-        ("p/$id/page.dart", "class PPage extends StatelessWidget { const PPage(this.n, {super.key}); final int n; }"),
+        (
+            "p/$id/data.dart",
+            "ProviderListenable<AsyncValue<int>> data({required int id}) => intProvider(id);",
+        ),
+        (
+            "p/$id/page.dart",
+            "class PPage extends StatelessWidget { const PPage(this.n, {super.key}); final int n; }",
+        ),
     ]);
-    has(&c, &["const PRoute({required this.id});", "final int id;", "final _data2 = (int id) => _i0.data(id: id);"]);
+    has(
+        &c,
+        &[
+            "const PRoute({required this.id});",
+            "final int id;",
+            "final _data2 = (int id) => _i0.data(id: id);",
+        ],
+    );
     // The segment's type is settled with the rest of the folder's files.
     let e = errors(&[
-        ("p/$id/data.dart", "ProviderListenable<AsyncValue<int>> data({required int id}) => intProvider(id);"),
+        (
+            "p/$id/data.dart",
+            "ProviderListenable<AsyncValue<int>> data({required int id}) => intProvider(id);",
+        ),
         (
             "p/$id/page.dart",
             "class PPage extends StatelessWidget { const PPage(this.n, {super.key, required String id}); final int n; }",
@@ -165,7 +216,11 @@ fn a_page_takes_t_by_type_and_a_mismatch_is_an_error() {
             "class ProductPage extends StatelessWidget { const ProductPage({super.key, required this.p}); final String p; }",
         ),
     ]);
-    assert!(e.iter().any(|m| m.contains("can't fill `p`") && m.contains("data.dart's ProductView")), "{e:?}");
+    assert!(
+        e.iter()
+            .any(|m| m.contains("can't fill `p`") && m.contains("data.dart's ProductView")),
+        "{e:?}"
+    );
 
     let e = errors(&[
         ("products/$productId/data.dart", SELECT_ONE),
@@ -174,7 +229,11 @@ fn a_page_takes_t_by_type_and_a_mismatch_is_an_error() {
             "class ProductPage extends StatelessWidget { const ProductPage({super.key, required this.data}); final String data; }",
         ),
     ]);
-    assert!(e.iter().any(|m| m.contains("`data` is String but data.dart yields ProductView")), "{e:?}");
+    assert!(
+        e.iter()
+            .any(|m| m.contains("`data` is String but data.dart yields ProductView")),
+        "{e:?}"
+    );
 }
 
 #[test]
@@ -186,15 +245,31 @@ fn a_parameter_that_is_no_segment_or_query_is_an_error_at_it() {
         ),
         ("products/$productId/page.dart", PRODUCT),
     ]);
-    let msg = e.iter().find(|m| m.contains("`flavour` isn't a segment of this path")).unwrap_or_else(|| panic!("{e:?}"));
-    assert!(msg.contains("data.dart:1") && msg.contains("String? flavour"), "{msg}");
+    let msg = e
+        .iter()
+        .find(|m| m.contains("`flavour` isn't a segment of this path"))
+        .unwrap_or_else(|| panic!("{e:?}"));
+    assert!(
+        msg.contains("data.dart:1") && msg.contains("String? flavour"),
+        "{msg}"
+    );
 
     // A positional parameter is no segment either.
     let e = errors(&[
-        ("products/$productId/data.dart", "ProviderListenable<AsyncValue<int>> data(String productId) => p(productId);"),
-        ("products/$productId/page.dart", "class ProductPage extends StatelessWidget { const ProductPage(this.n, {super.key}); final int n; }"),
+        (
+            "products/$productId/data.dart",
+            "ProviderListenable<AsyncValue<int>> data(String productId) => p(productId);",
+        ),
+        (
+            "products/$productId/page.dart",
+            "class ProductPage extends StatelessWidget { const ProductPage(this.n, {super.key}); final int n; }",
+        ),
     ]);
-    assert!(e.iter().any(|m| m.contains("data() takes segments as named parameters")), "{e:?}");
+    assert!(
+        e.iter()
+            .any(|m| m.contains("data() takes segments as named parameters")),
+        "{e:?}"
+    );
 }
 
 #[test]
@@ -206,7 +281,11 @@ fn a_selector_takes_no_ref() {
         ),
         ("products/$productId/page.dart", PRODUCT),
     ]);
-    assert!(e.iter().any(|m| m.contains("takes no `Ref`") && m.contains("data.dart:1")), "{e:?}");
+    assert!(
+        e.iter()
+            .any(|m| m.contains("takes no `Ref`") && m.contains("data.dart:1")),
+        "{e:?}"
+    );
 }
 
 #[test]
@@ -218,18 +297,28 @@ fn only_an_async_value_can_be_selected() {
         ),
         ("a/page.dart", PRODUCT),
     ]);
-    assert!(e.iter().any(|m| m.contains("must return `ProviderListenable<AsyncValue<T>>`")), "{e:?}");
+    assert!(
+        e.iter()
+            .any(|m| m.contains("must return `ProviderListenable<AsyncValue<T>>`")),
+        "{e:?}"
+    );
 }
 
 #[test]
 fn a_section_can_select_a_provider_too() {
     let c = code(&[
-        ("teams/$teamId/data.dart", "ProviderListenable<AsyncValue<Team>> data({required String teamId}) => teamProvider(teamId);"),
+        (
+            "teams/$teamId/data.dart",
+            "ProviderListenable<AsyncValue<Team>> data({required String teamId}) => teamProvider(teamId);",
+        ),
         (
             "teams/$teamId/layout.dart",
             "class TeamLayout extends StatelessWidget { const TeamLayout({super.key, required this.team, required this.child}); final Team team; final Widget child; }",
         ),
-        ("teams/$teamId/settings/page.dart", "class SettingsPage extends StatelessWidget { const SettingsPage({super.key, required this.team}); final Team team; }"),
+        (
+            "teams/$teamId/settings/page.dart",
+            "class SettingsPage extends StatelessWidget { const SettingsPage({super.key, required this.team}); final Team team; }",
+        ),
     ]);
     has(
         &c,
@@ -245,10 +334,19 @@ fn a_section_can_select_a_provider_too() {
 
 #[test]
 fn data_retry_none_leaves_a_selected_provider_alone() {
-    let files = [("products/$productId/data.dart", SELECT_ONE), ("products/$productId/page.dart", PRODUCT)];
-    let cfg = Config { data_retry: DataRetry::None, ..Config::default() };
+    let files = [
+        ("products/$productId/data.dart", SELECT_ONE),
+        ("products/$productId/page.dart", PRODUCT),
+    ];
+    let cfg = Config {
+        data_retry: DataRetry::None,
+        ..Config::default()
+    };
     // Nothing of ours to configure: the app's provider keeps its own retry and keepAlive.
-    lacks(&code_with(&cfg, &files), &["retryCount", "No automatic retry"]);
+    lacks(
+        &code_with(&cfg, &files),
+        &["retryCount", "No automatic retry"],
+    );
 }
 
 #[test]
@@ -257,7 +355,10 @@ fn a_selector_keyed_by_a_catch_all_gets_the_list_back() {
     // function form; the app's own function gets the parts back.
     let data = "ProviderListenable<AsyncValue<Article>> data({required List<String> rest, int? page}) => articleProvider(rest, page);";
     let p = "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest, required this.article}); final List<String> rest; final Article article; }";
-    let c = code(&[("docs/$$rest/page.dart", p), ("docs/$$rest/data.dart", data)]);
+    let c = code(&[
+        ("docs/$$rest/page.dart", p),
+        ("docs/$$rest/data.dart", data),
+    ]);
     has(
         &c,
         &[
@@ -271,9 +372,15 @@ fn a_selector_keyed_by_a_catch_all_gets_the_list_back() {
 
     // Alone, the key is the string itself.
     let data = "ProviderListenable<AsyncValue<Article>> data({required List<String> rest}) => articleProvider(rest);";
-    let c = code(&[("docs/$$rest/page.dart", p), ("docs/$$rest/data.dart", data)]);
+    let c = code(&[
+        ("docs/$$rest/page.dart", p),
+        ("docs/$$rest/data.dart", data),
+    ]);
     has(
         &c,
-        &["final _data2 = (String rest) => _i0.data(rest: restParts(rest));", "ref.watch(_data2(restKey(v.rest)))"],
+        &[
+            "final _data2 = (String rest) => _i0.data(rest: restParts(rest));",
+            "ref.watch(_data2(restKey(v.rest)))",
+        ],
     );
 }

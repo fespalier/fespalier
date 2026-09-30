@@ -1,0 +1,105 @@
+# fespalier — agent guide
+
+File-tree routing for Flutter. Plain widgets and functions in `lib/app/` (`page.dart`, `data.dart`,
+`layout.dart`, `guard.dart`, ...) become one typed `go_router` entry point, `lib/app.g.dart`,
+written by a Rust generator (`fsp`). A Dart package carries the runtime that generated file
+imports. `README.md` is the user documentation; read the section for the file kind you touch
+before changing how it behaves.
+
+## Layout
+
+| Path | What it is |
+| --- | --- |
+| `cli/` | The generator, Rust crate `fespalier`, binary `fsp`. Pipeline: `scan.rs` (the file tree) → `dart.rs` (tree-sitter reads each Dart file) → `resolve.rs` (binds parameters, checks how the files fit) → `emit.rs` and `manifest.rs` (write the output through `templates/`). Also `scaffold.rs` (`fsp new`), `init.rs`, `session.rs` and `parse_cache.rs` (incremental `fsp watch`), `locale.rs`, `enums.rs`, `extra.rs`. Unit tests sit next to the code as `*_tests.rs`; `cli/tests/` spawns the binary. |
+| `cli/templates/` | minijinja templates: `app.g.dart.jinja`, the manifest, and the files `fsp new` / `fsp init` write (`new/`, `init/`). |
+| `packages/fespalier/` | The Dart runtime (`DataView`, segment parsing, `TypedLocation`, `testing.dart`) and `bin/fespalier.dart`, the `dart run fespalier` launcher that downloads the matching `fsp`. Not published to a registry: apps use it as a git dependency at a release tag. |
+| `examples/{minimal,shop,features,tabs}/` | Runnable apps with widget tests. Each commits its `lib/app.g.dart` (`tabs` also a manifest library); a test fails when one is stale. |
+| `editors/vscode/`, `editors/intellij/` | Editor plugins (TypeScript, Kotlin) that show `fsp --json` diagnostics. |
+| `scripts/` | Python and shell helpers for releases (Homebrew/Scoop rendering, checksum pinning, staged-asset verification) and their tests. |
+| `ci/commit-message-parse/` | The squash-message parser the `pr-title` workflow runs; a standalone npm project pinned to release-please's grammar. |
+| `.github/workflows/` | `ci.yml` (the gate), `quality.yml` (org lint and trivy), `pr-title.yml`, `issue-governance.yml`, and the release workflows. |
+
+## Commands
+
+| Command | What it proves |
+| --- | --- |
+| `just ci` | **The gate.** It runs what `ci.yml` runs on the code. Nothing is "verified" until it exits 0 on the final head. |
+| `just lint` | `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` in `cli/` |
+| `just test` | The generator's tests in `cli/` (unit, CLI, version checks) |
+| `just deny` | `cargo deny check` (licences, advisories, sources; `cli/deny.toml`) |
+| `just check-examples` | `fsp check` on every example |
+| `just flutter` | In the package and every example: `flutter pub get`, `dart format --set-exit-if-changed`, `flutter analyze`, `flutter test` |
+| `just packaging` | The Python tests for Homebrew/Scoop rendering, checksum pinning and release staging |
+| `just gen-examples` | Regenerate every example's committed `lib/app.g.dart` |
+| `just fmt` | `cargo fmt` and `dart format` over everything |
+| `just vscode`, `just intellij` | The editor plugins (need Node / JDK 21; CI runs them, `just ci` does not) |
+
+The toolchains are pinned: Rust in `cli/rust-toolchain.toml` (CI reads the channel from that file,
+and `rust-version` in `cli/Cargo.toml` moves with it), Flutter in `env.FLUTTER_VERSION` of
+`.github/workflows/ci.yml`. `just ci` also needs `just`, `cargo-deny` and `python3` on `PATH`.
+CI additionally scaffolds every file kind with `fsp new` and `fsp init` and checks the result
+with `flutter analyze` and `dart format`; that job has no `just` recipe because it writes into
+the examples.
+
+Run `just ci`, not a reconstruction of it: the flags you drop are the ones that were set on purpose.
+
+## Running one suite
+
+- One Rust unit test: `cd cli && cargo test <name>` (a module: `cargo test resolve::`). One
+  integration file: `cargo test --test cli`. Tests that compare with `dart format` skip when
+  `dart` is not on `PATH`, so put Flutter's `bin/` there before trusting a green run.
+- The package: `cd packages/fespalier && flutter pub get && flutter test`; one file:
+  `flutter test test/guards_test.dart`.
+- One example: `cd examples/<name> && flutter pub get && flutter test`.
+- The generator on an example: `cd cli && cargo run -- check --project ../examples/shop`.
+- Release scripts: `python3 scripts/test_packaging.py` (and the other `scripts/test_*.py`).
+- The editors: `cd editors/vscode && npm ci && npm test`; `cd editors/intellij && ./gradlew build`.
+
+A filtered run is feedback, not verification; `just ci` still has to pass.
+
+## Conventions
+
+- **Conventional Commit PR titles.** The repository squash-merges, so the PR title becomes the one
+  commit on `main`, and release-please reads only that. `feat:` and `fix:` decide the version;
+  `docs:`, `ci:`, `build:`, `style:`, `refactor:`, `perf:`, `test:`, `chore:` and `revert:` are
+  patches. `pr-title.yml` refuses anything else and also parses the whole squash message with
+  release-please's own grammar, so a body line starting with a call-like token with nested
+  parentheses (`A(B(c)) ...`) fails it. Commits on a branch need not be conventional; the title
+  and the body must parse. Do not bump versions or edit `CHANGELOG.md` or
+  `.release-please-manifest.json` by hand: release-please does (see "Releasing" in the README).
+- **Squash merges**, so cite "PR #N" rather than a branch commit.
+- **Actions are pinned to a full commit SHA** with a `# vX.Y.Z` comment, resolved with
+  `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>` (add `^{}` for an annotated
+  tag), preferring the versions the org repositories already pin. Workflows declare
+  `permissions: {}` or `contents: read` and grant more per job, set `timeout-minutes` and a
+  `concurrency` group, use `persist-credentials: false` on checkouts that do not push, and never
+  put `${{ }}` inside `run:` (pass values through `env:`). The org lint runs zizmor and
+  actionlint, so run them on workflow changes. `on.pull_request.paths` is never used: gate jobs
+  with an `if:` over the paths-filter job in `quality.yml`.
+- **Regenerate the examples.** After changing the emitter, a template or `manifest.rs`, run
+  `just gen-examples` and commit the new `lib/app.g.dart` files; a generator test fails on a stale
+  one. Generated files stay unformatted (the `format:` option is off) so they do not depend on the
+  Dart SDK; `dart format` checks skip `*.g.dart`, except that `examples/minimal` sets
+  `format: true`.
+- **Scaffolds are formatted.** What `fsp init` and `fsp new` write must be what `dart format`
+  leaves alone; `cli/templates/new/_macros.dart.jinja` lays out long names the way the formatter
+  does. Change a template, and `scaffolded_files_are_dart_format_clean` tells you.
+- **Rust.** Edition 2024, `rustfmt.toml` (max width 100), `[lints]` in `cli/Cargo.toml`
+  (`unsafe_code` forbidden, clippy pedantic as a warning, `unwrap_used` / `expect_used` warn).
+  Allow a lint only with a reason, at module level or in `[lints]`. Tests may unwrap.
+- **Dart.** `flutter_lints` everywhere; the package also runs strict casts, inference and raw
+  types, and requires a doc comment on every public member (`public_member_api_docs` is an
+  error). File names are `snake_case`. The package is published nowhere (`publish_to: 'none'`).
+- **Licence** is MIT, copyright holder Vaam.
+
+## Things that bite
+
+- `cargo` only honours `cli/rust-toolchain.toml` from inside `cli/`; run it there, not with
+  `--manifest-path` from the root.
+- `dart format` picks its style from the package's language version, so format after
+  `flutter pub get`; the examples declare an older SDK than the package.
+- Adding a file kind or a binding rule touches the resolver, the emitter, the README section,
+  the examples and usually `manifest.rs` (the `fsp routes --json` fields); the editors read that
+  JSON, so keep it additive.
+- Every place that spells out the release version is annotated for release-please and checked by
+  `cli/tests/versions.rs`; if that test fails after your change, you moved or removed an annotation.

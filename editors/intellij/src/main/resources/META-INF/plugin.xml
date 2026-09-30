@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.vaamapps.fespalier</id>
     <name>fespalier</name>
-    <vendor url="https://github.com/vaam-apps/fespalier">vaam-apps</vendor>
+    <vendor url="https://github.com/vaam-apps/fespalier">Vaam</vendor>
 
     <description><![CDATA[
     <p>Shows what <a href="https://github.com/vaam-apps/fespalier">fespalier</a> finds in your

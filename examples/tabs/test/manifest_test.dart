@@ -24,18 +24,22 @@ void main() {
     final books = AppManifest.byPath['/library/books']!;
     expect(books.type, BooksRoute);
     expect(books.layouts, ['(tabs)', '(tabs)/library']);
-    expect(
-      books.tabs.map((t) => '${t.layout}:${t.index}:${t.branch}'),
-      ['(tabs):3:library', '(tabs)/library:0:books'],
-    );
+    expect(books.tabs.map((t) => '${t.layout}:${t.index}:${t.branch}'), [
+      '(tabs):3:library',
+      '(tabs)/library:0:books',
+    ]);
 
     // navigator.dart: /profile/edit is in the Profile tab but on the root navigator;
     // /profile/security stays inside the tab's own.
-    expect(AppManifest.byType[EditProfileRoute]!.presentation,
-        RoutePresentation.root);
+    expect(
+      AppManifest.byType[EditProfileRoute]!.presentation,
+      RoutePresentation.root,
+    );
     expect(AppManifest.byType[EditProfileRoute]!.tabs.single.branch, 'profile');
-    expect(AppManifest.byType[SecurityRoute]!.presentation,
-        RoutePresentation.page);
+    expect(
+      AppManifest.byType[SecurityRoute]!.presentation,
+      RoutePresentation.page,
+    );
 
     // Outside `(tabs)/`: full screen, in no tab.
     final settings = AppManifest.byType[SettingsRoute]!;

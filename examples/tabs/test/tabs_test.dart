@@ -29,10 +29,9 @@ Future<void> boot(WidgetTester tester, String location) async {
 String get location => router.routeInformationProvider.value.uri.toString();
 
 Future<void> tapTab(WidgetTester tester, String label) async {
-  await tester.tap(find.descendant(
-    of: find.byType(NavigationBar),
-    matching: find.text(label),
-  ));
+  await tester.tap(
+    find.descendant(of: find.byType(NavigationBar), matching: find.text(label)),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -48,8 +47,9 @@ void main() {
     expect(location, '/');
   });
 
-  testWidgets('tapping a tab changes the location and the page',
-      (tester) async {
+  testWidgets('tapping a tab changes the location and the page', (
+    tester,
+  ) async {
     await boot(tester, '/');
 
     await tapTab(tester, 'Search');
@@ -68,8 +68,9 @@ void main() {
     expect(selected(tester), 0);
   });
 
-  testWidgets('a tab keeps its state while you look at another one',
-      (tester) async {
+  testWidgets('a tab keeps its state while you look at another one', (
+    tester,
+  ) async {
     await boot(tester, '/search');
     await tester.tap(find.byTooltip('+'));
     await tester.tap(find.byTooltip('+'));
@@ -84,8 +85,9 @@ void main() {
     expect(find.text('Search count 2'), findsOneWidget);
   });
 
-  testWidgets('a tab keeps its own stack: /profile/security stays open',
-      (tester) async {
+  testWidgets('a tab keeps its own stack: /profile/security stays open', (
+    tester,
+  ) async {
     await boot(tester, '/profile');
     await tester.tap(find.text('Security'));
     await tester.pumpAndSettle();
@@ -98,8 +100,9 @@ void main() {
     expect(find.text('Security'), findsOneWidget);
   });
 
-  testWidgets('a nested route shows the bar with its tab selected',
-      (tester) async {
+  testWidgets('a nested route shows the bar with its tab selected', (
+    tester,
+  ) async {
     await boot(tester, '/profile/security');
     expect(find.text('Security'), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
@@ -108,8 +111,9 @@ void main() {
 
   group('navigator.dart: a route on the root navigator', () {
     // /profile/edit is under /profile in the URL, and full screen.
-    testWidgets('renders above the tab bar, and back returns to the tab',
-        (tester) async {
+    testWidgets('renders above the tab bar, and back returns to the tab', (
+      tester,
+    ) async {
       await boot(tester, '/profile');
       await tester.tap(find.text('Edit profile'));
       await tester.pumpAndSettle();
@@ -145,8 +149,9 @@ void main() {
       expect(selected(tester), 2);
     });
 
-    testWidgets('the app can read and supply the root navigator key',
-        (tester) async {
+    testWidgets('the app can read and supply the root navigator key', (
+      tester,
+    ) async {
       await boot(tester, '/');
       expect(AppRoutes.rootNavigatorKey.currentState, isNotNull);
       expect(router.configuration.navigatorKey, AppRoutes.rootNavigatorKey);
@@ -159,8 +164,9 @@ void main() {
   });
 
   group('container: a custom branch container', () {
-    testWidgets('cross-fades between tabs, each keeping its state',
-        (tester) async {
+    testWidgets('cross-fades between tabs, each keeping its state', (
+      tester,
+    ) async {
       await boot(tester, '/search');
       expect(find.byType(CrossFadeContainer), findsOneWidget);
       await tester.tap(find.byTooltip('+'));
@@ -168,10 +174,12 @@ void main() {
       expect(find.text('Search count 1'), findsOneWidget);
 
       // Half way through the fade both tabs are painted.
-      await tester.tap(find.descendant(
-        of: find.byType(NavigationBar),
-        matching: find.text('Profile'),
-      ));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Profile'),
+        ),
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('Search count 1'), findsOneWidget);
@@ -209,8 +217,9 @@ void main() {
         .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label))
         .selected;
 
-    testWidgets('initialLocation: the Library tab opens on Authors',
-        (tester) async {
+    testWidgets('initialLocation: the Library tab opens on Authors', (
+      tester,
+    ) async {
       await boot(tester, '/');
       await tapTab(tester, 'Library');
       expect(location, '/library/authors');
@@ -225,8 +234,9 @@ void main() {
       expect(chipSelected(tester, 'Books'), isTrue);
     });
 
-    testWidgets('an inner tab keeps its state, inside a kept outer tab',
-        (tester) async {
+    testWidgets('an inner tab keeps its state, inside a kept outer tab', (
+      tester,
+    ) async {
       await boot(tester, '/library/books');
       await tester.tap(find.byTooltip('+ book'));
       await tester.tap(find.byTooltip('+ book'));
@@ -274,8 +284,9 @@ void main() {
       expect(find.text('Edit profile', skipOffstage: false), findsNothing);
     });
 
-    testWidgets('an inner tab is not full screen: the outer bar stays',
-        (tester) async {
+    testWidgets('an inner tab is not full screen: the outer bar stays', (
+      tester,
+    ) async {
       await boot(tester, '/library/authors');
       expect(find.byType(NavigationBar), findsOneWidget);
       expect(find.byType(ChoiceChip), findsNWidgets(2));

@@ -5,8 +5,5 @@ import 'app.g.dart';
 
 final _router = AppRoutes.router();
 
-void main() => runApp(
-      ProviderScope(
-        child: MaterialApp.router(routerConfig: _router),
-      ),
-    );
+void main() =>
+    runApp(ProviderScope(child: MaterialApp.router(routerConfig: _router)));

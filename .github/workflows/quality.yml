@@ -1,0 +1,115 @@
+# Calls the org-wide quality workflows in vaam-apps/.github.
+#
+# The implementations live in one place; what this file owns is the answer to
+# "has anything meaningful changed", which is necessarily per-repo.
+#
+# Gating is a per-job `if:` over a paths-filter job, never `on.pull_request.paths`.
+# A skipped job still reports and satisfies a required status check; a workflow
+# that never triggers reports nothing and blocks the PR forever on a check that
+# will never arrive.
+name: quality
+
+on:
+  pull_request:
+    branches: [main]
+  # The default branch has otherwise never been security-scanned: a fork PR
+  # gets no secrets (app-client-id/app-private-key), so Trivy silently never
+  # runs for it, and nothing else scans the default branch once a fork PR
+  # merges. This closes that gap by scanning on every push to it too.
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: quality-${{ github.ref }}
+  # PR-only: on the default branch the group key is identical for every
+  # merge, so cancelling would let one merge abort the scan still verifying
+  # the merge before it.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: what changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      docs: ${{ steps.filter.outputs.docs }}
+      iac: ${{ steps.filter.outputs.iac }}
+      any: ${{ steps.filter.outputs.any }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            # Positive lists, never '**' plus '!' exclusions: paths-filter ORs
+            # its rules through picomatch, so '**' matches everything and the
+            # negations never subtract.
+            code:
+              - 'cli/**'
+              - 'packages/**'
+              - 'examples/**'
+              - 'editors/**'
+              - 'scripts/**'
+              - 'install.sh'
+              - 'install.ps1'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
+              - '**/pubspec.yaml'
+              - '**/analysis_options.yaml'
+              - 'justfile'
+            docs:
+              - '**/*.md'
+            iac:
+              - '**/*.yaml'
+              - '**/*.yml'
+              - '.github/workflows/**'
+            any:
+              - '**'
+
+  # No SAST job here. CodeQL has no Dart analyser; the Rust generator is linted by
+  # clippy (pedantic, `-D warnings`) and audited by `cargo deny` in `ci.yml`, and the
+  # editors' TypeScript and Kotlin are compiled and tested there. `ci.yml` is what
+  # actually analyses and tests the code.
+
+  lint:
+    name: lint
+    needs: changes
+    # PR-only: its `fix` input defaults to true, and on a push
+    # github.event.pull_request.head.repo.full_name is empty, so the
+    # reusable workflow's own "commit fixes onto the PR branch" step runs
+    # `git checkout -q -B superlinter-fixes ""` and fails. Linting is a
+    # PR-time concern anyway; the scanners are what need default-branch
+    # coverage.
+    if: github.event_name == 'pull_request' && needs.changes.outputs.any == 'true'
+    permissions:
+      contents: read
+      statuses: write
+    uses: vaam-apps/.github/.github/workflows/lint.yml@01d7a15ee827152447d3b3b7031fdc8a02d98dd7 # vaam-apps/.github main
+    with:
+      filter-regex-exclude: '(^|/)(AGENTS|CLAUDE)\.md$'
+    secrets:
+      app-client-id: ${{ secrets.RELEASE_PLEASE_APP_CLIENT_ID }}
+      app-private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+
+  trivy:
+    name: trivy
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.iac == 'true'
+    permissions:
+      security-events: write
+      contents: read
+    uses: vaam-apps/.github/.github/workflows/trivy.yml@01d7a15ee827152447d3b3b7031fdc8a02d98dd7 # vaam-apps/.github main
+    with:
+      scanners: "vuln,secret,misconfig"
+      upload-sarif: true
+    secrets:
+      app-client-id: ${{ secrets.RELEASE_PLEASE_APP_CLIENT_ID }}
+      app-private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}

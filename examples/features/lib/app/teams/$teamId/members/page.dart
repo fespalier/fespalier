@@ -8,5 +8,6 @@ class MembersPage extends StatelessWidget {
   final Team team;
 
   @override
-  Widget build(BuildContext context) => Text('Members: ${team.members.join(', ')}');
+  Widget build(BuildContext context) =>
+      Text('Members: ${team.members.join(', ')}');
 }

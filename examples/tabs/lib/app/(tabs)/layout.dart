@@ -47,7 +47,10 @@ class TabsLayout extends StatelessWidget {
             NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
             NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
             NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
-            NavigationDestination(icon: Icon(Icons.library_books), label: 'Library'),
+            NavigationDestination(
+              icon: Icon(Icons.library_books),
+              label: 'Library',
+            ),
           ],
         ),
       );

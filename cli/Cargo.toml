@@ -1,7 +1,9 @@
 [package]
 name = "fespalier"
 version = "0.3.0" # x-release-please-version
-edition = "2021"
+edition = "2024"
+rust-version = "1.98.1"
+publish = false
 description = "File-tree routing for Flutter: reads lib/app/, checks how the files fit together, emits one mountable lib/app.g.dart"
 license = "MIT"
 repository = "https://github.com/vaam-apps/fespalier"
@@ -29,3 +31,46 @@ tree-sitter-dart = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# The generator does not panic on input it did not construct itself (test code may: see
+# clippy.toml).
+unwrap_used = "warn"
+expect_used = "warn"
+# Pedantic lints this code base trips on purpose or in bulk. Fixing them would be churn in a
+# resolver and emitter that hundreds of tests pin, so each is allowed here, with its reason,
+# rather than at dozens of use sites.
+#
+# Every fallible function returns anyhow's `Result` with a message for the person running
+# `fsp`; a per-fn `# Errors` section would restate it (and this is a binary, not a library).
+missing_errors_doc = "allow"
+# The resolver and the scaffolder walk one tree and are long because they share its state;
+# splitting them would only move the locals into a struct.
+too_many_lines = "allow"
+# Config and scaffold structs mirror CLI flags and pubspec keys, which are booleans.
+struct_excessive_bools = "allow"
+# Local helper fns and consts sit next to the one statement that uses them.
+items_after_statements = "allow"
+# Dart source and messages are built by appending or collecting `format!` pieces; a `write!`
+# per piece is noisier.
+format_push_string = "allow"
+format_collect = "allow"
+# `fespalier.output` must end in a lowercase `.dart`: that is the extension, not a guess.
+case_sensitive_file_extension_comparisons = "allow"
+# Spans and line numbers come from files that fit in memory on any target.
+cast_possible_truncation = "allow"
+# Short, local names (`r`, `d`, `sec`, `sid`) are the house style for the resolver's loops.
+similar_names = "allow"
+many_single_char_names = "allow"
+# Helper methods on a walker keep `self` for a uniform call style; by-value and `&Option`
+# parameters are what the callers already hold.
+unused_self = "allow"
+needless_pass_by_value = "allow"
+ref_option = "allow"
+unnecessary_wraps = "allow"
+match_same_arms = "allow"
+assigning_clones = "allow"

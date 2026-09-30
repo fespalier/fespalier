@@ -45,8 +45,9 @@ void main() {
       expect(find.byType(LoginPage), findsNothing);
     });
 
-    testWidgets('guards navigation inside the app, not only deep links',
-        (tester) async {
+    testWidgets('guards navigation inside the app, not only deep links', (
+      tester,
+    ) async {
       final c = await boot(tester, '/');
       c.read(session.notifier).set(true);
       const InboxRoute().go(tester.element(find.text('Home')));
@@ -68,8 +69,9 @@ void main() {
   });
 
   group('inherited guards run outermost first', () {
-    testWidgets('the group guard sends you to login before the folder guard',
-        (tester) async {
+    testWidgets('the group guard sends you to login before the folder guard', (
+      tester,
+    ) async {
       final c = await boot(tester, '/admin');
       // (members)/guard.dart wins over admin/guard.dart, which would say /inbox.
       expect(find.text('Log in to see /admin'), findsOneWidget);
@@ -111,8 +113,9 @@ void main() {
       expect(find.text('Shop: acme'), findsOneWidget);
     });
 
-    testWidgets('the target is redirected in turn (its guard runs)',
-        (tester) async {
+    testWidgets('the target is redirected in turn (its guard runs)', (
+      tester,
+    ) async {
       await boot(tester, '/old-shops/closed');
       expect(find.text('Home'), findsOneWidget);
     });
@@ -125,7 +128,8 @@ void main() {
 
     testWidgets('works from inside the app too', (tester) async {
       await boot(tester, '/');
-      const OldShopsShopRoute(shop: 'acme').go(tester.element(find.text('Home')));
+      const OldShopsShopRoute(shop: 'acme')
+          .go(tester.element(find.text('Home')));
       await tester.pumpAndSettle();
       expect(find.text('Welcome to acme'), findsOneWidget);
     });

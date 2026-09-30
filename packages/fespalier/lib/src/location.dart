@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 /// Base of every generated route class (`ProductRoute(id: 42)`).
 abstract class TypedLocation {
+  /// Creates a location; subclasses are `const` too.
   const TypedLocation();
 
   /// Full location, including the mount prefix, in the canonical spelling: the
@@ -23,9 +24,15 @@ abstract class TypedLocation {
   void go(BuildContext context, {String? locale}) =>
       context.go(locationFor(locale));
 
+  /// Pushes this location onto the stack and completes with what the page pops with.
+  ///
+  /// The optional [locale] picks one of the route's localized spellings.
   Future<T?> push<T extends Object?>(BuildContext context, {String? locale}) =>
       context.push<T>(locationFor(locale));
 
+  /// Replaces the current location with this one.
+  ///
+  /// The optional [locale] picks one of the route's localized spellings.
   void replace(BuildContext context, {String? locale}) =>
       context.replace(locationFor(locale));
 }
@@ -40,7 +47,8 @@ String joinLocation(String base, String path) {
 /// Whether two locale tags are the same: without regard to case, and `_` is `-`
 /// (`fr_CA` is `fr-ca`).
 bool sameLocale(String a, String b) =>
-    a.replaceAll('_', '-').toLowerCase() == b.replaceAll('_', '-').toLowerCase();
+    a.replaceAll('_', '-').toLowerCase() ==
+    b.replaceAll('_', '-').toLowerCase();
 
 /// The spelling of one localized path segment in [locale], which a generated
 /// `locationFor` calls for each one. [spellings] is the folder's `paths` (locale

@@ -1,19 +1,20 @@
+{% from "new/_macros.dart" import classdecl, ctor %}
 import 'package:flutter/material.dart';
 
 {% if function %}
 Widget error({required Object error, required VoidCallback retry}) => Center(
-      child: TextButton(onPressed: retry, child: Text('$error · retry')),
-    );
+  child: TextButton(onPressed: retry, child: Text('$error · retry')),
+);
 {% else %}
-class {{ stem }}Error extends StatelessWidget {
-  const {{ stem }}Error({super.key, required this.error, required this.retry});
+{{ classdecl(stem ~ "Error", "StatelessWidget") }}
+{{ ctor(stem ~ "Error", ["super.key", "required this.error", "required this.retry"]) }}
 
   final Object error;
   final VoidCallback retry;
 
   @override
   Widget build(BuildContext context) => Center(
-        child: TextButton(onPressed: retry, child: Text('$error · retry')),
-      );
+    child: TextButton(onPressed: retry, child: Text('$error · retry')),
+  );
 }
 {% endif %}

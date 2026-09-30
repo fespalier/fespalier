@@ -40,26 +40,30 @@ class _RestorableAppState extends State<RestorableApp> {
           home: mui.MaterialApp.router(
             restorationScopeId: 'app',
             routerConfig: router,
-            localizationsDelegates: const [DefaultMaterialLocalizations.delegate],
+            localizationsDelegates: const [
+              DefaultMaterialLocalizations.delegate
+            ],
           ),
         ),
       );
 }
 
 Future<void> tapTab(WidgetTester tester, String label) async {
-  await tester.tap(find.descendant(
-    of: find.byType(NavigationBar),
-    matching: find.text(label),
-  ));
+  await tester.tap(
+    find.descendant(of: find.byType(NavigationBar), matching: find.text(label)),
+  );
   await tester.pumpAndSettle();
 }
 
 int selected(WidgetTester tester) =>
     tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex;
 
-String location(WidgetTester tester) => GoRouter.of(
-      tester.element(find.byType(NavigationBar)),
-    ).routeInformationProvider.value.uri.toString();
+String location(WidgetTester tester) =>
+    GoRouter.of(tester.element(find.byType(NavigationBar)))
+        .routeInformationProvider
+        .value
+        .uri
+        .toString();
 
 void main() {
   testWidgets('a route survives state restoration', (tester) async {
@@ -79,8 +83,9 @@ void main() {
     expect(selected(tester), 2);
   });
 
-  testWidgets('a route on the root navigator survives it, with its tab below',
-      (tester) async {
+  testWidgets('a route on the root navigator survives it, with its tab below', (
+    tester,
+  ) async {
     await tester.pumpWidget(const RestorableApp());
     await tester.pumpAndSettle();
 
@@ -101,7 +106,9 @@ void main() {
     expect(selected(tester), 2);
   });
 
-  testWidgets('an extra survives it, saved by extra_codec.dart', (tester) async {
+  testWidgets('an extra survives it, saved by extra_codec.dart', (
+    tester,
+  ) async {
     await tester.pumpWidget(const RestorableApp());
     await tester.pumpAndSettle();
 
@@ -121,8 +128,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('without the codec go_router keeps the JSON, not the object',
-      (tester) async {
+  testWidgets('without the codec go_router keeps the JSON, not the object', (
+    tester,
+  ) async {
     await tester.pumpWidget(const RestorableApp(codec: false));
     await tester.pumpAndSettle();
 
@@ -140,8 +148,9 @@ void main() {
     expect(find.text('Draft for Ada'), findsNothing);
   });
 
-  testWidgets('a tab branch survives it: the tab and its own stack',
-      (tester) async {
+  testWidgets('a tab branch survives it: the tab and its own stack', (
+    tester,
+  ) async {
     await tester.pumpWidget(const RestorableApp());
     await tester.pumpAndSettle();
 
@@ -163,8 +172,9 @@ void main() {
     expect(location(tester), '/profile/security');
   });
 
-  testWidgets('what a page keeps in a RestorableProperty comes back',
-      (tester) async {
+  testWidgets('what a page keeps in a RestorableProperty comes back', (
+    tester,
+  ) async {
     await tester.pumpWidget(const RestorableApp());
     await tester.pumpAndSettle();
     await tapTab(tester, 'Search');

@@ -15,12 +15,20 @@ on:
 permissions:
   contents: read
 
+# Never cancel a publish half-way: a second run for the same ref queues behind the first.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   verify:
     name: Verify the tag
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: The tag matches packages/fespalier/pubspec.yaml
         run: |
@@ -40,7 +48,7 @@ jobs:
     needs: verify
     permissions:
       id-token: write # the OIDC token pub.dev verifies
-    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
     with:
       working-directory: packages/fespalier
       # To gate every publish behind reviewers, create a GitHub environment named `pub.dev`,

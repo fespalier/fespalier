@@ -29,6 +29,7 @@ jobs:
           cargo run --quiet -- check --project ../examples/shop
           cargo run --quiet -- check --project ../examples/features
           cargo run --quiet -- check --project ../examples/tabs
+          cargo run --quiet -- check --project ../examples/minimal
 
   dart:
     name: Runtime + examples (Flutter)
@@ -36,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [packages/fespalier, examples/shop, examples/features, examples/tabs]
+        dir: [packages/fespalier, examples/shop, examples/features, examples/tabs, examples/minimal]
     defaults:
       run:
         working-directory: ${{ matrix.dir }}

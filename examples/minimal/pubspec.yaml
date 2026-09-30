@@ -1,0 +1,32 @@
+name: minimal
+description: fespalier example — the smallest real app, which is `flutter create` + `fsp init` plus three pages.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # In your own app this is a `git:` dependency (see the main README).
+  fespalier:
+    path: ../../packages/fespalier
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+# Read by the `fsp` generator; everything here is optional.
+fespalier:
+  # Run `dart format` on lib/app.g.dart after writing it, so `dart format .`
+  # has nothing to change in the committed file.
+  format: true
+  # `none`: a failing data() shows error.dart at once. The default, `inherit`,
+  # leaves it to the ProviderScope's retry policy (Riverpod 3 retries a few
+  # times first).
+  data_retry: none

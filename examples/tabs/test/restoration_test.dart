@@ -54,15 +54,37 @@ void main() {
     await tester.pumpAndSettle();
 
     await tapTab(tester, 'Profile');
-    await tester.tap(find.text('Edit profile'));
+    await tester.tap(find.text('Security'));
     await tester.pumpAndSettle();
-    expect(location(tester), '/profile/edit');
+    expect(location(tester), '/profile/security');
 
     await tester.restartAndRestore();
     await tester.pumpAndSettle();
 
-    expect(location(tester), '/profile/edit');
-    expect(find.text('Edit profile'), findsOneWidget);
+    expect(location(tester), '/profile/security');
+    expect(find.text('Security'), findsOneWidget);
+    expect(selected(tester), 2);
+  });
+
+  testWidgets('a route on the root navigator survives it, with its tab below',
+      (tester) async {
+    await tester.pumpWidget(const RestorableApp());
+    await tester.pumpAndSettle();
+
+    await tapTab(tester, 'Profile');
+    await tester.tap(find.text('Edit profile'));
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationBar), findsNothing);
+
+    await tester.restartAndRestore();
+    await tester.pumpAndSettle();
+
+    // Full screen again, and back is the Profile tab.
+    expect(find.text('Editing your profile'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(location(tester), '/profile');
     expect(selected(tester), 2);
   });
 
@@ -71,10 +93,10 @@ void main() {
     await tester.pumpWidget(const RestorableApp());
     await tester.pumpAndSettle();
 
-    // Two tabs with history of their own: Profile is on /profile/edit, and the
-    // current tab is Search.
+    // Two tabs with history of their own: Profile is on /profile/security, and
+    // the current tab is Search.
     await tapTab(tester, 'Profile');
-    await tester.tap(find.text('Edit profile'));
+    await tester.tap(find.text('Security'));
     await tester.pumpAndSettle();
     await tapTab(tester, 'Search');
     expect(location(tester), '/search');
@@ -86,7 +108,7 @@ void main() {
 
     // The Profile tab remembers where it was, too.
     await tapTab(tester, 'Profile');
-    expect(location(tester), '/profile/edit');
+    expect(location(tester), '/profile/security');
   });
 
   testWidgets('what a page keeps in a RestorableProperty comes back',

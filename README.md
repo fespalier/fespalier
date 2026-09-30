@@ -170,8 +170,16 @@ replaced, so `flutter analyze` fails on it. Delete it, or rewrite it (see
 Already have a `GoRouter`? Mount the tree inside it instead. `at` is the URL prefix:
 
 ```dart
-GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])
+GoRouter(
+  navigatorKey: rootKey,
+  routes: [...yourRoutes, ...AppRoutes.mount(at: '/x', navigatorKey: rootKey)],
+)
 ```
+
+Pass `mount` your `GoRouter`'s own `navigatorKey`: routes that render on the
+[root navigator](#the-root-navigator-navigatordart) name it as their `parentNavigatorKey`,
+which go_router requires to be an ancestor navigator's. (`AppRoutes.router()` takes a
+`navigatorKey:` too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 **4. Day to day.**
 
@@ -288,10 +296,12 @@ that returns a widget. Function files export one top-level function.
 | `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data) | segments, query (named; a section's takes segments only) |
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
-| `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside |
+| `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs. A tab layout can also export a [`container`](#tab-layouts) function | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside |
 | `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder | `uri`; segments at or above its folder; query (named) |
 | `redirect.dart` | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `ProviderContainer c` first | `uri`; segments; query (named) |
-| `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
+| `transition.dart` | `Page<…> transition(…)`; applies to this folder and below, layouts' shells included | `key`, `child`, `state`, `shell` (a `bool`) |
+| `present.dart` | `Page<…> present(…)`: the app builds this route's own page (a sheet, say), on the [root navigator](#presentdart-a-page-of-your-own); this folder only | `key`, `child`, `state` |
+| `navigator.dart` | `const navigator = RouteNavigator.root;`: this folder and below [render on the root navigator](#the-root-navigator-navigatordart) | nothing: it is data |
 | `not_found.dart` | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
 | `meta.dart` | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart) | nothing: it is data |
 | `route.dart` | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`. Read from the source, never imported | nothing: it is data |
@@ -569,7 +579,8 @@ error: /settings is unreachable: $slug/page.dart (/:slug) comes first and matche
 
 A `layout.dart` that asks for a `StatefulNavigationShell` (named `navigationShell` or
 `shell`, or by that type) instead of a `Widget child` is a tab layout. It becomes a
-go_router `StatefulShellRoute.indexedStack`, so each tab keeps its own navigation stack
+go_router `StatefulShellRoute.indexedStack` (or, with a [`container`](#tab-layouts), your own
+`navigatorContainerBuilder`), so each tab keeps its own navigation stack
 and state while you look at another one. Asking for both a child and a shell is an error.
 
 ```dart
@@ -606,7 +617,8 @@ query parameters like any other layout. A tab layout folder without its own `pag
 no route at its own path: link to one of its tabs' routes instead.
 
 Routes outside the layout's folder aren't in any tab, so they cover the whole screen: in
-`examples/tabs`, `/settings` has no navigation bar and `/profile/edit` does. Two things to
+`examples/tabs`, `/settings` has no navigation bar. To cover the screen while the URL stays in
+a tab (`/profile/edit`), use [`navigator.dart`](#the-root-navigator-navigatordart). Two things to
 know: go_router opens a tab on its first route, which can't have a `:segment` in its own
 path, so a tab made only of dynamic routes, or a tab layout placed directly in a
 `$folder`, is an error (put the layout in a `(group)` below that folder instead); and `tabs` in a tab layout must be string literals, so name another list of destinations
@@ -662,6 +674,26 @@ Like `tabs`, `tabOptions` is read from the source, not run: it must be a map lit
 string-literal keys and `TabOptions(...)` values with `true`/`false` and string-literal
 arguments. Unknown tabs, repeated tabs, unknown options and other values are errors that
 point at the offending entry. Only tabs that need options are listed.
+
+**Container.** By default the tabs' navigators sit in an `IndexedStack`. A tab layout can
+export a top-level `container` function to arrange them itself, say to cross-fade or slide
+between tabs:
+
+```dart
+// lib/app/(tabs)/layout.dart
+Widget container(BuildContext context, StatefulNavigationShell shell, List<Widget> children) =>
+    CrossFadeContainer(currentIndex: shell.currentIndex, children: children);
+```
+
+The generated route is then `StatefulShellRoute(navigatorContainerBuilder: _i1.container, …)`
+instead of `.indexedStack(…)`; a layout without `container` generates exactly what it did
+before. The three parameters are positional, and their **types are fixed** (`BuildContext`,
+`StatefulNavigationShell`, `List<Widget>`; the names are yours): a wrong type, a missing or an
+extra parameter, or a return type that isn't `Widget` is an error at the parameter. `children`
+holds one navigator per tab in the layout's tab order, and the container must keep them all in the
+tree (`Offstage`, `Opacity` or a `Stack`, as `IndexedStack` does) or the tabs lose their state.
+A `container` in a layout that isn't a tab layout is ignored with a warning. `examples/tabs`
+cross-fades, and its tests check that a tab's state survives.
 
 ### Guards
 
@@ -778,6 +810,21 @@ and `fullscreenDialog` (below).
 Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);
 ```
 
+**A layout's shell is a page too.** The `ShellRoute` a `layout.dart` makes, and a tab layout's
+`StatefulShellRoute`, take the nearest `transition.dart` (the layout folder's own included) as
+their `pageBuilder`, so a layout moves like any other page when a route on the
+[root navigator](#the-root-navigator-navigatordart) opens over it. The shell's page key is
+`ValueKey<String>('layout:(tabs)/')`, made from the layout's folder: it is the same on every
+launch (its restoration id, see [State restoration](#state-restoration)) and while you
+switch routes inside the shell, so **only entering or leaving the shell animates it**, not going
+from one page of the layout to another. A layout with no `transition.dart` above it keeps
+`layoutPage(…)`. Since `fsp init` writes a root `transition.dart`, that means most apps' shells now
+have a `pageBuilder` of their transition's making: regenerate and check your layouts.
+
+A `transition()` that needs to tell a shell from a route (to wrap a route's page in something
+its shell shouldn't get) can take `bool shell` (or `isShell`): `true` for a layout's shell, `false`
+for a route's page. It is the only extra parameter besides `key`, `child` and `state`.
+
 **Dialogs and sheets.** `Transitions.dialog`, `Transitions.sheet` and
 `Transitions.fullscreenDialog` make a route open over the previous page instead of
 replacing it. The page's widget is what shows up: for `dialog` it is the dialog itself
@@ -805,7 +852,9 @@ and the barrier pop the route, and `dialog` and `sheet` take options such as
   the dialog opens over an empty screen.
 - **They cover their own navigator only.** Inside a tab, a dialog covers that tab's
   navigator, not the tab layout's navigation bar; the same goes for a `layout.dart`'s
-  body. Put the route outside the layout's folder to cover the whole screen.
+  body. Put the route outside the layout's folder to cover the whole screen, or give it a
+  [`present.dart`](#presentdart-a-page-of-your-own) (which puts it on the root navigator) or a
+  [`navigator.dart`](#the-root-navigator-navigatordart) beside its `transition.dart`.
 - **They need `MaterialLocalizations`,** like `showDialog` and `showModalBottomSheet`: a
   `MaterialApp` (or a `Localizations` with the Material delegate) above the router.
 - The route's `transition.dart` also covers routes below it, so give a dialog route its own
@@ -814,6 +863,79 @@ and the barrier pop the route, and `dialog` and `sheet` take options such as
 Routes with no `transition.dart` above them keep go_router's default for your app type:
 the platform transition under a Material or Cupertino app, none otherwise (see the go_router
 18 note in [Getting started](#getting-started)). Scaffold one with `fsp new … --transition`.
+
+### The root navigator (`navigator.dart`)
+
+A route's URL and the navigator it renders on are two decisions. A tab layout puts every route
+in its folder on a tab's navigator, under the navigation bar. `navigator.dart` says that a
+folder renders on the **root** navigator instead, above every layout and tab bar, without
+moving its URL:
+
+```dart
+// lib/app/(tabs)/profile/edit/navigator.dart
+const navigator = RouteNavigator.root;
+```
+
+`/profile/edit` is still under `/profile` (a deep link builds the Profile tab beneath it, and back
+returns to it, with its state), and the page covers the whole screen. The declaration applies to
+its folder's routes and to **every folder below it**, and the nearest one wins, like
+`transition.dart`; a page-less `(group)` folder can hold it too, for the routes inside. `fsp gen`
+emits `parentNavigatorKey: rootNavigatorKey` on the route and on all its descendants (go_router puts a
+route on its enclosing shell's navigator unless it says otherwise, so a child pushed from the page
+would land *under* it), and the route table marks them `(root)`.
+
+The generated file owns the key: `AppRoutes.rootNavigatorKey` is a `GlobalKey<NavigatorState>` the
+app can read; `AppRoutes.router(navigatorKey: …)` uses one you supply; and
+`AppRoutes.mount(at:, navigatorKey: …)` takes the **host** `GoRouter`'s own key, since a
+`parentNavigatorKey` must name an ancestor navigator.
+
+- `fsp` reads the file from the source, like `tabs`: a `const navigator` that is
+  `RouteNavigator.root` or `RouteNavigator.shell`, spelled out; anything else is an error at it.
+- **A layout is a navigator of its own.** A `layout.dart` below a root folder becomes a
+  `ShellRoute(parentNavigatorKey: rootNavigatorKey, …)` (or the `StatefulShellRoute`); the routes
+  inside it sit on its own navigator, since go_router doesn't allow a key other than the shell's
+  there. Below a layout nothing is inherited, and `RouteNavigator.shell` is what a folder says to
+  be explicit about it. Below a root route with **no** layout in between, `.shell` is an error:
+  go_router only lets a descendant use the root navigator or a navigator above it.
+- **A root route can't be a direct child of a shell.** go_router lifts a route out of its shell
+  only from below another route, so a root route that is the first route of a tab, or sits beside
+  others directly in a layout, is an error (put it below a `page.dart` that stays in the layout, or
+  move its folder out of the layout's folder).
+- The typed route is unchanged: `EditProfileRoute().push(context)` and `.go(context)` as before.
+
+`examples/tabs` does this for `/profile/edit`; its tests check that there is no `NavigationBar`, that
+back returns to the tab, and that a deep link builds the tab underneath.
+
+### `present.dart`: a page of your own
+
+`present.dart` builds **this route's own `Page`**. It is for a sheet (or a dialog, or any page
+class the app owns) with a URL: `/products/:id/buy` opens a sheet over `/products/:id`, from a
+link or a deep link.
+
+```dart
+// lib/app/products/$productId/buy/present.dart
+Page<void> present(LocalKey key, Widget child) => SheetPage(key: key, child: child);
+```
+
+It is bound like `transition.dart` (`key`, `child`, `state`), and what it returns is used
+**verbatim**: fespalier adds no scrim, handle or shape, and ships no sheet widget. Unlike
+`transition.dart`:
+
+- it applies to **its own folder only**: a folder below keeps the nearest `transition.dart` for
+  its own page;
+- it puts the route on the **root navigator**, over a tab bar and any `layout.dart`, and its
+  descendants too (the [`navigator.dart`](#the-root-navigator-navigatordart) rules, so a child of
+  a sheet renders above it, never under it, and go_router never builds the shell twice). A
+  `navigator.dart` in the same folder overrides that (`RouteNavigator.shell` keeps a sheet in
+  a tab);
+- it needs a `page.dart` (a warning and no effect otherwise), and, to have a parent underneath on a
+  deep link, the sheet's folder should sit below the parent page's folder.
+
+The route table marks it `(present, root)`, and the manifest's `presentation` is
+`RoutePresentation.custom` (fespalier can't know it is a sheet: say so in a `meta.dart` if you want
+to). `examples/features` has `/photos/share`, with an app-owned `SheetPage` in `lib/`, a
+child page above it, and tests for the deep link, the parent's state after popping, and the root
+navigator.
 
 ### Query parameters
 
@@ -1071,7 +1193,7 @@ it is the selected provider itself (your own `productProvider('42')`). Query-key
 the query of the location (`/search?q=ap&page=2` is `SearchRoute.data((q: 'ap', page: 2, …))`,
 lists as the `QueryList` the page's key uses), a [catch-all](#catch-all-segments) by its decoded
 path. The mount point (`AppRoutes.mount(at: '/shop')`) is taken off first, a location outside it
-is `null`, and with `case_sensitive: false` the path matches in any case. Nothing else runs: no
+is `null`, and each route matches its path by its own case setting (`case_sensitive: false`, or its folder's `route.dart`). A [typed catch-all](#catch-all-segments) (`List<int>`) parses each part like the page does, so one that fails is no match. Nothing else runs: no
 `guard.dart`, no `redirect.dart`, no widget. (A guard may well send the user somewhere else
 when they arrive; prefetching what they asked for is your queue's call, and never
 triggers it.)
@@ -1186,7 +1308,7 @@ Each `RouteInfo<M>` has:
 | `type` | the typed-route class: `ProductRoute` |
 | `path` | the path template, without the mount point: `/products/:id`; a [catch-all](#catch-all-segments) is `/docs/*rest`, or `/files/*path?` when optional (as in `fsp routes`). Case-insensitive paths (`case_sensitive: false`) don't change it |
 | `folder` | the route's folder relative to the app folder: `(buyer)/products/$id` (empty for the app folder itself) |
-| `presentation` | `RoutePresentation.page`, or `.redirect` for a `redirect.dart` (`isRedirect`). Whether a page opens as a dialog or sheet is up to its `transition.dart` at runtime, so it isn't listed |
+| `presentation` | `RoutePresentation.page`; `.redirect` for a `redirect.dart` (`isRedirect`); `.root` for a page on the [root navigator](#the-root-navigator-navigatordart) through `navigator.dart`; `.custom` for a page a [`present.dart`](#presentdart-a-page-of-your-own) builds (it is on the root navigator too, unless a `navigator.dart` beside it says otherwise). Whether a page opens as a dialog or sheet is up to its `transition.dart` or `present.dart` at runtime, so it isn't listed |
 | `groups` | the `(group)` folders above it, outermost first, parentheses included |
 | `layouts` | the folders of the layouts that wrap it, outermost first (`''` is the app folder's own layout) |
 | `segments`, `query` | `RouteParam(name, type)`: `('id', 'int')`, `('page', 'int?')`, `('tags', 'List<String>')`. A catch-all is the last segment, a `List<String>` (or the `List` type it is typed with) with `catchAll: true` |
@@ -1281,7 +1403,7 @@ are relative to the project root; `folder`, `layouts` and `tabs[].layout` to the
 {"pattern":"/products/:id","route":"ProductRoute","file":"lib/app/(buyer)/products/$id/page.dart","tags":["data"],"params":[{"name":"id","type":"int","in":"path"},{"name":"tab","type":"String?","in":"query"}],"folder":"(buyer)/products/$id","presentation":"page","groups":["(buyer)"],"layouts":["(buyer)"],"tabs":[],"data_keys":["id"],"meta":"lib/app/(buyer)/products/$id/meta.dart","catch_all":null}
 ```
 
-`presentation` is `page` or `redirect`; `tabs` is `[{"layout":"(tabs)","index":0,"branch":"search"}]`
+`presentation` is `page`, `redirect`, `root` or `custom` (see the table above); `tabs` is `[{"layout":"(tabs)","index":0,"branch":"search"}]`
 for a route in a tab; `data_keys` and `meta` are `null` when the route has no `data.dart` or
 `meta.dart`. The meta itself is Dart, so JSON only says where it is. `catch_all` is
 `{"name":"rest","optional":false}` for a route that ends in a `$$rest` (or `$$$rest`, `"optional":true`)
@@ -1314,9 +1436,10 @@ a stack), and so does everything below:
 The reason layouts need generated pages: go_router keys the page of a `ShellRoute` or
 `StatefulShellRoute` by the route object's `hashCode` and uses it as the restoration id, which
 changes on every launch, so nothing under it can be found again. The generated router builds
-these pages with `layoutPage(...)`, with an id from the layout's folder instead. It's a
-Material page (a Cupertino one inside a `CupertinoApp`); a layout's page is not where a
-route transition happens, so this changes nothing you see.
+these pages with an id from the layout's folder instead: with a [`transition.dart`](#transitions)
+above the layout, its `Page` under a `ValueKey` made of that id (the `Transitions.*` pages take
+their restoration id from the key); otherwise `layoutPage(...)`, a Material page (a Cupertino one
+inside a `CupertinoApp`) with the id.
 
 Ids come from folder names, so renaming a folder drops what was saved under the old one, once.
 `examples/tabs/test/restoration_test.dart` restores the selected tab, a background tab's stack
@@ -1361,7 +1484,8 @@ result line; if that fails, it lists the files it created. After `fsp new '(acco
 until you add a route inside the group. That's expected.
 
 `fsp routes` prints what the header of `lib/app.g.dart` lists: each route's URL pattern, its typed
-route class, its `page.dart` and its tags (`data`, `guard`, `layout`, `transition`).
+route class, its `page.dart` and its tags (`data`, `guard`, `layout`, `transition`, `present`,
+`root`).
 
 ```
 /products/:id  ProductRoute   products/$id/page.dart  (data, transition)
@@ -1470,8 +1594,9 @@ It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
   `(group)` folders fold away completely, apart from the ShellRoute their layout adds.
 - **Static routes come first** among siblings, then dynamic ones, then a
   [catch-all](#catch-all-segments), so go_router's first match is the most specific one.
-- **`AppRoutes.mount(at:)`** only changes the root path. Typed routes read `AppRoutes.base`,
-  so `.location` stays correct when mounted under `/shop`.
+- **`AppRoutes.mount(at:)`** only changes the root path (and, with `navigatorKey:`, the
+  root navigator's key). Typed routes read `AppRoutes.base`, so `.location` stays correct when
+  mounted under `/shop`.
 
 ## Run the examples
 
@@ -1494,15 +1619,19 @@ view bound by type, a layout and guard that take segments, a user-written
 its layout and pages, with a `not_found.dart` at two levels (which takes the team's id), a `reports` section keyed by a
 query parameter, and `AppRoutes.dataAt` / `match` and the prefetch handle in `test/data_at_test.dart`.
 
-`examples/tabs` is a bottom navigation bar built as a tab layout: four tabs (one with a
-nested page, and a Library tab that is a tab layout of its own, with two inner tabs), a
-counter that survives switching tabs, `tabOptions`, and a full-screen route outside them.
+`examples/tabs` is a bottom navigation bar built as a tab layout: four tabs (one with nested
+pages, and a Library tab that is a tab layout of its own, with two inner tabs), a
+counter that survives switching tabs, `tabOptions`, a cross-fading `container`, a full-screen route
+outside them (`/settings`), one that stays under `/profile` but renders on the root navigator
+(`/profile/edit`, `navigator.dart`), and a Cupertino `transition.dart` that also moves the tab layout
+itself aside when one of those opens over it.
 
 `examples/features` also has a guard in a page-less `(members)` group (with a login page that
 returns to where you were), a second guard below it that runs after the first, two
 `redirect.dart` routes (`/old-shops/:shop`, `/old-search`), and `/photos`, with a dialog
-route (`/photos/:id`), a bottom sheet (`/photos/sort`) and a full-screen dialog
-(`/photos/upload`) opening over it. Some of its routes have a `meta.dart` (`PageMeta`), which
+route (`/photos/:id`), a bottom sheet (`/photos/sort`), a full-screen dialog
+(`/photos/upload`) and an app-owned sheet with a URL (`/photos/share`, `present.dart`, with a page
+on top of it at `/photos/share/terms`) opening over it. Some of its routes have a `meta.dart` (`PageMeta`), which
 its root layout reads through the route manifest to set the page title, and its tests join a
 review-code check on `AppRoutes.all`.
 
@@ -1687,12 +1816,12 @@ reopened; today the trade is a `const` route and a type that is never `dynamic`.
 
 This is an early version.
 
-- **Generator:** 299 tests (268 unit, 26 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
-  parameters, `(group)` folders and route order, tab layouts, transitions, all three data
+- **Generator:** 356 tests (325 unit, 26 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+  parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects,
-  scaffolding, the route manifest, meta.dart and restoration ids, typed catch-alls, per-folder case, and that the committed outputs are up to date. Clippy is clean.
+  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, per-folder case, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 251 Flutter tests (the package 112, `shop` 23, `features` 99, `tabs` 17); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 312 Flutter tests (the package 128, `shop` 24, `features` 132, `tabs` 28); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

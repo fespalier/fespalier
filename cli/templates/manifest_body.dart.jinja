@@ -11,8 +11,8 @@ abstract final class AppManifest {
       type: {{ r.class }},
       path: {{ r.path }},
       folder: {{ r.folder }},
-{% if r.redirect %}
-      presentation: RoutePresentation.redirect,
+{% if r.presentation %}
+      presentation: RoutePresentation.{{ r.presentation }},
 {% endif %}
 {% if r.groups %}
       groups: {{ r.groups }},

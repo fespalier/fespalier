@@ -11,6 +11,12 @@
   `not_found.dart` calls (which can now take the segments of their path).
 - Regenerate `lib/app.g.dart` with the matching `fsp`: it has `matchUrl` and `dataAt`, typed
   handles for sections, and `PrefetchHandle prefetch`.
+
+- `RouteNavigator` (`root`, `shell`): the values of a folder's `navigator.dart`, read by `fsp gen`.
+- `RoutePresentation.root` and `.custom`: a page on the root navigator, and one a `present.dart`
+  builds.
+- Regenerate `lib/app.g.dart` with the matching `fsp`: `AppRoutes` has `rootNavigatorKey`, and
+  `router()` and `mount()` take a `navigatorKey`; layouts' shells use the nearest `transition.dart`.
 - `Segment.asIntRest`, `asDoubleRest`, `asNumRest`, `asBoolRest` and `asDateTimeRest`: a
   catch-all's parts read as a typed list; a part that doesn't parse is a `BadSegment` (not-found).
   `restPath` and `restKey` take any `Iterable<Object>` (a `DateTime` is written as ISO 8601).

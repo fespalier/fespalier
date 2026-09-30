@@ -22,10 +22,12 @@ pub enum Kind {
     NotFound,
     Meta,
     Route,
+    Navigator,
+    Present,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 11] = [
+    pub const ALL: [Kind; 13] = [
         Kind::Page,
         Kind::Data,
         Kind::Loading,
@@ -37,6 +39,8 @@ impl Kind {
         Kind::NotFound,
         Kind::Meta,
         Kind::Route,
+        Kind::Navigator,
+        Kind::Present,
     ];
 
     pub fn file(self) -> &'static str {
@@ -52,6 +56,8 @@ impl Kind {
             Kind::NotFound => "not_found.dart",
             Kind::Meta => "meta.dart",
             Kind::Route => "route.dart",
+            Kind::Navigator => "navigator.dart",
+            Kind::Present => "present.dart",
         }
     }
 

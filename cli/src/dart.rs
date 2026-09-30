@@ -82,6 +82,9 @@ pub struct Variable {
     /// Set when the initializer is a constructor call, like `const meta = PageMeta(code: 'x')`:
     /// its named arguments (positional ones are left out).
     pub ctor_args: Option<Vec<ObjectArg>>,
+    /// The initializer as written, with its whitespace removed:
+    /// `const navigator = RouteNavigator.root;` is `RouteNavigator.root`.
+    pub value: Option<String>,
     /// Declared with `const` (not `final`, `var` or `late`).
     pub is_const: bool,
     pub span: Span,
@@ -381,18 +384,19 @@ impl Reader<'_> {
             let mut c2 = list.walk();
             for d in list.named_children(&mut c2) {
                 let Some(name) = d.child_by_field_name("name") else { continue };
-                let value = d.child_by_field_name("value");
-                let call = value.and_then(|v| self.call(v));
-                let strings = value.and_then(|v| self.strings(v));
-                let objects = value.and_then(|v| self.objects(v));
-                let ctor_args = value.and_then(|v| self.ctor_args(v));
-                let string = value.filter(|v| v.kind() == "string_literal").and_then(|v| string_value(self.text(v)));
-                let boolean = value.and_then(|v| match v.kind() {
+                let value_node = d.child_by_field_name("value");
+                let call = value_node.and_then(|v| self.call(v));
+                let strings = value_node.and_then(|v| self.strings(v));
+                let objects = value_node.and_then(|v| self.objects(v));
+                let ctor_args = value_node.and_then(|v| self.ctor_args(v));
+                let value = value_node.map(|v| self.text(v).split_whitespace().collect::<String>());
+                let string = value_node.filter(|v| v.kind() == "string_literal").and_then(|v| string_value(self.text(v)));
+                let boolean = value_node.and_then(|v| match v.kind() {
                     "true" => Some(true),
                     "false" => Some(false),
                     _ => None,
                 });
-                out.push(Variable { name: self.text(name).to_string(), call, strings, string, boolean, objects, ctor_args, is_const, span: Span::of(name) });
+                out.push(Variable { name: self.text(name).to_string(), call, strings, string, boolean, objects, ctor_args, value, is_const, span: Span::of(name) });
             }
         }
         out

@@ -41,17 +41,32 @@ guardWithParams(
 {% macro layout_call(l) -%}
 {{ (with_segments(l.seg_fn, view(l), l.not_found) if l.seg_fn else view(l)) | indent(2) }}
 {%- endmacro %}
+{% macro layout_body(l) -%}
+{{ (with_segments(l.seg_fn, view(l), l.not_found) if l.seg_fn else view(l)) | indent(2) }}
+{%- endmacro %}
 {% macro layout_page(l) -%}
+{% if l.transition -%}
+{{ with_transition(l.transition, layout_body(l)) }}
+{%- else -%}
 layoutPage(
   context,
   state,
   {{ l.restoration_id }},
-  {{ (with_segments(l.seg_fn, view(l), l.not_found) if l.seg_fn else view(l)) | indent(2) }},
+  {{ layout_body(l) }},
 )
+{%- endif %}
 {%- endmacro %}
 {% macro route(r) -%}
 {% if r.branches -%}
+{% if r.container -%}
+StatefulShellRoute(
+  navigatorContainerBuilder: {{ r.container }},
+{% else -%}
 StatefulShellRoute.indexedStack(
+{% endif %}
+{% if r.root %}
+  parentNavigatorKey: rootNavigatorKey,
+{% endif %}
   pageBuilder: (context, state, navigationShell) => {{ layout_page(r.layout) | indent(2) }},
   branches: [
 {% for b in r.branches %}
@@ -75,6 +90,9 @@ StatefulShellRoute.indexedStack(
 )
 {%- elif r.layout -%}
 ShellRoute(
+{% if r.root %}
+  parentNavigatorKey: rootNavigatorKey,
+{% endif %}
   pageBuilder: (context, state, child) => {{ layout_page(r.layout) | indent(2) }},
   routes: [
 {% for c in r.routes %}
@@ -86,6 +104,9 @@ ShellRoute(
 {%- else -%}
 GoRoute(
   path: {{ r.path }},
+{% if r.root %}
+  parentNavigatorKey: rootNavigatorKey,
+{% endif %}
 {% if not r.case_sensitive %}
   caseSensitive: false,
 {% endif %}
@@ -138,27 +159,45 @@ import '{{ i }}' as _i{{ loop.index0 }};
 /// The file tree under {{ app_dir }}/, ready to mount.
 abstract final class AppRoutes {
   static String _base = '/';
+  static GlobalKey<NavigatorState> _rootNavigatorKey =
+      GlobalKey<NavigatorState>(debugLabel: 'root');
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
   static String get base => _base;
 
-  /// A standalone router for `MaterialApp.router(routerConfig: ...)`.
+  /// The root navigator's key: the one given to [router] or [mount], else one of
+  /// its own. Routes on the root navigator (`navigator.dart`, `present.dart`) name it
+  /// as their `parentNavigatorKey`; the app can use it to reach the root navigator.
+  static GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;
+
+  /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
+  /// is the root navigator's key, when the app has one to supply.
   static GoRouter router({
     String initialLocation = '/',
     List<NavigatorObserver>? observers,
     String? restorationScopeId,
-  }) =>
-      GoRouter(
-        initialLocation: initialLocation,
-        observers: observers,
-        restorationScopeId: restorationScopeId,
-        routes: mount(),
-        errorBuilder: (context, state) => notFound(state.uri),
-      );
+    GlobalKey<NavigatorState>? navigatorKey,
+  }) {
+    final routes = mount(navigatorKey: navigatorKey);
+    return GoRouter(
+      initialLocation: initialLocation,
+      observers: observers,
+      restorationScopeId: restorationScopeId,
+      navigatorKey: rootNavigatorKey,
+      routes: routes,
+      errorBuilder: (context, state) => notFound(state.uri),
+    );
+  }
 
-  /// The routes alone, to embed in an existing GoRouter under [at].
-  static List<RouteBase> mount({String at = '/'}) {
+  /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
+  /// GoRouter's own `navigatorKey` as [navigatorKey]: routes on the root navigator
+  /// name it as their `parentNavigatorKey`, which must be an ancestor navigator's.
+  static List<RouteBase> mount({
+    String at = '/',
+    GlobalKey<NavigatorState>? navigatorKey,
+  }) {
     _base = at;
+    if (navigatorKey != null) _rootNavigatorKey = navigatorKey;
     return [
 {% for r in tree %}
       {{ route(r) | indent(6) }},

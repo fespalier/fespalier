@@ -189,6 +189,15 @@ void main() {
       expect(AppRoutes.match(at('/photos/9'))!.info.path, '/photos/:id');
     });
 
+    test('present.dart and root-navigator routes match like any other', () {
+      final share = AppRoutes.match(at('/photos/share'))!;
+      expect(share.route, isA<ShareSheetRoute>());
+      expect(share.info.presentation, RoutePresentation.custom);
+      final terms = AppRoutes.match(at('/photos/share/terms'))!;
+      expect(terms.info.presentation, RoutePresentation.root);
+      expect(terms.data, isEmpty);
+    });
+
     test('every route of the manifest matches its own typed location', () {
       final routes = <TypedLocation>[
         const HomeRoute(),

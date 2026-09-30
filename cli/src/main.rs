@@ -311,6 +311,8 @@ mod match_tests;
 #[cfg(test)]
 mod nav_tests;
 #[cfg(test)]
+mod navigator_tests;
+#[cfg(test)]
 mod paths_tests;
 #[cfg(test)]
 mod refresh_tests;

@@ -84,7 +84,7 @@ You need Flutter 3.32 or newer (Dart 3.8) for the package. go_router 18 needs Fl
 curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
 ```
 
-It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.3.0`
+It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.3.0` <!-- x-release-please-version -->
 to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install
 elsewhere. On Windows, in PowerShell:
 
@@ -97,9 +97,11 @@ It puts `fsp.exe` in `%LOCALAPPDATA%\fespalier\bin` (tell it otherwise with
 prints how to add that folder to your `PATH` if it isn't there yet. With Rust installed, on
 any platform:
 
+<!-- x-release-please-start-version -->
 ```sh
 cargo install --git https://github.com/vaam-apps/fespalier --tag v0.3.0 fespalier
 ```
+<!-- x-release-please-end -->
 
 With Homebrew (macOS, Linux) or Scoop (Windows), once the maintainers have set up the tap and
 bucket (see [Releasing](#releasing)):
@@ -126,6 +128,7 @@ binary are versioned together, and this is what keeps them in step.
 
 **2. Add the package** to your app's `pubspec.yaml`, then run `flutter pub get`:
 
+<!-- x-release-please-start-version -->
 ```yaml
 dependencies:
   fespalier:
@@ -134,6 +137,7 @@ dependencies:
       path: packages/fespalier
       ref: v0.3.0
 ```
+<!-- x-release-please-end -->
 
 It depends on go_router (17 or 18), hooks_riverpod 3 and flutter_hooks, and
 `package:fespalier/fespalier.dart` re-exports all three, so you don't add them yourself.

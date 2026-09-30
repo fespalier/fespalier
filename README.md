@@ -32,6 +32,7 @@ lib/app/
   old-products/$id/
     redirect.dart        String redirect({required int id})            → /old-products/:id redirects
   greet/$name/page.dart  GreetPage({required String name})
+  docs/$$rest/page.dart  DocsPage({required List<String> rest})       → /docs/a, /docs/a/b, …
   (account)/             a group: its layout wraps profile/ and settings/,
     layout.dart            but adds nothing to their URLs (/profile, /settings)
     profile/page.dart
@@ -182,9 +183,11 @@ fespalier:
   app_dir: lib/app
   output: lib/app.g.dart
   format: false
+  case_sensitive: true
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
+`case_sensitive: false` makes paths match in any case (see [Case and trailing slashes](#case-and-trailing-slashes)).
 
 **Platform notes.**
 
@@ -219,7 +222,7 @@ top-level function.
 
 | File | Exports | Its constructor / signature can ask for |
 |---|---|---|
-| `page.dart` | a widget | segments; query; what `data.dart` yields |
+| `page.dart` | a widget | segments; query; what `data.dart` yields; the navigation [`extra`](#typed-extra) |
 | `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data) | segments, query (named; a section's takes segments only) |
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
@@ -235,8 +238,8 @@ The generator reads each constructor (named or positional, `this.x` or typed) an
 every parameter:
 
 1. **By name.** A parameter named like a `$segment` in the path gets that segment.
-   `data`, `child`, `navigationShell` (or `shell`), `error`, `stackTrace`, `retry` and `uri`
-   get what their name says, in the files where they make sense.
+   `data`, `child`, `navigationShell` (or `shell`), `error`, `stackTrace`, `retry`, `uri`
+   and, in a page, `extra` get what their name says, in the files where they make sense.
 2. **Query.** An *optional* parameter that is nullable or a `List` of
    `String`/`int`/`double`/`bool` is a query parameter: `int? page` gets `?page=2`, and
    `List<String> tags = const []` gets every `?tags=`.
@@ -266,6 +269,78 @@ is a `String`. Segments are `String`, `int`, `double` or `bool`.
 `fsp new` scaffolds every segment as a `String`: `fsp new 'products/[id]' --data` writes
 `data(Ref ref, {required String id})`. To make `$id` an `int`, change the parameter type
 in each file that asks for it, then run `fsp gen` (or let `fsp watch` do it).
+
+### Catch-all segments
+
+`$$rest` matches **one or more** remaining segments, and `$$$rest` (three `$`) **zero or
+more**. The page takes them as a `List<String>`, each part decoded on its own:
+
+```
+docs/page.dart            /docs                      the index, beside the catch-all
+docs/new/page.dart        /docs/new                  a static sibling: tried first
+docs/$$rest/page.dart      /docs/guide/setup/linux    rest == ['guide', 'setup', 'linux']
+files/$$$path/page.dart   /files, /files/a/b         path == [] or ['a', 'b']
+```
+
+```dart
+class DocsPage extends StatelessWidget {
+  const DocsPage({super.key, required this.rest});
+  final List<String> rest;      // `rest` is the segment: a List<String>, nothing else
+  …
+}
+
+const DocsRoute(rest: ['guide', 'a b']).go(context);   // → /docs/guide/a%20b, each part encoded
+const FilesRoute().location;                            // '/files'
+```
+
+How it works: go_router matches a path pattern with a regular expression, and a `:name`
+parameter can carry its own (`:rest(.+)`, which may span `/`). A catch-all folder becomes a
+route with that pattern, `docs/:rest(.+)`, so deep links, redirects and `go` all use go_router's
+normal matching. `$$$rest` is two routes with one builder: the folder's path (`/files`) and
+the same with `:path(.+)`. Reading the parts takes go_router's decoded string apart *by the
+requested location*, so an encoded slash (`/docs/a%2Fb/c` is `['a/b', 'c']`) survives.
+
+- Siblings are tried in this order: static, then dynamic (`docs/$id`), then the catch-all,
+  whatever the folder order. A page that another route always catches first is still
+  reported as unreachable, including by a catch-all (`(wiki)/docs/$$rest` behind
+  `$a/$$rest`).
+- `guard.dart`, `redirect.dart`, `layout.dart`, `loading.dart` and `error.dart` can take the
+  parts like any segment (`{required List<String> rest}`).
+- `data.dart` can be keyed by them. Lists compare by identity, so the generated provider is
+  keyed by the encoded path as one string (`restKey`) and `data()` gets the list back
+  (`restParts`). `ref.watch(DocsRoute.data(restKey(rest)))` is what the route does; the
+  typed `DocsRoute.watch(ref, rest: [...])` takes the list. A provider you write yourself
+  (`final data = FutureProvider.family<…>`) can't be keyed by a catch-all: use the function.
+- `$$$rest` and a `page.dart` in the folder above would both serve `/docs`: an error. Use
+  `$$rest` beside the page.
+
+Limits: a catch-all is always the last segment and a `List<String>` (no `List<int>`); nothing
+can be below its folder, and it can't have a `not_found.dart` (it matches every URL under
+it). A catch-all as a tab's first route needs a `tabOptions` `initialLocation`, like any
+route with a parameter. A part of `.` or `..` is read as a dot segment by the URL parser, so
+`DocsRoute(rest: ['..'])` doesn't reach a `..` part. `fsp new 'docs/[...rest]'` and
+`'docs/[[...rest]]'` write the folders, so you don't have to quote `$`.
+
+### Case and trailing slashes
+
+**Trailing slashes.** `/products/` reaches `/products`: go_router drops a trailing slash
+before it matches (also in front of a query, `/products/?page=2`), whether it comes from a
+deep link, `initialLocation` or `context.go`. There is nothing to configure, and typed
+locations never end in one. (Checked against go_router 17.5 and 18.)
+
+**Case.** Paths are case-sensitive, like go_router's default: `/Products` isn't
+`/products`. Set `case_sensitive: false` in the pubspec's `fespalier:` section to emit
+`caseSensitive: false` on every route:
+
+```yaml
+fespalier:
+  case_sensitive: false
+```
+
+Static parts then match in any case (`/PRODUCTS/Guide` finds `products/guide`), and the
+parts you take out of the URL (a `$segment`, a catch-all) keep the case they had. The
+nearest-`not_found.dart` lookup compares folder names the same way. Typed routes still write
+the paths as the folders spell them. The option is global; there is no per-folder setting.
 
 ### `(group)` folders
 
@@ -555,6 +630,41 @@ class SearchPage extends StatelessWidget {
 }
 ```
 
+### Typed `extra`
+
+go_router can carry an object with a navigation, `context.go(location, extra: product)`,
+that isn't part of the URL. A page asks for it with a parameter called `extra`, and the
+typed route takes it as an optional argument:
+
+```dart
+// notes/$id/page.dart
+class NotePage extends StatelessWidget {
+  const NotePage({super.key, required this.id, this.extra});
+  final int id;
+  final Note? extra;      // nullable: the URL alone can't produce it
+  …
+}
+
+NoteRoute(id: 3).go(context, extra: note);      // also push<T>(…, extra:) and replace(…, extra:)
+NoteRoute(id: 3).go(context, extra: 'oops');    // compile error: a String isn't a Note?
+```
+
+The parameter **must be nullable** (`Note?`, `Object?` or `dynamic`; anything else is an
+error at that parameter). The object isn't in the URL, so a deep link, a reload, a page
+opened from `context.go('/notes/3')` and a restored state all get `null`: build the page
+from the URL (`id`) and treat `extra` as a shortcut, not the source of truth. Passing an
+object of the wrong type around the typed route (a plain `context.go(location, extra: …)`)
+is an assertion error in debug builds and reads as `null` in release builds.
+
+`extra` is a page-only name: a segment can't be called `extra`, and a query parameter of
+that name is the extra, not `?extra=`. The generated file has to name the type for the
+typed arguments, which is the one place it copies from your imports: it imports the type
+`show`ing that name from each of `page.dart`'s imports (a library that doesn't export it is
+ignored; a type declared in `page.dart` itself, or under an import prefix, is found too),
+so the type must be reachable from `page.dart`'s own imports. The built-in `dart:core`
+types need nothing. Only pages take an `extra`; go_router's `extra` isn't restored on web
+reloads unless you give the router an `extraCodec`.
+
 ### `data.dart`: a function or a provider
 
 Write a function and fespalier wraps it in an autoDispose `FutureProvider` (or
@@ -772,12 +882,14 @@ It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
 
 - **Types are never re-spelled.** The generator doesn't copy your imports. Values flow
   through inference, and each route's provider is a `static final` whose type is inferred.
+  The one exception is a page's [typed `extra`](#typed-extra), whose type the typed route
+  has to name; it imports that type by name from `page.dart`'s imports.
 - **Segments and query parameters are parsed into a record** (`({int id, int? page})`).
   Records compare by value, so providers are keyed by them directly.
 - **Page-less folders** fold into their children's paths (`greet/$name` → `'greet/:name'`).
   `(group)` folders fold away completely, apart from the ShellRoute their layout adds.
-- **Static routes come first** among siblings, so go_router's first match is the most
-  specific one.
+- **Static routes come first** among siblings, then dynamic ones, then a
+  [catch-all](#catch-all-segments), so go_router's first match is the most specific one.
 - **`AppRoutes.mount(at:)`** only changes the root path. Typed routes read `AppRoutes.base`,
   so `.location` stays correct when mounted under `/shop`.
 

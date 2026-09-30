@@ -82,7 +82,9 @@ fn example_app_generates_cleanly() {
 #[test]
 fn committed_output_is_up_to_date() {
     for name in ["shop", "features", "tabs"] {
-        let (code, diags, _) = build(&examples(name).join("lib/app"), &Config::default()).unwrap();
+        // With the example's own `fespalier:` section, if it has one.
+        let cfg = Config::load(&examples(name)).unwrap();
+        let (code, diags, _) = build(&examples(name).join("lib/app"), &cfg).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
         let committed = fs::read_to_string(examples(name).join("lib/app.g.dart")).unwrap_or_default();
         assert!(committed == code, "examples/{name}/lib/app.g.dart is stale; run `fsp gen --project examples/{name}`");

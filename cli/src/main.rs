@@ -2,6 +2,7 @@ mod config;
 mod dart;
 mod diag;
 mod emit;
+mod extra;
 mod format;
 mod init;
 mod resolve;
@@ -282,6 +283,8 @@ fn watch(project: &Path) -> Result<()> {
 mod cli_tests;
 #[cfg(test)]
 mod nav_tests;
+#[cfg(test)]
+mod paths_tests;
 #[cfg(test)]
 mod route_api_tests;
 #[cfg(test)]

@@ -4,12 +4,12 @@ What fespalier doesn't do yet. Released features are in CHANGELOG.md.
 
 ## Later
 
-- Catch-all segments (`[...slug]`): go_router parameters don't span `/`.
-- Typed `extra` objects passed between routes.
+- Typed catch-alls (`List<int>`); today a catch-all is a `List<String>`.
+- Per-folder `caseSensitive`, and a `case_sensitive` that keeps `.location` in the requested case.
+- `extra` for layouts and guards, and restoring it (an `extraCodec`) on the web.
 - Route metadata: web tab titles, analytics names.
 - State restoration (`restorationScopeId`).
 - Keep showing old data while `data.dart` refreshes (a section's data reloading now shows loading for the whole section).
-- Case-insensitive paths and trailing slashes.
 - Editor extension (VS Code / IntelliJ) on top of the JSON diagnostics.
 - Publishing to pub.dev; Homebrew and Scoop packages.
 - Localized paths.

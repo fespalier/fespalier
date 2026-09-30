@@ -5,6 +5,7 @@
 //!   app_dir: lib/app        # default
 //!   output: lib/app.g.dart  # default
 //!   format: false           # default; true runs `dart format` on the output
+//!   case_sensitive: true    # default; false matches `/Products` too
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -28,11 +29,13 @@ pub struct Config {
     pub output: String,
     /// Run `dart format` on the generated file (when `dart` is on PATH).
     pub format: bool,
+    /// Whether routes match paths by case; `false` emits `caseSensitive: false` on each.
+    pub case_sensitive: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { app_dir: DEFAULT_APP_DIR.into(), output: DEFAULT_OUTPUT.into(), format: false }
+        Config { app_dir: DEFAULT_APP_DIR.into(), output: DEFAULT_OUTPUT.into(), format: false, case_sensitive: true }
     }
 }
 
@@ -58,6 +61,7 @@ struct RawConfig {
     app_dir: Option<String>,
     output: Option<String>,
     format: Option<bool>,
+    case_sensitive: Option<bool>,
 }
 
 impl Config {
@@ -73,6 +77,28 @@ impl Config {
     pub fn import_path(&self, rel: &str) -> String {
         let dir = relative_dir(parent(&self.output), &self.app_dir);
         if dir.is_empty() { rel.to_string() } else { format!("{dir}/{rel}") }
+    }
+
+    /// The import path, from the output file, of `uri` as written in the file `file`
+    /// (relative to the app folder). `dart:` and `package:` imports are as they were.
+    pub fn import_from_file(&self, file: &str, uri: &str) -> String {
+        if uri.contains(':') {
+            return uri.to_string();
+        }
+        let mut parts: Vec<&str> = self.app_dir.split('/').collect();
+        parts.extend(parent(file).split('/').filter(|p| !p.is_empty()));
+        for seg in uri.split('/') {
+            match seg {
+                "" | "." => {}
+                ".." => {
+                    parts.pop();
+                }
+                s => parts.push(s),
+            }
+        }
+        let name = parts.pop().unwrap_or_default();
+        let dir = relative_dir(parent(&self.output), &parts.join("/"));
+        if dir.is_empty() { name.to_string() } else { format!("{dir}/{name}") }
     }
 
     /// The output path relative to `lib/`, as a `package:` import spells it.
@@ -100,6 +126,7 @@ impl Pubspec {
         let mut config = Config::default();
         if let Some(c) = raw.fespalier {
             config.format = c.format.unwrap_or(false);
+            config.case_sensitive = c.case_sensitive.unwrap_or(true);
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }

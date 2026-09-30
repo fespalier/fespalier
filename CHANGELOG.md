@@ -44,6 +44,31 @@
   a shorter description and `example/README.md`). New `Publish to pub.dev` workflow: publishes
   through GitHub OIDC automated publishing when run from the `v<version>` tag.
 
+### Paths
+
+- **Catch-all segments.** A folder `$$rest` matches one or more remaining segments and
+  `$$$rest` zero or more; the page takes them as a `List<String>`, each part decoded on
+  its own. It is a go_router parameter with its own pattern (`docs/:rest(.+)`), so deep
+  links, guards and redirects work as for any route; `$$$rest` is two routes with one builder
+  (`/files` and `/files/:path(.+)`). The typed route is `DocsRoute(rest: ['a', 'b c'])`
+  (`/docs/a/b%20c`, each part encoded). Siblings are ordered static, dynamic, then catch-all,
+  and the unreachable-route check knows catch-alls. `data.dart` can be keyed by one (the
+  provider takes the path as an encoded string: new `restKey` / `restParts`). Limits: last
+  segment only, `List<String>` only, nothing below it, no `not_found.dart` in it.
+  `fsp new 'docs/[...rest]'` and `'docs/[[...rest]]'` scaffold them. Runtime: `Segment.asRest`,
+  `restPath`, `restKey`, `restParts`. `fsp routes` shows `/docs/*rest` and `/files/*path?`.
+- **`case_sensitive: false`** under `fespalier:` in pubspec.yaml emits `caseSensitive: false` on
+  every route, so `/Products` reaches `/products` (parameters keep their case). The
+  nearest-`not_found.dart` lookup (`nearestNotFound(..., caseSensitive:)`) follows it. The default
+  is unchanged.
+- **Trailing slashes** need no option: go_router drops them before matching, so `/products/`
+  and `/products/?page=2` reach `/products` (checked on go_router 17.5 and 18, and now tested).
+- **Typed `extra`.** A page parameter called `extra` receives what `context.go(location,
+  extra: obj)` passed, and the typed route takes it: `NoteRoute(id: 3).go(context, extra:
+  note)` (also `push` and `replace`), checked at compile time. The parameter must be nullable:
+  the URL alone can't produce it, so a deep link or a reload gets `null`. The generated file
+  imports the type by name (`show`) from `page.dart`'s imports, the one place it names one of
+  your types. Runtime: `extraOf<T>(state)`. New reserved name: `extra` can't be a segment.
 ### `dart run fespalier`: pinned checksums, offline, "generate, don't commit"
 
 - **Checksums are pinned inside the package.** `lib/src/release_checksums.dart` holds the

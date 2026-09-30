@@ -1,0 +1,163 @@
+import 'package:features/app.g.dart';
+import 'package:features/models/note.dart';
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart' as mui;
+
+Future<void> boot(WidgetTester tester, String location) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      // go_router 17 detects flutter's MaterialApp, go_router 18 material_ui's;
+      // nesting both gives Material pages and error screens on either.
+      child: MaterialApp(
+        home: mui.MaterialApp.router(
+          routerConfig: AppRoutes.router(initialLocation: location),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Catch-all segments, case-insensitive paths, trailing slashes and `extra`.
+void main() {
+  group('catch-all segments', () {
+    testWidgets('\$\$rest takes one or more segments', (tester) async {
+      await boot(tester, '/docs/guide');
+      expect(find.text('Doc guide'), findsOneWidget);
+      await boot(tester, '/docs/guide/setup/linux');
+      expect(find.text('Doc guide > setup > linux'), findsOneWidget);
+    });
+
+    testWidgets('the folder\'s own page serves the path without it',
+        (tester) async {
+      await boot(tester, '/docs');
+      expect(find.text('Docs index'), findsOneWidget);
+    });
+
+    testWidgets('static siblings win, but only for their own path',
+        (tester) async {
+      await boot(tester, '/docs/new');
+      expect(find.text('New doc'), findsOneWidget);
+      await boot(tester, '/docs/new/draft');
+      expect(find.text('Doc new > draft'), findsOneWidget);
+    });
+
+    testWidgets('typed routes encode each part on its own', (tester) async {
+      const route = DocsRoute(rest: ['a b', 'c/d', 'é']);
+      expect(route.location, '/docs/a%20b/c%2Fd/%C3%A9');
+      expect(const DocsRoute(rest: ['x']).location, '/docs/x');
+
+      // And the location reads back into the same parts.
+      await boot(tester, route.location);
+      expect(find.text('Doc a b > c/d > é'), findsOneWidget);
+    });
+
+    testWidgets('a catch-all needs at least one part', (tester) async {
+      expect(() => const DocsRoute(rest: []).location, throwsAssertionError);
+    });
+
+    testWidgets('an optional catch-all also matches without a part',
+        (tester) async {
+      await boot(tester, '/files');
+      expect(find.text('Files root'), findsOneWidget);
+      await boot(tester, '/files/a/b.txt');
+      expect(find.text('File a/b.txt'), findsOneWidget);
+      expect(const FilesRoute().location, '/files');
+      expect(const FilesRoute(path: ['a', 'b']).location, '/files/a/b');
+    });
+
+    testWidgets('data.dart can be keyed by a catch-all', (tester) async {
+      await boot(tester, '/wiki/animals/cats');
+      expect(find.text('Article animals/cats (2 parts)'), findsOneWidget);
+      expect(const WikiRoute(article: ['a', 'b c']).location, '/wiki/a/b%20c');
+    });
+
+    testWidgets('a deep link and navigation reach the same page',
+        (tester) async {
+      await boot(tester, '/');
+      const DocsRoute(rest: ['guide', 'setup'])
+          .go(tester.element(find.text('Home')));
+      await tester.pumpAndSettle();
+      expect(find.text('Doc guide > setup'), findsOneWidget);
+    });
+  });
+
+  group('case and trailing slashes', () {
+    testWidgets('paths match in any case (case_sensitive: false)',
+        (tester) async {
+      await boot(tester, '/DOCS/Guide/Setup');
+      // Static parts match in any case; the catch-all keeps what was typed.
+      expect(find.text('Doc Guide > Setup'), findsOneWidget);
+      await boot(tester, '/Docs/NEW');
+      expect(find.text('New doc'), findsOneWidget);
+      await boot(tester, '/Login');
+      expect(find.text('Sign in'), findsOneWidget);
+    });
+
+    testWidgets('a trailing slash reaches the same page', (tester) async {
+      await boot(tester, '/docs/');
+      expect(find.text('Docs index'), findsOneWidget);
+      await boot(tester, '/docs/guide/setup/');
+      expect(find.text('Doc guide > setup'), findsOneWidget);
+      await boot(tester, '/shops/acme/');
+      expect(find.text('Welcome to acme'), findsOneWidget);
+      await boot(tester, '/files/');
+      expect(find.text('Files root'), findsOneWidget);
+    });
+
+    testWidgets('and in front of a query', (tester) async {
+      await boot(tester, '/search/?q=ap');
+      expect(find.textContaining('ap, page 1'), findsOneWidget);
+    });
+  });
+
+  group('typed extra', () {
+    testWidgets('go passes the object to the page', (tester) async {
+      await boot(tester, '/');
+      // `extra: ` is a `Note?`: another type doesn't compile.
+      const NoteRoute(id: 3)
+          .go(tester.element(find.text('Home')), extra: const Note('Hello'));
+      await tester.pumpAndSettle();
+      expect(find.text('Note 3: Hello'), findsOneWidget);
+      expect(const NoteRoute(id: 3).location, '/notes/3');
+    });
+
+    testWidgets('push and replace pass it too', (tester) async {
+      await boot(tester, '/');
+      const NoteRoute(id: 4).push<void>(tester.element(find.text('Home')),
+          extra: const Note('A'));
+      await tester.pumpAndSettle();
+      expect(find.text('Note 4: A'), findsOneWidget);
+      const NoteRoute(id: 5).replace(
+        tester.element(find.text('Note 4: A')),
+        extra: const Note('B'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Note 5: B'), findsOneWidget);
+    });
+
+    testWidgets('a deep link has no extra: it is null', (tester) async {
+      await boot(tester, '/notes/3');
+      expect(find.text('Note 3: no extra'), findsOneWidget);
+    });
+
+    testWidgets('going without one leaves it null', (tester) async {
+      await boot(tester, '/');
+      const NoteRoute(id: 6).go(tester.element(find.text('Home')));
+      await tester.pumpAndSettle();
+      expect(find.text('Note 6: no extra'), findsOneWidget);
+    });
+
+    testWidgets('an object of another type is an error in debug builds',
+        (tester) async {
+      await boot(tester, '/');
+      // Only possible around the typed route, with a plain location.
+      GoRouter.of(tester.element(find.text('Home')))
+          .go('/notes/3', extra: 'not a note');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<AssertionError>());
+    });
+  });
+}

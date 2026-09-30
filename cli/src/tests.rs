@@ -475,6 +475,8 @@ fn scaffold_then_generate() {
     let args = |route: &str, data: bool| scaffold::NewArgs {
         route: route.into(),
         name: Some("Order".into()),
+        function: false,
+        not_found: false,
         data,
         loading: true,
         error: true,
@@ -748,6 +750,8 @@ fn scaffold_writes_a_transition() {
     let args = scaffold::NewArgs {
         route: "docs".into(),
         name: None,
+        function: false,
+        not_found: false,
         data: false,
         loading: false,
         error: false,
@@ -1130,6 +1134,8 @@ fn scaffold_honours_app_dir() {
     let args = scaffold::NewArgs {
         route: "docs/[slug]".into(),
         name: None,
+        function: false,
+        not_found: false,
         data: false,
         loading: false,
         error: false,

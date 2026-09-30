@@ -401,6 +401,8 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
     let args = |route: &str, data: bool, layout: bool| NewArgs {
         route: route.into(),
         name: None,
+        function: false,
+        not_found: false,
         data,
         loading: false,
         error: false,

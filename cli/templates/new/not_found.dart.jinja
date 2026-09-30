@@ -1,0 +1,14 @@
+import 'package:flutter/material.dart';
+
+{% if function %}
+Widget notFound({required Uri uri}) => Center(child: Text('Nothing at ${uri.path}'));
+{% else %}
+class {{ stem }}NotFound extends StatelessWidget {
+  const {{ stem }}NotFound({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) => Center(child: Text('Nothing at ${uri.path}'));
+}
+{% endif %}

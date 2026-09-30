@@ -1,0 +1,53 @@
+<idea-plugin>
+    <id>com.vaamapps.fespalier</id>
+    <name>fespalier</name>
+    <vendor url="https://github.com/vaam-apps/fespalier">vaam-apps</vendor>
+
+    <description><![CDATA[
+    <p>Shows what <a href="https://github.com/vaam-apps/fespalier">fespalier</a> finds in your
+    Flutter route tree (<code>lib/app/</code>) as inline errors and warnings, and runs
+    <code>fsp gen</code> from the Tools menu.</p>
+    <ul>
+        <li><b>Inline diagnostics.</b> A file under the app folder
+            (<code>fespalier: app_dir:</code> in <code>pubspec.yaml</code>, <code>lib/app</code> by default)
+            is highlighted with the problems <code>fsp check --json</code> reports for it, with severity.
+            Saving a file checks again.</li>
+        <li><b>Tools | fespalier: Generate</b> runs <code>fsp gen</code> and writes <code>lib/app.g.dart</code>.
+            <b>Tools | fespalier: Check</b> checks on demand and lists what it found.</li>
+        <li><b>Runner.</b> Uses <code>fsp</code> from your PATH, or <code>dart run fespalier</code> when there
+            is none. Settings | Tools | fespalier chooses, and sets the path to fsp.</li>
+    </ul>
+    <p>It is a thin layer over the generator's <code>--json</code> output; nothing is re-implemented in the IDE.
+    It works in IntelliJ IDEA and Android Studio with the Dart plugin.</p>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Route files are Dart; pubspec.yaml is YAML. Ignored where a language plugin is missing. -->
+        <externalAnnotator language="Dart" implementationClass="com.vaamapps.fespalier.FespalierAnnotator"/>
+        <externalAnnotator language="yaml" implementationClass="com.vaamapps.fespalier.FespalierAnnotator"/>
+
+        <applicationConfigurable parentId="tools"
+                                 instance="com.vaamapps.fespalier.FespalierConfigurable"
+                                 id="com.vaamapps.fespalier.settings"
+                                 displayName="fespalier"/>
+
+        <notificationGroup id="fespalier" displayType="BALLOON"/>
+    </extensions>
+
+    <actions>
+        <action id="com.vaamapps.fespalier.Generate"
+                class="com.vaamapps.fespalier.FespalierGenerateAction"
+                text="fespalier: Generate"
+                description="Run fsp gen: write the generated routes file">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action id="com.vaamapps.fespalier.Check"
+                class="com.vaamapps.fespalier.FespalierCheckAction"
+                text="fespalier: Check"
+                description="Run fsp check: report route-tree errors and warnings">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

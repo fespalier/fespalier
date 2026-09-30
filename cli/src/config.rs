@@ -10,6 +10,7 @@
 //!   case_sensitive: true    # default; false matches `/Products` too
 //!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
 //!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
+//!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -21,6 +22,8 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use serde_yaml_ng::Value;
+
+use crate::scan::FileStyle;
 
 pub const DEFAULT_APP_DIR: &str = "lib/app";
 pub const DEFAULT_OUTPUT: &str = "lib/app.g.dart";
@@ -54,6 +57,8 @@ pub struct Config {
     pub data_retry: DataRetry,
     /// Keep rendering the old value or error while `data.dart` reloads.
     pub keep_previous: bool,
+    /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
+    pub file_style: FileStyle,
 }
 
 impl Default for Config {
@@ -67,6 +72,7 @@ impl Default for Config {
             case_sensitive: true,
             data_retry: DataRetry::Inherit,
             keep_previous: true,
+            file_style: FileStyle::Snake,
         }
     }
 }
@@ -98,6 +104,7 @@ struct RawConfig {
     case_sensitive: Option<bool>,
     data_retry: Option<DataRetry>,
     keep_previous: Option<bool>,
+    file_style: Option<FileStyle>,
 }
 
 impl Config {
@@ -181,6 +188,7 @@ impl Pubspec {
             config.case_sensitive = c.case_sensitive.unwrap_or(true);
             config.data_retry = c.data_retry.unwrap_or(config.data_retry);
             config.keep_previous = c.keep_previous.unwrap_or(config.keep_previous);
+            config.file_style = c.file_style.unwrap_or(config.file_style);
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }

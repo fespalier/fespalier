@@ -318,3 +318,5 @@ mod route_api_tests;
 mod selector_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod views_tests;

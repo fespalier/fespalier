@@ -597,3 +597,72 @@ fn a_shell_on_the_root_navigator_still_gets_its_transition() {
         ],
     );
 }
+
+// --- next to function views ------------------------------------------------------
+
+#[test]
+fn navigator_dart_and_present_dart_work_with_function_pages() {
+    let c = code(&[
+        ("layout.dart", "Widget layout(Widget child) => child;"),
+        ("orders/page.dart", "Widget page() => Text('orders');"),
+        ("orders/$id/page.dart", "Widget page(int id) => Text('$id');"),
+        ("orders/$id/navigator.dart", ROOT),
+        ("orders/$id/buy/page.dart", "Widget page(int id) => Text('buy');"),
+        ("orders/$id/buy/present.dart", SHEET),
+        ("orders/$id/buy/confirm/page.dart", "Widget page() => Text('ok');"),
+    ]);
+    has(
+        &c,
+        &[
+            "path: ':id', parentNavigatorKey: rootNavigatorKey,",
+            "path: 'buy', parentNavigatorKey: rootNavigatorKey,",
+            "path: 'confirm', parentNavigatorKey: rootNavigatorKey,",
+            ".present(",
+            "(present, root)",
+        ],
+    );
+    assert_eq!(count(&c, "parentNavigatorKey: rootNavigatorKey,"), 3, "{c}");
+}
+
+#[test]
+fn a_container_works_beside_a_function_layout() {
+    let layout = "Widget layout(StatefulNavigationShell shell) => Text('tabs');\n\
+                  Widget container(BuildContext context, StatefulNavigationShell shell, List<Widget> children) => Fade(children);";
+    let c = code(&[
+        ("layout.dart", layout),
+        ("home/page.dart", "Widget page() => Text('home');"),
+        ("search/page.dart", "Widget page() => Text('search');"),
+    ]);
+    has(&c, &["StatefulShellRoute( navigatorContainerBuilder: _i0.container,", "_i0.layout(navigationShell)"]);
+    assert!(!c.contains("StatefulShellRoute.indexedStack"), "{c}");
+    // A wrong `container` is still an error at its parameter.
+    let e = diags(&[
+        (
+            "layout.dart",
+            "Widget layout(StatefulNavigationShell shell) => Text('tabs');\nWidget container(BuildContext c, Widget s, List<Widget> l) => l.first;",
+        ),
+        ("home/page.dart", "Widget page() => Text('home');"),
+        ("search/page.dart", "Widget page() => Text('search');"),
+    ]);
+    assert!(e.iter().any(|m| m.contains("`s` gets the StatefulNavigationShell")), "{e:?}");
+    // In a plain function layout it is ignored, with a warning.
+    let e = diags(&[
+        ("layout.dart", "Widget layout(Widget child) => child;\nWidget container(BuildContext c, StatefulNavigationShell s, List<Widget> l) => l.first;"),
+        ("page.dart", "Widget page() => Text('home');"),
+    ]);
+    assert_eq!(e.len(), 1, "{e:?}");
+    assert!(e[0].contains("container() is only used by a tab layout"), "{e:?}");
+}
+
+#[test]
+fn a_function_layout_shell_takes_the_transition_and_the_root_key() {
+    let c = code(&[
+        ("transition.dart", FADE),
+        ("page.dart", "Widget page() => Text('home');"),
+        ("wizard/page.dart", "Widget page() => Text('w');"),
+        ("wizard/navigator.dart", ROOT),
+        ("wizard/steps/layout.dart", "Widget layout(Widget child) => child;"),
+        ("wizard/steps/one/page.dart", "Widget page() => Text('1');"),
+    ]);
+    has(&c, &["ShellRoute( parentNavigatorKey: rootNavigatorKey, pageBuilder: (context, state, child) => _i1.transition( const ValueKey<String>('layout:wizard/steps/'),"]);
+}

@@ -49,6 +49,44 @@
   the nested route that stays in the tab, the tab layout has a cross-fading `container`, and its
   `transition.dart` is Cupertino (the shell moves aside under a root-level push).
 
+### View files as functions, and `not-found.dart`
+
+- **`page.dart`, `loading.dart`, `error.dart`, `layout.dart` and `not_found.dart` can export a
+  function returning a `Widget`** in place of a widget class: `Widget page({required String
+  orderId}) => CancelOrderScreen(orderId: orderId);`. Its parameters are bound exactly like a
+  constructor's (segments, query, `data` by name or type, `child` or a shell, `error` and
+  `retry`, `uri`). Many routes can now build one screen with different constants, and a screen
+  can stay outside `lib/app/`. The function is named after the file (`notFound()` or
+  `not_found()` for the not-found view); a file with a public widget class and the function is
+  an error naming both. A function view can't use hooks or `ref`: put those in the widget it
+  returns. The class form is unchanged.
+- **Route names for function pages.** A page function takes the folder path, ignoring
+  `(group)` folders: `(kyc)/shop/name` is `ShopNameRoute`. `const routeName = 'KycShopName';`
+  in `page.dart` overrides it (and also renames a class page's route). A name clash is an
+  error that suggests `routeName`.
+- **`fsp new --function`** scaffolds the function form (`--name` writes `routeName`), and
+  **`fsp new --not-found`** scaffolds a `not_found.dart`.
+- **`not-found.dart` is accepted** as a spelling of `not_found.dart`, whatever the
+  configuration says (any future multi-word kind gets the same rule). Both in one folder is an
+  error with a code frame for each file. Diagnostics, the route table and `fsp routes --json`
+  name a file as spelled on disk.
+- **`file_style: snake | kebab`** (default `snake`) under `fespalier:` picks what `fsp init` and
+  `fsp new` write. Existing projects are unchanged.
+- `examples/features` gains two routes serving one `PlanScreen` with different constants
+  (`(plans)/free`, `(plans)/pro`), with a widget test for each.
+
+### IntelliJ IDEA and Android Studio plugin
+
+- New `editors/intellij/`, a Kotlin plugin on top of `fsp check --json` (the counterpart of the
+  VS Code extension). Files under the app folder (`fespalier: app_dir:`, `lib/app` by default)
+  get the reported errors and warnings underlined in the editor, and saving one checks again;
+  *Tools | fespalier: Generate* runs `fsp gen` and *Tools | fespalier: Check* checks on demand,
+  each ending in a notification, which also says when `fsp` could not be run. Settings | Tools |
+  fespalier chooses the runner (auto: `fsp` from `PATH`, else `dart run fespalier`) and the
+  path to `fsp`. Platform 252 (2025.2) and later; built with JDK 21 and the IntelliJ Platform
+  Gradle Plugin 2. Not on the JetBrains Marketplace yet: build it with `./gradlew buildPlugin`
+  and install the zip from disk (README, "Editor support"). CI builds and tests it.
+
 ### Data refresh and retry
 
 - **Behaviour change: generated `data()` providers no longer switch off Riverpod's retry.**

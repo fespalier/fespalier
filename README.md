@@ -136,7 +136,8 @@ It depends on go_router (17 or 18), hooks_riverpod 3 and flutter_hooks, and
 fsp init
 ```
 
-It creates `lib/app/layout.dart`, `page.dart`, `not_found.dart` and `transition.dart` (every
+It creates `lib/app/layout.dart`, `page.dart`, `not_found.dart` (`not-found.dart` with
+[`file_style: kebab`](#file-names)) and `transition.dart` (every
 route animates with the Material transition), and writes `lib/app.g.dart`. It never
 overwrites a file that exists: those are reported as `skip`.
 It then prints what is left to do (the dependency block above, if `pubspec.yaml` doesn't
@@ -236,6 +237,7 @@ fespalier:
   case_sensitive: true
   data_retry: inherit
   keep_previous: true
+  file_style: snake
   meta: optional            # `required`: every route needs a meta.dart
   # output_manifest: lib/app.routes.g.dart   # no default: the manifest lives in `output`
 ```
@@ -243,7 +245,8 @@ fespalier:
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
 `case_sensitive: false` makes paths match in any case (see [Case and trailing slashes](#case-and-trailing-slashes)).
 `data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
-[Retries and reloads](#retries-and-reloads).
+[Retries and reloads](#retries-and-reloads). `file_style: kebab` makes `fsp init` and `fsp new`
+write `not-found.dart` instead of `not_found.dart` (see [File names](#file-names)).
 `meta: required` makes a route without a [`meta.dart`](#route-manifest-and-metadart) an error, and
 `output_manifest` writes the route manifest to a library of its own (same section).
 
@@ -275,8 +278,8 @@ fespalier:
 ## File kinds
 
 Each view file exports one public widget class, of any kind: `StatelessWidget`,
-`ConsumerWidget`, `HookConsumerWidget` and so on. Function files export one
-top-level function.
+`ConsumerWidget`, `HookConsumerWidget` and so on, or a [top-level function](#function-views)
+that returns a widget. Function files export one top-level function.
 
 | File | Exports | Its constructor / signature can ask for |
 |---|---|---|
@@ -292,6 +295,73 @@ top-level function.
 | `navigator.dart` | `const navigator = RouteNavigator.root;`: this folder and below [render on the root navigator](#the-root-navigator-navigatordart) | nothing: it is data |
 | `not_found.dart` | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
 | `meta.dart` | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart) | nothing: it is data |
+
+### Function views
+
+`page.dart`, `loading.dart`, `error.dart`, `layout.dart` and `not_found.dart` can export a
+top-level function named after the file, returning a `Widget`, instead of a widget class:
+
+```dart
+// lib/app/(kyc)/shop/name/page.dart
+import 'package:my_app/screens/kyc/legal_name_screen.dart';
+
+Widget page() => const LegalNameScreen(audience: KycAudience.shop);
+```
+
+```dart
+// lib/app/(buyer)/orders/$orderId/cancel/page.dart
+Widget page({required String orderId, String? back}) =>
+    CancelOrderScreen(orderId: orderId, back: back);
+```
+
+That is one route per file, however many routes build the same screen, and the screen can
+stay where it is (`lib/screens/…`) instead of moving into `lib/app/`. The function's
+parameters are filled exactly like a constructor's ([below](#how-parameters-are-filled)):
+segments and query parameters by name, `data` by name or by type, `child` or a shell for a
+`layout()`, `error`, `stackTrace` and `retry` for an `error()`, `uri` for a `notFound()`.
+Named and positional parameters both work, and a binding error points at the parameter.
+
+- **Names.** `page()`, `loading()`, `error()`, `layout()` and `notFound()` (`not_found()`
+  too). Other functions in the file are helpers and are ignored.
+- **One form per file.** A file with a public widget class *and* the function is an error that
+  names both; the class form is unchanged. To use the function, keep the widget in another
+  file (or make it private) and build it from the function.
+- **No hooks, no `ref`.** A function view is a plain function: it has no `BuildContext` and no
+  `WidgetRef` (asking for one is an error that says so). Hooks and `ref` belong in the
+  widget it returns, which is where they were anyway.
+- **The route class name.** A class names its route after itself (`ProductPage` →
+  `ProductRoute`), but many functions build the same screen, so a `page()` takes the
+  folder path, ignoring `(group)` folders and joining the segments in PascalCase:
+  `(kyc)/shop/name/page.dart` is `ShopNameRoute`, `orders/$orderId/cancel/page.dart` is
+  `OrdersOrderIdCancelRoute` (the root is `RootRoute`). To pick another, put a string
+  literal in `page.dart`:
+
+  ```dart
+  const routeName = 'KycShopName'; // KycShopNameRoute
+  Widget page() => const LegalNameScreen(audience: KycAudience.shop);
+  ```
+
+  It must be an UpperCamelCase name (the route class is `<routeName>Route`), and it also
+  renames a class-form page's route. The [route manifest](#route-manifest-and-metadart) lists the
+  route under this name, and `meta.dart` works beside a function page. Two routes with the same name are an error that
+  suggests `routeName`.
+- **`export` isn't followed.** `page.dart` has to hold the function itself, so it stays the
+  source of truth for the route.
+
+`fsp new 'shop/name' --function` scaffolds the function form (`--name KycShopName` writes the
+`routeName`). `examples/features` has two routes, `(plans)/free` and `(plans)/pro`, serving one
+screen with different constants.
+
+### File names
+
+The one file kind with two words is `not_found.dart`. Reading takes it in kebab-case too,
+`not-found.dart`, whatever the configuration says, so a project that names every Dart file in
+kebab-case can keep to that, and a tree that mixes the two still works. Both in one folder
+is an error with a code frame for each file. Diagnostics, `fsp routes` and the header of
+`app.g.dart` name a file as it is spelled on disk.
+
+`file_style: snake | kebab` (default `snake`) only picks what `fsp init` and `fsp new` write.
+The single-word kinds (`page.dart`, `layout.dart`, …) have one spelling.
 
 ### How parameters are filled
 
@@ -1216,12 +1286,17 @@ fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
                         # [id] or :id both mean $id, so no shell quoting of $
 fsp new '(account)' --layout    # a (group) folder: layout only, no page.dart
+fsp new 'kyc/shop/name' --function --name KycShopName
+                        # views as functions (`Widget page()`), with a routeName
+fsp new 'shop' --not-found      # not_found.dart (not-found.dart with `file_style: kebab`)
 ```
 
 All commands take `--project <dir>` (default: the nearest folder with a `pubspec.yaml`).
 `fsp new` writes `page.dart` (plus the kinds you ask for with flags), skips files that
 already exist, and takes its class names from `--name` (default: from the path, e.g.
-`ProductsId`). A segment that already has a type elsewhere in the tree keeps it. Pass
+`ProductsId`). With `--function` it writes [function views](#function-views) instead of classes,
+and `--name` becomes the `routeName` (an UpperCamelCase name). A segment that already has a
+type elsewhere in the tree keeps it. Pass
 `--no-page` to leave `page.dart` out. A `(group)` target (like `'(account)'`) gets no
 `page.dart` either, since a group has no URL of its own; write one by hand if you want the
 group to serve its parent's URL. It then regenerates `lib/app.g.dart` and prints the
@@ -1257,12 +1332,31 @@ there is nothing to report:
 `line` and `column` count from 1 (the column counts characters, not bytes) and are `null` for
 a diagnostic that isn't about a place in a file. `severity` is `error` or `warning`.
 
-**Editor support.** `editors/vscode/` is a VS Code extension that runs `fsp check --json` when
-you save a file under the app folder and puts the diagnostics in the Problems panel, with a
-`fespalier: generate` command and a status bar item. It is not on the Marketplace yet: build
-it with `npm install && npm test && npx @vscode/vsce package` in that folder and install the
-`.vsix` (see `editors/vscode/README.md`). It uses `fsp` from your `PATH`, or `dart run
-fespalier` when there is none (`fespalier.runner` chooses).
+**Editor support.** Two editor plugins sit on top of the JSON diagnostics. Neither is on a
+marketplace yet, so you build them from source. Both use `fsp` from your `PATH`, or `dart run
+fespalier` when there is none, and both check again when you save a file under the app folder
+(`fespalier: app_dir:` in `pubspec.yaml`, `lib/app` by default).
+
+- **VS Code:** `editors/vscode/` puts the diagnostics in the Problems panel, with a
+  `fespalier: generate` command and a status bar item. Build it with `npm install && npm test
+  && npx @vscode/vsce package` in that folder and install the `.vsix` (see
+  `editors/vscode/README.md`). `fespalier.runner` chooses the runner.
+- **IntelliJ IDEA and Android Studio:** `editors/intellij/` (Kotlin) underlines the problems
+  in the editor, with their severity, in the files under the app folder, and adds
+  *Tools | fespalier: Generate* and *fespalier: Check*; a notification says when `fsp` could
+  not run. Settings | Tools | fespalier chooses the runner (auto, `fsp`, or `dart run
+  fespalier`) and the path to `fsp`. It works on platform 252 (2025.2) and later; the
+  highlighting of route files needs the Dart plugin, which Android Studio includes. Build it
+  with JDK 21:
+
+  ```sh
+  cd editors/intellij
+  ./gradlew build buildPlugin      # tests, then build/distributions/fespalier-intellij-<version>.zip
+  ```
+
+  Then *Settings | Plugins | gear icon | Install Plugin from Disk...* and pick the zip.
+  `./gradlew runIde` starts a sandbox IDE with the plugin instead. See
+  `editors/intellij/README.md`.
 
 **Formatting.** The generated file is not formatted by default, so a committed
 `app.g.dart` doesn't depend on which Dart SDK ran `fsp`. `fsp gen --format`, or `format: true` in
@@ -1372,6 +1466,7 @@ restart.
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
 editors/vscode/      the VS Code extension (TypeScript): fsp diagnostics in the Problems panel
+editors/intellij/    the IntelliJ / Android Studio plugin (Kotlin): fsp diagnostics in the editor
 scripts/             packaging.py renders the Homebrew formula and Scoop manifest for a release;
                      pin_checksums.py writes the release's checksums into the Dart package
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
@@ -1441,6 +1536,13 @@ Maintainers only. Bump the version everywhere (see the version checks above), up
 3. **Homebrew and Scoop.** Copy `fsp.rb` from the release into the `Formula/` folder of a tap
    repository and `fsp.json` into the `bucket/` folder of a bucket repository, or let the
    workflow do it (below).
+4. **JetBrains Marketplace (IntelliJ plugin).** Build the plugin from the tag with
+   `cd editors/intellij && ./gradlew buildPlugin` (JDK 21) and upload
+   `build/distributions/fespalier-intellij-<version>.zip` on the plugin's page in the
+   JetBrains Marketplace, or run `PUBLISH_TOKEN=<token> ./gradlew publishPlugin`. Bump
+   `version` in `editors/intellij/build.gradle.kts` first (the plugin is versioned on its
+   own, like the VS Code extension). The first upload needs a vendor account and a manual
+   review; later ones can use a permanent token from the Marketplace's *My Tokens* page.
 
 One-time setup:
 
@@ -1518,12 +1620,12 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 231 tests (210 unit, 16 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
-  parameters, `(group)` folders and route order, tab layouts, transitions, all three data
+- **Generator:** 294 tests (268 unit, 21 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+  parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects,
   scaffolding, the route manifest, meta.dart and restoration ids, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 227 Flutter tests (the package 100, `shop` 23, `features` 87, `tabs` 17); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 250 Flutter tests (the package 102, `shop` 23, `features` 100, `tabs` 25); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

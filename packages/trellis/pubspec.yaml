@@ -1,0 +1,15 @@
+name: trellis
+description: File-tree routing for Flutter. Tiny typed files (page, data, loading, error, layout, params, guard) federated into one mountable go_router entry point.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_hooks: ">=0.20.0 <0.22.0"
+  go_router: ^17.0.0
+  hooks_riverpod: ^3.0.0

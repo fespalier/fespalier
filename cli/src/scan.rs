@@ -1,0 +1,131 @@
+//! Walks `lib/app/` into a tree of route folders.
+
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+
+use crate::diag::Diags;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Kind {
+    Page,
+    Data,
+    Loading,
+    Error,
+    Layout,
+    Params,
+    Guard,
+    NotFound,
+}
+
+impl Kind {
+    pub const ALL: [Kind; 8] = [
+        Kind::Page,
+        Kind::Data,
+        Kind::Loading,
+        Kind::Error,
+        Kind::Layout,
+        Kind::Params,
+        Kind::Guard,
+        Kind::NotFound,
+    ];
+
+    pub fn file(self) -> &'static str {
+        match self {
+            Kind::Page => "page.dart",
+            Kind::Data => "data.dart",
+            Kind::Loading => "loading.dart",
+            Kind::Error => "error.dart",
+            Kind::Layout => "layout.dart",
+            Kind::Params => "params.dart",
+            Kind::Guard => "guard.dart",
+            Kind::NotFound => "not_found.dart",
+        }
+    }
+
+    fn from_file(name: &str) -> Option<Kind> {
+        Kind::ALL.into_iter().find(|k| k.file() == name)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Seg {
+    Static(String),
+    Dynamic(String),
+}
+
+#[derive(Debug)]
+pub struct Node {
+    /// Relative to `lib/app`, with `/` separators. Root is `""`.
+    pub dir: String,
+    pub seg: Option<Seg>,
+    pub files: BTreeMap<Kind, String>,
+    pub children: Vec<Node>,
+}
+
+impl Node {
+    /// Path of a file relative to `lib/app`, e.g. `products/$id/page.dart`.
+    pub fn rel(&self, kind: Kind) -> String {
+        if self.dir.is_empty() {
+            kind.file().to_string()
+        } else {
+            format!("{}/{}", self.dir, kind.file())
+        }
+    }
+}
+
+pub fn scan(app_dir: &Path, diags: &mut Diags) -> Result<Node> {
+    let mut root = Node { dir: String::new(), seg: None, files: BTreeMap::new(), children: vec![] };
+    fill(app_dir, &mut root, diags)?;
+    Ok(root)
+}
+
+fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
+    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+        .with_context(|| format!("reading {}", dir.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .collect();
+    entries.sort();
+    for path in entries {
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        if path.is_dir() {
+            // `_components/` etc. are private: colocated, never routes.
+            if name.starts_with('_') || name.starts_with('.') {
+                continue;
+            }
+            let rel = if node.dir.is_empty() { name.clone() } else { format!("{}/{}", node.dir, name) };
+            let seg = match parse_segment(&name) {
+                Ok(s) => s,
+                Err(msg) => {
+                    diags.error(&rel, 0, msg);
+                    continue;
+                }
+            };
+            let mut child = Node { dir: rel, seg: Some(seg), files: BTreeMap::new(), children: vec![] };
+            fill(&path, &mut child, diags)?;
+            node.children.push(child);
+        } else if let Some(kind) = Kind::from_file(&name) {
+            node.files.insert(kind, fs::read_to_string(&path)?);
+        }
+    }
+    Ok(())
+}
+
+pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {
+    if let Some(p) = name.strip_prefix('$') {
+        let valid = p.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+            && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !valid {
+            return Err(format!("`${p}`: a dynamic segment must be a lowerCamel Dart identifier, e.g. `$productId`"));
+        }
+        return Ok(Seg::Dynamic(p.to_string()));
+    }
+    let valid = !name.is_empty()
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~'));
+    if !valid {
+        return Err(format!("`{name}` is not a valid URL segment (use a-z, 0-9, - _ . ~; `$name` for params, `_name` for private folders)"));
+    }
+    Ok(Seg::Static(name.to_string()))
+}

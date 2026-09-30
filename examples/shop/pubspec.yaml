@@ -1,0 +1,16 @@
+name: shop
+description: trellis example — products/$id end to end.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  trellis:
+    path: ../../packages/trellis
+
+flutter:
+  uses-material-design: true

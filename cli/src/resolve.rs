@@ -86,6 +86,8 @@ pub struct Route {
     pub children: Vec<usize>,
     /// Dynamic segments from the root down, with the folder that declares each.
     pub segs: Vec<(String, usize)>,
+    /// The URL's segments from the root down; `(group)` folders add none.
+    pub url: Vec<Seg>,
     pub page: Option<Widget>,
     /// `Product` for `ProductPage`; the typed route is `ProductRoute`.
     pub name: Option<String>,
@@ -166,6 +168,7 @@ struct Fallback {
 #[derive(Clone, Default)]
 struct Inherited {
     segs: Vec<(String, usize)>,
+    url: Vec<Seg>,
     loading: Option<Fallback>,
     error: Option<Fallback>,
 }
@@ -195,6 +198,7 @@ pub fn resolve(root: &Node, diags: &mut Diags) -> App {
         app: App::default(),
         import_ix: HashMap::new(),
         route_names: HashMap::new(),
+        patterns: HashMap::new(),
         constraints: vec![],
         queries: HashMap::new(),
         query_order: vec![],
@@ -216,6 +220,8 @@ struct Resolver<'a> {
     app: App,
     import_ix: HashMap<String, usize>,
     route_names: HashMap<String, String>,
+    /// URL pattern → the page.dart that serves it.
+    patterns: HashMap<String, String>,
     constraints: Vec<Constraint>,
     /// Query parameter types as first declared: (type, file, line).
     queries: HashMap<(Scope, String), (String, String, usize)>,
@@ -242,6 +248,7 @@ impl Resolver<'_> {
             seg: node.seg.clone(),
             children: vec![],
             segs: vec![],
+            url: vec![],
             page: None,
             name: None,
             data: None,
@@ -261,6 +268,10 @@ impl Resolver<'_> {
                 segs.push((n.clone(), id));
             }
         }
+        let mut url = up.url.clone();
+        if let Some(seg @ (Seg::Static(_) | Seg::Dynamic(_))) = &node.seg {
+            url.push(seg.clone());
+        }
         let modules: BTreeMap<Kind, Module> = node.files.iter().map(|(k, src)| (*k, dart::parse(src))).collect();
 
         // page.dart names the route; data.dart feeds it.
@@ -270,6 +281,11 @@ impl Resolver<'_> {
         if let (Some(n), Some(c)) = (&name, &page_class) {
             if let Some(prev) = self.route_names.insert(n.clone(), page_file.clone()) {
                 self.diags.error(&page_file, Some(&c.span), format!("route name `{n}Route` is already taken by {prev}; rename the class"));
+            }
+            // `(a)/x/page.dart` and `(b)/x/page.dart` would both be /x.
+            let pattern = pattern(&url);
+            if let Some(prev) = self.patterns.insert(pattern.clone(), page_file.clone()) {
+                self.diags.error(&page_file, Some(&c.span), format!("{prev} already serves {pattern}; (group) folders don't add to the URL"));
             }
         }
         let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs, id));
@@ -299,7 +315,7 @@ impl Resolver<'_> {
         });
 
         // loading.dart / error.dart apply here and to every folder below.
-        let mut here = Inherited { segs: segs.clone(), loading: up.loading.clone(), error: up.error.clone() };
+        let mut here = Inherited { segs: segs.clone(), url: url.clone(), loading: up.loading.clone(), error: up.error.clone() };
         for (kind, slot) in [(Kind::Loading, &mut here.loading), (Kind::Error, &mut here.error)] {
             if let Some(m) = modules.get(&kind) {
                 let file = node.rel(kind);
@@ -351,8 +367,8 @@ impl Resolver<'_> {
 
         let has_page = page.is_some();
         let r = &mut self.app.routes[id];
-        (r.segs, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard) =
-            (segs, page, name, data, loading, error, layout, guard);
+        (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard) =
+            (segs, url, page, name, data, loading, error, layout, guard);
 
         let mut children = vec![];
         let mut any_route = has_page;
@@ -706,6 +722,19 @@ fn unfillable(name: &str, cx: &BindCx) -> String {
 }
 
 /// Segments in path order, then query parameters as declared.
+/// `/products/:id`
+pub fn pattern(url: &[Seg]) -> String {
+    let parts: Vec<String> = url
+        .iter()
+        .filter_map(|s| match s {
+            Seg::Static(s) => Some(s.clone()),
+            Seg::Dynamic(n) => Some(format!(":{n}")),
+            Seg::Group(_) => None,
+        })
+        .collect();
+    format!("/{}", parts.join("/"))
+}
+
 fn in_path_order(keys: Vec<String>, segs: &[(String, usize)]) -> Vec<String> {
     let mut out: Vec<String> = segs.iter().map(|(n, _)| n).filter(|n| keys.contains(n)).cloned().collect();
     out.extend(keys.into_iter().filter(|k| !segs.iter().any(|(n, _)| n == k)));

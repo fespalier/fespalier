@@ -44,6 +44,9 @@ impl Kind {
 pub enum Seg {
     Static(String),
     Dynamic(String),
+    /// `(name)`: groups routes (for a layout, loading or error view) without
+    /// adding to the URL.
+    Group(String),
 }
 
 #[derive(Debug)]
@@ -122,10 +125,17 @@ pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {
         }
         return Ok(Seg::Dynamic(p.to_string()));
     }
-    let valid = !name.is_empty()
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~'));
-    if !valid {
-        return Err(format!("`{name}` is not a valid URL segment (use a-z, 0-9, - _ . ~; `$name` for params, `_name` for private folders)"));
+    let plain = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~'));
+    if let Some(g) = name.strip_prefix('(').and_then(|n| n.strip_suffix(')')) {
+        if !plain(g) {
+            return Err(format!("`{name}`: a group name uses a-z, 0-9, - _ . ~, e.g. `(shop)`"));
+        }
+        return Ok(Seg::Group(g.to_string()));
+    }
+    if !plain(name) {
+        return Err(format!(
+            "`{name}` is not a valid URL segment (use a-z, 0-9, - _ . ~; `$name` for params, `(name)` for groups, `_name` for private folders)"
+        ));
     }
     Ok(Seg::Static(name.to_string()))
 }

@@ -105,4 +105,28 @@ void main() {
     expect(find.text('Banner: hello'), findsOneWidget);
     expect(find.text('Home'), findsOneWidget);
   });
+
+  testWidgets('(group) layouts wrap their routes, not their siblings',
+      (tester) async {
+    await boot(tester, '/profile');
+    expect(find.text('Account'), findsOneWidget);
+    expect(find.text('Profile'), findsOneWidget);
+
+    await boot(tester, '/search');
+    expect(find.text('Account'), findsNothing);
+  });
+
+  testWidgets('static routes win over a dynamic sibling', (tester) async {
+    await boot(tester, '/settings');
+    expect(find.text('Settings'), findsOneWidget);
+    await boot(tester, '/counter');
+    expect(find.textContaining('Page '), findsNothing);
+    await boot(tester, '/anything');
+    expect(find.text('Page anything'), findsOneWidget);
+  });
+
+  test('groups leave no trace in typed locations', () {
+    expect(const ProfileRoute().location, '/profile');
+    expect(const SlugRoute(slug: 'x').location, '/x');
+  });
 }

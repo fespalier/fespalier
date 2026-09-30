@@ -360,3 +360,90 @@ fn query_param_rules() {
         assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
     }
 }
+
+#[test]
+fn group_folders_share_a_layout_without_adding_to_the_url() {
+    let c = code(&[
+        ("(marketing)/layout.dart", "class MarketingLayout extends StatelessWidget { const MarketingLayout({super.key, required this.child}); final Widget child; }"),
+        ("(marketing)/page.dart", "class HomePage extends StatelessWidget { const HomePage({super.key}); }"),
+        ("(marketing)/about/page.dart", "class AboutPage extends StatelessWidget { const AboutPage({super.key}); }"),
+        ("(app)/layout.dart", "class AppShell extends StatelessWidget { const AppShell({super.key, required this.child}); final Widget child; }"),
+        ("(app)/loading.dart", "class AppLoading extends StatelessWidget { const AppLoading({super.key}); }"),
+        ("(app)/$id/data.dart", "Future<int> data(Ref ref, {required int id}) async => id;"),
+        ("(app)/$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.data}); final int data; }"),
+    ]);
+    has(
+        &c,
+        &[
+            "//   /:id    ItemRoute   (app)/$id/page.dart  (data)\n//   /       HomeRoute   (marketing)/page.dart  (layout)",
+            // Each group is its own ShellRoute; the URLs have no trace of it.
+            // The one holding `/:id` goes last, so `/about` isn't read as an id.
+            "      ShellRoute(\n        builder: (context, state, child) => _i5.MarketingLayout(child: child),",
+            "      ShellRoute(\n        builder: (context, state, child) => _i1.AppShell(child: child),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/:id'),",
+            "loading: () => _i0.AppLoading(),",
+            "_i5.MarketingLayout(child: child),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/'),",
+            "GoRoute(\n                path: 'about',",
+            "String get location => joinLocation(AppRoutes.base, '/about');",
+            "String get location => joinLocation(AppRoutes.base, '/$id');",
+            "import 'app/(app)/\\$id/page.dart'",
+        ],
+    );
+}
+
+#[test]
+fn groups_cannot_serve_the_same_url_twice() {
+    let e = diags(&[
+        ("page.dart", HOME),
+        ("(a)/page.dart", "class APage extends StatelessWidget { const APage({super.key}); }"),
+        ("(a)/x/page.dart", "class XPage extends StatelessWidget { const XPage({super.key}); }"),
+        ("(b)/x/page.dart", "class OtherXPage extends StatelessWidget { const OtherXPage({super.key}); }"),
+        ("(bad name)/page.dart", HOME),
+    ]);
+    let joined = e.join("\n");
+    for needle in [
+        "(a)/page.dart:1  page.dart already serves /; (group) folders don't add to the URL",
+        "(b)/x/page.dart:1  (a)/x/page.dart already serves /x",
+        "`(bad name)`: a group name uses a-z, 0-9, - _ . ~",
+    ] {
+        assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
+    }
+}
+
+#[test]
+fn static_routes_come_before_dynamic_ones() {
+    // go_router takes the first match, so `/about` must not be read as `/:slug`.
+    let c = code(&[
+        ("page.dart", HOME),
+        ("$slug/page.dart", "class SlugPage extends StatelessWidget { const SlugPage({super.key, required this.slug}); final String slug; }"),
+        ("about/page.dart", "class AboutPage extends StatelessWidget { const AboutPage({super.key}); }"),
+        ("(app)/layout.dart", "class AppShell extends StatelessWidget { const AppShell({super.key, required this.child}); final Widget child; }"),
+        ("(app)/settings/page.dart", "class SettingsPage extends StatelessWidget { const SettingsPage({super.key}); }"),
+        ("(app)/settings/$tab/page.dart", "class TabPage extends StatelessWidget { const TabPage({super.key, required this.tab}); final String tab; }"),
+        ("(app)/settings/general/page.dart", "class GeneralPage extends StatelessWidget { const GeneralPage({super.key}); }"),
+    ]);
+    let at = |needle: &str| c.find(needle).unwrap_or_else(|| panic!("missing `{needle}` in:\n{c}"));
+    assert!(at("path: 'about'") < at("path: ':slug'"), "{c}");
+    // A shell whose routes all start with a static segment goes with the static ones.
+    assert!(at("AppShell(child: child)") < at("path: ':slug'"), "{c}");
+    assert!(at("path: 'general'") < at("path: ':tab'"), "{c}");
+}
+
+#[test]
+fn routes_a_group_cannot_order_are_reported() {
+    // `(app)` holds `:id`, so it sorts after `about`, and `/:slug` too; then
+    // `/:slug` catches `/settings` before the (app) shell is ever tried.
+    let e = diags(&[
+        ("page.dart", HOME),
+        ("$slug/page.dart", "class SlugPage extends StatelessWidget { const SlugPage({super.key, required this.slug}); final String slug; }"),
+        ("(app)/layout.dart", "class AppShell extends StatelessWidget { const AppShell({super.key, required this.child}); final Widget child; }"),
+        ("(app)/settings/page.dart", "class SettingsPage extends StatelessWidget { const SettingsPage({super.key}); }"),
+        ("(app)/$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.id}); final int id; }"),
+    ]);
+    assert_eq!(
+        e,
+        vec![
+            "✗ (app)/settings/page.dart  /settings is unreachable: $slug/page.dart (/:slug) comes first and matches it; move one of them into or out of its (group)",
+            "✗ (app)/$id/page.dart  /:id is unreachable: $slug/page.dart (/:slug) comes first and matches it; move one of them into or out of its (group)",
+        ]
+    );
+}

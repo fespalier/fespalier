@@ -102,7 +102,8 @@ pub fn build(app_dir: &Path) -> Result<(String, diag::Diags, usize)> {
     let tree = scan::scan(app_dir, &mut diags)?;
     let app = resolve::resolve(&tree, &mut diags);
     let routes = app.routes.iter().filter(|r| r.page.is_some()).count();
-    Ok((emit::emit(&app), diags, routes))
+    let code = emit::emit(&app, &mut diags);
+    Ok((code, diags, routes))
 }
 
 fn watch(project: &Path) -> Result<()> {

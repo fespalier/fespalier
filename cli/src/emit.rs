@@ -8,7 +8,8 @@ use std::collections::BTreeSet;
 
 use serde::Serialize;
 
-use crate::resolve::{App, Bind, Data, Route};
+use crate::resolve::{self, App, Bind, Data, Route};
+use crate::diag::Diags;
 use crate::scan::{Kind, Seg};
 use crate::templates;
 
@@ -33,6 +34,19 @@ struct TreeCx {
     page: String,
     data: Option<ViewDataCx>,
     routes: Vec<TreeCx>,
+    /// Starts with a `:segment` (or, for a ShellRoute, holds a route that does).
+    #[serde(skip)]
+    dynamic: bool,
+    /// For a GoRoute: its URL and page file, to check matching order.
+    #[serde(skip)]
+    serves: Option<(Vec<Seg>, String)>,
+}
+
+/// go_router takes the first route that matches, so `/about` must come
+/// before `/:id`. The sort is stable: otherwise folders keep their order.
+fn static_first(mut routes: Vec<TreeCx>) -> Vec<TreeCx> {
+    routes.sort_by_key(|r| r.dynamic);
+    routes
 }
 
 /// A call that may need the route's segments parsed first.
@@ -109,9 +123,10 @@ struct ProviderCx {
     call: String,
 }
 
-pub fn emit(app: &App) -> String {
+pub fn emit(app: &App, diags: &mut Diags) -> String {
     let mut fns = BTreeSet::new();
     let tree = routes_of(app, 0, true, "", &mut fns);
+    check_order(&tree, diags);
     let cx = FileCx {
         table: table(app),
         imports: app.imports.iter().map(|rel| format!("app/{}", rel.replace('$', "\\$"))).collect(),
@@ -145,7 +160,7 @@ fn in_builder(b: &Bind) -> String {
 fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<ParamsFn>) -> Vec<TreeCx> {
     let r = &app.routes[id];
     let own = match &r.seg {
-        None => String::new(),
+        None | Some(Seg::Group(_)) => String::new(),
         Some(Seg::Static(s)) => s.clone(),
         Some(Seg::Dynamic(n)) => format!(":{n}"),
     };
@@ -157,7 +172,7 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
 
     let mut out = match &r.page {
         Some(page) => {
-            let routes = r.children.iter().flat_map(|&c| routes_of(app, c, false, "", fns)).collect();
+            let routes = static_first(r.children.iter().flat_map(|&c| routes_of(app, c, false, "", fns)).collect());
             let seg_fn = (!app.url_params(r).is_empty()).then(|| {
                 fns.insert(ParamsFn::Route(id));
                 ParamsFn::Route(id).name()
@@ -184,11 +199,13 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
                 page: page.call(in_builder),
                 data,
                 routes,
+                dynamic: path.starts_with(':'),
+                serves: Some((r.url.clone(), rel(r, Kind::Page))),
             }]
         }
         None => {
             let next = if path.is_empty() { String::new() } else { format!("{path}/") };
-            r.children.iter().flat_map(|&c| routes_of(app, c, top, &next, fns)).collect()
+            static_first(r.children.iter().flat_map(|&c| routes_of(app, c, top, &next, fns)).collect())
         }
     };
 
@@ -205,10 +222,43 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
             seg_fn: None,
             page: String::new(),
             data: None,
+            dynamic: out.iter().any(|r| r.dynamic),
+            serves: None,
             routes: out,
         }];
     }
     out
+}
+
+/// go_router tries routes depth-first, in order, and takes the first full
+/// match. Static routes are sorted first, but a ShellRoute's routes can't be
+/// interleaved with its siblings', so `(group)/about` can still end up behind
+/// a `/:slug` outside the group. Report any page that is always caught first.
+fn check_order(tree: &[TreeCx], diags: &mut Diags) {
+    fn walk<'t>(t: &'t [TreeCx], out: &mut Vec<&'t (Vec<Seg>, String)>) {
+        for r in t {
+            out.extend(r.serves.as_ref());
+            walk(&r.routes, out);
+        }
+    }
+    let mut order = vec![];
+    walk(tree, &mut order);
+    let catches = |a: &[Seg], b: &[Seg]| {
+        a.len() == b.len() && a.iter().zip(b).all(|(x, y)| matches!(x, Seg::Dynamic(_)) || x == y)
+    };
+    for (j, (url, file)) in order.iter().enumerate() {
+        if let Some((first, first_file)) = order[..j].iter().find(|(u, _)| u != url && catches(u, url)) {
+            diags.error(
+                file,
+                None,
+                format!(
+                    "{} is unreachable: {first_file} ({}) comes first and matches it; move one of them into or out of its (group)",
+                    resolve::pattern(url),
+                    resolve::pattern(first)
+                ),
+            );
+        }
+    }
 }
 
 fn provider_expr(id: usize, d: &Data) -> String {
@@ -245,7 +295,7 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
         }
     });
     Some(RouteCx {
-        pattern: pattern(app, r),
+        pattern: resolve::pattern(&r.url),
         file: rel(r, Kind::Page),
         name,
         fields: app
@@ -348,7 +398,7 @@ fn table(app: &App) -> Vec<String> {
             }
             let tags = if tags.is_empty() { String::new() } else { format!("  ({})", tags.join(", ")) };
             let name = format!("{}Route", r.name.as_deref().unwrap_or("?"));
-            (pattern(app, r), name, format!("{}{tags}", rel(r, Kind::Page)))
+            (resolve::pattern(&r.url), name, format!("{}{tags}", rel(r, Kind::Page)))
         })
         .collect();
     let w0 = rows.iter().map(|r| r.0.len()).max().unwrap_or(0);
@@ -360,41 +410,19 @@ fn rel(r: &Route, kind: Kind) -> String {
     if r.dir.is_empty() { kind.file().to_string() } else { format!("{}/{}", r.dir, kind.file()) }
 }
 
-/// Segments from the root to `r`, found by walking its folder's ancestors.
-fn segments(app: &App, r: &Route) -> Vec<Seg> {
-    let mut segs = vec![];
-    let mut dir = String::new();
-    for part in r.dir.split('/').filter(|s| !s.is_empty()) {
-        dir = if dir.is_empty() { part.to_string() } else { format!("{dir}/{part}") };
-        if let Some(s) = app.routes.iter().find(|x| x.dir == dir).and_then(|n| n.seg.clone()) {
-            segs.push(s);
-        }
-    }
-    segs
-}
-
-fn pattern(app: &App, r: &Route) -> String {
-    let parts: Vec<String> = segments(app, r)
-        .into_iter()
-        .map(|s| match s {
-            Seg::Static(s) => s,
-            Seg::Dynamic(n) => format!(":{n}"),
-        })
-        .collect();
-    format!("/{}", parts.join("/"))
-}
-
 /// A Dart string literal for the route's location, e.g. `'/products/$id'`.
 fn location(app: &App, r: &Route) -> String {
     let types = app.typed_segs(r);
-    let parts: Vec<String> = segments(app, r)
-        .into_iter()
-        .map(|s| match s {
-            Seg::Static(s) => s,
-            Seg::Dynamic(n) if types.iter().any(|(m, t)| *m == n && t == "String") => {
-                format!("${{Uri.encodeComponent({n})}}")
+    let parts: Vec<String> = r
+        .url
+        .iter()
+        .filter_map(|s| match s {
+            Seg::Static(s) => Some(s.clone()),
+            Seg::Dynamic(n) if types.iter().any(|(m, t)| m == n && t == "String") => {
+                Some(format!("${{Uri.encodeComponent({n})}}"))
             }
-            Seg::Dynamic(n) => format!("${n}"),
+            Seg::Dynamic(n) => Some(format!("${n}")),
+            Seg::Group(_) => None,
         })
         .collect();
     format!("'/{}'", parts.join("/"))

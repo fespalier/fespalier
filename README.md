@@ -29,6 +29,10 @@ lib/app/
     guard.dart           GuardResult guard(ProviderContainer c)
     page.dart
   greet/$name/page.dart  GreetPage({required String name})
+  (account)/             a group: its layout wraps profile/ and settings/,
+    layout.dart            but adds nothing to their URLs (/profile, /settings)
+    profile/page.dart
+    settings/page.dart
   _components/           private: never routes
 ```
 
@@ -91,6 +95,25 @@ A segment's type comes from the parameters that ask for it: `{required int id}` 
 `ProductRoute(id: 42)`, the page, and parsing: `/products/abc` goes to `not_found.dart`.
 Every file that asks for `$id` must agree on its type. When nobody gives one, a segment
 is a `String`. Segments are `String`, `int`, `double` or `bool`.
+
+### `(group)` folders
+
+A folder named in parentheses groups routes without adding to their URLs. Its
+`layout.dart`, `loading.dart` and `error.dart` apply to the routes inside it and not to
+their siblings, so `(shop)/cart` and `(account)/profile` can have different shells and
+still be `/cart` and `/profile`. A group can also hold a `page.dart`: `(marketing)/page.dart`
+serves `/` with the marketing layout, as long as nothing else serves `/`.
+
+Two pages that end up at the same URL are an error, and so is a page that another
+route always catches first. go_router takes the first route that fully matches, so
+fespalier puts static routes before dynamic ones: `/about` comes before `/:slug`. A
+group's routes stay together in one ShellRoute, though, so a group holding a dynamic
+route can't be sorted around a dynamic sibling outside it:
+
+```
+error: /settings is unreachable: $slug/page.dart (/:slug) comes first and matches it;
+       move one of them into or out of its (group)
+```
 
 ### Query parameters
 
@@ -185,6 +208,9 @@ It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
 - **Segments and query parameters are parsed into a record** (`({int id, int? page})`).
   Records compare by value, so providers are keyed by them directly.
 - **Page-less folders** fold into their children's paths (`greet/$name` → `'greet/:name'`).
+  `(group)` folders fold away completely, apart from the ShellRoute their layout adds.
+- **Static routes come first** among siblings, so go_router's first match is the most
+  specific one.
 - **`AppRoutes.mount(at:)`** only changes the root path. Typed routes read `AppRoutes.base`,
   so `.location` stays correct when mounted under `/shop`.
 
@@ -201,7 +227,8 @@ Try `/products/13`: it fails once, so you see `error.dart` and **Retry**. Try `/
 (the int parse fails → `not_found.dart`), `/checkout` with an empty cart (the guard redirects
 to `/cart`), and `/greet/you`.
 
-`examples/features` covers the rest: data keyed by two segments, query parameters (in a
+`examples/features` covers the rest: an `(account)` group next to a catch-all `$slug`
+page, data keyed by two segments, query parameters (in a
 page, `data.dart` and a layout), a page and error view bound by type, a layout and guard
 that take segments, a user-written `AsyncNotifierProvider`, and `Stream` data.
 
@@ -232,9 +259,9 @@ a committed `app.g.dart` is stale.
 
 This is an early version.
 
-- **Generator:** 22 tests cover parsing, every binding rule and contract error, query
-  parameters, both data forms, scaffolding, and that the committed outputs are up to
-  date. Clippy is clean.
+- **Generator:** 26 tests cover parsing, every binding rule and contract error, query
+  parameters, `(group)` folders and route order, both data forms, scaffolding, and that
+  the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17,
   hooks_riverpod 3, flutter_hooks 0.21). The widget tests in both examples drive the
   generated router through every file kind.
@@ -253,5 +280,4 @@ Things to know:
 - go_router builds the whole matched stack, so `/products/abc` also loads `/products`
   underneath the not-found view.
 
-Next steps: `(group)` folders for layouts without URL segments,
-per-route transitions, a `StatefulShellRoute` layout for tab bars, and go_router 18.
+Next steps: per-route transitions, a `StatefulShellRoute` layout for tab bars, and go_router 18.

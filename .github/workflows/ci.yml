@@ -67,5 +67,6 @@ jobs:
           fsp new 'orders/[orderId]' --data --loading --error --layout --guard
           fsp new 'shops/:shop/items/:id/reviews'
           fsp new 'plain' --data
+          fsp new '(admin)/users' --layout
           flutter pub get
           flutter analyze

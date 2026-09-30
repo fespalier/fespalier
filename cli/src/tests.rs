@@ -60,7 +60,7 @@ fn example_app_generates_cleanly() {
             "path: 'greet/:name'",
             "path: joinLocation(at, '/')",
             "builder: (context, state, child) => _i3.AppLayout(child: child),",
-            "({int id}) _seg6(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
+            "({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
             "_i8.GreetPage(name: v.name)",
             "data: (d) => _i13.ProductPage(product: d),",
             "error: (e, st, retry) => _i14.ProductError(id: v.id, error: e, retry: retry),",
@@ -99,11 +99,14 @@ fn page_params_are_filled_by_name_then_type() {
         &c,
         &[
             "(v) => DataView(",
-            "data: (d) => _i1.ItemPage(d, shop: v.shop),",
+            // `String? note` is nothing else, so it's the `?note=` query parameter.
+            "data: (d) => _i1.ItemPage(d, shop: v.shop, note: v.note),",
+            "({String shop, int id, String? note}) _params2(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'), note: Query.asString(s, 'note'));",
             // Several segments key the provider by a record.
             "(Ref ref, ({String shop, int id}) k) => _i0.data(ref, shop: k.shop, id: k.id),",
             "watch: (ref) => ref.watch(_data2((shop: v.shop, id: v.id))),",
-            "const ItemRoute({required this.shop, required this.id});",
+            "const ItemRoute({required this.shop, required this.id, this.note});",
+            "withQuery(joinLocation(AppRoutes.base, '/${Uri.encodeComponent(shop)}/$id'), {'note': note})",
             "ref.refresh(data((shop: shop, id: id)).future)",
         ],
     );
@@ -130,7 +133,7 @@ fn unfillable_params_are_errors() {
             "class ItemPage extends StatelessWidget {\n  const ItemPage({super.key, required this.id, required this.nope, this.ok = 1});\n  final int id; final String nope; final int ok;\n}",
         ),
     ]);
-    assert_eq!(e, vec!["✗ $id/page.dart:2  can't fill `nope`: it isn't a segment of this path ($id), and there is no data.dart"]);
+    assert_eq!(e, vec!["✗ $id/page.dart:2  can't fill `nope`: it isn't a segment of this path ($id) or a query parameter (optional and nullable)"]);
 }
 
 #[test]
@@ -163,7 +166,7 @@ fn inherited_views_must_fit_every_route_they_cover() {
     // Fine for $id/, but the root route has no $id.
     assert_eq!(e.len(), 2, "{e:?}");
     assert!(e[0].starts_with("! page.dart:1  HomePage doesn't take what data.dart yields"), "{e:?}");
-    assert_eq!(e[1], "✗ loading.dart:1  can't fill `id` for /: it isn't one of its segments (it has none)");
+    assert_eq!(e[1], "✗ loading.dart:1  can't fill `id` for /: it isn't one of its segments (it has none) or a query parameter (optional and nullable)");
 }
 
 #[test]
@@ -227,7 +230,7 @@ fn data_signature_is_checked() {
     for needle in [
         "data() must take `Ref ref` first",
         "data() takes segments as named parameters, e.g. `{required int id}`",
-        "`nope` isn't a segment of this path ($id)",
+        "`nope` isn't a segment of this path ($id); for a query parameter make it optional and nullable, e.g. `String? nope`",
         "data() needs an explicit return type",
     ] {
         assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
@@ -244,8 +247,8 @@ fn layouts_get_child_and_segments_above_them() {
     has(
         &c,
         &[
-            "builder: (context, state, child) => buildWithSegments(\n          () => _seg1(state),\n          (v) => _i1.ShopLayout(child: child, shop: v.shop),",
-            "redirect: (context, state) => guardWithSegments(\n              () => _seg1(state),\n              (v) => _i2.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),",
+            "builder: (context, state, child) => buildWithParams(\n          () => _layout1(state),\n          (v) => _i1.ShopLayout(child: child, shop: v.shop),",
+            "redirect: (context, state) => guardWithParams(\n              () => _params1(state),\n              (v) => _i2.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),",
             "path: joinLocation(at, '/:shop')",
         ],
     );
@@ -309,4 +312,51 @@ fn scaffold_then_generate() {
     gen(dir.path(), true).expect("nested scaffold should check cleanly");
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
     assert!(code.contains("const NoteRoute({required this.id, required this.noteId});"), "{code}");
+}
+
+#[test]
+fn query_params_reach_every_file_and_key_data() {
+    let c = code(&[
+        ("search/data.dart", "Future<List<String>> data(Ref ref, {String? q, int? page}) async => [];"),
+        (
+            "search/page.dart",
+            "class SearchPage extends StatelessWidget {\n  const SearchPage({super.key, required this.results, this.q, this.tags = const []});\n  final List<String> results; final String? q; final List<String> tags;\n}",
+        ),
+        ("search/loading.dart", "class L extends StatelessWidget { const L({super.key, this.page}); final int? page; }"),
+        ("search/guard.dart", "GuardResult guard(ProviderContainer c, {bool? admin}) => null;"),
+        ("layout.dart", "class Shell extends StatelessWidget { const Shell({super.key, required this.child, this.theme}); final Widget child; final String? theme; }"),
+    ]);
+    has(
+        &c,
+        &[
+            "({String? q, int? page, List<String> tags, bool? admin}) _params1(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'), admin: Query.asBool(s, 'admin'));",
+            "(Ref ref, ({String? q, int? page}) k) => _i1.data(ref, q: k.q, page: k.page),",
+            "watch: (ref) => ref.watch(_data1((q: v.q, page: v.page))),",
+            "data: (d) => _i2.SearchPage(results: d, q: v.q, tags: v.tags),",
+            "loading: () => _i3.L(page: v.page),",
+            "(v) => _i4.guard(ProviderScope.containerOf(context, listen: false), admin: v.admin),",
+            "const SearchRoute({this.q, this.page, this.tags = const [], this.admin});",
+            "final List<String> tags;",
+            "String get location => withQuery(joinLocation(AppRoutes.base, '/search'), {'q': q, 'page': page, 'tags': tags, 'admin': admin});",
+            // A layout reads the query too, through its own parser.
+            "builder: (context, state, child) => buildWithParams(\n          () => _layout0(state),\n          (v) => _i0.Shell(child: child, theme: v.theme),",
+            "({String? theme}) _layout0(GoRouterState s) => (theme: Query.asString(s, 'theme'));",
+        ],
+    );
+}
+
+#[test]
+fn query_param_rules() {
+    let e = diags(&[
+        ("a/data.dart", "Future<int> data(Ref ref, {int? page, List<String> tags = const [], required int n}) async => 1;"),
+        ("a/page.dart", "class APage extends StatelessWidget { const APage(this.x, {super.key, this.page}); final int x; final String? page; }"),
+    ]);
+    let joined = e.join("\n");
+    for needle in [
+        "a/page.dart:1  `?page` is int? in a/data.dart:1 but String? here",
+        "`tags`: data can't be keyed by a List; take a `String?` and split it",
+        "`n` isn't a segment of this path (it has none); for a query parameter make it optional and nullable, e.g. `String? n`",
+    ] {
+        assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
+    }
 }

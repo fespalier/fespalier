@@ -4,7 +4,9 @@
 //! Nothing here is a base class or an interface: a `page.dart` is any widget,
 //! and its constructor says what it wants. Parameters are filled by name first
 //! (`id` ← the `$id` segment, `child`, `error`, `retry`, `uri`, `data`), then by
-//! type (`Product product` ← what `data.dart` yields).
+//! type (`Product product` ← what `data.dart` yields). Anything else that is
+//! nullable or a List of String/int/double/bool is a query parameter
+//! (`int? page` ← `?page=2`).
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -20,6 +22,7 @@ pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
 #[derive(Debug, Clone, PartialEq)]
 pub enum Bind {
     Segment(String),
+    Query(String),
     Data,
     Child,
     Error,
@@ -54,12 +57,6 @@ impl Widget {
         format!("_i{}.{}({})", self.import, self.class, args.join(", "))
     }
 
-    pub fn segments(&self) -> impl Iterator<Item = &str> {
-        self.args.iter().filter_map(|a| match &a.bind {
-            Bind::Segment(s) => Some(s.as_str()),
-            _ => None,
-        })
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +94,11 @@ pub struct Route {
     pub error: Option<Widget>,
     pub layout: Option<Widget>,
     pub guard: Option<Guard>,
+    /// Query parameters any of this route's files ask for: (name, Dart type),
+    /// the type being `T?` or `List<T>`.
+    pub query: Vec<(String, String)>,
+    /// Query parameters this folder's layout asks for.
+    pub layout_query: Vec<(String, String)>,
 }
 
 #[derive(Debug, Default)]
@@ -117,6 +119,31 @@ impl App {
     pub fn typed_segs(&self, r: &Route) -> Vec<(String, String)> {
         r.segs.iter().map(|(n, f)| (n.clone(), self.seg_type(*f).to_string())).collect()
     }
+
+    /// Everything a route's files ask for from the URL: segments, then query.
+    pub fn url_params(&self, r: &Route) -> Vec<(String, String)> {
+        let mut out = self.typed_segs(r);
+        out.extend(r.query.iter().cloned());
+        out
+    }
+}
+
+/// Where a query parameter's type must agree: one route's files, or one layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Scope {
+    Route(usize),
+    Layout(usize),
+}
+
+/// `int?` → a nullable int, `List<String>` → every `?x=` value.
+fn query_type(ty: &Ty) -> Option<String> {
+    let t = ty.text.as_str();
+    if let Some(inner) = t.strip_suffix('?').filter(|i| SEGMENT_TYPES.contains(i)) {
+        return Some(format!("{inner}?"));
+    }
+    let list = t.strip_suffix('?').unwrap_or(t);
+    let inner = list.strip_prefix("List<")?.strip_suffix('>')?;
+    SEGMENT_TYPES.contains(&inner).then(|| format!("List<{inner}>"))
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -159,6 +186,8 @@ struct BindCx<'a> {
     file: &'a str,
     /// For inherited views: the folder of the route this use is for.
     covering: Option<&'a str>,
+    /// Where query parameters land; `None` where there are none (not_found).
+    scope: Option<Scope>,
 }
 
 pub fn resolve(root: &Node, diags: &mut Diags) -> App {
@@ -167,10 +196,19 @@ pub fn resolve(root: &Node, diags: &mut Diags) -> App {
         import_ix: HashMap::new(),
         route_names: HashMap::new(),
         constraints: vec![],
+        queries: HashMap::new(),
+        query_order: vec![],
         diags,
     };
     r.node(root, &Inherited::default());
     r.settle_segment_types();
+    for (scope, name) in std::mem::take(&mut r.query_order) {
+        let ty = r.queries[&(scope, name.clone())].0.clone();
+        match scope {
+            Scope::Route(id) => r.app.routes[id].query.push((name, ty)),
+            Scope::Layout(id) => r.app.routes[id].layout_query.push((name, ty)),
+        }
+    }
     r.app
 }
 
@@ -179,6 +217,9 @@ struct Resolver<'a> {
     import_ix: HashMap<String, usize>,
     route_names: HashMap<String, String>,
     constraints: Vec<Constraint>,
+    /// Query parameter types as first declared: (type, file, line).
+    queries: HashMap<(Scope, String), (String, String, usize)>,
+    query_order: Vec<(Scope, String)>,
     diags: &'a mut Diags,
 }
 
@@ -208,6 +249,8 @@ impl Resolver<'_> {
             error: None,
             layout: None,
             guard: None,
+            query: vec![],
+            layout_query: vec![],
         });
 
         let mut segs = up.segs.clone();
@@ -229,12 +272,19 @@ impl Resolver<'_> {
                 self.diags.error(&page_file, Some(&c.span), format!("route name `{n}Route` is already taken by {prev}; rename the class"));
             }
         }
-        let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs));
+        let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs, id));
         if data.is_some() && !node.files.contains_key(&Kind::Page) {
             self.diags.error(&node.rel(Kind::Data), None, "data.dart has no page.dart to feed");
         }
         let page = page_class.map(|c| {
-            let cx = BindCx { role: Role::Page, segs: &segs, data: data.as_ref().map(|d| d.ty.as_str()), file: &page_file, covering: None };
+            let cx = BindCx {
+                role: Role::Page,
+                segs: &segs,
+                data: data.as_ref().map(|d| d.ty.as_str()),
+                file: &page_file,
+                covering: None,
+                scope: Some(Scope::Route(id)),
+            };
             let w = self.bind(&c, &cx);
             if let Some(d) = &data {
                 if !w.args.iter().any(|a| a.bind == Bind::Data) {
@@ -262,7 +312,14 @@ impl Resolver<'_> {
             let covering = show_dir(&node.dir);
             let bind = |r: &mut Self, f: &Option<Fallback>, role| {
                 f.as_ref().map(|f| {
-                    let cx = BindCx { role, segs: &segs, data: None, file: &f.file, covering: Some(&covering) };
+                    let cx = BindCx {
+                        role,
+                        segs: &segs,
+                        data: None,
+                        file: &f.file,
+                        covering: Some(&covering),
+                        scope: Some(Scope::Route(id)),
+                    };
                     let mut w = r.bind(&f.class, &cx);
                     w.import = f.import;
                     w
@@ -276,14 +333,15 @@ impl Resolver<'_> {
         let layout = modules.get(&Kind::Layout).and_then(|m| {
             let file = node.rel(Kind::Layout);
             let c = self.widget_class(m, &file)?;
-            Some(self.bind(&c, &BindCx { role: Role::Layout, segs: &segs, data: None, file: &file, covering: None }))
+            let cx = BindCx { role: Role::Layout, segs: &segs, data: None, file: &file, covering: None, scope: Some(Scope::Layout(id)) };
+            Some(self.bind(&c, &cx))
         });
-        let guard = modules.get(&Kind::Guard).and_then(|m| self.guard(m, node, &segs));
+        let guard = modules.get(&Kind::Guard).and_then(|m| self.guard(m, node, &segs, id));
         if let Some(m) = modules.get(&Kind::NotFound) {
             let file = node.rel(Kind::NotFound);
             if node.dir.is_empty() {
                 if let Some(c) = self.widget_class(m, &file) {
-                    let cx = BindCx { role: Role::NotFound, segs: &[], data: None, file: &file, covering: None };
+                    let cx = BindCx { role: Role::NotFound, segs: &[], data: None, file: &file, covering: None, scope: None };
                     self.app.not_found = Some(self.bind(&c, &cx));
                 }
             } else {
@@ -344,7 +402,18 @@ impl Resolver<'_> {
                 }
                 continue;
             }
-            let bind = if !p.named && positional_gap { None } else { pick(p.name.as_str(), p.ty.as_ref(), cx) };
+            let bind = if !p.named && positional_gap {
+                None
+            } else {
+                by_name(&p.name, cx)
+                    .or_else(|| {
+                        // Optional, and nullable or a List: it comes from the query.
+                        let (scope, ty) = (cx.scope.filter(|_| !p.required)?, p.ty.as_ref()?);
+                        let qty = query_type(ty)?;
+                        self.declare_query(scope, &p.name, qty, cx.file, &p.span).then(|| Bind::Query(p.name.clone()))
+                    })
+                    .or_else(|| by_type(p.ty.as_ref()?, cx))
+            };
             let Some(bind) = bind else {
                 if p.required {
                     let msg = unfillable(&p.name, cx);
@@ -376,14 +445,56 @@ impl Resolver<'_> {
         Widget { import, class: class.name.clone(), args }
     }
 
-    fn segment_param(&mut self, file: &str, p: &dart::Param, segs: &[(String, usize)], what: &str) -> Option<String> {
+    fn declare_query(&mut self, scope: Scope, name: &str, ty: String, file: &str, span: &Span) -> bool {
+        let key = (scope, name.to_string());
+        match self.queries.get(&key) {
+            None => {
+                self.queries.insert(key.clone(), (ty, file.to_string(), span.line));
+                self.query_order.push(key);
+                true
+            }
+            Some((t0, f0, l0)) if *t0 != ty => {
+                let msg = format!("`?{name}` is {t0} in {f0}:{l0} but {ty} here");
+                self.diags.error(file, Some(span), msg);
+                false
+            }
+            _ => true,
+        }
+    }
+
+    /// A named parameter of `data()`, `guard()` or a provider's family record:
+    /// a segment, or a query parameter.
+    fn url_param(
+        &mut self,
+        file: &str,
+        p: &dart::Param,
+        segs: &[(String, usize)],
+        route: usize,
+        what: &str,
+        keyed: bool,
+    ) -> Option<String> {
         if !p.named {
             self.diags.error(file, Some(&p.span), format!("{what} takes segments as named parameters, e.g. `{{required int {}}}`", p.name));
             return None;
         }
         let Some((_, folder)) = segs.iter().find(|(n, _)| n == &p.name) else {
-            self.diags.error(file, Some(&p.span), format!("`{}` isn't a segment of this path ({})", p.name, show_segs(segs)));
-            return None;
+            let Some(qty) = p.ty.as_ref().and_then(query_type).filter(|_| !p.required) else {
+                let msg = format!(
+                    "`{}` isn't a segment of this path ({}); for a query parameter make it optional and nullable, e.g. `String? {}`",
+                    p.name,
+                    show_segs(segs),
+                    p.name
+                );
+                self.diags.error(file, Some(&p.span), msg);
+                return None;
+            };
+            if keyed && qty.starts_with("List<") {
+                // Lists compare by identity, so they can't key a provider.
+                let msg = format!("`{}`: data can't be keyed by a List; take a `String?` and split it", p.name);
+                self.diags.error(file, Some(&p.span), msg);
+                return None;
+            }
+            return self.declare_query(Scope::Route(route), &p.name, qty, file, &p.span).then(|| p.name.clone());
         };
         match &p.ty {
             Some(ty) => self.constraints.push(Constraint {
@@ -398,7 +509,7 @@ impl Resolver<'_> {
         Some(p.name.clone())
     }
 
-    fn data(&mut self, m: &Module, node: &Node, segs: &[(String, usize)]) -> Option<Data> {
+    fn data(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], route: usize) -> Option<Data> {
         let file = node.rel(Kind::Data);
         if let Some(f) = m.functions.iter().find(|f| f.name == "data") {
             match f.params.first() {
@@ -407,7 +518,7 @@ impl Resolver<'_> {
             }
             let mut keys = vec![];
             for p in f.params.iter().skip(1) {
-                keys.extend(self.segment_param(&file, p, segs, "data()"));
+                keys.extend(self.url_param(&file, p, segs, route, "data()", true));
             }
             let Some(ret) = &f.ret else {
                 self.diags.error(&file, Some(&f.span), "data() needs an explicit return type (Future<T>, Stream<T> or T)");
@@ -467,7 +578,7 @@ impl Resolver<'_> {
                             is_super: false,
                             span: v.span.clone(),
                         };
-                        keys.extend(self.segment_param(&file, &p, segs, "the family argument"));
+                        keys.extend(self.url_param(&file, &p, segs, route, "the family argument", true));
                     }
                 } else if let [(name, folder)] = segs {
                     keys.push(name.clone());
@@ -498,7 +609,7 @@ impl Resolver<'_> {
         None
     }
 
-    fn guard(&mut self, m: &Module, node: &Node, segs: &[(String, usize)]) -> Option<Guard> {
+    fn guard(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], route: usize) -> Option<Guard> {
         let file = node.rel(Kind::Guard);
         if !node.files.contains_key(&Kind::Page) {
             self.diags.error(&file, None, "guard.dart needs a page.dart in the same folder");
@@ -521,7 +632,7 @@ impl Resolver<'_> {
         }
         let mut keys = vec![];
         for p in f.params.iter().skip(1) {
-            keys.extend(self.segment_param(&file, p, segs, "guard()"));
+            keys.extend(self.url_param(&file, p, segs, route, "guard()", false));
         }
         Some(Guard { import: self.import(&file), keys: in_path_order(keys, segs) })
     }
@@ -550,8 +661,8 @@ impl Resolver<'_> {
     }
 }
 
-/// What a parameter called `name` of type `ty` receives in this role.
-fn pick(name: &str, ty: Option<&Ty>, cx: &BindCx) -> Option<Bind> {
+/// What a parameter called `name` receives in this role, going by its name.
+fn by_name(name: &str, cx: &BindCx) -> Option<Bind> {
     match (cx.role, name) {
         (Role::Page, "data") if cx.data.is_some() => return Some(Bind::Data),
         (Role::Error, "error") => return Some(Bind::Error),
@@ -561,11 +672,12 @@ fn pick(name: &str, ty: Option<&Ty>, cx: &BindCx) -> Option<Bind> {
         (Role::NotFound, "uri") => return Some(Bind::Uri),
         _ => {}
     }
-    if cx.segs.iter().any(|(n, _)| n == name) {
-        return Some(Bind::Segment(name.to_string()));
-    }
-    let ty = ty.map(|t| t.text.as_str())?;
-    match (cx.role, ty) {
+    cx.segs.iter().any(|(n, _)| n == name).then(|| Bind::Segment(name.to_string()))
+}
+
+/// What a parameter of type `ty` receives in this role, going by its type.
+fn by_type(ty: &Ty, cx: &BindCx) -> Option<Bind> {
+    match (cx.role, ty.text.as_str()) {
         (Role::Page, t) if cx.data == Some(t) => Some(Bind::Data),
         (Role::Error, "Object" | "Object?" | "dynamic") => Some(Bind::Error),
         (Role::Error, "StackTrace" | "StackTrace?") => Some(Bind::StackTrace),
@@ -580,12 +692,12 @@ fn unfillable(name: &str, cx: &BindCx) -> String {
     let segs = show_segs(cx.segs);
     match (cx.role, cx.covering) {
         (Role::Loading | Role::Error, Some(dir)) => {
-            let extra = if cx.role == Role::Error { ", or `error`, `stackTrace`, `retry`" } else { "" };
-            format!("can't fill `{name}` for {dir}: it isn't one of its segments ({segs}){extra}")
+            let extra = if cx.role == Role::Error { ", `error`, `stackTrace`, `retry`," } else { "" };
+            format!("can't fill `{name}` for {dir}: it isn't one of its segments ({segs}){extra} or a query parameter (optional and nullable)")
         }
         (Role::Page, _) => match cx.data {
-            Some(t) => format!("can't fill `{name}`: it isn't a segment of this path ({segs}) or data.dart's {t}"),
-            None => format!("can't fill `{name}`: it isn't a segment of this path ({segs}), and there is no data.dart"),
+            Some(t) => format!("can't fill `{name}`: it isn't a segment of this path ({segs}), data.dart's {t}, or a query parameter (optional and nullable)"),
+            None => format!("can't fill `{name}`: it isn't a segment of this path ({segs}) or a query parameter (optional and nullable)"),
         },
         (Role::Layout, _) => format!("can't fill `{name}`: a layout gets `Widget child` and the segments above it ({segs})"),
         (Role::NotFound, _) => format!("can't fill `{name}`: not_found.dart only gets `Uri uri`"),
@@ -593,8 +705,11 @@ fn unfillable(name: &str, cx: &BindCx) -> String {
     }
 }
 
+/// Segments in path order, then query parameters as declared.
 fn in_path_order(keys: Vec<String>, segs: &[(String, usize)]) -> Vec<String> {
-    segs.iter().map(|(n, _)| n).filter(|n| keys.contains(n)).cloned().collect()
+    let mut out: Vec<String> = segs.iter().map(|(n, _)| n).filter(|n| keys.contains(n)).cloned().collect();
+    out.extend(keys.into_iter().filter(|k| !segs.iter().any(|(n, _)| n == k)));
+    out
 }
 
 fn show_segs(segs: &[(String, usize)]) -> String {

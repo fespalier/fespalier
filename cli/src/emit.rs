@@ -19,7 +19,7 @@ struct FileCx {
     tree: Vec<TreeCx>,
     not_found: String,
     routes: Vec<RouteCx>,
-    seg_fns: Vec<SegFnCx>,
+    params_fns: Vec<ParamsFnCx>,
     providers: Vec<ProviderCx>,
 }
 
@@ -63,6 +63,8 @@ struct RouteCx {
 struct FieldCx {
     name: String,
     ty: String,
+    /// How the constructor takes it: `required this.id`, `this.page`, ...
+    param: String,
 }
 
 #[derive(Serialize)]
@@ -74,11 +76,28 @@ struct TypedDataCx {
     key: String,
 }
 
+/// Parses what a route (or layout) reads from the URL into a record.
 #[derive(Serialize)]
-struct SegFnCx {
-    id: usize,
+struct ParamsFnCx {
+    name: String,
     record: String,
     parse: String,
+}
+
+/// Which parse function: a route's own, or its folder's layout's.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ParamsFn {
+    Route(usize),
+    Layout(usize),
+}
+
+impl ParamsFn {
+    fn name(self) -> String {
+        match self {
+            ParamsFn::Route(id) => format!("_params{id}"),
+            ParamsFn::Layout(id) => format!("_layout{id}"),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -91,8 +110,8 @@ struct ProviderCx {
 }
 
 pub fn emit(app: &App) -> String {
-    let mut seg_fns = BTreeSet::new();
-    let tree = routes_of(app, 0, true, "", &mut seg_fns);
+    let mut fns = BTreeSet::new();
+    let tree = routes_of(app, 0, true, "", &mut fns);
     let cx = FileCx {
         table: table(app),
         imports: app.imports.iter().map(|rel| format!("app/{}", rel.replace('$', "\\$"))).collect(),
@@ -102,7 +121,7 @@ pub fn emit(app: &App) -> String {
             None => "DefaultNotFound(uri)".into(),
         },
         routes: app.routes.iter().enumerate().filter_map(|(id, r)| typed_route(app, id, r)).collect(),
-        seg_fns: seg_fns.into_iter().map(|id| seg_fn(app, id)).collect(),
+        params_fns: fns.into_iter().map(|f| params_fn(app, f)).collect(),
         providers: app.routes.iter().enumerate().filter_map(|(id, r)| provider(app, id, r)).collect(),
     };
     templates::render("app.g.dart", &cx)
@@ -111,7 +130,7 @@ pub fn emit(app: &App) -> String {
 /// How builder code spells each binding. `v` holds the parsed segments.
 fn in_builder(b: &Bind) -> String {
     match b {
-        Bind::Segment(s) => format!("v.{s}"),
+        Bind::Segment(s) | Bind::Query(s) => format!("v.{s}"),
         Bind::Data => "d".into(),
         Bind::Child => "child".into(),
         Bind::Error => "e".into(),
@@ -123,7 +142,7 @@ fn in_builder(b: &Bind) -> String {
 
 /// RouteBase entries for a folder. Page-less folders fold their segment into
 /// their children's paths; `layout.dart` wraps the result in a ShellRoute.
-fn routes_of(app: &App, id: usize, top: bool, prefix: &str, seg_fns: &mut BTreeSet<usize>) -> Vec<TreeCx> {
+fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<ParamsFn>) -> Vec<TreeCx> {
     let r = &app.routes[id];
     let own = match &r.seg {
         None => String::new(),
@@ -138,10 +157,10 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, seg_fns: &mut BTreeS
 
     let mut out = match &r.page {
         Some(page) => {
-            let routes = r.children.iter().flat_map(|&c| routes_of(app, c, false, "", seg_fns)).collect();
-            let seg_fn = (!r.segs.is_empty()).then(|| {
-                seg_fns.insert(id);
-                format!("_seg{id}")
+            let routes = r.children.iter().flat_map(|&c| routes_of(app, c, false, "", fns)).collect();
+            let seg_fn = (!app.url_params(r).is_empty()).then(|| {
+                fns.insert(ParamsFn::Route(id));
+                ParamsFn::Route(id).name()
             });
             let redirect = r.guard.as_ref().map(|g| {
                 let keys: Vec<String> = g.keys.iter().map(|k| format!("{k}: v.{k}")).collect();
@@ -169,14 +188,15 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, seg_fns: &mut BTreeS
         }
         None => {
             let next = if path.is_empty() { String::new() } else { format!("{path}/") };
-            r.children.iter().flat_map(|&c| routes_of(app, c, top, &next, seg_fns)).collect()
+            r.children.iter().flat_map(|&c| routes_of(app, c, top, &next, fns)).collect()
         }
     };
 
     if let (Some(layout), false) = (&r.layout, out.is_empty()) {
-        let seg_fn = layout.segments().next().is_some().then(|| {
-            seg_fns.insert(id);
-            format!("_seg{id}")
+        let reads_url = layout.args.iter().any(|a| matches!(a.bind, Bind::Segment(_) | Bind::Query(_)));
+        let seg_fn = reads_url.then(|| {
+            fns.insert(ParamsFn::Layout(id));
+            ParamsFn::Layout(id).name()
         });
         out = vec![TreeCx {
             layout: Some(CallCx { seg_fn, call: layout.call(in_builder) }),
@@ -228,35 +248,69 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
         pattern: pattern(app, r),
         file: rel(r, Kind::Page),
         name,
-        fields: app.typed_segs(r).into_iter().map(|(name, ty)| FieldCx { name, ty }).collect(),
+        fields: app
+            .url_params(r)
+            .into_iter()
+            .map(|(name, ty)| {
+                let param = if r.query.iter().any(|(q, _)| *q == name) {
+                    if ty.starts_with("List<") { format!("this.{name} = const []") } else { format!("this.{name}") }
+                } else {
+                    format!("required this.{name}")
+                };
+                FieldCx { name, ty, param }
+            })
+            .collect(),
         data,
-        location: location(app, r),
+        location: with_query(r, format!("joinLocation(AppRoutes.base, {})", location(app, r))),
     })
 }
 
-fn seg_fn(app: &App, id: usize) -> SegFnCx {
-    let segs = app.typed_segs(&app.routes[id]);
-    let types: Vec<String> = segs.iter().map(|(n, t)| format!("{t} {n}")).collect();
-    let values: Vec<String> = segs
+/// `withQuery(<location>, {'page': page})` when the route reads the query.
+fn with_query(r: &Route, location: String) -> String {
+    if r.query.is_empty() {
+        return location;
+    }
+    let entries: Vec<String> = r.query.iter().map(|(n, _)| format!("'{n}': {n}")).collect();
+    format!("withQuery({location}, {{{}}})", entries.join(", "))
+}
+
+fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
+    let params = match f {
+        ParamsFn::Route(id) => app.url_params(&app.routes[id]),
+        ParamsFn::Layout(id) => {
+            let r = &app.routes[id];
+            let mut p = app.typed_segs(r);
+            p.extend(r.layout_query.iter().cloned());
+            p
+        }
+    };
+    let types: Vec<String> = params.iter().map(|(n, t)| format!("{t} {n}")).collect();
+    let values: Vec<String> = params
         .iter()
         .map(|(n, t)| {
-            let reader = match t.as_str() {
-                "int" => "asInt",
-                "double" => "asDouble",
-                "bool" => "asBool",
-                _ => "asString",
+            // `int` → Segment.asInt, `int?` → Query.asInt, `List<int>` → Query.asIntList.
+            let (reader, base, list) = match (t.strip_suffix('?'), t.strip_prefix("List<").and_then(|l| l.strip_suffix('>'))) {
+                (_, Some(inner)) => ("Query", inner, "List"),
+                (Some(inner), _) => ("Query", inner, ""),
+                _ => ("Segment", t.as_str(), ""),
             };
-            format!("{n}: Segment.{reader}(s, '{n}')")
+            let base = match base {
+                "int" => "Int",
+                "double" => "Double",
+                "bool" => "Bool",
+                _ => "String",
+            };
+            format!("{n}: {reader}.as{base}{list}(s, '{n}')")
         })
         .collect();
-    SegFnCx { id, record: format!("({{{}}})", types.join(", ")), parse: format!("({})", values.join(", ")) }
+    ParamsFnCx { name: f.name(), record: format!("({{{}}})", types.join(", ")), parse: format!("({})", values.join(", ")) }
 }
 
 /// The provider fespalier wraps around a `data()` function.
 fn provider(app: &App, id: usize, r: &Route) -> Option<ProviderCx> {
     let d = r.data.as_ref().filter(|d| !d.provider)?;
     let types: Vec<(String, String)> =
-        app.typed_segs(r).into_iter().filter(|(n, _)| d.keys.contains(n)).collect();
+        app.url_params(r).into_iter().filter(|(n, _)| d.keys.contains(n)).collect();
     let (params, args) = match (types.as_slice(), d.record) {
         ([], _) => ("Ref ref".to_string(), vec![]),
         ([(n, t)], false) => (format!("Ref ref, {t} {n}"), vec![format!("{n}: {n}")]),

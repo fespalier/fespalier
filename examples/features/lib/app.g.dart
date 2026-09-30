@@ -3,6 +3,7 @@
 //
 //   /                       HomeRoute     page.dart  (layout)
 //   /counter                CounterRoute  counter/page.dart  (data)
+//   /search                 SearchRoute   search/page.dart  (data)
 //   /shops/:shop            ShopRoute     shops/$shop/page.dart  (guard, layout)
 //   /shops/:shop/items/:id  ItemRoute     shops/$shop/items/$id/page.dart  (data)
 //   /ticks                  TicksRoute    ticks/page.dart  (data)
@@ -14,14 +15,16 @@ import 'app/page.dart' as _i0;
 import 'app/layout.dart' as _i1;
 import 'app/counter/data.dart' as _i2;
 import 'app/counter/page.dart' as _i3;
-import 'app/shops/\$shop/page.dart' as _i4;
-import 'app/shops/\$shop/layout.dart' as _i5;
-import 'app/shops/\$shop/guard.dart' as _i6;
-import 'app/shops/\$shop/items/\$id/data.dart' as _i7;
-import 'app/shops/\$shop/items/\$id/page.dart' as _i8;
-import 'app/shops/\$shop/items/\$id/error.dart' as _i9;
-import 'app/ticks/data.dart' as _i10;
-import 'app/ticks/page.dart' as _i11;
+import 'app/search/data.dart' as _i4;
+import 'app/search/page.dart' as _i5;
+import 'app/shops/\$shop/page.dart' as _i6;
+import 'app/shops/\$shop/layout.dart' as _i7;
+import 'app/shops/\$shop/guard.dart' as _i8;
+import 'app/shops/\$shop/items/\$id/data.dart' as _i9;
+import 'app/shops/\$shop/items/\$id/page.dart' as _i10;
+import 'app/shops/\$shop/items/\$id/error.dart' as _i11;
+import 'app/ticks/data.dart' as _i12;
+import 'app/ticks/page.dart' as _i13;
 
 /// The file tree under lib/app/, ready to mount.
 abstract final class AppRoutes {
@@ -47,7 +50,11 @@ abstract final class AppRoutes {
     _base = at;
     return [
       ShellRoute(
-        builder: (context, state, child) => _i1.RootLayout(child: child),
+        builder: (context, state, child) => buildWithParams(
+          () => _layout0(state),
+          (v) => _i1.RootLayout(child: child, banner: v.banner),
+          () => notFound(state.uri),
+        ),
         routes: [
           GoRoute(
             path: joinLocation(at, '/'),
@@ -63,35 +70,49 @@ abstract final class AppRoutes {
                   error: (e, st, retry) => DefaultError(error: e, retry: retry),
                 ),
               ),
+              GoRoute(
+                path: 'search',
+                builder: (context, state) => buildWithParams(
+                  () => _params2(state),
+                  (v) => DataView(
+                    watch: (ref) => ref.watch(_data2((q: v.q, page: v.page))),
+                    refresh: (ref) => ref.invalidate(_data2((q: v.q, page: v.page))),
+                    data: (d) => _i5.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
+                    loading: () => const DefaultLoading(),
+                    error: (e, st, retry) => DefaultError(error: e, retry: retry),
+                  ),
+                  () => notFound(state.uri),
+                ),
+              ),
               ShellRoute(
-                builder: (context, state, child) => buildWithSegments(
-                  () => _seg3(state),
-                  (v) => _i5.ShopLayout(shop: v.shop, child: child),
+                builder: (context, state, child) => buildWithParams(
+                  () => _layout4(state),
+                  (v) => _i7.ShopLayout(shop: v.shop, child: child),
                   () => notFound(state.uri),
                 ),
                 routes: [
                   GoRoute(
                     path: 'shops/:shop',
-                    redirect: (context, state) => guardWithSegments(
-                      () => _seg3(state),
-                      (v) => _i6.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
+                    redirect: (context, state) => guardWithParams(
+                      () => _params4(state),
+                      (v) => _i8.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
                     ),
-                    builder: (context, state) => buildWithSegments(
-                      () => _seg3(state),
-                      (v) => _i4.ShopPage(shop: v.shop),
+                    builder: (context, state) => buildWithParams(
+                      () => _params4(state),
+                      (v) => _i6.ShopPage(shop: v.shop),
                       () => notFound(state.uri),
                     ),
                     routes: [
                       GoRoute(
                         path: 'items/:id',
-                        builder: (context, state) => buildWithSegments(
-                          () => _seg5(state),
+                        builder: (context, state) => buildWithParams(
+                          () => _params6(state),
                           (v) => DataView(
-                            watch: (ref) => ref.watch(_data5((shop: v.shop, id: v.id))),
-                            refresh: (ref) => ref.invalidate(_data5((shop: v.shop, id: v.id))),
-                            data: (d) => _i8.ItemPage(d),
+                            watch: (ref) => ref.watch(_data6((shop: v.shop, id: v.id))),
+                            refresh: (ref) => ref.invalidate(_data6((shop: v.shop, id: v.id))),
+                            data: (d) => _i10.ItemPage(d),
                             loading: () => const DefaultLoading(),
-                            error: (e, st, retry) => _i9.ItemError(e, retry),
+                            error: (e, st, retry) => _i11.ItemError(e, retry),
                           ),
                           () => notFound(state.uri),
                         ),
@@ -103,9 +124,9 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'ticks',
                 builder: (context, state) => DataView(
-                  watch: (ref) => ref.watch(_data6),
-                  refresh: (ref) => ref.invalidate(_data6),
-                  data: (d) => _i11.TicksPage(data: d),
+                  watch: (ref) => ref.watch(_data7),
+                  refresh: (ref) => ref.invalidate(_data7),
+                  data: (d) => _i13.TicksPage(data: d),
                   loading: () => const DefaultLoading(),
                   error: (e, st, retry) => DefaultError(error: e, retry: retry),
                 ),
@@ -142,6 +163,24 @@ final class CounterRoute extends TypedLocation {
   Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
 }
 
+/// `/search` → search/page.dart
+final class SearchRoute extends TypedLocation {
+  const SearchRoute({this.q, this.page, this.tags = const []});
+
+  final String? q;
+  final int? page;
+  final List<String> tags;
+
+  /// search/data.dart as a Riverpod provider keyed by `(q, page)`.
+  static final data = _data2;
+
+  @override
+  String get location => withQuery(joinLocation(AppRoutes.base, '/search'), {'q': q, 'page': page, 'tags': tags});
+
+  /// Re-runs search/data.dart; completes with the fresh value.
+  Future<void> refresh(WidgetRef ref) => ref.refresh(data((q: q, page: page)).future);
+}
+
 /// `/shops/:shop` → shops/$shop/page.dart
 final class ShopRoute extends TypedLocation {
   const ShopRoute({required this.shop});
@@ -160,7 +199,7 @@ final class ItemRoute extends TypedLocation {
   final int id;
 
   /// shops/$shop/items/$id/data.dart as a Riverpod provider keyed by `(shop, id)`.
-  static final data = _data5;
+  static final data = _data6;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/shops/${Uri.encodeComponent(shop)}/items/$id');
@@ -174,7 +213,7 @@ final class TicksRoute extends TypedLocation {
   const TicksRoute();
 
   /// ticks/data.dart as a Riverpod provider.
-  static final data = _data6;
+  static final data = _data7;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/ticks');
@@ -183,14 +222,24 @@ final class TicksRoute extends TypedLocation {
   Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
 }
 
-({String shop}) _seg3(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
+({String? q, int? page, List<String> tags}) _params2(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'));
 
-({String shop, int id}) _seg5(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'));
+({String shop}) _params4(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
 
-final _data5 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String shop, int id}) k) => _i7.data(ref, shop: k.shop, id: k.id),
+({String shop, int id}) _params6(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'));
+
+({String? banner}) _layout0(GoRouterState s) => (banner: Query.asString(s, 'banner'));
+
+({String shop}) _layout4(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
+
+final _data2 = FutureProvider.autoDispose.family(
+  (Ref ref, ({String? q, int? page}) k) => _i4.data(ref, q: k.q, page: k.page),
 );
 
-final _data6 = StreamProvider.autoDispose(
-  (Ref ref) => _i10.data(ref),
+final _data6 = FutureProvider.autoDispose.family(
+  (Ref ref, ({String shop, int id}) k) => _i9.data(ref, shop: k.shop, id: k.id),
+);
+
+final _data7 = StreamProvider.autoDispose(
+  (Ref ref) => _i12.data(ref),
 );

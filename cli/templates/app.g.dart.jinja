@@ -14,14 +14,14 @@ DataView(
 {%- endif %}
 {%- endmacro %}
 {% macro with_segments(seg_fn, body) -%}
-buildWithSegments(
+buildWithParams(
   () => {{ seg_fn }}(state),
   (v) => {{ body | indent(2) }},
   () => notFound(state.uri),
 )
 {%- endmacro %}
 {% macro guard_with_segments(seg_fn, call) -%}
-guardWithSegments(
+guardWithParams(
   () => {{ seg_fn }}(state),
   (v) => {{ call }},
 )
@@ -103,7 +103,7 @@ abstract final class AppRoutes {
 /// `{{ r.pattern }}` → {{ r.file }}
 final class {{ r.name }}Route extends TypedLocation {
 {% if r.fields %}
-  const {{ r.name }}Route({ {%- for f in r.fields %}required this.{{ f.name }}{{ ", " if not loop.last }}{% endfor -%} });
+  const {{ r.name }}Route({ {%- for f in r.fields %}{{ f.param }}{{ ", " if not loop.last }}{% endfor -%} });
 
 {% for f in r.fields %}
   final {{ f.ty }} {{ f.name }};
@@ -118,7 +118,7 @@ final class {{ r.name }}Route extends TypedLocation {
 {% endif %}
 
   @override
-  String get location => joinLocation(AppRoutes.base, {{ r.location }});
+  String get location => {{ r.location }};
 {% if r.data %}
 
   /// {{ r.data.verb }} {{ r.data.file }}; completes with the fresh value.
@@ -126,9 +126,9 @@ final class {{ r.name }}Route extends TypedLocation {
 {% endif %}
 }
 {% endfor %}
-{% for s in seg_fns %}
+{% for f in params_fns %}
 
-{{ s.record }} _seg{{ s.id }}(GoRouterState s) => {{ s.parse }};
+{{ f.record }} {{ f.name }}(GoRouterState s) => {{ f.parse }};
 {% endfor %}
 {% for p in providers %}
 

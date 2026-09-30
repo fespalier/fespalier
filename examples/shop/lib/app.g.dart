@@ -68,8 +68,8 @@ abstract final class AppRoutes {
               ),
               GoRoute(
                 path: 'greet/:name',
-                builder: (context, state) => buildWithSegments(
-                  () => _seg4(state),
+                builder: (context, state) => buildWithParams(
+                  () => _params4(state),
                   (v) => _i8.GreetPage(name: v.name),
                   () => notFound(state.uri),
                 ),
@@ -86,8 +86,8 @@ abstract final class AppRoutes {
                 routes: [
                   GoRoute(
                     path: ':id',
-                    builder: (context, state) => buildWithSegments(
-                      () => _seg6(state),
+                    builder: (context, state) => buildWithParams(
+                      () => _params6(state),
                       (v) => DataView(
                         watch: (ref) => ref.watch(_data6(v.id)),
                         refresh: (ref) => ref.invalidate(_data6(v.id)),
@@ -174,9 +174,9 @@ final class ProductRoute extends TypedLocation {
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);
 }
 
-({String name}) _seg4(GoRouterState s) => (name: Segment.asString(s, 'name'));
+({String name}) _params4(GoRouterState s) => (name: Segment.asString(s, 'name'));
 
-({int id}) _seg6(GoRouterState s) => (id: Segment.asInt(s, 'id'));
+({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
 final _data6 = FutureProvider.autoDispose.family(
   (Ref ref, int id) => _i12.data(ref, id: id),

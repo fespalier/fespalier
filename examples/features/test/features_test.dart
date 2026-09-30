@@ -71,4 +71,38 @@ void main() {
     await tester.pump();
     expect(find.text('Tick 42'), findsOneWidget);
   });
+
+  testWidgets('query parameters reach the page and key data.dart',
+      (tester) async {
+    await boot(tester, '/search?q=ap&tags=red&tags=ripe');
+    await tester.pump();
+    expect(find.text('ap, page 1: apple, apricot'), findsOneWidget);
+    expect(find.text('tags: red, ripe'), findsOneWidget);
+
+    // Typed navigation carries the query; a new `page` is a new data key.
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    expect(find.text('ap, page 2: '), findsOneWidget);
+    expect(find.text('tags: red, ripe'), findsOneWidget);
+  });
+
+  testWidgets('absent or unparsable query parameters are null', (tester) async {
+    await boot(tester, '/search?page=x');
+    await tester.pump();
+    expect(find.text('everything, page 1: apple, apricot'), findsOneWidget);
+  });
+
+  test('typed routes write the query', () {
+    expect(const SearchRoute().location, '/search');
+    expect(
+      const SearchRoute(q: 'a b', page: 2, tags: ['x', 'y']).location,
+      '/search?q=a+b&page=2&tags=x&tags=y',
+    );
+  });
+
+  testWidgets('layouts get query parameters', (tester) async {
+    await boot(tester, '/?banner=hello');
+    expect(find.text('Banner: hello'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
+  });
 }

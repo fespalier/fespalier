@@ -135,7 +135,8 @@ It depends on go_router (17 or 18), hooks_riverpod 3 and flutter_hooks, and
 fsp init
 ```
 
-It creates `lib/app/layout.dart`, `page.dart`, `not_found.dart` and `transition.dart` (every
+It creates `lib/app/layout.dart`, `page.dart`, `not_found.dart` (`not-found.dart` with
+[`file_style: kebab`](#file-names)) and `transition.dart` (every
 route animates with the Material transition), and writes `lib/app.g.dart`. It never
 overwrites a file that exists: those are reported as `skip`.
 It then prints what is left to do (the dependency block above, if `pubspec.yaml` doesn't
@@ -227,12 +228,14 @@ fespalier:
   case_sensitive: true
   data_retry: inherit
   keep_previous: true
+  file_style: snake
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
 `case_sensitive: false` makes paths match in any case (see [Case and trailing slashes](#case-and-trailing-slashes)).
 `data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
-[Retries and reloads](#retries-and-reloads).
+[Retries and reloads](#retries-and-reloads). `file_style: kebab` makes `fsp init` and `fsp new`
+write `not-found.dart` instead of `not_found.dart` (see [File names](#file-names)).
 
 **Platform notes.**
 
@@ -262,8 +265,8 @@ fespalier:
 ## File kinds
 
 Each view file exports one public widget class, of any kind: `StatelessWidget`,
-`ConsumerWidget`, `HookConsumerWidget` and so on. Function files export one
-top-level function.
+`ConsumerWidget`, `HookConsumerWidget` and so on, or a [top-level function](#function-views)
+that returns a widget. Function files export one top-level function.
 
 | File | Exports | Its constructor / signature can ask for |
 |---|---|---|
@@ -276,6 +279,72 @@ top-level function.
 | `redirect.dart` | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `ProviderContainer c` first | `uri`; segments; query (named) |
 | `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
 | `not_found.dart` | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
+
+### Function views
+
+`page.dart`, `loading.dart`, `error.dart`, `layout.dart` and `not_found.dart` can export a
+top-level function named after the file, returning a `Widget`, instead of a widget class:
+
+```dart
+// lib/app/(kyc)/shop/name/page.dart
+import 'package:my_app/screens/kyc/legal_name_screen.dart';
+
+Widget page() => const LegalNameScreen(audience: KycAudience.shop);
+```
+
+```dart
+// lib/app/(buyer)/orders/$orderId/cancel/page.dart
+Widget page({required String orderId, String? back}) =>
+    CancelOrderScreen(orderId: orderId, back: back);
+```
+
+That is one route per file, however many routes build the same screen, and the screen can
+stay where it is (`lib/screens/…`) instead of moving into `lib/app/`. The function's
+parameters are filled exactly like a constructor's ([below](#how-parameters-are-filled)):
+segments and query parameters by name, `data` by name or by type, `child` or a shell for a
+`layout()`, `error`, `stackTrace` and `retry` for an `error()`, `uri` for a `notFound()`.
+Named and positional parameters both work, and a binding error points at the parameter.
+
+- **Names.** `page()`, `loading()`, `error()`, `layout()` and `notFound()` (`not_found()`
+  too). Other functions in the file are helpers and are ignored.
+- **One form per file.** A file with a public widget class *and* the function is an error that
+  names both; the class form is unchanged. To use the function, keep the widget in another
+  file (or make it private) and build it from the function.
+- **No hooks, no `ref`.** A function view is a plain function: it has no `BuildContext` and no
+  `WidgetRef` (asking for one is an error that says so). Hooks and `ref` belong in the
+  widget it returns, which is where they were anyway.
+- **The route class name.** A class names its route after itself (`ProductPage` →
+  `ProductRoute`), but many functions build the same screen, so a `page()` takes the
+  folder path, ignoring `(group)` folders and joining the segments in PascalCase:
+  `(kyc)/shop/name/page.dart` is `ShopNameRoute`, `orders/$orderId/cancel/page.dart` is
+  `OrdersOrderIdCancelRoute` (the root is `RootRoute`). To pick another, put a string
+  literal in `page.dart`:
+
+  ```dart
+  const routeName = 'KycShopName'; // KycShopNameRoute
+  Widget page() => const LegalNameScreen(audience: KycAudience.shop);
+  ```
+
+  It must be an UpperCamelCase name (the route class is `<routeName>Route`), and it also
+  renames a class-form page's route. Two routes with the same name are an error that
+  suggests `routeName`.
+- **`export` isn't followed.** `page.dart` has to hold the function itself, so it stays the
+  source of truth for the route.
+
+`fsp new 'shop/name' --function` scaffolds the function form (`--name KycShopName` writes the
+`routeName`). `examples/features` has two routes, `(plans)/free` and `(plans)/pro`, serving one
+screen with different constants.
+
+### File names
+
+The one file kind with two words is `not_found.dart`. Reading takes it in kebab-case too,
+`not-found.dart`, whatever the configuration says, so a project that names every Dart file in
+kebab-case can keep to that, and a tree that mixes the two still works. Both in one folder
+is an error with a code frame for each file. Diagnostics, `fsp routes` and the header of
+`app.g.dart` name a file as it is spelled on disk.
+
+`file_style: snake | kebab` (default `snake`) only picks what `fsp init` and `fsp new` write.
+The single-word kinds (`page.dart`, `layout.dart`, …) have one spelling.
 
 ### How parameters are filled
 
@@ -886,12 +955,17 @@ fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
                         # [id] or :id both mean $id, so no shell quoting of $
 fsp new '(account)' --layout    # a (group) folder: layout only, no page.dart
+fsp new 'kyc/shop/name' --function --name KycShopName
+                        # views as functions (`Widget page()`), with a routeName
+fsp new 'shop' --not-found      # not_found.dart (not-found.dart with `file_style: kebab`)
 ```
 
 All commands take `--project <dir>` (default: the nearest folder with a `pubspec.yaml`).
 `fsp new` writes `page.dart` (plus the kinds you ask for with flags), skips files that
 already exist, and takes its class names from `--name` (default: from the path, e.g.
-`ProductsId`). A segment that already has a type elsewhere in the tree keeps it. Pass
+`ProductsId`). With `--function` it writes [function views](#function-views) instead of classes,
+and `--name` becomes the `routeName` (an UpperCamelCase name). A segment that already has a
+type elsewhere in the tree keeps it. Pass
 `--no-page` to leave `page.dart` out. A `(group)` target (like `'(account)'`) gets no
 `page.dart` either, since a group has no URL of its own; write one by hand if you want the
 group to serve its parent's URL. It then regenerates `lib/app.g.dart` and prints the

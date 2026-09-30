@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+use crate::dart::Span;
 use crate::diag::Diags;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -48,9 +49,27 @@ impl Kind {
         }
     }
 
-    fn from_file(name: &str) -> Option<Kind> {
-        Kind::ALL.into_iter().find(|k| k.file() == name)
+    /// The kind's file name in kebab-case: `not-found.dart`. The same as [`Kind::file`]
+    /// for the kinds whose name is one word.
+    pub fn kebab_file(self) -> String {
+        self.file().replace('_', "-")
     }
+
+    /// The kind a file name spells, in either style. Reading accepts both whatever
+    /// `file_style` says: that only picks what `fsp init` and `fsp new` write. Every
+    /// multi-word kind gets this, so a future one needs nothing here.
+    fn from_file(name: &str) -> Option<Kind> {
+        Kind::ALL.into_iter().find(|k| k.file() == name || k.kebab_file() == name)
+    }
+}
+
+/// How the files fespalier writes name a multi-word kind: `not_found.dart` or `not-found.dart`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileStyle {
+    #[default]
+    Snake,
+    Kebab,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -71,22 +90,33 @@ pub struct Node {
     pub dir: String,
     pub seg: Option<Seg>,
     pub files: BTreeMap<Kind, String>,
+    /// The name a file has on disk when it isn't the kind's snake_case one (`not-found.dart`).
+    pub spelled: BTreeMap<Kind, String>,
     pub children: Vec<Node>,
 }
 
 impl Node {
-    /// Path of a file relative to `lib/app`, e.g. `products/$id/page.dart`.
+    fn in_dir(&self, name: &str) -> String {
+        if self.dir.is_empty() { name.to_string() } else { format!("{}/{}", self.dir, name) }
+    }
+
+    /// Path of a file relative to `lib/app`, e.g. `products/$id/page.dart`, as it is
+    /// spelled on disk.
     pub fn rel(&self, kind: Kind) -> String {
-        if self.dir.is_empty() {
-            kind.file().to_string()
-        } else {
-            format!("{}/{}", self.dir, kind.file())
+        match self.spelled.get(&kind) {
+            Some(name) => self.in_dir(name),
+            None => self.in_dir(kind.file()),
         }
     }
 }
 
+/// A span over the first line of a file: where a diagnostic about the whole file points.
+fn first_line(src: &str) -> Span {
+    Span { line: 1, bytes: 0..src.find('\n').unwrap_or(src.len()) }
+}
+
 pub fn scan(app_dir: &Path, diags: &mut Diags) -> Result<Node> {
-    let mut root = Node { dir: String::new(), seg: None, files: BTreeMap::new(), children: vec![] };
+    let mut root = Node { dir: String::new(), seg: None, files: BTreeMap::new(), spelled: BTreeMap::new(), children: vec![] };
     fill(app_dir, &mut root, diags)?;
     Ok(root)
 }
@@ -112,11 +142,25 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
                     continue;
                 }
             };
-            let mut child = Node { dir: rel, seg: Some(seg), files: BTreeMap::new(), children: vec![] };
+            let mut child = Node { dir: rel, seg: Some(seg), files: BTreeMap::new(), spelled: BTreeMap::new(), children: vec![] };
             fill(&path, &mut child, diags)?;
             node.children.push(child);
         } else if let Some(kind) = Kind::from_file(&name) {
-            node.files.insert(kind, fs::read_to_string(&path)?);
+            let src = fs::read_to_string(&path)?;
+            if node.files.contains_key(&kind) {
+                // `not_found.dart` and `not-found.dart` are one kind: point at each file,
+                // and keep the first.
+                let other = node.spelled.get(&kind).cloned().unwrap_or_else(|| kind.file().to_string());
+                let same = |a: &str, b: &str| format!("`{a}` and `{b}` are the same view and both are in this folder; keep one");
+                let theirs = fs::read_to_string(path.with_file_name(&other)).unwrap_or_default();
+                diags.error(&node.in_dir(&name), Some(&first_line(&src)), same(&name, &other));
+                diags.error(&node.in_dir(&other), Some(&first_line(&theirs)), same(&other, &name));
+                continue;
+            }
+            if name != kind.file() {
+                node.spelled.insert(kind, name);
+            }
+            node.files.insert(kind, src);
         }
     }
     Ok(())

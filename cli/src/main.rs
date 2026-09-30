@@ -295,3 +295,5 @@ mod refresh_tests;
 mod route_api_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod views_tests;

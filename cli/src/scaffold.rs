@@ -11,7 +11,7 @@ use serde::Serialize;
 use crate::config::Config;
 use crate::diag::Diags;
 use crate::resolve::{self, pascal};
-use crate::scan::{self, parse_segment, Seg};
+use crate::scan::{self, parse_segment, FileStyle, Seg};
 use crate::templates;
 
 #[derive(Args)]
@@ -20,9 +20,13 @@ pub struct NewArgs {
     /// `[...rest]` for the catch-all `$$rest` and `[[...rest]]` for `$$$rest`, so you don't
     /// have to quote `$` in the shell.
     pub route: String,
-    /// Class name stem (default: from the path, e.g. `ProductsId`)
+    /// Class name stem (default: from the path, e.g. `ProductsId`); with --function,
+    /// the typed route's name, written as `const routeName = '...';`
     #[arg(long)]
     pub name: Option<String>,
+    /// Write the views as top-level functions (`Widget page(...)`) rather than widget classes
+    #[arg(long)]
+    pub function: bool,
     #[arg(long)]
     pub data: bool,
     #[arg(long)]
@@ -31,6 +35,8 @@ pub struct NewArgs {
     pub error: bool,
     #[arg(long)]
     pub layout: bool,
+    #[arg(long)]
+    pub not_found: bool,
     #[arg(long)]
     pub guard: bool,
     #[arg(long)]
@@ -50,6 +56,10 @@ pub struct NewCmd {
 #[derive(Serialize)]
 struct Cx {
     stem: String,
+    /// The views are top-level functions.
+    function: bool,
+    /// `--name` with `--function`: the `routeName` to write.
+    name: Option<String>,
     segs: Vec<SegCx>,
     data: bool,
     /// ` $orderId $itemId`, appended to the page's placeholder text.
@@ -123,11 +133,18 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         }
     }
 
+    if let (true, Some(n)) = (a.function, &a.name) {
+        if !resolve::valid_route_name(n) {
+            bail!("--name `{n}` names the route class `{n}Route`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName`");
+        }
+    }
     let stem = a.name.clone().unwrap_or_else(|| {
         let p = pascal(&rel);
         if p.is_empty() { "Home".into() } else { p }
     });
     let cx = Cx {
+        function: a.function,
+        name: a.name.clone().filter(|_| a.function),
         label: seg_cx.iter().map(|s| format!(" ${}", s.name)).collect(),
         path: format!("/{rel}"),
         stem,
@@ -144,12 +161,13 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         ("loading", a.loading),
         ("error", a.error),
         ("layout", a.layout),
+        ("not_found", a.not_found),
         ("guard", a.guard),
         ("transition", a.transition),
     ];
     if !wanted.iter().any(|(_, on)| *on) {
         let why = if is_group { "a (group) folder has no page" } else { "--no-page skips the page" };
-        bail!("nothing to create: {why}; also pass --layout, --loading, --error, --guard or --transition");
+        bail!("nothing to create: {why}; also pass --layout, --loading, --error, --not-found, --guard or --transition");
     }
     let dir = app_dir.join(&rel);
     fs::create_dir_all(&dir)?;
@@ -158,10 +176,14 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         if !on {
             continue;
         }
-        let path = dir.join(format!("{kind}.dart"));
-        let shown = format!("{}/{}{kind}.dart", cfg.app_dir, if rel.is_empty() { String::new() } else { format!("{rel}/") });
-        if path.exists() {
-            eprintln!("  skip  {shown} (exists)");
+        // `file_style` picks how a multi-word kind is spelled; the other spelling counts as there.
+        let (snake, kebab) = (format!("{kind}.dart"), format!("{}.dart", kind.replace('_', "-")));
+        let file = if cfg.file_style == FileStyle::Kebab { &kebab } else { &snake };
+        let at = |f: &str| format!("{}/{}{f}", cfg.app_dir, if rel.is_empty() { String::new() } else { format!("{rel}/") });
+        let path = dir.join(file);
+        let shown = at(file);
+        if let Some(present) = [&snake, &kebab].into_iter().find(|f| dir.join(f).exists()) {
+            eprintln!("  skip  {} (exists)", at(present));
             continue;
         }
         fs::write(&path, templates::render(&format!("new/{kind}.dart"), &cx))?;

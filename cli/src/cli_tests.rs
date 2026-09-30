@@ -20,6 +20,8 @@ fn args(route: &str, layout: bool) -> NewArgs {
     NewArgs {
         route: route.into(),
         name: None,
+        function: false,
+        not_found: false,
         data: false,
         loading: false,
         error: false,

@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+{% if function %}
+Widget error({required Object error, required VoidCallback retry}) => Center(
+      child: TextButton(onPressed: retry, child: Text('$error · retry')),
+    );
+{% else %}
 class {{ stem }}Error extends StatelessWidget {
   const {{ stem }}Error({super.key, required this.error, required this.retry});
 
@@ -11,3 +16,4 @@ class {{ stem }}Error extends StatelessWidget {
         child: TextButton(onPressed: retry, child: Text('$error · retry')),
       );
 }
+{% endif %}

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+{% if function %}
+Widget loading() => const Center(child: CircularProgressIndicator());
+{% else %}
 class {{ stem }}Loading extends StatelessWidget {
   const {{ stem }}Loading({super.key});
 
@@ -7,3 +10,4 @@ class {{ stem }}Loading extends StatelessWidget {
   Widget build(BuildContext context) =>
       const Center(child: CircularProgressIndicator());
 }
+{% endif %}

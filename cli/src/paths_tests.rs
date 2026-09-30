@@ -318,6 +318,8 @@ fn fsp_new_writes_catch_all_folders() {
         let args = scaffold::NewArgs {
             route: arg.into(),
             name: None,
+            function: false,
+            not_found: false,
             data,
             loading: false,
             error: false,

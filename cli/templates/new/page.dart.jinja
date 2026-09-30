@@ -1,3 +1,19 @@
+{% if function %}
+import 'package:flutter/material.dart';
+
+{% if name %}
+const routeName = '{{ name }}';
+
+{% endif %}
+{% if data %}
+Widget page({required String data}) => Center(child: Text(data));
+{% elif segs %}
+Widget page({ {%- for s in segs %}required {{ s.ty }} {{ s.name }}{{ ", " if not loop.last }}{% endfor -%} }) =>
+    Center(child: Text('{{ stem }}{{ label }}'));
+{% else %}
+Widget page() => const Center(child: Text('{{ stem }}'));
+{% endif %}
+{% else %}
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 
@@ -20,3 +36,4 @@ class {{ stem }}Page extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) =>
       Center(child: Text({{ "data" if data else "'" ~ stem ~ label ~ "'" }}));
 }
+{% endif %}

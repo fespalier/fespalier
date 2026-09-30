@@ -49,6 +49,9 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      - name: Ready for pub.dev (no warnings)
+        if: matrix.dir == 'packages/fespalier'
+        run: flutter pub publish --dry-run
 
   scaffold:
     name: Scaffolded files compile
@@ -80,3 +83,30 @@ jobs:
           flutter pub get
           FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier --version
           FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier routes
+
+  vscode:
+    name: VS Code extension
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci
+      - name: Compile and unit-test
+        run: npm test
+      - name: Package the extension
+        run: npx --no-install vsce package --no-dependencies
+
+  packaging:
+    name: Homebrew and Scoop files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render from fake checksums
+        run: python3 scripts/test_packaging.py

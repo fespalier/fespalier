@@ -8,6 +8,7 @@ DataView(
   data: (d) => {{ b.page | indent(2) }},
   loading: () => {{ b.data.loading }},
   error: (e, st, retry) => {{ b.data.error }},
+  keepPrevious: {{ "true" if keep_previous else "false" }},
 )
 {%- else -%}
 {{ b.page }}
@@ -236,7 +237,9 @@ final class {{ r.name }}Route extends TypedLocation {
 
 final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
   ({{ p.params }}) => {{ p.call }},
+{% if p.no_retry %}
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
+{% endif %}
 );
 {% endfor %}

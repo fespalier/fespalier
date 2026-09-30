@@ -400,7 +400,7 @@ impl Resolver<'_> {
         if let Some(seg @ (Seg::Static(_) | Seg::Dynamic(_) | Seg::CatchAll(..))) = &node.seg {
             url.push(seg.clone());
         }
-        let modules: BTreeMap<Kind, Module> = node.files.iter().map(|(k, src)| (*k, dart::parse(src))).collect();
+        let modules: BTreeMap<Kind, Module> = node.files.iter().map(|(k, src)| (*k, crate::parse_cache::parse(src))).collect();
         // The grammar may lag newer Dart, so this is a warning: the Dart compiler has the last word.
         for (kind, m) in &modules {
             if let Some(span) = &m.parse_error {
@@ -962,7 +962,6 @@ impl Resolver<'_> {
         segs: &[(String, usize)],
         scope: Scope,
         what: &str,
-        keyed: bool,
     ) -> Option<String> {
         if !p.named {
             self.diags.error(file, Some(&p.span), format!("{what} takes segments as named parameters, e.g. `{{required int {}}}`", p.name));
@@ -981,12 +980,6 @@ impl Resolver<'_> {
                 self.diags.error(file, Some(&p.span), msg);
                 return None;
             };
-            if keyed && qty.starts_with("List<") {
-                // Lists compare by identity, so they can't key a provider.
-                let msg = format!("`{}`: data can't be keyed by a List; take a `String?` and split it", p.name);
-                self.diags.error(file, Some(&p.span), msg);
-                return None;
-            }
             return self.declare_query(scope, &p.name, qty, file, &p.span).then(|| p.name.clone());
         };
         match &p.ty {
@@ -1012,7 +1005,7 @@ impl Resolver<'_> {
             }
             let mut keys = vec![];
             for p in f.params.iter().skip(1) {
-                keys.extend(self.url_param(&file, p, segs, scope, "data()", true));
+                keys.extend(self.url_param(&file, p, segs, scope, "data()"));
             }
             let Some(ret) = &f.ret else {
                 self.diags.error(&file, Some(&f.span), "data() needs an explicit return type (Future<T>, Stream<T> or T)");
@@ -1072,7 +1065,7 @@ impl Resolver<'_> {
                             is_super: false,
                             span: v.span.clone(),
                         };
-                        keys.extend(self.url_param(&file, &p, segs, scope, "the family argument", true));
+                        keys.extend(self.url_param(&file, &p, segs, scope, "the family argument"));
                     }
                 } else if let [(name, folder)] = segs {
                     keys.push(name.clone());
@@ -1173,7 +1166,7 @@ impl Resolver<'_> {
                 }
                 continue;
             }
-            keys.extend(self.url_param(file, p, segs, scope, what, false));
+            keys.extend(self.url_param(file, p, segs, scope, what));
         }
         let mut args: Vec<Arg> = in_path_order(keys, segs)
             .into_iter()

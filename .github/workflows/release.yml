@@ -4,6 +4,9 @@
 #   - manual run (workflow_dispatch): build only, archives are kept as workflow artifacts;
 #     with `publish` ticked it also publishes the Release for the cli/Cargo.toml version,
 #     creating its v<version> tag at the dispatched commit (for when tags cannot be pushed)
+# Every run also renders the Homebrew formula (fsp.rb) and Scoop manifest (fsp.json) from the
+# archives' checksums (scripts/packaging.py); a published release attaches them, and pushes them
+# to the tap and bucket repos when the PACKAGING_TOKEN secret exists (see "Releasing" in the README).
 name: Release
 
 on:
@@ -126,10 +129,38 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # fsp.rb (Homebrew) and fsp.json (Scoop), rendered from the archives' .sha256 files.
+  packaging:
+    name: Render Homebrew and Scoop files
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fsp-*
+          path: dist
+          merge-multiple: true
+
+      - name: Render
+        run: |
+          crate_version=$(sed -n '/^\[package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' cli/Cargo.toml | head -n 1)
+          python3 scripts/test_packaging.py
+          python3 scripts/packaging.py --version "$crate_version" --dist dist --out packaging
+          cat packaging/fsp.rb packaging/fsp.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          # `fsp-*` so the release job's download picks it up with the archives
+          name: fsp-packaging
+          path: packaging/*
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
     if: needs.plan.outputs.publish == 'true'
-    needs: [plan, build]
+    needs: [plan, build, packaging]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -151,3 +182,60 @@ jobs:
           name: ${{ needs.plan.outputs.tag }}
           files: dist/*
           generate_release_notes: true
+
+  # Pushes fsp.rb / fsp.json to the Homebrew tap and the Scoop bucket. Needs a token that can
+  # write to both repos in the PACKAGING_TOKEN secret; without it the job does nothing.
+  # Repos default to vaam-apps/homebrew-tap and vaam-apps/scoop-bucket (override with the
+  # HOMEBREW_TAP_REPO / SCOOP_BUCKET_REPO repository variables).
+  taps:
+    name: Update Homebrew tap and Scoop bucket
+    if: needs.plan.outputs.publish == 'true'
+    needs: [plan, release]
+    runs-on: ubuntu-latest
+    env:
+      PACKAGING_TOKEN: ${{ secrets.PACKAGING_TOKEN }}
+      TAG: ${{ needs.plan.outputs.tag }}
+    steps:
+      - name: Skip without a token
+        if: env.PACKAGING_TOKEN == ''
+        run: echo "::notice::PACKAGING_TOKEN is not set; skipping the Homebrew tap and Scoop bucket update"
+
+      - uses: actions/download-artifact@v4
+        if: env.PACKAGING_TOKEN != ''
+        with:
+          name: fsp-packaging
+          path: packaging
+
+      - uses: actions/checkout@v4
+        if: env.PACKAGING_TOKEN != ''
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPO || 'vaam-apps/homebrew-tap' }}
+          token: ${{ secrets.PACKAGING_TOKEN }}
+          path: tap
+
+      - uses: actions/checkout@v4
+        if: env.PACKAGING_TOKEN != ''
+        with:
+          repository: ${{ vars.SCOOP_BUCKET_REPO || 'vaam-apps/scoop-bucket' }}
+          token: ${{ secrets.PACKAGING_TOKEN }}
+          path: bucket
+
+      - name: Commit and push
+        if: env.PACKAGING_TOKEN != ''
+        run: |
+          push() {
+            dir=$1; src=$2; dest=$3
+            mkdir -p "$dir/$(dirname "$dest")"
+            cp "$src" "$dir/$dest"
+            git -C "$dir" config user.name "github-actions[bot]"
+            git -C "$dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git -C "$dir" add "$dest"
+            if git -C "$dir" diff --cached --quiet; then
+              echo "$dir: $dest is already up to date"
+            else
+              git -C "$dir" commit -m "fsp ${TAG#v}"
+              git -C "$dir" push
+            fi
+          }
+          push tap packaging/fsp.rb Formula/fsp.rb
+          push bucket packaging/fsp.json bucket/fsp.json

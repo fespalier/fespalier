@@ -92,6 +92,14 @@ any platform:
 cargo install --git https://github.com/vaam-apps/fespalier --tag v0.2.0 fespalier
 ```
 
+With Homebrew (macOS, Linux) or Scoop (Windows), once the maintainers have set up the tap and
+bucket (see [Releasing](#releasing)):
+
+```sh
+brew install vaam-apps/tap/fsp
+scoop bucket add vaam-apps https://github.com/vaam-apps/scoop-bucket && scoop install fsp
+```
+
 **Or install nothing.** Once the package is in your `pubspec.yaml` (step 2), `dart run
 fespalier <command>` runs `fsp` for you, so use it wherever this README says `fsp`:
 `dart run fespalier init`, `dart run fespalier watch`, `dart run fespalier check`. The first
@@ -184,10 +192,14 @@ fespalier:
   output: lib/app.g.dart
   format: false
   case_sensitive: true
+  data_retry: inherit
+  keep_previous: true
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
 `case_sensitive: false` makes paths match in any case (see [Case and trailing slashes](#case-and-trailing-slashes)).
+`data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
+[Retries and reloads](#retries-and-reloads).
 
 **Platform notes.**
 
@@ -613,12 +625,17 @@ query parameters as optional arguments and writes them into `.location`, leaving
 nulls and empty lists.
 
 `data.dart` can take query parameters too, and its provider is then keyed by them, so
-`/search?page=2` and `?page=3` load separately. It can't take a `List`: lists compare by
-identity, so they can't key a provider. Take a `String?` and split it instead.
+`/search?page=2` and `?page=3` load separately. A `List` works as a key too: lists
+compare by identity, so the generated provider is keyed by a `QueryList` (a `List` with value
+equality, exported by fespalier) holding the same elements, and `?tags=a&tags=b` is one provider
+however many times the page builds a new list. Your `data()` still takes and receives a plain
+`List<String>`, and the typed helpers take one (`SearchRoute.watch(ref, tags: ['a', 'b'])`).
+Order counts: `[a, b]` and `[b, a]` are different keys. (A provider you write yourself can't
+be keyed by a query parameter, only by segments.)
 
 ```dart
 // search/data.dart
-Future<List<Hit>> data(Ref ref, {String? q, int? page}) => …;
+Future<List<Hit>> data(Ref ref, {String? q, int? page, List<String> tags = const []}) => …;
 
 // search/page.dart
 class SearchPage extends StatelessWidget {
@@ -685,13 +702,54 @@ A family provider you write yourself follows the same rule. With several paramet
 with query parameters, its argument is a record naming the ones it uses, e.g.
 `({int id, int? page})`.
 
-**Retries.** Riverpod 3 retries a failed provider with backoff by default. The generated
-`data()` providers turn that off (`retry: (retryCount, error) => null`), so `error.dart`
-shows as soon as `data.dart` fails, and its `retry` callback is the retry path. A
-provider you write yourself keeps Riverpod's default unless you pass `retry:` to it.
-
 To see a scaffolded `error.dart` and its retry, throw from `data.dart`, e.g.
 `throw Exception('offline')`.
+
+#### Retries and reloads
+
+Two settings in the `fespalier:` section of `pubspec.yaml` decide what a route shows while
+its `data.dart` fails or loads again:
+
+```yaml
+fespalier:
+  data_retry: inherit   # inherit | none
+  keep_previous: true   # true | false
+```
+
+**`keep_previous: true` (the default).** `loading.dart` is only for the first load. Once
+the provider has a value or an error, a reload (`ref.invalidate`, `refresh`, the section's
+dependencies changing) keeps rendering it: the old page stays until the new value arrives,
+instead of blinking to `loading.dart` and back. `error.dart`'s `retry` still invalidates the
+provider; the error stays up until the new run has an answer. Off, `loading.dart` shows
+whenever the provider is loading (a refresh included). This is `skipLoadingOnReload` and
+`skipLoadingOnRefresh` on Riverpod's `AsyncValue.when`. It applies to a route's `data.dart` and
+to a section's, including a provider you write yourself.
+
+**`data_retry: inherit` (the default).** Riverpod 3 retries a failed provider on its own,
+with backoff, and the app's `ProviderScope(retry: ...)` or `ProviderContainer(retry: ...)`
+decides how. The providers fespalier generates for `data()` functions don't set their own
+policy, so the app's applies. An app that wants a failure to settle into `error.dart` after
+a few attempts writes:
+
+```dart
+ProviderScope(
+  retry: (retryCount, error) => retryCount < 3 ? const Duration(seconds: 1) : null,
+  child: …,
+)
+```
+
+Riverpod's own default (10 retries with doubling delays, none for an `Error`) applies when the
+app sets none. A provider you write yourself always follows the app's policy, or its own `retry:`.
+
+Together the two make `error.dart` show as soon as `data.dart` fails, retrying or not:
+a provider that failed and is being retried is `AsyncLoading` with its error still held, and
+with `keep_previous` on `DataView` shows that error, not `loading.dart`, for the whole retry
+window. It goes to the data when a retry succeeds, and stays on the error when the policy gives up.
+With `keep_previous: false` a retry shows `loading.dart` again.
+
+**`data_retry: none`.** Every generated `data()` provider gets
+`retry: (retryCount, error) => null`, whatever the app's policy is: a failure is final until
+`error.dart`'s `retry` runs it again, which is how 0.1.1 behaved.
 
 ### Typed helpers on the route
 
@@ -763,8 +821,8 @@ class MembersPage extends StatelessWidget {
   `error.dart` with its `retry`. Nothing below is built until the data is there.
 - **Sharing.** The layout watches the provider and the pages below read the same one, so
   `data()` runs once however many of them take it, and moving between the section's pages
-  doesn't load it again. When the data reloads (`retry`, an invalidation), the whole section
-  shows loading again.
+  doesn't load it again. When the data reloads (`retry`, an invalidation), the section keeps
+  showing what it has (`keep_previous`; with `keep_previous: false` it shows loading again).
 - **Which one.** A parameter called `data` gets the nearest data: the route's own
   `data.dart`, then the section's, then the next section up. By type, a parameter gets the
   data.dart that yields that type, and it is an error if two do (a page's own and a
@@ -834,6 +892,13 @@ there is nothing to report:
 `line` and `column` count from 1 (the column counts characters, not bytes) and are `null` for
 a diagnostic that isn't about a place in a file. `severity` is `error` or `warning`.
 
+**Editor support.** `editors/vscode/` is a VS Code extension that runs `fsp check --json` when
+you save a file under the app folder and puts the diagnostics in the Problems panel, with a
+`fespalier: generate` command and a status bar item. It is not on the Marketplace yet: build
+it with `npm install && npm test && npx @vscode/vsce package` in that folder and install the
+`.vsix` (see `editors/vscode/README.md`). It uses `fsp` from your `PATH`, or `dart run
+fespalier` when there is none (`fespalier.runner` chooses).
+
 **Formatting.** The generated file is not formatted by default, so a committed
 `app.g.dart` doesn't depend on which Dart SDK ran `fsp`. `fsp gen --format`, or `format: true` in
 the pubspec section, pipes it through `dart format` (which needs `dart` on your `PATH`; without
@@ -850,7 +915,8 @@ What the commands print:
 - `fsp check`: `✓ 12 routes, no errors`.
 - `fsp watch`: the `gen` line once at startup, then a line each time a save changes
   `lib/app.g.dart`. An edit that doesn't (a widget's `build` method, say) prints nothing.
-  It ignores its own output and file reads, so it doesn't loop while idle.
+  It ignores its own output and file reads, so it doesn't loop while idle. It keeps the parse
+  results of files that didn't change, so a save parses only the file you saved.
 
 Errors point at the parameter or declaration at fault, and `app.g.dart` is left
 untouched while there are any. A file that can't be fully parsed gets a warning instead
@@ -928,6 +994,8 @@ route (`/photos/:id`), a bottom sheet (`/photos/sort`) and a full-screen dialog
 ```
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
+editors/vscode/      the VS Code extension (TypeScript): fsp diagnostics in the Problems panel
+scripts/             packaging.py renders the Homebrew formula and Scoop manifest for a release
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
@@ -947,12 +1015,55 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 
 CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
 with `fsp new` and runs `flutter analyze` on the result, runs `dart run fespalier` against a
-freshly built `fsp`, and checks that the version agrees everywhere it is spelled out
+freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
+rendering (`python3 scripts/test_packaging.py`), runs `flutter pub publish --dry-run` on the
+package, and checks that the version agrees everywhere it is spelled out
 (`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`, the `ref:` that
 `fsp init` prints, and the READMEs' `ref:`, `--tag` and `FSP_VERSION`; the launcher reads its
 version from the pubspec). To release, bump those together. After changing the emitter or a
 template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
 a committed `app.g.dart` is stale.
+
+### Releasing
+
+Maintainers only. Bump the version everywhere (see the version checks above), update
+`CHANGELOG.md`, and merge. Then:
+
+1. **GitHub Release and binaries.** Run the *Release* workflow with `publish` ticked (or
+   push the tag `v<version>`). It builds `fsp` for five targets and attaches
+   `fsp-<target>.tar.gz` / `.zip` with their `.sha256` files. It also renders `fsp.rb`
+   (Homebrew formula) and `fsp.json` (Scoop manifest) from those checksums with
+   `scripts/packaging.py` and attaches them to the release.
+2. **pub.dev.** Run the *Publish to pub.dev* workflow from that tag: *Run workflow*, then
+   *Use workflow from* > *Tag* > `v<version>`. It publishes `packages/fespalier` through
+   pub.dev's GitHub OIDC automated publishing, with no stored token. It refuses to run from
+   a branch or when the tag isn't `v` plus the pubspec version. After the first release on
+   pub.dev, change the install snippets in the READMEs from the Git dependency to
+   `fespalier: ^<version>` (and `cli/tests/versions.rs`, which checks them).
+3. **Homebrew and Scoop.** Copy `fsp.rb` from the release into the `Formula/` folder of a tap
+   repository and `fsp.json` into the `bucket/` folder of a bucket repository, or let the
+   workflow do it (below).
+
+One-time setup:
+
+- **pub.dev.** Automated publishing only works for an existing package, so publish the first
+  version by hand: `cd packages/fespalier && flutter pub publish`. Then, on the package's
+  *Admin* tab under *Automated publishing*, enable *Publishing from GitHub Actions*,
+  repository `vaam-apps/fespalier`, tag pattern `v{{version}}`. Optionally tick *Require
+  GitHub Actions environment*, create an environment named `pub.dev` in the repository's
+  settings (add required reviewers there), and uncomment `environment: pub.dev` in
+  `.github/workflows/publish.yml`. Check what will be uploaded any time with
+  `flutter pub publish --dry-run` (CI does).
+- **Homebrew tap.** Create the repository `vaam-apps/homebrew-tap` (the `homebrew-` prefix
+  is what lets `brew install vaam-apps/tap/fsp` find it) with a `Formula/` folder.
+- **Scoop bucket.** Create `vaam-apps/scoop-bucket` with a `bucket/` folder. The manifest's
+  `checkver` and `autoupdate` let Scoop's own tooling keep it current too.
+- **Automatic updates (optional).** Create a fine-grained personal access token with
+  *Contents: read and write* on those two repositories and save it as the
+  `PACKAGING_TOKEN` secret of this repository. Each published release then commits
+  `Formula/fsp.rb` and `bucket/fsp.json` to them. Without the secret the step is skipped.
+  Different repository names go in the `HOMEBREW_TAP_REPO` and `SCOOP_BUCKET_REPO`
+  repository variables.
 
 ### Testing
 
@@ -1009,13 +1120,13 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 154 tests (137 unit, 13 CLI integration, 4 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 194 tests (177 unit, 13 CLI integration, 4 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, transitions, both data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects,
   scaffolding, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 133 Flutter tests (the package 59, `shop` 20,
-  `features` 42, `tabs` 12); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 182 Flutter tests (the package 84, `shop` 23,
+  `features` 63, `tabs` 12); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

@@ -18,3 +18,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+# Read by the `fsp` generator. `none`: a failing data() shows error.dart at once
+# and isn't retried behind the scenes (the default, `inherit`, leaves it to the
+# ProviderScope's retry policy).
+fespalier:
+  data_retry: none

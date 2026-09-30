@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+### Data refresh and retry
+
+- **Behaviour change: generated `data()` providers no longer switch off Riverpod's retry.**
+  0.1.1 gave them `retry: (retryCount, error) => null`, which overrode the app's
+  `ProviderScope(retry: ...)`. Now the app's policy applies (Riverpod's default, 10 retries
+  with backoff, when it sets none), so a failing `data.dart` is run again in the background.
+  What the route shows is unchanged (see `keep_previous`), but the provider runs more than
+  once, so a test that counts calls or ends with a pending timer will notice. To keep the old
+  behaviour, add `data_retry: none` to the `fespalier:` section of `pubspec.yaml`, or give the
+  app a retry policy of its own. Regenerate `app.g.dart`.
+- **`DataView` keeps the old state on screen while `data.dart` reloads.** `loading.dart` is
+  now only for the first load. A refresh or reload keeps rendering the old value (or error),
+  and a provider that failed and is being retried keeps showing `error.dart` for the whole
+  retry window, then the data once a retry succeeds. Before, a reload driven by a dependency
+  and every retry blinked to `loading.dart`. A section's data reloading no longer shows loading
+  for the whole section. `keep_previous: false` restores the loading view for every load.
+  (`AsyncValue.when` with `skipLoadingOnReload` and `skipLoadingOnRefresh`.)
+- New `fespalier:` config keys: `data_retry: inherit | none` (default `inherit`) and
+  `keep_previous: true | false` (default `true`). The generated `DataView` gets a
+  `keepPrevious:` argument.
+- **`List` query parameters can key `data.dart`.** `data(Ref ref, {List<String> tags = const []})`
+  is accepted, and `?tags=a&tags=b` is one provider whatever list instance the page builds:
+  the generated key wraps the list in the new runtime `QueryList<T>`, a list with value
+  equality. `data()` and the typed helpers still take a plain `List<T>`. It used to be an error.
+- `pumpRouter` in `package:fespalier/testing.dart` takes `retry:` and defaults to no retries,
+  so a failing `data.dart` shows `error.dart` at once and leaves no timer behind in a test.
+  Pass `ProviderContainer.defaultRetry` (or `null`, Riverpod's default) to test retries.
+- **`fsp watch` parses only what changed.** It keeps the parse results of every file between
+  runs, keyed by the file's source, so a save re-parses the file you saved and nothing else.
+  On a synthetic 1,000-route app a regeneration after a one-file edit takes about 32 ms
+  instead of about 50 ms in a release build (the rest is scanning, resolving and emitting).
+  `gen` and `check` are unchanged.
+- **VS Code extension** (`editors/vscode/`, not published yet): `fsp check --json` on save
+  becomes Problems panel diagnostics, plus `fespalier: generate`, `fespalier: check` and a
+  status bar item. Runs `fsp`, or `dart run fespalier` when `fsp` isn't on `PATH`.
+- **Homebrew and Scoop.** Each release attaches `fsp.rb` and `fsp.json`, rendered from the
+  archives' checksums by `scripts/packaging.py`, and pushes them to a tap and bucket when
+  the `PACKAGING_TOKEN` secret exists.
+- **pub.dev.** `flutter pub publish --dry-run` is clean and checked in CI (the package gains
+  a shorter description and `example/README.md`). New `Publish to pub.dev` workflow: publishes
+  through GitHub OIDC automated publishing when run from the `v<version>` tag.
+
 ### Paths
 
 - **Catch-all segments.** A folder `$$rest` matches one or more remaining segments and

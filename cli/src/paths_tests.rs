@@ -252,6 +252,23 @@ fn data_keyed_by_a_catch_all_uses_its_path_as_the_key() {
 }
 
 #[test]
+fn a_catch_all_and_a_list_query_key_the_same_data() {
+    // The catch-all is keyed by its path, the query list by a `QueryList`.
+    let data = "Future<String> data(Ref ref, {required List<String> rest, List<String> tags = const []}) async => 'x';";
+    let p = "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest, required this.data}); final List<String> rest; final String data; }";
+    let c = code(&[("docs/$$rest/page.dart", p), ("docs/$$rest/data.dart", data)]);
+    has(
+        &c,
+        &[
+            "rest: restKey(v.rest)",
+            "tags: QueryList(v.tags)",
+            "rest: restParts(k.rest)",
+            "QueryList<String> tags",
+        ],
+    );
+}
+
+#[test]
 fn a_catch_all_can_follow_dynamic_segments_and_a_layout() {
     let layout = "class ShopLayout extends StatelessWidget { const ShopLayout({super.key, required this.child}); final Widget child; }";
     let p = page_with("Item", "required this.shop, required this.rest", "final int shop; final List<String> rest;");

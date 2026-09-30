@@ -6,11 +6,9 @@ import 'app.g.dart';
 final _router = AppRoutes.router();
 
 void main() => runApp(
-      ProviderScope(
-        // Surface failures in error.dart instead of Riverpod 3's silent retries.
-        retry: (retryCount, error) => null,
-        child: const ShopApp(),
-      ),
+      // pubspec.yaml has `data_retry: none`, so failures reach error.dart at
+      // once instead of going through Riverpod 3's retries.
+      const ProviderScope(child: ShopApp()),
     );
 
 class ShopApp extends StatelessWidget {

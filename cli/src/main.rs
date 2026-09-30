@@ -5,6 +5,7 @@ mod emit;
 mod extra;
 mod format;
 mod init;
+mod parse_cache;
 mod resolve;
 mod routes;
 mod scaffold;
@@ -234,6 +235,8 @@ fn watch(project: &Path) -> Result<()> {
     let app_dir = project.join(&cfg.app_dir);
     let output = project.join(&cfg.output);
     let mut shown = Shown::default();
+    // A save changes one file: keep the parse results of the others between runs.
+    parse_cache::enable();
     let mut run = |first: bool| {
         let t = Instant::now();
         let mut diags = String::new();
@@ -254,6 +257,7 @@ fn watch(project: &Path) -> Result<()> {
             _ => {}
         }
         shown = Shown { diags, outcome };
+        parse_cache::finish_run();
     };
     run(true);
 
@@ -285,6 +289,8 @@ mod cli_tests;
 mod nav_tests;
 #[cfg(test)]
 mod paths_tests;
+#[cfg(test)]
+mod refresh_tests;
 #[cfg(test)]
 mod route_api_tests;
 #[cfg(test)]

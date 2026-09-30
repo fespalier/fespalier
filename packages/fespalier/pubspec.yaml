@@ -1,5 +1,5 @@
-name: trellis
-description: File-tree routing for Flutter. Tiny typed files (page, data, loading, error, layout, params, guard) federated into one mountable go_router entry point.
+name: fespalier
+description: File-tree routing for Flutter. Plain widgets and functions in lib/app/ (page, data, loading, error, layout, guard) wired into one mountable go_router entry point by the fsp generator.
 version: 0.1.0
 publish_to: none
 

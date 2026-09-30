@@ -1,7 +1,7 @@
+import 'package:fespalier/fespalier.dart';
 import 'package:shop/api.dart';
-import 'package:trellis/trellis.dart';
 
-import 'params.dart';
-
-Future<Product> data(Ref ref, ProductParams p) =>
-    ref.watch(apiProvider).product(p.id);
+/// Asking for `int id` makes `$id` an int everywhere: `ProductRoute(id: 42)`,
+/// and `/products/abc` goes to not_found.dart.
+Future<Product> data(Ref ref, {required int id}) =>
+    ref.watch(apiProvider).product(id);

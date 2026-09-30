@@ -1,0 +1,22 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+class {{ stem }}Page extends HookConsumerWidget {
+{% if data %}
+  const {{ stem }}Page({super.key, required this.data});
+
+  final String data;
+{% elif segs %}
+  const {{ stem }}Page({super.key{% for s in segs %}, required this.{{ s.name }}{% endfor %}});
+
+{% for s in segs %}
+  final {{ s.ty }} {{ s.name }};
+{% endfor %}
+{% else %}
+  const {{ stem }}Page({super.key});
+{% endif %}
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) =>
+      Center(child: Text({{ "data" if data else "'" ~ stem ~ label ~ "'" }}));
+}

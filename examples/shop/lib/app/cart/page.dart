@@ -1,10 +1,10 @@
+import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:shop/app.g.dart';
 import 'package:shop/cart.dart';
-import 'package:trellis/trellis.dart';
 
-class CartPage extends Screen<Params> {
-  const CartPage(super.data, {super.key});
+class CartPage extends ConsumerWidget {
+  const CartPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -12,6 +12,8 @@ class CartPage extends Screen<Params> {
     if (lines.isEmpty) return const Center(child: Text('Your cart is empty'));
     final total = lines.fold(0.0, (sum, l) => sum + l.product.price * l.qty);
     return Material(
+      // Pages sit below the layout's Scaffold, so give ListTile ink a
+      // surface of its own (page transitions paint in between).
       type: MaterialType.transparency,
       child: ListView(
         children: [

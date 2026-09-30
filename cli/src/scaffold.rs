@@ -1,14 +1,17 @@
-//! `trellis new products/[id] --data --loading --error`
+//! `fsp new products/[id] --data --loading --error`
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use clap::Args;
+use serde::Serialize;
 
 use crate::diag::Diags;
-use crate::resolve::{self, pascal, ParamsType, ROOT_PARAMS};
+use crate::resolve::{self, pascal};
 use crate::scan::{self, parse_segment, Seg};
+use crate::templates;
 
 #[derive(Args)]
 pub struct NewArgs {
@@ -30,171 +33,96 @@ pub struct NewArgs {
     pub guard: bool,
 }
 
-pub fn new_route(project: &Path, a: &NewArgs) -> Result<()> {
-    let pkg = package_name(project)?;
-    let app_dir = project.join("lib/app");
+#[derive(Serialize)]
+struct Cx {
+    stem: String,
+    segs: Vec<SegCx>,
+    data: bool,
+    /// ` $orderId $itemId`, appended to the page's placeholder text.
+    label: String,
+    /// `/orders/$orderId`, interpolated in data.dart's placeholder.
+    path: String,
+}
 
+#[derive(Serialize)]
+struct SegCx {
+    name: String,
+    ty: String,
+}
+
+pub fn new_route(project: &Path, a: &NewArgs) -> Result<()> {
+    let app_dir = project.join("lib/app");
     let parts: Vec<String> = a
         .route
         .trim_matches('/')
         .split('/')
         .filter(|s| !s.is_empty())
-        .map(|p| {
-            if let Some(n) = p.strip_prefix('[').and_then(|p| p.strip_suffix(']')) {
-                format!("${n}")
-            } else if let Some(n) = p.strip_prefix(':') {
-                format!("${n}")
-            } else {
-                p.to_string()
-            }
+        .map(|p| match p.strip_prefix('[').and_then(|p| p.strip_suffix(']')).or_else(|| p.strip_prefix(':')) {
+            Some(n) => format!("${n}"),
+            None => p.to_string(),
         })
         .collect();
-    let mut segs = vec![];
-    for p in &parts {
-        segs.push(parse_segment(p).map_err(anyhow::Error::msg)?);
-    }
+    let segs: Vec<Seg> = parts.iter().map(|p| parse_segment(p).map_err(anyhow::Error::msg)).collect::<Result<_>>()?;
     let rel = parts.join("/");
 
-    // Nearest existing ancestor and its params.
+    // Segments that already exist keep the type the tree gives them.
     let mut diags = Diags::default();
-    let tree = scan::scan(&app_dir, &mut diags)?;
-    let app = resolve::resolve(&tree, &mut diags);
-    let mut existing = 0;
-    while existing < parts.len() && app_dir.join(parts[..=existing].join("/")).is_dir() {
-        existing += 1;
-    }
-    let anc_dir = parts[..existing].join("/");
-    let parent: ParamsType = app
+    let app = resolve::resolve(&scan::scan(&app_dir, &mut diags)?, &mut diags);
+    let known: HashMap<&str, &str> = app
         .routes
         .iter()
-        .find(|r| r.dir == anc_dir)
-        .map(|r| r.params.clone())
-        .context("couldn't resolve the parent folder; run `trellis check`")?;
-
-    let fresh_dynamic: Vec<&str> = segs[existing..]
-        .iter()
-        .filter_map(|s| match s {
-            Seg::Dynamic(n) => Some(n.as_str()),
-            _ => None,
-        })
+        .enumerate()
+        .filter(|(_, r)| matches!(r.seg, Some(Seg::Dynamic(_))))
+        .map(|(id, r)| (r.dir.as_str(), app.seg_type(id)))
         .collect();
+    let mut seg_cx = vec![];
+    for (i, s) in segs.iter().enumerate() {
+        if let Seg::Dynamic(name) = s {
+            let dir = parts[..=i].join("/");
+            let ty = known.get(dir.as_str()).copied().unwrap_or("String").to_string();
+            seg_cx.push(SegCx { name: name.clone(), ty });
+        }
+    }
+
     let stem = a.name.clone().unwrap_or_else(|| {
         let p = pascal(&rel);
         if p.is_empty() { "Home".into() } else { p }
     });
+    let cx = Cx {
+        label: seg_cx.iter().map(|s| format!(" ${}", s.name)).collect(),
+        path: format!("/{rel}"),
+        stem,
+        segs: seg_cx,
+        data: a.data,
+    };
 
+    let wanted = [
+        ("page", true),
+        ("data", a.data),
+        ("loading", a.loading),
+        ("error", a.error),
+        ("layout", a.layout),
+        ("guard", a.guard),
+    ];
     let dir = app_dir.join(&rel);
     fs::create_dir_all(&dir)?;
-    let mut files: Vec<(&str, String)> = vec![];
-
-    // The leaf's params: its own params.dart, a generated class, or the parent's.
-    let leaf_dynamic = matches!(segs.last(), Some(Seg::Dynamic(_))) && existing < parts.len();
-    let (p_name, p_import) = if leaf_dynamic && fresh_dynamic.len() == 1 {
-        let Seg::Dynamic(field) = segs.last().unwrap() else { unreachable!() };
-        let name = format!("{stem}Params");
-        let supers: Vec<String> = parent.fields.iter().map(|(n, _)| format!("required super.{n}")).collect();
-        let args = [supers, vec![format!("required this.{field}")]].concat().join(", ");
-        let konst = if parent.simple == ROOT_PARAMS { "const " } else { "" };
-        files.push((
-            "params.dart",
-            format!(
-                "import 'package:trellis/trellis.dart';\n{}\nclass {name} extends {} {{\n  {konst}{name}({{{args}}});\n\n  final String {field};\n}}\n",
-                import_of(&pkg, &parent),
-                parent.simple
-            ),
-        ));
-        (name, "\nimport 'params.dart';\n".to_string())
-    } else if !fresh_dynamic.is_empty() {
-        let name = format!("{stem}Params");
-        (name, format!("import 'package:{pkg}/app.g.dart';\n"))
-    } else {
-        (parent.simple.clone(), import_of(&pkg, &parent))
-    };
-
-    let material = "import 'package:flutter/material.dart';\nimport 'package:trellis/trellis.dart';\n";
-    let (screen_t, body) = if a.data {
-        ("String".to_string(), "Center(child: Text(data))")
-    } else {
-        (p_name.clone(), "Center(child: Text('$data'))")
-    };
-    let page_import = if a.data { "" } else { p_import.as_str() };
-    files.push((
-        "page.dart",
-        format!(
-            "{material}{page_import}\nclass {stem}Page extends Screen<{screen_t}> {{\n  const {stem}Page(super.data, {{super.key}});\n\n  @override\n  Widget build(BuildContext context, WidgetRef ref) => {body};\n}}\n"
-        ),
-    ));
-    if a.data {
-        files.push((
-            "data.dart",
-            format!(
-                "import 'package:trellis/trellis.dart';\n{p_import}\nFuture<String> data(Ref ref, {p_name} params) async {{\n  return 'Hello from /{}';\n}}\n",
-                rel.replace('$', "\\$")
-            ),
-        ));
-    }
-    if a.loading {
-        files.push((
-            "loading.dart",
-            format!(
-                "{material}{p_import}\nclass {stem}Loading extends Loading<{p_name}> {{\n  const {stem}Loading(super.params, {{super.key}});\n\n  @override\n  Widget build(BuildContext context, WidgetRef ref) =>\n      const Center(child: CircularProgressIndicator());\n}}\n"
-            ),
-        ));
-    }
-    if a.error {
-        files.push((
-            "error.dart",
-            format!(
-                "{material}{p_import}\nclass {stem}Error extends ErrorView<{p_name}> {{\n  const {stem}Error(super.params, super.failure, {{super.key}});\n\n  @override\n  Widget build(BuildContext context, WidgetRef ref) => Center(\n        child: TextButton(\n          onPressed: failure.retry,\n          child: Text('${{failure.error}} · retry'),\n        ),\n      );\n}}\n"
-            ),
-        ));
-    }
-    if a.layout {
-        files.push((
-            "layout.dart",
-            format!(
-                "{material}\nclass {stem}Layout extends Layout {{\n  const {stem}Layout(super.child, {{super.key}});\n\n  @override\n  Widget build(BuildContext context, WidgetRef ref) => child;\n}}\n"
-            ),
-        ));
-    }
-    if a.guard {
-        files.push((
-            "guard.dart",
-            format!(
-                "import 'package:trellis/trellis.dart';\n{p_import}\n/// Return a location to redirect, or null to let the navigation through.\nGuardResult guard(ProviderContainer c, {p_name} params) => null;\n"
-            ),
-        ));
-    }
-
     let mut wrote = 0;
-    for (name, body) in files {
-        let path = dir.join(name);
-        let shown = format!("lib/app/{rel}/{name}");
+    for (kind, on) in wanted {
+        if !on {
+            continue;
+        }
+        let path = dir.join(format!("{kind}.dart"));
+        let shown = format!("lib/app/{}{kind}.dart", if rel.is_empty() { String::new() } else { format!("{rel}/") });
         if path.exists() {
             eprintln!("  skip  {shown} (exists)");
-        } else {
-            fs::write(&path, body)?;
-            eprintln!("  new   {shown}");
-            wrote += 1;
+            continue;
         }
+        fs::write(&path, templates::render(&format!("new/{kind}.dart"), &cx))?;
+        eprintln!("  new   {shown}");
+        wrote += 1;
     }
     if wrote == 0 {
         bail!("nothing to create");
     }
     Ok(())
-}
-
-fn import_of(pkg: &str, p: &ParamsType) -> String {
-    match p.file.as_deref() {
-        None => String::new(),
-        Some("") => format!("import 'package:{pkg}/app.g.dart';\n"),
-        Some(f) => format!("import 'package:{pkg}/app/{}';\n", f.replace('$', "\\$")),
-    }
-}
-
-fn package_name(project: &Path) -> Result<String> {
-    let spec = fs::read_to_string(project.join("pubspec.yaml")).context("reading pubspec.yaml")?;
-    spec.lines()
-        .find_map(|l| l.strip_prefix("name:").map(|n| n.trim().to_string()))
-        .context("pubspec.yaml has no `name:`")
 }

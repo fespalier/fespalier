@@ -1,442 +1,377 @@
-//! Just enough Dart lexing to read the constrained shapes trellis files have:
-//! `class X extends Base<T>`, `final Type name;` and `Ret fn(A a, B b)`.
+//! Reads the declarations fespalier cares about out of a Dart file, using the
+//! tree-sitter Dart grammar: top-level classes (with their unnamed constructor
+//! and fields), functions, and `final x = SomeProvider<...>(...)` variables.
 //!
-//! This is deliberately not a Dart parser. Anything it cannot see, the Dart
-//! compiler still catches in the generated code; the point here is to give
-//! file-level errors before that happens.
+//! This is a syntax tree, not the analyzer: types are compared by their
+//! canonical spelling. Anything that slips through is still caught by the Dart
+//! compiler in the generated code.
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Tk {
-    Ident(String),
-    Sym(char),
-    Arrow,
-    Str,
-    Num,
-}
+use std::collections::HashMap;
+use std::ops::Range;
 
-#[derive(Clone, Debug)]
-pub struct Token {
-    pub tk: Tk,
-    pub line: usize,
-}
+use tree_sitter::{Node, Parser};
 
-impl Token {
-    fn is_ident(&self, s: &str) -> bool {
-        matches!(&self.tk, Tk::Ident(i) if i == s)
-    }
-    fn is_sym(&self, c: char) -> bool {
-        self.tk == Tk::Sym(c)
-    }
-    fn ident(&self) -> Option<&str> {
-        match &self.tk {
-            Tk::Ident(i) => Some(i),
-            _ => None,
-        }
-    }
-}
-
-pub fn tokenize(src: &str) -> Vec<Token> {
-    let c: Vec<char> = src.chars().collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    let mut line = 1;
-    while i < c.len() {
-        let ch = c[i];
-        if ch == '\n' {
-            line += 1;
-            i += 1;
-        } else if ch.is_whitespace() {
-            i += 1;
-        } else if ch == '/' && c.get(i + 1) == Some(&'/') {
-            while i < c.len() && c[i] != '\n' {
-                i += 1;
-            }
-        } else if ch == '/' && c.get(i + 1) == Some(&'*') {
-            // Dart block comments nest.
-            let mut depth = 0;
-            while i < c.len() {
-                if c[i] == '/' && c.get(i + 1) == Some(&'*') {
-                    depth += 1;
-                    i += 2;
-                } else if c[i] == '*' && c.get(i + 1) == Some(&'/') {
-                    depth -= 1;
-                    i += 2;
-                    if depth == 0 {
-                        break;
-                    }
-                } else {
-                    if c[i] == '\n' {
-                        line += 1;
-                    }
-                    i += 1;
-                }
-            }
-        } else if ch == '\'' || ch == '"' {
-            let l = line;
-            i = skip_string(&c, i, false, &mut line);
-            out.push(Token { tk: Tk::Str, line: l });
-        } else if ch == 'r' && matches!(c.get(i + 1), Some('\'') | Some('"')) {
-            let l = line;
-            i = skip_string(&c, i + 1, true, &mut line);
-            out.push(Token { tk: Tk::Str, line: l });
-        } else if ch.is_alphabetic() || ch == '_' || ch == '$' {
-            let s = i;
-            while i < c.len() && (c[i].is_alphanumeric() || c[i] == '_' || c[i] == '$') {
-                i += 1;
-            }
-            out.push(Token { tk: Tk::Ident(c[s..i].iter().collect()), line });
-        } else if ch.is_ascii_digit() {
-            while i < c.len() && (c[i].is_ascii_alphanumeric() || c[i] == '.') {
-                i += 1;
-            }
-            out.push(Token { tk: Tk::Num, line });
-        } else if ch == '=' && c.get(i + 1) == Some(&'>') {
-            out.push(Token { tk: Tk::Arrow, line });
-            i += 2;
-        } else {
-            out.push(Token { tk: Tk::Sym(ch), line });
-            i += 1;
-        }
-    }
-    out
-}
-
-/// Returns the index just past the string starting at `i` (a quote char).
-fn skip_string(c: &[char], i: usize, raw: bool, line: &mut usize) -> usize {
-    let q = c[i];
-    let triple = c.get(i + 1) == Some(&q) && c.get(i + 2) == Some(&q);
-    let mut j = if triple { i + 3 } else { i + 1 };
-    while j < c.len() {
-        let ch = c[j];
-        if ch == '\n' {
-            *line += 1;
-        }
-        if !raw && ch == '\\' {
-            j += 2;
-            continue;
-        }
-        if !raw && ch == '$' && c.get(j + 1) == Some(&'{') {
-            // Interpolation: skip a balanced expression, which may hold strings.
-            j += 2;
-            let mut depth = 1;
-            while j < c.len() && depth > 0 {
-                match c[j] {
-                    '{' => depth += 1,
-                    '}' => depth -= 1,
-                    '\'' | '"' => {
-                        j = skip_string(c, j, false, line);
-                        continue;
-                    }
-                    '\n' => *line += 1,
-                    _ => {}
-                }
-                j += 1;
-            }
-            continue;
-        }
-        if ch == q {
-            if !triple {
-                return j + 1;
-            }
-            if c.get(j + 1) == Some(&q) && c.get(j + 2) == Some(&q) {
-                return j + 3;
-            }
-        }
-        j += 1;
-    }
-    j
-}
-
-/// Renders type tokens canonically: `Future < List<A> >` → `Future<List<A>>`.
-pub fn type_string(toks: &[Token]) -> String {
-    let mut s = String::new();
-    let mut prev_word = false;
-    for t in toks {
-        match &t.tk {
-            Tk::Ident(i) => {
-                if prev_word {
-                    s.push(' ');
-                }
-                s.push_str(i);
-                prev_word = true;
-            }
-            Tk::Sym(',') => {
-                s.push_str(", ");
-                prev_word = false;
-            }
-            Tk::Sym(ch) => {
-                s.push(*ch);
-                prev_word = false;
-            }
-            _ => prev_word = false,
-        }
-    }
-    s
-}
-
-/// `Future<List<A>>` → ("Future", ["List<A>"]).
-pub fn split_generic(ty: &str) -> (String, Vec<String>) {
-    let Some(open) = ty.find('<') else {
-        return (ty.to_string(), vec![]);
-    };
-    if !ty.ends_with('>') {
-        return (ty.to_string(), vec![]);
-    }
-    let head = ty[..open].to_string();
-    let inner = &ty[open + 1..ty.len() - 1];
-    let mut args = vec![];
-    let mut depth = 0;
-    let mut cur = String::new();
-    for ch in inner.chars() {
-        match ch {
-            '<' | '(' => depth += 1,
-            '>' | ')' => depth -= 1,
-            ',' if depth == 0 => {
-                args.push(cur.trim().to_string());
-                cur.clear();
-                continue;
-            }
-            _ => {}
-        }
-        cur.push(ch);
-    }
-    args.push(cur.trim().to_string());
-    (head, args)
+#[derive(Debug, Clone, Default)]
+pub struct Module {
+    pub classes: Vec<Class>,
+    pub functions: Vec<Function>,
+    pub variables: Vec<Variable>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ClassDecl {
+pub struct Class {
     pub name: String,
-    pub base: String,
-    /// Type arguments of the base, canonical: `Screen<List<A>>` → `List<A>`.
-    pub base_args: Option<String>,
-    pub line: usize,
-    /// `final Type name;` instance fields.
-    pub fields: Vec<Field>,
+    pub superclass: Option<String>,
+    /// Parameters of the unnamed constructor; empty when there is none.
+    pub params: Vec<Param>,
+    pub span: Span,
+}
+
+impl Class {
+    pub fn is_public(&self) -> bool {
+        !self.name.starts_with('_')
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct Field {
-    pub name: String,
-    pub ty: String,
-    pub line: usize,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct FnDecl {
+pub struct Function {
     pub name: String,
     /// `None` when the return type is left to inference.
-    pub ret: Option<String>,
+    pub ret: Option<Ty>,
     pub params: Vec<Param>,
-    /// True if any parameter is named (`{...}`) or optional (`[...]`).
-    pub non_positional: bool,
-    pub line: usize,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Variable {
+    pub name: String,
+    /// Set when the initializer is a call like `FutureProvider.family<A, B>(...)`.
+    pub call: Option<Call>,
+    pub span: Span,
+}
+
+/// `FutureProvider.autoDispose.family<T, Arg>(...)`
+#[derive(Debug, Clone)]
+pub struct Call {
+    /// `["FutureProvider", "autoDispose", "family"]`
+    pub chain: Vec<String>,
+    pub type_args: Vec<Ty>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Param {
-    pub ty: Option<String>,
     pub name: String,
+    /// Declared type, or for `this.x` the type of field `x`.
+    pub ty: Option<Ty>,
+    pub named: bool,
+    /// Positional parameters outside `[...]`, and named ones marked `required`.
+    pub required: bool,
+    /// `super.key` and friends: forwarded to the superclass, never ours to fill.
+    pub is_super: bool,
+    pub span: Span,
 }
 
-/// Index of the token closing the group opened at `i` (`(`, `[`, `{` or `<`).
-fn matching(t: &[Token], i: usize) -> Option<usize> {
-    let (open, close) = match t[i].tk {
-        Tk::Sym('(') => ('(', ')'),
-        Tk::Sym('[') => ('[', ']'),
-        Tk::Sym('{') => ('{', '}'),
-        Tk::Sym('<') => ('<', '>'),
-        _ => return None,
-    };
-    let mut depth = 0;
-    for (j, tok) in t.iter().enumerate().skip(i) {
-        if tok.is_sym(open) {
-            depth += 1;
-        } else if tok.is_sym(close) {
-            depth -= 1;
-            if depth == 0 {
-                return Some(j);
-            }
-        }
-    }
-    None
+/// A type as written, normalized: `Future< List<A> >` → `Future<List<A>>`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ty {
+    pub text: String,
+    /// Named fields when this is a record type `({int id, String name})`.
+    pub record: Option<Vec<(String, Ty)>>,
 }
 
-/// Top-level class declarations.
-pub fn classes(t: &[Token]) -> Vec<ClassDecl> {
-    let mut out = vec![];
-    let mut depth = 0i32;
-    let mut i = 0;
-    while i < t.len() {
-        if t[i].is_sym('{') {
-            depth += 1;
-        } else if t[i].is_sym('}') {
-            depth -= 1;
-        } else if depth == 0 && t[i].is_ident("class") {
-            if let Some((decl, end)) = class_at(t, i) {
-                out.push(decl);
-                i = end + 1;
-                continue;
-            }
-        }
-        i += 1;
+impl Ty {
+    pub fn is(&self, s: &str) -> bool {
+        self.text == s
     }
-    out
-}
 
-fn class_at(t: &[Token], i: usize) -> Option<(ClassDecl, usize)> {
-    let name = t.get(i + 1)?.ident()?.to_string();
-    let line = t[i + 1].line;
-    let mut j = i + 2;
-    if t.get(j)?.is_sym('<') {
-        j = matching(t, j)? + 1;
-    }
-    let (mut base, mut base_args) = (String::new(), None);
-    if t.get(j)?.is_ident("extends") {
-        base = t.get(j + 1)?.ident()?.to_string();
-        j += 2;
-        if t.get(j)?.is_sym('<') {
-            let end = matching(t, j)?;
-            base_args = Some(type_string(&t[j + 1..end]));
-            j = end + 1;
-        }
-    }
-    while j < t.len() && !t[j].is_sym('{') {
-        j += 1;
-    }
-    let body_end = matching(t, j)?;
-    let fields = fields_in(&t[j + 1..body_end]);
-    Some((ClassDecl { name, base, base_args, line, fields }, body_end))
-}
-
-fn fields_in(body: &[Token]) -> Vec<Field> {
-    let mut out = vec![];
-    let mut depth = 0i32;
-    let mut i = 0;
-    while i < body.len() {
-        let tok = &body[i];
-        if tok.is_sym('{') || tok.is_sym('(') {
-            depth += 1;
-        } else if tok.is_sym('}') || tok.is_sym(')') {
-            depth -= 1;
-        } else if depth == 0 && tok.is_ident("final") {
-            let is_static = i > 0 && body[i - 1].is_ident("static");
-            let mut j = i + 1;
-            while j < body.len() && !body[j].is_sym(';') && !body[j].is_sym('=') {
-                j += 1;
-            }
-            let decl = &body[i + 1..j.min(body.len())];
-            // `final A a, b;` and function types are out of scope.
-            let mut angle = 0i32;
-            let top_comma = decl.iter().any(|t| {
-                match t.tk {
-                    Tk::Sym('<') => angle += 1,
-                    Tk::Sym('>') => angle -= 1,
-                    _ => {}
+    /// `Future<List<A>>` → ("Future", ["List<A>"]).
+    pub fn generic(&self) -> (&str, Vec<&str>) {
+        let t = self.text.as_str();
+        let (Some(open), true) = (t.find('<'), t.ends_with('>')) else { return (t, vec![]) };
+        let inner = &t[open + 1..t.len() - 1];
+        let (mut args, mut depth, mut start) = (vec![], 0i32, 0);
+        for (i, ch) in inner.char_indices() {
+            match ch {
+                '<' | '(' | '{' => depth += 1,
+                '>' | ')' | '}' => depth -= 1,
+                ',' if depth == 0 => {
+                    args.push(inner[start..i].trim());
+                    start = i + 1;
                 }
-                angle == 0 && t.is_sym(',')
-            });
-            let simple = decl.len() >= 2 && !top_comma && !decl.iter().any(|t| t.is_sym('('));
-            if !is_static && simple {
-                if let Some(name) = decl.last().and_then(|t| t.ident()) {
-                    out.push(Field {
-                        name: name.to_string(),
-                        ty: type_string(&decl[..decl.len() - 1]),
-                        line: tok.line,
-                    });
-                }
+                _ => {}
             }
-            i = j;
-            continue;
         }
-        i += 1;
+        args.push(inner[start..].trim());
+        (&t[..open], args)
     }
-    out
 }
 
-/// A top-level function declaration by name.
-pub fn function(t: &[Token], name: &str) -> Option<FnDecl> {
-    let mut depth = 0i32;
-    let mut stmt_start = 0;
-    for i in 0..t.len() {
-        let tok = &t[i];
-        if tok.is_sym('{') || tok.is_sym('(') || tok.is_sym('[') {
-            depth += 1;
-        } else if tok.is_sym('}') || tok.is_sym(')') || tok.is_sym(']') {
-            depth -= 1;
-            if depth == 0 && tok.is_sym('}') {
-                stmt_start = i + 1;
-            }
-        } else if depth == 0 && tok.is_sym(';') {
-            stmt_start = i + 1;
-        } else if depth == 0
-            && tok.is_ident(name)
-            && t.get(i + 1).is_some_and(|n| n.is_sym('('))
-            && !(i > 0 && t[i - 1].is_sym('.'))
-        {
-            let ret_toks = skip_annotations(&t[stmt_start..i]);
-            let close = matching(t, i + 1)?;
-            let (params, non_positional) = params_of(&t[i + 2..close]);
-            return Some(FnDecl {
-                name: name.to_string(),
-                ret: (!ret_toks.is_empty()).then(|| type_string(ret_toks)),
-                params,
-                non_positional,
-                line: tok.line,
-            });
-        }
-    }
-    None
+/// Where a declaration sits in its file.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Span {
+    pub line: usize,
+    pub bytes: Range<usize>,
 }
 
-fn skip_annotations(mut t: &[Token]) -> &[Token] {
-    while t.first().is_some_and(|x| x.is_sym('@')) {
-        let mut j = 2; // `@` + name
-        while t.get(j).is_some_and(|x| x.is_sym('.')) {
-            j += 2;
-        }
-        if t.get(j).is_some_and(|x| x.is_sym('(')) {
-            j = matching(t, j).map_or(t.len(), |e| e + 1);
-        }
-        t = &t[j.min(t.len())..];
+impl Span {
+    fn of(n: Node) -> Span {
+        Span { line: n.start_position().row + 1, bytes: n.byte_range() }
     }
-    t
 }
 
-fn params_of(t: &[Token]) -> (Vec<Param>, bool) {
-    let non_positional = t.iter().any(|x| x.is_sym('{') || x.is_sym('['));
-    let mut out = vec![];
-    let mut depth = 0i32;
-    let mut cur: Vec<Token> = vec![];
-    let flush = |cur: &mut Vec<Token>, out: &mut Vec<Param>| {
-        let toks: Vec<Token> = cur
-            .drain(..)
-            .filter(|x| !x.is_sym('{') && !x.is_sym('}') && !x.is_sym('[') && !x.is_sym(']'))
-            .filter(|x| !x.is_ident("required") && !x.is_ident("final"))
-            .collect();
-        if let Some(name) = toks.last().and_then(|x| x.ident()) {
-            let ty = &toks[..toks.len() - 1];
-            out.push(Param {
-                name: name.to_string(),
-                ty: (!ty.is_empty()).then(|| type_string(ty)),
-            });
-        }
-    };
-    for tok in t {
-        match tok.tk {
-            Tk::Sym('<') | Tk::Sym('(') => depth += 1,
-            Tk::Sym('>') | Tk::Sym(')') => depth -= 1,
-            Tk::Sym(',') if depth == 0 => {
-                flush(&mut cur, &mut out);
-                continue;
-            }
+pub fn parse(src: &str) -> Module {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_dart::LANGUAGE.into())
+        .expect("tree-sitter-dart grammar is compatible with this tree-sitter");
+    let Some(tree) = parser.parse(src, None) else { return Module::default() };
+    let r = Reader { src };
+    let mut m = Module::default();
+    let root = tree.root_node();
+    let mut cur = root.walk();
+    for n in root.named_children(&mut cur) {
+        match n.kind() {
+            "class_declaration" => m.classes.extend(r.class(n)),
+            "function_declaration" => m.functions.extend(r.function(n)),
+            "top_level_variable_declaration" => m.variables.extend(r.variables(n)),
             _ => {}
         }
-        cur.push(tok.clone());
     }
-    flush(&mut cur, &mut out);
-    (out, non_positional)
+    m
+}
+
+struct Reader<'a> {
+    src: &'a str,
+}
+
+impl Reader<'_> {
+    fn text(&self, n: Node) -> &str {
+        &self.src[n.byte_range()]
+    }
+
+    fn class(&self, n: Node) -> Option<Class> {
+        let name_node = n.child_by_field_name("name")?;
+        let name = self.text(name_node).to_string();
+        let superclass = n
+            .child_by_field_name("superclass")
+            .and_then(|s| first_named(s, "type"))
+            .and_then(|t| first_named(t, "type_identifier"))
+            .map(|t| self.text(t).to_string());
+        let body = n.child_by_field_name("body")?;
+
+        let mut fields: HashMap<String, Ty> = HashMap::new();
+        let mut ctor: Option<Node> = None;
+        let mut cur = body.walk();
+        for member in body.named_children(&mut cur) {
+            let Some(decl) = first_named(member, "declaration") else { continue };
+            let mut c2 = decl.walk();
+            let kids: Vec<Node> = decl.named_children(&mut c2).collect();
+            // `final Type a, b;` — instance fields with an explicit type.
+            if !kids.iter().any(|k| k.kind() == "static") {
+                if let (Some(ty), Some(list)) = (
+                    kids.iter().find(|k| k.kind() == "type"),
+                    kids.iter().find(|k| k.kind() == "initialized_identifier_list"),
+                ) {
+                    let mut c3 = list.walk();
+                    for id in list.named_children(&mut c3) {
+                        if let Some(f) = id.child_by_field_name("name") {
+                            fields.insert(self.text(f).to_string(), self.ty(*ty));
+                        }
+                    }
+                }
+            }
+            // The unnamed generative constructor: `const X(...)` or `X(...)`.
+            for k in &kids {
+                if matches!(k.kind(), "constant_constructor_signature" | "constructor_signature")
+                    && self.ctor_name(*k).as_deref() == Some(name.as_str())
+                {
+                    ctor = Some(*k);
+                }
+            }
+        }
+
+        let params = match ctor.and_then(|c| c.child_by_field_name("parameters")) {
+            Some(list) => self.params(list, &fields),
+            None => vec![],
+        };
+        Some(Class { name, superclass, params, span: Span::of(name_node) })
+    }
+
+    /// `X` for `X(...)`, `X.named` for `X.named(...)`.
+    fn ctor_name(&self, sig: Node) -> Option<String> {
+        let mut cur = sig.walk();
+        let parts: Vec<String> =
+            sig.children_by_field_name("name", &mut cur).map(|p| self.text(p).to_string()).collect();
+        (!parts.is_empty()).then(|| parts.concat())
+    }
+
+    fn function(&self, n: Node) -> Option<Function> {
+        let sig = n.child_by_field_name("signature")?;
+        let name_node = sig.child_by_field_name("name")?;
+        let name = self.text(name_node).to_string();
+        let ret = sig.child_by_field_name("return_type").map(|t| self.ty(t));
+        let params = sig
+            .child_by_field_name("parameters")
+            .map(|p| self.params(p, &HashMap::new()))
+            .unwrap_or_default();
+        Some(Function { name, ret, params, span: Span::of(name_node) })
+    }
+
+    fn variables(&self, n: Node) -> Vec<Variable> {
+        let mut out = vec![];
+        let mut cur = n.walk();
+        for list in n.named_children(&mut cur) {
+            let mut c2 = list.walk();
+            for d in list.named_children(&mut c2) {
+                let Some(name) = d.child_by_field_name("name") else { continue };
+                let call = d.child_by_field_name("value").and_then(|v| self.call(v));
+                out.push(Variable { name: self.text(name).to_string(), call, span: Span::of(name) });
+            }
+        }
+        out
+    }
+
+    /// `A.b.c<T, U>(...)` → chain `[A, b, c]`, type args `[T, U]`.
+    fn call(&self, v: Node) -> Option<Call> {
+        if v.kind() != "call_expression" {
+            return None;
+        }
+        let mut f = v.child_by_field_name("function")?;
+        let mut type_args = vec![];
+        if f.kind() == "instantiation_expression" {
+            if let Some(ta) = f.child_by_field_name("type_arguments") {
+                let mut cur = ta.walk();
+                type_args = ta.named_children(&mut cur).filter(|t| t.kind() == "type").map(|t| self.ty(t)).collect();
+            }
+            f = f.child_by_field_name("function")?;
+        }
+        let mut chain = vec![];
+        loop {
+            match f.kind() {
+                "member_expression" => {
+                    chain.push(self.text(f.child_by_field_name("property")?).to_string());
+                    f = f.child_by_field_name("object")?;
+                }
+                "identifier" => {
+                    chain.push(self.text(f).to_string());
+                    break;
+                }
+                _ => return None,
+            }
+        }
+        chain.reverse();
+        Some(Call { chain, type_args })
+    }
+
+    fn params(&self, list: Node, fields: &HashMap<String, Ty>) -> Vec<Param> {
+        let mut out = vec![];
+        let mut cur = list.walk();
+        for child in list.children(&mut cur) {
+            match child.kind() {
+                "formal_parameter" => out.extend(self.param(child, fields, false, true)),
+                "optional_formal_parameters" => {
+                    let named = child.child(0).is_some_and(|c| c.kind() == "{");
+                    let mut required = false;
+                    let mut c2 = child.walk();
+                    for p in child.children(&mut c2) {
+                        match p.kind() {
+                            "required" => required = true,
+                            "formal_parameter" => {
+                                out.extend(self.param(p, fields, named, required));
+                                required = false;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    fn param(&self, p: Node, fields: &HashMap<String, Ty>, named: bool, mut required: bool) -> Option<Param> {
+        let span = Span::of(p);
+        // The grammar reads a leading `{required this.x` as a type called
+        // `required`; treat it as the keyword.
+        let mut declared = |n: Node| {
+            let ty = first_named(n, "type").map(|t| self.ty(t));
+            if ty.as_ref().is_some_and(|t| t.is("required")) {
+                required = true;
+                return None;
+            }
+            ty
+        };
+        if let Some(s) = first_named(p, "super_formal_parameter") {
+            declared(s);
+            let name = self.text(last_named(s, "identifier")?).to_string();
+            return Some(Param { name, ty: None, named, required, is_super: true, span });
+        }
+        if let Some(c) = first_named(p, "constructor_param") {
+            let ty = declared(c);
+            let name = self.text(last_named(c, "identifier")?).to_string();
+            let ty = ty.or_else(|| fields.get(&name).cloned());
+            return Some(Param { name, ty, named, required, is_super: false, span });
+        }
+        // An untyped parameter (`ref`) has no `name` field, just an identifier.
+        let name = p.child_by_field_name("name").or_else(|| last_named(p, "identifier"))?;
+        let ty = declared(p);
+        Some(Param { name: self.text(name).to_string(), ty, named, required, is_super: false, span })
+    }
+
+    fn ty(&self, n: Node) -> Ty {
+        let mut text = String::new();
+        let mut prev_word = false;
+        leaves(n, &mut |leaf| {
+            let s = self.text(leaf);
+            let word = s.chars().next().is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$');
+            if s == "," {
+                text.push_str(", ");
+            } else {
+                if word && prev_word {
+                    text.push(' ');
+                }
+                text.push_str(s);
+            }
+            prev_word = word;
+        });
+        let record = first_named(n, "record_type").map(|r| {
+            let mut out = vec![];
+            let mut cur = r.walk();
+            for f in r.named_children(&mut cur).filter(|f| f.kind() == "record_type_named_field") {
+                if let Some(ti) = first_named(f, "typed_identifier") {
+                    if let (Some(t), Some(name)) = (ti.child_by_field_name("type"), ti.child_by_field_name("name")) {
+                        out.push((self.text(name).to_string(), self.ty(t)));
+                    }
+                }
+            }
+            out
+        });
+        Ty { text, record }
+    }
+}
+
+fn first_named<'t>(n: Node<'t>, kind: &str) -> Option<Node<'t>> {
+    let mut cur = n.walk();
+    let found = n.named_children(&mut cur).find(|c| c.kind() == kind);
+    found
+}
+
+fn last_named<'t>(n: Node<'t>, kind: &str) -> Option<Node<'t>> {
+    let mut cur = n.walk();
+    let found = n.named_children(&mut cur).filter(|c| c.kind() == kind).last();
+    found
+}
+
+fn leaves<'t>(n: Node<'t>, f: &mut impl FnMut(Node<'t>)) {
+    if n.child_count() == 0 {
+        f(n);
+        return;
+    }
+    let mut cur = n.walk();
+    for c in n.children(&mut cur) {
+        leaves(c, f);
+    }
 }
 
 #[cfg(test)]
@@ -444,56 +379,73 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_class_with_nested_generics_and_fields() {
-        let src = r#"
-            import 'package:x/y.dart'; // comment with class Fake extends Nope
-            /* block /* nested */ class Hidden extends Nope {} */
-            class ProductsPage extends Screen< List<Product> > {
-              const ProductsPage(super.data, {super.key});
-              static final cache = 1;
+    fn reads_widget_constructor() {
+        let m = parse(
+            r#"
+            import 'package:x/y.dart'; // class Fake extends Nope {}
+            class ProductPage extends HookConsumerWidget {
+              const ProductPage(this.id, {super.key, required this.product, int? limit = 1});
+              ProductPage.named();
+              final Map< String,List<int> > counts;
+              final Product product;
               final int id;
-              final Map<String, int> counts;
-              String get label => 'class Nope extends X ${id.toString()}';
+              @override
+              Widget build(BuildContext context, WidgetRef ref) => Text('class Nope extends X ${id}');
             }
-        "#;
-        let t = tokenize(src);
-        let cs = classes(&t);
-        assert_eq!(cs.len(), 1);
-        assert_eq!(cs[0].name, "ProductsPage");
-        assert_eq!(cs[0].base, "Screen");
-        assert_eq!(cs[0].base_args.as_deref(), Some("List<Product>"));
-        let f: Vec<_> = cs[0].fields.iter().map(|f| (f.name.as_str(), f.ty.as_str())).collect();
-        assert_eq!(f, vec![("id", "int"), ("counts", "Map<String, int>")]);
-    }
-
-    #[test]
-    fn reads_function_signature() {
-        let src = r#"
-            import 'a.dart';
-            @riverpod
-            Future<List<Product>> data(Ref ref, ProductsParams p) async {
-              return ref.watch(api).data(1);
-            }
-        "#;
-        let f = function(&tokenize(src), "data").unwrap();
-        assert_eq!(f.ret.as_deref(), Some("Future<List<Product>>"));
-        assert_eq!(f.params.len(), 2);
-        assert_eq!(f.params[1].ty.as_deref(), Some("ProductsParams"));
-        assert!(!f.non_positional);
-    }
-
-    #[test]
-    fn inferred_return_type_is_none() {
-        let f = function(&tokenize("data(Ref ref, Params p) => 1;"), "data").unwrap();
-        assert!(f.ret.is_none());
-    }
-
-    #[test]
-    fn splits_generics() {
-        assert_eq!(
-            split_generic("Map<String, List<int>>"),
-            ("Map".into(), vec!["String".into(), "List<int>".into()])
+            class _Private extends StatelessWidget {}
+            "#,
         );
-        assert_eq!(split_generic("Product"), ("Product".into(), vec![]));
+        assert_eq!(m.classes.len(), 2);
+        let c = &m.classes[0];
+        assert_eq!((c.name.as_str(), c.superclass.as_deref()), ("ProductPage", Some("HookConsumerWidget")));
+        let p: Vec<_> = c
+            .params
+            .iter()
+            .map(|p| (p.name.as_str(), p.ty.as_ref().map(|t| t.text.as_str()), p.named, p.required, p.is_super))
+            .collect();
+        assert_eq!(
+            p,
+            vec![
+                ("id", Some("int"), false, true, false),
+                ("key", None, true, false, true),
+                ("product", Some("Product"), true, true, false),
+                ("limit", Some("int?"), true, false, false),
+            ]
+        );
+        assert!(!m.classes[1].is_public());
+    }
+
+    #[test]
+    fn reads_functions_and_records() {
+        let m = parse(
+            "@riverpod\nFuture<List<Product>> data(Ref ref, {required int id, required ({int a, String b}) r}) async => [];\n\
+             data2(Ref ref) => 1;",
+        );
+        let f = &m.functions[0];
+        assert_eq!(f.ret.as_ref().unwrap().text, "Future<List<Product>>");
+        assert_eq!(f.ret.as_ref().unwrap().generic(), ("Future", vec!["List<Product>"]));
+        assert_eq!(f.params[2].ty.as_ref().unwrap().text, "({int a, String b})");
+        let rec = f.params[2].ty.as_ref().unwrap().record.clone().unwrap();
+        assert_eq!(rec.iter().map(|(n, t)| (n.as_str(), t.text.as_str())).collect::<Vec<_>>(), vec![("a", "int"), ("b", "String")]);
+        assert!(m.functions[1].ret.is_none());
+    }
+
+    #[test]
+    fn reads_grammar_corner_cases() {
+        let m = parse("data(ref, int id) => 1;\nclass P extends StatelessWidget { const P({required this.x}); final int x; }");
+        let f = &m.functions[0];
+        assert_eq!((f.params[0].name.as_str(), f.params[0].ty.is_none()), ("ref", true));
+        assert_eq!(f.params[1].name, "id");
+        let x = &m.classes[0].params[0];
+        assert_eq!((x.name.as_str(), x.required, x.ty.as_ref().map(|t| t.text.as_str())), ("x", true, Some("int")));
+    }
+
+    #[test]
+    fn reads_provider_variables() {
+        let m = parse("final data = FutureProvider.autoDispose.family<Product, ({int id})>((ref, k) => x);");
+        let c = m.variables[0].call.as_ref().unwrap();
+        assert_eq!(c.chain, ["FutureProvider", "autoDispose", "family"]);
+        assert_eq!(c.type_args[0].text, "Product");
+        assert!(c.type_args[1].record.is_some());
     }
 }

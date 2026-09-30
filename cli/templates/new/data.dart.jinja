@@ -1,0 +1,4 @@
+import 'package:fespalier/fespalier.dart';
+
+Future<String> data(Ref ref{% if segs %}, { {%- for s in segs %}required {{ s.ty }} {{ s.name }}{{ ", " if not loop.last }}{% endfor -%} }{% endif %}) async =>
+    'Hello from {{ path }}';

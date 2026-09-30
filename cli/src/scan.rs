@@ -15,22 +15,13 @@ pub enum Kind {
     Loading,
     Error,
     Layout,
-    Params,
     Guard,
     NotFound,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 8] = [
-        Kind::Page,
-        Kind::Data,
-        Kind::Loading,
-        Kind::Error,
-        Kind::Layout,
-        Kind::Params,
-        Kind::Guard,
-        Kind::NotFound,
-    ];
+    pub const ALL: [Kind; 7] =
+        [Kind::Page, Kind::Data, Kind::Loading, Kind::Error, Kind::Layout, Kind::Guard, Kind::NotFound];
 
     pub fn file(self) -> &'static str {
         match self {
@@ -39,7 +30,6 @@ impl Kind {
             Kind::Loading => "loading.dart",
             Kind::Error => "error.dart",
             Kind::Layout => "layout.dart",
-            Kind::Params => "params.dart",
             Kind::Guard => "guard.dart",
             Kind::NotFound => "not_found.dart",
         }
@@ -99,7 +89,7 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
             let seg = match parse_segment(&name) {
                 Ok(s) => s,
                 Err(msg) => {
-                    diags.error(&rel, 0, msg);
+                    diags.error(&rel, None, msg);
                     continue;
                 }
             };
@@ -113,12 +103,22 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
     Ok(())
 }
 
+/// Names a dynamic segment can't take: they are the parameters fespalier fills
+/// itself, or members of the generated route classes.
+pub const RESERVED: [&str; 14] = [
+    "data", "child", "error", "stackTrace", "retry", "uri", "key", "location", "go", "push", "replace",
+    "refresh", "hashCode", "runtimeType",
+];
+
 pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {
     if let Some(p) = name.strip_prefix('$') {
         let valid = p.chars().next().is_some_and(|c| c.is_ascii_lowercase())
             && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
         if !valid {
             return Err(format!("`${p}`: a dynamic segment must be a lowerCamel Dart identifier, e.g. `$productId`"));
+        }
+        if RESERVED.contains(&p) {
+            return Err(format!("`${p}` is reserved (fespalier fills parameters called `{p}` itself); pick another name"));
         }
         return Ok(Seg::Dynamic(p.to_string()));
     }

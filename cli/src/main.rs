@@ -4,6 +4,7 @@ mod emit;
 mod resolve;
 mod scaffold;
 mod scan;
+mod templates;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -12,10 +13,10 @@ use std::{env, fs, process};
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use notify::{RecursiveMode, Watcher};
+use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
 
 #[derive(Parser)]
-#[command(name = "trellis", version, about = "File-tree routing for Flutter")]
+#[command(name = "fsp", version, about = "File-tree routing for Flutter")]
 struct Cli {
     /// Flutter project root (defaults to the nearest folder with a pubspec.yaml)
     #[arg(long, global = true)]
@@ -32,7 +33,7 @@ enum Cmd {
     Check,
     /// Regenerate on every change under lib/app/
     Watch,
-    /// Scaffold a route: `trellis new products/[id] --data --loading --error`
+    /// Scaffold a route: `fsp new products/[id] --data --loading --error`
     New(scaffold::NewArgs),
 }
 
@@ -83,11 +84,9 @@ pub fn gen(project: &Path, write: bool) -> Result<Outcome> {
         bail!("{} not found", app_dir.display());
     }
     let (code, diags, routes) = build(&app_dir)?;
-    for d in &diags.0 {
-        eprintln!("{d}");
-    }
+    diag::render(&app_dir, &diags);
     if diags.has_errors() {
-        bail!("trellis: {} error(s); lib/app.g.dart left unchanged", diags.0.iter().filter(|d| d.level == diag::Level::Error).count());
+        bail!("{} error(s); lib/app.g.dart left unchanged", diags.error_count());
     }
     let out = project.join("lib/app.g.dart");
     let mut wrote = false;
@@ -121,13 +120,14 @@ fn watch(project: &Path) -> Result<()> {
     };
     run();
     let (tx, rx) = mpsc::channel();
-    let mut watcher = notify::recommended_watcher(tx)?;
-    watcher.watch(&project.join("lib/app"), RecursiveMode::Recursive)?;
+    // Editors save in bursts; one regeneration per burst.
+    let mut debouncer = new_debouncer(Duration::from_millis(80), tx)?;
+    debouncer.watcher().watch(&project.join("lib/app"), RecursiveMode::Recursive)?;
     eprintln!("watching lib/app/ …");
-    while rx.recv().is_ok() {
-        // Debounce editor save bursts.
-        while rx.recv_timeout(Duration::from_millis(80)).is_ok() {}
-        run();
+    for events in rx {
+        if events.is_ok() {
+            run();
+        }
     }
     Ok(())
 }

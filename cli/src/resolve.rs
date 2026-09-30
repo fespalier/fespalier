@@ -1,62 +1,85 @@
-//! Reads every file's one exported symbol, checks the contracts between files
-//! and produces the IR the emitter needs.
+//! Finds each file's one declaration, works out what every constructor and
+//! function parameter receives, and checks that the files fit together.
+//!
+//! Nothing here is a base class or an interface: a `page.dart` is any widget,
+//! and its constructor says what it wants. Parameters are filled by name first
+//! (`id` ← the `$id` segment, `child`, `error`, `retry`, `uri`, `data`), then by
+//! type (`Product product` ← what `data.dart` yields).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use crate::dart::{self, split_generic, tokenize, ClassDecl};
+use heck::ToUpperCamelCase;
+
+use crate::dart::{self, Class, Module, Span, Ty};
 use crate::diag::Diags;
 use crate::scan::{Kind, Node, Seg};
 
-pub const ROOT_PARAMS: &str = "Params";
-const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
+pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
 
-/// A class exported by a user file, referenced through its import prefix.
-#[derive(Clone, Debug)]
-pub struct Sym {
+/// What a parameter receives.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Bind {
+    Segment(String),
+    Data,
+    Child,
+    Error,
+    StackTrace,
+    Retry,
+    Uri,
+}
+
+#[derive(Debug, Clone)]
+pub struct Arg {
+    pub name: String,
+    pub named: bool,
+    pub bind: Bind,
+}
+
+/// A user widget and the arguments to build it with.
+#[derive(Debug, Clone)]
+pub struct Widget {
     pub import: usize,
     pub class: String,
+    pub args: Vec<Arg>,
 }
 
-impl Sym {
-    pub fn expr(&self) -> String {
-        format!("_i{}.{}", self.import, self.class)
+impl Widget {
+    /// Constructor call, given how to spell each binding.
+    pub fn call(&self, value: impl Fn(&Bind) -> String) -> String {
+        let args: Vec<String> = self
+            .args
+            .iter()
+            .map(|a| if a.named { format!("{}: {}", a.name, value(&a.bind)) } else { value(&a.bind) })
+            .collect();
+        format!("_i{}.{}({})", self.import, self.class, args.join(", "))
+    }
+
+    pub fn segments(&self) -> impl Iterator<Item = &str> {
+        self.args.iter().filter_map(|a| match &a.bind {
+            Bind::Segment(s) => Some(s.as_str()),
+            _ => None,
+        })
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ParamsType {
-    /// Simple class name, used for subtype checks.
-    pub simple: String,
-    /// How generated code spells the type.
-    pub expr: String,
-    /// Every field from the root down, in path order.
-    pub fields: Vec<(String, String)>,
-    /// Where it's declared: a params.dart (relative to lib/app), `None` for
-    /// the root `Params`, `Some("")` for a class generated into app.g.dart.
-    pub file: Option<String>,
-}
-
-impl ParamsType {
-    fn root() -> Self {
-        ParamsType { simple: ROOT_PARAMS.into(), expr: ROOT_PARAMS.into(), fields: vec![], file: None }
-    }
-
-    /// Constructor call, given an expression per field.
-    pub fn construct(&self, value: impl Fn(&str, &str) -> String) -> String {
-        if self.fields.is_empty() && self.simple == ROOT_PARAMS {
-            return "const Params()".into();
-        }
-        let args: Vec<String> =
-            self.fields.iter().map(|(n, t)| format!("{n}: {}", value(n, t))).collect();
-        format!("{}({})", self.expr, args.join(", "))
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct Data {
     pub import: usize,
+    /// The file exports its own provider (`final data = FutureProvider...`);
+    /// otherwise fespalier wraps its `data()` function in one.
+    pub provider: bool,
     pub stream: bool,
     pub ty: String,
+    /// Segments the provider is keyed by, in path order.
+    pub keys: Vec<String>,
+    /// Keyed by a named record `(a: .., b: ..)` rather than a bare value.
+    pub record: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Guard {
+    pub import: usize,
+    pub keys: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -64,354 +87,530 @@ pub struct Route {
     pub dir: String,
     pub seg: Option<Seg>,
     pub children: Vec<usize>,
-    pub page: Option<Sym>,
-    /// `Product` for `ProductPage`; typed route is `ProductRoute`.
+    /// Dynamic segments from the root down, with the folder that declares each.
+    pub segs: Vec<(String, usize)>,
+    pub page: Option<Widget>,
+    /// `Product` for `ProductPage`; the typed route is `ProductRoute`.
     pub name: Option<String>,
     pub data: Option<Data>,
-    pub loading: Option<Sym>,
-    pub error: Option<Sym>,
-    pub layout: Option<Sym>,
-    pub guard: Option<usize>,
-    pub params: ParamsType,
-}
-
-#[derive(Debug)]
-pub struct Synth {
-    pub name: String,
-    pub parent_expr: String,
-    pub parent_fields: Vec<(String, String)>,
-    pub field: String,
+    pub loading: Option<Widget>,
+    pub error: Option<Widget>,
+    pub layout: Option<Widget>,
+    pub guard: Option<Guard>,
 }
 
 #[derive(Debug, Default)]
 pub struct App {
     pub imports: Vec<String>,
     pub routes: Vec<Route>,
-    pub synth: Vec<Synth>,
-    pub not_found: Option<Sym>,
+    pub not_found: Option<Widget>,
+    /// Type of each dynamic segment, keyed by the folder that declares it.
+    pub seg_types: HashMap<usize, String>,
 }
 
+impl App {
+    pub fn seg_type(&self, folder: usize) -> &str {
+        self.seg_types.get(&folder).map_or("String", String::as_str)
+    }
+
+    /// `(name, type)` for each of a route's segments, in path order.
+    pub fn typed_segs(&self, r: &Route) -> Vec<(String, String)> {
+        r.segs.iter().map(|(n, f)| (n.clone(), self.seg_type(*f).to_string())).collect()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Role {
+    Page,
+    Loading,
+    Error,
+    Layout,
+    NotFound,
+}
+
+/// A loading.dart / error.dart, bound separately for every route it covers.
 #[derive(Clone)]
+struct Fallback {
+    import: usize,
+    class: Class,
+    file: String,
+}
+
+#[derive(Clone, Default)]
 struct Inherited {
-    params: ParamsType,
-    loading: Option<(Sym, String, String)>, // symbol, P, file
-    error: Option<(Sym, String, String)>,
-    dynamic: Vec<String>,
+    segs: Vec<(String, usize)>,
+    loading: Option<Fallback>,
+    error: Option<Fallback>,
+}
+
+/// "Segment `$id` is `int`", as declared by one parameter somewhere.
+struct Constraint {
+    folder: usize,
+    name: String,
+    ty: Ty,
+    file: String,
+    span: Span,
+}
+
+struct BindCx<'a> {
+    role: Role,
+    segs: &'a [(String, usize)],
+    data: Option<&'a str>,
+    file: &'a str,
+    /// For inherited views: the folder of the route this use is for.
+    covering: Option<&'a str>,
 }
 
 pub fn resolve(root: &Node, diags: &mut Diags) -> App {
     let mut r = Resolver {
         app: App::default(),
         import_ix: HashMap::new(),
-        parent_of: HashMap::new(),
-        params_file: HashMap::new(),
         route_names: HashMap::new(),
+        constraints: vec![],
         diags,
     };
-    let top = Inherited { params: ParamsType::root(), loading: None, error: None, dynamic: vec![] };
-    r.node(root, &top);
+    r.node(root, &Inherited::default());
+    r.settle_segment_types();
     r.app
 }
 
 struct Resolver<'a> {
     app: App,
     import_ix: HashMap<String, usize>,
-    /// Params class → its superclass (simple names).
-    parent_of: HashMap<String, String>,
-    params_file: HashMap<String, String>,
     route_names: HashMap<String, String>,
+    constraints: Vec<Constraint>,
     diags: &'a mut Diags,
 }
 
 impl Resolver<'_> {
-    fn import(&mut self, rel: String) -> usize {
-        if let Some(&i) = self.import_ix.get(&rel) {
+    fn import(&mut self, rel: &str) -> usize {
+        if let Some(&i) = self.import_ix.get(rel) {
             return i;
         }
         let i = self.app.imports.len();
-        self.app.imports.push(rel.clone());
-        self.import_ix.insert(rel, i);
+        self.app.imports.push(rel.to_string());
+        self.import_ix.insert(rel.to_string(), i);
         i
     }
 
-    /// Is `sup` the same as, or a superclass of, params class `sub`?
-    fn is_super(&self, sup: &str, sub: &str) -> bool {
-        let mut cur = Some(sub.to_string());
-        while let Some(c) = cur {
-            if c == sup {
-                return true;
-            }
-            cur = self.parent_of.get(&c).cloned();
-        }
-        false
-    }
-
-    /// The single class in `src` extending `base`.
-    fn class_of(&mut self, node: &Node, kind: Kind, base: &str) -> Option<(ClassDecl, Sym)> {
-        let src = node.files.get(&kind)?;
-        let file = node.rel(kind);
-        let found: Vec<ClassDecl> =
-            dart::classes(&tokenize(src)).into_iter().filter(|c| c.base == base).collect();
-        match found.len() {
-            0 => {
-                self.diags.error(&file, 0, format!("expected a class extending {base}"));
-                None
-            }
-            1 => {
-                let c = found.into_iter().next().unwrap();
-                let sym = Sym { import: self.import(file), class: c.name.clone() };
-                Some((c, sym))
-            }
-            _ => {
-                self.diags.error(&file, found[1].line, format!("one {base} per file; found {}", found.len()));
-                None
-            }
-        }
-    }
-
-    fn node(&mut self, node: &Node, up: &Inherited) -> Option<usize> {
-        let mut dynamic = up.dynamic.clone();
-        if let Some(Seg::Dynamic(name)) = &node.seg {
-            if dynamic.contains(name) {
-                self.diags.error(&node.dir, 0, format!("`${name}` is already a segment higher up this path"));
-            }
-            dynamic.push(name.clone());
-        }
-
-        // page.dart first: its class names the route (and synthesized params).
-        let page = if node.files.contains_key(&Kind::Page) {
-            self.class_of(node, Kind::Page, "Screen")
-        } else {
-            None
-        };
-        let name = page.as_ref().map(|(c, _)| route_name(&c.name));
-        if let (Some(n), Some((c, _))) = (&name, &page) {
-            let file = node.rel(Kind::Page);
-            if let Some(prev) = self.route_names.insert(n.clone(), file.clone()) {
-                self.diags.error(&file, c.line, format!("route name `{n}Route` is already taken by {prev}; rename the class"));
-            }
-        }
-
-        let params = self.params(node, up, &dynamic, name.as_deref());
-        let data = self.data(node, &params);
-
-        if let Some((c, _)) = &page {
-            let file = node.rel(Kind::Page);
-            let got = c.base_args.clone().unwrap_or_default();
-            match &data {
-                Some(d) if got != d.ty => self.diags.error(
-                    &file,
-                    c.line,
-                    format!("Screen<{got}> but data.dart yields {}", d.ty),
-                ),
-                None if !self.is_super(&got, &params.simple) => self.diags.error(
-                    &file,
-                    c.line,
-                    format!("Screen<{got}> but there is no data.dart, so this page receives {}", params.simple),
-                ),
-                _ => {}
-            }
-        } else if node.files.contains_key(&Kind::Data) {
-            self.diags.error(&node.rel(Kind::Data), 0, "data.dart has no page.dart to feed");
-        }
-
-        let mut here = Inherited { params: params.clone(), loading: up.loading.clone(), error: up.error.clone(), dynamic };
-        if node.files.contains_key(&Kind::Loading) {
-            here.loading = self.fallback(node, Kind::Loading, "Loading");
-        }
-        if node.files.contains_key(&Kind::Error) {
-            here.error = self.fallback(node, Kind::Error, "ErrorView");
-        }
-        // Inherited loading/error must accept this route's params.
-        if data.is_some() {
-            for (slot, what) in [(&here.loading, "loading"), (&here.error, "error")] {
-                if let Some((_, p, file)) = slot {
-                    if !self.is_super(p, &params.simple) {
-                        self.diags.error(
-                            file,
-                            0,
-                            format!("{what} view takes {p}, but it also covers {} whose params are {}", show_dir(&node.dir), params.simple),
-                        );
-                    }
-                }
-            }
-        }
-
-        let layout = if node.files.contains_key(&Kind::Layout) {
-            self.class_of(node, Kind::Layout, "Layout").map(|(_, s)| s)
-        } else {
-            None
-        };
-        let guard = self.guard(node, &params, page.is_some());
-
-        if node.files.contains_key(&Kind::NotFound) {
-            if node.dir.is_empty() {
-                self.app.not_found = self.class_of(node, Kind::NotFound, "NotFoundView").map(|(_, s)| s);
-            } else {
-                self.diags.error(&node.rel(Kind::NotFound), 0, "not_found.dart only works at the root of lib/app");
-            }
-        }
-
+    /// Returns the route id and whether it or anything below it is a page.
+    fn node(&mut self, node: &Node, up: &Inherited) -> (usize, bool) {
         let id = self.app.routes.len();
         self.app.routes.push(Route {
             dir: node.dir.clone(),
             seg: node.seg.clone(),
             children: vec![],
-            page: page.map(|(_, s)| s),
-            name,
-            data,
-            loading: here.loading.as_ref().map(|l| l.0.clone()),
-            error: here.error.as_ref().map(|e| e.0.clone()),
-            layout,
-            guard,
-            params,
+            segs: vec![],
+            page: None,
+            name: None,
+            data: None,
+            loading: None,
+            error: None,
+            layout: None,
+            guard: None,
         });
-        let children: Vec<usize> = node.children.iter().filter_map(|c| self.node(c, &here)).collect();
-        if self.app.routes[id].page.is_none() && children.is_empty() && !node.dir.is_empty() {
-            self.diags.warn(&node.dir, 0, "folder has no page.dart and no routes below it; skipped");
+
+        let mut segs = up.segs.clone();
+        if let Some(Seg::Dynamic(n)) = &node.seg {
+            if segs.iter().any(|(s, _)| s == n) {
+                self.diags.error(&node.dir, None, format!("`${n}` is already a segment higher up this path"));
+            } else {
+                segs.push((n.clone(), id));
+            }
+        }
+        let modules: BTreeMap<Kind, Module> = node.files.iter().map(|(k, src)| (*k, dart::parse(src))).collect();
+
+        // page.dart names the route; data.dart feeds it.
+        let page_file = node.rel(Kind::Page);
+        let page_class = modules.get(&Kind::Page).and_then(|m| self.widget_class(m, &page_file));
+        let name = page_class.as_ref().map(|c| route_name(&c.name));
+        if let (Some(n), Some(c)) = (&name, &page_class) {
+            if let Some(prev) = self.route_names.insert(n.clone(), page_file.clone()) {
+                self.diags.error(&page_file, Some(&c.span), format!("route name `{n}Route` is already taken by {prev}; rename the class"));
+            }
+        }
+        let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs));
+        if data.is_some() && !node.files.contains_key(&Kind::Page) {
+            self.diags.error(&node.rel(Kind::Data), None, "data.dart has no page.dart to feed");
+        }
+        let page = page_class.map(|c| {
+            let cx = BindCx { role: Role::Page, segs: &segs, data: data.as_ref().map(|d| d.ty.as_str()), file: &page_file, covering: None };
+            let w = self.bind(&c, &cx);
+            if let Some(d) = &data {
+                if !w.args.iter().any(|a| a.bind == Bind::Data) {
+                    self.diags.warn(
+                        &page_file,
+                        Some(&c.span),
+                        format!("{} doesn't take what data.dart yields; add `final {} data;` to its constructor", c.name, d.ty),
+                    );
+                }
+            }
+            w
+        });
+
+        // loading.dart / error.dart apply here and to every folder below.
+        let mut here = Inherited { segs: segs.clone(), loading: up.loading.clone(), error: up.error.clone() };
+        for (kind, slot) in [(Kind::Loading, &mut here.loading), (Kind::Error, &mut here.error)] {
+            if let Some(m) = modules.get(&kind) {
+                let file = node.rel(kind);
+                if let Some(class) = self.widget_class(m, &file) {
+                    *slot = Some(Fallback { import: self.import(&file), class, file });
+                }
+            }
+        }
+        let (loading, error) = if data.is_some() {
+            let covering = show_dir(&node.dir);
+            let bind = |r: &mut Self, f: &Option<Fallback>, role| {
+                f.as_ref().map(|f| {
+                    let cx = BindCx { role, segs: &segs, data: None, file: &f.file, covering: Some(&covering) };
+                    let mut w = r.bind(&f.class, &cx);
+                    w.import = f.import;
+                    w
+                })
+            };
+            (bind(self, &here.loading, Role::Loading), bind(self, &here.error, Role::Error))
+        } else {
+            (None, None)
+        };
+
+        let layout = modules.get(&Kind::Layout).and_then(|m| {
+            let file = node.rel(Kind::Layout);
+            let c = self.widget_class(m, &file)?;
+            Some(self.bind(&c, &BindCx { role: Role::Layout, segs: &segs, data: None, file: &file, covering: None }))
+        });
+        let guard = modules.get(&Kind::Guard).and_then(|m| self.guard(m, node, &segs));
+        if let Some(m) = modules.get(&Kind::NotFound) {
+            let file = node.rel(Kind::NotFound);
+            if node.dir.is_empty() {
+                if let Some(c) = self.widget_class(m, &file) {
+                    let cx = BindCx { role: Role::NotFound, segs: &[], data: None, file: &file, covering: None };
+                    self.app.not_found = Some(self.bind(&c, &cx));
+                }
+            } else {
+                self.diags.error(&file, None, "not_found.dart only works at the root of lib/app");
+            }
+        }
+
+        let has_page = page.is_some();
+        let r = &mut self.app.routes[id];
+        (r.segs, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard) =
+            (segs, page, name, data, loading, error, layout, guard);
+
+        let mut children = vec![];
+        let mut any_route = has_page;
+        for c in &node.children {
+            let (cid, routes) = self.node(c, &here);
+            children.push(cid);
+            any_route |= routes;
+        }
+        if !any_route && node.children.is_empty() && !node.dir.is_empty() {
+            self.diags.warn(&node.dir, None, "folder has no page.dart and no routes below it; skipped");
         }
         self.app.routes[id].children = children;
-        Some(id)
+        (id, any_route)
     }
 
-    fn params(&mut self, node: &Node, up: &Inherited, dynamic: &[String], name: Option<&str>) -> ParamsType {
-        let parent = &up.params;
-        if node.files.contains_key(&Kind::Params) {
-            let file = node.rel(Kind::Params);
-            let src = node.files[&Kind::Params].clone();
-            let classes = dart::classes(&tokenize(&src));
-            let Some(c) = classes.into_iter().next() else {
-                self.diags.error(&file, 0, format!("expected `class XParams extends {}`", parent.simple));
-                return parent.clone();
+    /// The one public widget class a view file exports.
+    fn widget_class(&mut self, m: &Module, file: &str) -> Option<Class> {
+        let public: Vec<&Class> = m.classes.iter().filter(|c| c.is_public()).collect();
+        let widgets: Vec<&Class> =
+            public.iter().copied().filter(|c| c.superclass.as_deref().is_some_and(|s| s.ends_with("Widget"))).collect();
+        match (public.as_slice(), widgets.as_slice()) {
+            ([one], _) | (_, [one]) => Some((*one).clone()),
+            ([], _) => {
+                self.diags.error(file, None, "expected a public widget class");
+                None
+            }
+            (many, _) => {
+                let names: Vec<&str> = many.iter().map(|c| c.name.as_str()).collect();
+                self.diags.error(
+                    file,
+                    Some(&many[1].span),
+                    format!("expected one public widget class, found {}; make the others private (`_Name`)", names.join(", ")),
+                );
+                None
+            }
+        }
+    }
+
+    /// Works out every constructor argument of `class` for this use of it.
+    fn bind(&mut self, class: &Class, cx: &BindCx) -> Widget {
+        let mut args = vec![];
+        let mut positional_gap = false;
+        for p in &class.params {
+            if p.is_super {
+                if p.required && p.name != "key" {
+                    self.diags.error(cx.file, Some(&p.span), format!("can't fill `super.{}`; only `super.key` is allowed", p.name));
+                }
+                continue;
+            }
+            let bind = if !p.named && positional_gap { None } else { pick(p.name.as_str(), p.ty.as_ref(), cx) };
+            let Some(bind) = bind else {
+                if p.required {
+                    let msg = unfillable(&p.name, cx);
+                    self.diags.error(cx.file, Some(&p.span), msg);
+                } else if !p.named {
+                    positional_gap = true;
+                }
+                continue;
             };
-            if c.base != parent.simple {
-                self.diags.error(&file, c.line, format!("{} must extend {} (the params of the folder above)", c.name, parent.simple));
-            }
-            if let Some(prev) = self.params_file.insert(c.name.clone(), file.clone()) {
-                self.diags.error(&file, c.line, format!("{} is already declared in {prev}", c.name));
-            }
-            self.parent_of.insert(c.name.clone(), parent.simple.clone());
-
-            let mut fields = parent.fields.clone();
-            for f in &c.fields {
-                if !SEGMENT_TYPES.contains(&f.ty.as_str()) {
-                    self.diags.error(&file, f.line, format!("`{} {}`: segment fields must be String, int, double or bool", f.ty, f.name));
+            match (&bind, &p.ty, cx.data) {
+                (Bind::Segment(name), Some(ty), _) => {
+                    let folder = cx.segs.iter().find(|(n, _)| n == name).map(|(_, f)| *f).unwrap();
+                    self.constraints.push(Constraint {
+                        folder,
+                        name: name.clone(),
+                        ty: ty.clone(),
+                        file: cx.file.to_string(),
+                        span: p.span.clone(),
+                    });
                 }
-                if !dynamic.contains(&f.name) {
-                    self.diags.error(&file, f.line, format!("field `{}` has no `${}` segment in this path", f.name, f.name));
-                } else if parent.fields.iter().any(|(n, _)| n == &f.name) {
-                    self.diags.error(&file, f.line, format!("`{}` is already declared by {}", f.name, parent.simple));
+                (Bind::Data, Some(ty), Some(want)) if !ty.is(want) => {
+                    self.diags.error(cx.file, Some(&p.span), format!("`{}` is {} but data.dart yields {want}", p.name, ty.text));
                 }
-                fields.push((f.name.clone(), f.ty.clone()));
+                _ => {}
             }
-            for seg in dynamic {
-                if !fields.iter().any(|(n, _)| n == seg) {
-                    self.diags.error(&file, c.line, format!("missing field for segment `${seg}`"));
-                }
-            }
-            let sym = Sym { import: self.import(file.clone()), class: c.name.clone() };
-            return ParamsType { simple: c.name, expr: sym.expr(), fields, file: Some(file) };
+            args.push(Arg { name: p.name.clone(), named: p.named, bind });
         }
-
-        if let Some(Seg::Dynamic(seg)) = &node.seg {
-            let base = name.map(str::to_string).unwrap_or_else(|| pascal(&node.dir));
-            let synth = format!("{base}Params");
-            if let Some(prev) = self.params_file.insert(synth.clone(), format!("{} (generated)", node.dir)) {
-                self.diags.error(&node.dir, 0, format!("generated {synth} collides with {prev}; add a params.dart"));
-            }
-            self.parent_of.insert(synth.clone(), parent.simple.clone());
-            let mut fields = parent.fields.clone();
-            fields.push((seg.clone(), "String".into()));
-            self.app.synth.push(Synth {
-                name: synth.clone(),
-                parent_expr: parent.expr.clone(),
-                parent_fields: parent.fields.clone(),
-                field: seg.clone(),
-            });
-            return ParamsType { simple: synth.clone(), expr: synth, fields, file: Some(String::new()) };
-        }
-        parent.clone()
+        let import = self.import(cx.file);
+        Widget { import, class: class.name.clone(), args }
     }
 
-    fn data(&mut self, node: &Node, params: &ParamsType) -> Option<Data> {
-        let src = node.files.get(&Kind::Data)?;
-        let file = node.rel(Kind::Data);
-        let Some(f) = dart::function(&tokenize(src), "data") else {
-            self.diags.error(&file, 0, format!("expected `Future<T> data(Ref ref, {} params)`", params.simple));
+    fn segment_param(&mut self, file: &str, p: &dart::Param, segs: &[(String, usize)], what: &str) -> Option<String> {
+        if !p.named {
+            self.diags.error(file, Some(&p.span), format!("{what} takes segments as named parameters, e.g. `{{required int {}}}`", p.name));
+            return None;
+        }
+        let Some((_, folder)) = segs.iter().find(|(n, _)| n == &p.name) else {
+            self.diags.error(file, Some(&p.span), format!("`{}` isn't a segment of this path ({})", p.name, show_segs(segs)));
             return None;
         };
-        let sig_ok = !f.non_positional
-            && f.params.len() == 2
-            && f.params[0].ty.as_deref() == Some("Ref");
-        if !sig_ok {
-            self.diags.error(&file, f.line, format!("data() must take exactly (Ref ref, {} params)", params.simple));
+        match &p.ty {
+            Some(ty) => self.constraints.push(Constraint {
+                folder: *folder,
+                name: p.name.clone(),
+                ty: ty.clone(),
+                file: file.to_string(),
+                span: p.span.clone(),
+            }),
+            None => self.diags.error(file, Some(&p.span), format!("give `{}` a type (String, int, double or bool)", p.name)),
         }
-        if let Some(p) = f.params.get(1) {
-            match &p.ty {
-                Some(t) if !self.is_super(t, &params.simple) => self.diags.error(
-                    &file,
-                    f.line,
-                    format!("data() takes {t}, but this route's params are {}", params.simple),
+        Some(p.name.clone())
+    }
+
+    fn data(&mut self, m: &Module, node: &Node, segs: &[(String, usize)]) -> Option<Data> {
+        let file = node.rel(Kind::Data);
+        if let Some(f) = m.functions.iter().find(|f| f.name == "data") {
+            match f.params.first() {
+                Some(p) if !p.named && p.ty.as_ref().is_some_and(|t| t.is("Ref")) => {}
+                _ => self.diags.error(&file, Some(&f.span), "data() must take `Ref ref` first"),
+            }
+            let mut keys = vec![];
+            for p in f.params.iter().skip(1) {
+                keys.extend(self.segment_param(&file, p, segs, "data()"));
+            }
+            let Some(ret) = &f.ret else {
+                self.diags.error(&file, Some(&f.span), "data() needs an explicit return type (Future<T>, Stream<T> or T)");
+                return None;
+            };
+            let (head, args) = ret.generic();
+            let (stream, ty) = match (head, args.as_slice()) {
+                ("Future" | "FutureOr", [t]) => (false, t.to_string()),
+                ("Stream", [t]) => (true, t.to_string()),
+                _ => (false, ret.text.clone()),
+            };
+            let keys = in_path_order(keys, segs);
+            let import = self.import(&file);
+            return Some(Data { import, provider: false, stream, ty, record: keys.len() > 1, keys });
+        }
+
+        if let Some(v) = m.variables.iter().find(|v| v.name == "data") {
+            const KINDS: &str = "FutureProvider, StreamProvider, AsyncNotifierProvider or StreamNotifierProvider";
+            let Some(call) = &v.call else {
+                self.diags.error(&file, Some(&v.span), format!("`data` must be a {KINDS}"));
+                return None;
+            };
+            let (value_ix, stream) = match call.chain[0].as_str() {
+                "FutureProvider" => (0, false),
+                "StreamProvider" => (0, true),
+                "AsyncNotifierProvider" => (1, false),
+                "StreamNotifierProvider" => (1, true),
+                other => {
+                    self.diags.error(&file, Some(&v.span), format!("`data` must be a {KINDS}, not {other}"));
+                    return None;
+                }
+            };
+            let family = call.chain.iter().any(|c| c == "family");
+            let want = value_ix + 1 + usize::from(family);
+            if call.type_args.len() != want {
+                let example = match (value_ix, family) {
+                    (0, false) => "FutureProvider<Product>",
+                    (0, true) => "FutureProvider.family<Product, int>",
+                    (_, false) => "AsyncNotifierProvider<ProductNotifier, Product>",
+                    (_, true) => "AsyncNotifierProvider.family<ProductNotifier, Product, int>",
+                };
+                self.diags.error(&file, Some(&v.span), format!("give the provider its type arguments, e.g. `{example}`"));
+                return None;
+            }
+            let ty = call.type_args[value_ix].text.clone();
+            let (mut keys, mut record) = (vec![], false);
+            if family {
+                let arg = &call.type_args[want - 1];
+                if let Some(fields) = &arg.record {
+                    record = true;
+                    for (name, fty) in fields {
+                        let p = dart::Param {
+                            name: name.clone(),
+                            ty: Some(fty.clone()),
+                            named: true,
+                            required: true,
+                            is_super: false,
+                            span: v.span.clone(),
+                        };
+                        keys.extend(self.segment_param(&file, &p, segs, "the family argument"));
+                    }
+                } else if let [(name, folder)] = segs {
+                    keys.push(name.clone());
+                    self.constraints.push(Constraint {
+                        folder: *folder,
+                        name: name.clone(),
+                        ty: arg.clone(),
+                        file: file.clone(),
+                        span: v.span.clone(),
+                    });
+                } else {
+                    self.diags.error(
+                        &file,
+                        Some(&v.span),
+                        format!(
+                            "this path has {} segments, so the family argument must be a record naming the ones it uses, e.g. `({{int id}})`",
+                            segs.len()
+                        ),
+                    );
+                }
+            }
+            let keys = in_path_order(keys, segs);
+            let import = self.import(&file);
+            return Some(Data { import, provider: true, stream, ty, keys, record });
+        }
+
+        self.diags.error(&file, None, "expected `Future<T> data(Ref ref, {...segments})` or `final data = FutureProvider<T>(...)`");
+        None
+    }
+
+    fn guard(&mut self, m: &Module, node: &Node, segs: &[(String, usize)]) -> Option<Guard> {
+        let file = node.rel(Kind::Guard);
+        if !node.files.contains_key(&Kind::Page) {
+            self.diags.error(&file, None, "guard.dart needs a page.dart in the same folder");
+            return None;
+        }
+        let Some(f) = m.functions.iter().find(|f| f.name == "guard") else {
+            self.diags.error(&file, None, "expected `GuardResult guard(ProviderContainer c, {...segments})`");
+            return None;
+        };
+        let ok_ret = f
+            .ret
+            .as_ref()
+            .is_some_and(|r| ["GuardResult", "FutureOr<String?>", "Future<String?>", "String?"].contains(&r.text.as_str()));
+        if !ok_ret {
+            self.diags.error(&file, Some(&f.span), "guard() must return GuardResult (a location to redirect to, or null)");
+        }
+        match f.params.first() {
+            Some(p) if !p.named && p.ty.as_ref().is_some_and(|t| t.is("ProviderContainer")) => {}
+            _ => self.diags.error(&file, Some(&f.span), "guard() must take `ProviderContainer c` first"),
+        }
+        let mut keys = vec![];
+        for p in f.params.iter().skip(1) {
+            keys.extend(self.segment_param(&file, p, segs, "guard()"));
+        }
+        Some(Guard { import: self.import(&file), keys: in_path_order(keys, segs) })
+    }
+
+    /// Every file that uses `$id` must agree on its type; nobody saying means String.
+    fn settle_segment_types(&mut self) {
+        let mut first: HashMap<usize, (String, String, usize)> = HashMap::new();
+        for c in &self.constraints {
+            if !SEGMENT_TYPES.contains(&c.ty.text.as_str()) {
+                self.diags.error(&c.file, Some(&c.span), format!("`{} {}`: segments are String, int, double or bool", c.ty.text, c.name));
+                continue;
+            }
+            match first.get(&c.folder) {
+                None => {
+                    first.insert(c.folder, (c.ty.text.clone(), c.file.clone(), c.span.line));
+                }
+                Some((t0, f0, l0)) if *t0 != c.ty.text => self.diags.error(
+                    &c.file,
+                    Some(&c.span),
+                    format!("`${}` is {t0} in {f0}:{l0} but {} here", c.name, c.ty.text),
                 ),
-                None => self.diags.error(&file, f.line, format!("give `{}` a type ({})", p.name, params.simple)),
                 _ => {}
             }
         }
-        let Some(ret) = f.ret else {
-            self.diags.error(&file, f.line, "data() needs an explicit return type (Future<T>, Stream<T> or T)");
-            return None;
-        };
-        let (head, args) = split_generic(&ret);
-        let (stream, ty) = match (head.as_str(), args.as_slice()) {
-            ("Future" | "FutureOr", [t]) => (false, t.clone()),
-            ("Stream", [t]) => (true, t.clone()),
-            _ => (false, ret.clone()),
-        };
-        Some(Data { import: self.import(file), stream, ty })
-    }
-
-    fn fallback(&mut self, node: &Node, kind: Kind, base: &str) -> Option<(Sym, String, String)> {
-        let (c, sym) = self.class_of(node, kind, base)?;
-        let p = c.base_args.clone().unwrap_or_else(|| ROOT_PARAMS.into());
-        Some((sym, p, node.rel(kind)))
-    }
-
-    fn guard(&mut self, node: &Node, params: &ParamsType, has_page: bool) -> Option<usize> {
-        let src = node.files.get(&Kind::Guard)?;
-        let file = node.rel(Kind::Guard);
-        if !has_page {
-            self.diags.error(&file, 0, "guard.dart needs a page.dart in the same folder");
-            return None;
-        }
-        let Some(f) = dart::function(&tokenize(src), "guard") else {
-            self.diags.error(&file, 0, format!("expected `GuardResult guard(ProviderContainer c, {} params)`", params.simple));
-            return None;
-        };
-        let ok_ret = matches!(
-            f.ret.as_deref(),
-            Some("GuardResult" | "FutureOr<String?>" | "Future<String?>" | "String?")
-        );
-        if !ok_ret {
-            self.diags.error(&file, f.line, "guard() must return GuardResult (a location to redirect to, or null)");
-        }
-        let sig_ok = !f.non_positional
-            && f.params.len() == 2
-            && f.params[0].ty.as_deref() == Some("ProviderContainer");
-        if !sig_ok {
-            self.diags.error(&file, f.line, format!("guard() must take (ProviderContainer c, {} params)", params.simple));
-        }
-        if let Some(Some(t)) = f.params.get(1).map(|p| p.ty.clone()) {
-            if !self.is_super(&t, &params.simple) {
-                self.diags.error(&file, f.line, format!("guard() takes {t}, but this route's params are {}", params.simple));
-            }
-        }
-        Some(self.import(file))
+        self.app.seg_types = first.into_iter().map(|(k, (t, _, _))| (k, t)).collect();
     }
 }
 
-/// `ProductPage` → `Product`, `CartScreen` → `Cart`.
+/// What a parameter called `name` of type `ty` receives in this role.
+fn pick(name: &str, ty: Option<&Ty>, cx: &BindCx) -> Option<Bind> {
+    match (cx.role, name) {
+        (Role::Page, "data") if cx.data.is_some() => return Some(Bind::Data),
+        (Role::Error, "error") => return Some(Bind::Error),
+        (Role::Error, "stackTrace") => return Some(Bind::StackTrace),
+        (Role::Error, "retry") => return Some(Bind::Retry),
+        (Role::Layout, "child") => return Some(Bind::Child),
+        (Role::NotFound, "uri") => return Some(Bind::Uri),
+        _ => {}
+    }
+    if cx.segs.iter().any(|(n, _)| n == name) {
+        return Some(Bind::Segment(name.to_string()));
+    }
+    let ty = ty.map(|t| t.text.as_str())?;
+    match (cx.role, ty) {
+        (Role::Page, t) if cx.data == Some(t) => Some(Bind::Data),
+        (Role::Error, "Object" | "Object?" | "dynamic") => Some(Bind::Error),
+        (Role::Error, "StackTrace" | "StackTrace?") => Some(Bind::StackTrace),
+        (Role::Error, "VoidCallback" | "void Function()") => Some(Bind::Retry),
+        (Role::Layout, "Widget") => Some(Bind::Child),
+        (Role::NotFound, "Uri") => Some(Bind::Uri),
+        _ => None,
+    }
+}
+
+fn unfillable(name: &str, cx: &BindCx) -> String {
+    let segs = show_segs(cx.segs);
+    match (cx.role, cx.covering) {
+        (Role::Loading | Role::Error, Some(dir)) => {
+            let extra = if cx.role == Role::Error { ", or `error`, `stackTrace`, `retry`" } else { "" };
+            format!("can't fill `{name}` for {dir}: it isn't one of its segments ({segs}){extra}")
+        }
+        (Role::Page, _) => match cx.data {
+            Some(t) => format!("can't fill `{name}`: it isn't a segment of this path ({segs}) or data.dart's {t}"),
+            None => format!("can't fill `{name}`: it isn't a segment of this path ({segs}), and there is no data.dart"),
+        },
+        (Role::Layout, _) => format!("can't fill `{name}`: a layout gets `Widget child` and the segments above it ({segs})"),
+        (Role::NotFound, _) => format!("can't fill `{name}`: not_found.dart only gets `Uri uri`"),
+        _ => format!("can't fill `{name}`: it isn't a segment of this path ({segs})"),
+    }
+}
+
+fn in_path_order(keys: Vec<String>, segs: &[(String, usize)]) -> Vec<String> {
+    segs.iter().map(|(n, _)| n).filter(|n| keys.contains(n)).cloned().collect()
+}
+
+fn show_segs(segs: &[(String, usize)]) -> String {
+    if segs.is_empty() {
+        return "it has none".into();
+    }
+    segs.iter().map(|(n, _)| format!("${n}")).collect::<Vec<_>>().join(", ")
+}
+
+fn show_dir(dir: &str) -> String {
+    if dir.is_empty() { "/".into() } else { format!("{dir}/") }
+}
+
+/// `ProductPage` → `Product`; also strips `Screen` and `View`.
 fn route_name(class: &str) -> String {
-    for suffix in ["Page", "Screen"] {
+    for suffix in ["Page", "Screen", "View"] {
         if let Some(stem) = class.strip_suffix(suffix) {
             if !stem.is_empty() {
                 return stem.to_string();
@@ -423,15 +622,5 @@ fn route_name(class: &str) -> String {
 
 /// `products/$id` → `ProductsId`.
 pub fn pascal(dir: &str) -> String {
-    dir.split(['/', '-', '_', '.', '$'])
-        .filter(|s| !s.is_empty())
-        .map(|s| {
-            let mut c = s.chars();
-            c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
-        })
-        .collect()
-}
-
-fn show_dir(dir: &str) -> String {
-    if dir.is_empty() { "/".into() } else { format!("{dir}/") }
+    dir.replace(['/', '$'], "_").to_upper_camel_case()
 }

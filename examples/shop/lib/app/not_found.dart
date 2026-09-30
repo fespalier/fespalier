@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shop/app.g.dart';
-import 'package:trellis/trellis.dart';
 
-class NotFound extends NotFoundView {
-  const NotFound(super.uri, {super.key});
+class NotFound extends StatelessWidget {
+  const NotFound({super.key, required this.uri});
+
+  final Uri uri;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Center(
+  Widget build(BuildContext context) => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

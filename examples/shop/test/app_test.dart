@@ -1,10 +1,10 @@
+import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shop/api.dart';
 import 'package:shop/app.g.dart';
 import 'package:shop/app/products/loading.dart';
 import 'package:shop/cart.dart';
-import 'package:trellis/trellis.dart';
 
 /// Boots the generated router at [location], the same way main.dart does.
 Future<ProviderContainer> boot(
@@ -101,8 +101,7 @@ void main() {
     expect(find.text('Place order'), findsOneWidget);
   });
 
-  testWidgets('generated params for a folder without params.dart',
-      (tester) async {
+  testWidgets('an untyped segment is a String', (tester) async {
     await boot(tester, '/greet/you');
     await tester.pump();
     expect(find.text('Hello, you'), findsOneWidget);

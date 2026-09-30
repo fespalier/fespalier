@@ -4,7 +4,11 @@ use std::path::{Path, PathBuf};
 use crate::{build, gen, scaffold};
 
 fn example() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/shop")
+    examples("shop")
+}
+
+fn examples(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples").join(name)
 }
 
 /// A throwaway project with the given files under lib/app.
@@ -19,156 +23,290 @@ fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
     dir
 }
 
-fn errors(files: &[(&str, &str)]) -> Vec<String> {
+fn diags(files: &[(&str, &str)]) -> Vec<String> {
     let dir = project(files);
     let (_, diags, _) = build(&dir.path().join("lib/app")).unwrap();
     diags.0.iter().map(|d| d.to_string()).collect()
 }
 
-const HOME: &str = "class HomePage extends Screen<Params> { const HomePage(super.data); }";
+fn code(files: &[(&str, &str)]) -> String {
+    let dir = project(files);
+    let (code, diags, _) = build(&dir.path().join("lib/app")).unwrap();
+    assert!(diags.0.is_empty(), "{:?}", diags.0);
+    code
+}
+
+fn has(code: &str, needles: &[&str]) {
+    for n in needles {
+        assert!(code.contains(n), "missing `{n}` in:\n{code}");
+    }
+}
+
+const HOME: &str = "class HomePage extends StatelessWidget { const HomePage({super.key}); }";
 
 #[test]
 fn example_app_generates_cleanly() {
     let (code, diags, routes) = build(&example().join("lib/app")).unwrap();
     assert!(diags.0.is_empty(), "{:?}", diags.0);
     assert_eq!(routes, 6);
-    for needle in [
-        "final class ProductRoute extends TypedLocation {",
-        "const ProductRoute({required this.id});",
-        "_i", // prefixed imports
-        "import 'app/products/\\$id/page.dart'",
-        "path: ':id'",
-        "path: 'greet/:name'",
-        "path: joinLocation(at, '/')",
-        "ShellRoute(",
-        "Segment.asInt(s, 'id')",
-        "class GreetParams extends Params {",
-        "Future<void> refresh(WidgetRef ref)",
-        "redirect: (context, state) => guardWithParams(",
-        "FutureProvider.autoDispose.family(",
-    ] {
-        assert!(code.contains(needle), "missing `{needle}` in:\n{code}");
-    }
+    has(
+        &code,
+        &[
+            "final class ProductRoute extends TypedLocation {",
+            "const ProductRoute({required this.id});",
+            "final int id;",
+            "import 'app/products/\\$id/page.dart'",
+            "path: ':id'",
+            "path: 'greet/:name'",
+            "path: joinLocation(at, '/')",
+            "builder: (context, state, child) => _i3.AppLayout(child: child),",
+            "({int id}) _seg6(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
+            "_i8.GreetPage(name: v.name)",
+            "data: (d) => _i13.ProductPage(product: d),",
+            "error: (e, st, retry) => _i14.ProductError(id: v.id, error: e, retry: retry),",
+            // products/data.dart exports its own provider; it's used as-is.
+            "watch: (ref) => ref.watch(_i9.data),",
+            "static final data = _i9.data;",
+            "(Ref ref, int id) => _i12.data(ref, id: id),",
+            "Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);",
+            "redirect: (context, state) => _i7.guard(ProviderScope.containerOf(context, listen: false)),",
+            "String get location => joinLocation(AppRoutes.base, '/products/$id');",
+            "'/greet/${Uri.encodeComponent(name)}'",
+        ],
+    );
 }
 
 #[test]
 fn committed_output_is_up_to_date() {
-    let (code, _, _) = build(&example().join("lib/app")).unwrap();
-    let committed = fs::read_to_string(example().join("lib/app.g.dart")).unwrap_or_default();
-    assert!(committed == code, "examples/shop/lib/app.g.dart is stale; run `trellis gen --project examples/shop`");
+    for name in ["shop", "features"] {
+        let (code, diags, _) = build(&examples(name).join("lib/app")).unwrap();
+        assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
+        let committed = fs::read_to_string(examples(name).join("lib/app.g.dart")).unwrap_or_default();
+        assert!(committed == code, "examples/{name}/lib/app.g.dart is stale; run `fsp gen --project examples/{name}`");
+    }
+}
+
+#[test]
+fn page_params_are_filled_by_name_then_type() {
+    let c = code(&[
+        ("$shop/$id/data.dart", "Future<Item> data(Ref ref, {required String shop, required int id}) async => x;"),
+        (
+            "$shop/$id/page.dart",
+            "class ItemPage extends StatelessWidget {\n  const ItemPage(this.item, {super.key, required this.shop, this.note});\n  final Item item;\n  final String shop;\n  final String? note;\n}",
+        ),
+    ]);
+    has(
+        &c,
+        &[
+            "(v) => DataView(",
+            "data: (d) => _i1.ItemPage(d, shop: v.shop),",
+            // Several segments key the provider by a record.
+            "(Ref ref, ({String shop, int id}) k) => _i0.data(ref, shop: k.shop, id: k.id),",
+            "watch: (ref) => ref.watch(_data2((shop: v.shop, id: v.id))),",
+            "const ItemRoute({required this.shop, required this.id});",
+            "ref.refresh(data((shop: shop, id: id)).future)",
+        ],
+    );
 }
 
 #[test]
 fn page_type_must_match_data() {
-    let e = errors(&[
+    let e = diags(&[
         ("page.dart", HOME),
-        ("products/data.dart", "Future<List<Product>> data(Ref ref, Params p) async => [];"),
-        ("products/page.dart", "class ProductsPage extends Screen<Product> {}"),
+        ("products/data.dart", "Future<List<Product>> data(Ref ref) async => [];"),
+        (
+            "products/page.dart",
+            "class ProductsPage extends StatelessWidget {\n  const ProductsPage({super.key, required this.data});\n  final Product data;\n}",
+        ),
     ]);
-    assert_eq!(e, vec!["✗ products/page.dart:1  Screen<Product> but data.dart yields List<Product>"]);
+    assert_eq!(e, vec!["✗ products/page.dart:2  `data` is Product but data.dart yields List<Product>"]);
 }
 
 #[test]
-fn page_without_data_receives_params() {
-    let e = errors(&[
-        ("$id/params.dart", "class ItemParams extends Params { final int id; }"),
-        ("$id/page.dart", "class ItemPage extends Screen<String> {}"),
+fn unfillable_params_are_errors() {
+    let e = diags(&[
+        (
+            "$id/page.dart",
+            "class ItemPage extends StatelessWidget {\n  const ItemPage({super.key, required this.id, required this.nope, this.ok = 1});\n  final int id; final String nope; final int ok;\n}",
+        ),
     ]);
-    assert_eq!(e, vec!["✗ $id/page.dart:1  Screen<String> but there is no data.dart, so this page receives ItemParams"]);
+    assert_eq!(e, vec!["✗ $id/page.dart:2  can't fill `nope`: it isn't a segment of this path ($id), and there is no data.dart"]);
 }
 
 #[test]
-fn params_must_cover_every_segment() {
-    let e = errors(&[
-        ("$shop/$id/params.dart", "class ItemParams extends Params {\n  final int id;\n  final int extra;\n}"),
-        ("$shop/$id/page.dart", "class ItemPage extends Screen<ItemParams> {}"),
+fn segment_types_must_agree() {
+    let e = diags(&[
+        ("$id/data.dart", "Future<int> data(Ref ref, {required int id}) async => id;"),
+        (
+            "$id/page.dart",
+            "class ItemPage extends StatelessWidget {\n  const ItemPage({super.key, required this.id, required this.n});\n  final String id; final int n;\n}",
+        ),
     ]);
-    // $shop gets a generated ShopParams (no page there, so named from the path).
-    assert!(e.iter().any(|m| m.contains("ItemParams must extend ShopParams")), "{e:?}");
-    assert!(e.iter().any(|m| m.contains("field `extra` has no `$extra` segment")), "{e:?}");
+    assert_eq!(e, vec!["✗ $id/page.dart:2  `$id` is int in $id/data.dart:1 but String here"]);
 }
 
 #[test]
-fn inherited_loading_must_accept_child_params() {
-    let e = errors(&[
-        ("loading.dart", "class L extends Loading<HomeParams> {}"),
-        ("$id/params.dart", "class ItemParams extends Params { final int id; }"),
-        ("$id/data.dart", "Future<int> data(Ref ref, ItemParams p) async => 1;"),
-        ("$id/page.dart", "class ItemPage extends Screen<int> {}"),
+fn segments_are_primitive() {
+    let e = diags(&[("$id/data.dart", "Future<int> data(Ref ref, {required List<int> id}) async => 1;"), ("$id/page.dart", HOME)]);
+    assert!(e.iter().any(|m| m.contains("`List<int> id`: segments are String, int, double or bool")), "{e:?}");
+}
+
+#[test]
+fn inherited_views_must_fit_every_route_they_cover() {
+    let e = diags(&[
+        ("loading.dart", "class L extends StatelessWidget { const L({super.key, required this.id}); final int id; }"),
+        ("page.dart", HOME),
+        ("data.dart", "Future<int> data(Ref ref) async => 1;"),
+        ("$id/data.dart", "Future<int> data(Ref ref, {required int id}) async => 1;"),
+        ("$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.data}); final int data; }"),
     ]);
-    assert_eq!(e, vec!["✗ loading.dart  loading view takes HomeParams, but it also covers $id/ whose params are ItemParams"]);
+    // Fine for $id/, but the root route has no $id.
+    assert_eq!(e.len(), 2, "{e:?}");
+    assert!(e[0].starts_with("! page.dart:1  HomePage doesn't take what data.dart yields"), "{e:?}");
+    assert_eq!(e[1], "✗ loading.dart:1  can't fill `id` for /: it isn't one of its segments (it has none)");
+}
+
+#[test]
+fn error_views_get_error_and_retry_by_name_or_type() {
+    let c = code(&[
+        ("error.dart", "class E extends StatelessWidget { const E(this.e, this.again, {super.key, this.stackTrace}); final Object e; final VoidCallback again; final StackTrace? stackTrace; }"),
+        ("data.dart", "Stream<int> data(Ref ref) => Stream.value(1);"),
+        ("page.dart", "class TickPage extends StatelessWidget { const TickPage(this.n, {super.key}); final int n; }"),
+    ]);
+    has(
+        &c,
+        &[
+            "error: (e, st, retry) => _i2.E(e, retry, stackTrace: st),",
+            "final _data0 = StreamProvider.autoDispose(",
+            "(Ref ref) => _i0.data(ref),",
+            "/// Restarts data.dart",
+        ],
+    );
+}
+
+#[test]
+fn user_providers_are_used_as_is() {
+    let c = code(&[
+        ("$id/data.dart", "final data = AsyncNotifierProvider.autoDispose.family<ItemNotifier, Item, int>(ItemNotifier.new);"),
+        ("$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.item}); final Item item; }"),
+        ("$a/$b/data.dart", "final data = FutureProvider.family<int, ({int a, String b})>((ref, k) async => k.a);"),
+        ("$a/$b/page.dart", "class AbPage extends StatelessWidget { const AbPage(this.n, {super.key}); final int n; }"),
+    ]);
+    has(
+        &c,
+        &[
+            "watch: (ref) => ref.watch(_i2.data(v.id)),",
+            "data: (d) => _i3.ItemPage(item: d),",
+            "const ItemRoute({required this.id});\n\n  final int id;",
+            "watch: (ref) => ref.watch(_i0.data((a: v.a, b: v.b))),",
+            "const AbRoute({required this.a, required this.b});\n\n  final int a;\n  final String b;",
+        ],
+    );
+    assert!(!c.contains("_data"), "no wrapper providers expected:\n{c}");
+}
+
+#[test]
+fn provider_family_must_name_its_segments() {
+    let e = diags(&[
+        ("$a/$b/data.dart", "final data = FutureProvider.family<int, int>((ref, a) async => a);"),
+        ("$a/$b/page.dart", "class AbPage extends StatelessWidget { const AbPage(this.n, {super.key}); final int n; }"),
+        ("x/data.dart", "final data = FutureProvider((ref) async => 1);"),
+        ("x/page.dart", "class XPage extends StatelessWidget { const XPage(this.n, {super.key}); final int n; }"),
+    ]);
+    assert!(e.iter().any(|m| m.contains("must be a record naming the ones it uses")), "{e:?}");
+    assert!(e.iter().any(|m| m.contains("give the provider its type arguments, e.g. `FutureProvider<Product>`")), "{e:?}");
 }
 
 #[test]
 fn data_signature_is_checked() {
-    let e = errors(&[
-        ("data.dart", "data(ref, {required Params p}) => 1;"),
-        ("page.dart", HOME),
+    let e = diags(&[
+        ("$id/data.dart", "data(ref, int id, {required String nope}) => 1;"),
+        ("$id/page.dart", HOME),
     ]);
-    assert!(e.iter().any(|m| m.contains("data() must take exactly (Ref ref, Params params)")), "{e:?}");
-    assert!(e.iter().any(|m| m.contains("explicit return type")), "{e:?}");
+    let joined = e.join("\n");
+    for needle in [
+        "data() must take `Ref ref` first",
+        "data() takes segments as named parameters, e.g. `{required int id}`",
+        "`nope` isn't a segment of this path ($id)",
+        "data() needs an explicit return type",
+    ] {
+        assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
+    }
 }
 
 #[test]
-fn stream_data_uses_stream_provider() {
-    let dir = project(&[
-        ("data.dart", "Stream<int> data(Ref ref, Params p) => Stream.value(1);"),
-        ("page.dart", "class TickPage extends Screen<int> {}"),
+fn layouts_get_child_and_segments_above_them() {
+    let c = code(&[
+        ("$shop/layout.dart", "class ShopLayout extends StatelessWidget { const ShopLayout({super.key, required this.child, required this.shop}); final Widget child; final String shop; }"),
+        ("$shop/page.dart", "class ShopPage extends StatelessWidget { const ShopPage({super.key}); }"),
+        ("$shop/guard.dart", "Future<String?> guard(ProviderContainer c, {required String shop}) async => null;"),
     ]);
-    let (code, diags, _) = build(&dir.path().join("lib/app")).unwrap();
-    assert!(diags.0.is_empty(), "{:?}", diags.0);
-    assert!(code.contains("StreamProvider.autoDispose.family("));
-    assert!(code.contains("/// Restarts ./data.dart"));
+    has(
+        &c,
+        &[
+            "builder: (context, state, child) => buildWithSegments(\n          () => _seg1(state),\n          (v) => _i1.ShopLayout(child: child, shop: v.shop),",
+            "redirect: (context, state) => guardWithSegments(\n              () => _seg1(state),\n              (v) => _i2.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),",
+            "path: joinLocation(at, '/:shop')",
+        ],
+    );
 }
 
 #[test]
 fn misc_rules() {
-    let e = errors(&[
+    let e = diags(&[
         ("page.dart", HOME),
-        ("a/guard.dart", "GuardResult guard(ProviderContainer c, Params p) => null;"),
-        ("b/not_found.dart", "class N extends NotFoundView {}"),
-        ("c/page.dart", "class HomeScreen extends Screen<Params> {}"),
+        ("a/guard.dart", "GuardResult guard(ProviderContainer c) => null;"),
+        ("b/not_found.dart", "class N extends StatelessWidget {}"),
+        ("c/page.dart", "class HomeScreen extends StatelessWidget {}"),
+        ("d/page.dart", "class A extends StatelessWidget {}\nclass B extends StatelessWidget {}"),
         ("Bad Name/page.dart", HOME),
+        ("$data/page.dart", HOME),
     ]);
     let joined = e.join("\n");
-    assert!(joined.contains("a/guard.dart  guard.dart needs a page.dart"), "{joined}");
-    assert!(joined.contains("b/not_found.dart  not_found.dart only works at the root"), "{joined}");
-    assert!(joined.contains("route name `HomeRoute` is already taken by page.dart"), "{joined}");
-    assert!(joined.contains("`Bad Name` is not a valid URL segment"), "{joined}");
+    for needle in [
+        "a/guard.dart  guard.dart needs a page.dart",
+        "b/not_found.dart  not_found.dart only works at the root",
+        "route name `HomeRoute` is already taken by page.dart",
+        "d/page.dart:2  expected one public widget class, found A, B",
+        "`Bad Name` is not a valid URL segment",
+        "`$data` is reserved",
+    ] {
+        assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
+    }
 }
 
 #[test]
 fn errors_leave_output_untouched() {
-    let dir = project(&[("page.dart", "class P extends Screen<Nope> {}")]);
+    let dir = project(&[("page.dart", "class P extends StatelessWidget { const P({required this.x}); final int x; }")]);
     assert!(gen(dir.path(), true).is_err());
     assert!(!dir.path().join("lib/app.g.dart").exists());
 }
 
 #[test]
 fn scaffold_then_generate() {
-    let dir = project(&[("page.dart", HOME)]);
+    let dir = project(&[("page.dart", HOME), ("$id/data.dart", "Future<int> data(Ref ref, {required int id}) async => id;"), ("$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage(this.n, {super.key}); final int n; }")]);
     let args = |route: &str, data: bool| scaffold::NewArgs {
         route: route.into(),
         name: Some("Order".into()),
         data,
         loading: true,
         error: true,
-        layout: false,
+        layout: true,
         guard: true,
     };
     scaffold::new_route(dir.path(), &args("orders/[orderId]", true)).unwrap();
-    let params = fs::read_to_string(dir.path().join("lib/app/orders/$orderId/params.dart")).unwrap();
-    assert!(params.contains("class OrderParams extends Params {"), "{params}");
+    let data = fs::read_to_string(dir.path().join("lib/app/orders/$orderId/data.dart")).unwrap();
+    assert!(data.contains("Future<String> data(Ref ref, {required String orderId}) async =>\n    'Hello from /orders/$orderId';"), "{data}");
     gen(dir.path(), true).expect("scaffolded route should check cleanly");
 
-    // A nested route under it inherits OrderParams through a package import.
-    let mut nested = args("orders/:orderId/items/:itemId", false);
-    nested.name = Some("Item".into());
+    // Under an existing `$id: int`, the scaffold keeps that type.
+    let mut nested = args(":id/notes/:noteId", false);
+    nested.name = Some("Note".into());
     scaffold::new_route(dir.path(), &nested).unwrap();
-    let p = fs::read_to_string(dir.path().join("lib/app/orders/$orderId/items/$itemId/params.dart")).unwrap();
-    assert!(p.contains("import 'package:demo/app/orders/\\$orderId/params.dart';"), "{p}");
-    assert!(p.contains("ItemParams({required super.orderId, required this.itemId})"), "{p}");
+    let page = fs::read_to_string(dir.path().join("lib/app/$id/notes/$noteId/page.dart")).unwrap();
+    assert!(page.contains("const NotePage({super.key, required this.id, required this.noteId});"), "{page}");
+    assert!(page.contains("final int id;\n  final String noteId;"), "{page}");
     gen(dir.path(), true).expect("nested scaffold should check cleanly");
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
-    assert!(code.contains("const ItemRoute({required this.orderId, required this.itemId});"), "{code}");
+    assert!(code.contains("const NoteRoute({required this.id, required this.noteId});"), "{code}");
 }

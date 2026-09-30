@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:trellis/trellis.dart';
+import 'package:fespalier/fespalier.dart';
 
 import 'app.g.dart';
 

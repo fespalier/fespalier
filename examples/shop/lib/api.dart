@@ -1,4 +1,4 @@
-import 'package:trellis/trellis.dart';
+import 'package:fespalier/fespalier.dart';
 
 class Product {
   const Product(this.id, this.name, this.price);

@@ -1,6 +1,6 @@
+import 'package:fespalier/fespalier.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:trellis/trellis.dart';
 
 void main() {
   test('joinLocation mounts paths under a base', () {
@@ -10,15 +10,7 @@ void main() {
     expect(joinLocation('/shop/', '/cart'), '/shop/cart');
   });
 
-  test('RouteKey equality is the resolved path only', () {
-    final a = RouteKey('/products/1', Object());
-    final b = RouteKey('/products/1', Object());
-    expect(a, b);
-    expect(a.hashCode, b.hashCode);
-    expect(a == RouteKey('/products/2', Object()), isFalse);
-  });
-
-  group('segment parsing', () {
+  group('segments', () {
     GoRouterState state(Map<String, String> params) => GoRouterState(
           GoRouter(routes: []).configuration,
           uri: Uri.parse('/'),
@@ -28,7 +20,7 @@ void main() {
           pageKey: const ValueKey('k'),
         );
 
-    test('reads typed values', () {
+    test('read typed values', () {
       final s = state({'id': '42', 'x': '1.5', 'on': 'true', 'name': 'a'});
       expect(Segment.asInt(s, 'id'), 42);
       expect(Segment.asDouble(s, 'x'), 1.5);
@@ -36,18 +28,16 @@ void main() {
       expect(Segment.asString(s, 'name'), 'a');
     });
 
-    test('bad values fall back to not-found', () {
+    test('bad values fall back to not-found and skip guards', () {
       final s = state({'id': 'abc'});
-      expect(
-        buildWithParams(
-          () => Segment.asInt(s, 'id'),
-          (p) => const Text('page'),
-          () => const Text('not found'),
-        ),
-        isA<Text>().having((t) => t.data, 'data', 'not found'),
+      final built = buildWithSegments(
+        () => (id: Segment.asInt(s, 'id')),
+        (v) => Text('page ${v.id}'),
+        () => const Text('not found'),
       );
+      expect((built as Text).data, 'not found');
       expect(
-        guardWithParams(() => Segment.asInt(s, 'id'), (p) => '/login'),
+        guardWithSegments(() => Segment.asInt(s, 'id'), (id) => '/login'),
         isNull,
       );
     });

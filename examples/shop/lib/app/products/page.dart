@@ -1,10 +1,13 @@
+import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:shop/api.dart';
 import 'package:shop/app.g.dart';
-import 'package:trellis/trellis.dart';
 
-class ProductsPage extends Screen<List<Product>> {
-  const ProductsPage(super.data, {super.key});
+class ProductsPage extends ConsumerWidget {
+  const ProductsPage({super.key, required this.products});
+
+  /// What data.dart yields, matched by type.
+  final List<Product> products;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Material(
@@ -15,7 +18,7 @@ class ProductsPage extends Screen<List<Product>> {
           onRefresh: () => const ProductsRoute().refresh(ref),
           child: ListView(
             children: [
-              for (final p in data)
+              for (final p in products)
                 ListTile(
                   title: Text(p.name),
                   trailing: Text('€${p.price.toStringAsFixed(2)}'),

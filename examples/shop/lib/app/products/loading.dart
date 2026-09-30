@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:trellis/trellis.dart';
 
 /// Also covers products/$id, which has no loading.dart of its own.
-class ProductsLoading extends Loading<Params> {
-  const ProductsLoading(super.params, {super.key});
+class ProductsLoading extends StatelessWidget {
+  const ProductsLoading({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final shade = Theme.of(context).colorScheme.surfaceContainerHighest;
     return ListView(
       padding: const EdgeInsets.all(16),

@@ -1,5 +1,5 @@
 name: shop
-description: trellis example — products/$id end to end.
+description: fespalier example — products/$id end to end.
 publish_to: none
 version: 0.1.0
 
@@ -9,8 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  trellis:
-    path: ../../packages/trellis
+  fespalier:
+    path: ../../packages/fespalier
 
 dev_dependencies:
   flutter_test:

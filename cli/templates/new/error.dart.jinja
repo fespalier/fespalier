@@ -1,0 +1,13 @@
+import 'package:flutter/material.dart';
+
+class {{ stem }}Error extends StatelessWidget {
+  const {{ stem }}Error({super.key, required this.error, required this.retry});
+
+  final Object error;
+  final VoidCallback retry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: TextButton(onPressed: retry, child: Text('$error · retry')),
+      );
+}

@@ -1,10 +1,12 @@
+import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:shop/app.g.dart';
 import 'package:shop/cart.dart';
-import 'package:trellis/trellis.dart';
 
-class AppLayout extends Layout {
-  const AppLayout(super.child, {super.key});
+class AppLayout extends ConsumerWidget {
+  const AppLayout({super.key, required this.child});
+
+  final Widget child;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

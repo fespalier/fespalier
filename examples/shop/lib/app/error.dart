@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:trellis/trellis.dart';
 
-class RootError extends ErrorView<Params> {
-  const RootError(super.params, super.failure, {super.key});
+class RootError extends StatelessWidget {
+  const RootError({super.key, required this.error, required this.retry});
+
+  final Object error;
+  final VoidCallback retry;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Center(
+  Widget build(BuildContext context) => Center(
         child: TextButton.icon(
-          onPressed: failure.retry,
+          onPressed: retry,
           icon: const Icon(Icons.refresh),
-          label: Text('${failure.error}'),
+          label: Text('$error'),
         ),
       );
 }

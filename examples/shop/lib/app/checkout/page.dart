@@ -1,10 +1,10 @@
+import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:shop/app.g.dart';
 import 'package:shop/cart.dart';
-import 'package:trellis/trellis.dart';
 
-class CheckoutPage extends Screen<Params> {
-  const CheckoutPage(super.data, {super.key});
+class CheckoutPage extends HookConsumerWidget {
+  const CheckoutPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

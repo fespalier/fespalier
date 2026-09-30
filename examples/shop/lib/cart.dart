@@ -1,4 +1,4 @@
-import 'package:trellis/trellis.dart';
+import 'package:fespalier/fespalier.dart';
 
 import 'api.dart';
 

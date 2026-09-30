@@ -1,10 +1,12 @@
+import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:shop/api.dart';
 import 'package:shop/cart.dart';
-import 'package:trellis/trellis.dart';
 
-class ProductPage extends Screen<Product> {
-  const ProductPage(super.data, {super.key});
+class ProductPage extends HookConsumerWidget {
+  const ProductPage({super.key, required this.product});
+
+  final Product product;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -14,8 +16,8 @@ class ProductPage extends Screen<Product> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(data.name, style: Theme.of(context).textTheme.headlineSmall),
-          Text('€${data.price.toStringAsFixed(2)}'),
+          Text(product.name, style: Theme.of(context).textTheme.headlineSmall),
+          Text('€${product.price.toStringAsFixed(2)}'),
           const SizedBox(height: 24),
           Row(
             children: [
@@ -31,7 +33,7 @@ class ProductPage extends Screen<Product> {
               const SizedBox(width: 16),
               FilledButton(
                 onPressed: () {
-                  ref.read(cartProvider.notifier).add(data, qty.value);
+                  ref.read(cartProvider.notifier).add(product, qty.value);
                   qty.value = 1;
                 },
                 child: const Text('Add to cart'),

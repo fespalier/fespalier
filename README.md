@@ -1,30 +1,34 @@
-# trellis
+# fespalier
 
-File-tree routing for Flutter. You write tiny typed files under `lib/app/`, and a
-generator checks the contracts between them and federates everything into one
+File-tree routing for Flutter, in the spirit of Next.js. An espalier is a tree
+trained flat against a frame; here the frame is `lib/app/`.
+
+You write plain widgets and functions in small files under `lib/app/`. There are no
+base classes or interfaces to implement: the file name says what a file is, and its
+constructor says what it needs. The `fsp` generator reads every file, works out what
+each parameter should receive, checks that the files fit together, and writes one
 mountable `lib/app.g.dart`. It's built on go_router, Riverpod and flutter_hooks,
 with no build_runner.
 
 ```
 lib/app/
-  layout.dart            AppLayout extends Layout              → ShellRoute
-  page.dart              HomePage extends Screen<Params>       → /
-  loading.dart           RootLoading extends Loading<Params>     (inherited)
-  error.dart             RootError extends ErrorView<Params>     (inherited)
-  not_found.dart         NotFound extends NotFoundView
+  layout.dart            AppLayout({required Widget child})           → ShellRoute
+  page.dart              HomePage()                                   → /
+  loading.dart           RootLoading()                                  (inherited)
+  error.dart             RootError({required Object error, required VoidCallback retry})
+  not_found.dart         NotFound({required Uri uri})
   products/
-    data.dart            Future<List<Product>> data(Ref, Params)
-    page.dart            ProductsPage extends Screen<List<Product>>  → /products
-    loading.dart         ProductsLoading extends Loading<Params>
+    data.dart            final data = FutureProvider<List<Product>>(…)
+    page.dart            ProductsPage({required List<Product> products})  → /products
+    loading.dart         ProductsLoading()
     $id/
-      params.dart        ProductParams extends Params { final int id; }
-      data.dart          Future<Product> data(Ref, ProductParams)
-      page.dart          ProductPage extends Screen<Product>    → /products/:id
-      error.dart         ProductError extends ErrorView<ProductParams>
+      data.dart          Future<Product> data(Ref ref, {required int id})
+      page.dart          ProductPage({required Product product})       → /products/:id
+      error.dart         ProductError({required int id, required Object error, …})
   checkout/
-    guard.dart           GuardResult guard(ProviderContainer, Params)
+    guard.dart           GuardResult guard(ProviderContainer c)
     page.dart
-  greet/$name/page.dart  (no params.dart → generated GreetParams { String name })
+  greet/$name/page.dart  GreetPage({required String name})
   _components/           private: never routes
 ```
 
@@ -35,71 +39,124 @@ MaterialApp.router(routerConfig: AppRoutes.router());
 // or inside an existing GoRouter (brownfield)
 GoRouter(routes: [...legacyRoutes, ...AppRoutes.mount(at: '/shop')]);
 
-// typed navigation + data refresh, generated from the tree
+// typed navigation, generated from the tree
 ProductRoute(id: 42).go(context);
+
+// each route's data.dart, as a Riverpod provider
+ref.watch(ProductRoute.data(42));
 await const ProductsRoute().refresh(ref);
 ```
 
 ## File kinds
 
-Each file exports exactly one symbol with a known base type. The generator wires
-them together and nothing else.
+Each view file exports one public widget class, of any kind: `StatelessWidget`,
+`ConsumerWidget`, `HookConsumerWidget` and so on. Function files export one
+top-level function.
 
-| File | Exports | Contract |
+| File | Exports | Its constructor / signature can ask for |
 |---|---|---|
-| `page.dart` | `class X extends Screen<T>` | `T` = what `data.dart` yields, or the route's params if there's no `data.dart` |
-| `data.dart` | `data(Ref ref, P params)` | returns `Future<T>`, `Stream<T>` or `T`; `P` ⊇ route params |
-| `loading.dart` | `class X extends Loading<P>` | inherited by subfolders; `P` must fit every route it covers |
-| `error.dart` | `class X extends ErrorView<P>` | inherited; gets `failure.error` and `failure.retry` |
-| `layout.dart` | `class X extends Layout` | wraps this folder and below (ShellRoute) |
-| `params.dart` | `class X extends <parent params>` | one `final` field per `$segment` up the path: `String`/`int`/`double`/`bool` |
-| `guard.dart` | `GuardResult guard(ProviderContainer c, P params)` | `null` = allow, a location = redirect |
-| `not_found.dart` | `class X extends NotFoundView` | root only; unknown paths and unparsable params (`/products/abc`) |
+| `page.dart` | a widget | segments; what `data.dart` yields |
+| `data.dart` | `data(Ref ref, {segments})` returning `Future<T>`, `Stream<T>` or `T` — **or** `final data = <Provider>(…)` | segments (named) |
+| `loading.dart` | a widget, inherited by subfolders | segments |
+| `error.dart` | a widget, inherited by subfolders | segments; `error`, `stackTrace`, `retry` |
+| `layout.dart` | a widget; wraps this folder and below (ShellRoute) | `child`; segments at or above it |
+| `guard.dart` | `GuardResult guard(ProviderContainer c, {segments})` | segments (named) |
+| `not_found.dart` | a widget, root only; unknown paths and unparsable segments | `uri` |
 
-`Screen`, `Loading`, `ErrorView`, `Layout` and `NotFoundView` are all
-`HookConsumerWidget`s, so `useState` and `ref.watch` work everywhere. Pages
-are called `Screen` because Flutter already exports `Page<T>`.
+### How parameters are filled
 
-**Params form a class hierarchy.** For example, `ItemParams extends OrderParams extends Params`.
-Because of that, a `loading.dart` typed on `OrderParams` is valid for every route below it.
-One typed on a narrower class is a generator error, not a runtime surprise.
+The generator reads each constructor (named or positional, `this.x` or typed) and fills
+every parameter:
+
+1. **By name.** A parameter named like a `$segment` in the path gets that segment.
+   `data`, `child`, `error`, `stackTrace`, `retry` and `uri` get what their name says, in
+   the files where they make sense.
+2. **By type.** Otherwise, a page's parameter whose type is what `data.dart` yields gets
+   the data, so `final Product product;` works. An error view's `Object` gets the error,
+   `StackTrace` the stack trace and `VoidCallback` the retry. A layout's `Widget` gets the
+   child, and not-found's `Uri` gets the URI.
+3. **Otherwise**, a required parameter is a generator error pointing at it. An optional
+   one is left to its default.
+
+These names are reserved, so segments can't use them.
+
+### Segment types
+
+A segment's type comes from the parameters that ask for it: `{required int id}` in
+`products/$id/data.dart` makes `$id` an `int` everywhere. That covers the typed
+`ProductRoute(id: 42)`, the page, and parsing: `/products/abc` goes to `not_found.dart`.
+Every file that asks for `$id` must agree on its type. When nobody gives one, a segment
+is a `String`. Segments are `String`, `int`, `double` or `bool`.
+
+### `data.dart`: a function or a provider
+
+Write a function and fespalier wraps it in an autoDispose `FutureProvider` (or
+`StreamProvider` for a `Stream`). Or export a provider named `data` yourself:
+`FutureProvider`, `StreamProvider`, `AsyncNotifierProvider` or `StreamNotifierProvider`,
+with its type arguments spelled out. It's used as-is.
+
+Either way, the route exposes it as `XRoute.data`, keyed by the segments `data.dart`
+uses:
+
+| Segments used | Provider | Watch it with |
+|---|---|---|
+| none | plain | `ref.watch(ProductsRoute.data)` |
+| one | `.family<T, int>` | `ref.watch(ProductRoute.data(42))` |
+| several | `.family<T, ({String shop, int id})>` | `ref.watch(ItemRoute.data((shop: 'a', id: 1)))` |
+
+A family provider you write yourself follows the same rule. With several segments, its
+argument is a record naming the ones it uses.
 
 ## The generator
 
-`cli/` is a standalone Rust binary. It's fast enough to run on every save:
-a full scan, check and emit of the example takes under 1 ms.
+`cli/` is a Rust binary, `fsp`. A full scan, check and emit of an example runs in a few
+milliseconds, fast enough to run on every save.
 
 ```sh
-cd cli && cargo build --release        # → cli/target/release/trellis
+cd cli && cargo build --release        # → cli/target/release/fsp
 
-trellis gen                 # check lib/app/, write lib/app.g.dart
-trellis watch               # same, on every change (keep it next to `flutter run`)
-trellis check               # CI: non-zero exit on errors, writes nothing
-trellis new 'products/[id]' --name Product --data --loading --error
-                            # [id] or :id both mean $id, so no shell quoting of $
+fsp gen                 # check lib/app/, write lib/app.g.dart
+fsp watch               # same, on every change (keep it next to `flutter run`)
+fsp check               # CI: non-zero exit on errors, writes nothing
+fsp new 'products/[id]' --name Product --data --loading --error --layout --guard
+                        # [id] or :id both mean $id, so no shell quoting of $
 ```
 
-Errors are reported per file. When there are errors, `app.g.dart` is left untouched:
+Errors point at the parameter or declaration at fault, and `app.g.dart` is left
+untouched while there are any:
 
 ```
-✗ products/loading.dart  loading view takes ProductParams, but it also covers products/ whose params are Params
-✗ products/$id/params.dart:7  field `productId` has no `$productId` segment in this path
-✗ products/$id/params.dart:4  missing field for segment `$id`
-✗ products/$id/page.dart:6  Screen<List<Product>> but data.dart yields Product
+error: can't fill `label`: it isn't a segment of this path ($shop, $id) or data.dart's String
+  ┌─ lib/app/shops/$shop/items/$id/page.dart:6:18
+  │
+6 │   const ItemPage(this.label, {super.key});
+  │                  ^^^^^^^^^^
+
+error: `$id` is int in products/$id/data.dart:6 but String here
 ```
+
+It's built on existing libraries rather than hand-rolled parts:
+
+- [tree-sitter](https://tree-sitter.github.io/) with
+  [tree-sitter-dart](https://github.com/nielsenko/tree-sitter-dart) parses Dart.
+- [minijinja](https://github.com/mitsuhiko/minijinja) renders the output. The shape of
+  `app.g.dart` and of every scaffolded file lives in `cli/templates/`.
+- [codespan-reporting](https://github.com/brendanzab/codespan) renders diagnostics.
+- [clap](https://github.com/clap-rs/clap) handles the command line, and
+  [notify-debouncer-mini](https://github.com/notify-rs/notify) drives `watch`.
 
 `lib/app.g.dart` is plain go_router + Riverpod code that's meant to be read and committed.
-It opens with a route table, see `examples/shop/lib/app.g.dart`. How it's put together:
+It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
 
-- **Data** becomes a `FutureProvider.autoDispose.family` (or `StreamProvider`) keyed by the
-  resolved path. Your params classes therefore never need `==`/`hashCode`.
-- **Types** are inferred from your functions, never re-spelled. That's why the generator
-  doesn't need to copy your imports.
+- **Types are never re-spelled.** The generator doesn't copy your imports. Values flow
+  through inference, and each route's provider is a `static final` whose type is inferred.
+- **Segments are parsed into a record** (`({int id})`). Records compare by value, so
+  providers are keyed by the segments directly.
 - **Page-less folders** fold into their children's paths (`greet/$name` → `'greet/:name'`).
 - **`AppRoutes.mount(at:)`** only changes the root path. Typed routes read `AppRoutes.base`,
   so `.location` stays correct when mounted under `/shop`.
 
-## Run the example
+## Run the examples
 
 ```sh
 cd examples/shop
@@ -112,39 +169,45 @@ Try `/products/13`: it fails once, so you see `error.dart` and **Retry**. Try `/
 (the int parse fails → `not_found.dart`), `/checkout` with an empty cart (the guard redirects
 to `/cart`), and `/greet/you`.
 
+`examples/features` covers the rest: data keyed by two segments, a page and error view
+bound by type, a layout and guard that take segments, a user-written
+`AsyncNotifierProvider`, and `Stream` data.
+
 ## Development
 
 ```
 cli/                 the generator (Rust): scan → resolve/check → emit
-packages/trellis/    the runtime every user file imports (Screen, Loading, ErrorView, …)
+cli/templates/       minijinja templates for app.g.dart and `fsp new`
+packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation)
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
+examples/features/   every binding rule, with widget tests
 ```
 
 ```sh
 (cd cli && cargo test && cargo clippy --all-targets)
 (cd cli && cargo run -- check --project ../examples/shop)
-(cd packages/trellis && flutter pub get && flutter analyze && flutter test)
+(cd packages/fespalier && flutter pub get && flutter analyze && flutter test)
 (cd examples/shop && flutter pub get && flutter analyze && flutter test)
+(cd examples/features && flutter pub get && flutter analyze && flutter test)
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of the above. After changing the emitter,
-regenerate the example with `cargo run -- gen --project ../examples/shop`: a test
-fails if the committed `app.g.dart` is stale.
+CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
+with `fsp new` and runs `flutter analyze` on the result. After changing the emitter or a
+template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
+a committed `app.g.dart` is stale.
 
 ## Status
 
-This is a proof of concept.
+This is an early version.
 
-- **Generator:** 15 tests cover lexing, every contract error, stream data,
-  scaffolding, and that the committed `app.g.dart` is up to date. Clippy is clean.
-- **Runtime + example:** `flutter analyze` is clean on Flutter 3.47 (go_router 17,
-  hooks_riverpod 3, flutter_hooks 0.21). Widget tests in `examples/shop/test/` drive the
-  generated router through every file kind: loading → page, error + retry, typed errors,
-  unparsable params and unknown paths → `not_found.dart`, guard redirect and pass-through,
-  generated params, `refresh()`, and `mount(at: '/shop')` inside a host GoRouter.
-- **The generator reads Dart lexically, not with the analyzer.** It knows the shapes above.
-  Anything unusual (e.g. a `typedef`'d return type) passes through, and the Dart compiler
-  still catches mismatches in the generated code.
+- **Generator:** 20 tests cover parsing, every binding rule and contract error, both
+  data forms, scaffolding, and that the committed outputs are up to date. Clippy is clean.
+- **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17,
+  hooks_riverpod 3, flutter_hooks 0.21). The widget tests in both examples drive the
+  generated router through every file kind.
+- **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
+  not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The
+  Dart compiler still catches real mismatches in the generated code.
 
 Things to know:
 
@@ -154,6 +217,5 @@ Things to know:
 - go_router builds the whole matched stack, so `/products/abc` also loads `/products`
   underneath the not-found view.
 
-Next steps: query params in `params.dart`, `(group)` folders for layouts without URL
-segments, per-route transitions, a `StatefulShellRoute` layout for tab bars,
-`dart format` on output, and go_router 18.
+Next steps: query parameters, `(group)` folders for layouts without URL segments,
+per-route transitions, a `StatefulShellRoute` layout for tab bars, and go_router 18.

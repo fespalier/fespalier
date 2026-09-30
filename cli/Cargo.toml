@@ -1,17 +1,24 @@
 [package]
-name = "trellis-cli"
+name = "fespalier"
 version = "0.1.0"
 edition = "2021"
-description = "File-tree router generator for Flutter: scans lib/app/, type-checks the tiny files, emits one mountable lib/app.g.dart"
+description = "File-tree routing for Flutter: reads lib/app/, checks how the files fit together, emits one mountable lib/app.g.dart"
+license = "MIT"
 
 [[bin]]
-name = "trellis"
+name = "fsp"
 path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-notify = "6"
+codespan-reporting = "0.13"
+heck = "0.5"
+minijinja = { version = "2", features = ["loader"] }
+notify-debouncer-mini = "0.7"
+serde = { version = "1", features = ["derive"] }
+tree-sitter = "0.26"
+tree-sitter-dart = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

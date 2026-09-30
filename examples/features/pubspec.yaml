@@ -1,0 +1,20 @@
+name: features
+description: fespalier example — every binding the generator knows, with widget tests.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:trellis/trellis.dart';
 
-class RootLoading extends Loading<Params> {
-  const RootLoading(super.params, {super.key});
+class RootLoading extends StatelessWidget {
+  const RootLoading({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) =>
+  Widget build(BuildContext context) =>
       const Center(child: CircularProgressIndicator());
 }

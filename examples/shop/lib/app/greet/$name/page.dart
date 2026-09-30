@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:shop/app.g.dart';
-import 'package:trellis/trellis.dart';
 
-/// No params.dart here, so trellis generates `GreetParams { String name }`.
-class GreetPage extends Screen<GreetParams> {
-  const GreetPage(super.data, {super.key});
+/// Asks for `name`, so it gets the `$name` segment. Nobody gives it a type,
+/// so it's a String.
+class GreetPage extends StatelessWidget {
+  const GreetPage({super.key, required this.name});
+
+  final String name;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) =>
-      Center(child: Text('Hello, ${data.name}'));
+  Widget build(BuildContext context) => Center(child: Text('Hello, $name'));
 }

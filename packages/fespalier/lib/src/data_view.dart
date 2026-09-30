@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import 'failure.dart';
-
 /// Glue emitted around every route that has a `data.dart`:
 /// watch the provider, then pick page / loading / error.
 ///
-/// Takes closures instead of provider types so it stays stable across
-/// Riverpod versions.
+/// Takes closures instead of provider types so it works with any provider
+/// whose value is an [AsyncValue].
 class DataView<T> extends ConsumerWidget {
   const DataView({
     super.key,
@@ -22,13 +20,14 @@ class DataView<T> extends ConsumerWidget {
   final void Function(WidgetRef ref) refresh;
   final Widget Function(T data) data;
   final Widget Function() loading;
-  final Widget Function(LoadFailure failure) error;
+  final Widget Function(Object error, StackTrace stackTrace, VoidCallback retry)
+      error;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => watch(ref).when(
         data: data,
         loading: loading,
-        error: (e, st) => error(LoadFailure(e, st, retry: () => refresh(ref))),
+        error: (e, st) => error(e, st, () => refresh(ref)),
       );
 }
 
@@ -47,21 +46,19 @@ class DefaultLoading extends StatelessWidget {
 
 /// Fallback when no `error.dart` exists anywhere up the tree.
 class DefaultError extends StatelessWidget {
-  const DefaultError(this.failure, {super.key});
+  const DefaultError({super.key, required this.error, required this.retry});
 
-  final LoadFailure failure;
+  final Object error;
+  final VoidCallback retry;
 
   @override
   Widget build(BuildContext context) => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('${failure.error}', textAlign: TextAlign.center),
+            Text('$error', textAlign: TextAlign.center),
             const SizedBox(height: 12),
-            GestureDetector(
-              onTap: failure.retry,
-              child: const Text('Retry'),
-            ),
+            TextButton(onPressed: retry, child: const Text('Retry')),
           ],
         ),
       );

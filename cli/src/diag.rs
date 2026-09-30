@@ -1,6 +1,16 @@
-//! File-scoped diagnostics: `✗ products/$id/page.dart:4  message`.
+//! File-scoped diagnostics. `Display` gives the one-line form used in tests
+//! (`✗ products/$id/page.dart:4  message`); [`render`] prints them with source
+//! snippets through codespan-reporting.
 
 use std::fmt;
+use std::io::IsTerminal;
+use std::path::Path;
+
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::files::SimpleFiles;
+use codespan_reporting::term::{self, termcolor::{ColorChoice, StandardStream}};
+
+use crate::dart::Span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Level {
@@ -11,8 +21,9 @@ pub enum Level {
 #[derive(Debug, Clone)]
 pub struct Diag {
     pub level: Level,
+    /// Relative to `lib/app`.
     pub file: String,
-    pub line: usize,
+    pub span: Option<Span>,
     pub msg: String,
 }
 
@@ -20,16 +31,28 @@ pub struct Diag {
 pub struct Diags(pub Vec<Diag>);
 
 impl Diags {
-    pub fn error(&mut self, file: &str, line: usize, msg: impl Into<String>) {
-        self.0.push(Diag { level: Level::Error, file: file.into(), line, msg: msg.into() });
+    pub fn error(&mut self, file: &str, span: Option<&Span>, msg: impl Into<String>) {
+        self.push(Level::Error, file, span, msg.into());
     }
 
-    pub fn warn(&mut self, file: &str, line: usize, msg: impl Into<String>) {
-        self.0.push(Diag { level: Level::Warning, file: file.into(), line, msg: msg.into() });
+    pub fn warn(&mut self, file: &str, span: Option<&Span>, msg: impl Into<String>) {
+        self.push(Level::Warning, file, span, msg.into());
+    }
+
+    fn push(&mut self, level: Level, file: &str, span: Option<&Span>, msg: String) {
+        let d = Diag { level, file: file.into(), span: span.cloned(), msg };
+        // Inherited files can trip the same check from several routes.
+        if !self.0.iter().any(|x| x.file == d.file && x.msg == d.msg && x.span == d.span) {
+            self.0.push(d);
+        }
     }
 
     pub fn has_errors(&self) -> bool {
         self.0.iter().any(|d| d.level == Level::Error)
+    }
+
+    pub fn error_count(&self) -> usize {
+        self.0.iter().filter(|d| d.level == Level::Error).count()
     }
 }
 
@@ -39,10 +62,35 @@ impl fmt::Display for Diag {
             Level::Error => "✗",
             Level::Warning => "!",
         };
-        if self.line > 0 {
-            write!(f, "{mark} {}:{}  {}", self.file, self.line, self.msg)
-        } else {
-            write!(f, "{mark} {}  {}", self.file, self.msg)
+        match &self.span {
+            Some(s) => write!(f, "{mark} {}:{}  {}", self.file, s.line, self.msg),
+            None => write!(f, "{mark} {}  {}", self.file, self.msg),
+        }
+    }
+}
+
+/// Prints diagnostics to stderr, with the offending source when there is a span.
+pub fn render(app_dir: &Path, diags: &Diags) {
+    let color = if std::io::stderr().is_terminal() { ColorChoice::Auto } else { ColorChoice::Never };
+    let out = StandardStream::stderr(color);
+    let config = term::Config::default();
+    let mut files = SimpleFiles::new();
+    for d in &diags.0 {
+        let base = match d.level {
+            Level::Error => Diagnostic::error(),
+            Level::Warning => Diagnostic::warning(),
+        };
+        let shown = format!("lib/app/{}", d.file);
+        let source = d.span.as_ref().and_then(|_| std::fs::read_to_string(app_dir.join(&d.file)).ok());
+        let diagnostic = match (&d.span, source) {
+            (Some(span), Some(src)) => {
+                let id = files.add(shown, src);
+                base.with_message(&d.msg).with_labels(vec![Label::primary(id, span.bytes.clone())])
+            }
+            _ => base.with_message(format!("{shown}: {}", d.msg)),
+        };
+        if term::emit_to_write_style(&mut out.lock(), &config, &files, &diagnostic).is_err() {
+            eprintln!("{d}");
         }
     }
 }

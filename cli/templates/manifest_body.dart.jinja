@@ -53,5 +53,14 @@ abstract final class AppManifest {
   /// page, say). Handy in a layout: `AppManifest.of(GoRouterState.of(context))`.
   static RouteInfo<Object?>? of(GoRouterState state) =>
       lookupRoute(byPath, routeTemplate(state, AppRoutes.base));
+
+  /// [uri] matched to its route: the [RouteInfo], the parameters parsed from the URL and the
+  /// providers of its data (each section's, then the route's own), the same ones the page
+  /// watches. Null when no route fits or a segment doesn't parse (the not-found rule). The
+  /// mount point is taken off; no guard runs and no widget is built.
+  static RouteMatch? match(Uri uri) {
+    final m = AppRoutes.matchUrl(uri);
+    return m == null ? null : RouteMatch(byType[m.type]!, m);
+  }
 }
 {%- endmacro %}

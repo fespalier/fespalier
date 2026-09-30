@@ -54,6 +54,9 @@ pub enum Bind {
     IsShell,
     /// A page's `extra` parameter: the object passed to `go(..., extra:)`.
     Extra,
+    /// A segment above a not_found.dart, as the URL spells it: a `String`, because the
+    /// ones that failed to parse are the reason the file is shown.
+    Raw(String),
 }
 
 #[derive(Debug, Clone)]
@@ -228,6 +231,11 @@ pub struct Route {
     pub extra: Option<ExtraType>,
     /// The `extra` parameter of this folder's layout.
     pub layout_extra: Option<HookExtra>,
+    /// The literal named arguments of `const meta = Meta(code: 'x', ...)`, for `meta_unique`.
+    pub meta_args: Vec<dart::ObjectArg>,
+    /// The sections (route ids) above this folder, outermost first, whose data.dart the
+    /// layouts above load: what `AppRoutes.dataAt` lists before the route's own data.
+    pub sections: Vec<usize>,
     /// Whether this folder's paths match by case: the nearest `route.dart`'s
     /// `caseSensitive` at or above it, else the pubspec's `case_sensitive`.
     pub case_sensitive: bool,
@@ -470,6 +478,8 @@ impl Resolver<'_> {
             meta: None,
             extra: None,
             layout_extra: None,
+            meta_args: vec![],
+            sections: up.sections.iter().map(|s| s.id).collect(),
             case_sensitive: up.case_sensitive,
         });
 
@@ -522,17 +532,20 @@ impl Resolver<'_> {
             };
             self.claim(&url, n, &page_file, &c.span, &fix);
         }
-        let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs, id));
         // Without a page.dart, a data.dart with a layout.dart beside it is the data of the
-        // section that layout wraps.
-        let section = data.is_some() && !node.files.contains_key(&Kind::Page) && node.files.contains_key(&Kind::Layout);
+        // section that layout wraps; the query parameters it takes are the layout's.
+        let section_folder = !node.files.contains_key(&Kind::Page) && node.files.contains_key(&Kind::Layout);
+        let data_scope = if section_folder { Scope::Layout(id) } else { Scope::Route(id) };
+        let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs, data_scope));
+        let section = data.is_some() && section_folder;
         if data.is_some() && !section && !node.files.contains_key(&Kind::Page) {
             let msg = "data.dart has no page.dart to feed; with a layout.dart beside it, it would be the data of the section below that layout";
             self.diags.error(&node.rel(Kind::Data), None, msg);
         }
         if let (true, Some(d)) = (section, &data) {
-            if let Some(q) = d.keys.iter().find(|k| !segs.iter().any(|(s, _)| s == *k)) {
-                let msg = format!("`{q}`: a section's data.dart can only take segments, not query parameters; the pages below it can't see them");
+            // The section's typed handle (`AccountSection.watch(ref, {...keys})`) takes them as named parameters.
+            if let Some(k) = d.keys.iter().find(|k| ROUTE_MEMBERS.contains(&k.as_str())) {
+                let msg = format!("`{k}` can't be a key of a section's data.dart: the section's typed handle has a member called `{k}`; rename it");
                 self.diags.error(&node.rel(Kind::Data), None, msg);
             }
         }
@@ -692,7 +705,7 @@ impl Resolver<'_> {
                 }
                 let cx = BindCx {
                     role: Role::NotFound,
-                    segs: &[],
+                    segs: &segs,
                     data: None,
                     sections: &[],
                     file: &file,
@@ -724,11 +737,27 @@ impl Resolver<'_> {
 
         let has_page = page.is_some();
         let has_route = has_page || redirect.is_some();
+        // A section keyed by a query parameter makes every route below it depend on it: it is
+        // one of the route's query parameters too, so its typed route can write it.
+        if has_route {
+            for sec in &up.sections {
+                let keys = self.app.routes[sec.id].data.as_ref().map(|d| d.keys.clone()).unwrap_or_default();
+                for key in keys.iter().filter(|k| !segs.iter().any(|(s, _)| s == *k)) {
+                    if let Some((ty, ..)) = self.queries.get(&(Scope::Layout(sec.id), key.clone())).cloned() {
+                        self.declare_query(Scope::Route(id), key, ty, &sec.file, &Span::default());
+                    }
+                }
+            }
+        }
         self.app.routes[id].page_span = page_span;
         self.app.routes[id].not_found = not_found;
         self.app.routes[id].meta = modules.get(&Kind::Meta).and_then(|m| self.meta(m, node, has_route));
         // A redirect.dart route can carry an `extra` too, which its redirect reads.
         let extra = extra.or_else(|| redirect.as_ref().and_then(|g| g.extra.as_ref()).map(|e| e.ty.clone()));
+        if self.app.routes[id].meta.is_some() {
+            let literals = modules.get(&Kind::Meta).and_then(|m| m.variables.iter().find(|v| v.name == "meta")?.ctor_args.clone());
+            self.app.routes[id].meta_args = literals.unwrap_or_default();
+        }
         self.app.routes[id].extra = extra;
         self.app.routes[id].layout_extra = layout_extra;
         let transition = here.transition.clone().filter(|_| has_page && present.is_none());
@@ -1307,8 +1336,7 @@ impl Resolver<'_> {
         Some(p.name.clone())
     }
 
-    fn data(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], route: usize) -> Option<Data> {
-        let scope = Scope::Route(route);
+    fn data(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], scope: Scope) -> Option<Data> {
         let file = node.rel(Kind::Data);
         if let Some(f) = m.functions.iter().find(|f| f.name == "data") {
             if let Some(ty) = f.ret.as_ref().and_then(selected_value) {
@@ -1716,7 +1744,11 @@ fn by_name(name: &str, cx: &BindCx) -> Option<Bind> {
         (Role::Page | Role::Layout, "extra") => return Some(Bind::Extra),
         _ => {}
     }
-    cx.segs.iter().any(|(n, _)| n == name).then(|| Bind::Segment(name.to_string()))
+    let is_segment = cx.segs.iter().any(|(n, _)| n == name);
+    match cx.role {
+        Role::NotFound => is_segment.then(|| Bind::Raw(name.to_string())),
+        _ => is_segment.then(|| Bind::Segment(name.to_string())),
+    }
 }
 
 /// What a parameter of type `ty` receives in this role, going by its type.
@@ -1780,6 +1812,15 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
             });
         }
         // Data has its own message; segments and queries are settled with the segment types.
+        Bind::Raw(_) => {
+            let ok = matches!(ty.text.trim_end_matches('?'), "String" | "Object" | "dynamic");
+            return (!ok).then(|| {
+                format!(
+                    "`{name}` gets the segment as the URL spells it, a String: a segment that doesn't parse as `{}` is why not_found.dart is shown, so declare it `String {name}`",
+                    ty.text.trim_end_matches('?')
+                )
+            });
+        }
         Bind::Data | Bind::Section(_) | Bind::Segment(_) | Bind::Query(_) => return None,
     };
     let bare = ty.text.trim_end_matches('?');
@@ -1805,7 +1846,9 @@ fn unfillable(name: &str, cx: &BindCx) -> String {
         (Role::Layout, _) => format!(
             "can't fill `{name}`: a layout gets `Widget child` (or, for tabs, a `StatefulNavigationShell`), the segments above it ({segs}) and `extra`"
         ),
-        (Role::NotFound, _) => format!("can't fill `{name}`: not_found.dart only gets `Uri uri`"),
+        (Role::NotFound, _) => format!(
+            "can't fill `{name}`: not_found.dart only gets `Uri uri`, and the segments of its own path as Strings ({segs})"
+        ),
         _ => format!("can't fill `{name}`: it isn't a segment of this path ({segs})"),
     }
 }

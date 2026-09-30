@@ -309,6 +309,8 @@ mod extra_tests;
 #[cfg(test)]
 mod manifest_tests;
 #[cfg(test)]
+mod match_tests;
+#[cfg(test)]
 mod nav_tests;
 #[cfg(test)]
 mod navigator_tests;

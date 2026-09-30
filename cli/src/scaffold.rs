@@ -159,6 +159,9 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
     // A group has no URL of its own, so it can't serve a page (and one would
     // collide with the page of the folder above it).
     let is_group = matches!(segs.last(), Some(Seg::Group(_)));
+    if a.not_found && matches!(segs.last(), Some(Seg::CatchAll(..))) {
+        bail!("a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown");
+    }
     let wanted = [
         ("page", !no_page && !is_group),
         ("data", a.data),

@@ -7,6 +7,7 @@
 //!   format: false           # default; true runs `dart format` on the output
 //!   output_manifest: lib/app.routes.g.dart   # default: none, the manifest is in `output`
 //!   meta: optional          # default; `required` makes a route without meta.dart an error
+//!   meta_unique: [code]     # default: none; no two routes may pass the same literal `code:` to `meta`
 //!   case_sensitive: true    # default; false matches `/Products` too (a route.dart sets it per folder)
 //!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
 //!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
@@ -52,6 +53,9 @@ pub struct Config {
     pub output_manifest: Option<String>,
     /// `meta: required`: every route needs a meta.dart.
     pub meta_required: bool,
+    /// `meta_unique: [code, slug]`: each of these named arguments of `meta`'s constructor call
+    /// must differ between routes, wherever it is a literal.
+    pub meta_unique: Vec<String>,
     /// Whether routes match paths by case; `false` emits `caseSensitive: false` on each. The
     /// default for folders with no `route.dart` at or above them.
     pub case_sensitive: bool,
@@ -70,6 +74,7 @@ impl Default for Config {
             format: false,
             output_manifest: None,
             meta_required: false,
+            meta_unique: vec![],
             case_sensitive: true,
             data_retry: DataRetry::Inherit,
             keep_previous: true,
@@ -102,6 +107,7 @@ struct RawConfig {
     format: Option<bool>,
     output_manifest: Option<String>,
     meta: Option<String>,
+    meta_unique: Option<Vec<String>>,
     case_sensitive: Option<bool>,
     data_retry: Option<DataRetry>,
     keep_previous: Option<bool>,
@@ -208,6 +214,16 @@ impl Pubspec {
                     bail!("`fespalier.output_manifest` and `fespalier.output` are the same file (`{path}`); leave `output_manifest` out to keep the manifest in `output`");
                 }
                 config.output_manifest = Some(path);
+            }
+            for key in c.meta_unique.unwrap_or_default() {
+                let ident = key.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                    && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+                if !ident {
+                    bail!("`fespalier.meta_unique` lists argument names of `meta`, e.g. `[code, slug]`; `{key}` is not one");
+                }
+                if !config.meta_unique.contains(&key) {
+                    config.meta_unique.push(key);
+                }
             }
             match c.meta.as_deref() {
                 None | Some("optional") => {}

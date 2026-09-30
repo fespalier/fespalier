@@ -1,12 +1,29 @@
 import 'package:flutter/material.dart';
 
 {% if function %}
-Widget notFound({required Uri uri}) => Center(child: Text('Nothing at ${uri.path}'));
+{% if segs %}
+/// The segments of this folder's path arrive as Strings, as the URL spells them.
+Widget notFound({required Uri uri{% for s in segs %}, required String {{ s.name }}{% endfor %}}) =>
+    Center(child: Text('Nothing at ${uri.path}'));
 {% else %}
+Widget notFound({required Uri uri}) => Center(child: Text('Nothing at ${uri.path}'));
+{% endif %}
+{% else %}
+/// Shown for a URL nothing matches under this folder, and for a segment of its routes
+/// that doesn't parse. The segments of its path arrive as Strings, as the URL spells them.
 class {{ stem }}NotFound extends StatelessWidget {
+{% if segs %}
+  const {{ stem }}NotFound({super.key, required this.uri{% for s in segs %}, required this.{{ s.name }}{% endfor %}});
+
+  final Uri uri;
+{% for s in segs %}
+  final String {{ s.name }};
+{% endfor %}
+{% else %}
   const {{ stem }}NotFound({super.key, required this.uri});
 
   final Uri uri;
+{% endif %}
 
   @override
   Widget build(BuildContext context) => Center(child: Text('Nothing at ${uri.path}'));

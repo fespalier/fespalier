@@ -63,8 +63,12 @@ const SearchRoute(q: 'ap', page: 2).go(context);   // → /search?q=ap&page=2
 ref.watch(ProductRoute.data(42));
 ProductRoute.watch(ref, id: 42);             // the same, typed: AsyncValue<Product>
 await ProductRoute.read(ref, id: 42);        // Future<Product>
-ProductRoute(id: 42).prefetch(ref);          // start loading before navigating
+final warm = ProductRoute(id: 42).prefetch(ref);   // start loading before navigating; warm.close() lets go
 await const ProductsRoute().refresh(ref);
+
+// from a location to what it reads (an app's own prefetch queue, tests): no guard runs, no widget is built
+AppRoutes.dataAt(Uri.parse('/products/42'));    // [ProductRoute.data(42)]; null when no route fits
+AppRoutes.match(Uri.parse('/products/42'));     // RouteMatch: the RouteInfo, the parsed params, the data
 ```
 
 ## Getting started
@@ -241,6 +245,7 @@ fespalier:
   keep_previous: true
   file_style: snake
   meta: optional            # `required`: every route needs a meta.dart
+  # meta_unique: [code]       # no two routes may pass the same literal `code:` to `meta`
   # output_manifest: lib/app.routes.g.dart   # no default: the manifest lives in `output`
 ```
 
@@ -250,7 +255,8 @@ per folder (see [Case and trailing slashes](#case-and-trailing-slashes)).
 `data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
 [Retries and reloads](#retries-and-reloads). `file_style: kebab` makes `fsp init` and `fsp new`
 write `not-found.dart` instead of `not_found.dart` (see [File names](#file-names)).
-`meta: required` makes a route without a [`meta.dart`](#route-manifest-and-metadart) an error, and
+`meta: required` makes a route without a [`meta.dart`](#route-manifest-and-metadart) an error,
+`meta_unique` makes a duplicate value in it one, and
 `output_manifest` writes the route manifest to a library of its own (same section).
 The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
@@ -778,7 +784,15 @@ the nearest wins, for two things:
 - **Unparsable segments.** `/teams/a/members/abc`, where a member's id is an `int`, shows the
   nearest `not_found.dart` above that route (a `(group)`'s counts here).
 
-It still only gets `Uri uri`. A `(group)` folder adds nothing to the URL, so its
+**What it gets.** `Uri uri`, and the segments of its own path as `String`s, as the URL spells
+them (`teams/$teamId/not_found.dart` can take `String teamId`). They are raw on purpose: a
+segment that didn't parse (`abc` where an id is an `int`) is often the reason you are here, so
+a not_found.dart can't ask for it typed, and one that declares `int teamId` is an error that says
+so. The value is the decoded path part: `/teams/Acme%20Co/members/x` gives `Acme Co`. It gets
+no query parameters and no data. `fsp new members --not-found` scaffolds one (with the segments
+it can take).
+
+A `(group)` folder adds nothing to the URL, so its
 `not_found.dart` can't be picked for unknown URLs: only for its own routes' bad segments.
 Two folders with the same URL (`(a)/x` and `(b)/x`) can't both have one; that's an error.
 When the tree is mounted under a prefix (`mount(at: '/shop')`), the prefix is skipped when
@@ -1206,7 +1220,7 @@ A route with a `data.dart` has three more helpers next to `.data` and `.refresh`
 ```dart
 final product = ProductRoute.watch(ref, id: 42);   // AsyncValue<Product>, for build()
 final p = await ProductRoute.read(ref, id: 42);    // Future<Product>, for callbacks
-ProductRoute(id: 42).prefetch(ref);                // void, before navigating
+final warm = ProductRoute(id: 42).prefetch(ref);   // a PrefetchHandle, before navigating
 ```
 
 `watch` and `read` are *static*, and take the keys the provider uses as named arguments
@@ -1214,29 +1228,91 @@ ProductRoute(id: 42).prefetch(ref);                // void, before navigating
 none for a route without keys). They can't be instance methods: `ProductRoute(id: 42).watch(ref)`
 would have to write `AsyncValue<Product>` into the generated file, and the generator never
 copies your imports. A static function value takes its type from the provider by
-inference, so `Product` flows through and is never `dynamic`.
+inference, so `Product` flows through and is never `dynamic`. (More in
+[Design notes](#design-notes).)
 
 `read` keeps the provider alive until it completes, which a plain `ref.read(p.future)`
 doesn't for an `autoDispose` provider. Don't call it from `build`.
 
-`prefetch(ref, {keepFor})` starts the load and keeps the result for `keepFor` (30 seconds
-by default), so the page you navigate to next shows it at once. The generated providers
-are `autoDispose`, so a prefetch nobody watches would be dropped in the same frame; this is
-why it holds on to it, and it lets go when the time is up. A failed load isn't kept:
-the page starts a fresh one instead. Call it before `go`, e.g. on hover:
+`prefetch(ref)` starts the load and returns a `PrefetchHandle` that **keeps the provider alive
+until you call `close()`** on it, so the page you navigate to next shows the value at once. The
+generated providers are `autoDispose`, so a prefetch nobody watches would be dropped in the same
+frame; the handle is what holds it, and how long is yours to decide: an app's prefetch queue
+holds one per lease and closes it when the lease ends. `keepFor:` is an optional auto-close
+(`prefetch(ref, keepFor: Duration(seconds: 30))` closes the handle after that long). A failed
+load isn't kept (the handle closes itself): the page starts a fresh one instead. Call it before
+`go`, e.g. on hover:
 
 ```dart
 MouseRegion(
-  onEnter: (_) => ProductRoute(id: p.id).prefetch(ref),
+  onEnter: (_) => _warm = ProductRoute(id: p.id).prefetch(ref),
+  onExit: (_) => _warm?.close(),
   child: ListTile(onTap: () => ProductRoute(id: p.id).go(context), …),
 )
 ```
 
-Two things to know: it lives as long as the widget whose `ref` you pass (a widget that is
-disposed ends it), and it holds a timer, so a widget test that prefetches should `pump`
-past `keepFor` (or pass `keepFor: Duration.zero`, which starts the load and keeps nothing).
+A few things to know: closing twice is fine, and `handle.isClosed` tells; the subscription
+also ends when the widget whose `ref` you pass is disposed; `keepFor` holds a timer, so a widget
+test that uses it should `pump` past it (or pass `Duration.zero`, which starts the load and keeps
+nothing); and *the default changed*: a prefetch used to lapse after 30 seconds without a
+`keepFor`, and now lasts until closed (a `prefetch(ref)` whose handle is dropped lasts as
+long as the widget behind `ref`). `prefetchKeepAlive` is gone.
 Because these are members of the route class, `watch`, `read`, `prefetch`, `refresh`, `ref`
 and `keepFor` can't be segment or query names.
+
+### From a location to its data
+
+An app's own prefetch layer often starts from a *location* (the next page a list points at),
+not from a route it built by hand. Two generated functions on `AppRoutes` answer that from the
+tree, without a table of your own:
+
+```dart
+final providers = AppRoutes.dataAt(Uri.parse('/products/42'));
+// [ProductRoute.data(42)]: the provider the page watches, so warming it warms the page.
+final handle = ref.prefetchAll(providers ?? const []);   // one PrefetchHandle for them all
+// ... later, when your queue's lease ends:
+handle.close();
+```
+
+`dataAt(uri)` is a `List<ProviderListenable<AsyncValue<Object?>>>?`, **outermost first**: the
+`data.dart` of each [section](#section-data) above the route, then its own. It is:
+
+- `null` when no route fits the location, or when a segment doesn't parse (`/products/abc`
+  where the id is an `int`): the rule that shows `not_found.dart`;
+- empty for a route without data (a page, or a catch-all with nothing behind it): a match, with
+  nothing to warm.
+
+The key is built by the same parser the route uses, so `dataAt(Uri.parse('/products/42')).single
+== ProductRoute.data(42)`, and for a `data.dart` that [selects a provider](#datadart-a-function-a-selector-or-a-provider)
+it is the selected provider itself (your own `productProvider('42')`). Query-keyed data is keyed by
+the query of the location (`/search?q=ap&page=2` is `SearchRoute.data((q: 'ap', page: 2, …))`,
+lists as the `QueryList` the page's key uses), a [catch-all](#catch-all-segments) by its decoded
+path. The mount point (`AppRoutes.mount(at: '/shop')`) is taken off first, a location outside it
+is `null`, and each route matches its path by its own case setting (`case_sensitive: false`, or its folder's `route.dart`). A [typed catch-all](#catch-all-segments) (`List<int>`) parses each part like the page does, so one that fails is no match. Nothing else runs: no
+`guard.dart`, no `redirect.dart`, no widget. (A guard may well send the user somewhere else
+when they arrive; prefetching what they asked for is your queue's call, and never
+triggers it.)
+
+`AppRoutes.match(uri)` is what `dataAt` is a shortcut for (`match(uri)?.data`, over the same
+matching, so it isn't written twice). It returns a `RouteMatch`, or `null` under the same rules:
+
+```dart
+final m = AppRoutes.match(Uri.parse('/shops/acme/items/7'))!;
+m.info;      // the RouteInfo from the manifest: path '/shops/:shop/items/:id', folder, meta, ...
+m.params;    // {'shop': 'acme', 'id': 7}: the segments and query parameters, parsed
+m.route;     // ItemRoute(shop: 'acme', id: 7), typed; m.route.location is its canonical spelling
+m.data;      // the providers, as dataAt returns them
+m.uri;       // the location it was given
+```
+
+Routes are tried most specific first (static parts, then `:param`s, then catch-alls), the order
+go_router uses. `match` lives on the manifest (`AppManifest.match`, forwarded by `AppRoutes`,
+like `all`), so with [`output_manifest:`](#route-manifest-and-metadart) it is in the manifest
+library; `AppRoutes.dataAt` and `AppRoutes.matchUrl` (a `UrlMatch`: the route, params and data
+without the `RouteInfo`) stay in `app.g.dart`, which never imports a `meta.dart`.
+`RouteMatch` is fespalier's: `package:fespalier/fespalier.dart` hides go_router's own
+`RouteMatch` (an internal of its parser) to make room for it, so import
+`package:go_router/go_router.dart` if you need that one.
 
 ### Section data
 
@@ -1276,9 +1352,27 @@ class MembersPage extends StatelessWidget {
   data.dart that yields that type, and it is an error if two do (a page's own and a
   section's, or two sections'): name the parameter `data` for the nearest, or give one of
   them another type. A page can have its own `data.dart` and take a section's by type.
-- **Keys.** A section's `data()` takes segments only (at or above its folder), not query
-  parameters: the pages below have to compute the same key. It has no typed route class of
-  its own; write `final data = FutureProvider…` yourself if you need to reach it elsewhere.
+- **Keys.** A section's `data()` takes segments (at or above its folder) and, like a page's,
+  query parameters: `Future<Report> data(Ref ref, {String? period})` keys the section by
+  `?period=` of the location. The layout reads it from the URL like any layout query parameter.
+  Every route below the section is then keyed by it too: `period` becomes a query parameter of
+  each of their typed routes (`MonthlyReportRoute(period: '2026-01')` writes
+  `/reports/monthly?period=2026-01`), so the pages below read the same provider the layout
+  loaded. A page that declares the same name with another type is an error, as anywhere.
+- **Typed handle.** A section has no route of its own, so it gets a class named after its
+  folder, with `Section` on the end (`teams/$teamId` is `TeamsTeamIdSection`, `(shop)` is
+  `ShopSection`, the app folder `RootSection`; two folders that name the same class are an
+  error). Its members are static and take the section's keys as named arguments, like a route's:
+
+  ```dart
+  TeamsTeamIdSection.data('acme');                         // the provider
+  TeamsTeamIdSection.watch(ref, teamId: 'acme');           // AsyncValue<Team>
+  await TeamsTeamIdSection.read(ref, teamId: 'acme');      // Future<Team>
+  final h = TeamsTeamIdSection.prefetch(ref, teamId: 'acme');   // PrefetchHandle
+  await TeamsTeamIdSection.refresh(ref, teamId: 'acme');
+  ```
+
+  A key can't be called `ref`, `keepFor` or another of the handle's members.
 - **Where it applies.** A layout of any kind can be a section's, tab layouts included. A
   `data.dart` beside a `page.dart` keeps feeding that page, so the folder that holds the
   section's layout mustn't have a page.
@@ -1300,6 +1394,8 @@ AppRoutes.all;  // every route, in the order of the table at the top of app.g.da
 
 `AppRoutes.all`, `byType` (typed-route class → info) and `byPath` (path template → info) are
 generated as `AppManifest`, a `const` list of `RouteInfo`s, and forwarded by `AppRoutes`.
+`AppManifest.match(uri)` finds the entry for a *location* ([From a location to its
+data](#from-a-location-to-its-data)).
 Each `RouteInfo<M>` has:
 
 | Field | |
@@ -1335,8 +1431,15 @@ const meta = PageMeta(code: 'B04', slug: 'product-detail', title: 'Product');
 - **It can be required.** With `fespalier: { meta: required }` in `pubspec.yaml`, a route without a
   `meta.dart` is an error that names its folder:
   `` `products/$id/` has no meta.dart ``. fespalier never numbers, derives or defaults
-  anything in it: a review code is yours, and finding a duplicate is a few lines in a test over
-  `AppRoutes.all` and `metaAs`.
+  anything in it: a review code is yours.
+- **Its values can be unique.** `meta_unique: [code, slug]` in the same section makes a
+  duplicate an error: it reads the *literal* named arguments of `meta`'s constructor call
+  (`const meta = PageMeta(code: 'B04', slug: 'product-detail')`, a string, number or bool) in
+  every route's `meta.dart` and reports a value that two routes share, naming both files
+  (`` `code: 'B04'` is also in products/meta.dart ``). An argument that is an expression, or
+  that a route leaves out, is skipped (nothing is compared for it), and a listed name no
+  `meta.dart` gives a literal is a warning, in case it is a typo. Anything more (a pattern for
+  the code, unique across tabs only) is a few lines in a test over `AppRoutes.all` and `metaAs`.
 - **Read it typed** with `info.metaAs<PageMeta>()` (null when the route has none, or it is
   another type), or check `info.meta is PageMeta`. The list holds `RouteInfo<Object?>`.
 
@@ -1471,7 +1574,8 @@ already exist, and takes its class names from `--name` (default: from the path, 
 `ProductsId`). With `--function` it writes [function views](#function-views) instead of classes,
 and `--name` becomes the `routeName` (an UpperCamelCase name). A segment that already has a
 type elsewhere in the tree keeps it. Pass
-`--no-page` to leave `page.dart` out. A `(group)` target (like `'(account)'`) gets no
+`--no-page` to leave `page.dart` out, and `--not-found` to add a `not_found.dart` that takes the
+segments of its path as `String`s (see [Not-found views](#not-found-views)). A `(group)` target (like `'(account)'`) gets no
 `page.dart` either, since a group has no URL of its own; write one by hand if you want the
 group to serve its parent's URL. It then regenerates `lib/app.g.dart` and prints the
 result line; if that fails, it lists the files it created. After `fsp new '(account)'
@@ -1611,7 +1715,8 @@ page, per-route transitions (the group fades in, `/ticks` doesn't animate), data
 by two segments, query parameters (in a page, `data.dart` and a layout), a page and error
 view bound by type, a layout and guard that take segments, a user-written
 `AsyncNotifierProvider`, `Stream` data, and a `teams/$teamId` section whose `data.dart` feeds
-its layout and pages, with a `not_found.dart` at two levels.
+its layout and pages, with a `not_found.dart` at two levels (which takes the team's id), a `reports` section keyed by a
+query parameter, and `AppRoutes.dataAt` / `match` and the prefetch handle in `test/data_at_test.dart`.
 
 `examples/tabs` is a bottom navigation bar built as a tab layout: four tabs (one with nested
 pages, and a Library tab that is a tab layout of its own, with two inner tabs), a
@@ -1790,16 +1895,32 @@ go_router builds the whole matched stack, so a deep link like `/products/2` also
 for the delays in both (or use `pumpAndSettle`), or the test ends with "A Timer is still
 pending". `examples/*/test/` has working tests for every file kind.
 
+## Design notes
+
+**Why `watch` and `read` are static.** `ProductRoute(id: 42).watch(ref)` would be nicer than
+`ProductRoute.watch(ref, id: 42)`, and it can't be had for what it costs. An instance member has to
+say what it returns, `AsyncValue<Product>`, so the generated file would have to *name* `Product`,
+and it doesn't import what your `data.dart` imports (it can't tell which of its imports a name
+comes from, and it may be a private, aliased or record type). The other ways out don't work: a
+`late final watch = (ref) => ...` field, whose type Dart would infer from the provider, is refused
+in a class with a `const` constructor, and typed routes are `const` (`const SearchRoute(q: 'ap')`);
+an `extension type` or a getter still has to be typed; and returning `AsyncValue<Object?>` would
+lose the very type that is the point. A static function value takes its type from the provider
+by inference, which is why the helpers that return your data are static, and the ones that
+don't (`prefetch`, `refresh`, `go`, `location`) are instance methods. If Dart macros, or naming a
+type through the import machinery that `extra` already uses, become an option, this can be
+reopened; today the trade is a `const` route and a type that is never `dynamic`.
+
 ## Status
 
 This is an early version.
 
-- **Generator:** 358 tests (327 unit, 26 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 383 tests (352 unit, 26 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
-  scaffolding, the route manifest, meta.dart and restoration ids, typed catch-alls, per-folder case, and that the committed outputs are up to date. Clippy is clean.
+  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, per-folder case, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 283 Flutter tests (the package 124, `shop` 23, `features` 109, `tabs` 27); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 326 Flutter tests (the package 138, `shop` 24, `features` 134, `tabs` 30); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

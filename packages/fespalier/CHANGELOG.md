@@ -6,6 +6,19 @@
   `strict:` are options.
 - `extraOrNull<T>(state)`: what generated layouts, guards and redirects call for their `extra`;
   unlike `extraOf` it never asserts. Regenerate `lib/app.g.dart` with the matching `fsp`.
+
+- `PrefetchHandle`: what `prefetchData` (and the generated `prefetch`) returns. It keeps the
+  provider alive until `close()`, `keepFor` is an optional auto-close, and a failed load closes
+  it. **The default changed**: no `keepFor` no longer means 30 seconds; `prefetchKeepAlive` is
+  removed. `WidgetRef.prefetchAll(providers)` closes several with one handle.
+- `RouteMatch`, `UrlMatch`, `RouteMatcher` and `matchRoutes`: what the generated
+  `AppRoutes.match(uri)`, `matchUrl(uri)` and `dataAt(uri)` are built on. `fespalier.dart`
+  hides go_router's own `RouteMatch` to export this one.
+- `pathBelow` and `pathPart`: the path of a location below the mount point, for the generated
+  `not_found.dart` calls (which can now take the segments of their path).
+- Regenerate `lib/app.g.dart` with the matching `fsp`: it has `matchUrl` and `dataAt`, typed
+  handles for sections, and `PrefetchHandle prefetch`.
+
 - `RouteNavigator` (`root`, `shell`): the values of a folder's `navigator.dart`, read by `fsp gen`.
 - `RoutePresentation.root` and `.custom`: a page on the root navigator, and one a `present.dart`
   builds.

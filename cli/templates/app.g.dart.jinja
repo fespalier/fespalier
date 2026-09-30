@@ -227,6 +227,35 @@ abstract final class AppRoutes {
 {% else %}
   static Widget notFound(Uri uri) => {{ not_found }};
 {% endif %}
+
+  /// Every route as [matchUrl] tries it, most specific first.
+  static final List<RouteMatcher> _matchers = [
+{% for m in matchers %}
+{% if m.lines %}
+    RouteMatcher({{ m.pattern }}, (s) {
+{% for l in m.lines %}
+      {{ l }}
+{% endfor %}
+      return UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }});
+    }{{ ", caseSensitive: false" if not m.case_sensitive }}),
+{% else %}
+    RouteMatcher({{ m.pattern }}, (s) => UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }}){{ ", caseSensitive: false" if not m.case_sensitive }}),
+{% endif %}
+{% endfor %}
+  ];
+
+  /// [uri] matched to its route: the typed route, the parameters parsed from the URL and
+  /// the providers of its data. Null when no route fits, or a segment doesn't parse (the
+  /// not-found rule). The mount point is taken off; no guard runs and no widget is built.
+  /// The route manifest adds `match`, which also names the route's info.
+  static UrlMatch? matchUrl(Uri uri) => matchRoutes(uri, base, _matchers{{ ", caseSensitive: false" if not case_sensitive }});
+
+  /// The providers of the data of the route at [uri], outermost first: the `data.dart` of
+  /// each section above it, then its own. They are the ones the page watches (`dataAt(uri)`
+  /// of `/products/42` is `[ProductRoute.data(42)]`), so warming them, with
+  /// `ref.prefetchAll(AppRoutes.dataAt(uri) ?? [])`, warms the page. Empty for a route
+  /// without data; null when no route fits or a segment doesn't parse.
+  static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
 {% if manifest %}
 
   /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
@@ -237,12 +266,40 @@ abstract final class AppRoutes {
 
   /// Each route by its path template: [AppManifest.byPath].
   static Map<String, RouteInfo<Object?>> get byPath => AppManifest.byPath;
+
+  /// [uri] matched to its route, with the [RouteInfo], the parsed parameters and the
+  /// providers of its data: [AppManifest.match].
+  static RouteMatch? match(Uri uri) => AppManifest.match(uri);
 {% endif %}
 }
 {% if manifest %}
 
 {{ manifest_body(manifest) }}
 {% endif %}
+{% for r in sections %}
+
+/// Typed access to the data.dart of the section {{ r.folder }} wraps ({{ r.file }}){{ r.keyed }}: the layout and the pages below it read it.
+abstract final class {{ r.name }} {
+  /// {{ r.file }} as a Riverpod provider{{ r.keyed }}.
+  static final data = {{ r.expr }};
+
+  /// Watches {{ r.file }}: an `AsyncValue`, typed by inference.
+  static final watch = (WidgetRef ref{{ r.args }}) => ref.watch(data{{ r.key }});
+
+  /// Reads {{ r.file }} once, keeping it alive until it completes.
+  static final read = (WidgetRef ref{{ r.args }}) => ref.{{ "readSelected" if r.selector else "readData" }}(data{{ r.key }});
+
+  /// Starts loading {{ r.file }}; kept until the handle is closed (or `keepFor` passes).
+  static PrefetchHandle prefetch(WidgetRef ref{{ r.prefetch_args }}) => ref.prefetchData(data{{ r.key }}, keepFor: keepFor);
+
+  /// {{ r.verb }} {{ r.file }}; completes with the fresh value.
+{% if r.selector %}
+  static Future<void> refresh(WidgetRef ref{{ r.args }}) => ref.refreshSelected(data{{ r.key }});
+{% else %}
+  static Future<void> refresh(WidgetRef ref{{ r.args }}) => ref.refresh(data{{ r.key }}.future);
+{% endif %}
+}
+{% endfor %}
 {% for r in routes %}
 
 /// `{{ r.pattern }}` → {{ r.file }}
@@ -297,8 +354,8 @@ final class {{ r.name }}Route extends TypedLocation {
   /// Reads {{ r.data.file }} once, keeping it alive until it completes.
   static final read = (WidgetRef ref{{ r.data.args }}) => ref.{{ "readSelected" if r.data.selector else "readData" }}(data{{ r.data.key }});
 
-  /// Starts loading {{ r.data.file }} before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data{{ r.data.key }}, keepFor: keepFor);
+  /// Starts loading {{ r.data.file }} before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data{{ r.data.key }}, keepFor: keepFor);
 
   /// {{ r.data.verb }} {{ r.data.file }}; completes with the fresh value.
 {% if r.data.selector %}

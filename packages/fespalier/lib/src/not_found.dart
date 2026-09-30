@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import 'route_match.dart';
+
 /// A `not_found.dart` below the root: the URL prefix of its folder (a segment
 /// starting with `:` matches anything), the widget to show, and whether the
 /// folder's own path matches by case (its `route.dart`, else the config).
@@ -25,13 +27,8 @@ Widget nearestNotFound(
 }) {
   bool same(String a, String b, bool sensitive) =>
       sensitive ? a == b : a.toLowerCase() == b.toLowerCase();
-  final under = uri.pathSegments.where((s) => s.isNotEmpty).toList();
-  final mount = base.split('/').where((s) => s.isNotEmpty).toList();
-  if (under.length < mount.length) return root(uri);
-  for (var i = 0; i < mount.length; i++) {
-    if (!same(under[i], mount[i], caseSensitive)) return root(uri);
-  }
-  final path = under.sublist(mount.length);
+  final path = pathBelow(uri, base, caseSensitive: caseSensitive);
+  if (path == null) return root(uri);
   for (final (prefix, build, caseSensitive: sensitive) in scopes) {
     if (prefix.length > path.length) continue;
     var matches = true;

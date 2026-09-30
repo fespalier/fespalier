@@ -2,7 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:hooks_riverpod/misc.dart' show AsyncProviderListenable;
+import 'package:hooks_riverpod/misc.dart'
+    show AsyncProviderListenable, ProviderListenable;
 
 /// How long [DataRef.prefetchData] keeps what it loaded when no `keepFor` is given.
 const prefetchKeepAlive = Duration(seconds: 30);
@@ -35,7 +36,10 @@ extension DataRef on WidgetRef {
   /// The subscription also ends when the widget that called this is disposed,
   /// and `Duration.zero` starts the load without keeping anything. A pending
   /// timer holds it: widget tests that prefetch should `pump` past [keepFor].
-  void prefetchData(AsyncProviderListenable<Object?> provider, {Duration? keepFor}) {
+  void prefetchData(
+    ProviderListenable<AsyncValue<Object?>> provider, {
+    Duration? keepFor,
+  }) {
     final keep = keepFor ?? prefetchKeepAlive;
     late final ProviderSubscription<AsyncValue<Object?>> sub;
     sub = listenManual(provider, (previous, next) {

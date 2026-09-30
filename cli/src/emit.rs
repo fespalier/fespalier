@@ -147,6 +147,9 @@ fn transition_cx(t: &Transition) -> TransitionCx {
 #[derive(Serialize)]
 struct ViewDataCx {
     provider: String,
+    /// A statement that invalidates it: `ref.invalidate(p)`, or through the runtime
+    /// helper when `data.dart` selects a provider (see `invalidateSelected`).
+    invalidate: String,
     loading: String,
     error: String,
 }
@@ -175,6 +178,9 @@ struct TypedDataCx {
     keyed: String,
     expr: String,
     verb: &'static str,
+    /// `data.dart` selects a provider: the typed helpers go through the runtime's
+    /// `readSelected`, `prefetchSelected` and `refreshSelected`.
+    selector: bool,
     key: String,
     /// `, {required int id, int? page}`: the keys as named parameters of the static
     /// `watch` and `read`, whose types are inferred from the provider.
@@ -217,6 +223,9 @@ struct ProviderCx {
     call: String,
     /// `data_retry: none`: the provider opts out of Riverpod's retry.
     no_retry: bool,
+    /// `data.dart` selects a provider: `_dataN` returns it (or is it, with no keys),
+    /// and nothing is wrapped.
+    selector: bool,
 }
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
@@ -336,6 +345,7 @@ fn layout_cx(app: &App, id: usize, layout: &resolve::Widget, fns: &mut BTreeSet<
         page: wrapped,
         data: section.map(|d| ViewDataCx {
             provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+            invalidate: invalidate_expr(app, id, r, d),
             loading: r.loading.as_ref().map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
             error: r.error.as_ref().map_or("DefaultError(error: e, retry: retry)".into(), |w| w.call(in_builder)),
         }),
@@ -454,6 +464,7 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
     let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
     let data = r.data.as_ref().map(|d| ViewDataCx {
         provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+        invalidate: invalidate_expr(app, id, r, d),
         loading: r.loading.as_ref().map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
         error: r.error.as_ref().map_or("DefaultError(error: e, retry: retry)".into(), |w| w.call(in_builder)),
     });
@@ -623,6 +634,13 @@ fn check_tab_starts(tree: &[TreeCx], diags: &mut Diags) {
     }
 }
 
+/// `ref.invalidate(<provider>)`. A selected provider is only known as a
+/// `ProviderListenable`, so the runtime checks that it is one.
+fn invalidate_expr(app: &App, id: usize, r: &Route, d: &Data) -> String {
+    let provider = format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v."));
+    format!("ref.{}({provider})", if d.selector { "invalidateSelected" } else { "invalidate" })
+}
+
 fn provider_expr(id: usize, d: &Data) -> String {
     if d.provider { format!("_i{}.data", d.import) } else { format!("_data{id}") }
 }
@@ -633,6 +651,8 @@ fn list_keys(app: &App, r: &Route, d: &Data) -> Vec<String> {
     if d.provider {
         return vec![];
     }
+    // A selector's function takes a plain `List` too; a `QueryList` is one, and it gives
+    // the app's family the value equality a list key needs.
     app.url_params(r).into_iter().filter(|(n, t)| d.keys.contains(n) && t.starts_with("List<")).map(|(n, _)| n).collect()
 }
 
@@ -666,6 +686,7 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
             keyed,
             expr: provider_expr(id, d),
             verb: if d.stream { "Restarts" } else { "Re-runs" },
+            selector: d.selector,
             key: key_expr(app, r, d, ""),
             args: keyed_params(app, r, d),
         }
@@ -757,10 +778,11 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
     ParamsFnCx { name: f.name(), record: format!("({{{}}})", types.join(", ")), parse: format!("({})", values.join(", ")) }
 }
 
-/// The provider fespalier wraps around a `data()` function.
-fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx> {
-    let d = r.data.as_ref().filter(|d| !d.provider)?;
-    // A list key is a `QueryList` (see `list_keys`); `data()` still takes a `List`.
+/// The parameters a `data()` provider is keyed by, as its `create` function takes them
+/// (without the `Ref`), and the named arguments to hand on to `data()`.
+///
+/// A list key is a `QueryList` (see `list_keys`); `data()` still takes a `List`.
+fn key_params(app: &App, r: &Route, d: &Data) -> (String, Vec<String>) {
     let types: Vec<(String, String)> = app
         .url_params(r)
         .into_iter()
@@ -770,15 +792,27 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
             (n, t)
         })
         .collect();
-    let (params, args) = match (types.as_slice(), d.record) {
-        ([], _) => ("Ref ref".to_string(), vec![]),
-        ([(n, t)], false) => (format!("Ref ref, {t} {n}"), vec![format!("{n}: {n}")]),
+    match (types.as_slice(), d.record) {
+        ([], _) => (String::new(), vec![]),
+        ([(n, t)], false) => (format!("{t} {n}"), vec![format!("{n}: {n}")]),
         (many, _) => {
             let fields: Vec<String> = many.iter().map(|(n, t)| format!("{t} {n}")).collect();
-            (format!("Ref ref, ({{{}}}) k", fields.join(", ")), many.iter().map(|(n, _)| format!("{n}: k.{n}")).collect())
+            (format!("({{{}}}) k", fields.join(", ")), many.iter().map(|(n, _)| format!("{n}: k.{n}")).collect())
         }
+    }
+}
+
+/// The provider fespalier wraps around a `data()` function, or for a selector the
+/// function that picks the app's own provider (`_dataN(keys) => data(keys)`; just the
+/// provider with no keys). Nothing of ours sits between the route and that provider.
+fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx> {
+    let d = r.data.as_ref().filter(|d| !d.provider)?;
+    let (keys, args) = key_params(app, r, d);
+    let (params, mut call_args) = if d.selector {
+        (keys, vec![])
+    } else {
+        (if keys.is_empty() { "Ref ref".to_string() } else { format!("Ref ref, {keys}") }, vec!["ref".to_string()])
     };
-    let mut call_args = vec!["ref".to_string()];
     call_args.extend(args);
     Some(ProviderCx {
         id,
@@ -786,7 +820,8 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
         family: !d.keys.is_empty(),
         params,
         call: format!("_i{}.data({})", d.import, call_args.join(", ")),
-        no_retry: cfg.data_retry == DataRetry::None,
+        no_retry: !d.selector && cfg.data_retry == DataRetry::None,
+        selector: d.selector,
     })
 }
 

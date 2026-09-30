@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### `data.dart` can select a provider you already have
+
+- **New third `data.dart` form: a selector.**
+  `ProviderListenable<AsyncValue<ProductView>> data({required String productId}) => productProvider(productId);`
+  is recognised by its return type (and no `Ref` parameter). Its named parameters are segments
+  and query parameters exactly as in the function form (any other parameter is an error at
+  it), and `T` from `AsyncValue<T>` is what a page's parameter is bound to by type. Nothing is
+  wrapped: `XRoute.data` is the selected provider (`ProductDetailRoute.data('x') ==
+  productProvider('x')`), `DataView` watches it directly, and `watch`, `read`, `prefetch` and
+  `refresh` target it, so a `riverpod_generator` provider is fetched once per navigation, keeps
+  its own `retry`, `keepAlive` and dependencies, and keeps the error it holds while it retries.
+  `data_retry` doesn't apply to it. `refresh` and `error.dart`'s retry invalidate the selected
+  provider (`refresh` also reads it, so it runs once) through new runtime helpers,
+  `invalidateSelected`, `refreshSelected` and `readSelected` on `WidgetRef`, which check at
+  run time that the listenable is a provider and throw a `StateError` naming the fix if not.
+  Regenerate `app.g.dart` (the generated `DataView` calls `invalidateSelected` for selectors).
+- `package:fespalier/fespalier.dart` re-exports `ProviderListenable`; `prefetchData` takes any
+  `ProviderListenable<AsyncValue<…>>`.
+- README: `data.dart` has three forms now, with when to use each.
+
 ### Data refresh and retry
 
 - **Behaviour change: generated `data()` providers no longer switch off Riverpod's retry.**

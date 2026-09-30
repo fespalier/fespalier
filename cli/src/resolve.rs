@@ -75,6 +75,10 @@ pub struct Data {
     /// The file exports its own provider (`final data = FutureProvider...`);
     /// otherwise fespalier wraps its `data()` function in one.
     pub provider: bool,
+    /// `ProviderListenable<AsyncValue<T>> data({...}) => productProvider(id)`: the
+    /// function only selects a provider that exists (a generated one, say), so
+    /// nothing wraps it. The route watches and invalidates what it returns.
+    pub selector: bool,
     pub stream: bool,
     pub ty: String,
     /// Segments the provider is keyed by, in path order.
@@ -952,6 +956,14 @@ impl Resolver<'_> {
         let scope = Scope::Route(route);
         let file = node.rel(Kind::Data);
         if let Some(f) = m.functions.iter().find(|f| f.name == "data") {
+            if let Some(ty) = f.ret.as_ref().and_then(selected_value) {
+                return self.selector(f, ty, &file, segs, scope);
+            }
+            if f.ret.as_ref().is_some_and(|r| r.generic().0 == "ProviderListenable") {
+                let msg = "a data() that selects a provider must return `ProviderListenable<AsyncValue<T>>`, so the page can be given a `T`";
+                self.diags.error(&file, Some(&f.span), msg);
+                return None;
+            }
             match f.params.first() {
                 Some(p) if !p.named && p.ty.as_ref().is_some_and(|t| t.is("Ref")) => {}
                 _ => self.diags.error(&file, Some(&f.span), "data() must take `Ref ref` first"),
@@ -972,7 +984,7 @@ impl Resolver<'_> {
             };
             let keys = in_path_order(keys, segs);
             let import = self.import(&file);
-            return Some(Data { import, provider: false, stream, ty, record: keys.len() > 1, keys });
+            return Some(Data { import, provider: false, selector: false, stream, ty, record: keys.len() > 1, keys });
         }
 
         if let Some(v) = m.variables.iter().find(|v| v.name == "data") {
@@ -1042,11 +1054,33 @@ impl Resolver<'_> {
             }
             let keys = in_path_order(keys, segs);
             let import = self.import(&file);
-            return Some(Data { import, provider: true, stream, ty, keys, record });
+            return Some(Data { import, provider: true, selector: false, stream, ty, keys, record });
         }
 
-        self.diags.error(&file, None, "expected `Future<T> data(Ref ref, {...segments})` or `final data = FutureProvider<T>(...)`");
+        self.diags.error(
+            &file,
+            None,
+            "expected `Future<T> data(Ref ref, {...segments})`, `ProviderListenable<AsyncValue<T>> data({...segments})` or `final data = FutureProvider<T>(...)`",
+        );
         None
+    }
+
+    /// `ProviderListenable<AsyncValue<T>> data({...segments}) => productProvider(id)`:
+    /// selects a provider that already exists. It takes what the function form takes,
+    /// minus the `Ref`: it returns the provider, it doesn't read one.
+    fn selector(&mut self, f: &dart::Function, ty: String, file: &str, segs: &[(String, usize)], scope: Scope) -> Option<Data> {
+        let mut keys = vec![];
+        for p in &f.params {
+            if !p.named && p.ty.as_ref().is_some_and(|t| t.is("Ref")) {
+                let msg = "a data() that returns a `ProviderListenable` takes no `Ref`: it selects the provider (`=> productProvider(id)`), it doesn't read one";
+                self.diags.error(file, Some(&p.span), msg);
+                continue;
+            }
+            keys.extend(self.url_param(file, p, segs, scope, "data()"));
+        }
+        let keys = in_path_order(keys, segs);
+        let import = self.import(file);
+        Some(Data { import, provider: false, selector: true, stream: false, ty, record: keys.len() > 1, keys })
     }
 
     /// `GuardResult guard(ProviderContainer c, {...})`: runs before every route at
@@ -1353,4 +1387,16 @@ fn route_name(class: &str) -> String {
 /// `products/$id` → `ProductsId`.
 pub fn pascal(dir: &str) -> String {
     dir.replace(['/', '$'], "_").to_upper_camel_case()
+}
+
+/// `ProviderListenable<AsyncValue<T>>` → `T`: the return type that makes a `data()` a selector.
+fn selected_value(ret: &dart::Ty) -> Option<String> {
+    let (head, args) = ret.generic();
+    let ("ProviderListenable", [state]) = (head, args.as_slice()) else { return None };
+    let inner = dart::Ty { text: state.to_string(), record: None };
+    let (head, args) = inner.generic();
+    match (head, args.as_slice()) {
+        ("AsyncValue", [t]) => Some(t.to_string()),
+        _ => None,
+    }
 }

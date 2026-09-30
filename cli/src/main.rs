@@ -291,4 +291,6 @@ mod refresh_tests;
 #[cfg(test)]
 mod route_api_tests;
 #[cfg(test)]
+mod selector_tests;
+#[cfg(test)]
 mod tests;

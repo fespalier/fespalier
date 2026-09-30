@@ -4,7 +4,7 @@
 {% if b.data -%}
 DataView(
   watch: (ref) => ref.watch({{ b.data.provider }}),
-  refresh: (ref) => ref.invalidate({{ b.data.provider }}),
+  refresh: (ref) => {{ b.data.invalidate }},
   data: (d) => {{ b.page | indent(2) }},
   loading: () => {{ b.data.loading }},
   error: (e, st, retry) => {{ b.data.error }},
@@ -189,13 +189,17 @@ final class {{ r.name }}Route extends TypedLocation {
   static final watch = (WidgetRef ref{{ r.data.args }}) => ref.watch(data{{ r.data.key }});
 
   /// Reads {{ r.data.file }} once, keeping it alive until it completes.
-  static final read = (WidgetRef ref{{ r.data.args }}) => ref.readData(data{{ r.data.key }});
+  static final read = (WidgetRef ref{{ r.data.args }}) => ref.{{ "readSelected" if r.data.selector else "readData" }}(data{{ r.data.key }});
 
   /// Starts loading {{ r.data.file }} before navigating; kept for `keepFor` (default 30 s).
   void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data{{ r.data.key }}, keepFor: keepFor);
 
   /// {{ r.data.verb }} {{ r.data.file }}; completes with the fresh value.
+{% if r.data.selector %}
+  Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data{{ r.data.key }});
+{% else %}
   Future<void> refresh(WidgetRef ref) => ref.refresh(data{{ r.data.key }}.future);
+{% endif %}
 {% endif %}
 }
 {% endfor %}
@@ -204,6 +208,15 @@ final class {{ r.name }}Route extends TypedLocation {
 {{ f.record }} {{ f.name }}(GoRouterState s) => {{ f.parse }};
 {% endfor %}
 {% for p in providers %}
+{% if p.selector and p.family %}
+
+/// data.dart selects the app's own provider: nothing wraps it (a closure, so its type is inferred).
+final _data{{ p.id }} = ({{ p.params }}) => {{ p.call }};
+{% elif p.selector %}
+
+/// data.dart selects the app's own provider: nothing wraps it.
+final _data{{ p.id }} = {{ p.call }};
+{% else %}
 
 final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
   ({{ p.params }}) => {{ p.call }},
@@ -212,4 +225,5 @@ final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
   retry: (retryCount, error) => null,
 {% endif %}
 );
+{% endif %}
 {% endfor %}

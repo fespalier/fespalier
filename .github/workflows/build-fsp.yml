@@ -1,0 +1,94 @@
+name: Build fsp
+
+# Builds the `fsp` binary for the five supported targets and uploads each archive
+# (fsp-<target>.tar.gz, or .zip for Windows) with its .sha256 as the workflow artifact
+# `fsp-<target>`. A reusable workflow, called by
+#   - release-pins.yml, on the release-please PR: these are the binaries that get pinned,
+#     staged and later attached to the release;
+#   - release.yml, on a manual run: a build-only smoke test, nothing is published.
+#
+# No dependency cache on purpose. These binaries are published, and a restored cache is
+# exactly what zizmor's `cache-poisoning` audit flags in a job that feeds a release (the
+# org's release-please.yml drops its own for the same reason). Five cold builds is the price.
+#
+# Builds are not reproducible: building the same commit twice gives different bytes. That is
+# why the release never rebuilds; it attaches the archives built here (see release.yml).
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to build; empty builds the caller's own ref
+        type: string
+        default: ''
+      retention-days:
+        description: How long the workflow artifacts are kept
+        type: number
+        default: 7
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu,  os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
+          - { target: x86_64-apple-darwin,       os: macos-15-intel }
+          - { target: aarch64-apple-darwin,      os: macos-latest }
+          - { target: x86_64-pc-windows-msvc,    os: windows-latest }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # `stable` branch head, 2026-09-19
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build
+        working-directory: cli
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir dist
+          tar -czf "dist/fsp-${TARGET}.tar.gz" -C "cli/target/${TARGET}/release" fsp
+          cd dist
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "fsp-${TARGET}.tar.gz" > "fsp-${TARGET}.tar.gz.sha256"
+          else
+            shasum -a 256 "fsp-${TARGET}.tar.gz" > "fsp-${TARGET}.tar.gz.sha256"
+          fi
+
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          New-Item -ItemType Directory -Path dist | Out-Null
+          $zip = "fsp-$env:TARGET.zip"
+          Compress-Archive -Path "cli/target/$env:TARGET/release/fsp.exe" -DestinationPath "dist/$zip"
+          $hash = (Get-FileHash -Algorithm SHA256 "dist/$zip").Hash.ToLower()
+          [System.IO.File]::WriteAllText("$PWD/dist/$zip.sha256", "$hash  $zip`n")
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fsp-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}

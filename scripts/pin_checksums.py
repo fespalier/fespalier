@@ -14,6 +14,7 @@ Standard library only.
 """
 
 import argparse
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -30,9 +31,11 @@ HEADER = """\
 //
 // The SHA-256 of every `fsp` release archive of this package's version, pinned in the
 // package itself so `dart run fespalier` can tell a tampered release from a good one. The
-// release workflow fills this in and commits it; the release tag points at that commit.
-// Development builds (a version that has not been released yet) have no pins: `pinnedVersion`
-// is empty and the launcher falls back to the release's `.sha256` file.
+// `release-pins` workflow builds the binaries on the release-please PR, and commits this file
+// to that PR's branch; merging the PR tags that commit, so the tag carries its own pins.
+// A package whose version has no pins here (a development build, or a release PR before its
+// pin commit) falls back to the release's `.sha256` file: `pinnedVersion` is another version
+// or empty.
 
 /// The version [pinnedChecksums] belongs to, or `''` when nothing is pinned.
 const pinnedVersion = '%s';
@@ -57,10 +60,37 @@ def render(version: str, sums: dict) -> str:
 
 
 def pubspec_version(text: str) -> str:
+    """The top-level `version:`, tolerating quotes and a trailing comment (release-please's
+    `# x-release-please-version` annotation)."""
     m = re.search(r"^version:\s*[\"']?([^\s\"'#]+)", text, re.MULTILINE)
     if not m:
         raise ValueError("no `version:` in the pubspec")
     return m.group(1)
+
+
+def archive_sums(dist: Path) -> dict:
+    """target -> SHA-256 of the archives themselves (not of what a `.sha256` file claims)."""
+    sums = {}
+    for target, archive in packaging.ALL_ARCHIVES.items():
+        path = dist / archive
+        if not path.is_file():
+            raise FileNotFoundError(f"missing {path}")
+        sums[target] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return sums
+
+
+def check(dart: str, version: str, sums: dict) -> None:
+    """Raises ValueError unless `dart` pins exactly `version` and exactly `sums`."""
+    pinned_version, pinned = parse(dart)
+    if pinned_version != version:
+        raise ValueError(f"the committed pins are for {pinned_version or 'nothing'}, not {version}")
+    if set(pinned) != set(sums):
+        raise ValueError(f"the committed pins cover {sorted(pinned)}, expected {sorted(sums)}")
+    for target in sorted(sums):
+        if pinned[target] != sums[target]:
+            raise ValueError(
+                f"{target}: the archive is {sums[target]} but the commit pins {pinned[target]}"
+            )
 
 
 def parse(dart: str):
@@ -79,8 +109,16 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, default=OUT, help="the Dart file to write")
     ap.add_argument("--pubspec", type=Path, default=PUBSPEC, help="pubspec.yaml the version must match")
     ap.add_argument("--reset", action="store_true", help="write the empty file of an unreleased version")
+    ap.add_argument("--archives", action="store_true", help="hash the archives in --dist instead of reading their .sha256 files")
+    ap.add_argument("--check", action="store_true", help="verify the committed file against the archives in --dist; writes nothing")
     args = ap.parse_args(argv)
     try:
+        if args.check:
+            if not args.version:
+                ap.error("--version is required with --check")
+            check(args.out.read_text(), args.version, archive_sums(args.dist))
+            print(f"{args.out} pins the {args.version} archives in {args.dist}")
+            return 0
         if args.reset:
             text = render("", {})
         else:
@@ -92,7 +130,8 @@ def main(argv=None) -> int:
                     f"{args.pubspec} is at {in_pubspec}, not {args.version}; "
                     "refusing to pin another version's binaries"
                 )
-            text = render(args.version, packaging.read_checksums(args.dist))
+            sums = archive_sums(args.dist) if args.archives else packaging.read_checksums(args.dist)
+            text = render(args.version, sums)
     except (OSError, ValueError, KeyError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

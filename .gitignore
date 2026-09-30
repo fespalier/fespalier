@@ -9,3 +9,4 @@ pubspec.lock
 .vscode/
 *.iml
 .claude/worktrees/
+node_modules/

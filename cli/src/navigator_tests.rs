@@ -666,3 +666,21 @@ fn a_function_layout_shell_takes_the_transition_and_the_root_key() {
     ]);
     has(&c, &["ShellRoute( parentNavigatorKey: rootNavigatorKey, pageBuilder: (context, state, child) => _i1.transition( const ValueKey<String>('layout:wizard/steps/'),"]);
 }
+
+#[test]
+fn a_folders_case_sensitivity_reaches_root_and_present_routes() {
+    let c = code(&[
+        ("page.dart", &page("Home")),
+        ("route.dart", "const caseSensitive = false;"),
+        ("orders/page.dart", &page("Orders")),
+        ("orders/$id/page.dart", "class OrderPage extends StatelessWidget { const OrderPage({super.key, required this.id}); final int id; }"),
+        ("orders/$id/navigator.dart", ROOT),
+        ("orders/$id/buy/page.dart", "class BuyPage extends StatelessWidget { const BuyPage({super.key, required this.id}); final int id; }"),
+        ("orders/$id/buy/present.dart", SHEET),
+        ("orders/$id/buy/route.dart", "const caseSensitive = true;"),
+    ]);
+    // Both keep their key, and each says what its own folder decided.
+    has(&c, &["path: ':id', parentNavigatorKey: rootNavigatorKey, caseSensitive: false,"]);
+    let buy = between(&c, "path: 'buy'", "pageBuilder");
+    assert!(buy.contains("parentNavigatorKey: rootNavigatorKey,") && !buy.contains("caseSensitive"), "{buy}");
+}

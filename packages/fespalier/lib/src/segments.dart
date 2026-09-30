@@ -69,6 +69,33 @@ abstract final class Segment {
         if (part.isNotEmpty) part,
     ];
   }
+
+  /// A catch-all of numbers, booleans or dates (`List<int> rest`): [asRest], with each part
+  /// read like one segment of that type. A part that doesn't parse is a [BadSegment], so the
+  /// route shows not-found, as `/products/abc` does for an `int` segment.
+  static List<int> asIntRest(GoRouterState s, String name) =>
+      _rest(s, name, int.tryParse);
+
+  static List<double> asDoubleRest(GoRouterState s, String name) =>
+      _rest(s, name, double.tryParse);
+
+  static List<num> asNumRest(GoRouterState s, String name) =>
+      _rest(s, name, num.tryParse);
+
+  static List<bool> asBoolRest(GoRouterState s, String name) =>
+      _rest(s, name, bool.tryParse);
+
+  static List<DateTime> asDateTimeRest(GoRouterState s, String name) =>
+      _rest(s, name, DateTime.tryParse);
+
+  static List<T> _rest<T>(
+    GoRouterState s,
+    String name,
+    T? Function(String) parse,
+  ) => [
+    for (final raw in asRest(s, name))
+      parse(raw) ?? (throw BadSegment(name, raw, '$T')),
+  ];
 }
 
 /// Typed readers for query parameters, used by generated code.
@@ -145,14 +172,19 @@ String withQuery(String location, Map<String, Object?> query) {
 }
 
 /// The path of a catch-all's parts, each encoded: `/a/b%20c`, or nothing for none.
-/// A typed route appends it to its location.
-String restPath(Iterable<String> rest) =>
-    [for (final part in rest) '/${Uri.encodeComponent(part)}'].join();
+/// A typed route appends it to its location. The parts are strings, numbers,
+/// booleans or dates (a `DateTime` is written as ISO 8601); [Segment.asRest] and
+/// its typed siblings read them back.
+String restPath(Iterable<Object> rest) =>
+    [for (final part in rest) '/${_restPart(part)}'].join();
 
 /// A catch-all's parts as one string, for keying a provider (lists compare by
 /// identity, strings by value). [restParts] takes it apart again.
-String restKey(Iterable<String> rest) =>
-    [for (final part in rest) Uri.encodeComponent(part)].join('/');
+String restKey(Iterable<Object> rest) =>
+    [for (final part in rest) _restPart(part)].join('/');
+
+String _restPart(Object part) =>
+    Uri.encodeComponent(part is DateTime ? part.toIso8601String() : '$part');
 
 /// The parts [restKey] joined.
 List<String> restParts(String key) => [

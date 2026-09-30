@@ -49,6 +49,38 @@
   the nested route that stays in the tab, the tab layout has a cross-fading `container`, and its
   `transition.dart` is Cupertino (the shell moves aside under a root-level push).
 
+### Typed catch-alls, and case per folder
+
+- **A catch-all can be typed.** A parameter named after a `$$rest` or `$$$rest` can be a
+  `List<int>`, `List<double>`, `List<num>`, `List<bool>` or `List<DateTime>` as well as the
+  `List<String>` it always was. Each part is read like one segment of that type
+  (`Segment.asIntRest`, `asDoubleRest`, `asNumRest`, `asBoolRest`, `asDateTimeRest`, built on
+  `asRest`); a part that doesn't parse renders `not_found`, as an unparsable `int` segment
+  does. The typed route's field takes the list, `.location` joins the encoded parts (a
+  `DateTime` as ISO 8601), and `$$$rest` is `[]` when absent. `data.dart` can take the typed list:
+  the provider is keyed by the path and `data()` gets the list back. The type must agree in
+  every file that asks for it, or it is an error with a code frame in the style of the
+  segment mismatch; other element types (`List<Object>`, `List<int?>`) are an error that lists
+  what is accepted. `restPath` and `restKey` take any `Iterable<Object>`. `fsp new` keeps the
+  type an existing catch-all has. Enums aren't supported (they aren't for ordinary segments
+  either). `examples/features` has `compare/$$ids`, a `List<int>` with a `data.dart`.
+- **`route.dart`, a per-folder `caseSensitive`.** A file `const caseSensitive = false;` (or
+  `true`) in a folder makes that folder and everything below it match paths in any case (or
+  exactly), the nearest one winning over the pubspec's `case_sensitive`. It is read from the
+  source like `meta.dart`, never imported, and must be a `true` or `false` literal: anything
+  else is an error. It is its own file because `meta.dart` is not inherited, `transition.dart`
+  is a function and `layout.dart` only exists where there is a layout. The generated
+  `caseSensitive: false` is now per `GoRoute`, and each `nearestNotFound` scope carries its
+  folder's setting. `examples/features` keeps `files/` exact while the rest of the app is not.
+- **Behaviour change in the runtime API:** `NotFoundScope` (what the generated `notFound`
+  passes to `nearestNotFound`) has a third field, `caseSensitive`, so **regenerate
+  `lib/app.g.dart`** with the matching `fsp`. A hand-written scope needs `caseSensitive: true`.
+- **The requested case is kept, and documented.** go_router doesn't lowercase anything:
+  navigating to `/Products/2` on a case-insensitive route leaves `GoRouterState.uri` and the
+  router's location as `/Products/2` (only `matchedLocation` is spelled by the route). Typed
+  routes' `.location` has no requested case and writes the folders' spelling. Tests in the
+  package and in `examples/features` pin this on go_router 17.5 and 18.
+
 ### View files as functions, and `not-found.dart`
 
 - **`page.dart`, `loading.dart`, `error.dart`, `layout.dart` and `not_found.dart` can export a

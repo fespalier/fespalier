@@ -73,6 +73,9 @@ pub struct Variable {
     /// Set when the initializer is one plain string literal, like
     /// `const routeName = 'KycShopName';`.
     pub string: Option<String>,
+    /// Set when the initializer is a `true` or `false` literal, like
+    /// `const caseSensitive = false;`.
+    pub boolean: Option<bool>,
     /// Set when the initializer is a map from string literals to constructor
     /// calls, like `const tabOptions = {'search': TabOptions(preload: true)};`.
     pub objects: Option<Vec<ObjectEntry>>,
@@ -375,7 +378,12 @@ impl Reader<'_> {
                 let objects = value_node.and_then(|v| self.objects(v));
                 let value = value_node.map(|v| self.text(v).split_whitespace().collect::<String>());
                 let string = value_node.filter(|v| v.kind() == "string_literal").and_then(|v| string_value(self.text(v)));
-                out.push(Variable { name: self.text(name).to_string(), call, strings, string, objects, value, is_const, span: Span::of(name) });
+                let boolean = value_node.and_then(|v| match v.kind() {
+                    "true" => Some(true),
+                    "false" => Some(false),
+                    _ => None,
+                });
+                out.push(Variable { name: self.text(name).to_string(), call, strings, string, boolean, objects, value, is_const, span: Span::of(name) });
             }
         }
         out
@@ -1202,6 +1210,26 @@ mod tests {
         assert!(strings("data").is_none());
         // Each string knows its line, for diagnostics.
         assert_eq!(m.variables[0].strings.as_ref().unwrap()[0].1.line, 2);
+    }
+
+    #[test]
+    fn reads_top_level_bool_literals() {
+        let m = parse(
+            r#"
+            const on = true;
+            const bool off = false;
+            final loud = false;
+            const not = !true;
+            const text = 'true';
+            const number = 1;
+            const other = kFlag;
+            "#,
+        );
+        let b = |n: &str| m.variables.iter().find(|v| v.name == n).unwrap().boolean;
+        assert_eq!((b("on"), b("off"), b("loud")), (Some(true), Some(false), Some(false)));
+        for n in ["not", "text", "number", "other"] {
+            assert_eq!(b(n), None, "{n}");
+        }
     }
 
     #[test]

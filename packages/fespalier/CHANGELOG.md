@@ -5,6 +5,11 @@
   builds.
 - Regenerate `lib/app.g.dart` with the matching `fsp`: `AppRoutes` has `rootNavigatorKey`, and
   `router()` and `mount()` take a `navigatorKey`; layouts' shells use the nearest `transition.dart`.
+- `Segment.asIntRest`, `asDoubleRest`, `asNumRest`, `asBoolRest` and `asDateTimeRest`: a
+  catch-all's parts read as a typed list; a part that doesn't parse is a `BadSegment` (not-found).
+  `restPath` and `restKey` take any `Iterable<Object>` (a `DateTime` is written as ISO 8601).
+- `NotFoundScope` has a `caseSensitive` field, so each folder's `route.dart` decides how its own
+  path is compared by `nearestNotFound`. Regenerate `lib/app.g.dart` with the matching `fsp`.
 - `RouteInfo<M>`, `RouteParam` (with `catchAll`), `RouteTab`, `RoutePresentation`, `routeTemplate`
   and `lookupRoute`: what the generated route manifest (`AppManifest.all`, `byType`, `byPath`) is
   made of, with `metaAs<T>()` for a route's `meta.dart`.

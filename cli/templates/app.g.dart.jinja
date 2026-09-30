@@ -107,7 +107,7 @@ GoRoute(
 {% if r.root %}
   parentNavigatorKey: rootNavigatorKey,
 {% endif %}
-{% if not case_sensitive %}
+{% if not r.case_sensitive %}
   caseSensitive: false,
 {% endif %}
 {% if r.redirects | length == 1 %}
@@ -212,7 +212,7 @@ abstract final class AppRoutes {
         base,
         [
 {% for n in not_founds %}
-          ({{ n.prefix }}, (uri) => {{ n.call }}),
+          ({{ n.prefix }}, (uri) => {{ n.call }}, caseSensitive: {{ "true" if n.case_sensitive else "false" }}),
 {% endfor %}
         ],
         (uri) => {{ not_found }},

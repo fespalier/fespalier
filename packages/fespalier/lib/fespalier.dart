@@ -13,3 +13,4 @@ export 'package:hooks_riverpod/hooks_riverpod.dart';
 export 'src/data_view.dart';
 export 'src/location.dart';
 export 'src/segments.dart';
+export 'src/transitions.dart';

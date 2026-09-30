@@ -1,5 +1,5 @@
 //! `AppRoutes.match` / `dataAt`, a section's typed handle and query keys, `meta_unique`,
-//! not_found.dart taking segments, and `fsp new --not-found`. (The rest of the generator's
+//! `not_found.dart` taking segments, and `fsp new --not-found`. (The rest of the generator's
 //! tests are in `tests.rs`.)
 
 use std::fs;
@@ -11,7 +11,9 @@ use crate::{analyze, manifest};
 const HOME: &str = "class HomePage extends StatelessWidget { const HomePage({super.key}); }";
 
 fn widget(class: &str, fields: &str, params: &str) -> String {
-    format!("class {class} extends StatelessWidget {{ const {class}({{super.key{params}}}); {fields} }}")
+    format!(
+        "class {class} extends StatelessWidget {{ const {class}({{super.key{params}}}); {fields} }}"
+    )
 }
 
 fn page(name: &str) -> String {
@@ -22,7 +24,11 @@ const LAYOUT: &str = "class SLayout extends StatelessWidget { const SLayout({sup
 
 fn project(yaml: &str, files: &[(&str, &str)]) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
-    fs::write(dir.path().join("pubspec.yaml"), format!("name: demo\n{yaml}")).unwrap();
+    fs::write(
+        dir.path().join("pubspec.yaml"),
+        format!("name: demo\n{yaml}"),
+    )
+    .unwrap();
     for (rel, body) in files {
         let p = dir.path().join("lib/app").join(rel);
         fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -36,11 +42,18 @@ fn diags(yaml: &str, files: &[(&str, &str)]) -> Vec<String> {
     let dir = project(yaml, files);
     let cfg = Config::load(dir.path()).unwrap();
     let (_, diags, _) = analyze(&dir.path().join("lib/app"), &cfg).unwrap();
-    diags.0.iter().map(|d| d.to_string()).collect()
+    diags
+        .0
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect()
 }
 
 fn errors(yaml: &str, files: &[(&str, &str)]) -> Vec<String> {
-    diags(yaml, files).into_iter().filter(|d| d.starts_with('✗')).collect()
+    diags(yaml, files)
+        .into_iter()
+        .filter(|d| d.starts_with('✗'))
+        .collect()
 }
 
 /// The generated files of a project that checks cleanly: (`output`, manifest library).
@@ -74,16 +87,42 @@ fn lacks(code: &str, needles: &[&str]) {
 fn every_route_gets_a_matcher_most_specific_first() {
     let c = code(&[
         ("page.dart", HOME),
-        ("$id/page.dart", &widget("ItemPage", "final int id;", ", required this.id")),
+        (
+            "$id/page.dart",
+            &widget("ItemPage", "final int id;", ", required this.id"),
+        ),
         ("about/page.dart", &page("About")),
-        ("docs/$$rest/page.dart", &widget("DocsPage", "final List<String> rest;", ", required this.rest")),
-        ("files/$$$path/page.dart", &widget("FilesPage", "final List<String> path;", ", required this.path")),
+        (
+            "docs/$$rest/page.dart",
+            &widget(
+                "DocsPage",
+                "final List<String> rest;",
+                ", required this.rest",
+            ),
+        ),
+        (
+            "files/$$$path/page.dart",
+            &widget(
+                "FilesPage",
+                "final List<String> path;",
+                ", required this.path",
+            ),
+        ),
         ("docs/new/page.dart", &page("NewDoc")),
     ]);
-    let at = |needle: &str| c.find(needle).unwrap_or_else(|| panic!("missing `{needle}` in:\n{c}"));
+    let at = |needle: &str| {
+        c.find(needle)
+            .unwrap_or_else(|| panic!("missing `{needle}` in:\n{c}"))
+    };
     // Static parts before `:params` before catch-alls, wherever the folders are.
-    assert!(at("RouteMatcher(['about']") < at("RouteMatcher([':id']"), "{c}");
-    assert!(at("RouteMatcher(['docs', 'new']") < at("RouteMatcher(['docs', '*rest']"), "{c}");
+    assert!(
+        at("RouteMatcher(['about']") < at("RouteMatcher([':id']"),
+        "{c}"
+    );
+    assert!(
+        at("RouteMatcher(['docs', 'new']") < at("RouteMatcher(['docs', '*rest']"),
+        "{c}"
+    );
     // The route is built from the params the route itself parses.
     has(
         &c,
@@ -103,10 +142,22 @@ fn every_route_gets_a_matcher_most_specific_first() {
 #[test]
 fn a_matcher_lists_the_data_the_route_watches() {
     let c = code(&[
-        ("$id/data.dart", "Future<String> data(Ref ref, {required int id, String? q}) async => '';"),
-        ("$id/page.dart", &widget("ItemPage", "final String s;", ", required this.s")),
-        ("tags/data.dart", "Future<int> data(Ref ref, {List<String> tags = const []}) async => 1;"),
-        ("tags/page.dart", &widget("TagsPage", "final int n;", ", required this.n")),
+        (
+            "$id/data.dart",
+            "Future<String> data(Ref ref, {required int id, String? q}) async => '';",
+        ),
+        (
+            "$id/page.dart",
+            &widget("ItemPage", "final String s;", ", required this.s"),
+        ),
+        (
+            "tags/data.dart",
+            "Future<int> data(Ref ref, {List<String> tags = const []}) async => 1;",
+        ),
+        (
+            "tags/page.dart",
+            &widget("TagsPage", "final int n;", ", required this.n"),
+        ),
         ("plain/page.dart", &page("Plain")),
     ]);
     has(
@@ -134,21 +185,49 @@ fn data_that_selects_a_provider_and_provider_files_are_listed_as_they_are() {
             "products/$productId/page.dart",
             "class ProductPage extends StatelessWidget { const ProductPage({super.key, required this.product}); final ProductView product; }",
         ),
-        ("counter/data.dart", "final data = FutureProvider<int>((ref) async => 1);"),
-        ("counter/page.dart", &widget("CounterPage", "final int n;", ", required this.n")),
+        (
+            "counter/data.dart",
+            "final data = FutureProvider<int>((ref) async => 1);",
+        ),
+        (
+            "counter/page.dart",
+            &widget("CounterPage", "final int n;", ", required this.n"),
+        ),
     ]);
     // The selector's closure (which returns the app's own provider) and the provider a file exports.
-    has(&c, &["[_data3(p.productId)])", "const CounterRoute(), {}, [_i0.data])"]);
+    has(
+        &c,
+        &[
+            "[_data3(p.productId)])",
+            "const CounterRoute(), {}, [_i0.data])",
+        ],
+    );
 }
 
 #[test]
 fn section_data_comes_before_the_routes_own_and_needs_no_layout_parse() {
     let c = code(&[
-        ("teams/$teamId/data.dart", "Future<Team> data(Ref ref, {required String teamId}) async => Team();"),
-        ("teams/$teamId/layout.dart", &widget("TeamLayout", "final Widget child; final Team team;", ", required this.child, required this.team")),
+        (
+            "teams/$teamId/data.dart",
+            "Future<Team> data(Ref ref, {required String teamId}) async => Team();",
+        ),
+        (
+            "teams/$teamId/layout.dart",
+            &widget(
+                "TeamLayout",
+                "final Widget child; final Team team;",
+                ", required this.child, required this.team",
+            ),
+        ),
         ("teams/$teamId/settings/page.dart", &page("Settings")),
-        ("teams/$teamId/members/$member/data.dart", "Future<String> data(Ref ref, {required int member}) async => '';"),
-        ("teams/$teamId/members/$member/page.dart", &widget("MemberPage", "final String s;", ", required this.s")),
+        (
+            "teams/$teamId/members/$member/data.dart",
+            "Future<String> data(Ref ref, {required int member}) async => '';",
+        ),
+        (
+            "teams/$teamId/members/$member/page.dart",
+            &widget("MemberPage", "final String s;", ", required this.s"),
+        ),
     ]);
     has(
         &c,
@@ -169,7 +248,10 @@ fn matchers_follow_the_case_sensitivity_config() {
     let (c, _) = generated("", &files);
     has(&c, &["matchRoutes(uri, base, _matchers);"]);
     let (c, _) = generated("fespalier:\n  case_sensitive: false\n", &files);
-    has(&c, &["matchRoutes(uri, base, _matchers, caseSensitive: false);"]);
+    has(
+        &c,
+        &["matchRoutes(uri, base, _matchers, caseSensitive: false);"],
+    );
 }
 
 #[test]
@@ -194,15 +276,38 @@ fn each_matcher_carries_its_own_case_flag() {
         ],
     );
     // And the other way round.
-    let (c, _) = generated("", &[("page.dart", HOME), ("ci/route.dart", "const caseSensitive = false;"), ("ci/page.dart", &page("Ci"))]);
-    has(&c, &["RouteMatcher(['ci'], (s) => UrlMatch(s.uri, const CiRoute(), {}, []), caseSensitive: false),", "matchRoutes(uri, base, _matchers);"]);
+    let (c, _) = generated(
+        "",
+        &[
+            ("page.dart", HOME),
+            ("ci/route.dart", "const caseSensitive = false;"),
+            ("ci/page.dart", &page("Ci")),
+        ],
+    );
+    has(
+        &c,
+        &[
+            "RouteMatcher(['ci'], (s) => UrlMatch(s.uri, const CiRoute(), {}, []), caseSensitive: false),",
+            "matchRoutes(uri, base, _matchers);",
+        ],
+    );
 }
 
 #[test]
 fn a_typed_catch_all_is_parsed_by_the_matcher_like_the_page_does() {
     let c = code(&[
-        ("compare/$$ids/data.dart", "Future<int> data(Ref ref, {required List<int> ids}) async => 1;"),
-        ("compare/$$ids/page.dart", &widget("ComparePage", "final List<int> ids; final int n;", ", required this.ids, required this.n")),
+        (
+            "compare/$$ids/data.dart",
+            "Future<int> data(Ref ref, {required List<int> ids}) async => 1;",
+        ),
+        (
+            "compare/$$ids/page.dart",
+            &widget(
+                "ComparePage",
+                "final List<int> ids; final int n;",
+                ", required this.ids, required this.n",
+            ),
+        ),
     ]);
     has(
         &c,
@@ -228,18 +333,37 @@ fn a_separate_manifest_library_has_match_and_the_router_file_has_matchurl() {
         &[("page.dart", HOME), ("about/page.dart", &page("About"))],
     );
     // app.g.dart doesn't know the manifest: what it can say without it is the URL match.
-    has(&main, &["static UrlMatch? matchUrl(Uri uri)", "dataAt(Uri uri)"]);
+    has(
+        &main,
+        &["static UrlMatch? matchUrl(Uri uri)", "dataAt(Uri uri)"],
+    );
     lacks(&main, &["RouteMatch?", "RouteMatch(", "AppManifest"]);
     let m = manifest.unwrap();
-    has(&m, &["static RouteMatch? match(Uri uri) {", "AppRoutes.matchUrl(uri)"]);
+    has(
+        &m,
+        &[
+            "static RouteMatch? match(Uri uri) {",
+            "AppRoutes.matchUrl(uri)",
+        ],
+    );
 }
 
 // --- a section's typed handle -------------------------------------------------------------
 
 fn team_files() -> Vec<(&'static str, String)> {
     vec![
-        ("teams/$teamId/data.dart", "Future<Team> data(Ref ref, {required String teamId}) async => Team();".into()),
-        ("teams/$teamId/layout.dart", widget("TeamLayout", "final Widget child; final Team team;", ", required this.child, required this.team")),
+        (
+            "teams/$teamId/data.dart",
+            "Future<Team> data(Ref ref, {required String teamId}) async => Team();".into(),
+        ),
+        (
+            "teams/$teamId/layout.dart",
+            widget(
+                "TeamLayout",
+                "final Widget child; final Team team;",
+                ", required this.child, required this.team",
+            ),
+        ),
         ("teams/$teamId/members/page.dart", page("Members")),
     ]
 }
@@ -276,7 +400,14 @@ fn section_handle_names_come_from_the_folder_and_clashes_are_errors() {
         ("(shop)/layout.dart", LAYOUT),
         ("(shop)/cart/page.dart", &page("Cart")),
     ]);
-    has(&c, &["abstract final class RootSection {", "abstract final class ShopSection {", "static final watch = (WidgetRef ref) => ref.watch(data);"]);
+    has(
+        &c,
+        &[
+            "abstract final class RootSection {",
+            "abstract final class ShopSection {",
+            "static final watch = (WidgetRef ref) => ref.watch(data);",
+        ],
+    );
     // Two folders that name the same handle.
     let e = errors(
         "",
@@ -290,7 +421,10 @@ fn section_handle_names_come_from_the_folder_and_clashes_are_errors() {
         ],
     )
     .join("\n");
-    assert!(e.contains("the section's typed handle `ABSection` is already taken by a-b/data.dart"), "{e}");
+    assert!(
+        e.contains("the section's typed handle `ABSection` is already taken by a-b/data.dart"),
+        "{e}"
+    );
 }
 
 #[test]
@@ -300,7 +434,14 @@ fn a_section_selector_gets_the_selected_helpers() {
             "teams/$teamId/data.dart",
             "ProviderListenable<AsyncValue<Team>> data({required String teamId}) => teamProvider(teamId);",
         ),
-        ("teams/$teamId/layout.dart", &widget("TeamLayout", "final Widget child; final Team team;", ", required this.child, required this.team")),
+        (
+            "teams/$teamId/layout.dart",
+            &widget(
+                "TeamLayout",
+                "final Widget child; final Team team;",
+                ", required this.child, required this.team",
+            ),
+        ),
         ("teams/$teamId/members/page.dart", &page("Members")),
     ]);
     has(
@@ -351,10 +492,18 @@ fn a_section_can_be_keyed_by_query_parameters() {
 #[test]
 fn a_query_key_of_a_section_must_agree_with_a_pages_own() {
     let mut files = report_files();
-    files[2].1 = widget("MonthlyPage", "final String data; final int? period;", ", required this.data, this.period");
+    files[2].1 = widget(
+        "MonthlyPage",
+        "final String data; final int? period;",
+        ", required this.data, this.period",
+    );
     let e = errors("", &refs(&files)).join("\n");
     // The page's own `int? period` and the section's `String? period` are one query parameter.
-    assert!(e.contains("`?period` is int? in reports/monthly/page.dart") && e.contains("but String? here"), "{e}");
+    assert!(
+        e.contains("`?period` is int? in reports/monthly/page.dart")
+            && e.contains("but String? here"),
+        "{e}"
+    );
     assert!(e.contains("reports/data.dart"), "{e}");
 }
 
@@ -363,27 +512,43 @@ fn section_keys_cannot_shadow_the_handles_members() {
     let e = errors(
         "",
         &[
-            ("s/data.dart", "Future<int> data(Ref ref, {String? ref2, int? keepFor}) async => 1;"),
+            (
+                "s/data.dart",
+                "Future<int> data(Ref ref, {String? ref2, int? keepFor}) async => 1;",
+            ),
             ("s/layout.dart", LAYOUT),
             ("s/x/page.dart", &page("X")),
         ],
     )
     .join("\n");
-    assert!(e.contains("`keepFor` can't be a key of a section's data.dart"), "{e}");
+    assert!(
+        e.contains("`keepFor` can't be a key of a section's data.dart"),
+        "{e}"
+    );
 }
 
 // --- meta_unique ----------------------------------------------------------------------------
 
 fn meta(args: &str) -> String {
-    format!("class Meta {{ const Meta({{this.code, this.slug, this.n}}); final String? code; final String? slug; final int? n; }}\nconst meta = Meta({args});")
+    format!(
+        "class Meta {{ const Meta({{this.code, this.slug, this.n}}); final String? code; final String? slug; final int? n; }}\nconst meta = Meta({args});"
+    )
 }
 
 const UNIQUE: &str = "fespalier:\n  meta_unique: [code, slug]\n";
 
 #[test]
 fn meta_unique_is_a_config_key() {
-    assert!(Pubspec::parse("name: a\n").unwrap().config.meta_unique.is_empty());
-    let c = Pubspec::parse("name: a\nfespalier:\n  meta_unique: [code, slug, code]\n").unwrap().config;
+    assert!(
+        Pubspec::parse("name: a\n")
+            .unwrap()
+            .config
+            .meta_unique
+            .is_empty()
+    );
+    let c = Pubspec::parse("name: a\nfespalier:\n  meta_unique: [code, slug, code]\n")
+        .unwrap()
+        .config;
     assert_eq!(c.meta_unique, ["code", "slug"]);
     let e = Pubspec::parse("name: a\nfespalier:\n  meta_unique: ['not an ident']\n").unwrap_err();
     assert!(format!("{e:#}").contains("not an ident"), "{e:#}");
@@ -404,8 +569,14 @@ fn duplicate_literals_are_errors_that_name_both_files() {
     );
     assert_eq!(e.len(), 2, "{e:?}");
     let all = e.join("\n");
-    assert!(all.contains("about/meta.dart") && all.contains("`code: 'A01'` is also in meta.dart"), "{all}");
-    assert!(all.contains("blog/meta.dart") && all.contains("`slug: 'home'` is also in meta.dart"), "{all}");
+    assert!(
+        all.contains("about/meta.dart") && all.contains("`code: 'A01'` is also in meta.dart"),
+        "{all}"
+    );
+    assert!(
+        all.contains("blog/meta.dart") && all.contains("`slug: 'home'` is also in meta.dart"),
+        "{all}"
+    );
     assert!(all.contains("meta_unique: [code, slug]"), "{all}");
 }
 
@@ -458,7 +629,10 @@ fn numbers_and_strings_are_different_values_and_numbers_compare_as_written() {
             ("page.dart", HOME),
             ("meta.dart", &meta("n: 1")),
             ("a/page.dart", &page("A")),
-            ("a/meta.dart", "class M { const M({this.n}); final Object? n; }\nconst meta = M(n: '1');"),
+            (
+                "a/meta.dart",
+                "class M { const M({this.n}); final Object? n; }\nconst meta = M(n: '1');",
+            ),
         ],
     );
     assert!(e.is_empty(), "{e:?}");
@@ -471,10 +645,19 @@ fn a_key_no_meta_gives_a_literal_is_a_warning() {
         &[("page.dart", HOME), ("meta.dart", &meta("code: 'A'"))],
     )
     .join("\n");
-    assert!(d.contains("`meta_unique` in pubspec.yaml lists `codee`"), "{d}");
+    assert!(
+        d.contains("`meta_unique` in pubspec.yaml lists `codee`"),
+        "{d}"
+    );
     assert!(!d.contains('✗'), "{d}");
     // Nothing to say when no route has a meta.dart at all.
-    assert!(diags("fespalier:\n  meta_unique: [code]\n", &[("page.dart", HOME)]).is_empty());
+    assert!(
+        diags(
+            "fespalier:\n  meta_unique: [code]\n",
+            &[("page.dart", HOME)]
+        )
+        .is_empty()
+    );
 }
 
 #[test]
@@ -495,16 +678,27 @@ fn meta_may_be_written_const_and_redirects_count_too() {
 // --- not_found.dart takes segments ----------------------------------------------------------
 
 fn not_found(class: &str, fields: &str, params: &str) -> String {
-    format!("class {class} extends StatelessWidget {{ const {class}({{super.key, required this.uri{params}}}); final Uri uri; {fields} }}")
+    format!(
+        "class {class} extends StatelessWidget {{ const {class}({{super.key, required this.uri{params}}}); final Uri uri; {fields} }}"
+    )
 }
 
 #[test]
 fn a_not_found_gets_its_segments_as_strings() {
     let c = code(&[
         ("page.dart", HOME),
-        ("shops/$shop/not_found.dart", &not_found("ShopNotFound", "final String shop;", ", required this.shop")),
-        ("shops/$shop/page.dart", &widget("ShopPage", "final int shop;", ", required this.shop")),
-        ("shops/$shop/items/$id/page.dart", &widget("ItemPage", "final int id;", ", required this.id")),
+        (
+            "shops/$shop/not_found.dart",
+            &not_found("ShopNotFound", "final String shop;", ", required this.shop"),
+        ),
+        (
+            "shops/$shop/page.dart",
+            &widget("ShopPage", "final int shop;", ", required this.shop"),
+        ),
+        (
+            "shops/$shop/items/$id/page.dart",
+            &widget("ItemPage", "final int id;", ", required this.id"),
+        ),
     ]);
     has(
         &c,
@@ -523,19 +717,31 @@ fn a_not_found_segment_must_be_a_string() {
         "",
         &[
             ("page.dart", HOME),
-            ("shops/$shop/not_found.dart", &not_found("ShopNotFound", "final int shop;", ", required this.shop")),
-            ("shops/$shop/page.dart", &widget("ShopPage", "final int shop;", ", required this.shop")),
+            (
+                "shops/$shop/not_found.dart",
+                &not_found("ShopNotFound", "final int shop;", ", required this.shop"),
+            ),
+            (
+                "shops/$shop/page.dart",
+                &widget("ShopPage", "final int shop;", ", required this.shop"),
+            ),
         ],
     )
     .join("\n");
-    assert!(e.contains("`shop` gets the segment as the URL spells it, a String"), "{e}");
+    assert!(
+        e.contains("`shop` gets the segment as the URL spells it, a String"),
+        "{e}"
+    );
     assert!(e.contains("declare it `String shop`"), "{e}");
     // Only the segments of its own path.
     let e = errors(
         "",
         &[
             ("page.dart", HOME),
-            ("a/not_found.dart", &not_found("ANotFound", "final String other;", ", required this.other")),
+            (
+                "a/not_found.dart",
+                &not_found("ANotFound", "final String other;", ", required this.other"),
+            ),
             ("a/page.dart", &page("A")),
         ],
     )
@@ -563,16 +769,32 @@ fn new_args(route: &str, not_found: bool) -> NewArgs {
 #[test]
 fn new_not_found_scaffolds_a_file_that_takes_the_segments() {
     let dir = project("", &[("page.dart", HOME)]);
-    let created = scaffold::new_route_opts(dir.path(), &new_args("shops/[shop]", true), false).unwrap();
-    assert_eq!(created, ["lib/app/shops/$shop/page.dart", "lib/app/shops/$shop/not_found.dart"]);
+    let created =
+        scaffold::new_route_opts(dir.path(), &new_args("shops/[shop]", true), false).unwrap();
+    assert_eq!(
+        created,
+        [
+            "lib/app/shops/$shop/page.dart",
+            "lib/app/shops/$shop/not_found.dart"
+        ]
+    );
     let src = fs::read_to_string(dir.path().join("lib/app/shops/$shop/not_found.dart")).unwrap();
-    assert!(src.contains("class ShopsShopNotFound extends StatelessWidget"), "{src}");
-    assert!(src.contains("required this.uri, required this.shop") && src.contains("final String shop;"), "{src}");
+    assert!(
+        src.contains("class ShopsShopNotFound extends StatelessWidget"),
+        "{src}"
+    );
+    assert!(
+        src.contains("required this.uri, required this.shop") && src.contains("final String shop;"),
+        "{src}"
+    );
     // What it scaffolds generates cleanly, and is the folder's not-found.
     let cfg = Config::load(dir.path()).unwrap();
     let (code, diags, _) = analyze(&dir.path().join("lib/app"), &cfg).unwrap();
     assert!(diags.0.is_empty(), "{:?}", diags.0);
-    has(&code, &["ShopsShopNotFound(uri: uri, shop: pathPart(uri, base, 1))"]);
+    has(
+        &code,
+        &["ShopsShopNotFound(uri: uri, shop: pathPart(uri, base, 1))"],
+    );
 }
 
 #[test]
@@ -581,10 +803,18 @@ fn new_not_found_alone_and_where_it_cannot_go() {
     let created = scaffold::new_route_opts(dir.path(), &new_args("docs", true), true).unwrap();
     assert_eq!(created, ["lib/app/docs/not_found.dart"]);
     let src = fs::read_to_string(dir.path().join("lib/app/docs/not_found.dart")).unwrap();
-    assert!(src.contains("DocsNotFound({super.key, required this.uri})"), "{src}");
+    assert!(
+        src.contains("DocsNotFound({super.key, required this.uri})"),
+        "{src}"
+    );
     // Not for a catch-all: it matches everything below it.
-    let e = scaffold::new_route_opts(dir.path(), &new_args("wiki/[...rest]", true), false).unwrap_err().to_string();
-    assert!(e.contains("catch-all folder can't have a not_found.dart"), "{e}");
+    let e = scaffold::new_route_opts(dir.path(), &new_args("wiki/[...rest]", true), false)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("catch-all folder can't have a not_found.dart"),
+        "{e}"
+    );
     // Without the flag nothing changes.
     let created = scaffold::new_route_opts(dir.path(), &new_args("plain", false), false).unwrap();
     assert_eq!(created, ["lib/app/plain/page.dart"]);
@@ -594,7 +824,7 @@ fn new_not_found_alone_and_where_it_cannot_go() {
 
 #[test]
 fn constructor_call_arguments_are_read_as_literals() {
-    use crate::dart::{parse, Lit};
+    use crate::dart::{Lit, parse};
     let m = parse(
         r#"
         const a = PageMeta(code: 'A01', order: 3, ratio: -1.5, hex: 0xff, flag: true, title: 'x $y', other: kSomething, 'positional');
@@ -604,7 +834,13 @@ fn constructor_call_arguments_are_read_as_literals() {
         "#,
     );
     let var = |n: &str| m.variables.iter().find(|v| v.name == n).unwrap();
-    let a: Vec<(String, Lit)> = var("a").ctor_args.as_ref().unwrap().iter().map(|x| (x.name.clone(), x.value.clone())).collect();
+    let a: Vec<(String, Lit)> = var("a")
+        .ctor_args
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|x| (x.name.clone(), x.value.clone()))
+        .collect();
     assert_eq!(
         a,
         [
@@ -617,7 +853,10 @@ fn constructor_call_arguments_are_read_as_literals() {
             ("other".to_string(), Lit::Other),
         ]
     );
-    assert_eq!(var("b").ctor_args.as_ref().unwrap()[0].value, Lit::Str("B".into()));
+    assert_eq!(
+        var("b").ctor_args.as_ref().unwrap()[0].value,
+        Lit::Str("B".into())
+    );
     assert!(var("c").ctor_args.as_ref().unwrap().is_empty());
     assert!(var("d").ctor_args.is_none());
 }

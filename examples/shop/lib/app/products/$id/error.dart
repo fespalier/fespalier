@@ -20,9 +20,11 @@ class ProductError extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(missing
-              ? 'Product #$id does not exist'
-              : "Couldn't load product #$id: $error"),
+          Text(
+            missing
+                ? 'Product #$id does not exist'
+                : "Couldn't load product #$id: $error",
+          ),
           if (!missing)
             TextButton(onPressed: retry, child: const Text('Retry')),
         ],

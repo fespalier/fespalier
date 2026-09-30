@@ -5,7 +5,8 @@ import 'package:go_router/go_router.dart';
 /// The restoration id of the page built for [key]: go_router's page keys are
 /// `ValueKey<String>`s, and its own pages use the key's value, so these do too.
 /// Without one, a page's state is not restored after the app is killed.
-String? _restorationId(LocalKey key) => key is ValueKey<String> ? key.value : null;
+String? _restorationId(LocalKey key) =>
+    key is ValueKey<String> ? key.value : null;
 
 /// Ready-made pages for `transition.dart`.
 ///
@@ -18,19 +19,18 @@ abstract final class Transitions {
     LocalKey key,
     Widget child, {
     Duration duration = const Duration(milliseconds: 250),
-  }) =>
-      CustomTransitionPage<void>(
-        key: key,
-        restorationId: _restorationId(key),
-        child: child,
-        transitionDuration: duration,
-        reverseTransitionDuration: duration,
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            FadeTransition(
+  }) => CustomTransitionPage<void>(
+    key: key,
+    restorationId: _restorationId(key),
+    child: child,
+    transitionDuration: duration,
+    reverseTransitionDuration: duration,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+        FadeTransition(
           opacity: CurveTween(curve: Curves.easeOut).animate(animation),
           child: child,
         ),
-      );
+  );
 
   /// Slides the page in from the [from] edge of the screen (`right` enters
   /// from the right edge, `down` from the bottom, and so on).
@@ -54,25 +54,36 @@ abstract final class Transitions {
       reverseTransitionDuration: duration,
       transitionsBuilder: (context, animation, secondaryAnimation, child) =>
           SlideTransition(
-        position: Tween(begin: begin, end: Offset.zero)
-            .chain(CurveTween(curve: Curves.easeOutCubic))
-            .animate(animation),
-        child: child,
-      ),
+            position: Tween(
+              begin: begin,
+              end: Offset.zero,
+            ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(animation),
+            child: child,
+          ),
     );
   }
 
   /// Swaps pages instantly, without any animation.
-  static Page<void> none(LocalKey key, Widget child) =>
-      NoTransitionPage<void>(key: key, restorationId: _restorationId(key), child: child);
+  static Page<void> none(LocalKey key, Widget child) => NoTransitionPage<void>(
+    key: key,
+    restorationId: _restorationId(key),
+    child: child,
+  );
 
   /// The platform-default Material page transition.
-  static Page<void> material(LocalKey key, Widget child) =>
-      MaterialPage<void>(key: key, restorationId: _restorationId(key), child: child);
+  static Page<void> material(LocalKey key, Widget child) => MaterialPage<void>(
+    key: key,
+    restorationId: _restorationId(key),
+    child: child,
+  );
 
   /// The iOS-style Cupertino page transition (slide plus edge-swipe back).
   static Page<void> cupertino(LocalKey key, Widget child) =>
-      CupertinoPage<void>(key: key, restorationId: _restorationId(key), child: child);
+      CupertinoPage<void>(
+        key: key,
+        restorationId: _restorationId(key),
+        child: child,
+      );
 
   /// A route that opens as a Material dialog over the previous page.
   ///

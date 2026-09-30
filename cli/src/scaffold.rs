@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Args;
 use serde::Serialize;
 
 use crate::config::Config;
 use crate::diag::Diags;
 use crate::resolve::{self, pascal};
-use crate::scan::{self, parse_segment, FileStyle, Seg};
+use crate::scan::{self, FileStyle, Seg, parse_segment};
 use crate::templates;
 
 #[derive(Args)]
@@ -72,6 +72,24 @@ struct Cx {
 struct SegCx {
     name: String,
     ty: String,
+    /// `required int id`: a named parameter of a function view.
+    param: String,
+    /// `required String id`: the same for a not-found view, which gets the raw segment.
+    string_param: String,
+    /// `required this.id`: a named parameter of a widget constructor.
+    field: String,
+}
+
+impl SegCx {
+    fn new(name: String, ty: String) -> Self {
+        Self {
+            param: format!("required {ty} {name}"),
+            string_param: format!("required String {name}"),
+            field: format!("required this.{name}"),
+            name,
+            ty,
+        }
+    }
 }
 
 /// Scaffolds the route, writing a page.dart unless the folder is a `(group)`.
@@ -90,9 +108,16 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         .split('/')
         .filter(|s| !s.is_empty())
         .map(|p| {
-            let bracketed = |p: &str| p.strip_prefix('[').and_then(|p| p.strip_suffix(']')).map(str::to_string);
+            let bracketed = |p: &str| {
+                p.strip_prefix('[')
+                    .and_then(|p| p.strip_suffix(']'))
+                    .map(str::to_string)
+            };
             // `[[...rest]]` → `$$$rest`, `[...rest]` → `$$rest`, `[id]` → `$id`.
-            if let Some(n) = bracketed(p).and_then(|i| bracketed(&i)).and_then(|i| i.strip_prefix("...").map(str::to_string)) {
+            if let Some(n) = bracketed(p)
+                .and_then(|i| bracketed(&i))
+                .and_then(|i| i.strip_prefix("...").map(str::to_string))
+            {
                 return format!("$$${n}");
             }
             match bracketed(p) {
@@ -107,7 +132,10 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
             }
         })
         .collect();
-    let segs: Vec<Seg> = parts.iter().map(|p| parse_segment(p).map_err(anyhow::Error::msg)).collect::<Result<_>>()?;
+    let segs: Vec<Seg> = parts
+        .iter()
+        .map(|p| parse_segment(p).map_err(anyhow::Error::msg))
+        .collect::<Result<_>>()?;
     let rel = parts.join("/");
 
     // Segments that already exist keep the type the tree gives them.
@@ -126,22 +154,30 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         match s {
             Seg::Dynamic(name) => {
                 let dir = parts[..=i].join("/");
-                let ty = known.get(dir.as_str()).cloned().unwrap_or_else(|| "String".to_string());
-                seg_cx.push(SegCx { name: name.clone(), ty });
+                let ty = known
+                    .get(dir.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| "String".to_string());
+                seg_cx.push(SegCx::new(name.clone(), ty));
             }
             Seg::CatchAll(name, _) => {
                 let dir = parts[..=i].join("/");
-                let ty = known.get(dir.as_str()).cloned().unwrap_or_else(|| "List<String>".to_string());
-                seg_cx.push(SegCx { name: name.clone(), ty });
+                let ty = known
+                    .get(dir.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| "List<String>".to_string());
+                seg_cx.push(SegCx::new(name.clone(), ty));
             }
             _ => {}
         }
     }
 
-    if let (true, Some(n)) = (a.function, &a.name) {
-        if !resolve::valid_route_name(n) {
-            bail!("--name `{n}` names the route class `{n}Route`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName`");
-        }
+    if let (true, Some(n)) = (a.function, &a.name)
+        && !resolve::valid_route_name(n)
+    {
+        bail!(
+            "--name `{n}` names the route class `{n}Route`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName`"
+        );
     }
     let stem = a.name.clone().unwrap_or_else(|| {
         let p = pascal(&rel);
@@ -161,7 +197,9 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
     // collide with the page of the folder above it).
     let is_group = matches!(segs.last(), Some(Seg::Group(_)));
     if a.not_found && matches!(segs.last(), Some(Seg::CatchAll(..))) {
-        bail!("a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown");
+        bail!(
+            "a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown"
+        );
     }
     let wanted = [
         ("page", !no_page && !is_group),
@@ -174,8 +212,14 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         ("transition", a.transition),
     ];
     if !wanted.iter().any(|(_, on)| *on) {
-        let why = if is_group { "a (group) folder has no page" } else { "--no-page skips the page" };
-        bail!("nothing to create: {why}; also pass --layout, --loading, --error, --not-found, --guard or --transition");
+        let why = if is_group {
+            "a (group) folder has no page"
+        } else {
+            "--no-page skips the page"
+        };
+        bail!(
+            "nothing to create: {why}; also pass --layout, --loading, --error, --not-found, --guard or --transition"
+        );
     }
     let dir = app_dir.join(&rel);
     fs::create_dir_all(&dir)?;
@@ -185,9 +229,26 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
             continue;
         }
         // `file_style` picks how a multi-word kind is spelled; the other spelling counts as there.
-        let (snake, kebab) = (format!("{kind}.dart"), format!("{}.dart", kind.replace('_', "-")));
-        let file = if cfg.file_style == FileStyle::Kebab { &kebab } else { &snake };
-        let at = |f: &str| format!("{}/{}{f}", cfg.app_dir, if rel.is_empty() { String::new() } else { format!("{rel}/") });
+        let (snake, kebab) = (
+            format!("{kind}.dart"),
+            format!("{}.dart", kind.replace('_', "-")),
+        );
+        let file = if cfg.file_style == FileStyle::Kebab {
+            &kebab
+        } else {
+            &snake
+        };
+        let at = |f: &str| {
+            format!(
+                "{}/{}{f}",
+                cfg.app_dir,
+                if rel.is_empty() {
+                    String::new()
+                } else {
+                    format!("{rel}/")
+                }
+            )
+        };
         let path = dir.join(file);
         let shown = at(file);
         if let Some(present) = [&snake, &kebab].into_iter().find(|f| dir.join(f).exists()) {

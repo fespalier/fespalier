@@ -43,9 +43,10 @@ class _SheetRoute<T> extends PopupRoute<T> {
           // A width cap, the way a tablet gets one.
           constraints: const BoxConstraints(maxWidth: 640),
           child: SlideTransition(
-            position: Tween(begin: const Offset(0, 1), end: Offset.zero)
-                .animate(CurvedAnimation(
-                    parent: animation, curve: Curves.easeOutCubic)),
+            position:
+                Tween(begin: const Offset(0, 1), end: Offset.zero).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            ),
             child: Material(
               color: Colors.white,
               borderRadius:

@@ -13,12 +13,21 @@
 //!
 //! When this fails after a version bump, update the places it names.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "integration-test helpers: a failed unwrap is a failed test"
+)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf()
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
 }
 
 fn read(rel: &str) -> String {
@@ -34,7 +43,10 @@ fn pubspec_version(yaml: &str) -> String {
         .find_map(|l| l.strip_prefix("version:"))
         .map(|v| {
             let v = v.trim_start().trim_start_matches(['"', '\'']);
-            v.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '#')).next().unwrap_or("").to_string()
+            v.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '#'))
+                .next()
+                .unwrap_or("")
+                .to_string()
         })
         .filter(|v| !v.is_empty())
         .expect("no top-level `version:`")
@@ -44,24 +56,41 @@ fn pubspec_version(yaml: &str) -> String {
 fn pubspec_version_tolerates_quotes_and_the_release_please_annotation() {
     assert_eq!(pubspec_version("name: x\nversion: 1.2.3\n"), "1.2.3");
     assert_eq!(pubspec_version("version: \"1.2.3\"\n"), "1.2.3");
-    assert_eq!(pubspec_version("version: '1.2.3-dev.1' # note\n"), "1.2.3-dev.1");
-    assert_eq!(pubspec_version("name: x\nversion: 1.2.3 # x-release-please-version\n"), "1.2.3");
+    assert_eq!(
+        pubspec_version("version: '1.2.3-dev.1' # note\n"),
+        "1.2.3-dev.1"
+    );
+    assert_eq!(
+        pubspec_version("name: x\nversion: 1.2.3 # x-release-please-version\n"),
+        "1.2.3"
+    );
     assert_eq!(pubspec_version("version: 1.2.3 #x\n"), "1.2.3");
 }
 
 /// `major.minor.patch` of a version, ignoring a pre-release suffix.
 fn triple(version: &str) -> (u64, u64, u64) {
     let core = version.split(['-', '+']).next().unwrap();
-    let mut parts = core.split('.').map(|p| p.parse::<u64>().unwrap_or_else(|_| panic!("not a version: {version}")));
-    (parts.next().unwrap(), parts.next().unwrap(), parts.next().unwrap())
+    let mut parts = core.split('.').map(|p| {
+        p.parse::<u64>()
+            .unwrap_or_else(|_| panic!("not a version: {version}"))
+    });
+    (
+        parts.next().unwrap(),
+        parts.next().unwrap(),
+        parts.next().unwrap(),
+    )
 }
 
 fn looks_like_a_version(word: &str) -> bool {
-    word.split('.').count() == 3 && word.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+    word.split('.').count() == 3
+        && word
+            .split('.')
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }
 
 fn has_a_version(line: &str) -> bool {
-    line.split(|c: char| !(c.is_ascii_digit() || c == '.')).any(looks_like_a_version)
+    line.split(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .any(looks_like_a_version)
 }
 
 /// The 1-based lines that release-please's `Generic` updater rewrites: a line carrying the
@@ -77,7 +106,9 @@ fn annotated_lines(text: &str) -> Vec<usize> {
             if line.contains("x-release-please-end") {
                 in_block = false;
             }
-        } else if line.trim_start().starts_with("<!--") && line.contains("x-release-please-start-version") {
+        } else if line.trim_start().starts_with("<!--")
+            && line.contains("x-release-please-start-version")
+        {
             in_block = true;
         }
     }
@@ -97,7 +128,10 @@ fn versions_after(text: &str, marker: &str) -> Vec<(usize, String)> {
         let mut rest = line;
         while let Some(at) = rest.find(marker) {
             rest = &rest[at + marker.len()..];
-            let v: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-')).collect();
+            let v: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+                .collect();
             out.push((i + 1, v));
         }
     }
@@ -110,14 +144,21 @@ const MARKERS: [&str; 3] = ["ref: v", "--tag v", "FSP_VERSION=v"];
 fn the_dart_package_has_the_cli_version() {
     let cargo = env!("CARGO_PKG_VERSION");
     let pubspec = pubspec_version(&read("packages/fespalier/pubspec.yaml"));
-    assert_eq!(pubspec, cargo, "packages/fespalier/pubspec.yaml `version:` must equal cli/Cargo.toml");
+    assert_eq!(
+        pubspec, cargo,
+        "packages/fespalier/pubspec.yaml `version:` must equal cli/Cargo.toml"
+    );
 }
 
 #[test]
 fn the_release_please_manifest_has_the_cli_version() {
     let cargo = env!("CARGO_PKG_VERSION");
-    let manifest: serde_json::Value = serde_json::from_str(&read(".release-please-manifest.json")).expect("manifest is JSON");
-    assert_eq!(manifest["."], cargo, ".release-please-manifest.json must equal cli/Cargo.toml (release-please owns it; never hand-edit)");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&read(".release-please-manifest.json")).expect("manifest is JSON");
+    assert_eq!(
+        manifest["."], cargo,
+        ".release-please-manifest.json must equal cli/Cargo.toml (release-please owns it; never hand-edit)"
+    );
 }
 
 #[test]
@@ -128,15 +169,29 @@ fn the_release_workflows_extractions_find_every_version() {
     // published nothing: org releasing.md, trap 6).
     let cargo = env!("CARGO_PKG_VERSION");
     for what in ["cargo", "pubspec", "manifest", "lock"] {
-        let out = match Command::new("bash").arg(root().join("scripts/read-version.sh")).arg(what).output() {
+        let out = match Command::new("bash")
+            .arg(root().join("scripts/read-version.sh"))
+            .arg(what)
+            .output()
+        {
             Ok(out) => out,
             Err(e) => {
-                eprintln!("skipping: no bash to run scripts/read-version.sh ({e}); CI runs it on Linux");
+                eprintln!(
+                    "skipping: no bash to run scripts/read-version.sh ({e}); CI runs it on Linux"
+                );
                 return;
             }
         };
-        assert!(out.status.success(), "read-version.sh {what} failed: {}", String::from_utf8_lossy(&out.stderr));
-        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), cargo, "read-version.sh {what}");
+        assert!(
+            out.status.success(),
+            "read-version.sh {what} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            cargo,
+            "read-version.sh {what}"
+        );
     }
 }
 
@@ -144,7 +199,10 @@ fn the_release_workflows_extractions_find_every_version() {
 fn fsp_init_prints_a_ref_for_this_version() {
     let cargo = env!("CARGO_PKG_VERSION");
     let refs = versions_after(&read("cli/src/init.rs"), "ref: v");
-    assert!(!refs.is_empty(), "cli/src/init.rs no longer prints a `ref: v…`; update this test");
+    assert!(
+        !refs.is_empty(),
+        "cli/src/init.rs no longer prints a `ref: v…`; update this test"
+    );
     for (line, v) in refs {
         assert_eq!(v, cargo, "cli/src/init.rs:{line}: `ref: v{v}`");
     }
@@ -164,7 +222,10 @@ fn the_readmes_pin_this_version() {
     // The main README documents all three: the git dependency, cargo install, and FSP_VERSION.
     let readme = read("README.md");
     for marker in MARKERS {
-        assert!(!versions_after(&readme, marker).is_empty(), "README.md no longer mentions `{marker}…`; update this test");
+        assert!(
+            !versions_after(&readme, marker).is_empty(),
+            "README.md no longer mentions `{marker}…`; update this test"
+        );
     }
 }
 
@@ -173,26 +234,58 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
     // A version on a line release-please does not rewrite simply never moves, and nothing
     // reports it (org releasing.md, trap 3). The tests above would catch it, but only on the
     // release PR, after the fact; this names the cause.
-    for file in ["cli/src/init.rs", "README.md", "packages/fespalier/README.md"] {
+    for file in [
+        "cli/src/init.rs",
+        "README.md",
+        "packages/fespalier/README.md",
+    ] {
         let text = read(file);
         let annotated = annotated_lines(&text);
         for marker in MARKERS {
             for (line, v) in versions_after(&text, marker) {
-                assert!(annotated.contains(&line), "{file}:{line}: `{marker}{v}` is not annotated, so release-please would leave it behind");
+                assert!(
+                    annotated.contains(&line),
+                    "{file}:{line}: `{marker}{v}` is not annotated, so release-please would leave it behind"
+                );
             }
         }
     }
     let cargo = read("cli/Cargo.toml");
-    let line = cargo.lines().position(|l| l.starts_with("version")).expect("cli/Cargo.toml has a version") + 1;
-    assert!(annotated_lines(&cargo).contains(&line), "cli/Cargo.toml:{line}: the package version is not annotated");
+    let line = cargo
+        .lines()
+        .position(|l| l.starts_with("version"))
+        .expect("cli/Cargo.toml has a version")
+        + 1;
+    assert!(
+        annotated_lines(&cargo).contains(&line),
+        "cli/Cargo.toml:{line}: the package version is not annotated"
+    );
     let pubspec = read("packages/fespalier/pubspec.yaml");
-    let line = pubspec.lines().position(|l| l.starts_with("version:")).expect("the pubspec has a version") + 1;
-    assert!(annotated_lines(&pubspec).contains(&line), "packages/fespalier/pubspec.yaml:{line}: the version is not annotated");
+    let line = pubspec
+        .lines()
+        .position(|l| l.starts_with("version:"))
+        .expect("the pubspec has a version")
+        + 1;
+    assert!(
+        annotated_lines(&pubspec).contains(&line),
+        "packages/fespalier/pubspec.yaml:{line}: the version is not annotated"
+    );
 }
 
 /// Files under the repository that carry an annotation, for the listing check below.
 fn annotated_files(dir: &Path, out: &mut Vec<String>) {
-    const SKIP: [&str; 10] = ["target", ".git", "node_modules", "build", ".dart_tool", ".gradle", ".idea", ".claude", ".github", "scripts"];
+    const SKIP: [&str; 10] = [
+        "target",
+        ".git",
+        "node_modules",
+        "build",
+        ".dart_tool",
+        ".gradle",
+        ".idea",
+        ".claude",
+        ".github",
+        "scripts",
+    ];
     for entry in fs::read_dir(dir).unwrap().flatten() {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
@@ -202,14 +295,23 @@ fn annotated_files(dir: &Path, out: &mut Vec<String>) {
             }
             continue;
         }
-        let rel = path.strip_prefix(root()).unwrap().to_string_lossy().replace('\\', "/");
+        let rel = path
+            .strip_prefix(root())
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
         // this file spells the markers out as test data; the changelog is release-please's own
         if rel == "cli/tests/versions.rs" || rel == "CHANGELOG.md" {
             continue;
         }
-        let Ok(text) = fs::read_to_string(&path) else { continue };
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
         let annotated = annotated_lines(&text);
-        let carries = text.lines().enumerate().any(|(i, l)| annotated.contains(&(i + 1)) && (has_a_version(l) || l.contains("x-release-please-start-version")));
+        let carries = text.lines().enumerate().any(|(i, l)| {
+            annotated.contains(&(i + 1))
+                && (has_a_version(l) || l.contains("x-release-please-start-version"))
+        });
         if carries {
             out.push(rel);
         }
@@ -218,7 +320,8 @@ fn annotated_files(dir: &Path, out: &mut Vec<String>) {
 
 #[test]
 fn release_please_config_lists_exactly_the_annotated_files() {
-    let config: serde_json::Value = serde_json::from_str(&read("release-please-config.json")).expect("config is JSON");
+    let config: serde_json::Value =
+        serde_json::from_str(&read("release-please-config.json")).expect("config is JSON");
     let package = &config["packages"]["."];
     // The org shape (vaam-apps/.github docs/releasing.md): `simple` derives no component, which
     // is what lets release-please tag its own merged PR (trap 10); the tag is `vX.Y.Z` (the
@@ -236,11 +339,18 @@ fn release_please_config_lists_exactly_the_annotated_files() {
     for entry in package["extra-files"].as_array().expect("extra-files") {
         // A bare string infers an updater from the extension; for yaml that is GenericYaml,
         // which reserialises the whole document (trap 2). Object form only.
-        let object = entry.as_object().unwrap_or_else(|| panic!("extra-files entry {entry} must be an object {{\"type\": \"generic\", \"path\": …}}"));
+        let object = entry.as_object().unwrap_or_else(|| {
+            panic!(
+                "extra-files entry {entry} must be an object {{\"type\": \"generic\", \"path\": …}}"
+            )
+        });
         assert_eq!(object["type"], "generic", "{entry}");
         let path = object["path"].as_str().expect("path").to_string();
         let text = read(&path);
-        assert!(!annotated_lines(&text).is_empty(), "{path} is listed in extra-files but has no annotation left, so release-please would change nothing in it");
+        assert!(
+            !annotated_lines(&text).is_empty(),
+            "{path} is listed in extra-files but has no annotation left, so release-please would change nothing in it"
+        );
         listed.push(path);
     }
     listed.sort();
@@ -248,26 +358,42 @@ fn release_please_config_lists_exactly_the_annotated_files() {
     let mut found = vec![];
     annotated_files(&root(), &mut found);
     found.sort();
-    assert_eq!(found, listed, "files that carry an annotation (left) vs release-please-config.json extra-files (right)");
+    assert_eq!(
+        found, listed,
+        "files that carry an annotation (left) vs release-please-config.json extra-files (right)"
+    );
 }
 
 #[test]
 fn the_launcher_reads_its_version_from_the_package() {
     // No release number may be spelled out in code (comments may give examples),
     // so `dart run fespalier` can only ever run the fsp that matches its own pubspec.yaml.
-    for file in ["packages/fespalier/bin/fespalier.dart", "packages/fespalier/lib/src/launcher.dart"] {
+    for file in [
+        "packages/fespalier/bin/fespalier.dart",
+        "packages/fespalier/lib/src/launcher.dart",
+    ] {
         let text = read(file);
         for (i, line) in text.lines().enumerate() {
             let code = line.trim_start();
             if code.starts_with("//") {
                 continue;
             }
-            assert!(!has_a_version(line), "{file}:{}: a version is spelled out here; read it from pubspec.yaml instead: {line}", i + 1);
+            assert!(
+                !has_a_version(line),
+                "{file}:{}: a version is spelled out here; read it from pubspec.yaml instead: {line}",
+                i + 1
+            );
         }
     }
     let launcher = read("packages/fespalier/lib/src/launcher.dart");
-    assert!(launcher.contains("pubspec.yaml") && launcher.contains("parsePubspecVersion"), "the launcher must read pubspec.yaml");
-    assert!(read("packages/fespalier/bin/fespalier.dart").contains("Launcher.forThisMachine"), "bin/fespalier.dart must use the launcher");
+    assert!(
+        launcher.contains("pubspec.yaml") && launcher.contains("parsePubspecVersion"),
+        "the launcher must read pubspec.yaml"
+    );
+    assert!(
+        read("packages/fespalier/bin/fespalier.dart").contains("Launcher.forThisMachine"),
+        "bin/fespalier.dart must use the launcher"
+    );
 }
 
 #[test]
@@ -301,7 +427,10 @@ fn the_pinned_checksums_are_none_or_belong_to_a_version_up_to_this_one() {
         .filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()))
         .collect();
     if pinned.is_empty() {
-        assert!(hashes.is_empty(), "{file} has checksums but no pinnedVersion");
+        assert!(
+            hashes.is_empty(),
+            "{file} has checksums but no pinnedVersion"
+        );
         return;
     }
     let pubspec = pubspec_version(&read("packages/fespalier/pubspec.yaml"));
@@ -309,8 +438,16 @@ fn the_pinned_checksums_are_none_or_belong_to_a_version_up_to_this_one() {
         triple(pinned) <= triple(&pubspec),
         "{file} pins fsp {pinned}, a version ahead of packages/fespalier/pubspec.yaml ({pubspec}); pins are written by the release-pins workflow, never by hand"
     );
-    assert_eq!(hashes.len(), 5, "{file} must pin the five release targets, found {}", hashes.len());
+    assert_eq!(
+        hashes.len(),
+        5,
+        "{file} must pin the five release targets, found {}",
+        hashes.len()
+    );
     for h in &hashes {
-        assert!(h.chars().all(|c| !c.is_ascii_uppercase()), "{file}: checksums are lower-case hex: {h}");
+        assert!(
+            h.chars().all(|c| !c.is_ascii_uppercase()),
+            "{file}: checksums are lower-case hex: {h}"
+        );
     }
 }

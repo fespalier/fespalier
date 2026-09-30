@@ -1,5 +1,11 @@
 //! Runs the built `fsp` binary: success lines, `fsp new`, and `fsp watch`.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "integration-test helpers: a failed unwrap is a failed test"
+)]
+
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -20,27 +26,60 @@ fn project() -> tempfile::TempDir {
 }
 
 fn fsp(dir: &Path, args: &[&str]) -> (bool, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_fsp")).args(args).current_dir(dir).output().unwrap();
-    assert!(out.stdout.is_empty(), "stdout: {}", String::from_utf8_lossy(&out.stdout));
-    (out.status.success(), String::from_utf8_lossy(&out.stderr).into_owned())
+    let out = Command::new(env!("CARGO_BIN_EXE_fsp"))
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    assert!(
+        out.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
 }
 
 #[test]
 fn gen_and_check_report_success() {
     let dir = project();
-    assert_eq!(fsp(dir.path(), &["check"]), (true, "✓ 1 route, no errors\n".into()));
-    assert!(!dir.path().join("lib/app.g.dart").exists(), "check must not write");
-    assert_eq!(fsp(dir.path(), &["gen"]), (true, "✓ 1 route → lib/app.g.dart\n".into()));
-    assert_eq!(fsp(dir.path(), &["gen"]), (true, "✓ 1 route, lib/app.g.dart unchanged\n".into()));
-    assert_eq!(fsp(dir.path(), &["check"]), (true, "✓ 1 route, no errors\n".into()));
+    assert_eq!(
+        fsp(dir.path(), &["check"]),
+        (true, "✓ 1 route, no errors\n".into())
+    );
+    assert!(
+        !dir.path().join("lib/app.g.dart").exists(),
+        "check must not write"
+    );
+    assert_eq!(
+        fsp(dir.path(), &["gen"]),
+        (true, "✓ 1 route → lib/app.g.dart\n".into())
+    );
+    assert_eq!(
+        fsp(dir.path(), &["gen"]),
+        (true, "✓ 1 route, lib/app.g.dart unchanged\n".into())
+    );
+    assert_eq!(
+        fsp(dir.path(), &["check"]),
+        (true, "✓ 1 route, no errors\n".into())
+    );
 }
 
 #[test]
 fn check_failure_keeps_its_exit_code() {
     let dir = project();
-    fs::write(dir.path().join("lib/app/page.dart"), "class P extends StatelessWidget { const P({required this.x}); final int x; }").unwrap();
+    fs::write(
+        dir.path().join("lib/app/page.dart"),
+        "class P extends StatelessWidget { const P({required this.x}); final int x; }",
+    )
+    .unwrap();
     let (ok, err) = fsp(dir.path(), &["check"]);
-    assert!(!ok && err.contains("1 error(s)") && !err.contains('✓'), "{err}");
+    assert!(
+        !ok && err.contains("1 error(s)") && !err.contains('✓'),
+        "{err}"
+    );
 }
 
 #[test]
@@ -48,10 +87,19 @@ fn new_generates_typed_routes_and_says_so() {
     let dir = project();
     let (ok, err) = fsp(dir.path(), &["new", "products/[id]"]);
     assert!(ok, "{err}");
-    assert!(err.contains("  new   lib/app/products/$id/page.dart"), "{err}");
-    assert!(err.trim_end().ends_with("✓ 2 routes → lib/app.g.dart"), "{err}");
+    assert!(
+        err.contains("  new   lib/app/products/$id/page.dart"),
+        "{err}"
+    );
+    assert!(
+        err.trim_end().ends_with("✓ 2 routes → lib/app.g.dart"),
+        "{err}"
+    );
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
-    assert!(code.contains("final class ProductsIdRoute extends TypedLocation"), "{code}");
+    assert!(
+        code.contains("final class ProductsIdRoute extends TypedLocation"),
+        "{code}"
+    );
 }
 
 #[test]
@@ -61,7 +109,10 @@ fn new_group_layout_needs_no_page() {
     assert!(ok, "{err}");
     assert!(dir.path().join("lib/app/(account)/layout.dart").exists());
     assert!(!dir.path().join("lib/app/(account)/page.dart").exists());
-    assert!(err.trim_end().ends_with("✓ 1 route → lib/app.g.dart"), "{err}");
+    assert!(
+        err.trim_end().ends_with("✓ 1 route → lib/app.g.dart"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -72,10 +123,17 @@ fn new_names_the_files_it_left_behind_when_gen_fails() {
     assert!(!ok);
     assert!(err.contains("nothing to create"), "{err}");
     // Break the tree, then scaffold something: gen fails, and the message lists what was written.
-    fs::write(dir.path().join("lib/app/page.dart"), "class P extends StatelessWidget { const P({required this.x}); final int x; }").unwrap();
+    fs::write(
+        dir.path().join("lib/app/page.dart"),
+        "class P extends StatelessWidget { const P({required this.x}); final int x; }",
+    )
+    .unwrap();
     let (ok, err) = fsp(dir.path(), &["new", "docs"]);
     assert!(!ok);
-    assert!(err.contains("`fsp new` created:\n  lib/app/docs/page.dart\n"), "{err}");
+    assert!(
+        err.contains("`fsp new` created:\n  lib/app/docs/page.dart\n"),
+        "{err}"
+    );
     assert!(err.contains("Fix or delete them"), "{err}");
 }
 
@@ -109,7 +167,10 @@ impl Watch {
 
     fn text(&self) -> String {
         let mut s = String::new();
-        fs::File::open(&self.log).unwrap().read_to_string(&mut s).unwrap();
+        fs::File::open(&self.log)
+            .unwrap()
+            .read_to_string(&mut s)
+            .unwrap();
         s
     }
 
@@ -120,7 +181,11 @@ impl Watch {
     fn wait_for(&self, needle: &str) {
         let end = Instant::now() + Duration::from_secs(10);
         while !self.text().contains(needle) {
-            assert!(Instant::now() < end, "timed out waiting for `{needle}`; got:\n{}", self.text());
+            assert!(
+                Instant::now() < end,
+                "timed out waiting for `{needle}`; got:\n{}",
+                self.text()
+            );
             sleep(Duration::from_millis(50));
         }
     }
@@ -148,7 +213,11 @@ fn watch_is_quiet_when_idle_and_reacts_once_per_change() {
     // Idle: the generator's own reads of lib/app must not retrigger it.
     sleep(Duration::from_secs(2));
     let text = w.text();
-    assert!(text.starts_with("✓ 1 route → lib/app.g.dart (") && text.ends_with(")\nwatching lib/app/ …\n"), "{text}");
+    assert!(
+        text.starts_with("✓ 1 route → lib/app.g.dart (")
+            && text.ends_with(")\nwatching lib/app/ …\n"),
+        "{text}"
+    );
     assert_eq!(w.lines(), 2, "{}", w.text());
 
     // A new page regenerates once.
@@ -157,7 +226,11 @@ fn watch_is_quiet_when_idle_and_reacts_once_per_change() {
     w.wait_for("✓ 2 routes → lib/app.g.dart");
     w.settle();
     assert_eq!(w.lines(), 3, "{}", w.text());
-    assert!(fs::read_to_string(root.join("lib/app.g.dart")).unwrap().contains("AboutRoute"));
+    assert!(
+        fs::read_to_string(root.join("lib/app.g.dart"))
+            .unwrap()
+            .contains("AboutRoute")
+    );
 
     // Rewriting a file with the same content changes nothing, so it prints nothing.
     fs::write(root.join("lib/app/about/page.dart"), page("AboutPage")).unwrap();
@@ -169,10 +242,18 @@ fn watch_is_quiet_when_idle_and_reacts_once_per_change() {
     w.wait_for("✓ 1 route → lib/app.g.dart (");
     w.settle();
     assert_eq!(w.lines(), 4, "{}", w.text());
-    assert!(!fs::read_to_string(root.join("lib/app.g.dart")).unwrap().contains("AboutRoute"));
+    assert!(
+        !fs::read_to_string(root.join("lib/app.g.dart"))
+            .unwrap()
+            .contains("AboutRoute")
+    );
 
     // An invalid file prints its error once, and fixing it says so.
-    fs::write(root.join("lib/app/page.dart"), "class P extends StatelessWidget { const P({required this.x}); final int x; }").unwrap();
+    fs::write(
+        root.join("lib/app/page.dart"),
+        "class P extends StatelessWidget { const P({required this.x}); final int x; }",
+    )
+    .unwrap();
     w.wait_for("1 error(s)");
     w.settle();
     let text = w.text();
@@ -189,7 +270,11 @@ fn watch_is_quiet_when_idle_and_reacts_once_per_change() {
 fn watch_ignores_an_output_file_inside_the_app_folder() {
     let dir = project();
     let root = dir.path();
-    fs::write(root.join("pubspec.yaml"), "name: demo\nfespalier:\n  output: lib/app/routes.g.dart\n").unwrap();
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  output: lib/app/routes.g.dart\n",
+    )
+    .unwrap();
     let w = Watch::start(root);
     w.settle();
     sleep(Duration::from_secs(1));
@@ -205,7 +290,11 @@ fn watch_follows_an_enum_declared_outside_the_app_folder() {
     let root = dir.path();
     fs::create_dir_all(root.join("lib/models")).unwrap();
     fs::create_dir_all(root.join("lib/app/shop/$category")).unwrap();
-    fs::write(root.join("lib/models/category.dart"), "enum Category { shoes, hats }\n").unwrap();
+    fs::write(
+        root.join("lib/models/category.dart"),
+        "enum Category { shoes, hats }\n",
+    )
+    .unwrap();
     fs::write(
         root.join("lib/app/shop/$category/page.dart"),
         format!("import 'package:demo/models/category.dart';\n{}", "class ShopPage extends StatelessWidget { const ShopPage({super.key, required this.category}); final Category category; }"),
@@ -213,20 +302,36 @@ fn watch_follows_an_enum_declared_outside_the_app_folder() {
     .unwrap();
     let w = Watch::start(root);
     w.settle();
-    assert!(w.text().starts_with("✓ 2 routes → lib/app.g.dart ("), "{}", w.text());
-    assert!(fs::read_to_string(root.join("lib/app.g.dart")).unwrap().contains("Category.values"));
+    assert!(
+        w.text().starts_with("✓ 2 routes → lib/app.g.dart ("),
+        "{}",
+        w.text()
+    );
+    assert!(
+        fs::read_to_string(root.join("lib/app.g.dart"))
+            .unwrap()
+            .contains("Category.values")
+    );
 
     // Not a Dart file: nothing to regenerate.
     fs::write(root.join("lib/models/notes.txt"), "hello").unwrap();
     w.settle();
     assert_eq!(w.lines(), 2, "{}", w.text());
 
-    fs::write(root.join("lib/models/category.dart"), "enum Kind { shoes, hats }\n").unwrap();
+    fs::write(
+        root.join("lib/models/category.dart"),
+        "enum Kind { shoes, hats }\n",
+    )
+    .unwrap();
     w.wait_for("error(s)");
     w.settle();
     assert!(w.text().contains("Category"), "{}", w.text());
     let broken = w.lines();
-    fs::write(root.join("lib/models/category.dart"), "enum Category { shoes, hats }\n").unwrap();
+    fs::write(
+        root.join("lib/models/category.dart"),
+        "enum Category { shoes, hats }\n",
+    )
+    .unwrap();
     w.wait_for("✓ 2 routes, lib/app.g.dart unchanged");
     w.settle();
     assert!(w.lines() > broken, "{}", w.text());
@@ -240,13 +345,20 @@ fn watch_formats_only_code_it_has_not_formatted_before() {
     use std::os::unix::fs::PermissionsExt;
     let dir = project();
     let root = dir.path();
-    fs::write(root.join("pubspec.yaml"), "name: demo\nfespalier:\n  format: true\n").unwrap();
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  format: true\n",
+    )
+    .unwrap();
     let dart = root.join("counting-dart");
     fs::write(&dart, "#!/bin/sh\n[ \"$1\" = format ] || exit 2\necho x >> \"$FAKE_DART_LOG\"\necho '// formatted'\ncat\n").unwrap();
     fs::set_permissions(&dart, fs::Permissions::from_mode(0o755)).unwrap();
     let calls = root.join("dart-calls.log");
-    let count = || fs::read_to_string(&calls).map(|s| s.lines().count()).unwrap_or(0);
-    let env = [("FSP_DART", dart.to_str().unwrap()), ("FAKE_DART_LOG", calls.to_str().unwrap())];
+    let count = || fs::read_to_string(&calls).map_or(0, |s| s.lines().count());
+    let env = [
+        ("FSP_DART", dart.to_str().unwrap()),
+        ("FAKE_DART_LOG", calls.to_str().unwrap()),
+    ];
     let w = Watch::start_with(root, &env);
     w.settle();
     assert_eq!(count(), 1, "{}", w.text());
@@ -254,7 +366,11 @@ fn watch_formats_only_code_it_has_not_formatted_before() {
     assert!(output().starts_with("// formatted\n"));
 
     // A save that doesn't change the generated code: the tree is new, the code isn't.
-    fs::write(root.join("lib/app/page.dart"), format!("{}\n// build() changed\n", page("HomePage"))).unwrap();
+    fs::write(
+        root.join("lib/app/page.dart"),
+        format!("{}\n// build() changed\n", page("HomePage")),
+    )
+    .unwrap();
     w.settle();
     // A file the generator doesn't read.
     fs::create_dir_all(root.join("lib/app/_widgets")).unwrap();
@@ -282,8 +398,17 @@ fn watch_formats_only_code_it_has_not_formatted_before() {
 
 /// Like `fsp`, but returns stdout too, and takes extra environment.
 fn fsp_full(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> (bool, String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_fsp")).args(args).envs(env.iter().copied()).current_dir(dir).output().unwrap();
-    (out.status.success(), String::from_utf8_lossy(&out.stdout).into_owned(), String::from_utf8_lossy(&out.stderr).into_owned())
+    let out = Command::new(env!("CARGO_BIN_EXE_fsp"))
+        .args(args)
+        .envs(env.iter().copied())
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
 }
 
 #[test]
@@ -297,10 +422,16 @@ fn routes_prints_the_table_and_json_lines() {
     .unwrap();
     let (ok, out, err) = fsp_full(dir.path(), &["routes"], &[]);
     assert!(ok, "{err}");
-    assert_eq!(out, "/              HomeRoute     page.dart\n/products/:id  ProductRoute  products/$id/page.dart\n");
+    assert_eq!(
+        out,
+        "/              HomeRoute     page.dart\n/products/:id  ProductRoute  products/$id/page.dart\n"
+    );
     let (ok, out, err) = fsp_full(dir.path(), &["routes", "--json"], &[]);
     assert!(ok, "{err}");
-    let rows: Vec<serde_json::Value> = out.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let rows: Vec<serde_json::Value> = out
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[1]["pattern"], "/products/:id");
     assert_eq!(rows[1]["route"], "ProductRoute");
@@ -315,27 +446,50 @@ fn routes_prints_the_table_and_json_lines() {
 #[test]
 fn routes_fails_on_errors() {
     let dir = project();
-    fs::write(dir.path().join("lib/app/page.dart"), "class P extends StatelessWidget { const P({required this.x}); final int x; }").unwrap();
+    fs::write(
+        dir.path().join("lib/app/page.dart"),
+        "class P extends StatelessWidget { const P({required this.x}); final int x; }",
+    )
+    .unwrap();
     let (ok, out, err) = fsp_full(dir.path(), &["routes"], &[]);
-    assert!(!ok && out.is_empty() && err.contains("1 error(s)"), "{out}{err}");
+    assert!(
+        !ok && out.is_empty() && err.contains("1 error(s)"),
+        "{out}{err}"
+    );
 }
 
 #[test]
 fn json_diagnostics_go_to_stdout_as_lines() {
     let dir = project();
-    fs::write(dir.path().join("lib/app/page.dart"), "class P extends StatelessWidget {\n  const P({required this.x});\n  final int x;\n}").unwrap();
+    fs::write(
+        dir.path().join("lib/app/page.dart"),
+        "class P extends StatelessWidget {\n  const P({required this.x});\n  final int x;\n}",
+    )
+    .unwrap();
     for cmd in ["check", "gen"] {
         let (ok, out, err) = fsp_full(dir.path(), &[cmd, "--json"], &[]);
         assert!(!ok, "{err}");
-        assert!(!err.contains("┌─"), "no codespan rendering with --json: {err}");
+        assert!(
+            !err.contains("┌─"),
+            "no codespan rendering with --json: {err}"
+        );
         assert!(err.contains("1 error(s)"), "{err}");
-        let lines: Vec<serde_json::Value> = out.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        let lines: Vec<serde_json::Value> = out
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
         assert_eq!(lines.len(), 1, "{out}");
         assert_eq!(lines[0]["file"], "lib/app/page.dart");
         assert_eq!(lines[0]["severity"], "error");
         assert_eq!(lines[0]["line"], 2);
         assert!(lines[0]["column"].as_u64().unwrap() >= 1);
-        assert!(lines[0]["message"].as_str().unwrap().contains("can't fill `x`"), "{out}");
+        assert!(
+            lines[0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("can't fill `x`"),
+            "{out}"
+        );
     }
     // Clean projects print nothing on stdout.
     fs::write(dir.path().join("lib/app/page.dart"), page("HomePage")).unwrap();
@@ -348,7 +502,11 @@ fn json_diagnostics_go_to_stdout_as_lines() {
 fn fake_dart(dir: &Path) -> std::path::PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let path = dir.join("fake-dart");
-    fs::write(&path, "#!/bin/sh\n[ \"$1\" = format ] || exit 2\necho '// formatted'\ncat\n").unwrap();
+    fs::write(
+        &path,
+        "#!/bin/sh\n[ \"$1\" = format ] || exit 2\necho '// formatted'\ncat\n",
+    )
+    .unwrap();
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
     path
 }
@@ -361,33 +519,64 @@ fn gen_format_formats_and_stays_unchanged_on_rerun() {
     let env = [("FSP_DART", dart.to_str().unwrap())];
     let (ok, _, err) = fsp_full(dir.path(), &["gen", "--format"], &env);
     assert!(ok && err.contains("→ lib/app.g.dart"), "{err}");
-    assert!(fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap().starts_with("// formatted\n// GENERATED"));
+    assert!(
+        fs::read_to_string(dir.path().join("lib/app.g.dart"))
+            .unwrap()
+            .starts_with("// formatted\n// GENERATED")
+    );
     let (ok, _, err) = fsp_full(dir.path(), &["gen", "--format"], &env);
     assert!(ok && err.contains("lib/app.g.dart unchanged"), "{err}");
     // Without the flag the file is unformatted again (the default doesn't format).
     let (ok, _, err) = fsp_full(dir.path(), &["gen"], &env);
     assert!(ok && err.contains("→ lib/app.g.dart"), "{err}");
-    assert!(fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap().starts_with("// GENERATED"));
+    assert!(
+        fs::read_to_string(dir.path().join("lib/app.g.dart"))
+            .unwrap()
+            .starts_with("// GENERATED")
+    );
 }
 
 #[cfg(unix)]
 #[test]
 fn format_key_in_pubspec_turns_it_on() {
     let dir = project();
-    fs::write(dir.path().join("pubspec.yaml"), "name: demo\nfespalier:\n  format: true\n").unwrap();
+    fs::write(
+        dir.path().join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  format: true\n",
+    )
+    .unwrap();
     let dart = fake_dart(dir.path());
-    let (ok, _, err) = fsp_full(dir.path(), &["gen"], &[("FSP_DART", dart.to_str().unwrap())]);
+    let (ok, _, err) = fsp_full(
+        dir.path(),
+        &["gen"],
+        &[("FSP_DART", dart.to_str().unwrap())],
+    );
     assert!(ok, "{err}");
-    assert!(fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap().starts_with("// formatted\n"));
+    assert!(
+        fs::read_to_string(dir.path().join("lib/app.g.dart"))
+            .unwrap()
+            .starts_with("// formatted\n")
+    );
 }
 
 #[test]
 fn format_without_dart_warns_and_writes_unformatted() {
     let dir = project();
-    let (ok, _, err) = fsp_full(dir.path(), &["gen", "--format"], &[("FSP_DART", "/nonexistent/dart")]);
+    let (ok, _, err) = fsp_full(
+        dir.path(),
+        &["gen", "--format"],
+        &[("FSP_DART", "/nonexistent/dart")],
+    );
     assert!(ok, "{err}");
-    assert!(err.contains("warning: not formatting") && err.contains("not on PATH"), "{err}");
-    assert!(fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap().starts_with("// GENERATED"));
+    assert!(
+        err.contains("warning: not formatting") && err.contains("not on PATH"),
+        "{err}"
+    );
+    assert!(
+        fs::read_to_string(dir.path().join("lib/app.g.dart"))
+            .unwrap()
+            .starts_with("// GENERATED")
+    );
 }
 
 // --- route manifest ----------------------------------------------------------
@@ -403,30 +592,57 @@ fn routes_json_pins_the_manifest_fields() {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, body).unwrap();
     };
-    write("(buyer)/layout.dart", "class BuyerLayout extends StatelessWidget { const BuyerLayout({super.key, required this.child}); final Widget child; }");
+    write(
+        "(buyer)/layout.dart",
+        "class BuyerLayout extends StatelessWidget { const BuyerLayout({super.key, required this.child}); final Widget child; }",
+    );
     write(
         "(buyer)/products/$id/page.dart",
         "class ProductPage extends StatelessWidget { const ProductPage({super.key, required this.id, this.tab, required this.data}); final int id; final String? tab; final Item data; }",
     );
-    write("(buyer)/products/$id/data.dart", "Future<Item> data(Ref ref, {required int id}) async => x;");
-    write("(buyer)/products/$id/meta.dart", "const meta = PageMeta(code: 'B04');");
+    write(
+        "(buyer)/products/$id/data.dart",
+        "Future<Item> data(Ref ref, {required int id}) async => x;",
+    );
+    write(
+        "(buyer)/products/$id/meta.dart",
+        "const meta = PageMeta(code: 'B04');",
+    );
     write("old/redirect.dart", "String redirect() => '/';");
-    write("(tabs)/layout.dart", "class TabsLayout extends StatelessWidget { const TabsLayout({super.key, required this.shell}); final StatefulNavigationShell shell; }");
+    write(
+        "(tabs)/layout.dart",
+        "class TabsLayout extends StatelessWidget { const TabsLayout({super.key, required this.shell}); final StatefulNavigationShell shell; }",
+    );
     write("(tabs)/one/page.dart", &page("OnePage"));
-    write("docs/$$rest/page.dart", "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest}); final List<String> rest; }");
-    write("files/$$$path/page.dart", "class FilesPage extends StatelessWidget { const FilesPage({super.key, required this.path}); final List<String> path; }");
+    write(
+        "docs/$$rest/page.dart",
+        "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest}); final List<String> rest; }",
+    );
+    write(
+        "files/$$$path/page.dart",
+        "class FilesPage extends StatelessWidget { const FilesPage({super.key, required this.path}); final List<String> path; }",
+    );
     // A route on the root navigator (`navigator.dart`, inherited by the folder below it) and one
     // whose page the app builds (`present.dart`, which implies the root navigator).
     write("(tabs)/one/full/page.dart", &page("FullPage"));
-    write("(tabs)/one/full/navigator.dart", "const navigator = RouteNavigator.root;");
+    write(
+        "(tabs)/one/full/navigator.dart",
+        "const navigator = RouteNavigator.root;",
+    );
     write("sheet/page.dart", &page("SheetPage"));
-    write("sheet/present.dart", "Page<void> present(LocalKey key, Widget child) => MySheet(key: key, child: child);");
+    write(
+        "sheet/present.dart",
+        "Page<void> present(LocalKey key, Widget child) => MySheet(key: key, child: child);",
+    );
     let (ok, out, err) = fsp_full(root, &["routes", "--json"], &[]);
     assert!(ok, "{err}");
     let rows: Vec<&str> = out.lines().collect();
     assert_eq!(rows.len(), 8, "{out}");
     let row = |pattern: &str| {
-        rows.iter().find(|r| serde_json::from_str::<serde_json::Value>(r).unwrap()["pattern"] == pattern).unwrap().to_string()
+        rows.iter()
+            .find(|r| serde_json::from_str::<serde_json::Value>(r).unwrap()["pattern"] == pattern)
+            .unwrap()
+            .to_string()
     };
     // Key order is part of the shape (serde_json keeps it), so compare the text.
     assert_eq!(
@@ -455,7 +671,10 @@ fn routes_json_pins_the_manifest_fields() {
         r#"{"pattern":"/docs/*rest","route":"DocsRoute","file":"lib/app/docs/$$rest/page.dart","tags":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"folder":"docs/$$rest","presentation":"page","groups":[],"layouts":[],"tabs":[],"data_keys":null,"meta":null,"catch_all":{"name":"rest","optional":false}}"#
     );
     let files: serde_json::Value = serde_json::from_str(&row("/files/*path?")).unwrap();
-    assert_eq!(files["catch_all"], serde_json::json!({"name": "path", "optional": true}));
+    assert_eq!(
+        files["catch_all"],
+        serde_json::json!({"name": "path", "optional": true})
+    );
     // The app folder's own page has an empty folder.
     let home: serde_json::Value = serde_json::from_str(&row("/")).unwrap();
     assert_eq!(home["folder"], "");
@@ -474,7 +693,10 @@ fn routes_lists_localized_spellings_and_check_reports_a_collision() {
         fs::write(p, body).unwrap();
     };
     write("products/page.dart", &page("ProductsPage"));
-    write("products/route.dart", "const paths = {'fr': 'produits', 'de': 'produkte'};");
+    write(
+        "products/route.dart",
+        "const paths = {'fr': 'produits', 'de': 'produkte'};",
+    );
     write("about/page.dart", &page("AboutPage"));
     let (ok, out, err) = fsp_full(root, &["routes"], &[]);
     assert!(ok, "{err}");
@@ -484,45 +706,110 @@ fn routes_lists_localized_spellings_and_check_reports_a_collision() {
     assert_eq!(&lines[3..], ["  fr  /produits", "  de  /produkte"], "{out}");
     let (ok, out, err) = fsp_full(root, &["routes", "--json"], &[]);
     assert!(ok, "{err}");
-    let rows: Vec<serde_json::Value> = out.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let rows: Vec<serde_json::Value> = out
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
     let products = rows.iter().find(|r| r["pattern"] == "/products").unwrap();
-    assert_eq!(products["paths"], serde_json::json!({"fr": "/produits", "de": "/produkte"}));
-    assert!(rows.iter().find(|r| r["pattern"] == "/about").unwrap().get("paths").is_none());
-    assert_eq!(fsp(root, &["check"]), (true, "✓ 3 routes, no errors\n".into()));
+    assert_eq!(
+        products["paths"],
+        serde_json::json!({"fr": "/produits", "de": "/produkte"})
+    );
+    assert!(
+        rows.iter()
+            .find(|r| r["pattern"] == "/about")
+            .unwrap()
+            .get("paths")
+            .is_none()
+    );
+    assert_eq!(
+        fsp(root, &["check"]),
+        (true, "✓ 3 routes, no errors\n".into())
+    );
 
     write("products/route.dart", "const paths = {'fr': 'about'};");
     let (ok, err) = fsp(root, &["check"]);
     assert!(!ok && err.contains("2 error(s)"), "{err}");
-    assert!(err.contains("lib/app/products/route.dart") && err.contains("lib/app/about/page.dart"), "{err}");
-    assert!(err.contains("`fr: 'about'` makes /about, which about/page.dart serves too"), "{err}");
+    assert!(
+        err.contains("lib/app/products/route.dart") && err.contains("lib/app/about/page.dart"),
+        "{err}"
+    );
+    assert!(
+        err.contains("`fr: 'about'` makes /about, which about/page.dart serves too"),
+        "{err}"
+    );
 }
 
 #[test]
 fn output_manifest_writes_a_second_library_that_check_knows_about() {
     let dir = project();
     let root = dir.path();
-    fs::write(root.join("pubspec.yaml"), "name: demo\nfespalier:\n  output_manifest: lib/app.routes.g.dart\n").unwrap();
-    assert_eq!(fsp(root, &["check"]), (true, "✓ 1 route, no errors\n".into()));
-    assert!(!root.join("lib/app.routes.g.dart").exists(), "check must not write");
-    assert_eq!(fsp(root, &["gen"]), (true, "✓ 1 route → lib/app.g.dart, lib/app.routes.g.dart\n".into()));
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  output_manifest: lib/app.routes.g.dart\n",
+    )
+    .unwrap();
+    assert_eq!(
+        fsp(root, &["check"]),
+        (true, "✓ 1 route, no errors\n".into())
+    );
+    assert!(
+        !root.join("lib/app.routes.g.dart").exists(),
+        "check must not write"
+    );
+    assert_eq!(
+        fsp(root, &["gen"]),
+        (
+            true,
+            "✓ 1 route → lib/app.g.dart, lib/app.routes.g.dart\n".into()
+        )
+    );
     let manifest = fs::read_to_string(root.join("lib/app.routes.g.dart")).unwrap();
-    assert!(manifest.contains("abstract final class AppManifest {") && manifest.contains("import 'app.g.dart';"), "{manifest}");
-    assert!(!fs::read_to_string(root.join("lib/app.g.dart")).unwrap().contains("AppManifest"));
-    assert_eq!(fsp(root, &["gen"]), (true, "✓ 1 route, lib/app.g.dart, lib/app.routes.g.dart unchanged\n".into()));
+    assert!(
+        manifest.contains("abstract final class AppManifest {")
+            && manifest.contains("import 'app.g.dart';"),
+        "{manifest}"
+    );
+    assert!(
+        !fs::read_to_string(root.join("lib/app.g.dart"))
+            .unwrap()
+            .contains("AppManifest")
+    );
+    assert_eq!(
+        fsp(root, &["gen"]),
+        (
+            true,
+            "✓ 1 route, lib/app.g.dart, lib/app.routes.g.dart unchanged\n".into()
+        )
+    );
 
     // With `meta: required`, a route without a meta.dart is an error naming its folder.
-    fs::write(root.join("pubspec.yaml"), "name: demo\nfespalier:\n  meta: required\n").unwrap();
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  meta: required\n",
+    )
+    .unwrap();
     let (ok, err) = fsp(root, &["check"]);
-    assert!(!ok && err.contains("the app folder has no meta.dart") && err.contains("1 error(s)"), "{err}");
+    assert!(
+        !ok && err.contains("the app folder has no meta.dart") && err.contains("1 error(s)"),
+        "{err}"
+    );
     fs::write(root.join("lib/app/meta.dart"), "const meta = 'home';").unwrap();
-    assert_eq!(fsp(root, &["check"]), (true, "✓ 1 route, no errors\n".into()));
+    assert_eq!(
+        fsp(root, &["check"]),
+        (true, "✓ 1 route, no errors\n".into())
+    );
 }
 
 #[test]
 fn watch_ignores_a_manifest_file_inside_the_app_folder() {
     let dir = project();
     let root = dir.path();
-    fs::write(root.join("pubspec.yaml"), "name: demo\nfespalier:\n  output_manifest: lib/app/routes.g.dart\n").unwrap();
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  output_manifest: lib/app/routes.g.dart\n",
+    )
+    .unwrap();
     let w = Watch::start(root);
     w.settle();
     sleep(Duration::from_secs(1));

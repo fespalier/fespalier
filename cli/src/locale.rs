@@ -2,7 +2,7 @@
 //! `route.dart` gives that folder's own static segment more spellings, so `products/` also
 //! answers `/produits` and `/produkte` while the typed route, the page and the data stay single.
 //!
-//! In go_router a localized segment is a path parameter with an alternation of its own:
+//! In `go_router` a localized segment is a path parameter with an alternation of its own:
 //! `:_l1(products|produits|produkte)`, where `1` is the segment's place in the URL. It is one
 //! `GoRoute` whatever the spelling, so nested routes, the page key, restoration ids and a tab's
 //! `StatefulShellBranch` see one route; the first alternative is always the folder's name.
@@ -10,6 +10,11 @@
 //! This module reads and checks the declaration, spells the paths, and reports URLs that two
 //! routes would both serve. Everything else (the `GoRoute`s, the matchers, the manifest) asks
 //! it for the spellings.
+
+#![allow(
+    clippy::expect_used,
+    reason = "a collision always has a localized side; the expect states that invariant"
+)]
 
 use std::collections::BTreeMap;
 
@@ -20,7 +25,7 @@ use crate::scan::{Kind, Seg};
 
 /// The name of the path parameter that carries a localized segment: `_l1` for the second segment
 /// of the URL. Segments can't start with `_`, so it never clashes with one, and it is unique in a
-/// path (go_router refuses a parameter name used twice down one branch).
+/// path (`go_router` refuses a parameter name used twice down one branch).
 fn param(at: usize) -> String {
     format!("_l{at}")
 }
@@ -66,15 +71,21 @@ impl Localized {
     pub fn spelled(&self, locale: &str) -> &str {
         let find = |tag: &str| self.spellings.iter().find(|s| same_tag(&s.locale, tag));
         let base = locale.split(['-', '_']).next().unwrap_or(locale);
-        find(locale).or_else(|| find(base)).map_or(self.canonical.as_str(), |s| s.path.as_str())
+        find(locale)
+            .or_else(|| find(base))
+            .map_or(self.canonical.as_str(), |s| s.path.as_str())
     }
 
-    /// The segment as go_router reads it: a parameter that matches any of the spellings.
-    /// go_router matches the percent-encoded path (`Uri.path`), so a spelling with letters
+    /// The segment as `go_router` reads it: a parameter that matches any of the spellings.
+    /// `go_router` matches the percent-encoded path (`Uri.path`), so a spelling with letters
     /// beyond ASCII goes in encoded (`%C3%BCber`), and `.` is escaped: nothing else in a
     /// spelling is special in a regular expression.
     pub fn go_router_part(&self) -> String {
-        let alts: Vec<String> = self.alternatives().iter().map(|a| percent_encode(a).replace('.', "\\.")).collect();
+        let alts: Vec<String> = self
+            .alternatives()
+            .iter()
+            .map(|a| percent_encode(a).replace('.', "\\."))
+            .collect();
         format!(":{}({})", param(self.at), alts.join("|"))
     }
 
@@ -104,7 +115,8 @@ pub fn percent_encode(s: &str) -> String {
 }
 
 fn same_tag(a: &str, b: &str) -> bool {
-    a.replace('_', "-").eq_ignore_ascii_case(&b.replace('_', "-"))
+    a.replace('_', "-")
+        .eq_ignore_ascii_case(&b.replace('_', "-"))
 }
 
 /// The entry of `localized` for the segment at `at`.
@@ -126,7 +138,9 @@ pub fn locales(localized: &[Localized]) -> Vec<String> {
 /// The pattern of a URL in `locale` (`/produits/:id`), each level falling back to its
 /// canonical spelling where `locale` has no entry.
 pub fn pattern_in(url: &[Seg], localized: &[Localized], locale: &str) -> String {
-    pattern_with(url, |i, s| at(localized, i).map_or(s.to_string(), |l| l.spelled(locale).to_string()))
+    pattern_with(url, |i, s| {
+        at(localized, i).map_or(s.to_string(), |l| l.spelled(locale).to_string())
+    })
 }
 
 /// `resolve::pattern`, with `spell` giving each static segment (by its place in `url`).
@@ -153,9 +167,18 @@ pub fn canonical_path(path: &str) -> String {
         out.push_str(&rest[..i]);
         let tail = &rest[i + 3..];
         let digits = tail.chars().take_while(char::is_ascii_digit).count();
-        match tail[digits..].strip_prefix('(').and_then(|g| g.find(')').map(|end| &g[..end])) {
+        match tail[digits..]
+            .strip_prefix('(')
+            .and_then(|g| g.find(')').map(|end| &g[..end]))
+        {
             Some(group) if digits > 0 => {
-                out.push_str(&group.split('|').next().unwrap_or_default().replace("\\.", "."));
+                out.push_str(
+                    &group
+                        .split('|')
+                        .next()
+                        .unwrap_or_default()
+                        .replace("\\.", "."),
+                );
                 let skip = ":_l".len() + digits + 1 + group.len() + 1;
                 rest = &rest[i + skip..];
             }
@@ -196,14 +219,26 @@ fn valid_tag(tag: &str) -> bool {
 /// Not `/ ? # %`, nor anything that would be special in a path, a regular expression or the
 /// generated Dart, nor whitespace or control characters.
 fn valid_spelling(s: &str) -> bool {
-    let char_ok = |c: char| if c.is_ascii() { c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~') } else { !c.is_whitespace() && !c.is_control() };
+    let char_ok = |c: char| {
+        if c.is_ascii() {
+            c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '~')
+        } else {
+            !c.is_whitespace() && !c.is_control()
+        }
+    };
     !s.is_empty() && s.chars().all(char_ok) && s != "." && s != ".."
 }
 
 /// `const paths = {'fr': 'produits', 'de': 'produkte'};` in the `route.dart` at `file`, for a
 /// folder whose own segment is `seg` (`None` for the app folder, which has none), at place `at`
 /// in its URL. Errors point at the entry at fault.
-pub fn read(m: &Module, file: &str, seg: Option<&Seg>, at: usize, diags: &mut Diags) -> Option<Localized> {
+pub fn read(
+    m: &Module,
+    file: &str,
+    seg: Option<&Seg>,
+    at: usize,
+    diags: &mut Diags,
+) -> Option<Localized> {
     let mut found = m.variables.iter().filter(|v| v.name == "paths");
     let v = found.next()?;
     if let Some(again) = found.next() {
@@ -213,9 +248,15 @@ pub fn read(m: &Module, file: &str, seg: Option<&Seg>, at: usize, diags: &mut Di
         Some(Seg::Static(s)) => s.clone(),
         other => {
             let why = match other {
-                Some(Seg::Dynamic(n)) => format!("`${n}` is a dynamic segment: it takes whatever the URL has, so there is no word to spell"),
-                Some(Seg::CatchAll(n, _)) => format!("`$${n}` is a catch-all: it takes whatever is left of the URL, so there is no word to spell"),
-                Some(Seg::Group(g)) => format!("`({g})` is a group: it adds nothing to the URL, so there is no word to spell"),
+                Some(Seg::Dynamic(n)) => format!(
+                    "`${n}` is a dynamic segment: it takes whatever the URL has, so there is no word to spell"
+                ),
+                Some(Seg::CatchAll(n, _)) => format!(
+                    "`$${n}` is a catch-all: it takes whatever is left of the URL, so there is no word to spell"
+                ),
+                Some(Seg::Group(g)) => format!(
+                    "`({g})` is a group: it adds nothing to the URL, so there is no word to spell"
+                ),
                 _ => "the app folder has no URL segment of its own".to_string(),
             };
             diags.error(file, Some(&v.span), format!("`paths` gives a static folder's name more spellings, but {why}; put `paths` in the route.dart of the folder that has the word"));
@@ -241,11 +282,16 @@ pub fn read(m: &Module, file: &str, seg: Option<&Seg>, at: usize, diags: &mut Di
         };
         let mut ok = true;
         if !valid_tag(locale) {
-            let msg = format!("`{locale}` isn't a locale tag: use a language, with a region if you like, e.g. `'fr'` or `'pt-BR'`");
+            let msg = format!(
+                "`{locale}` isn't a locale tag: use a language, with a region if you like, e.g. `'fr'` or `'pt-BR'`"
+            );
             diags.error(file, Some(&p.key_span), msg);
             ok = false;
         } else if let Some(first) = spellings.iter().find(|s| same_tag(&s.locale, locale)) {
-            let msg = format!("`paths` has `{locale}` twice (the first is on line {})", first.span.line);
+            let msg = format!(
+                "`paths` has `{locale}` twice (the first is on line {})",
+                first.span.line
+            );
             diags.error(file, Some(&p.key_span), msg);
             ok = false;
         }
@@ -262,13 +308,26 @@ pub fn read(m: &Module, file: &str, seg: Option<&Seg>, at: usize, diags: &mut Di
             ok = false;
         }
         if ok {
-            spellings.push(Spelling { locale: locale.clone(), path: path.clone(), span: p.value_span.clone() });
+            spellings.push(Spelling {
+                locale: locale.clone(),
+                path: path.clone(),
+                span: p.value_span.clone(),
+            });
         }
     }
     if pairs.is_empty() {
-        diags.warn(file, Some(&v.span), "`paths` is empty, so it adds no spelling");
+        diags.warn(
+            file,
+            Some(&v.span),
+            "`paths` is empty, so it adds no spelling",
+        );
     }
-    Some(Localized { at, canonical, file: file.to_string(), spellings })
+    Some(Localized {
+        at,
+        canonical,
+        file: file.to_string(),
+        spellings,
+    })
 }
 
 // --- Colliding URLs ------------------------------------------------------------
@@ -283,7 +342,7 @@ struct Item<'a> {
     localized: &'a [Localized],
     /// The file a diagnostic names, relative to the app folder.
     file: String,
-    /// Where in that file: the class name of a page; none for a not_found.dart.
+    /// Where in that file: the class name of a page; none for a `not_found.dart`.
     span: Option<&'a Span>,
 }
 
@@ -306,9 +365,13 @@ fn served(item: &Item) -> Vec<(String, Combo)> {
     }
     let mut out: Vec<(String, Combo)> = vec![];
     for c in combos {
-        let path = pattern_with(item.url, |i, canonical| match item.localized.iter().position(|l| l.at == i) {
-            Some(k) => c[k].map_or(canonical.to_string(), |s| item.localized[k].spellings[s].path.clone()),
-            None => canonical.to_string(),
+        let path = pattern_with(item.url, |i, canonical| {
+            match item.localized.iter().position(|l| l.at == i) {
+                Some(k) => c[k].map_or(canonical.to_string(), |s| {
+                    item.localized[k].spellings[s].path.clone()
+                }),
+                None => canonical.to_string(),
+            }
         });
         // Two spellings that agree (`fr: 'menu'` and `de: 'menu'`) are one URL.
         if !out.iter().any(|(p, _)| *p == path) {
@@ -322,7 +385,9 @@ fn served(item: &Item) -> Vec<(String, Combo)> {
 fn culprit<'a>(item: &Item<'a>, combo: &Combo) -> Option<(&'a Localized, &'a Spelling)> {
     combo.iter().enumerate().find_map(|(k, choice)| {
         let l: &'a Localized = &item.localized[k];
-        choice.map(|s| (l, &l.spellings[s])).filter(|(l, s)| s.path != l.canonical)
+        choice
+            .map(|s| (l, &l.spellings[s]))
+            .filter(|(l, s)| s.path != l.canonical)
     })
 }
 
@@ -337,22 +402,40 @@ pub fn check_collisions(app: &App, diags: &mut Diags) {
         .routes
         .iter()
         .filter(|r| r.is_route())
-        .map(|r| Item { url: &r.url, localized: &r.localized, file: page_file(r), span: r.page_span.as_ref() })
+        .map(|r| Item {
+            url: &r.url,
+            localized: &r.localized,
+            file: page_file(r),
+            span: r.page_span.as_ref(),
+        })
         .collect();
     let not_founds: Vec<Item> = app
         .not_founds
         .iter()
-        .map(|n| Item { url: &n.url, localized: &n.localized, file: n.file.clone(), span: None })
+        .map(|n| Item {
+            url: &n.url,
+            localized: &n.localized,
+            file: n.file.clone(),
+            span: None,
+        })
         .collect();
     for items in [routes, not_founds] {
         let mut urls: BTreeMap<String, Vec<(usize, Combo)>> = BTreeMap::new();
-        for (i, item) in items.iter().enumerate().filter(|(_, it)| !it.localized.is_empty()) {
+        for (i, item) in items
+            .iter()
+            .enumerate()
+            .filter(|(_, it)| !it.localized.is_empty())
+        {
             for (path, combo) in served(item) {
                 urls.entry(path).or_default().push((i, combo));
             }
         }
         // Items with no localized segment can be on the other side of a collision too.
-        for (i, item) in items.iter().enumerate().filter(|(_, it)| it.localized.is_empty()) {
+        for (i, item) in items
+            .iter()
+            .enumerate()
+            .filter(|(_, it)| it.localized.is_empty())
+        {
             if let Some(members) = urls.get_mut(&pattern_with(item.url, |_, s| s.to_string())) {
                 members.push((i, vec![]));
             }
@@ -381,34 +464,41 @@ type Side<'r, 'a> = (&'r Item<'a>, Option<(&'a Localized, &'a Spelling)>);
 /// How a diagnostic names the other file: itself, or the spelling that reaches it.
 fn describe(other: &Side) -> String {
     match other.1 {
-        Some((l, s)) => format!("{} (`{}: '{}'` in {})", other.0.file, s.locale, s.path, l.file),
+        Some((l, s)) => format!(
+            "{} (`{}: '{}'` in {})",
+            other.0.file, s.locale, s.path, l.file
+        ),
         None => other.0.file.clone(),
     }
 }
 
 fn page_file(r: &Route) -> String {
-    crate::emit::rel(r, if r.page.is_some() { Kind::Page } else { Kind::Redirect })
+    crate::emit::rel(
+        r,
+        if r.page.is_some() {
+            Kind::Page
+        } else {
+            Kind::Redirect
+        },
+    )
 }
 
 /// The diagnostic for `me`: at its spelling when it has one, else at its own file.
 fn report(path: &str, me: Side, other: Side, diags: &mut Diags) {
-    match me.1 {
-        Some((l, s)) => {
-            let msg = format!(
-                "`{}: '{}'` makes {path}, which {} serves too; rename the spelling, or the folder it collides with",
-                s.locale,
-                s.path,
-                describe(&other)
-            );
-            diags.error(&l.file, Some(&s.span), msg);
-        }
-        None => {
-            let (l, s) = other.1.expect("a collision has a localized side");
-            let msg = format!(
-                "{path} is also reached through `{}: '{}'` in {}:{}; rename the spelling, or this folder",
-                s.locale, s.path, l.file, s.span.line
-            );
-            diags.error(&me.0.file, me.0.span, msg);
-        }
+    if let Some((l, s)) = me.1 {
+        let msg = format!(
+            "`{}: '{}'` makes {path}, which {} serves too; rename the spelling, or the folder it collides with",
+            s.locale,
+            s.path,
+            describe(&other)
+        );
+        diags.error(&l.file, Some(&s.span), msg);
+    } else {
+        let (l, s) = other.1.expect("a collision has a localized side");
+        let msg = format!(
+            "{path} is also reached through `{}: '{}'` in {}:{}; rename the spelling, or this folder",
+            s.locale, s.path, l.file, s.span.line
+        );
+        diags.error(&me.0.file, me.0.span, msg);
     }
 }

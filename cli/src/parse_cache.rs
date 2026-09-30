@@ -10,6 +10,11 @@
 //! [`prewarm`] parses the files a run is missing on all cores before the resolver asks for
 //! them: a cold run of a big app is a third parsing, and each file parses on its own.
 
+#![allow(
+    clippy::expect_used,
+    reason = "the cache is enabled at the top of each function, and a parser-thread panic is propagated"
+)]
+
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::thread;
@@ -83,24 +88,46 @@ pub fn prewarm(tree: &Node) -> Prewarmed {
         let c = c.borrow();
         let cache = c.as_ref().expect("enabled above");
         let mut seen = HashSet::new();
-        srcs.into_iter().filter(|s| !cache.entries.contains_key(*s) && seen.insert(*s)).collect()
+        srcs.into_iter()
+            .filter(|s| !cache.entries.contains_key(*s) && seen.insert(*s))
+            .collect()
     });
     if missing.len() >= PARALLEL_MIN {
-        let threads = thread::available_parallelism().map_or(1, |n| n.get()).min(missing.len() / 16).max(1);
+        let threads = thread::available_parallelism()
+            .map_or(1, std::num::NonZero::get)
+            .min(missing.len() / 16)
+            .max(1);
         let per = missing.len().div_ceil(threads);
         let parsed: Vec<Vec<(&str, Module)>> = thread::scope(|scope| {
             let handles: Vec<_> = missing
                 .chunks(per)
-                .map(|chunk| scope.spawn(move || chunk.iter().map(|s| (*s, dart::parse(s))).collect::<Vec<_>>()))
+                .map(|chunk| {
+                    scope.spawn(move || {
+                        chunk
+                            .iter()
+                            .map(|s| (*s, dart::parse(s)))
+                            .collect::<Vec<_>>()
+                    })
+                })
                 .collect();
-            handles.into_iter().map(|h| h.join().expect("parsing panicked")).collect()
+            handles
+                .into_iter()
+                .map(|h| h.join().expect("parsing panicked"))
+                .collect()
         });
         CACHE.with(|c| {
             let mut c = c.borrow_mut();
             let cache = c.as_mut().expect("enabled above");
             for (src, module) in parsed.into_iter().flatten() {
                 cache.parsed += 1;
-                cache.entries.insert(src.to_string(), Entry { module, used: false, fresh: true });
+                cache.entries.insert(
+                    src.to_string(),
+                    Entry {
+                        module,
+                        used: false,
+                        fresh: true,
+                    },
+                );
             }
         });
     }
@@ -111,7 +138,9 @@ pub fn prewarm(tree: &Node) -> Prewarmed {
 pub fn parse(src: &str) -> Module {
     CACHE.with(|c| {
         let mut c = c.borrow_mut();
-        let Some(cache) = c.as_mut() else { return dart::parse(src) };
+        let Some(cache) = c.as_mut() else {
+            return dart::parse(src);
+        };
         if let Some(e) = cache.entries.get_mut(src) {
             e.used = true;
             if !std::mem::take(&mut e.fresh) {
@@ -121,7 +150,14 @@ pub fn parse(src: &str) -> Module {
         }
         let module = dart::parse(src);
         cache.parsed += 1;
-        cache.entries.insert(src.to_string(), Entry { module: module.clone(), used: true, fresh: false });
+        cache.entries.insert(
+            src.to_string(),
+            Entry {
+                module: module.clone(),
+                used: true,
+                fresh: false,
+            },
+        );
         module
     })
 }
@@ -130,9 +166,14 @@ pub fn parse(src: &str) -> Module {
 pub fn finish_run() -> (usize, usize) {
     CACHE.with(|c| {
         let mut c = c.borrow_mut();
-        let Some(cache) = c.as_mut() else { return (0, 0) };
+        let Some(cache) = c.as_mut() else {
+            return (0, 0);
+        };
         cache.entries.retain(|_, e| std::mem::take(&mut e.used));
-        (std::mem::take(&mut cache.parsed), std::mem::take(&mut cache.reused))
+        (
+            std::mem::take(&mut cache.parsed),
+            std::mem::take(&mut cache.reused),
+        )
     })
 }
 
@@ -167,7 +208,11 @@ mod tests {
     #[test]
     fn prewarming_parses_on_several_threads_what_the_resolver_would_and_counts_it_once() {
         let dir = synthetic_app(200);
-        let tree = crate::scan::scan(&dir.path().join("lib/app"), &mut crate::diag::Diags::default()).unwrap();
+        let tree = crate::scan::scan(
+            &dir.path().join("lib/app"),
+            &mut crate::diag::Diags::default(),
+        )
+        .unwrap();
         // 200 pages (one text but for the class name) and 40 data files that differ by their string.
         disable();
         {
@@ -181,7 +226,10 @@ mod tests {
             }
             collect(&tree, &mut sources);
             for src in &sources {
-                assert_eq!(format!("{:?}", parse(src)), format!("{:?}", dart::parse(src)));
+                assert_eq!(
+                    format!("{:?}", parse(src)),
+                    format!("{:?}", dart::parse(src))
+                );
             }
             assert_eq!(finish_run(), (240, 0));
         }

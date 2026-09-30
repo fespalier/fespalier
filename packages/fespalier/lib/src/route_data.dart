@@ -118,9 +118,13 @@ extension DataRef on WidgetRef {
 /// `error.dart` until it has), so this reads the same provider and builds as
 /// soon as it has a value.
 class SectionView<T> extends ConsumerWidget {
+  /// Creates a view of the section data [watch] reads, built by [data] once it has a value.
   const SectionView({super.key, required this.watch, required this.data});
 
+  /// Reads the section's provider; called on every build.
   final AsyncValue<T> Function(WidgetRef ref) watch;
+
+  /// Builds the view from the section data.
   final Widget Function(T data) data;
 
   @override

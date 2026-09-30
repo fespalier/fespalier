@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 
 /// Wraps every page below this folder; `child` is the page.
+///
+/// The transparent [Material] gives ink widgets on a page (`ListTile`, `InkWell`)
+/// something to paint on under the Scaffold's body.
 class AppLayout extends StatelessWidget {
   const AppLayout({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Scaffold(body: SafeArea(child: child));
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Material(type: MaterialType.transparency, child: child),
+    ),
+  );
 }

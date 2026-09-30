@@ -42,32 +42,35 @@ void main() {
       expect(shop_data.shopFetches, 0);
     });
 
-    testWidgets('the name is matched in any case here (case_sensitive: false)',
-        (
-      tester,
-    ) async {
-      await boot(tester, '/shop/HATS');
-      expect(find.text('Shop hats: cap, beret'), findsOneWidget);
-      await boot(tester, '/Shop/Shoes');
-      expect(find.text('Shop shoes: sneaker, boot'), findsOneWidget);
-    });
+    testWidgets(
+      'the name is matched in any case here (case_sensitive: false)',
+      (tester) async {
+        await boot(tester, '/shop/HATS');
+        expect(find.text('Shop hats: cap, beret'), findsOneWidget);
+        await boot(tester, '/Shop/Shoes');
+        expect(find.text('Shop shoes: sneaker, boot'), findsOneWidget);
+      },
+    );
 
-    testWidgets('keys data.dart: one run per value, the provider the route has',
-        (
-      tester,
-    ) async {
-      final container = await pumpRouter(
-        tester,
-        AppRoutes.router(initialLocation: '/shop/hats'),
-      );
-      expect(find.text('Shop hats: cap, beret'), findsOneWidget);
-      expect(shop_data.shopFetches, 1);
-      final hats = CategoryShopRoute.data(Category.hats);
-      expect(container.read(hats).value, ['cap', 'beret']);
-      expect(shop_data.shopFetches, 1);
-      // Another value is another provider, which nothing has asked for yet.
-      expect(container.exists(CategoryShopRoute.data(Category.shoes)), isFalse);
-    });
+    testWidgets(
+      'keys data.dart: one run per value, the provider the route has',
+      (tester) async {
+        final container = await pumpRouter(
+          tester,
+          AppRoutes.router(initialLocation: '/shop/hats'),
+        );
+        expect(find.text('Shop hats: cap, beret'), findsOneWidget);
+        expect(shop_data.shopFetches, 1);
+        final hats = CategoryShopRoute.data(Category.hats);
+        expect(container.read(hats).value, ['cap', 'beret']);
+        expect(shop_data.shopFetches, 1);
+        // Another value is another provider, which nothing has asked for yet.
+        expect(
+          container.exists(CategoryShopRoute.data(Category.shoes)),
+          isFalse,
+        );
+      },
+    );
 
     testWidgets('the typed route has the enum, and writes its name', (
       tester,
@@ -97,8 +100,10 @@ void main() {
     });
 
     testWidgets('the typed route writes it by name', (tester) async {
-      const route =
-          CategoryShopRoute(category: Category.shoes, sort: Sort.name);
+      const route = CategoryShopRoute(
+        category: Category.shoes,
+        sort: Sort.name,
+      );
       expect(route.location, '/shop/shoes?sort=name');
       expect(
         const CategoryShopRoute(category: Category.shoes).location,
@@ -115,8 +120,10 @@ void main() {
   group('a List of an enum as a catch-all', () {
     testWidgets('reads every part by name', (tester) async {
       await boot(tester, '/browse/shoes/hats/shoes');
-      expect(find.text('Browse shoes + hats + shoes (2 different)'),
-          findsOneWidget);
+      expect(
+        find.text('Browse shoes + hats + shoes (2 different)'),
+        findsOneWidget,
+      );
       await boot(tester, '/browse/HATS');
       expect(find.text('Browse hats (1 different)'), findsOneWidget);
     });

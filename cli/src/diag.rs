@@ -8,7 +8,10 @@ use std::path::Path;
 
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
-use codespan_reporting::term::{self, termcolor::{ColorChoice, StandardStream}};
+use codespan_reporting::term::{
+    self,
+    termcolor::{ColorChoice, StandardStream},
+};
 
 use crate::dart::Span;
 
@@ -40,9 +43,18 @@ impl Diags {
     }
 
     fn push(&mut self, level: Level, file: &str, span: Option<&Span>, msg: String) {
-        let d = Diag { level, file: file.into(), span: span.cloned(), msg };
+        let d = Diag {
+            level,
+            file: file.into(),
+            span: span.cloned(),
+            msg,
+        };
         // Inherited files can trip the same check from several routes.
-        if !self.0.iter().any(|x| x.file == d.file && x.msg == d.msg && x.span == d.span) {
+        if !self
+            .0
+            .iter()
+            .any(|x| x.file == d.file && x.msg == d.msg && x.span == d.span)
+        {
             self.0.push(d);
         }
     }
@@ -72,7 +84,11 @@ impl fmt::Display for Diag {
 /// Prints diagnostics to stderr, with the offending source when there is a span.
 /// `shown` is the app folder as the user spells it (`lib/app`).
 pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
-    let color = if std::io::stderr().is_terminal() { ColorChoice::Auto } else { ColorChoice::Never };
+    let color = if std::io::stderr().is_terminal() {
+        ColorChoice::Auto
+    } else {
+        ColorChoice::Never
+    };
     let out = StandardStream::stderr(color);
     let config = term::Config::default();
     let mut files = SimpleFiles::new();
@@ -82,11 +98,15 @@ pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
             Level::Warning => Diagnostic::warning(),
         };
         let shown = format!("{shown}/{}", d.file);
-        let source = d.span.as_ref().and_then(|_| std::fs::read_to_string(app_dir.join(&d.file)).ok());
+        let source = d
+            .span
+            .as_ref()
+            .and_then(|_| std::fs::read_to_string(app_dir.join(&d.file)).ok());
         let diagnostic = match (&d.span, source) {
             (Some(span), Some(src)) => {
                 let id = files.add(shown, src);
-                base.with_message(&d.msg).with_labels(vec![Label::primary(id, span.bytes.clone())])
+                base.with_message(&d.msg)
+                    .with_labels(vec![Label::primary(id, span.bytes.clone())])
             }
             _ => base.with_message(format!("{shown}: {}", d.msg)),
         };
@@ -104,10 +124,12 @@ pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
 pub fn json_line(app_dir: &Path, shown: &str, d: &Diag) -> String {
     let (line, column) = match &d.span {
         Some(span) => {
-            let column = std::fs::read_to_string(app_dir.join(&d.file)).ok().and_then(|src| {
-                let before = src.get(..span.bytes.start)?;
-                Some(before.rsplit('\n').next().unwrap_or("").chars().count() + 1)
-            });
+            let column = std::fs::read_to_string(app_dir.join(&d.file))
+                .ok()
+                .and_then(|src| {
+                    let before = src.get(..span.bytes.start)?;
+                    Some(before.rsplit('\n').next().unwrap_or("").chars().count() + 1)
+                });
             (Some(span.line), column)
         }
         None => (None, None),

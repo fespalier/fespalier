@@ -72,15 +72,25 @@ impl Libs {
     /// For the app folder `app_dir` (`<project>/lib/app`, as `Config::app_dir` says).
     pub fn for_app(app_dir: &Path, cfg: &Config) -> Libs {
         let project = app_dir.ancestors().nth(cfg.app_dir.split('/').count());
-        let package = project.and_then(|p| Pubspec::load(p).ok()).and_then(|p| p.name);
-        Libs { root: project.map(Path::to_path_buf), package, app_dir: cfg.app_dir.clone(), ..Libs::default() }
+        let package = project
+            .and_then(|p| Pubspec::load(p).ok())
+            .and_then(|p| p.name);
+        Libs {
+            root: project.map(Path::to_path_buf),
+            package,
+            app_dir: cfg.app_dir.clone(),
+            ..Libs::default()
+        }
     }
 
     /// The files read from disk so far, for [`Libs::unchanged_since`].
     pub fn reads(&self) -> Reads {
         let mut files = self.read.borrow().clone();
         files.sort();
-        Reads { package: self.package.clone(), files }
+        Reads {
+            package: self.package.clone(),
+            files,
+        }
     }
 
     /// Whether everything `reads` saw reads the same now, and the package is the same one.
@@ -88,7 +98,10 @@ impl Libs {
     pub fn unchanged_since(&self, reads: &Reads) -> bool {
         self.package == reads.package
             && reads.files.iter().all(|(path, src)| {
-                let now = self.root.as_ref().and_then(|root| std::fs::read_to_string(root.join(path)).ok());
+                let now = self
+                    .root
+                    .as_ref()
+                    .and_then(|root| std::fs::read_to_string(root.join(path)).ok());
                 now == *src
             })
     }
@@ -102,15 +115,30 @@ impl Libs {
             return Lookup::Private;
         }
         let from = format!("{}/{file}", self.app_dir);
-        let found = |decl: String| Lookup::Found(Found { name: name.to_string(), decl });
+        let found = |decl: String| {
+            Lookup::Found(Found {
+                name: name.to_string(),
+                decl,
+            })
+        };
         // The file as it was scanned, which is what the tree holds, whatever is on disk.
-        let own = self.files.borrow_mut().entry(from.clone()).or_insert_with(|| Some(Rc::new(crate::parse_cache::parse(src)))).clone();
+        let own = self
+            .files
+            .borrow_mut()
+            .entry(from.clone())
+            .or_insert_with(|| Some(Rc::new(crate::parse_cache::parse(src))))
+            .clone();
         if prefix.is_none() && own.is_some_and(|m| m.enums.iter().any(|e| e == name)) {
             return found(from);
         }
         let mut seen = HashSet::new();
-        for import in extra::imports(src).iter().filter(|i| i.prefix.as_deref() == prefix) {
-            let Some(path) = self.locate(&from, &import.uri) else { continue };
+        for import in extra::imports(src)
+            .iter()
+            .filter(|i| i.prefix.as_deref() == prefix)
+        {
+            let Some(path) = self.locate(&from, &import.uri) else {
+                continue;
+            };
             if let Some(decl) = self.declared_in(&path, name, &mut seen) {
                 return found(decl);
             }
@@ -127,19 +155,29 @@ impl Libs {
         if module.enums.iter().any(|e| e == name) {
             return Some(path.to_string());
         }
-        module.exports.iter().find_map(|uri| self.declared_in(&self.locate(path, uri)?, name, seen))
+        module
+            .exports
+            .iter()
+            .find_map(|uri| self.declared_in(&self.locate(path, uri)?, name, seen))
     }
 
     fn module(&self, path: &str) -> Option<Rc<Module>> {
         if let Some(m) = self.files.borrow().get(path) {
             return m.clone();
         }
-        let src = self.root.as_ref().and_then(|root| std::fs::read_to_string(root.join(path)).ok());
-        let module = src.as_deref().map(|src| Rc::new(crate::parse_cache::parse(src)));
+        let src = self
+            .root
+            .as_ref()
+            .and_then(|root| std::fs::read_to_string(root.join(path)).ok());
+        let module = src
+            .as_deref()
+            .map(|src| Rc::new(crate::parse_cache::parse(src)));
         if self.root.is_some() {
             self.read.borrow_mut().push((path.to_string(), src));
         }
-        self.files.borrow_mut().insert(path.to_string(), module.clone());
+        self.files
+            .borrow_mut()
+            .insert(path.to_string(), module.clone());
         module
     }
 
@@ -180,7 +218,11 @@ fn split(ty: &str) -> (Option<&str>, &str) {
 /// one `dart:core` gives every file (`Object`, `DateTime`, ...). Whether it does is up to
 /// [`Libs::find`].
 pub fn is_candidate(ty: &str) -> bool {
-    let ident = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '$');
+    let ident = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+    };
     let (prefix, name) = split(ty);
     ident(name)
         && prefix.is_none_or(ident)
@@ -204,6 +246,13 @@ pub fn query_shape(ty: &str) -> Option<(&str, bool)> {
 /// of the plain ones (`int?`, `List<String>`).
 pub fn enum_base(ty: &str) -> Option<&str> {
     let ty = ty.strip_suffix('?').unwrap_or(ty);
-    let ty = ty.strip_prefix("List<").and_then(|t| t.strip_suffix('>')).unwrap_or(ty);
-    (!matches!(ty, "String" | "int" | "double" | "num" | "bool" | "DateTime")).then_some(ty)
+    let ty = ty
+        .strip_prefix("List<")
+        .and_then(|t| t.strip_suffix('>'))
+        .unwrap_or(ty);
+    (!matches!(
+        ty,
+        "String" | "int" | "double" | "num" | "bool" | "DateTime"
+    ))
+    .then_some(ty)
 }

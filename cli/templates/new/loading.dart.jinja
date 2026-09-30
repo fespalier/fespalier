@@ -1,10 +1,11 @@
+{% from "new/_macros.dart" import classdecl, ctor %}
 import 'package:flutter/material.dart';
 
 {% if function %}
 Widget loading() => const Center(child: CircularProgressIndicator());
 {% else %}
-class {{ stem }}Loading extends StatelessWidget {
-  const {{ stem }}Loading({super.key});
+{{ classdecl(stem ~ "Loading", "StatelessWidget") }}
+{{ ctor(stem ~ "Loading", ["super.key"]) }}
 
   @override
   Widget build(BuildContext context) =>

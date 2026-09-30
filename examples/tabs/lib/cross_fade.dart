@@ -26,8 +26,11 @@ class CrossFadeContainer extends StatefulWidget {
 
 class _CrossFadeContainerState extends State<CrossFadeContainer>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _fade =
-      AnimationController(vsync: this, duration: widget.duration, value: 1);
+  late final AnimationController _fade = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+    value: 1,
+  );
   int? _leaving;
 
   @override

@@ -20,9 +20,7 @@ class ShareSheet extends StatelessWidget {
               child: const Text('Terms'),
             ),
             TextButton(
-              onPressed: () => context.pop(),
-              child: const Text('Done'),
-            ),
+                onPressed: () => context.pop(), child: const Text('Done')),
           ],
         ),
       );

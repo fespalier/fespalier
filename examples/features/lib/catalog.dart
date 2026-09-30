@@ -24,16 +24,16 @@ int flakyRuns = 0;
 Duration? productRetry(int retryCount, Object error) =>
     retryCount < 2 ? const Duration(milliseconds: 100) : null;
 
-final productProvider = FutureProvider.autoDispose.family<Product, String>(
-  (ref, id) async {
-    productFetches++;
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-    if (id == 'bad') throw Exception('no product bad');
-    if (id == 'flaky' && flakyRuns++ < 2) throw Exception('flaky product');
-    return Product(id, 'Product $id');
-  },
-  retry: productRetry,
-);
+final productProvider = FutureProvider.autoDispose.family<Product, String>((
+  ref,
+  id,
+) async {
+  productFetches++;
+  await Future<void>.delayed(const Duration(milliseconds: 10));
+  if (id == 'bad') throw Exception('no product bad');
+  if (id == 'flaky' && flakyRuns++ < 2) throw Exception('flaky product');
+  return Product(id, 'Product $id');
+}, retry: productRetry);
 
 /// No family: `catalog/data.dart` selects it as it is.
 final featuredProvider = FutureProvider.autoDispose<List<String>>((ref) async {

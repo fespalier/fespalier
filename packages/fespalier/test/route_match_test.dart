@@ -38,9 +38,12 @@ final matchers = <RouteMatcher>[
   RouteMatcher(['about'], (s) => UrlMatch(s.uri, const AboutRoute(), {}, [])),
   RouteMatcher(['products', ':id'], (s) {
     final p = (id: Segment.asInt(s, 'id'));
-    return UrlMatch(s.uri, ProductRoute(id: p.id), {'id': p.id}, [
-      product(p.id),
-    ]);
+    return UrlMatch(
+      s.uri,
+      ProductRoute(id: p.id),
+      {'id': p.id},
+      [product(p.id)],
+    );
   }),
   RouteMatcher(['docs', '*rest?'], (s) {
     final rest = Segment.asRest(s, 'rest');
@@ -143,7 +146,12 @@ void main() {
       expect(at('/DOCS/a', routes: withCase({'docs': false}))!.type, DocsRoute);
       // The mount point follows the root folder's setting.
       expect(
-        at('/SHOP/products/5', base: '/shop', caseSensitive: false, routes: loose),
+        at(
+          '/SHOP/products/5',
+          base: '/shop',
+          caseSensitive: false,
+          routes: loose,
+        ),
         isNotNull,
       );
       expect(at('/SHOP/products/5', base: '/shop', routes: loose), isNull);

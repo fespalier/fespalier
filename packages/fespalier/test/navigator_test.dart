@@ -11,8 +11,12 @@ void main() {
   });
 
   test('RoutePresentation says how a route is served', () {
-    expect(RoutePresentation.values.map((v) => v.name),
-        ['page', 'redirect', 'root', 'custom']);
+    expect(RoutePresentation.values.map((v) => v.name), [
+      'page',
+      'redirect',
+      'root',
+      'custom',
+    ]);
     final home = RouteInfo<Object?>(type: _Home, path: '/', folder: '');
     expect(home.presentation, RoutePresentation.page);
     expect(home.isRedirect, isFalse);

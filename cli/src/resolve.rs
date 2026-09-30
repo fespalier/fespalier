@@ -10,6 +10,12 @@
 //! `child` and `state`. A segment or query parameter can also be an app enum
 //! (`Category category`, `Sort? sort`, `List<Category> path`): see `enums.rs`.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "sections and data are bound before the lookups that unwrap them; the resolver states those invariants"
+)]
+
 use std::collections::{BTreeMap, HashMap};
 
 use heck::ToUpperCamelCase;
@@ -19,7 +25,7 @@ use crate::diag::Diags;
 use crate::enums::{self, Libs, Lookup};
 use crate::extra::{self, ExtraType};
 use crate::locale::{self, Localized};
-use crate::scan::{Kind, Node, Seg, ROUTE_MEMBERS};
+use crate::scan::{Kind, Node, ROUTE_MEMBERS, Seg};
 
 /// What a segment can be, besides an enum.
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
@@ -59,7 +65,7 @@ pub enum Bind {
     IsShell,
     /// A page's `extra` parameter: the object passed to `go(..., extra:)`.
     Extra,
-    /// A segment above a not_found.dart, as the URL spells it: a `String`, because the
+    /// A segment above a `not_found.dart`, as the URL spells it: a `String`, because the
     /// ones that failed to parse are the reason the file is shown.
     Raw(String),
 }
@@ -85,11 +91,16 @@ impl Widget {
         let args: Vec<String> = self
             .args
             .iter()
-            .map(|a| if a.named { format!("{}: {}", a.name, value(&a.bind)) } else { value(&a.bind) })
+            .map(|a| {
+                if a.named {
+                    format!("{}: {}", a.name, value(&a.bind))
+                } else {
+                    value(&a.bind)
+                }
+            })
             .collect();
         format!("_i{}.{}({})", self.import, self.class, args.join(", "))
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -154,7 +165,11 @@ impl Guard {
     /// The segments and query parameters it reads from the URL.
     pub fn keys(&self) -> Vec<String> {
         let url = |a: &&Arg| matches!(a.bind, Bind::Segment(_) | Bind::Query(_));
-        self.args.iter().filter(url).map(|a| a.name.clone()).collect()
+        self.args
+            .iter()
+            .filter(url)
+            .map(|a| a.name.clone())
+            .collect()
     }
 }
 
@@ -225,7 +240,7 @@ pub struct Route {
     pub tabs: Option<Vec<Branch>>,
     /// The options of each tab, in the same order as `tabs`.
     pub tab_options: Vec<BranchOptions>,
-    /// The nearest not_found.dart below the root at or above this folder: what an
+    /// The nearest `not_found.dart` below the root at or above this folder: what an
     /// unparsable segment shows. `None` means the root's.
     pub not_found: Option<Widget>,
     /// The folder's `meta.dart` (relative to the app folder) when it has a valid
@@ -257,7 +272,7 @@ impl Route {
     }
 }
 
-/// A not_found.dart below the root, chosen for unknown URLs under `url`.
+/// A `not_found.dart` below the root, chosen for unknown URLs under `url`.
 #[derive(Debug, Clone)]
 pub struct ScopedNotFound {
     pub url: Vec<Seg>,
@@ -266,7 +281,7 @@ pub struct ScopedNotFound {
     pub case_sensitive: bool,
     /// The localized segments of its URL, so `/produits/x` is under it as `/products/x` is.
     pub localized: Vec<Localized>,
-    /// The not_found.dart, relative to the app folder.
+    /// The `not_found.dart`, relative to the app folder.
     pub file: String,
 }
 
@@ -275,7 +290,7 @@ pub struct App {
     pub imports: Vec<String>,
     pub routes: Vec<Route>,
     pub not_found: Option<Widget>,
-    /// The not_found.dart files in folders below the root (not `(group)`s).
+    /// The `not_found.dart` files in folders below the root (not `(group)`s).
     pub not_founds: Vec<ScopedNotFound>,
     /// Type of each dynamic segment, keyed by the folder that declares it.
     pub seg_types: HashMap<usize, String>,
@@ -304,7 +319,11 @@ impl Route {
 
 impl App {
     pub fn seg_type(&self, folder: usize) -> &str {
-        let default = if self.is_catch_all(folder) { "List<String>" } else { "String" };
+        let default = if self.is_catch_all(folder) {
+            "List<String>"
+        } else {
+            "String"
+        };
         self.seg_types.get(&folder).map_or(default, String::as_str)
     }
 
@@ -316,12 +335,18 @@ impl App {
     /// A segment's or query parameter's type as the app writes it, for what shows types: an
     /// enum is `Category`, where the generated file spells it `_i3.Category`.
     pub fn display_type(&self, ty: &str) -> String {
-        self.type_names.get(ty).cloned().unwrap_or_else(|| ty.to_string())
+        self.type_names
+            .get(ty)
+            .cloned()
+            .unwrap_or_else(|| ty.to_string())
     }
 
     /// `(name, type)` for each of a route's segments, in path order.
     pub fn typed_segs(&self, r: &Route) -> Vec<(String, String)> {
-        r.segs.iter().map(|(n, f)| (n.clone(), self.seg_type(*f).to_string())).collect()
+        r.segs
+            .iter()
+            .map(|(n, f)| (n.clone(), self.seg_type(*f).to_string()))
+            .collect()
     }
 
     /// Everything a route's files ask for from the URL: segments, then query.
@@ -349,7 +374,9 @@ fn query_type(ty: &Ty) -> Option<String> {
     }
     let list = t.strip_suffix('?').unwrap_or(t);
     let inner = list.strip_prefix("List<")?.strip_suffix('>')?;
-    SEGMENT_TYPES.contains(&inner).then(|| format!("List<{inner}>"))
+    SEGMENT_TYPES
+        .contains(&inner)
+        .then(|| format!("List<{inner}>"))
 }
 
 /// A URL parameter's type, worked out.
@@ -370,13 +397,21 @@ struct Typed {
 
 impl Typed {
     fn plain(text: String) -> Typed {
-        Typed { spelled: text.clone(), key: text.clone(), shown: text, import: None, decl: None }
+        Typed {
+            spelled: text.clone(),
+            key: text.clone(),
+            shown: text,
+            import: None,
+            decl: None,
+        }
     }
 
     /// For "`$x` is A here but B there" when A and B are enums that are spelled alike.
     fn same_name_as(&self, other: &Typed) -> String {
         match (&self.decl, &other.decl) {
-            (Some(a), Some(b)) if self.shown == other.shown => format!(" (two different enums: {a} and {b})"),
+            (Some(a), Some(b)) if self.shown == other.shown => {
+                format!(" (two different enums: {a} and {b})")
+            }
             _ => String::new(),
         }
     }
@@ -452,7 +487,7 @@ struct BindCx<'a> {
     file: &'a str,
     /// For inherited views: the folder of the route this use is for.
     covering: Option<&'a str>,
-    /// Where query parameters land; `None` where there are none (not_found).
+    /// Where query parameters land; `None` where there are none (`not_found`).
     scope: Option<Scope>,
 }
 
@@ -475,7 +510,13 @@ pub fn resolve(root: &Node, case_sensitive: bool, libs: &Libs, diags: &mut Diags
         query_order: vec![],
         diags,
     };
-    r.node(root, &Inherited { case_sensitive, ..Inherited::default() });
+    r.node(
+        root,
+        &Inherited {
+            case_sensitive,
+            ..Inherited::default()
+        },
+    );
     r.extra_codec(root);
     r.settle_segment_types();
     r.settle_extras();
@@ -512,7 +553,7 @@ struct Resolver<'a> {
     route_names: HashMap<String, String>,
     /// URL pattern → the page.dart that serves it.
     patterns: HashMap<String, String>,
-    /// URL pattern → the not_found.dart below the root that covers it.
+    /// URL pattern → the `not_found.dart` below the root that covers it.
     not_found_urls: HashMap<String, String>,
     constraints: Vec<Constraint>,
     /// Query parameter types as first declared: (type, file, line).
@@ -574,7 +615,11 @@ impl Resolver<'_> {
         let mut segs = up.segs.clone();
         if let Some(Seg::Dynamic(n) | Seg::CatchAll(n, _)) = &node.seg {
             if segs.iter().any(|(s, _)| s == n) {
-                self.diags.error(&node.dir, None, format!("`${n}` is already a segment higher up this path"));
+                self.diags.error(
+                    &node.dir,
+                    None,
+                    format!("`${n}` is already a segment higher up this path"),
+                );
             } else {
                 segs.push((n.clone(), id));
             }
@@ -583,7 +628,11 @@ impl Resolver<'_> {
         if let Some(seg @ (Seg::Static(_) | Seg::Dynamic(_) | Seg::CatchAll(..))) = &node.seg {
             url.push(seg.clone());
         }
-        let modules: BTreeMap<Kind, Module> = node.files.iter().map(|(k, src)| (*k, crate::parse_cache::parse(src))).collect();
+        let modules: BTreeMap<Kind, Module> = node
+            .files
+            .iter()
+            .map(|(k, src)| (*k, crate::parse_cache::parse(src)))
+            .collect();
         // The grammar may lag newer Dart, so this is a warning: the Dart compiler has the last word.
         for (kind, m) in &modules {
             if let Some(span) = &m.parse_error {
@@ -599,7 +648,9 @@ impl Resolver<'_> {
 
         // page.dart names the route; data.dart feeds it.
         let page_file = node.rel(Kind::Page);
-        let page_class = modules.get(&Kind::Page).and_then(|m| self.widget_class(m, &page_file, Kind::Page));
+        let page_class = modules
+            .get(&Kind::Page)
+            .and_then(|m| self.widget_class(m, &page_file, Kind::Page));
         // A class names its route after itself; a function has no name of its own to give
         // (many routes can build one screen), so it takes the folder path. Either way
         // `const routeName = '...';` in page.dart has the last word.
@@ -608,23 +659,38 @@ impl Resolver<'_> {
             _ => None,
         };
         let mut name = page_class.as_ref().map(|c| {
-            given.clone().unwrap_or_else(|| if c.function { path_name(&url) } else { route_name(&c.name) })
+            given.clone().unwrap_or_else(|| {
+                if c.function {
+                    path_name(&url)
+                } else {
+                    route_name(&c.name)
+                }
+            })
         });
         let mut page_span = page_class.as_ref().map(|c| c.span.clone());
         if let (Some(n), Some(c)) = (&name, &page_class) {
             let fix = match (c.function, given.is_some()) {
                 (false, false) => "rename the class".to_string(),
                 (false, true) => "change its `routeName`".to_string(),
-                (true, false) => format!("give one a different name with `const routeName = 'Name';` in {page_file}"),
+                (true, false) => format!(
+                    "give one a different name with `const routeName = 'Name';` in {page_file}"
+                ),
                 (true, true) => "change its `routeName`".to_string(),
             };
             self.claim(&url, n, &page_file, &c.span, &fix);
         }
         // Without a page.dart, a data.dart with a layout.dart beside it is the data of the
         // section that layout wraps; the query parameters it takes are the layout's.
-        let section_folder = !node.files.contains_key(&Kind::Page) && node.files.contains_key(&Kind::Layout);
-        let data_scope = if section_folder { Scope::Layout(id) } else { Scope::Route(id) };
-        let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs, data_scope));
+        let section_folder =
+            !node.files.contains_key(&Kind::Page) && node.files.contains_key(&Kind::Layout);
+        let data_scope = if section_folder {
+            Scope::Layout(id)
+        } else {
+            Scope::Route(id)
+        };
+        let data = modules
+            .get(&Kind::Data)
+            .and_then(|m| self.data(m, node, &segs, data_scope));
         let section = data.is_some() && section_folder;
         if data.is_some() && !section && !node.files.contains_key(&Kind::Page) {
             let msg = "data.dart has no page.dart to feed; with a layout.dart beside it, it would be the data of the section below that layout";
@@ -633,12 +699,20 @@ impl Resolver<'_> {
         if let (true, Some(d)) = (section, &data) {
             // The section's typed handle (`AccountSection.watch(ref, {...keys})`) takes them as named parameters.
             if let Some(k) = d.keys.iter().find(|k| ROUTE_MEMBERS.contains(&k.as_str())) {
-                let msg = format!("`{k}` can't be a key of a section's data.dart: the section's typed handle has a member called `{k}`; rename it");
+                let msg = format!(
+                    "`{k}` can't be a key of a section's data.dart: the section's typed handle has a member called `{k}`; rename it"
+                );
                 self.diags.error(&node.rel(Kind::Data), None, msg);
             }
         }
 
-        let extra_ty = page_class.as_ref().and_then(|c| c.params.iter().find(|p| !p.is_super && p.name == "extra")?.ty.clone());
+        let extra_ty = page_class.as_ref().and_then(|c| {
+            c.params
+                .iter()
+                .find(|p| !p.is_super && p.name == "extra")?
+                .ty
+                .clone()
+        });
         let mut extra = None;
         let page = page_class.map(|c| {
             let cx = BindCx {
@@ -651,13 +725,12 @@ impl Resolver<'_> {
                 scope: Some(Scope::Route(id)),
             };
             let w = self.bind(&c, &cx);
-            if let (Some(ty), Some(src)) = (&extra_ty, node.files.get(&Kind::Page)) {
-                if w.args.iter().any(|a| a.bind == Bind::Extra) {
+            if let (Some(ty), Some(src)) = (&extra_ty, node.files.get(&Kind::Page))
+                && w.args.iter().any(|a| a.bind == Bind::Extra) {
                     extra = Some(extra::extra_type(&ty.text, src, &page_file, w.import, &id.to_string()));
                 }
-            }
-            if let Some(d) = &data {
-                if !w.args.iter().any(|a| a.bind == Bind::Data) {
+            if let Some(d) = &data
+                && !w.args.iter().any(|a| a.bind == Bind::Data) {
                     self.diags.warn(
                         &page_file,
                         Some(&c.span),
@@ -668,7 +741,6 @@ impl Resolver<'_> {
                         },
                     );
                 }
-            }
             w
         });
 
@@ -678,7 +750,13 @@ impl Resolver<'_> {
         let mut case_sensitive = up.case_sensitive;
         if let Some(m) = modules.get(&Kind::Route) {
             let file = node.rel(Kind::Route);
-            let spelled = locale::read(m, &file, node.seg.as_ref(), url.len().saturating_sub(1), self.diags);
+            let spelled = locale::read(
+                m,
+                &file,
+                node.seg.as_ref(),
+                url.len().saturating_sub(1),
+                self.diags,
+            );
             localized.extend(spelled.filter(|l| !l.spellings.is_empty()));
             case_sensitive = self.route_config(m, &file).unwrap_or(up.case_sensitive);
         }
@@ -699,23 +777,40 @@ impl Resolver<'_> {
             localized: localized.clone(),
         };
         if let (true, Some(d)) = (section, &data) {
-            here.sections.push(SectionRef { id, ty: d.ty.clone(), file: node.rel(Kind::Data) });
+            here.sections.push(SectionRef {
+                id,
+                ty: d.ty.clone(),
+                file: node.rel(Kind::Data),
+            });
         }
-        for (kind, slot) in [(Kind::Loading, &mut here.loading), (Kind::Error, &mut here.error)] {
+        for (kind, slot) in [
+            (Kind::Loading, &mut here.loading),
+            (Kind::Error, &mut here.error),
+        ] {
             if let Some(m) = modules.get(&kind) {
                 let file = node.rel(kind);
                 if let Some(class) = self.widget_class(m, &file, kind) {
-                    *slot = Some(Fallback { import: self.import(&file), class, file });
+                    *slot = Some(Fallback {
+                        import: self.import(&file),
+                        class,
+                        file,
+                    });
                 }
             }
         }
         // Likewise transition.dart, once for the whole subtree.
         if let Some(m) = modules.get(&Kind::Transition) {
-            here.transition = self.transition(m, node, Kind::Transition, "transition").or(here.transition);
+            here.transition = self
+                .transition(m, node, Kind::Transition, "transition")
+                .or(here.transition);
         }
         // present.dart is this route's page alone; navigator.dart is inherited, like transition.dart.
-        let present = modules.get(&Kind::Present).and_then(|m| self.transition(m, node, Kind::Present, "present"));
-        let navigator = modules.get(&Kind::Navigator).and_then(|m| self.navigator(m, node));
+        let present = modules
+            .get(&Kind::Present)
+            .and_then(|m| self.transition(m, node, Kind::Present, "present"));
+        let navigator = modules
+            .get(&Kind::Navigator)
+            .and_then(|m| self.navigator(m, node));
         if present.is_some() && !node.files.contains_key(&Kind::Page) {
             let msg = "present.dart builds this folder's page, but there is no page.dart here; it is ignored";
             self.diags.warn(&node.rel(Kind::Present), None, msg);
@@ -737,7 +832,11 @@ impl Resolver<'_> {
             let bind = |r: &mut Self, f: &Option<Fallback>, role| {
                 f.as_ref().map(|f| {
                     // A section's views are built by its layout, which reads the URL for them.
-                    let scope = if section { Scope::Layout(id) } else { Scope::Route(id) };
+                    let scope = if section {
+                        Scope::Layout(id)
+                    } else {
+                        Scope::Route(id)
+                    };
                     let cx = BindCx {
                         role,
                         segs: &segs,
@@ -752,7 +851,10 @@ impl Resolver<'_> {
                     w
                 })
             };
-            (bind(self, &here.loading, Role::Loading), bind(self, &here.error, Role::Error))
+            (
+                bind(self, &here.loading, Role::Loading),
+                bind(self, &here.error, Role::Error),
+            )
         } else {
             (None, None)
         };
@@ -778,13 +880,19 @@ impl Resolver<'_> {
             layout_extra = extra_of(&c.params, &w.args, node.files.get(&Kind::Layout), &file, w.import, &format!("l{id}"));
             Some(w)
         });
-        let guard = modules.get(&Kind::Guard).and_then(|m| self.guard(m, node, &segs, id));
+        let guard = modules
+            .get(&Kind::Guard)
+            .and_then(|m| self.guard(m, node, &segs, id));
         // redirect.dart is a route of its own, named after its path.
         let mut redirect = None;
         if let Some(m) = modules.get(&Kind::Redirect) {
             let file = node.rel(Kind::Redirect);
             if node.files.contains_key(&Kind::Page) {
-                self.diags.error(&file, None, "a folder has a page.dart or a redirect.dart, not both");
+                self.diags.error(
+                    &file,
+                    None,
+                    "a folder has a page.dart or a redirect.dart, not both",
+                );
             } else if let Some((r, span)) = self.redirect(m, node, &segs, id) {
                 let n = path_name(&url);
                 self.claim(&url, &n, &file, &span, "rename the class");
@@ -819,10 +927,18 @@ impl Resolver<'_> {
                         let at = pattern(&url);
                         match self.not_found_urls.insert(at.clone(), file.clone()) {
                             Some(prev) => {
-                                let msg = format!("{at} already has {prev}; (group) folders don't add to the URL, so move or rename one");
+                                let msg = format!(
+                                    "{at} already has {prev}; (group) folders don't add to the URL, so move or rename one"
+                                );
                                 self.diags.error(&file, None, msg);
                             }
-                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone(), case_sensitive, localized: localized.clone(), file: file.clone() }),
+                            None => self.app.not_founds.push(ScopedNotFound {
+                                url: url.clone(),
+                                widget: w.clone(),
+                                case_sensitive,
+                                localized: localized.clone(),
+                                file: file.clone(),
+                            }),
                         }
                     }
                     not_found = Some(w);
@@ -832,16 +948,23 @@ impl Resolver<'_> {
 
         here.not_found = not_found.clone();
 
-
         let has_page = page.is_some();
         let has_route = has_page || redirect.is_some();
         // A section keyed by a query parameter makes every route below it depend on it: it is
         // one of the route's query parameters too, so its typed route can write it.
         if has_route {
             for sec in &up.sections {
-                let keys = self.app.routes[sec.id].data.as_ref().map(|d| d.keys.clone()).unwrap_or_default();
+                let keys = self.app.routes[sec.id]
+                    .data
+                    .as_ref()
+                    .map(|d| d.keys.clone())
+                    .unwrap_or_default();
                 for key in keys.iter().filter(|k| !segs.iter().any(|(s, _)| s == *k)) {
-                    if let Some((ty, ..)) = self.queries.get(&(Scope::Layout(sec.id), key.clone())).cloned() {
+                    if let Some((ty, ..)) = self
+                        .queries
+                        .get(&(Scope::Layout(sec.id), key.clone()))
+                        .cloned()
+                    {
                         self.declare_query(Scope::Route(id), key, ty, &sec.file, &Span::default());
                     }
                 }
@@ -849,21 +972,51 @@ impl Resolver<'_> {
         }
         self.app.routes[id].page_span = page_span;
         self.app.routes[id].not_found = not_found;
-        self.app.routes[id].meta = modules.get(&Kind::Meta).and_then(|m| self.meta(m, node, has_route));
+        self.app.routes[id].meta = modules
+            .get(&Kind::Meta)
+            .and_then(|m| self.meta(m, node, has_route));
         // A redirect.dart route can carry an `extra` too, which its redirect reads.
-        let extra = extra.or_else(|| redirect.as_ref().and_then(|g| g.extra.as_ref()).map(|e| e.ty.clone()));
+        let extra = extra.or_else(|| {
+            redirect
+                .as_ref()
+                .and_then(|g| g.extra.as_ref())
+                .map(|e| e.ty.clone())
+        });
         if self.app.routes[id].meta.is_some() {
-            let literals = modules.get(&Kind::Meta).and_then(|m| m.variables.iter().find(|v| v.name == "meta")?.ctor_args.clone());
+            let literals = modules.get(&Kind::Meta).and_then(|m| {
+                m.variables
+                    .iter()
+                    .find(|v| v.name == "meta")?
+                    .ctor_args
+                    .clone()
+            });
             self.app.routes[id].meta_args = literals.unwrap_or_default();
         }
         self.app.routes[id].extra = extra;
         self.app.routes[id].layout_extra = layout_extra;
-        let transition = here.transition.clone().filter(|_| has_page && present.is_none());
+        let transition = here
+            .transition
+            .clone()
+            .filter(|_| has_page && present.is_none());
         let shell_transition = here.transition.clone().filter(|_| layout.is_some());
         let r = &mut self.app.routes[id];
-        (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard, r.redirect, r.transition) =
-            (segs, url, page, name, data, loading, error, layout, guard, redirect, transition);
-        (r.present, r.navigator, r.root, r.shell_transition) = (present, navigator, root, shell_transition);
+        (
+            r.segs,
+            r.url,
+            r.page,
+            r.name,
+            r.data,
+            r.loading,
+            r.error,
+            r.layout,
+            r.guard,
+            r.redirect,
+            r.transition,
+        ) = (
+            segs, url, page, name, data, loading, error, layout, guard, redirect, transition,
+        );
+        (r.present, r.navigator, r.root, r.shell_transition) =
+            (present, navigator, root, shell_transition);
 
         let mut children = vec![];
         let mut with_routes = vec![];
@@ -880,10 +1033,20 @@ impl Resolver<'_> {
             let msg = "a catch-all matches the rest of the path, so no route can go below it; move the routes beside it";
             self.diags.error(&node.dir, None, msg);
         }
-        let is_tabs = self.app.routes[id].layout.as_ref().is_some_and(|w| w.args.iter().any(|a| a.bind == Bind::Shell));
+        let is_tabs = self.app.routes[id]
+            .layout
+            .as_ref()
+            .is_some_and(|w| w.args.iter().any(|a| a.bind == Bind::Shell));
         if is_tabs {
             let tabs = self.tabs(node, modules.get(&Kind::Layout), has_page, &with_routes);
-            let options = self.tab_options(node, modules.get(&Kind::Layout), id, has_page, &with_routes, &tabs);
+            let options = self.tab_options(
+                node,
+                modules.get(&Kind::Layout),
+                id,
+                has_page,
+                &with_routes,
+                &tabs,
+            );
             self.app.routes[id].tabs = Some(tabs);
             self.app.routes[id].container = self.container(node, modules.get(&Kind::Layout));
             if self.app.routes[id].redirect.is_some() {
@@ -892,11 +1055,13 @@ impl Resolver<'_> {
             }
             self.app.routes[id].tab_options = options;
         }
-        if !is_tabs {
-            if let Some(f) = modules.get(&Kind::Layout).and_then(|m| m.functions.iter().find(|f| f.name == "container")) {
-                let msg = "container() is only used by a tab layout (one that takes a `StatefulNavigationShell`); it is ignored here";
-                self.diags.warn(&node.rel(Kind::Layout), Some(&f.span), msg);
-            }
+        if !is_tabs
+            && let Some(f) = modules
+                .get(&Kind::Layout)
+                .and_then(|m| m.functions.iter().find(|f| f.name == "container"))
+        {
+            let msg = "container() is only used by a tab layout (one that takes a `StatefulNavigationShell`); it is ignored here";
+            self.diags.warn(&node.rel(Kind::Layout), Some(&f.span), msg);
         }
         if self.app.routes[id].guard.is_some() && !any_route {
             let msg = "guard.dart guards no routes: there is no page.dart or redirect.dart at or below this folder";
@@ -904,7 +1069,11 @@ impl Resolver<'_> {
         }
         let bare = !node.files.contains_key(&Kind::Page) && !node.files.contains_key(&Kind::Guard);
         if !any_route && node.children.is_empty() && !node.dir.is_empty() && bare {
-            self.diags.warn(&node.dir, None, "folder has no page.dart and no routes below it; skipped");
+            self.diags.warn(
+                &node.dir,
+                None,
+                "folder has no page.dart and no routes below it; skipped",
+            );
         }
         self.app.routes[id].children = children;
         (id, any_route)
@@ -920,7 +1089,9 @@ impl Resolver<'_> {
         if let Some((Seg::CatchAll(_, true), parent)) = url.split_last() {
             let at = self::pattern(parent);
             if let Some(prev) = self.patterns.get(&at).filter(|p| p.as_str() != file) {
-                let msg = format!("{at} is served by both {prev} and {file}: an optional catch-all also matches the path without it; use `$$rest` instead, or drop the page above");
+                let msg = format!(
+                    "{at} is served by both {prev} and {file}: an optional catch-all also matches the path without it; use `$$rest` instead, or drop the page above"
+                );
                 self.diags.error(file, Some(span), msg);
             } else {
                 self.patterns.insert(at, file.to_string());
@@ -934,17 +1105,29 @@ impl Resolver<'_> {
             );
             self.diags.error(file, Some(span), msg);
         } else if let Some(prev) = same_name {
-            self.diags.error(file, Some(span), format!("route name `{name}Route` is already taken by {prev}; {fix}"));
+            self.diags.error(
+                file,
+                Some(span),
+                format!("route name `{name}Route` is already taken by {prev}; {fix}"),
+            );
         }
     }
 
     /// The tabs of a tab layout: the folder's own page, then each subfolder that
     /// holds routes, or the order `const tabs = [...]` in layout.dart gives.
-    fn tabs(&mut self, node: &Node, layout: Option<&Module>, has_page: bool, with_routes: &[usize]) -> Vec<Branch> {
+    fn tabs(
+        &mut self,
+        node: &Node,
+        layout: Option<&Module>,
+        has_page: bool,
+        with_routes: &[usize],
+    ) -> Vec<Branch> {
         let file = node.rel(Kind::Layout);
         let name_of = |r: &Self, b: Branch| r.tab_name(b);
         let all = all_tabs(has_page, with_routes);
-        let Some(var) = layout.and_then(|m| m.variables.iter().find(|v| v.name == "tabs")) else { return all };
+        let Some(var) = layout.and_then(|m| m.variables.iter().find(|v| v.name == "tabs")) else {
+            return all;
+        };
         let Some(listed) = &var.strings else {
             self.diags.error(&file, Some(&var.span), "`tabs` must be a list of string literals naming the branches, e.g. `const tabs = ['home', 'search'];`");
             return all;
@@ -954,18 +1137,25 @@ impl Resolver<'_> {
         for (name, span) in listed {
             match known.iter().position(|k| k == name) {
                 None => {
-                    let msg = format!("`tabs` lists `{name}`, which is not a branch here; the branches are {}", show_list(&known));
+                    let msg = format!(
+                        "`tabs` lists `{name}`, which is not a branch here; the branches are {}",
+                        show_list(&known)
+                    );
                     self.diags.error(&file, Some(span), msg);
                 }
                 Some(i) if order.contains(&all[i]) => {
-                    self.diags.error(&file, Some(span), format!("`tabs` lists `{name}` twice"));
+                    self.diags
+                        .error(&file, Some(span), format!("`tabs` lists `{name}` twice"));
                 }
                 Some(i) => order.push(all[i]),
             }
         }
         for (b, name) in all.iter().zip(&known) {
             if !order.contains(b) {
-                let msg = format!("`tabs` is missing the branch `{name}`; list every branch once ({})", show_list(&known));
+                let msg = format!(
+                    "`tabs` is missing the branch `{name}`; list every branch once ({})",
+                    show_list(&known)
+                );
                 self.diags.error(&file, Some(&var.span), msg);
             }
         }
@@ -976,7 +1166,12 @@ impl Resolver<'_> {
     fn tab_name(&self, b: Branch) -> String {
         match b {
             Branch::Own => ".".to_string(),
-            Branch::Folder(c) => self.app.routes[c].dir.rsplit('/').next().unwrap_or_default().to_string(),
+            Branch::Folder(c) => self.app.routes[c]
+                .dir
+                .rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .to_string(),
         }
     }
 
@@ -993,7 +1188,10 @@ impl Resolver<'_> {
         }
         let mut out = vec![];
         match b {
-            Branch::Own => out.push((self.app.routes[layout].url.as_slice(), self.app.routes[layout].localized.as_slice())),
+            Branch::Own => out.push((
+                self.app.routes[layout].url.as_slice(),
+                self.app.routes[layout].localized.as_slice(),
+            )),
             Branch::Folder(c) => walk(&self.app, c, &mut out),
         }
         out
@@ -1011,7 +1209,10 @@ impl Resolver<'_> {
         order: &[Branch],
     ) -> Vec<BranchOptions> {
         let mut out = vec![BranchOptions::default(); order.len()];
-        let Some(var) = layout.and_then(|m| m.variables.iter().find(|v| v.name == "tabOptions")) else { return out };
+        let Some(var) = layout.and_then(|m| m.variables.iter().find(|v| v.name == "tabOptions"))
+        else {
+            return out;
+        };
         let file = node.rel(Kind::Layout);
         let Some(entries) = &var.objects else {
             let msg = "`tabOptions` must be a map from tab names to `TabOptions(...)` calls with literal arguments, e.g. `const tabOptions = {'search': TabOptions(preload: true)};`";
@@ -1023,17 +1224,28 @@ impl Resolver<'_> {
         let mut seen: Vec<&str> = vec![];
         for e in entries {
             let Some(i) = known.iter().position(|k| *k == e.key) else {
-                let msg = format!("`tabOptions` lists `{}`, which is not a branch here; the branches are {}", e.key, show_list(&known));
+                let msg = format!(
+                    "`tabOptions` lists `{}`, which is not a branch here; the branches are {}",
+                    e.key,
+                    show_list(&known)
+                );
                 self.diags.error(&file, Some(&e.key_span), msg);
                 continue;
             };
             if seen.contains(&e.key.as_str()) {
-                self.diags.error(&file, Some(&e.key_span), format!("`tabOptions` lists `{}` twice", e.key));
+                self.diags.error(
+                    &file,
+                    Some(&e.key_span),
+                    format!("`tabOptions` lists `{}` twice", e.key),
+                );
                 continue;
             }
             seen.push(&e.key);
             if e.class != "TabOptions" {
-                let msg = format!("`tabOptions` gives `{}` a `{}`; it takes `TabOptions(...)`", e.key, e.class);
+                let msg = format!(
+                    "`tabOptions` gives `{}` a `{}`; it takes `TabOptions(...)`",
+                    e.key, e.class
+                );
                 self.diags.error(&file, Some(&e.key_span), msg);
                 continue;
             }
@@ -1101,7 +1313,9 @@ impl Resolver<'_> {
             return None;
         };
         if !valid_route_name(name) {
-            let msg = format!("`routeName` is `{name}`; it names the route class `{name}Route`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName`");
+            let msg = format!(
+                "`routeName` is `{name}`; it names the route class `{name}Route`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName`"
+            );
             self.diags.error(file, Some(&v.span), msg);
             return None;
         }
@@ -1114,11 +1328,13 @@ impl Resolver<'_> {
         let file = node.rel(Kind::Meta);
         let mut found = m.variables.iter().filter(|v| v.name == "meta");
         let Some(v) = found.next() else {
-            self.diags.error(&file, None, "expected `const meta = <a const expression>;`");
+            self.diags
+                .error(&file, None, "expected `const meta = <a const expression>;`");
             return None;
         };
         if let Some(again) = found.next() {
-            self.diags.error(&file, Some(&again.span), "`meta` is declared twice");
+            self.diags
+                .error(&file, Some(&again.span), "`meta` is declared twice");
         }
         if !v.is_const {
             let msg = "`meta` must be `const` (the route manifest lists it in a const list): write `const meta = ...;`";
@@ -1140,19 +1356,33 @@ impl Resolver<'_> {
         let file = node.rel(Kind::Navigator);
         let mut found = m.variables.iter().filter(|v| v.name == "navigator");
         let Some(v) = found.next() else {
-            self.diags.error(&file, None, "expected `const navigator = RouteNavigator.root;` (or `RouteNavigator.shell`)");
+            self.diags.error(
+                &file,
+                None,
+                "expected `const navigator = RouteNavigator.root;` (or `RouteNavigator.shell`)",
+            );
             return None;
         };
         if let Some(again) = found.next() {
-            self.diags.error(&file, Some(&again.span), "`navigator` is declared twice");
+            self.diags
+                .error(&file, Some(&again.span), "`navigator` is declared twice");
         }
         if !v.is_const {
-            self.diags.error(&file, Some(&v.span), "`navigator` must be `const`: write `const navigator = RouteNavigator.root;`");
+            self.diags.error(
+                &file,
+                Some(&v.span),
+                "`navigator` must be `const`: write `const navigator = RouteNavigator.root;`",
+            );
             return None;
         }
         // An import prefix (`fsp.RouteNavigator.root`) is fine.
         let parts: Vec<&str> = v.value.as_deref().unwrap_or_default().split('.').collect();
-        let ident = |p: &str| p.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') && p.chars().all(|c| c.is_alphanumeric() || c == '_');
+        let ident = |p: &str| {
+            p.chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+                && p.chars().all(|c| c.is_alphanumeric() || c == '_')
+        };
         let value = match parts.as_slice() {
             ["RouteNavigator", which] => Some(*which),
             [prefix, "RouteNavigator", which] if ident(prefix) => Some(*which),
@@ -1173,15 +1403,25 @@ impl Resolver<'_> {
     /// in a tab layout.dart: the `navigatorContainerBuilder` of its `StatefulShellRoute`. The
     /// parameters are positional with fixed types (their names mean nothing here).
     fn container(&mut self, node: &Node, layout: Option<&Module>) -> bool {
-        let Some(f) = layout.and_then(|m| m.functions.iter().find(|f| f.name == "container")) else { return false };
+        let Some(f) = layout.and_then(|m| m.functions.iter().find(|f| f.name == "container"))
+        else {
+            return false;
+        };
         let file = node.rel(Kind::Layout);
         let want: [(&str, &[&str]); 3] = [
             ("the BuildContext", &["BuildContext"]),
             ("the StatefulNavigationShell", &["StatefulNavigationShell"]),
-            ("the branch navigators, a List<Widget>", &["List<Widget>", "Iterable<Widget>"]),
+            (
+                "the branch navigators, a List<Widget>",
+                &["List<Widget>", "Iterable<Widget>"],
+            ),
         ];
         let signature = "container() takes three positional parameters: `Widget container(BuildContext context, StatefulNavigationShell shell, List<Widget> children)`";
-        if f.params.len() != 3 || f.params.iter().any(|p| p.named || !p.required || p.is_super) {
+        if f.params.len() != 3
+            || f.params
+                .iter()
+                .any(|p| p.named || !p.required || p.is_super)
+        {
             self.diags.error(&file, Some(&f.span), signature);
             return false;
         }
@@ -1189,7 +1429,11 @@ impl Resolver<'_> {
         for (p, (gets, accepts)) in f.params.iter().zip(want) {
             match &p.ty {
                 None => {
-                    self.diags.error(&file, Some(&p.span), format!("give `{}` a type: it gets {gets}", p.name));
+                    self.diags.error(
+                        &file,
+                        Some(&p.span),
+                        format!("give `{}` a type: it gets {gets}", p.name),
+                    );
                     ok = false;
                 }
                 Some(ty) if !accepts.contains(&bare_type(&ty.text)) => {
@@ -1200,8 +1444,15 @@ impl Resolver<'_> {
                 Some(_) => {}
             }
         }
-        if f.ret.as_ref().is_some_and(|r| bare_type(&r.text) != "Widget") {
-            self.diags.error(&file, Some(&f.span), "container() must return a Widget: the container of the branch navigators");
+        if f.ret
+            .as_ref()
+            .is_some_and(|r| bare_type(&r.text) != "Widget")
+        {
+            self.diags.error(
+                &file,
+                Some(&f.span),
+                "container() must return a Widget: the container of the branch navigators",
+            );
             ok = false;
         }
         ok
@@ -1220,7 +1471,8 @@ impl Resolver<'_> {
             return None;
         };
         if let Some(again) = found.next() {
-            self.diags.error(file, Some(&again.span), "`caseSensitive` is declared twice");
+            self.diags
+                .error(file, Some(&again.span), "`caseSensitive` is declared twice");
         }
         if v.boolean.is_none() {
             let msg = "`caseSensitive` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it";
@@ -1233,12 +1485,26 @@ impl Resolver<'_> {
     /// after the file (`Widget page(...)`) that builds the widget instead.
     fn widget_class(&mut self, m: &Module, file: &str, kind: Kind) -> Option<Class> {
         let public: Vec<&Class> = m.classes.iter().filter(|c| c.is_public()).collect();
-        let widgets: Vec<&Class> =
-            public.iter().copied().filter(|c| c.superclass.as_deref().is_some_and(|s| s.ends_with("Widget"))).collect();
-        let fns: Vec<&Function> = m.functions.iter().filter(|f| view_fn_names(kind).contains(&f.name.as_str())).collect();
+        let widgets: Vec<&Class> = public
+            .iter()
+            .copied()
+            .filter(|c| {
+                c.superclass
+                    .as_deref()
+                    .is_some_and(|s| s.ends_with("Widget"))
+            })
+            .collect();
+        let fns: Vec<&Function> = m
+            .functions
+            .iter()
+            .filter(|f| view_fn_names(kind).contains(&f.name.as_str()))
+            .collect();
         if let Some(f) = fns.first() {
             if let Some(other) = fns.get(1) {
-                let msg = format!("both `{}()` and `{}()` are here; keep one", f.name, other.name);
+                let msg = format!(
+                    "both `{}()` and `{}()` are here; keep one",
+                    f.name, other.name
+                );
                 self.diags.error(file, Some(&other.span), msg);
                 return None;
             }
@@ -1254,7 +1520,11 @@ impl Resolver<'_> {
             }
             let ret = f.ret.as_ref().map(|t| t.text.as_str());
             if ret.is_some_and(|t| t == "void" || t.starts_with("Future")) {
-                let msg = format!("`{}()` must return a Widget, not {}", f.name, ret.unwrap_or_default());
+                let msg = format!(
+                    "`{}()` must return a Widget, not {}",
+                    f.name,
+                    ret.unwrap_or_default()
+                );
                 self.diags.error(file, Some(&f.span), msg);
                 return None;
             }
@@ -1263,7 +1533,8 @@ impl Resolver<'_> {
         match (public.as_slice(), widgets.as_slice()) {
             ([one], _) | (_, [one]) => Some((*one).clone()),
             ([], _) => {
-                self.diags.error(file, None, "expected a public widget class");
+                self.diags
+                    .error(file, None, "expected a public widget class");
                 None
             }
             (many, _) => {
@@ -1285,7 +1556,11 @@ impl Resolver<'_> {
         for p in &class.params {
             if p.is_super {
                 if p.required && p.name != "key" {
-                    self.diags.error(cx.file, Some(&p.span), format!("can't fill `super.{}`; only `super.key` is allowed", p.name));
+                    self.diags.error(
+                        cx.file,
+                        Some(&p.span),
+                        format!("can't fill `super.{}`; only `super.key` is allowed", p.name),
+                    );
                 }
                 continue;
             }
@@ -1297,8 +1572,11 @@ impl Resolver<'_> {
                         // Optional, and nullable or a List: it comes from the query. (Of a type that isn't
                         // a plain one, it is when that is an enum: other optional parameters are left alone.)
                         let (scope, ty) = (cx.scope.filter(|_| !p.required)?, p.ty.as_ref()?);
-                        let QueryTy::Is(qty) = self.query_typed(ty, cx.file, None) else { return None };
-                        self.declare_query(scope, &p.name, *qty, cx.file, &p.span).then(|| Bind::Query(p.name.clone()))
+                        let QueryTy::Is(qty) = self.query_typed(ty, cx.file, None) else {
+                            return None;
+                        };
+                        self.declare_query(scope, &p.name, *qty, cx.file, &p.span)
+                            .then(|| Bind::Query(p.name.clone()))
                     })
                     .or_else(|| by_type(p.ty.as_ref()?, cx))
                     .or_else(|| self.data_by_type(p, cx))
@@ -1315,21 +1593,33 @@ impl Resolver<'_> {
                 }
                 continue;
             };
-            if let Some(ty) = &p.ty {
-                if let Some(msg) = mismatch(&p.name, &bind, ty) {
-                    self.diags.error(cx.file, Some(&p.span), msg);
-                }
+            if let Some(ty) = &p.ty
+                && let Some(msg) = mismatch(&p.name, &bind, ty)
+            {
+                self.diags.error(cx.file, Some(&p.span), msg);
             }
             if let (Bind::Section(sid), Some(ty)) = (&bind, &p.ty) {
-                let sec = cx.sections.iter().find(|s| s.id == *sid).expect("a section bind names a section above");
+                let sec = cx
+                    .sections
+                    .iter()
+                    .find(|s| s.id == *sid)
+                    .expect("a section bind names a section above");
                 if !ty.is(&sec.ty) {
-                    let msg = format!("`{}` is {} but the section's data.dart ({}) yields {}", p.name, ty.text, sec.file, sec.ty);
+                    let msg = format!(
+                        "`{}` is {} but the section's data.dart ({}) yields {}",
+                        p.name, ty.text, sec.file, sec.ty
+                    );
                     self.diags.error(cx.file, Some(&p.span), msg);
                 }
             }
             match (&bind, &p.ty, cx.data) {
                 (Bind::Segment(name), Some(ty), _) => {
-                    let folder = cx.segs.iter().find(|(n, _)| n == name).map(|(_, f)| *f).unwrap();
+                    let folder = cx
+                        .segs
+                        .iter()
+                        .find(|(n, _)| n == name)
+                        .map(|(_, f)| *f)
+                        .unwrap();
                     self.constraints.push(Constraint {
                         folder,
                         name: name.clone(),
@@ -1339,14 +1629,26 @@ impl Resolver<'_> {
                     });
                 }
                 (Bind::Data, Some(ty), Some(want)) if !ty.is(want) => {
-                    self.diags.error(cx.file, Some(&p.span), format!("`{}` is {} but data.dart yields {want}", p.name, ty.text));
+                    self.diags.error(
+                        cx.file,
+                        Some(&p.span),
+                        format!("`{}` is {} but data.dart yields {want}", p.name, ty.text),
+                    );
                 }
                 _ => {}
             }
-            args.push(Arg { name: p.name.clone(), named: p.named, bind });
+            args.push(Arg {
+                name: p.name.clone(),
+                named: p.named,
+                bind,
+            });
         }
         let import = self.import(cx.file);
-        Widget { import, class: class.name.clone(), args }
+        Widget {
+            import,
+            class: class.name.clone(),
+            args,
+        }
     }
 
     /// A parameter whose type is one a data.dart yields: the route's own, or a section
@@ -1357,7 +1659,10 @@ impl Resolver<'_> {
         }
         let ty = p.ty.as_ref()?;
         let own = (cx.data == Some(ty.text.as_str())).then_some(Bind::Data);
-        let mut found: Vec<(Bind, String)> = own.into_iter().map(|b| (b, "this folder's data.dart".to_string())).collect();
+        let mut found: Vec<(Bind, String)> = own
+            .into_iter()
+            .map(|b| (b, "this folder's data.dart".to_string()))
+            .collect();
         for s in cx.sections.iter().filter(|s| ty.is(&s.ty)) {
             found.push((Bind::Section(s.id), format!("the section's {}", s.file)));
         }
@@ -1381,15 +1686,37 @@ impl Resolver<'_> {
         if let Some(q) = query_type(ty) {
             return QueryTy::Is(Box::new(Typed::plain(q)));
         }
-        let Some((base, list)) = enums::query_shape(&ty.text) else { return QueryTy::Isnt };
-        let whole = if list { format!("List<{base}>") } else { format!("{base}?") };
+        let Some((base, list)) = enums::query_shape(&ty.text) else {
+            return QueryTy::Isnt;
+        };
+        let whole = if list {
+            format!("List<{base}>")
+        } else {
+            format!("{base}?")
+        };
         self.tags += 1;
         let tag = format!("q{}", self.tags);
         let err = strict.map(|(span, name)| {
-            let fallback = if list { format!("List<String> {name}") } else { format!("String? {name}") };
-            (span, format!("{} {name}", ty.text), "a query parameter", fallback)
+            let fallback = if list {
+                format!("List<String> {name}")
+            } else {
+                format!("String? {name}")
+            };
+            (
+                span,
+                format!("{} {name}", ty.text),
+                "a query parameter",
+                fallback,
+            )
         });
-        match self.enum_typed(base, &whole, file, &tag, err.as_ref().map(|(s, d, w, f)| (*s, d.as_str(), *w, f.as_str()))) {
+        match self.enum_typed(
+            base,
+            &whole,
+            file,
+            &tag,
+            err.as_ref()
+                .map(|(s, d, w, f)| (*s, d.as_str(), *w, f.as_str())),
+        ) {
             Some(t) => QueryTy::Is(Box::new(t)),
             None if strict.is_some() => QueryTy::Broken,
             None => QueryTy::Isnt,
@@ -1399,7 +1726,14 @@ impl Resolver<'_> {
     /// The enum `base` as the file `file` names it, as the type `whole` (`base`, nullable or in a
     /// list). `None` when it isn't one fsp can find or name; `err` (where to point at, the
     /// parameter as written, what it is, what to write instead) says so, when given.
-    fn enum_typed(&mut self, base: &str, whole: &str, file: &str, tag: &str, err: Option<(&Span, &str, &str, &str)>) -> Option<Typed> {
+    fn enum_typed(
+        &mut self,
+        base: &str,
+        whole: &str,
+        file: &str,
+        tag: &str,
+        err: Option<(&Span, &str, &str, &str)>,
+    ) -> Option<Typed> {
         let src = *self.sources.get(file)?;
         let lookup = self.libs.find(file, src, base);
         if let Lookup::Found(found) = lookup {
@@ -1407,7 +1741,13 @@ impl Resolver<'_> {
             let spelled = extra::extra_type(whole, src, file, import, tag);
             let key = whole.replacen(base, &found.key(), 1);
             let decl = Some(found.decl.clone());
-            return Some(Typed { spelled: spelled.ty.clone(), key, shown: whole.to_string(), import: Some(spelled), decl });
+            return Some(Typed {
+                spelled: spelled.ty.clone(),
+                key,
+                shown: whole.to_string(),
+                import: Some(spelled),
+                decl,
+            });
         }
         if let Some((span, decl, what, fallback)) = err {
             let msg = match lookup {
@@ -1426,14 +1766,25 @@ impl Resolver<'_> {
     /// Lists the type of an enum segment or query parameter for the generated file to import.
     fn use_type(&mut self, t: &Typed) {
         if let Some(import) = &t.import {
-            self.app.type_names.insert(t.spelled.clone(), extra::unprefixed(&import.source));
+            self.app
+                .type_names
+                .insert(t.spelled.clone(), extra::unprefixed(&import.source));
             self.app.enum_types.push(import.clone());
         }
     }
 
-    fn declare_query(&mut self, scope: Scope, name: &str, ty: Typed, file: &str, span: &Span) -> bool {
+    fn declare_query(
+        &mut self,
+        scope: Scope,
+        name: &str,
+        ty: Typed,
+        file: &str,
+        span: &Span,
+    ) -> bool {
         if matches!(scope, Scope::Route(_)) && ROUTE_MEMBERS.contains(&name) {
-            let msg = format!("`{name}` can't be a query parameter: the typed route class has a member called `{name}`; rename it");
+            let msg = format!(
+                "`{name}` can't be a query parameter: the typed route class has a member called `{name}`; rename it"
+            );
             self.diags.error(file, Some(span), msg);
             return false;
         }
@@ -1441,12 +1792,18 @@ impl Resolver<'_> {
         match self.queries.get(&key) {
             None => {
                 self.use_type(&ty);
-                self.queries.insert(key.clone(), (ty, file.to_string(), span.line));
+                self.queries
+                    .insert(key.clone(), (ty, file.to_string(), span.line));
                 self.query_order.push(key);
                 true
             }
             Some((t0, f0, l0)) if t0.key != ty.key => {
-                let msg = format!("`?{name}` is {} in {f0}:{l0} but {} here{}", t0.shown, ty.shown, t0.same_name_as(&ty));
+                let msg = format!(
+                    "`?{name}` is {} in {f0}:{l0} but {} here{}",
+                    t0.shown,
+                    ty.shown,
+                    t0.same_name_as(&ty)
+                );
                 self.diags.error(file, Some(span), msg);
                 false
             }
@@ -1465,11 +1822,23 @@ impl Resolver<'_> {
         what: &str,
     ) -> Option<String> {
         if !p.named {
-            self.diags.error(file, Some(&p.span), format!("{what} takes segments as named parameters, e.g. `{{required int {}}}`", p.name));
+            self.diags.error(
+                file,
+                Some(&p.span),
+                format!(
+                    "{what} takes segments as named parameters, e.g. `{{required int {}}}`",
+                    p.name
+                ),
+            );
             return None;
         }
         let Some((_, folder)) = segs.iter().find(|(n, _)| n == &p.name) else {
-            let qty = match p.ty.as_ref().filter(|_| !p.required).map(|t| self.query_typed(t, file, Some((&p.span, &p.name)))) {
+            let qty = match p
+                .ty
+                .as_ref()
+                .filter(|_| !p.required)
+                .map(|t| self.query_typed(t, file, Some((&p.span, &p.name))))
+            {
                 Some(QueryTy::Is(t)) => *t,
                 Some(QueryTy::Broken) => return None,
                 _ => {
@@ -1478,14 +1847,22 @@ impl Resolver<'_> {
                         "`{}` isn't a segment of this path ({}){}; for a query parameter make it optional and nullable, e.g. `String? {}`",
                         p.name,
                         show_segs(segs),
-                        if hooks { format!(" at or above its folder; {what} can also take `Uri uri` and `extra`") } else { String::new() },
+                        if hooks {
+                            format!(
+                                " at or above its folder; {what} can also take `Uri uri` and `extra`"
+                            )
+                        } else {
+                            String::new()
+                        },
                         p.name
                     );
                     self.diags.error(file, Some(&p.span), msg);
                     return None;
                 }
             };
-            return self.declare_query(scope, &p.name, qty, file, &p.span).then(|| p.name.clone());
+            return self
+                .declare_query(scope, &p.name, qty, file, &p.span)
+                .then(|| p.name.clone());
         };
         match &p.ty {
             Some(ty) => self.constraints.push(Constraint {
@@ -1495,32 +1872,51 @@ impl Resolver<'_> {
                 file: file.to_string(),
                 span: p.span.clone(),
             }),
-            None => self.diags.error(file, Some(&p.span), format!("give `{}` a type (String, int, double or bool)", p.name)),
+            None => self.diags.error(
+                file,
+                Some(&p.span),
+                format!("give `{}` a type (String, int, double or bool)", p.name),
+            ),
         }
         Some(p.name.clone())
     }
 
-    fn data(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], scope: Scope) -> Option<Data> {
+    fn data(
+        &mut self,
+        m: &Module,
+        node: &Node,
+        segs: &[(String, usize)],
+        scope: Scope,
+    ) -> Option<Data> {
         let file = node.rel(Kind::Data);
         if let Some(f) = m.functions.iter().find(|f| f.name == "data") {
             if let Some(ty) = f.ret.as_ref().and_then(selected_value) {
                 return self.selector(f, ty, &file, segs, scope);
             }
-            if f.ret.as_ref().is_some_and(|r| r.generic().0 == "ProviderListenable") {
+            if f.ret
+                .as_ref()
+                .is_some_and(|r| r.generic().0 == "ProviderListenable")
+            {
                 let msg = "a data() that selects a provider must return `ProviderListenable<AsyncValue<T>>`, so the page can be given a `T`";
                 self.diags.error(&file, Some(&f.span), msg);
                 return None;
             }
             match f.params.first() {
                 Some(p) if !p.named && p.ty.as_ref().is_some_and(|t| t.is("Ref")) => {}
-                _ => self.diags.error(&file, Some(&f.span), "data() must take `Ref ref` first"),
+                _ => self
+                    .diags
+                    .error(&file, Some(&f.span), "data() must take `Ref ref` first"),
             }
             let mut keys = vec![];
             for p in f.params.iter().skip(1) {
                 keys.extend(self.url_param(&file, p, segs, scope, "data()"));
             }
             let Some(ret) = &f.ret else {
-                self.diags.error(&file, Some(&f.span), "data() needs an explicit return type (Future<T>, Stream<T> or T)");
+                self.diags.error(
+                    &file,
+                    Some(&f.span),
+                    "data() needs an explicit return type (Future<T>, Stream<T> or T)",
+                );
                 return None;
             };
             let (head, args) = ret.generic();
@@ -1531,13 +1927,23 @@ impl Resolver<'_> {
             };
             let keys = in_path_order(keys, segs);
             let import = self.import(&file);
-            return Some(Data { import, provider: false, selector: false, stream, ty, record: keys.len() > 1, keys });
+            return Some(Data {
+                import,
+                provider: false,
+                selector: false,
+                stream,
+                ty,
+                record: keys.len() > 1,
+                keys,
+            });
         }
 
         if let Some(v) = m.variables.iter().find(|v| v.name == "data") {
-            const KINDS: &str = "FutureProvider, StreamProvider, AsyncNotifierProvider or StreamNotifierProvider";
+            const KINDS: &str =
+                "FutureProvider, StreamProvider, AsyncNotifierProvider or StreamNotifierProvider";
             let Some(call) = &v.call else {
-                self.diags.error(&file, Some(&v.span), format!("`data` must be a {KINDS}"));
+                self.diags
+                    .error(&file, Some(&v.span), format!("`data` must be a {KINDS}"));
                 return None;
             };
             let (value_ix, stream) = match call.chain[0].as_str() {
@@ -1546,7 +1952,11 @@ impl Resolver<'_> {
                 "AsyncNotifierProvider" => (1, false),
                 "StreamNotifierProvider" => (1, true),
                 other => {
-                    self.diags.error(&file, Some(&v.span), format!("`data` must be a {KINDS}, not {other}"));
+                    self.diags.error(
+                        &file,
+                        Some(&v.span),
+                        format!("`data` must be a {KINDS}, not {other}"),
+                    );
                     return None;
                 }
             };
@@ -1559,7 +1969,11 @@ impl Resolver<'_> {
                     (_, false) => "AsyncNotifierProvider<ProductNotifier, Product>",
                     (_, true) => "AsyncNotifierProvider.family<ProductNotifier, Product, int>",
                 };
-                self.diags.error(&file, Some(&v.span), format!("give the provider its type arguments, e.g. `{example}`"));
+                self.diags.error(
+                    &file,
+                    Some(&v.span),
+                    format!("give the provider its type arguments, e.g. `{example}`"),
+                );
                 return None;
             }
             let ty = call.type_args[value_ix].text.clone();
@@ -1600,7 +2014,10 @@ impl Resolver<'_> {
                 }
             }
             let keys = in_path_order(keys, segs);
-            if let Some((name, _)) = segs.iter().find(|(n, f)| keys.contains(n) && self.app.is_catch_all(*f)) {
+            if let Some((name, _)) = segs
+                .iter()
+                .find(|(n, f)| keys.contains(n) && self.app.is_catch_all(*f))
+            {
                 let msg = format!(
                     "`{name}` is a catch-all, a List that a provider can't be keyed by (lists compare by identity); \
                      write `Future<{ty}> data(Ref ref, {{required List<T> {name}}})` (T being the parts' type) and fespalier keys it by the path"
@@ -1608,7 +2025,15 @@ impl Resolver<'_> {
                 self.diags.error(&file, Some(&v.span), msg);
             }
             let import = self.import(&file);
-            return Some(Data { import, provider: true, selector: false, stream, ty, keys, record });
+            return Some(Data {
+                import,
+                provider: true,
+                selector: false,
+                stream,
+                ty,
+                keys,
+                record,
+            });
         }
 
         self.diags.error(
@@ -1622,7 +2047,14 @@ impl Resolver<'_> {
     /// `ProviderListenable<AsyncValue<T>> data({...segments}) => productProvider(id)`:
     /// selects a provider that already exists. It takes what the function form takes,
     /// minus the `Ref`: it returns the provider, it doesn't read one.
-    fn selector(&mut self, f: &dart::Function, ty: String, file: &str, segs: &[(String, usize)], scope: Scope) -> Option<Data> {
+    fn selector(
+        &mut self,
+        f: &dart::Function,
+        ty: String,
+        file: &str,
+        segs: &[(String, usize)],
+        scope: Scope,
+    ) -> Option<Data> {
         let mut keys = vec![];
         for p in &f.params {
             if !p.named && p.ty.as_ref().is_some_and(|t| t.is("Ref")) {
@@ -1634,55 +2066,139 @@ impl Resolver<'_> {
         }
         let keys = in_path_order(keys, segs);
         let import = self.import(file);
-        Some(Data { import, provider: false, selector: true, stream: false, ty, record: keys.len() > 1, keys })
+        Some(Data {
+            import,
+            provider: false,
+            selector: true,
+            stream: false,
+            ty,
+            record: keys.len() > 1,
+            keys,
+        })
     }
 
     /// `GuardResult guard(ProviderContainer c, {...})`: runs before every route at
     /// and below its folder.
-    fn guard(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], route: usize) -> Option<Guard> {
+    fn guard(
+        &mut self,
+        m: &Module,
+        node: &Node,
+        segs: &[(String, usize)],
+        route: usize,
+    ) -> Option<Guard> {
         let file = node.rel(Kind::Guard);
         let Some(f) = m.functions.iter().find(|f| f.name == "guard") else {
-            self.diags.error(&file, None, "expected `GuardResult guard(ProviderContainer c, {...segments})`");
+            self.diags.error(
+                &file,
+                None,
+                "expected `GuardResult guard(ProviderContainer c, {...segments})`",
+            );
             return None;
         };
-        let ok_ret = f
-            .ret
-            .as_ref()
-            .is_some_and(|r| ["GuardResult", "FutureOr<String?>", "Future<String?>", "String?"].contains(&r.text.as_str()));
+        let ok_ret = f.ret.as_ref().is_some_and(|r| {
+            [
+                "GuardResult",
+                "FutureOr<String?>",
+                "Future<String?>",
+                "String?",
+            ]
+            .contains(&r.text.as_str())
+        });
         if !ok_ret {
-            self.diags.error(&file, Some(&f.span), "guard() must return GuardResult (a location to redirect to, or null)");
+            self.diags.error(
+                &file,
+                Some(&f.span),
+                "guard() must return GuardResult (a location to redirect to, or null)",
+            );
         }
         match f.params.first() {
             Some(p) if !p.named && p.ty.as_ref().is_some_and(|t| t.is("ProviderContainer")) => {}
-            _ => self.diags.error(&file, Some(&f.span), "guard() must take `ProviderContainer c` first"),
+            _ => self.diags.error(
+                &file,
+                Some(&f.span),
+                "guard() must take `ProviderContainer c` first",
+            ),
         }
         // Its query parameters belong to the folder's own route when it has one
         // (they show up on the typed route); otherwise to the guard alone.
-        let has_route = node.files.contains_key(&Kind::Page) || node.files.contains_key(&Kind::Redirect);
-        let scope = if has_route { Scope::Route(route) } else { Scope::Guard(route) };
+        let has_route =
+            node.files.contains_key(&Kind::Page) || node.files.contains_key(&Kind::Redirect);
+        let scope = if has_route {
+            Scope::Route(route)
+        } else {
+            Scope::Guard(route)
+        };
         let args = self.hook_args(&file, f.params.iter().skip(1), segs, scope, "guard()");
         let import = self.import(&file);
-        let extra = extra_of(&f.params, &args, node.files.get(&Kind::Guard), &file, import, &format!("g{route}"));
-        Some(Guard { import, container: true, args, extra })
+        let extra = extra_of(
+            &f.params,
+            &args,
+            node.files.get(&Kind::Guard),
+            &file,
+            import,
+            &format!("g{route}"),
+        );
+        Some(Guard {
+            import,
+            container: true,
+            args,
+            extra,
+        })
     }
 
     /// `String redirect({...})` in a folder in place of page.dart.
-    fn redirect(&mut self, m: &Module, node: &Node, segs: &[(String, usize)], route: usize) -> Option<(Guard, Span)> {
+    fn redirect(
+        &mut self,
+        m: &Module,
+        node: &Node,
+        segs: &[(String, usize)],
+        route: usize,
+    ) -> Option<(Guard, Span)> {
         let file = node.rel(Kind::Redirect);
         let Some(f) = m.functions.iter().find(|f| f.name == "redirect") else {
-            self.diags.error(&file, None, "expected `String redirect({...segments})`");
+            self.diags
+                .error(&file, None, "expected `String redirect({...segments})`");
             return None;
         };
-        let ok_ret =
-            f.ret.as_ref().is_some_and(|r| ["String", "FutureOr<String>", "Future<String>"].contains(&r.text.as_str()));
+        let ok_ret = f.ret.as_ref().is_some_and(|r| {
+            ["String", "FutureOr<String>", "Future<String>"].contains(&r.text.as_str())
+        });
         if !ok_ret {
-            self.diags.error(&file, Some(&f.span), "redirect() must return the location to go to: a String (or Future<String>)");
+            self.diags.error(
+                &file,
+                Some(&f.span),
+                "redirect() must return the location to go to: a String (or Future<String>)",
+            );
         }
-        let container = f.params.first().is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("ProviderContainer")));
-        let args = self.hook_args(&file, f.params.iter().skip(usize::from(container)), segs, Scope::Route(route), "redirect()");
+        let container = f
+            .params
+            .first()
+            .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("ProviderContainer")));
+        let args = self.hook_args(
+            &file,
+            f.params.iter().skip(usize::from(container)),
+            segs,
+            Scope::Route(route),
+            "redirect()",
+        );
         let import = self.import(&file);
-        let extra = extra_of(&f.params, &args, node.files.get(&Kind::Redirect), &file, import, &format!("r{route}"));
-        Some((Guard { import, container, args, extra }, f.span.clone()))
+        let extra = extra_of(
+            &f.params,
+            &args,
+            node.files.get(&Kind::Redirect),
+            &file,
+            import,
+            &format!("r{route}"),
+        );
+        Some((
+            Guard {
+                import,
+                container,
+                args,
+                extra,
+            },
+            f.span.clone(),
+        ))
     }
 
     /// The named parameters of a `guard()` or `redirect()`: `uri`, `extra`, segments and
@@ -1699,18 +2215,37 @@ impl Resolver<'_> {
         for p in params {
             if p.name == "extra" {
                 if !p.named {
-                    self.diags.error(file, Some(&p.span), format!("{what} takes `extra` as a named parameter, e.g. `{{Object? extra}}`"));
-                } else if let Some(msg) = p.ty.as_ref().and_then(|ty| mismatch("extra", &Bind::Extra, ty)) {
+                    self.diags.error(
+                        file,
+                        Some(&p.span),
+                        format!(
+                            "{what} takes `extra` as a named parameter, e.g. `{{Object? extra}}`"
+                        ),
+                    );
+                } else if let Some(msg) =
+                    p.ty.as_ref()
+                        .and_then(|ty| mismatch("extra", &Bind::Extra, ty))
+                {
                     self.diags.error(file, Some(&p.span), msg);
                 } else {
-                    extra = Some(Arg { name: "extra".into(), named: true, bind: Bind::Extra });
+                    extra = Some(Arg {
+                        name: "extra".into(),
+                        named: true,
+                        bind: Bind::Extra,
+                    });
                 }
                 continue;
             }
             if p.named && p.name == "uri" {
                 match p.ty.as_ref().and_then(|ty| mismatch("uri", &Bind::Uri, ty)) {
                     Some(msg) => self.diags.error(file, Some(&p.span), msg),
-                    None => uri = Some(Arg { name: "uri".into(), named: true, bind: Bind::Uri }),
+                    None => {
+                        uri = Some(Arg {
+                            name: "uri".into(),
+                            named: true,
+                            bind: Bind::Uri,
+                        });
+                    }
                 }
                 continue;
             }
@@ -1719,8 +2254,16 @@ impl Resolver<'_> {
         let mut args: Vec<Arg> = in_path_order(keys, segs)
             .into_iter()
             .map(|k| {
-                let bind = if segs.iter().any(|(n, _)| *n == k) { Bind::Segment(k.clone()) } else { Bind::Query(k.clone()) };
-                Arg { name: k, named: true, bind }
+                let bind = if segs.iter().any(|(n, _)| *n == k) {
+                    Bind::Segment(k.clone())
+                } else {
+                    Bind::Query(k.clone())
+                };
+                Arg {
+                    name: k,
+                    named: true,
+                    bind,
+                }
             })
             .collect();
         args.extend(uri);
@@ -1731,23 +2274,48 @@ impl Resolver<'_> {
     /// `Page<void> transition(LocalKey key, Widget child)`, or `present(...)` in a
     /// present.dart, which is bound the same way: parameters are filled by name, then
     /// by type; other optional ones keep their default.
-    fn transition(&mut self, m: &Module, node: &Node, kind: Kind, name: &str) -> Option<Transition> {
+    fn transition(
+        &mut self,
+        m: &Module,
+        node: &Node,
+        kind: Kind,
+        name: &str,
+    ) -> Option<Transition> {
         let file = node.rel(kind);
         let Some(f) = m.functions.iter().find(|f| f.name == name) else {
-            self.diags.error(&file, None, format!("expected `Page<void> {name}(LocalKey key, Widget child)`"));
+            self.diags.error(
+                &file,
+                None,
+                format!("expected `Page<void> {name}(LocalKey key, Widget child)`"),
+            );
             return None;
         };
-        if !f.ret.as_ref().is_some_and(|r| r.generic().0.ends_with("Page")) {
-            self.diags.error(&file, Some(&f.span), format!("{name}() must return a Page, e.g. `Page<void>`"));
+        if !f
+            .ret
+            .as_ref()
+            .is_some_and(|r| r.generic().0.ends_with("Page"))
+        {
+            self.diags.error(
+                &file,
+                Some(&f.span),
+                format!("{name}() must return a Page, e.g. `Page<void>`"),
+            );
             return None;
         }
         let mut args = vec![];
         let mut positional_gap = false;
         for p in &f.params {
-            let bind = if !p.named && positional_gap { None } else { transition_bind(p) };
+            let bind = if !p.named && positional_gap {
+                None
+            } else {
+                transition_bind(p)
+            };
             let Some(bind) = bind else {
                 if p.required {
-                    let msg = format!("can't fill `{}`: {name}() gets `key`, `child` and `state`", p.name);
+                    let msg = format!(
+                        "can't fill `{}`: {name}() gets `key`, `child` and `state`",
+                        p.name
+                    );
                     self.diags.error(&file, Some(&p.span), msg);
                 } else if !p.named {
                     positional_gap = true;
@@ -1757,22 +2325,37 @@ impl Resolver<'_> {
             if let Some(msg) = p.ty.as_ref().and_then(|ty| mismatch(&p.name, &bind, ty)) {
                 self.diags.error(&file, Some(&p.span), msg);
             }
-            args.push(Arg { name: p.name.clone(), named: p.named, bind });
+            args.push(Arg {
+                name: p.name.clone(),
+                named: p.named,
+                bind,
+            });
         }
         if !args.iter().any(|a| a.bind == Bind::Child) {
-            self.diags.error(&file, Some(&f.span), format!("{name}() must take the page as `Widget child`"));
+            self.diags.error(
+                &file,
+                Some(&f.span),
+                format!("{name}() must take the page as `Widget child`"),
+            );
             return None;
         }
-        Some(Transition { import: self.import(&file), args })
+        Some(Transition {
+            import: self.import(&file),
+            args,
+        })
     }
 
     /// `extra_codec.dart` at the root of the app folder: it exports `extraCodec`, a
     /// `Codec<Object?, Object?>` for `GoRouter(extraCodec:)`, as a variable or a getter.
     fn extra_codec(&mut self, root: &Node) {
-        let Some(src) = root.files.get(&Kind::ExtraCodec) else { return };
+        let Some(src) = root.files.get(&Kind::ExtraCodec) else {
+            return;
+        };
         let file = root.rel(Kind::ExtraCodec);
         let m = crate::parse_cache::parse(src);
-        if !m.variables.iter().any(|v| v.name == "extraCodec") && !m.getters.iter().any(|g| g.name == "extraCodec") {
+        if !m.variables.iter().any(|v| v.name == "extraCodec")
+            && !m.getters.iter().any(|g| g.name == "extraCodec")
+        {
             let msg = "expected a top-level `extraCodec`: `final extraCodec = ExtraCodec({...});`, `const extraCodec = MyCodec();` or `Codec<Object?, Object?> get extraCodec => ...;`";
             self.diags.error(&file, None, msg);
             return;
@@ -1792,21 +2375,39 @@ impl Resolver<'_> {
         // Outermost first: folders come before the ones below them, and a guard before its layout.
         let mut readers: Vec<(&str, usize, HookExtra)> = vec![];
         for (id, r) in self.app.routes.iter().enumerate() {
-            readers.extend(r.guard.as_ref().and_then(|g| g.extra.clone()).map(|e| ("guard", id, e)));
+            readers.extend(
+                r.guard
+                    .as_ref()
+                    .and_then(|g| g.extra.clone())
+                    .map(|e| ("guard", id, e)),
+            );
             readers.extend(r.layout_extra.clone().map(|e| ("layout", id, e)));
         }
         if readers.is_empty() {
             return;
         }
         let covers = |folder: &Route, r: &Route| {
-            folder.dir.is_empty() || r.dir == folder.dir || r.dir.strip_prefix(&folder.dir).is_some_and(|rest| rest.starts_with('/'))
+            folder.dir.is_empty()
+                || r.dir == folder.dir
+                || r.dir
+                    .strip_prefix(&folder.dir)
+                    .is_some_and(|rest| rest.starts_with('/'))
         };
         let mut clashes: Vec<Vec<String>> = vec![vec![]; readers.len()];
         let mut typed: Vec<(usize, ExtraType)> = vec![];
-        for (id, r) in self.app.routes.iter().enumerate().filter(|(_, r)| r.is_route()) {
+        for (id, r) in self
+            .app
+            .routes
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.is_route())
+        {
             // Every guard above the route, and the layouts when it is a page: a redirect shows none.
             let chain: Vec<usize> = (0..readers.len())
-                .filter(|&i| covers(&self.app.routes[readers[i].1], r) && (readers[i].0 == "guard" || r.page.is_some()))
+                .filter(|&i| {
+                    covers(&self.app.routes[readers[i].1], r)
+                        && (readers[i].0 == "guard" || r.page.is_some())
+                })
                 .collect();
             let own = r.extra.as_ref();
             for (n, &i) in chain.iter().enumerate() {
@@ -1817,14 +2418,20 @@ impl Resolver<'_> {
                 // The route's own type has the last word; without one, the readers above agree among themselves.
                 let other = match own {
                     Some(e) => Some((&e.file, &e.source)).filter(|(_, ty)| !extra::fits(want, ty)),
-                    None => chain[..n].iter().map(|&j| &readers[j].2).find(|o| !extra::agree(want, &o.ty.source)).map(|o| (&o.file, &o.ty.source)),
+                    None => chain[..n]
+                        .iter()
+                        .map(|&j| &readers[j].2)
+                        .find(|o| !extra::agree(want, &o.ty.source))
+                        .map(|o| (&o.file, &o.ty.source)),
                 };
                 if let Some((file, ty)) = other {
                     clashes[i].push(format!("`{}` ({file} takes `{ty}`)", pattern(&r.url)));
                 }
             }
             if r.extra.is_none() {
-                let first = chain.iter().find(|&&i| !extra::takes_any(&readers[i].2.ty.source));
+                let first = chain
+                    .iter()
+                    .find(|&&i| !extra::takes_any(&readers[i].2.ty.source));
                 typed.extend(first.map(|&i| (id, readers[i].2.ty.clone())));
             }
         }
@@ -1835,7 +2442,12 @@ impl Resolver<'_> {
             routes.dedup();
             let more = routes.len().saturating_sub(5);
             routes.truncate(5);
-            let list = routes.join(", ") + &if more > 0 { format!(" and {more} more") } else { String::new() };
+            let list = routes.join(", ")
+                + &if more > 0 {
+                    format!(" and {more} more")
+                } else {
+                    String::new()
+                };
             let msg = format!(
                 "`extra` is `{}` here, but the routes it covers take other types: {list}; a {kind} sees the extra of every route it covers, so declare it as `Object?` to accept any of them, or as their type when they share one",
                 e.ty.source
@@ -1854,18 +2466,30 @@ impl Resolver<'_> {
             let catch_all = self.app.is_catch_all(c.folder);
             let text = c.ty.text.as_str();
             // A catch-all is a `List` of its parts' type.
-            let (item, plain): (Option<&str>, &[&str]) =
-                if catch_all { (list_item(text), &CATCH_ALL_ITEMS) } else { (Some(text), &SEGMENT_TYPES) };
+            let (item, plain): (Option<&str>, &[&str]) = if catch_all {
+                (list_item(text), &CATCH_ALL_ITEMS)
+            } else {
+                (Some(text), &SEGMENT_TYPES)
+            };
             let typed = match item {
                 Some(i) if plain.contains(&i) => Typed::plain(text.to_string()),
                 Some(i) if enums::is_candidate(i) => {
                     let (what, fallback) = if catch_all {
-                        ("a catch-all segment's part", format!("List<String> {}", c.name))
+                        (
+                            "a catch-all segment's part",
+                            format!("List<String> {}", c.name),
+                        )
                     } else {
                         ("a segment", format!("String {}", c.name))
                     };
                     let decl = format!("{text} {}", c.name);
-                    match self.enum_typed(i, text, &c.file, &format!("s{}", c.folder), Some((&c.span, &decl, what, &fallback))) {
+                    match self.enum_typed(
+                        i,
+                        text,
+                        &c.file,
+                        &format!("s{}", c.folder),
+                        Some((&c.span, &decl, what, &fallback)),
+                    ) {
                         Some(t) => t,
                         None => continue,
                     }
@@ -1879,7 +2503,10 @@ impl Resolver<'_> {
                     continue;
                 }
                 _ => {
-                    let msg = format!("`{} {}`: segments are String, int, double or bool, or an enum", c.ty.text, c.name);
+                    let msg = format!(
+                        "`{} {}`: segments are String, int, double or bool, or an enum",
+                        c.ty.text, c.name
+                    );
                     self.diags.error(&c.file, Some(&c.span), msg);
                     continue;
                 }
@@ -1892,25 +2519,45 @@ impl Resolver<'_> {
                 Some((t0, f0, l0)) if t0.key != typed.key => self.diags.error(
                     &c.file,
                     Some(&c.span),
-                    format!("`${}` is {} in {f0}:{l0} but {} here{}", c.name, t0.shown, typed.shown, t0.same_name_as(&typed)),
+                    format!(
+                        "`${}` is {} in {f0}:{l0} but {} here{}",
+                        c.name,
+                        t0.shown,
+                        typed.shown,
+                        t0.same_name_as(&typed)
+                    ),
                 ),
                 _ => {}
             }
         }
-        self.app.seg_types = first.into_iter().map(|(k, (t, _, _))| (k, t.spelled)).collect();
+        self.app.seg_types = first
+            .into_iter()
+            .map(|(k, (t, _, _))| (k, t.spelled))
+            .collect();
     }
 }
 
 /// The `extra` parameter of a layout, guard or redirect, when one was bound to it: its type
 /// spelled for the generated file. `tag` keeps that spelling's import aliases apart from
 /// the other files' (see `extra::extra_type`).
-fn extra_of(params: &[dart::Param], bound: &[Arg], src: Option<&String>, file: &str, import: usize, tag: &str) -> Option<HookExtra> {
+fn extra_of(
+    params: &[dart::Param],
+    bound: &[Arg],
+    src: Option<&String>,
+    file: &str,
+    import: usize,
+    tag: &str,
+) -> Option<HookExtra> {
     if !bound.iter().any(|a| a.bind == Bind::Extra) {
         return None;
     }
     let p = params.iter().find(|p| !p.is_super && p.name == "extra")?;
     let ty = extra::extra_type(&p.ty.as_ref()?.text, src?, file, import, tag);
-    Some(HookExtra { ty, span: p.span.clone(), file: file.to_string() })
+    Some(HookExtra {
+        ty,
+        span: p.span.clone(),
+        file: file.to_string(),
+    })
 }
 
 /// What a parameter called `name` receives in this role, going by its name.
@@ -1968,7 +2615,9 @@ fn transition_bind(p: &dart::Param) -> Option<Bind> {
 
 /// A type without an import prefix: `w.Widget` is `Widget`, `List<w.Widget>` is left alone.
 fn bare_type(text: &str) -> &str {
-    text.rsplit_once('.').filter(|(p, t)| !format!("{p}{t}").contains(['<', '(', ' '])).map_or(text, |(_, t)| t)
+    text.rsplit_once('.')
+        .filter(|(p, t)| !format!("{p}{t}").contains(['<', '(', ' ']))
+        .map_or(text, |(_, t)| t)
 }
 
 /// A parameter bound by name gets a fixed value; say so when it's declared as
@@ -1977,13 +2626,26 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
     let (gets, accepts): (&str, &[&str]) = match bind {
         Bind::Uri => ("the requested Uri", &["Uri"]),
         Bind::Child => ("the page as a Widget", &["Widget"]),
-        Bind::Shell => ("the StatefulNavigationShell", &["StatefulNavigationShell", "StatefulWidget", "Widget"]),
+        Bind::Shell => (
+            "the StatefulNavigationShell",
+            &["StatefulNavigationShell", "StatefulWidget", "Widget"],
+        ),
         Bind::Error => ("the error, an Object", &[]),
         Bind::StackTrace => ("the StackTrace", &["StackTrace"]),
-        Bind::Retry => ("the retry callback, a VoidCallback", &["VoidCallback", "void Function()"]),
+        Bind::Retry => (
+            "the retry callback, a VoidCallback",
+            &["VoidCallback", "void Function()"],
+        ),
         Bind::PageKey => (
             "the page's key, a ValueKey<String>",
-            &["LocalKey", "Key", "ValueKey", "ValueKey<String>", "ValueKey<Object>", "ValueKey<dynamic>"],
+            &[
+                "LocalKey",
+                "Key",
+                "ValueKey",
+                "ValueKey<String>",
+                "ValueKey<Object>",
+                "ValueKey<dynamic>",
+            ],
         ),
         Bind::State => ("the GoRouterState", &["GoRouterState"]),
         Bind::IsShell => ("whether the page is a layout's shell, a bool", &["bool"]),
@@ -1998,7 +2660,10 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
         }
         // Data has its own message; segments and queries are settled with the segment types.
         Bind::Raw(_) => {
-            let ok = matches!(ty.text.trim_end_matches('?'), "String" | "Object" | "dynamic");
+            let ok = matches!(
+                ty.text.trim_end_matches('?'),
+                "String" | "Object" | "dynamic"
+            );
             return (!ok).then(|| {
                 format!(
                     "`{name}` gets the segment as the URL spells it, a String: a segment that doesn't parse as `{}` is why not_found.dart is shown, so declare it `String {name}`",
@@ -2010,23 +2675,39 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
     };
     let bare = ty.text.trim_end_matches('?');
     // `w.Widget` is `Widget` under an import prefix.
-    let bare = bare.rsplit_once('.').filter(|(p, t)| !format!("{p}{t}").contains(['<', '(', ' '])).map_or(bare, |(_, t)| t);
+    let bare = bare
+        .rsplit_once('.')
+        .filter(|(p, t)| !format!("{p}{t}").contains(['<', '(', ' ']))
+        .map_or(bare, |(_, t)| t);
     if matches!(bare, "Object" | "dynamic") || accepts.contains(&bare) {
         return None;
     }
-    Some(format!("`{name}` gets {gets}, but it's declared {}", ty.text))
+    Some(format!(
+        "`{name}` gets {gets}, but it's declared {}",
+        ty.text
+    ))
 }
 
 fn unfillable(name: &str, cx: &BindCx) -> String {
     let segs = show_segs(cx.segs);
     match (cx.role, cx.covering) {
         (Role::Loading | Role::Error, Some(dir)) => {
-            let extra = if cx.role == Role::Error { ", `error`, `stackTrace`, `retry`," } else { "" };
-            format!("can't fill `{name}` for {dir}: it isn't one of its segments ({segs}){extra} or a query parameter (optional and nullable)")
+            let extra = if cx.role == Role::Error {
+                ", `error`, `stackTrace`, `retry`,"
+            } else {
+                ""
+            };
+            format!(
+                "can't fill `{name}` for {dir}: it isn't one of its segments ({segs}){extra} or a query parameter (optional and nullable)"
+            )
         }
         (Role::Page, _) => match cx.data {
-            Some(t) => format!("can't fill `{name}`: it isn't a segment of this path ({segs}), data.dart's {t}, or a query parameter (optional and nullable)"),
-            None => format!("can't fill `{name}`: it isn't a segment of this path ({segs}) or a query parameter (optional and nullable)"),
+            Some(t) => format!(
+                "can't fill `{name}`: it isn't a segment of this path ({segs}), data.dart's {t}, or a query parameter (optional and nullable)"
+            ),
+            None => format!(
+                "can't fill `{name}`: it isn't a segment of this path ({segs}) or a query parameter (optional and nullable)"
+            ),
         },
         (Role::Layout, _) => format!(
             "can't fill `{name}`: a layout gets `Widget child` (or, for tabs, a `StatefulNavigationShell`), the segments above it ({segs}) and `extra`"
@@ -2054,8 +2735,16 @@ pub fn pattern(url: &[Seg]) -> String {
 }
 
 fn in_path_order(keys: Vec<String>, segs: &[(String, usize)]) -> Vec<String> {
-    let mut out: Vec<String> = segs.iter().map(|(n, _)| n).filter(|n| keys.contains(n)).cloned().collect();
-    out.extend(keys.into_iter().filter(|k| !segs.iter().any(|(n, _)| n == k)));
+    let mut out: Vec<String> = segs
+        .iter()
+        .map(|(n, _)| n)
+        .filter(|n| keys.contains(n))
+        .cloned()
+        .collect();
+    out.extend(
+        keys.into_iter()
+            .filter(|k| !segs.iter().any(|(n, _)| n == k)),
+    );
     out
 }
 
@@ -2063,21 +2752,34 @@ fn show_segs(segs: &[(String, usize)]) -> String {
     if segs.is_empty() {
         return "it has none".into();
     }
-    segs.iter().map(|(n, _)| format!("${n}")).collect::<Vec<_>>().join(", ")
+    segs.iter()
+        .map(|(n, _)| format!("${n}"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Every tab a layout could have: its own page, then each subfolder holding routes.
 fn all_tabs(has_page: bool, with_routes: &[usize]) -> Vec<Branch> {
     let own = has_page.then_some(Branch::Own);
-    own.into_iter().chain(with_routes.iter().map(|&c| Branch::Folder(c))).collect()
+    own.into_iter()
+        .chain(with_routes.iter().map(|&c| Branch::Folder(c)))
+        .collect()
 }
 
 fn show_list(names: &[String]) -> String {
-    names.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")
+    names
+        .iter()
+        .map(|n| format!("`{n}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn show_dir(dir: &str) -> String {
-    if dir.is_empty() { "/".into() } else { format!("{dir}/") }
+    if dir.is_empty() {
+        "/".into()
+    } else {
+        format!("{dir}/")
+    }
 }
 
 /// The typed route's name from its URL, for a `redirect.dart` and for a page written as a
@@ -2102,10 +2804,10 @@ fn path_name(url: &[Seg]) -> String {
 /// `ProductPage` → `Product`; also strips `Screen` and `View`.
 fn route_name(class: &str) -> String {
     for suffix in ["Page", "Screen", "View"] {
-        if let Some(stem) = class.strip_suffix(suffix) {
-            if !stem.is_empty() {
-                return stem.to_string();
-            }
+        if let Some(stem) = class.strip_suffix(suffix)
+            && !stem.is_empty()
+        {
+            return stem.to_string();
         }
     }
     class.to_string()
@@ -2126,7 +2828,8 @@ fn view_fn_names(kind: Kind) -> &'static [&'static str] {
 
 /// Whether `name` can start a typed route's name: `KycShopName` (the route is `KycShopNameRoute`).
 pub fn valid_route_name(name: &str) -> bool {
-    name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// `products/$id` → `ProductsId`.
@@ -2137,8 +2840,13 @@ pub fn pascal(dir: &str) -> String {
 /// `ProviderListenable<AsyncValue<T>>` → `T`: the return type that makes a `data()` a selector.
 fn selected_value(ret: &dart::Ty) -> Option<String> {
     let (head, args) = ret.generic();
-    let ("ProviderListenable", [state]) = (head, args.as_slice()) else { return None };
-    let inner = dart::Ty { text: state.to_string(), record: None };
+    let ("ProviderListenable", [state]) = (head, args.as_slice()) else {
+        return None;
+    };
+    let inner = dart::Ty {
+        text: state.to_string(),
+        record: None,
+    };
     let (head, args) = inner.generic();
     match (head, args.as_slice()) {
         ("AsyncValue", [t]) => Some(t.to_string()),

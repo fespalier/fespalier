@@ -173,9 +173,9 @@ bool _isJson(Object? value) => switch (value) {
   _ => false,
 };
 
-/// Saved data as `fromJson` expects to read it: maps are `Map<String,
-/// dynamic>` and lists `List<dynamic>`, whatever the platform gave back
-/// (restoration hands back `Map<Object?, Object?>`, the browser its own).
+/// Saved data as `fromJson` expects to read it: maps are `Map<String, dynamic>`
+/// and lists `List<dynamic>`, whatever the platform gave back (restoration
+/// hands back `Map<Object?, Object?>`, the browser its own).
 Object? _plain(Object? value) => switch (value) {
   Map<Object?, Object?>() => <String, dynamic>{
     for (final MapEntry(:key, :value) in value.entries)

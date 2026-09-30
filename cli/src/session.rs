@@ -65,12 +65,21 @@ impl LastRun {
     /// those files still read the same.
     pub fn reuse(&mut self, tree: &Node, scan_diags: &str, libs: &Libs) -> Option<(Run, Reads)> {
         let last = self.0.take()?;
-        (last.tree == *tree && last.scan_diags == scan_diags && libs.unchanged_since(&last.reads)).then_some((last.run, last.reads))
+        (last.tree == *tree && last.scan_diags == scan_diags && libs.unchanged_since(&last.reads))
+            .then_some((last.run, last.reads))
     }
 
     /// Keeps `run`, made from `tree` and the files `reads` lists, for the next [`reuse`](LastRun::reuse).
     pub fn keep(&mut self, tree: Node, scan_diags: String, reads: Reads, run: Run) -> &Run {
-        &self.0.insert(Last { tree, scan_diags, reads, run }).run
+        &self
+            .0
+            .insert(Last {
+                tree,
+                scan_diags,
+                reads,
+                run,
+            })
+            .run
     }
 }
 
@@ -81,17 +90,23 @@ pub struct Formats(HashMap<String, (String, String)>);
 impl Formats {
     /// `code` formatted by `format`, which is only called for code it hasn't formatted before.
     /// A run of `format` that warned (no `dart`) isn't kept, so the warning comes again.
-    pub fn get(&mut self, path: &str, code: &str, format: impl FnOnce(&str) -> (String, Option<String>)) -> String {
-        if let Some((raw, done)) = self.0.get(path) {
-            if raw == code {
-                return done.clone();
-            }
+    pub fn get(
+        &mut self,
+        path: &str,
+        code: &str,
+        format: impl FnOnce(&str) -> (String, Option<String>),
+    ) -> String {
+        if let Some((raw, done)) = self.0.get(path)
+            && raw == code
+        {
+            return done.clone();
         }
         let (done, warning) = format(code);
         match warning {
             Some(w) => eprintln!("{w}"),
             None => {
-                self.0.insert(path.to_string(), (code.to_string(), done.clone()));
+                self.0
+                    .insert(path.to_string(), (code.to_string(), done.clone()));
             }
         }
         done

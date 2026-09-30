@@ -10,7 +10,7 @@ each parameter should receive, checks that the files fit together, and writes on
 mountable `lib/app.g.dart`. It's built on go_router, Riverpod and flutter_hooks,
 with no build_runner.
 
-```
+```text
 lib/app/
   layout.dart            AppLayout({required Widget child})           → ShellRoute
   page.dart              HomePage()                                   → /
@@ -169,9 +169,9 @@ void main() => runApp(
     );
 ```
 
-`flutter create` also wrote `test/widget_test.dart`, which refers to the `MyApp` you just
-replaced, so `flutter analyze` fails on it. Delete it, or rewrite it (see
-[Testing](#testing)).
+A plain `flutter create` (not `flutter create --empty`) also wrote `test/widget_test.dart`,
+which refers to the `MyApp` you just replaced, so `flutter analyze` fails on it. Delete it,
+or rewrite it (see [Testing](#testing)).
 
 Already have a `GoRouter`? Mount the tree inside it instead. `at` is the URL prefix:
 
@@ -428,7 +428,7 @@ in each file that asks for it, then run `fsp gen` (or let `fsp watch` do it).
 A segment, a [query parameter](#query-parameters) and the parts of a [catch-all](#catch-all-segments)
 can be an enum of your app. The parameter is typed with it, in the file that asks:
 
-```
+```text
 shop/$category/page.dart   /shop/shoes              category == Category.shoes
                            /shop/socks              not found: `socks` isn't a Category
 browse/$$categories/       /browse/shoes/hats       categories == [Category.shoes, Category.hats]
@@ -500,7 +500,7 @@ declared in the page's file, and `data.dart` keyed by the category) and `browse/
 more**. The page takes them as a `List<String>` (or a [typed list](#typed-catch-alls)), each part
 decoded on its own:
 
-```
+```text
 docs/page.dart            /docs                      the index, beside the catch-all
 docs/new/page.dart        /docs/new                  a static sibling: tried first
 docs/$$rest/page.dart      /docs/guide/setup/linux    rest == ['guide', 'setup', 'linux']
@@ -554,7 +554,7 @@ Like a segment, a catch-all takes its type from the parameters that ask for it, 
 `List<String>` is the default. Ask for a `List<int>`, `List<double>`, `List<num>`, `List<bool>`,
 `List<DateTime>` or a `List` of an [enum](#enum-segments) and every part is read like one segment of that type:
 
-```
+```text
 compare/$$ids/page.dart   /compare/3/7/12           ids == [3, 7, 12]
                           /compare/3/x              not found: `x` isn't an int
 ```
@@ -650,7 +650,7 @@ folder's name in it:
 const paths = {'fr': 'produits', 'de': 'produkte'};
 ```
 
-```
+```text
 /products/2    /produits/2    /produkte/2      → the same ProductPage(id: 2), the same data
 /products      /produits      /produkte        → the same ProductsPage
 ```
@@ -678,7 +678,7 @@ The folder's name stays the canonical spelling: it is what `.location`, the rout
   both are spellings). Two [`not_found.dart`](#not-found-views) files that would cover one URL
   through a spelling collide the same way, at the entry and at the other file:
 
-  ```
+  ```text
   error: `fr: 'about'` makes /about, which about/page.dart serves too; rename the spelling, or the folder it collides with
     ┌─ lib/app/products/route.dart:2:9
   error: /about is also reached through `fr: 'about'` in products/route.dart:2; rename the spelling, or this folder
@@ -727,7 +727,7 @@ and the helpers that read a location:
 - `fsp routes` lists the spellings under the route, and `--json` has a `paths` object for a route that has
   them (the key is left out for the others):
 
-  ```
+  ```text
   /products/:id  ProductRoute  products/$id/page.dart  (data)
     fr  /produits/:id
     de  /produkte/:id
@@ -800,7 +800,7 @@ fespalier puts static routes before dynamic ones: `/about` comes before `/:slug`
 group's routes stay together in one ShellRoute, though, so a group holding a dynamic
 route can't be sorted around a dynamic sibling outside it:
 
-```
+```text
 error: /settings is unreachable: $slug/page.dart (/:slug) comes first and matches it;
        move one of them into or out of its (group)
 ```
@@ -862,7 +862,7 @@ look at another outer tab, so an inner tab's state survives switching outer tabs
 rules apply at each level: an inner tab can't start on a route with a `:segment` in its
 path, and a tab layout in a `$folder` is an error.
 
-```
+```text
 lib/app/(tabs)/
   layout.dart              const tabs = ['(home)', 'search', 'library']; takes a shell
   (home)/page.dart
@@ -1262,7 +1262,7 @@ or it's an error at its parameter, with a code frame that lists the routes:
 - So a layout above routes with different extra types must take `Object?`; otherwise the
   routes that don't fit are listed:
 
-  ```
+  ```text
   error: `extra` is `Note?` here, but the routes it covers take other types: `/notes/:id/print`
          (notes/$id/print/page.dart takes `Receipt?`); a layout sees the extra of every route it
          covers, so declare it as `Object?` to accept any of them, or as their type when they share one
@@ -1816,11 +1816,11 @@ until you add a route inside the group. That's expected.
 route class, its `page.dart` and its tags (`data`, `guard`, `layout`, `transition`, `present`,
 `root`).
 
-```
+```text
 /products/:id  ProductRoute   products/$id/page.dart  (data, transition)
 ```
 
-A route with [localized paths](#localized-paths) lists each spelling under its row (`  fr  /produits/:id`).
+A route with [localized paths](#localized-paths) lists each spelling under its row (`fr  /produits/:id`).
 
 With `--json` it prints one JSON object per line, for scripts and editors, with each
 route's parameters and the [manifest](#route-manifest-and-metadart)'s fields; `file` is relative to
@@ -1897,7 +1897,7 @@ untouched while there are any. A file that can't be fully parsed gets a warning 
 (the Dart compiler reports the exact error), and the generator works with what it could
 read:
 
-```
+```text
 error: can't fill `label`: it isn't a segment of this path ($shop, $id) or data.dart's String
   ┌─ lib/app/shops/$shop/items/$id/page.dart:6:18
   │
@@ -2046,7 +2046,7 @@ restart.
 
 ## Development
 
-```
+```text
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
 editors/vscode/      the VS Code extension (TypeScript): fsp diagnostics in the Problems panel
@@ -2062,24 +2062,24 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 ```
 
 ```sh
-(cd cli && cargo test && cargo clippy --all-targets -- -D warnings)
-(cd cli && cargo run -- check --project ../examples/minimal)
-(cd cli && cargo run -- check --project ../examples/shop)
-(cd cli && cargo run -- check --project ../examples/tabs)
-(cd packages/fespalier && flutter pub get && flutter analyze && flutter test)
-(cd examples/minimal && flutter pub get && flutter analyze && dart format --set-exit-if-changed . && flutter test)
-(cd examples/shop && flutter pub get && flutter analyze && flutter test)
-(cd examples/features && flutter pub get && flutter analyze && flutter test)
-(cd examples/tabs && flutter pub get && flutter analyze && flutter test)
+just ci          # everything CI runs on the code, locally (needs Flutter, just, cargo-deny)
+just --list      # the individual steps: fmt, lint, test, deny, examples, flutter, packaging
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
-with `fsp new` and runs `flutter analyze` on the result, runs `dart run fespalier` against a
+[AGENTS.md](AGENTS.md) is the contributor and agent guide: the layout, the gate commands,
+how to run each suite, and the conventions (Conventional Commit PR titles, squash merges,
+SHA-pinned actions, regenerating the examples).
+
+CI (`.github/workflows/ci.yml`) runs `just ci`'s steps: `cargo fmt --check`, clippy and the
+tests, `cargo deny check`, `fsp check` on the examples, and `dart format`, `flutter analyze`
+and `flutter test` on the package and every example. It also scaffolds every file kind
+with `fsp new` and `fsp init`, checks the result with `flutter analyze` and `dart format`,
+runs `dart run fespalier` against a
 freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
 rendering, checksum pinning and release staging (`python3 scripts/test_packaging.py`,
 `python3 scripts/test_pin_checksums.py`, `python3 scripts/test_verify_staged.py`,
-`python3 scripts/test_release_assets.py`), runs `flutter pub publish --dry-run` on the
-package, and checks that the version agrees everywhere it is spelled out
+`python3 scripts/test_release_assets.py`),
+and checks that the version agrees everywhere it is spelled out
 (`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`,
 `.release-please-manifest.json`, the `ref:` that `fsp init` prints, and the READMEs' `ref:`,
 `--tag` and `FSP_VERSION`; that each of them is annotated for release-please and listed in
@@ -2294,3 +2294,6 @@ Things to know:
 - go_router builds the whole matched stack, so `/products/abc` also loads `/products`
   underneath the not-found view.
 
+## License
+
+MIT. See [LICENSE](LICENSE).

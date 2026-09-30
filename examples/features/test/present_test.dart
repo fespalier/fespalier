@@ -37,8 +37,9 @@ void main() {
   Finder aboveLayout(String text) =>
       find.ancestor(of: find.text(text), matching: find.byType(RootLayout));
 
-  testWidgets('a deep link builds the parent page under the sheet',
-      (tester) async {
+  testWidgets('a deep link builds the parent page under the sheet', (
+    tester,
+  ) async {
     await boot(tester, '/photos/share');
     expect(location(), '/photos/share');
     expect(find.text('Share photos'), findsOneWidget);
@@ -57,19 +58,24 @@ void main() {
     expect(route, isNot(isA<ModalBottomSheetRoute<void>>()));
   });
 
-  testWidgets('it is on the root navigator: above the root layout',
-      (tester) async {
+  testWidgets('it is on the root navigator: above the root layout', (
+    tester,
+  ) async {
     await boot(tester, '/photos/share');
     final sheet = tester.element(find.text('Share photos'));
     final photos = tester.element(find.text('Photos'));
     expect(Navigator.of(sheet), AppRoutes.rootNavigatorKey.currentState);
-    expect(Navigator.of(photos), isNot(AppRoutes.rootNavigatorKey.currentState));
+    expect(
+      Navigator.of(photos),
+      isNot(AppRoutes.rootNavigatorKey.currentState),
+    );
     expect(aboveLayout('Photos'), findsWidgets);
     expect(aboveLayout('Share photos'), findsNothing);
   });
 
-  testWidgets('popping the sheet returns to the parent, its state intact',
-      (tester) async {
+  testWidgets('popping the sheet returns to the parent, its state intact', (
+    tester,
+  ) async {
     await boot(tester, '/photos');
     await tester.tap(find.text('Like'));
     await tester.pump();
@@ -96,8 +102,9 @@ void main() {
     expect(find.text('Liked: yes'), findsOneWidget);
   });
 
-  testWidgets('a child of the sheet renders above it, not under it',
-      (tester) async {
+  testWidgets('a child of the sheet renders above it, not under it', (
+    tester,
+  ) async {
     await boot(tester, '/photos');
     await tester.tap(find.text('Share'));
     await tester.pumpAndSettle();
@@ -122,8 +129,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a deep link to the child builds the sheet and the page below',
-      (tester) async {
+  testWidgets('a deep link to the child builds the sheet and the page below', (
+    tester,
+  ) async {
     await boot(tester, '/photos/share/terms');
     expect(find.text('Terms of sharing'), findsOneWidget);
     expect(find.text('Share photos', skipOffstage: false), findsOneWidget);
@@ -131,8 +139,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('mounted in a host router with its navigator key',
-      (tester) async {
+  testWidgets('mounted in a host router with its navigator key', (
+    tester,
+  ) async {
     // `mount` stores where it is mounted; put it back for the tests after this one.
     addTearDown(() => AppRoutes.mount());
     final hostKey = GlobalKey<NavigatorState>();
@@ -154,12 +163,18 @@ void main() {
   });
 
   test('the manifest says the sheet is custom, its child root', () {
-    expect(AppManifest.byType[ShareSheetRoute]!.presentation,
-        RoutePresentation.custom);
     expect(
-        AppManifest.byType[TermsRoute]!.presentation, RoutePresentation.root);
+      AppManifest.byType[ShareSheetRoute]!.presentation,
+      RoutePresentation.custom,
+    );
     expect(
-        AppManifest.byType[PhotosRoute]!.presentation, RoutePresentation.page);
+      AppManifest.byType[TermsRoute]!.presentation,
+      RoutePresentation.root,
+    );
+    expect(
+      AppManifest.byType[PhotosRoute]!.presentation,
+      RoutePresentation.page,
+    );
     expect(const ShareSheetRoute().location, '/photos/share');
     expect(const TermsRoute().location, '/photos/share/terms');
   });

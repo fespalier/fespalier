@@ -273,7 +273,7 @@ top-level function.
 | File | Exports | Its constructor / signature can ask for |
 |---|---|---|
 | `page.dart` | a widget | segments; query; what `data.dart` yields; the navigation [`extra`](#typed-extra) |
-| `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data) | segments, query (named; a section's takes segments only) |
+| `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data) | segments, query (named; a section's takes segments only) |
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
 | `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside |
@@ -361,7 +361,9 @@ requested location*, so an encoded slash (`/docs/a%2Fb/c` is `['a/b', 'c']`) sur
   keyed by the encoded path as one string (`restKey`) and `data()` gets the list back
   (`restParts`). `ref.watch(DocsRoute.data(restKey(rest)))` is what the route does; the
   typed `DocsRoute.watch(ref, rest: [...])` takes the list. A provider you write yourself
-  (`final data = FutureProvider.family<…>`) can't be keyed by a catch-all: use the function.
+  (`final data = FutureProvider.family<…>`) can't be keyed by a catch-all: use the function
+  or a [selector](#datadart-a-function-a-selector-or-a-provider), whose `data({required List<String> rest})`
+  gets the list back the same way.
 - `$$$rest` and a `page.dart` in the folder above would both serve `/docs`: an error. Use
   `$$rest` beside the page.
 
@@ -721,14 +723,59 @@ so the type must be reachable from `page.dart`'s own imports. The built-in `dart
 types need nothing. Only pages take an `extra`; go_router's `extra` isn't restored on web
 reloads unless you give the router an `extraCodec`.
 
-### `data.dart`: a function or a provider
+### `data.dart`: a function, a selector or a provider
 
-Write a function and fespalier wraps it in an autoDispose `FutureProvider` (or
-`StreamProvider` for a `Stream`). Or export a provider named `data` yourself:
+`data.dart` has three forms, told apart by what it exports:
+
+| You write | fespalier | Use it when |
+|---|---|---|
+| `Future<T> data(Ref ref, {…})` (or `Stream<T>`, or `T`) | wraps it in an autoDispose `FutureProvider` (`StreamProvider` for a `Stream`) | the data is fetched for this route only: the function is the fetch |
+| `ProviderListenable<AsyncValue<T>> data({…}) => productProvider(id)` | calls it and uses the provider it returns; nothing is wrapped | a provider for it already exists, above all a `riverpod_generator` one |
+| `final data = FutureProvider<T>(…)` (or `StreamProvider`, `AsyncNotifierProvider`, `StreamNotifierProvider`), type arguments spelled out | uses it as-is | you want to write the provider yourself (a notifier, `keepAlive`, `retry:`) and it belongs to this route |
+
+**Selecting a provider.** Don't write `Future<Product> data(Ref ref, …) => ref.watch(productProvider(id).future)`
+for a provider you have: that puts a second provider in front of the real one, and awaiting
+`.future` in it drops the error the real provider holds while it retries, so the route
+can't show `error.dart` during the retry window. Select the provider instead:
+
+```dart
+// lib/app/products/$productId/data.dart
+ProviderListenable<AsyncValue<ProductView>> data({required String productId}) =>
+    productProvider(productId);   // a generated family, a FutureProvider.family, ...
+```
+
+- **The return type is what says so.** `ProviderListenable<AsyncValue<T>>` with no `Ref`
+  parameter (the function returns the provider, it doesn't read one). `T` is what the
+  page's parameter is matched to by type, as with `Future<T>`. It's a syntax-only read of the
+  return type: a generated provider's own type, like `ProductFamily`, isn't resolved.
+  `ProviderListenable` comes from `package:fespalier/fespalier.dart`.
+- **Parameters are the function form's.** Named parameters are segments and query
+  parameters, keyed and typed exactly as in `data(Ref ref, {…})` below; any other parameter is
+  an error at that parameter. Positional parameters and a `Ref` are errors too.
+- **`XRoute.data` is the selected provider** (`ProductDetailRoute.data('x') ==
+  productProvider('x')`), and `watch`, `read`, `prefetch` and `refresh` all go to it. The
+  generated `DataView` watches it directly: no wrapper, no `.future` hop, one fetch per
+  navigation. `refresh` (and `error.dart`'s `retry`) invalidates the selected provider, and
+  `refresh` reads it again, so it runs once.
+- **The app's provider keeps its own `retry`, `keepAlive` and dependencies**, so
+  [`data_retry`](#retries-and-reloads) doesn't apply to it: it only configures the providers
+  fespalier creates. `keep_previous` does (it is about what the view shows). The app's
+  `ProviderScope(retry: …)` applies unless the provider sets its own.
+- **Refresh needs a provider, not just a listenable.** Watching only needs a
+  `ProviderListenable`, but invalidating needs the provider itself. The declared type stays
+  `ProviderListenable<AsyncValue<T>>`, the same for every kind of provider, and the runtime
+  checks what it gets (a `ProviderOrFamily` with a `.future`, which every
+  `FutureProvider`, `StreamProvider` and generated async provider is). Returning
+  something else, say `productProvider(id).select(…)`, builds and watches fine, but
+  `refresh` and `retry` throw a `StateError` that says to return the provider itself.
+- A section's `data.dart` can be a selector too (segments only).
+
+The other two: write a function and fespalier wraps it in an autoDispose
+`FutureProvider` (or `StreamProvider` for a `Stream`). Or export a provider named `data` yourself:
 `FutureProvider`, `StreamProvider`, `AsyncNotifierProvider` or `StreamNotifierProvider`,
 with its type arguments spelled out. It's used as-is.
 
-Either way, the route exposes it as `XRoute.data`, keyed by the segments and query
+In all three forms the route exposes it as `XRoute.data`, keyed by the segments and query
 parameters `data.dart` uses:
 
 | Parameters used | Provider | Watch it with |
@@ -1342,13 +1389,12 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 218 tests (197 unit, 16 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
-  parameters, `(group)` folders and route order, tab layouts, transitions, both data
+- **Generator:** 231 tests (210 unit, 16 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+  parameters, `(group)` folders and route order, tab layouts, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects,
   scaffolding, the route manifest, meta.dart and restoration ids, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 213 Flutter tests (the package 100, `shop` 23,
-  `features` 73, `tabs` 17); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 227 Flutter tests (the package 100, `shop` 23, `features` 87, `tabs` 17); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

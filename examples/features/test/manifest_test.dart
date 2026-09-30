@@ -9,9 +9,9 @@ import 'package:material_ui/material_ui.dart' as mui;
 void main() {
   group('the route manifest', () {
     test('lists every route once, by type and by path', () {
-      expect(AppManifest.all, hasLength(27));
-      expect(AppManifest.byType, hasLength(27));
-      expect(AppManifest.byPath, hasLength(27));
+      expect(AppManifest.all, hasLength(30));
+      expect(AppManifest.byType, hasLength(30));
+      expect(AppManifest.byPath, hasLength(30));
       // With the manifest inline, AppRoutes forwards to it.
       expect(AppRoutes.all, same(AppManifest.all));
       expect(AppRoutes.byType, same(AppManifest.byType));
@@ -54,6 +54,9 @@ void main() {
       expect(search.query.map((p) => '${p.type} ${p.name}'),
           ['String? q', 'int? page', 'List<String> tags']);
       expect(search.dataKeys, ['q', 'page', 'tags']);
+
+      // A selector data.dart (it returns a provider) is keyed like any other.
+      expect(AppManifest.byType[ReviewsRoute]!.dataKeys, ['productId', 'page']);
 
       // No data.dart, no data keys (which is not the same as none of them).
       expect(AppManifest.byType[HomeRoute]!.dataKeys, isNull);

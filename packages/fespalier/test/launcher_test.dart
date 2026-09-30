@@ -192,25 +192,50 @@ void main() {
     });
   });
 
-  test('the pinned checksums are none, or belong to this package version', () {
-    final version = parsePubspecVersion(
-      File('pubspec.yaml').readAsStringSync(),
-    );
-    if (pinned.pinnedVersion.isEmpty) {
-      expect(pinned.pinnedChecksums, isEmpty);
-    } else {
-      expect(pinned.pinnedVersion, version);
-      for (final target in [
-        'x86_64-unknown-linux-gnu',
-        'aarch64-unknown-linux-gnu',
-        'x86_64-apple-darwin',
-        'aarch64-apple-darwin',
-        'x86_64-pc-windows-msvc',
-      ]) {
-        expect(pinned.pinnedChecksums[target], matches(r'^[0-9a-f]{64}$'));
+  // Mirrors cli/tests/versions.rs: on the release PR the pubspec is bumped before the pin
+  // commit lands, so the pins may belong to an older version (the launcher then falls back
+  // to the release's .sha256). release-pins.yml and release.yml check they are exact.
+  test(
+    'the pinned checksums are none, or of this package version or older',
+    () {
+      final version = parsePubspecVersion(
+        File('pubspec.yaml').readAsStringSync(),
+      );
+      List<int> triple(String v) => v
+          .split('+')
+          .first
+          .split('-')
+          .first
+          .split('.')
+          .map(int.parse)
+          .toList();
+      int compare(List<int> a, List<int> b) {
+        for (var i = 0; i < 3; i++) {
+          if (a[i] != b[i]) return a[i].compareTo(b[i]);
+        }
+        return 0;
       }
-    }
-  });
+
+      if (pinned.pinnedVersion.isEmpty) {
+        expect(pinned.pinnedChecksums, isEmpty);
+      } else {
+        expect(
+          compare(triple(pinned.pinnedVersion), triple(version!)),
+          lessThanOrEqualTo(0),
+          reason: 'pins for ${pinned.pinnedVersion}, package at $version',
+        );
+        for (final target in [
+          'x86_64-unknown-linux-gnu',
+          'aarch64-unknown-linux-gnu',
+          'x86_64-apple-darwin',
+          'aarch64-apple-darwin',
+          'x86_64-pc-windows-msvc',
+        ]) {
+          expect(pinned.pinnedChecksums[target], matches(r'^[0-9a-f]{64}$'));
+        }
+      }
+    },
+  );
 
   test('reads the version from the package pubspec', () async {
     final pubspec = File('pubspec.yaml').readAsStringSync();

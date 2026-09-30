@@ -55,6 +55,8 @@ jobs:
 
       - name: Build
         working-directory: cli
+        # bash on every runner: pwsh (the Windows default) reads "$TARGET" as its own, empty variable
+        shell: bash
         env:
           TARGET: ${{ matrix.target }}
         run: cargo build --release --locked --target "$TARGET"

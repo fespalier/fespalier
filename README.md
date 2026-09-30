@@ -84,7 +84,7 @@ You need Flutter 3.32 or newer (Dart 3.8) for the package. go_router 18 needs Fl
 curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
 ```
 
-It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.3.0`
+It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.3.0` <!-- x-release-please-version -->
 to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install
 elsewhere. On Windows, in PowerShell:
 
@@ -97,9 +97,11 @@ It puts `fsp.exe` in `%LOCALAPPDATA%\fespalier\bin` (tell it otherwise with
 prints how to add that folder to your `PATH` if it isn't there yet. With Rust installed, on
 any platform:
 
+<!-- x-release-please-start-version -->
 ```sh
 cargo install --git https://github.com/vaam-apps/fespalier --tag v0.3.0 fespalier
 ```
+<!-- x-release-please-end -->
 
 With Homebrew (macOS, Linux) or Scoop (Windows), once the maintainers have set up the tap and
 bucket (see [Releasing](#releasing)):
@@ -126,6 +128,7 @@ binary are versioned together, and this is what keeps them in step.
 
 **2. Add the package** to your app's `pubspec.yaml`, then run `flutter pub get`:
 
+<!-- x-release-please-start-version -->
 ```yaml
 dependencies:
   fespalier:
@@ -134,6 +137,7 @@ dependencies:
       path: packages/fespalier
       ref: v0.3.0
 ```
+<!-- x-release-please-end -->
 
 It depends on go_router (17 or 18), hooks_riverpod 3 and flutter_hooks, and
 `package:fespalier/fespalier.dart` re-exports all three, so you don't add them yourself.
@@ -2072,81 +2076,106 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
 with `fsp new` and runs `flutter analyze` on the result, runs `dart run fespalier` against a
 freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
-rendering and checksum pinning (`python3 scripts/test_packaging.py`,
-`python3 scripts/test_pin_checksums.py`), runs `flutter pub publish --dry-run` on the
+rendering, checksum pinning and release staging (`python3 scripts/test_packaging.py`,
+`python3 scripts/test_pin_checksums.py`, `python3 scripts/test_verify_staged.py`,
+`python3 scripts/test_release_assets.py`), runs `flutter pub publish --dry-run` on the
 package, and checks that the version agrees everywhere it is spelled out
-(`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`, the `ref:` that
-`fsp init` prints, and the READMEs' `ref:`, `--tag` and `FSP_VERSION`; the launcher reads its
-version from the pubspec, and `release_checksums.dart` pins nothing or this version). To release, bump those together. After changing the emitter or a
+(`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`,
+`.release-please-manifest.json`, the `ref:` that `fsp init` prints, and the READMEs' `ref:`,
+`--tag` and `FSP_VERSION`; that each of them is annotated for release-please and listed in
+`release-please-config.json`; that the release workflows' own version readers,
+`scripts/read-version.sh`, still find each one; and that `release_checksums.dart` pins nothing
+or a version no newer than the package's). You do not bump any of them: release-please does
+(see [Releasing](#releasing)). After changing the emitter or a
 template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
 a committed `app.g.dart` is stale.
 
 ### Releasing
 
-Maintainers only. Bump the version everywhere (see the version checks above), update
-`CHANGELOG.md`, and merge. Then:
+Maintainers only. Releases are cut with release-please, the convention of every repository in
+the vaam-apps organization (its guide, `docs/releasing.md` in `vaam-apps/.github`, lists the
+ways this has failed silently and is worth reading before changing anything here). Nobody
+bumps a version by hand, edits `.release-please-manifest.json`, or runs a workflow to publish.
 
-1. **GitHub Release and binaries.** Run the *Release* workflow with `publish` ticked (or
-   push the tag `v<version>`). It builds `fsp` for five targets and attaches
-   `fsp-<target>.tar.gz` / `.zip` with their `.sha256` files. It also renders `fsp.rb`
-   (Homebrew formula) and `fsp.json` (Scoop manifest) from those checksums with
-   `scripts/packaging.py` and attaches them to the release.
+**The flow.**
 
-   **Checksum pinning.** A manual publish runs in two phases. It builds the five targets from
-   the commit you dispatched it on (which must be the default branch); then a `pin` job writes
-   their SHA-256s to `packages/fespalier/lib/src/release_checksums.dart`
-   (`scripts/pin_checksums.py`), commits it to `main` as `Pin fsp <version> checksums`, and the
-   `v<version>` tag and the Release are created at *that* commit. A git dependency on
-   the `v<version>` tag, and the package published to pub.dev from the tag, therefore carry the
-   pins, and `dart run fespalier` refuses any download that doesn't match them (a checksum
-   served next to the binary can be replaced together with it; one in the package can't). The
-   binaries were built from the parent commit; the two commits differ only by that file, which
-   the `fsp` build doesn't read, so the code is identical. The workflow needs `contents:
-   write` and pushes with `GITHUB_TOKEN`: if `main` requires pull requests or status checks,
-   let the `github-actions` bot bypass them, or the `pin` job fails and nothing is published.
-   If `main` moved during the run, the push is rejected and you run it again. That push doesn't
-   start CI. Pushing a `v*` tag by hand still publishes, but the tag can't hold pins, so that
-   release's `dart run fespalier` falls back to its `.sha256` file with a warning.
-   After bumping the version for the next release, run `python3 scripts/pin_checksums.py
-   --reset` (`cli/tests/versions.rs` fails while the file pins another version); a version with
-   no pins is what development builds have.
-2. **pub.dev.** Run the *Publish to pub.dev* workflow from that tag: *Run workflow*, then
-   *Use workflow from* > *Tag* > `v<version>`. It publishes `packages/fespalier` through
-   pub.dev's GitHub OIDC automated publishing, with no stored token. It refuses to run from
-   a branch or when the tag isn't `v` plus the pubspec version. After the first release on
-   pub.dev, change the install snippets in the READMEs from the Git dependency to
-   `fespalier: ^<version>` (and `cli/tests/versions.rs`, which checks them).
-3. **Homebrew and Scoop.** Copy `fsp.rb` from the release into the `Formula/` folder of a tap
-   repository and `fsp.json` into the `bucket/` folder of a bucket repository, or let the
-   workflow do it (below).
-4. **JetBrains Marketplace (IntelliJ plugin).** Build the plugin from the tag with
-   `cd editors/intellij && ./gradlew buildPlugin` (JDK 21) and upload
-   `build/distributions/fespalier-intellij-<version>.zip` on the plugin's page in the
-   JetBrains Marketplace, or run `PUBLISH_TOKEN=<token> ./gradlew publishPlugin`. Bump
-   `version` in `editors/intellij/build.gradle.kts` first (the plugin is versioned on its
-   own, like the VS Code extension). The first upload needs a vendor account and a manual
-   review; later ones can use a permanent token from the Marketplace's *My Tokens* page.
+1. **Land conventional commits.** The repository squash-merges and the pull request *title*
+   becomes the commit subject, which is all release-please reads: `feat:`, `fix:`, `docs:`,
+   `ci:` and the other conventional types (`pr-title` refuses anything else; a subject it cannot
+   read is ignored, and no release PR appears). `feat` and `fix` decide the bump (before 1.0 a
+   breaking change bumps the minor); every other visible type is a patch. To force a version,
+   put a `Release-As: X.Y.Z` footer in a commit.
+2. **The release PR.** Every push to `main` updates one standing pull request from the branch
+   `release-please--branches--main`. It bumps the version in `cli/Cargo.toml`,
+   `packages/fespalier/pubspec.yaml`, the `ref:` that `fsp init` prints, both READMEs'
+   install snippets and `.release-please-manifest.json` (every spelled-out version carries a
+   release-please annotation and is listed in `release-please-config.json`; the trailing comment
+   is why every reader of those files must tolerate one, see `scripts/read-version.sh`), and it
+   writes the root `CHANGELOG.md` above the hand-written history. The `release-please` workflow
+   refreshes `cli/Cargo.lock` on the branch, because the build is `--locked`.
+3. **Pins, on the PR.** The `Release pins` workflow builds `fsp` for the five targets on the PR
+   branch, stages the archives, and commits their SHA-256s to the branch as
+   `chore: pin fsp X.Y.Z checksums` (`packages/fespalier/lib/src/release_checksums.dart`,
+   `scripts/pin_checksums.py`). release-please force-pushes the branch whenever `main` moves,
+   which removes that commit; the workflow then runs again on the new head. It recognises its own
+   commit and does not loop. The `fsp` build reads only `cli/`, never `release_checksums.dart`,
+   so the pin commit does not change the binaries. Wait for the `Release pins gate` check before
+   merging (make it required in the `main` ruleset; other pull requests pass it by skipping).
+   The archives wait in a *staging* draft release named `fsp-staging` (visible to maintainers,
+   replaced by every build, deleted after the release), not in workflow artifacts, which expire.
+4. **Merge the release PR.** release-please (as the org's GitHub App, so that the tag raises a
+   workflow event) creates the tag `vX.Y.Z` at the merge commit and a *draft* GitHub Release.
+   The `Release` workflow, triggered by the tag, then
+   - checks that the tag equals the Cargo, pubspec, manifest and lockfile versions;
+   - fetches the staged archives and **refuses anything that is not the pinned build**
+     (`scripts/verify-staged.sh`): they must be this version, built from the `cli/` tree that is
+     tagged, and every archive's SHA-256 must equal the pin in the tagged tree. It never
+     rebuilds: builds are not reproducible, so a rebuild could not match the pins;
+   - regenerates the `.sha256` files and renders `fsp.rb` (Homebrew) and `fsp.json` (Scoop) from
+     the verified archives (`scripts/packaging.py`), attaches all of it to the draft Release,
+     publishes it (only now is it public and the latest release), and deletes the staging draft;
+   - pushes `fsp.rb` and `fsp.json` to `vaam-apps/homebrew-tap` and `vaam-apps/scoop-bucket`.
+   A git dependency on the new tag therefore carries the pins, and `dart run fespalier` refuses
+   any download that does not match them (a checksum served next to the binary can be replaced
+   together with it; one in the package cannot).
 
-One-time setup:
+Between releases, `main` still carries the last release's pins, and on an open release PR, before
+its pin commit, the pubspec is ahead of them; the launcher then falls back to the release's
+`.sha256` with a warning, as for any development build. `cli/tests/versions.rs` accepts pins for
+the current or an older version, never a newer one.
 
-- **pub.dev.** Automated publishing only works for an existing package, so publish the first
-  version by hand: `cd packages/fespalier && flutter pub publish`. Then, on the package's
-  *Admin* tab under *Automated publishing*, enable *Publishing from GitHub Actions*,
-  repository `vaam-apps/fespalier`, tag pattern `v{{version}}`. Optionally tick *Require
-  GitHub Actions environment*, create an environment named `pub.dev` in the repository's
-  settings (add required reviewers there), and uncomment `environment: pub.dev` in
-  `.github/workflows/publish.yml`. Check what will be uploaded any time with
-  `flutter pub publish --dry-run` (CI does).
-- **Homebrew tap.** Create the repository `vaam-apps/homebrew-tap` (the `homebrew-` prefix
-  is what lets `brew install vaam-apps/tap/fsp` find it) with a `Formula/` folder.
-- **Scoop bucket.** Create `vaam-apps/scoop-bucket` with a `bucket/` folder. The manifest's
-  `checkver` and `autoupdate` let Scoop's own tooling keep it current too.
-- **Automatic updates (optional).** Create a fine-grained personal access token with
-  *Contents: read and write* on those two repositories and save it as the
-  `PACKAGING_TOKEN` secret of this repository. Each published release then commits
-  `Formula/fsp.rb` and `bucket/fsp.json` to them. Without the secret the step is skipped.
-  Different repository names go in the `HOMEBREW_TAP_REPO` and `SCOOP_BUCKET_REPO`
-  repository variables.
+**If something fails.** A failed `Release` run leaves the release a draft (nobody sees it, and
+`latest` does not move): fix the cause and re-run the failed jobs. The usual causes are a
+`cli/` change that reached `main` after the last build (the release PR was merged before its
+head was rebuilt: make `Release pins gate` required and the branch up to date before merging),
+or staged binaries that were replaced or deleted. If the merged commit cannot be made to match,
+delete the draft and the tag and fix forward with the next release. A manual run of `Release`
+(*Run workflow*) only builds the five targets and renders the Homebrew and Scoop files as a
+smoke test; it publishes nothing.
+
+**Repository settings** (not enforceable from a workflow): squash merging only, with the
+squash commit title set to the pull request title and the message to the commit messages;
+merge commits and rebase merges off. The release-please GitHub App must be installed on this
+repository, and on `homebrew-tap` and `scoop-bucket` for the last job.
+
+**By hand, per release** (the editor plugins are versioned on their own and not part of the
+release PR):
+
+- **JetBrains Marketplace (IntelliJ plugin).** Build the plugin from the tag with
+  `cd editors/intellij && ./gradlew buildPlugin` (JDK 21) and upload
+  `build/distributions/fespalier-intellij-<version>.zip` on the plugin's page in the
+  JetBrains Marketplace, or run `PUBLISH_TOKEN=<token> ./gradlew publishPlugin`. Bump
+  `version` in `editors/intellij/build.gradle.kts` first. The first upload needs a vendor
+  account and a manual review; later ones can use a permanent token from the Marketplace's
+  *My Tokens* page.
+- **VS Code extension.** Not published to a marketplace: build the `.vsix` from source (see
+  `editors/vscode/README.md`). Bump `version` in `editors/vscode/package.json` first if you
+  distribute a build.
+
+**One-time setup** for the package managers: create the repositories `vaam-apps/homebrew-tap`
+(with a `Formula/` folder; the `homebrew-` prefix is what lets `brew install
+vaam-apps/tap/fsp` find it) and `vaam-apps/scoop-bucket` (with a `bucket/` folder; the
+manifest's `checkver` and `autoupdate` let Scoop's own tooling keep it current too).
 
 ### Testing
 

@@ -228,3 +228,7 @@ jobs:
         run: python3 scripts/test_packaging.py
       - name: Pin fake checksums in the Dart package
         run: python3 scripts/test_pin_checksums.py
+      - name: Refuse binaries that are not the pinned ones
+        run: python3 scripts/test_verify_staged.py
+      - name: Stage, fetch, attach and publish release assets (fake GitHub API)
+        run: python3 scripts/test_release_assets.py

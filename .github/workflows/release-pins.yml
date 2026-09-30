@@ -1,0 +1,263 @@
+name: Release pins
+
+# On the release-please PR (branch `release-please--branches--main`): builds the five fsp
+# binaries, stages them, and commits their SHA-256s to that branch as `chore: pin fsp X.Y.Z
+# checksums`. Merging the PR then tags a commit that carries its own pins, and `release.yml`
+# attaches exactly the staged binaries to the release, after checking them against those pins.
+#
+# This replaces the old manual flow, in which a `pin` job pushed the checksums to main with
+# GITHUB_TOKEN and tagged that commit.
+#
+# How it survives release-please, which owns the branch
+# -----------------------------------------------------
+# release-please FORCE-PUSHES the release branch each time it updates the PR (`force: true`
+# in its GitHub client: github.ts createPullRequest and updatePullRequest), which is whenever a
+# releasable commit lands on main. That wipes the pin commit, and the push is a `synchronize`
+# event, so this workflow runs again on the new head, rebuilds and re-pins. release-please
+# itself pushes a second commit (the Cargo.lock sync, see release-please.yml) a minute later;
+# this workflow's concurrency group cancels the run on the superseded head, and `plan` refuses to
+# build a head whose Cargo.lock is not yet in step (the build is `--locked`).
+#
+# It never loops on its own push. The pin commit is a new head, so it raises `synchronize` too,
+# but `plan` recognises a head whose subject is `chore: pin fsp <this version> checksums` and
+# switches to verify mode: no build, no push, it only re-checks that the staged binaries are the
+# ones the commit pins. If a run finds the pins already identical it commits nothing.
+#
+# Why pinning on the PR is sound although the binaries are built before the pin commit exists:
+# the fsp build reads cli/ only (sources, templates, Cargo.toml, Cargo.lock), and never
+# packages/fespalier/lib/src/release_checksums.dart, so the pin commit does not change the
+# binaries. Only the FINAL pins have to match the published binaries, and release.yml checks that
+# (scripts/verify-staged.sh) before attaching anything.
+#
+# Where the binaries wait (scripts/release-assets.sh): a staging draft release, `fsp-staging`,
+# replaced by every build. Not workflow artifacts, which expire and need a run lookup; not a
+# rebuild on the tag, which would differ from what was pinned.
+#
+# Token: the org's release-please App (contents: write only). GITHUB_TOKEN could not do this
+# job: a push made with it raises no workflow events, so the release PR would get no CI run on
+# the pin commit; and it cannot see a draft release. No fallback to it (org releasing.md, trap 1).
+#
+# Optionally make `Release pins gate` a required check on main: a release PR then cannot be
+# merged before its head is pinned and verified. Non-release PRs skip the job and pass.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: release-pins-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Plan
+    # The release-please branch, from this repository only (a fork cannot have App secrets, and
+    # must not be able to name its branch into a pin run).
+    if: >-
+      github.event.pull_request.head.ref == 'release-please--branches--main'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Decide what to do with this head
+        id: plan
+        run: |
+          set -euo pipefail
+          cargo="$(scripts/read-version.sh cargo)"
+          pubspec="$(scripts/read-version.sh pubspec)"
+          manifest="$(scripts/read-version.sh manifest)"
+          lock="$(scripts/read-version.sh lock)"
+          echo "cargo=${cargo} pubspec=${pubspec} manifest=${manifest} lock=${lock}"
+          for v in "$pubspec" "$manifest"; do
+            [[ "$v" == "$cargo" ]] || { echo "::error::the release PR's versions disagree (see above)"; exit 1; }
+          done
+          if [[ "$lock" != "$cargo" ]]; then
+            # release-please.yml pushes the Cargo.lock refresh right after it force-pushes the
+            # branch. That push is the next head and starts the next run; building this one
+            # would only fail on `cargo build --locked`.
+            echo "::error::cli/Cargo.lock is at ${lock}, Cargo.toml at ${cargo}: release-please.yml has not synced the lockfile onto this head yet. The next push re-runs this workflow; if none comes, run the release-please workflow again."
+            exit 1
+          fi
+          subject="$(git log -1 --format=%s)"
+          if [[ "$subject" == "chore: pin fsp ${cargo} checksums" ]]; then
+            echo "mode=verify" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=pin" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=${cargo}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build fsp
+    needs: plan
+    if: needs.plan.outputs.mode == 'pin'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-fsp.yml
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+      # only handed to the next job
+      retention-days: 1
+
+  pin:
+    name: Stage the binaries and pin their checksums
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The App token carries the writes; the workflow's own token only reads the checkout.
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+    steps:
+      - name: Mint a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          # `client-id`, not the deprecated `app-id`: the `Iv23li…` Client ID.
+          client-id: ${{ secrets.RELEASE_PLEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+          # Exactly what this job does: upload the staging draft release, and push one commit
+          # to the release branch. Without it the token carries every permission the App holds.
+          permission-contents: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          # the push below supplies the token explicitly; nothing persists it in .git/config
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: fsp-*
+          path: dist
+          merge-multiple: true
+
+      - name: Record what the binaries were built from
+        run: |
+          set -euo pipefail
+          python3 scripts/test_pin_checksums.py
+          # cli/ is everything the fsp build reads; release.yml compares this tree id with the
+          # tag's (scripts/verify-staged.sh).
+          jq -n --arg version "$VERSION" --arg commit "$HEAD_SHA" --arg cli_tree "$(git rev-parse HEAD:cli)" \
+            --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{version: $version, commit: $commit, cli_tree: $cli_tree, run: $run}' > dist/build-info.json
+          cat dist/build-info.json
+          ls -l dist
+
+      # Stage BEFORE pinning: a pin commit must never exist for binaries that were not kept.
+      - name: Stage the binaries (draft release fsp-staging)
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: scripts/release-assets.sh stage dist
+
+      - name: Pin the checksums of the staged archives
+        run: python3 scripts/pin_checksums.py --version "$VERSION" --dist dist --archives
+
+      - name: Commit and push to the release branch
+        env:
+          # Via env, never inlined into the script: a branch name is not ours to trust.
+          TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          git add packages/fespalier/lib/src/release_checksums.dart
+          if git diff --cached --quiet; then
+            echo "release_checksums.dart already pins these archives; nothing to commit"
+            exit 0
+          fi
+          git config user.name  'release-pins[bot]'
+          git config user.email 'release-pins[bot]@users.noreply.github.com'
+          # No parenthesis opens a body line: release-please's commit parser would drop the
+          # commit (org releasing.md, trap 5).
+          git commit \
+            -m "chore: pin fsp ${VERSION} checksums" \
+            -m "The SHA-256 of the fsp ${VERSION} archives built from ${HEAD_SHA} for this release PR, for dart run fespalier to verify its download against. The fsp build never reads release_checksums.dart, so this commit does not change the binaries."
+          # Plain push, never forced: if release-please force-pushed a newer head meanwhile,
+          # this is rejected and the run for that head takes over.
+          git push "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:refs/heads/${HEAD_REF}"
+          {
+            echo "### Pinned fsp ${VERSION}"
+            echo
+            git show --stat --format='%h %s' HEAD -- packages/fespalier/lib/src/release_checksums.dart
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    name: Verify the pin commit
+    needs: plan
+    if: needs.plan.outputs.mode == 'verify'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: Mint a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.RELEASE_PLEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}
+          # Reads the staging draft release, which only a token with write access can see.
+          # Nothing is written.
+          permission-contents: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Fetch the staged binaries
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: scripts/release-assets.sh fetch dist
+
+      - name: The staged binaries are the pinned ones, built from this cli/
+        run: scripts/verify-staged.sh "$VERSION" dist
+
+  # One stable check name for the whole workflow, whichever mode ran (or none: a PR that is not
+  # the release PR skips everything above and passes here).
+  result:
+    name: Release pins gate
+    needs: [plan, build, pin, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+      PLAN: ${{ needs.plan.result }}
+      MODE: ${{ needs.plan.outputs.mode }}
+      BUILD: ${{ needs.build.result }}
+      PIN: ${{ needs.pin.result }}
+      VERIFY: ${{ needs.verify.result }}
+    steps:
+      - run: |
+          set -euo pipefail
+          if [[ "$HEAD_REF" != "release-please--branches--main" || "$SAME_REPO" != "true" ]]; then
+            echo "not the release PR: nothing to pin"
+            exit 0
+          fi
+          echo "plan=${PLAN} mode=${MODE} build=${BUILD} pin=${PIN} verify=${VERIFY}"
+          case "${MODE}" in
+            pin)    [[ "$PLAN" == success && "$BUILD" == success && "$PIN" == success ]] ;;
+            verify) [[ "$PLAN" == success && "$VERIFY" == success ]] ;;
+            *)      false ;;
+          esac || { echo "::error::this head of the release PR is not pinned and verified"; exit 1; }
+          echo "pinned and verified"

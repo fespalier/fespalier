@@ -5,20 +5,25 @@ name: pr-title
 # Not a style rule. This repository squash-merges, so the PR title becomes
 # the subject of the one commit that lands on `main`, and that subject is
 # the ONLY thing `release-please.yml` reads to decide whether there is a
-# release to propose and whether it is a patch, a minor or a major. A title
-# of "Fix the export floor" is invisible to it; "fix: rank log levels by
-# severity, not enum order" is a patch.
+# release to propose and whether it is a patch, a minor or a major.
+# A title of "Fix the launcher" is invisible to it; "fix: the launcher
+# verifies the archive against the pinned checksum" is a patch. Before this
+# repository adopted release-please, its history was mostly in the first
+# shape, so without this gate the release PR would simply never appear, and
+# nothing would say why. (The repository setting that makes the title the
+# squash subject, `PR_TITLE`, is not something a workflow can assert; see
+# "Releasing" in the README.)
 #
-# This is deliberately a separate workflow rather than a job in `quality.yml`.
+# This is deliberately a separate workflow rather than a job in `ci.yml`.
 # A PR title is changed by editing it, which raises `edited` and not
-# `synchronize`; `quality.yml` does not listen for `edited`, and adding it
-# there would re-run the whole gated build every time somebody fixes a typo
-# in a title.
+# `synchronize`; `ci.yml` does not listen for `edited`, and adding it there
+# would re-run the entire gate — Rust, Flutter, the editor plugins — every
+# time somebody fixes a typo in a title.
 #
-# Implemented as a regex rather than a marketplace action on purpose, per
-# vaam-apps/.github's own release guide (docs/releasing.md): an unpinned
-# moving dependency inside a release pipeline is a real future-breakage
-# risk, and the whole rule is one regex.
+# Implemented as a regex rather than a marketplace action on purpose: this
+# repository's release-engineering notes treat an unpinned moving
+# dependency inside a pipeline as a real future breakage, and the whole
+# rule is one regex.
 
 on:
   pull_request:
@@ -36,8 +41,8 @@ jobs:
     steps:
       - name: Check the title
         env:
-          # Via the environment, never interpolated into the script body: a
-          # PR title is attacker-controlled text and `${{ }}` inside a
+          # Via the environment, never interpolated into the script body:
+          # a PR title is attacker-controlled text and `${{ }}` inside a
           # `run:` is textual substitution, so a title containing a quote
           # and a semicolon would execute.
           TITLE: ${{ github.event.pull_request.title }}
@@ -50,7 +55,8 @@ jobs:
           # declares changelog sections for. `feat` and `fix` move the
           # version; `!` (or a `BREAKING CHANGE:` footer in the body) makes
           # it a major. Everything else still produces a release, as a
-          # patch.
+          # patch — which is what this repository wants, since most of its
+          # work lands as `docs`, `refactor`, `ci` or `build`.
           PATTERN='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9,._/ -]+\))?!?: .+'
 
           if printf '%s' "$TITLE" | grep -qE "$PATTERN"; then
@@ -71,9 +77,9 @@ jobs:
             echo "then \`: \` and a subject. For example:"
             echo
             echo '```'
-            echo "fix: rank log levels by severity, not enum declaration order"
-            echo "feat(bridge): make the breadcrumb count configurable"
-            echo "refactor!: OtelZoneConfig replaces the top-level constants"
+            echo "fix: a catch-all segment keeps its trailing slash"
+            echo "feat(cli): fsp routes --json lists the localized paths"
+            echo "refactor(launcher)!: FSP_BASE_URL must include the scheme"
             echo '```'
             echo
             echo "This repository squash-merges, so this title is the commit"
@@ -88,13 +94,13 @@ jobs:
   # The title is only line 1 of what lands. This job checks the WHOLE squash
   # message with release-please's own parser, because a body line can make
   # release-please discard the entire commit — silently, with the workflow
-  # green. See ci/commit-message-parse/parse.mjs, and vaam-apps/.github's
-  # docs/releasing.md, for the incident and the exact grammar rule.
+  # green. See ci/commit-message-parse/parse.mjs for the incident and the
+  # exact grammar rule.
   #
-  # It lives in `pr-title.yml` rather than its own file because it shares
-  # this trigger exactly: `edited` (the title changed) and `synchronize`
-  # (the commits changed) are both inputs to the assembled message, and
-  # `quality.yml` still must not listen for `edited`.
+  # It lives in `pr-title.yml` rather than its own file because it shares this
+  # trigger exactly: `edited` (the title changed) and `synchronize` (the
+  # commits changed) are both inputs to the assembled message, and `ci.yml`
+  # still must not listen for `edited`.
   commit-message-parses:
     name: the squash message parses as a conventional commit
     runs-on: ubuntu-latest
@@ -108,12 +114,12 @@ jobs:
           node-version: '26'
 
       # A standalone npm project with a committed lockfile and an exact pin,
-      # deliberately outside any pub/pnpm workspace — it is a CI tool, not
-      # package code. The pin is `@conventional-commits/parser` 0.4.1, the
-      # only version satisfying release-please 17.6.0's own `^0.4.1`, so
-      # this guard parses with exactly the grammar release-please will use.
-      # A looser range here would let the two disagree, which is the one
-      # way this check could report a verdict that does not match reality.
+      # deliberately outside editors/vscode's npm project — a CI tool, not
+      # package code. The pin is `@conventional-commits/parser` 0.4.1, the only
+      # version satisfying release-please 17.6.0's own `^0.4.1`, so this
+      # guard parses with exactly the grammar release-please will use. A
+      # looser range here would let the two disagree, which is the one way
+      # this check could report a verdict that does not match reality.
       - name: Install the parser
         working-directory: ci/commit-message-parse
         run: npm ci

@@ -65,6 +65,21 @@ void main() {
         parsePubspecVersion('version: "1.2.3-dev.1" # note'),
         '1.2.3-dev.1',
       );
+      // release-please's annotation trails the version line
+      expect(
+        parsePubspecVersion(
+          'name: x\nversion: 0.3.1 # x-release-please'
+          '-version\nhomepage: y',
+        ),
+        '0.3.1',
+      );
+      expect(
+        parsePubspecVersion(
+          "version: '0.3.1'#x-release-please"
+          "-version",
+        ),
+        '0.3.1',
+      );
       expect(parsePubspecVersion('name: x\n  version: 9.9.9'), isNull);
       expect(parsePubspecVersion('name: x'), isNull);
     });

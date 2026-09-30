@@ -139,7 +139,7 @@ fn a_layouts_data_dart_is_the_data_of_its_section() {
         &c,
         &[
             // The layout waits for the data, showing the default loading and error views.
-            "builder: (context, state, child) => DataView(",
+            "pageBuilder: (context, state, child) => layoutPage(", "DataView(",
             "watch: (ref) => ref.watch(_data1),",
             "data: (d) => _i1.ShopLayout(child: child, shop: d),",
             "loading: () => const DefaultLoading(),",
@@ -240,7 +240,7 @@ fn a_tab_layout_can_be_a_section_too() {
         ("(tabs)/one/page.dart", &widget("OnePage", "", "")),
         ("(tabs)/two/page.dart", &widget("TwoPage", "", "")),
     ]);
-    has(&c, &["StatefulShellRoute.indexedStack(", "builder: (context, state, navigationShell) => DataView(", "_i1.TabsLayout(navigationShell: navigationShell, me: d)"]);
+    has(&c, &["StatefulShellRoute.indexedStack(", "pageBuilder: (context, state, navigationShell) => layoutPage(", "DataView(", "_i1.TabsLayout(navigationShell: navigationShell, me: d)"]);
 }
 
 #[test]
@@ -413,7 +413,7 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
     new_route(dir.path(), &args("(shop)/cart", false, false)).unwrap();
     let (code, diags, _) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
     assert!(diags.0.is_empty(), "{:?}", diags.0);
-    has(&code, &["builder: (context, state, child) => DataView(", "final _data1 = FutureProvider.autoDispose("]);
+    has(&code, &["pageBuilder: (context, state, child) => layoutPage(", "DataView(", "final _data1 = FutureProvider.autoDispose("]);
 }
 
 // --- together with guards, redirects and tab options -----------------------------------
@@ -453,5 +453,5 @@ fn a_tab_section_keeps_its_tab_options() {
         ("(tabs)/one/page.dart", &widget("OnePage", "", "")),
         ("(tabs)/two/page.dart", &widget("TwoPage", "", "")),
     ]);
-    has(&c, &["builder: (context, state, navigationShell) => DataView(", "preload: true,"]);
+    has(&c, &["pageBuilder: (context, state, navigationShell) => layoutPage(", "DataView(", "preload: true,"]);
 }

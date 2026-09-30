@@ -12,6 +12,7 @@ use crate::config::Config;
 use crate::resolve::{self, App, Bind, Branch, Data, Guard, Route, Transition};
 use crate::dart::Span;
 use crate::diag::Diags;
+use crate::manifest::{self, ManifestCx};
 use crate::scan::{Kind, Seg};
 use crate::templates;
 
@@ -27,6 +28,8 @@ struct FileCx {
     routes: Vec<RouteCx>,
     params_fns: Vec<ParamsFnCx>,
     providers: Vec<ProviderCx>,
+    /// The route manifest, unless `output_manifest:` moves it to its own library.
+    manifest: Option<ManifestCx>,
 }
 
 /// A GoRoute; a ShellRoute when `layout` is set; a StatefulShellRoute when
@@ -69,10 +72,12 @@ struct BranchCx {
     /// A Dart expression: the app location joined to the mount point.
     initial_location: Option<String>,
     preload: bool,
+    /// A Dart string literal: the tab's Navigator scope, from its folder.
+    restoration_id: String,
 }
 
 /// `'it\'s'`: a Dart string literal for `s`.
-fn dart_str(s: &str) -> String {
+pub fn dart_str(s: &str) -> String {
     let mut out = String::from("'");
     for c in s.chars() {
         if matches!(c, '\'' | '\\' | '$') {
@@ -106,6 +111,8 @@ struct LayoutCx {
     page: String,
     data: Option<ViewDataCx>,
     not_found: String,
+    /// The Navigator's `restorationScopeId`, from the layout's folder.
+    restoration_id: String,
 }
 
 /// A not_found.dart below the root: its URL prefix (`['products', ':id']`) and widget.
@@ -220,10 +227,19 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let tree = routes_of(app, 0, true, "", &[], &mut fns);
     check_order(&tree, diags);
     check_tab_starts(&tree, diags);
+    // With no `output_manifest:` the manifest lives here, and imports its meta.dart files here.
+    let (manifest, metas) = match cfg.output_manifest {
+        None => {
+            let (m, metas) = manifest::cx(app, app.imports.len());
+            (Some(m), metas)
+        }
+        Some(_) => (None, vec![]),
+    };
     let cx = FileCx {
         app_dir: cfg.app_dir.clone(),
         table: table(app),
-        imports: app.imports.iter().map(|rel| cfg.import_path(&rel.replace('$', "\\$"))).collect(),
+        imports: app.imports.iter().chain(&metas).map(|rel| cfg.import_path(&rel.replace('$', "\\$"))).collect(),
+        manifest,
         tree,
         not_found: match &app.not_found {
             Some(w) => w.call(|_| "uri".into()),
@@ -311,6 +327,19 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize],
     out
 }
 
+/// A folder as restoration ids spell it: `(tabs)/`, or `/` for the app folder.
+fn folder_id(dir: &str) -> String {
+    if dir.is_empty() { "/".into() } else { format!("{dir}/") }
+}
+
+/// A tab as `tabs` names it: its folder's name, or `.` for the layout's own page.
+fn branch_name(app: &App, b: Branch) -> String {
+    match b {
+        Branch::Own => ".".into(),
+        Branch::Folder(c) => app.routes[c].dir.rsplit('/').next().unwrap_or_default().to_string(),
+    }
+}
+
 /// What a folder's layout builds: the layout widget, behind its section's data.dart when
 /// it has one, and inside the data.dart files of the sections above it that it asks for.
 fn layout_cx(app: &App, id: usize, layout: &resolve::Widget, fns: &mut BTreeSet<ParamsFn>) -> LayoutCx {
@@ -327,6 +356,7 @@ fn layout_cx(app: &App, id: usize, layout: &resolve::Widget, fns: &mut BTreeSet<
         ParamsFn::Layout(id).name()
     });
     LayoutCx {
+        restoration_id: dart_str(&format!("layout:{}", folder_id(&r.dir))),
         seg_fn,
         page: wrapped,
         data: section.map(|d| ViewDataCx {
@@ -526,6 +556,7 @@ fn tab_routes(
                 .and_then(|o| o.initial_location.as_ref())
                 .map(|l| format!("joinLocation(at, {})", dart_str(l))),
             preload: options.get(i).is_some_and(|o| o.preload),
+            restoration_id: dart_str(&format!("tab:{}{}", folder_id(&app.routes[id].dir), branch_name(app, *b))),
         })
         .filter(|b| !b.routes.is_empty())
         .collect();

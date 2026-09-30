@@ -4,6 +4,7 @@ mod diag;
 mod emit;
 mod format;
 mod init;
+mod manifest;
 mod resolve;
 mod routes;
 mod scaffold;
@@ -121,7 +122,8 @@ fn find_project(explicit: Option<PathBuf>) -> Result<PathBuf> {
 pub struct Outcome {
     pub wrote: bool,
     pub routes: usize,
-    /// The output file as the user spells it (`lib/app.g.dart`).
+    /// The output file as the user spells it (`lib/app.g.dart`); with a separate
+    /// manifest library, both, comma-separated.
     pub output: String,
 }
 
@@ -167,30 +169,45 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, show: impl FnOnce(&Path, 
     if !app_dir.is_dir() {
         bail!("{} not found (set `fespalier: app_dir:` in pubspec.yaml, or run `fsp init`)", app_dir.display());
     }
-    let (mut code, diags, routes) = build(&app_dir, cfg)?;
+    let (code, diags, app) = analyze(&app_dir, cfg)?;
+    let routes = app.routes.iter().filter(|r| r.is_route()).count();
     show(&app_dir, &diags);
     if diags.has_errors() {
-        bail!("{} error(s); {} left unchanged", diags.error_count(), cfg.output);
+        let left = match &cfg.output_manifest {
+            Some(m) => format!("{} and {m}", cfg.output),
+            None => cfg.output.clone(),
+        };
+        bail!("{} error(s); {left} left unchanged", diags.error_count());
     }
-    let out = project.join(&cfg.output);
-    // `check` writes and compares nothing, so it never needs `dart`. `gen` formats
-    // before comparing, so a formatted file that is up to date reads "unchanged".
-    if write && cfg.format {
-        let (formatted, warning) = format::format_dart(&code, &out);
-        if let Some(w) = warning {
-            eprintln!("{w}");
-        }
-        code = formatted;
-    }
+    // The manifest is a second file when `output_manifest:` asks for one. `check`
+    // renders it too, but writes and compares nothing.
+    let mut files = vec![(cfg.output.clone(), code)];
+    files.extend(cfg.output_manifest.clone().zip(manifest::emit(&app, cfg)));
     let mut wrote = false;
-    if write && fs::read_to_string(&out).ok().as_deref() != Some(code.as_str()) {
-        if let Some(dir) = out.parent() {
-            fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    for (path, mut code) in files {
+        let out = project.join(&path);
+        // `check` writes and compares nothing, so it never needs `dart`. `gen` formats
+        // before comparing, so a formatted file that is up to date reads "unchanged".
+        if write && cfg.format {
+            let (formatted, warning) = format::format_dart(&code, &out);
+            if let Some(w) = warning {
+                eprintln!("{w}");
+            }
+            code = formatted;
         }
-        fs::write(&out, &code).with_context(|| format!("writing {}", out.display()))?;
-        wrote = true;
+        if write && fs::read_to_string(&out).ok().as_deref() != Some(code.as_str()) {
+            if let Some(dir) = out.parent() {
+                fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+            }
+            fs::write(&out, &code).with_context(|| format!("writing {}", out.display()))?;
+            wrote = true;
+        }
     }
-    Ok(Outcome { wrote, routes, output: cfg.output.clone() })
+    let output = match &cfg.output_manifest {
+        Some(m) => format!("{}, {m}", cfg.output),
+        None => cfg.output.clone(),
+    };
+    Ok(Outcome { wrote, routes, output })
 }
 
 pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize)> {
@@ -204,6 +221,7 @@ pub fn analyze(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, res
     let mut diags = diag::Diags::default();
     let tree = scan::scan(app_dir, &mut diags)?;
     let app = resolve::resolve(&tree, &mut diags);
+    manifest::check(&app, cfg, &mut diags);
     let code = emit::emit(&app, cfg, &mut diags);
     Ok((code, diags, app))
 }
@@ -211,12 +229,12 @@ pub fn analyze(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, res
 /// Whether a filesystem event can change what the app folder generates.
 /// Reads (`Access`, which the generator itself causes) and metadata-only changes
 /// don't, and neither does the generated file when it lives in the app folder.
-fn relevant(ev: &Event, output: &Path) -> bool {
+fn relevant(ev: &Event, outputs: &[PathBuf]) -> bool {
     let kind_matters = match ev.kind {
         EventKind::Access(_) | EventKind::Modify(ModifyKind::Metadata(_)) => false,
         EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_) | EventKind::Any | EventKind::Other => true,
     };
-    kind_matters && (ev.paths.is_empty() || ev.paths.iter().any(|p| p != output))
+    kind_matters && (ev.paths.is_empty() || ev.paths.iter().any(|p| !outputs.contains(p)))
 }
 
 /// What `watch` last showed, so an unchanged rerun stays quiet.
@@ -231,7 +249,7 @@ struct Shown {
 fn watch(project: &Path) -> Result<()> {
     let cfg = Config::load(project)?;
     let app_dir = project.join(&cfg.app_dir);
-    let output = project.join(&cfg.output);
+    let outputs: Vec<PathBuf> = [Some(&cfg.output), cfg.output_manifest.as_ref()].into_iter().flatten().map(|o| project.join(o)).collect();
     let mut shown = Shown::default();
     let mut run = |first: bool| {
         let t = Instant::now();
@@ -257,10 +275,9 @@ fn watch(project: &Path) -> Result<()> {
     run(true);
 
     let (tx, rx) = mpsc::channel();
-    let watched_output = output.clone();
     let mut watcher = RecommendedWatcher::new(
         move |res: notify::Result<Event>| match res {
-            Ok(ev) if relevant(&ev, &watched_output) => {
+            Ok(ev) if relevant(&ev, &outputs) => {
                 let _ = tx.send(());
             }
             Ok(_) => {}
@@ -280,6 +297,8 @@ fn watch(project: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod cli_tests;
+#[cfg(test)]
+mod manifest_tests;
 #[cfg(test)]
 mod nav_tests;
 #[cfg(test)]

@@ -63,8 +63,8 @@ fn a_tab_layout_nests_in_a_branch_of_another() {
     has(
         &c,
         &[
-            "builder: (context, state, navigationShell) => _i0.TabsLayout(navigationShell: navigationShell),",
-            "builder: (context, state, navigationShell) => _i2.InnerLayout(shell: navigationShell),",
+            "_i0.TabsLayout(navigationShell: navigationShell),",
+            "_i2.InnerLayout(shell: navigationShell),",
             "path: joinLocation(at, '/library/authors'),",
             "path: joinLocation(at, '/library/books'),",
         ],

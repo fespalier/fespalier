@@ -166,6 +166,9 @@ pub struct Route {
     /// The nearest not_found.dart below the root at or above this folder: what an
     /// unparsable segment shows. `None` means the root's.
     pub not_found: Option<Widget>,
+    /// The folder's `meta.dart` (relative to the app folder) when it has a valid
+    /// one and a route to describe. Not inherited: it belongs to this route alone.
+    pub meta: Option<String>,
 }
 
 impl Route {
@@ -374,6 +377,7 @@ impl Resolver<'_> {
             tabs: None,
             not_found: None,
             tab_options: vec![],
+            meta: None,
         });
 
         let mut segs = up.segs.clone();
@@ -567,6 +571,7 @@ impl Resolver<'_> {
         let has_route = has_page || redirect.is_some();
         self.app.routes[id].page_span = page_span;
         self.app.routes[id].not_found = not_found;
+        self.app.routes[id].meta = modules.get(&Kind::Meta).and_then(|m| self.meta(m, node, has_route));
         let transition = here.transition.clone().filter(|_| has_page);
         let r = &mut self.app.routes[id];
         (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard, r.redirect, r.transition) =
@@ -767,6 +772,31 @@ impl Resolver<'_> {
             }
         }
         out
+    }
+
+    /// `const meta = <any const expression>;` in a folder's meta.dart: the manifest
+    /// refers to it by import, so it must be a `const` variable called `meta`.
+    fn meta(&mut self, m: &Module, node: &Node, has_route: bool) -> Option<String> {
+        let file = node.rel(Kind::Meta);
+        let mut found = m.variables.iter().filter(|v| v.name == "meta");
+        let Some(v) = found.next() else {
+            self.diags.error(&file, None, "expected `const meta = <a const expression>;`");
+            return None;
+        };
+        if let Some(again) = found.next() {
+            self.diags.error(&file, Some(&again.span), "`meta` is declared twice");
+        }
+        if !v.is_const {
+            let msg = "`meta` must be `const` (the route manifest lists it in a const list): write `const meta = ...;`";
+            self.diags.error(&file, Some(&v.span), msg);
+            return None;
+        }
+        if !has_route {
+            let msg = "meta.dart describes a route, but this folder has no page.dart or redirect.dart; it is ignored";
+            self.diags.warn(&file, None, msg);
+            return None;
+        }
+        Some(file)
     }
 
     /// The one public widget class a view file exports.

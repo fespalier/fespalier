@@ -62,7 +62,9 @@ fn example_app_generates_cleanly() {
             "path: joinLocation(at, '/')",
             // The root transition.dart covers every route.
             "pageBuilder: (context, state) => _i3.transition(",
-            "builder: (context, state, child) => _i4.AppLayout(child: child),",
+            "pageBuilder: (context, state, child) => layoutPage(",
+            "'layout:/',",
+            "_i4.AppLayout(child: child),",
             "({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
             "_i9.GreetPage(name: v.name)",
             "data: (d) => _i14.ProductPage(product: d),",
@@ -82,10 +84,18 @@ fn example_app_generates_cleanly() {
 #[test]
 fn committed_output_is_up_to_date() {
     for name in ["shop", "features", "tabs"] {
-        let (code, diags, _) = build(&examples(name).join("lib/app"), &Config::default()).unwrap();
+        // The examples' own pubspec.yaml: `output_manifest:` and `meta:` change what is written.
+        let cfg = Config::load(&examples(name)).unwrap();
+        let (code, diags, app) = crate::analyze(&examples(name).join("lib/app"), &cfg).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
-        let committed = fs::read_to_string(examples(name).join("lib/app.g.dart")).unwrap_or_default();
-        assert!(committed == code, "examples/{name}/lib/app.g.dart is stale; run `fsp gen --project examples/{name}`");
+        let committed = fs::read_to_string(examples(name).join(&cfg.output)).unwrap_or_default();
+        assert!(committed == code, "examples/{name}/{} is stale; run `fsp gen --project examples/{name}`", cfg.output);
+        // A separate manifest library is checked in too.
+        if let Some(path) = &cfg.output_manifest {
+            let manifest = crate::manifest::emit(&app, &cfg).unwrap();
+            let committed = fs::read_to_string(examples(name).join(path)).unwrap_or_default();
+            assert!(committed == manifest, "examples/{name}/{path} is stale; run `fsp gen --project examples/{name}`");
+        }
     }
 }
 
@@ -250,7 +260,7 @@ fn layouts_get_child_and_segments_above_them() {
     has(
         &c,
         &[
-            "builder: (context, state, child) => buildWithParams(\n          () => _layout1(state),\n          (v) => _i1.ShopLayout(child: child, shop: v.shop),",
+            "pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:\\$shop/',\n          buildWithParams(\n            () => _layout1(state),\n            (v) => _i1.ShopLayout(child: child, shop: v.shop),",
             "redirect: (context, state) => guardWithParams(\n              () => _params1(state),\n              (v) => _i2.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),",
             "path: joinLocation(at, '/:shop')",
         ],
@@ -514,7 +524,7 @@ fn query_params_reach_every_file_and_key_data() {
             "final List<String> tags;",
             "String get location => withQuery(joinLocation(AppRoutes.base, '/search'), {'q': q, 'page': page, 'tags': tags, 'admin': admin});",
             // A layout reads the query too, through its own parser.
-            "builder: (context, state, child) => buildWithParams(\n          () => _layout0(state),\n          (v) => _i0.Shell(child: child, theme: v.theme),",
+            "pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:/',\n          buildWithParams(\n            () => _layout0(state),\n            (v) => _i0.Shell(child: child, theme: v.theme),",
             "({String? theme}) _layout0(GoRouterState s) => (theme: Query.asString(s, 'theme'));",
         ],
     );
@@ -553,10 +563,10 @@ fn group_folders_share_a_layout_without_adding_to_the_url() {
             "//   /:id    ItemRoute   (app)/$id/page.dart  (data)\n//   /       HomeRoute   (marketing)/page.dart  (layout)",
             // Each group is its own ShellRoute; the URLs have no trace of it.
             // The one holding `/:id` goes last, so `/about` isn't read as an id.
-            "      ShellRoute(\n        builder: (context, state, child) => _i5.MarketingLayout(child: child),",
-            "      ShellRoute(\n        builder: (context, state, child) => _i1.AppShell(child: child),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/:id'),",
+            "      ShellRoute(\n        pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:(marketing)/',\n          _i5.MarketingLayout(child: child),",
+            "      ShellRoute(\n        pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:(app)/',\n          _i1.AppShell(child: child),\n        ),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/:id'),",
             "loading: () => _i0.AppLoading(),",
-            "_i5.MarketingLayout(child: child),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/'),",
+            "_i5.MarketingLayout(child: child),\n        ),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/'),",
             "GoRoute(\n                path: 'about',",
             "String get location => joinLocation(AppRoutes.base, '/about');",
             "String get location => joinLocation(AppRoutes.base, '/$id');",
@@ -776,8 +786,8 @@ fn tab_layout_makes_a_branch_of_each_folder() {
     has(
         &c,
         &[
-            "StatefulShellRoute.indexedStack(\n        builder: (context, state, navigationShell) => _i1.TabsLayout(navigationShell: navigationShell),\n        branches: [",
-            "StatefulShellBranch(\n            routes: [\n              GoRoute(\n                path: joinLocation(at, '/'),\n                builder: (context, state) => _i0.HomePage(),\n              ),\n            ],\n          ),",
+            "StatefulShellRoute.indexedStack(\n        pageBuilder: (context, state, navigationShell) => layoutPage(\n          context,\n          state,\n          'layout:/',\n          _i1.TabsLayout(navigationShell: navigationShell),\n        ),\n        branches: [",
+            "StatefulShellBranch(\n            routes: [\n              GoRoute(\n                path: joinLocation(at, '/'),\n                builder: (context, state) => _i0.HomePage(),\n              ),\n            ],\n            restorationScopeId: 'tab:/.',\n          ),",
             "path: joinLocation(at, '/search'),",
             // A group is a branch too, and adds nothing to the URL.
             "path: joinLocation(at, '/profile'),",
@@ -908,7 +918,7 @@ fn a_tab_holds_nested_routes_data_guards_and_transitions() {
             "loading: () => _i7.Busy(),",
             "pageBuilder: (context, state) => _i0.transition(",
             // A plain layout inside a tab is still a ShellRoute, within the branch.
-            "ShellRoute(\n                builder: (context, state, child) => _i4.HelpLayout(child: child),",
+            "ShellRoute(\n                pageBuilder: (context, state, child) => layoutPage(\n                  context,\n                  state,\n                  'layout:(tabs)/help/',\n                  _i4.HelpLayout(child: child),\n                ),",
         ],
     );
     assert!(at(&c, "path: 'cart',") < at(&c, "path: ':id',"), "{c}");
@@ -929,7 +939,7 @@ fn tab_layouts_read_segments_and_query_like_other_layouts() {
     has(
         &c,
         &[
-            "StatefulShellRoute.indexedStack(\n            builder: (context, state, navigationShell) => buildWithParams(\n              () => _layout2(state),\n              (v) => _i1.ShopTabs(shell: navigationShell, shop: v.shop, theme: v.theme),\n              () => notFound(state.uri),\n            ),",
+            "StatefulShellRoute.indexedStack(\n            pageBuilder: (context, state, navigationShell) => layoutPage(\n              context,\n              state,\n              'layout:\\$shop/(tabs)/',\n              buildWithParams(\n                () => _layout2(state),\n                (v) => _i1.ShopTabs(shell: navigationShell, shop: v.shop, theme: v.theme),\n                () => notFound(state.uri),\n              ),\n            ),",
             "({int shop, String? theme}) _layout2(GoRouterState s) => (shop: Segment.asInt(s, 'shop'), theme: Query.asString(s, 'theme'));",
             // Below the page that holds `$shop`, the tabs' paths are relative to it.
             "path: joinLocation(at, '/:shop'),",

@@ -39,10 +39,12 @@ abstract final class AppRoutes {
   static GoRouter router({
     String initialLocation = '/',
     List<NavigatorObserver>? observers,
+    String? restorationScopeId,
   }) =>
       GoRouter(
         initialLocation: initialLocation,
         observers: observers,
+        restorationScopeId: restorationScopeId,
         routes: mount(),
         errorBuilder: (context, state) => notFound(state.uri),
       );
@@ -52,7 +54,12 @@ abstract final class AppRoutes {
     _base = at;
     return [
       ShellRoute(
-        builder: (context, state, child) => _i4.AppLayout(child: child),
+        pageBuilder: (context, state, child) => layoutPage(
+          context,
+          state,
+          'layout:/',
+          _i4.AppLayout(child: child),
+        ),
         routes: [
           GoRoute(
             path: joinLocation(at, '/'),
@@ -122,11 +129,84 @@ abstract final class AppRoutes {
             ],
           ),
         ],
+        restorationScopeId: 'layout:/',
       ),
     ];
   }
 
   static Widget notFound(Uri uri) => _i5.NotFound(uri: uri);
+
+  /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
+  static List<RouteInfo<Object?>> get all => AppManifest.all;
+
+  /// Each route by its typed-route class: [AppManifest.byType].
+  static Map<Type, RouteInfo<Object?>> get byType => AppManifest.byType;
+
+  /// Each route by its path template: [AppManifest.byPath].
+  static Map<String, RouteInfo<Object?>> get byPath => AppManifest.byPath;
+}
+
+/// What `fsp gen` knows about every route: its typed route, path template,
+/// folder, groups, layouts, parameters and `meta.dart`.
+abstract final class AppManifest {
+  /// Every route, in the order of the table at the top of the file.
+  static const List<RouteInfo<Object?>> all = [
+    RouteInfo(
+      type: HomeRoute,
+      path: '/',
+      folder: '',
+      layouts: [''],
+    ),
+    RouteInfo(
+      type: CartRoute,
+      path: '/cart',
+      folder: 'cart',
+      layouts: [''],
+    ),
+    RouteInfo(
+      type: CheckoutRoute,
+      path: '/checkout',
+      folder: 'checkout',
+      layouts: [''],
+    ),
+    RouteInfo(
+      type: GreetRoute,
+      path: '/greet/:name',
+      folder: 'greet/\$name',
+      layouts: [''],
+      segments: [RouteParam('name', 'String')],
+    ),
+    RouteInfo(
+      type: ProductsRoute,
+      path: '/products',
+      folder: 'products',
+      layouts: [''],
+      dataKeys: [],
+    ),
+    RouteInfo(
+      type: ProductRoute,
+      path: '/products/:id',
+      folder: 'products/\$id',
+      layouts: [''],
+      segments: [RouteParam('id', 'int')],
+      dataKeys: ['id'],
+    ),
+  ];
+
+  /// Each route by its typed-route class: `AppManifest.byType[ProductRoute]`.
+  static final Map<Type, RouteInfo<Object?>> byType = Map.unmodifiable({
+    for (final r in all) r.type: r,
+  });
+
+  /// Each route by its path template: `AppManifest.byPath['/products/:id']`.
+  static final Map<String, RouteInfo<Object?>> byPath = Map.unmodifiable({
+    for (final r in all) r.path: r,
+  });
+
+  /// The route [state] is at, or null when it is not one of these (a not-found
+  /// page, say). Handy in a layout: `AppManifest.of(GoRouterState.of(context))`.
+  static RouteInfo<Object?>? of(GoRouterState state) =>
+      byPath[routeTemplate(state, AppRoutes.base)];
 }
 
 /// `/` → page.dart

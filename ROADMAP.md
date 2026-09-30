@@ -6,8 +6,7 @@ What fespalier doesn't do yet. Released features are in CHANGELOG.md.
 
 - Catch-all segments (`[...slug]`): go_router parameters don't span `/`.
 - Typed `extra` objects passed between routes.
-- Route metadata: web tab titles, analytics names.
-- State restoration (`restorationScopeId`).
+- Manifest `presentation` for dialog and sheet routes: `transition.dart` decides that at runtime, so the manifest only says `page` or `redirect`.
 - Keep showing old data while `data.dart` refreshes (a section's data reloading now shows loading for the whole section).
 - Case-insensitive paths and trailing slashes.
 - Editor extension (VS Code / IntelliJ) on top of the JSON diagnostics.

@@ -1,0 +1,57 @@
+{#- The AppManifest class, shared by app.g.dart and the separate manifest library.
+    Every value is a Dart expression worked out in manifest.rs. -#}
+{% macro body(m) -%}
+/// What `fsp gen` knows about every route: its typed route, path template,
+/// folder, groups, layouts, parameters and `meta.dart`.
+abstract final class AppManifest {
+  /// Every route, in the order of the table at the top of the file.
+  static const List<RouteInfo<Object?>> all = [
+{% for r in m.routes %}
+    RouteInfo(
+      type: {{ r.class }},
+      path: {{ r.path }},
+      folder: {{ r.folder }},
+{% if r.redirect %}
+      presentation: RoutePresentation.redirect,
+{% endif %}
+{% if r.groups %}
+      groups: {{ r.groups }},
+{% endif %}
+{% if r.layouts %}
+      layouts: {{ r.layouts }},
+{% endif %}
+{% if r.segments %}
+      segments: {{ r.segments }},
+{% endif %}
+{% if r.query %}
+      query: {{ r.query }},
+{% endif %}
+{% if r.tabs %}
+      tabs: {{ r.tabs }},
+{% endif %}
+{% if r.data_keys %}
+      dataKeys: {{ r.data_keys }},
+{% endif %}
+{% if r.meta %}
+      meta: {{ r.meta }},
+{% endif %}
+    ),
+{% endfor %}
+  ];
+
+  /// Each route by its typed-route class: `AppManifest.byType[ProductRoute]`.
+  static final Map<Type, RouteInfo<Object?>> byType = Map.unmodifiable({
+    for (final r in all) r.type: r,
+  });
+
+  /// Each route by its path template: `AppManifest.byPath['/products/:id']`.
+  static final Map<String, RouteInfo<Object?>> byPath = Map.unmodifiable({
+    for (final r in all) r.path: r,
+  });
+
+  /// The route [state] is at, or null when it is not one of these (a not-found
+  /// page, say). Handy in a layout: `AppManifest.of(GoRouterState.of(context))`.
+  static RouteInfo<Object?>? of(GoRouterState state) =>
+      byPath[routeTemplate(state, AppRoutes.base)];
+}
+{%- endmacro %}

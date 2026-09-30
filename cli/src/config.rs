@@ -5,6 +5,8 @@
 //!   app_dir: lib/app        # default
 //!   output: lib/app.g.dart  # default
 //!   format: false           # default; true runs `dart format` on the output
+//!   output_manifest: lib/app.routes.g.dart   # default: none, the manifest is in `output`
+//!   meta: optional          # default; `required` makes a route without meta.dart an error
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -28,11 +30,22 @@ pub struct Config {
     pub output: String,
     /// Run `dart format` on the generated file (when `dart` is on PATH).
     pub format: bool,
+    /// Where the route manifest (`AppManifest`) goes when it is its own library:
+    /// normalized, `/`-separated, under `lib/`. `None` puts it in `output`.
+    pub output_manifest: Option<String>,
+    /// `meta: required`: every route needs a meta.dart.
+    pub meta_required: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { app_dir: DEFAULT_APP_DIR.into(), output: DEFAULT_OUTPUT.into(), format: false }
+        Config {
+            app_dir: DEFAULT_APP_DIR.into(),
+            output: DEFAULT_OUTPUT.into(),
+            format: false,
+            output_manifest: None,
+            meta_required: false,
+        }
     }
 }
 
@@ -58,6 +71,8 @@ struct RawConfig {
     app_dir: Option<String>,
     output: Option<String>,
     format: Option<bool>,
+    output_manifest: Option<String>,
+    meta: Option<String>,
 }
 
 impl Config {
@@ -72,6 +87,22 @@ impl Config {
     /// `lib/pages` with the output in `lib/router/`.
     pub fn import_path(&self, rel: &str) -> String {
         let dir = relative_dir(parent(&self.output), &self.app_dir);
+        if dir.is_empty() { rel.to_string() } else { format!("{dir}/{rel}") }
+    }
+
+    /// The import path from the manifest file's folder to the main output file:
+    /// `app.g.dart` for `lib/app.routes.g.dart`. `None` without `output_manifest`.
+    pub fn output_from_manifest(&self) -> Option<String> {
+        let manifest = self.output_manifest.as_deref()?;
+        let dir = relative_dir(parent(manifest), parent(&self.output));
+        let file = self.output.rsplit('/').next().unwrap_or(&self.output);
+        Some(if dir.is_empty() { file.to_string() } else { format!("{dir}/{file}") })
+    }
+
+    /// The import path from the manifest file's folder to `rel` inside the app folder.
+    pub fn import_path_from_manifest(&self, rel: &str) -> String {
+        let manifest = self.output_manifest.as_deref().unwrap_or(&self.output);
+        let dir = relative_dir(parent(manifest), &self.app_dir);
         if dir.is_empty() { rel.to_string() } else { format!("{dir}/{rel}") }
     }
 
@@ -108,6 +139,21 @@ impl Pubspec {
                 if !config.output.ends_with(".dart") {
                     bail!("`fespalier.output` must be a .dart file, got `{o}`");
                 }
+            }
+            if let Some(m) = c.output_manifest {
+                let path = lib_path("output_manifest", &m)?;
+                if !path.ends_with(".dart") {
+                    bail!("`fespalier.output_manifest` must be a .dart file, got `{m}`");
+                }
+                if path == config.output {
+                    bail!("`fespalier.output_manifest` and `fespalier.output` are the same file (`{path}`); leave `output_manifest` out to keep the manifest in `output`");
+                }
+                config.output_manifest = Some(path);
+            }
+            match c.meta.as_deref() {
+                None | Some("optional") => {}
+                Some("required") => config.meta_required = true,
+                Some(other) => bail!("`fespalier.meta` must be `required` or `optional`, got `{other}`"),
             }
         }
         let has_dependency = matches!(&raw.dependencies, Some(Value::Mapping(m)) if m.contains_key("fespalier"));

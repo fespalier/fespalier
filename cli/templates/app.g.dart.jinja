@@ -1,5 +1,6 @@
 {#- lib/app.g.dart. Expressions (widget calls, paths) are worked out in emit.rs;
     this template owns the shape of the file. -#}
+{% from "manifest_body.dart" import body as manifest_body %}
 {% macro view(b) -%}
 {% if b.data -%}
 DataView(
@@ -39,10 +40,18 @@ guardWithParams(
 {% macro layout_call(l) -%}
 {{ (with_segments(l.seg_fn, view(l), l.not_found) if l.seg_fn else view(l)) | indent(2) }}
 {%- endmacro %}
+{% macro layout_page(l) -%}
+layoutPage(
+  context,
+  state,
+  {{ l.restoration_id }},
+  {{ (with_segments(l.seg_fn, view(l), l.not_found) if l.seg_fn else view(l)) | indent(2) }},
+)
+{%- endmacro %}
 {% macro route(r) -%}
 {% if r.branches -%}
 StatefulShellRoute.indexedStack(
-  builder: (context, state, navigationShell) => {{ layout_call(r.layout) }},
+  pageBuilder: (context, state, navigationShell) => {{ layout_page(r.layout) | indent(2) }},
   branches: [
 {% for b in r.branches %}
     StatefulShellBranch(
@@ -57,18 +66,21 @@ StatefulShellRoute.indexedStack(
         {{ route(c) | indent(8) }},
 {% endfor %}
       ],
+      restorationScopeId: {{ b.restoration_id }},
     ),
 {% endfor %}
   ],
+  restorationScopeId: {{ r.layout.restoration_id }},
 )
 {%- elif r.layout -%}
 ShellRoute(
-  builder: (context, state, child) => {{ layout_call(r.layout) }},
+  pageBuilder: (context, state, child) => {{ layout_page(r.layout) | indent(2) }},
   routes: [
 {% for c in r.routes %}
     {{ route(c) | indent(4) }},
 {% endfor %}
   ],
+  restorationScopeId: {{ r.layout.restoration_id }},
 )
 {%- else -%}
 GoRoute(
@@ -127,10 +139,12 @@ abstract final class AppRoutes {
   static GoRouter router({
     String initialLocation = '/',
     List<NavigatorObserver>? observers,
+    String? restorationScopeId,
   }) =>
       GoRouter(
         initialLocation: initialLocation,
         observers: observers,
+        restorationScopeId: restorationScopeId,
         routes: mount(),
         errorBuilder: (context, state) => notFound(state.uri),
       );
@@ -160,7 +174,22 @@ abstract final class AppRoutes {
 {% else %}
   static Widget notFound(Uri uri) => {{ not_found }};
 {% endif %}
+{% if manifest %}
+
+  /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
+  static List<RouteInfo<Object?>> get all => AppManifest.all;
+
+  /// Each route by its typed-route class: [AppManifest.byType].
+  static Map<Type, RouteInfo<Object?>> get byType => AppManifest.byType;
+
+  /// Each route by its path template: [AppManifest.byPath].
+  static Map<String, RouteInfo<Object?>> get byPath => AppManifest.byPath;
+{% endif %}
 }
+{% if manifest %}
+
+{{ manifest_body(manifest) }}
+{% endif %}
 {% for r in routes %}
 
 /// `{{ r.pattern }}` → {{ r.file }}

@@ -71,6 +71,11 @@ import 'app/teams/\$teamId/settings/page.dart' as _i41;
 import 'app/ticks/data.dart' as _i42;
 import 'app/ticks/page.dart' as _i43;
 import 'app/ticks/transition.dart' as _i44;
+import 'app/meta.dart' as _i45;
+import 'app/login/meta.dart' as _i46;
+import 'app/old-search/meta.dart' as _i47;
+import 'app/photos/meta.dart' as _i48;
+import 'app/photos/\$id/meta.dart' as _i49;
 
 /// The file tree under lib/app/, ready to mount.
 abstract final class AppRoutes {
@@ -83,10 +88,12 @@ abstract final class AppRoutes {
   static GoRouter router({
     String initialLocation = '/',
     List<NavigatorObserver>? observers,
+    String? restorationScopeId,
   }) =>
       GoRouter(
         initialLocation: initialLocation,
         observers: observers,
+        restorationScopeId: restorationScopeId,
         routes: mount(),
         errorBuilder: (context, state) => notFound(state.uri),
       );
@@ -96,10 +103,15 @@ abstract final class AppRoutes {
     _base = at;
     return [
       ShellRoute(
-        builder: (context, state, child) => buildWithParams(
-          () => _layout0(state),
-          (v) => _i2.RootLayout(child: child, banner: v.banner),
-          () => notFound(state.uri),
+        pageBuilder: (context, state, child) => layoutPage(
+          context,
+          state,
+          'layout:/',
+          buildWithParams(
+            () => _layout0(state),
+            (v) => _i2.RootLayout(child: child, banner: v.banner),
+            () => notFound(state.uri),
+          ),
         ),
         routes: [
           GoRoute(
@@ -110,7 +122,12 @@ abstract final class AppRoutes {
             ),
             routes: [
               ShellRoute(
-                builder: (context, state, child) => _i5.AccountLayout(child: child),
+                pageBuilder: (context, state, child) => layoutPage(
+                  context,
+                  state,
+                  'layout:(account)/',
+                  _i5.AccountLayout(child: child),
+                ),
                 routes: [
                   GoRoute(
                     path: 'profile',
@@ -127,6 +144,7 @@ abstract final class AppRoutes {
                     ),
                   ),
                 ],
+                restorationScopeId: 'layout:(account)/',
               ),
               GoRoute(
                 path: 'admin',
@@ -265,10 +283,15 @@ abstract final class AppRoutes {
                 ),
               ),
               ShellRoute(
-                builder: (context, state, child) => buildWithParams(
-                  () => _layout19(state),
-                  (v) => _i27.ShopLayout(shop: v.shop, child: child),
-                  () => notFound(state.uri),
+                pageBuilder: (context, state, child) => layoutPage(
+                  context,
+                  state,
+                  'layout:shops/\$shop/',
+                  buildWithParams(
+                    () => _layout19(state),
+                    (v) => _i27.ShopLayout(shop: v.shop, child: child),
+                    () => notFound(state.uri),
+                  ),
                 ),
                 routes: [
                   GoRoute(
@@ -306,18 +329,24 @@ abstract final class AppRoutes {
                     ],
                   ),
                 ],
+                restorationScopeId: 'layout:shops/\$shop/',
               ),
               ShellRoute(
-                builder: (context, state, child) => buildWithParams(
-                  () => _layout23(state),
-                  (v) => DataView(
-                    watch: (ref) => ref.watch(_data23(v.teamId)),
-                    refresh: (ref) => ref.invalidate(_data23(v.teamId)),
-                    data: (d) => _i35.TeamLayout(team: d, child: child),
-                    loading: () => _i33.TeamLoading(),
-                    error: (e, st, retry) => _i34.TeamError(error: e, retry: retry),
+                pageBuilder: (context, state, child) => layoutPage(
+                  context,
+                  state,
+                  'layout:teams/\$teamId/',
+                  buildWithParams(
+                    () => _layout23(state),
+                    (v) => DataView(
+                      watch: (ref) => ref.watch(_data23(v.teamId)),
+                      refresh: (ref) => ref.invalidate(_data23(v.teamId)),
+                      data: (d) => _i35.TeamLayout(team: d, child: child),
+                      loading: () => _i33.TeamLoading(),
+                      error: (e, st, retry) => _i34.TeamError(error: e, retry: retry),
+                    ),
+                    () => _i36.TeamNotFound(uri: state.uri),
                   ),
-                  () => _i36.TeamNotFound(uri: state.uri),
                 ),
                 routes: [
                   GoRoute(
@@ -371,10 +400,12 @@ abstract final class AppRoutes {
                     ),
                   ),
                 ],
+                restorationScopeId: 'layout:teams/\$teamId/',
               ),
             ],
           ),
         ],
+        restorationScopeId: 'layout:/',
       ),
     ];
   }
@@ -389,6 +420,192 @@ abstract final class AppRoutes {
         ],
         (uri) => DefaultNotFound(uri),
       );
+
+  /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
+  static List<RouteInfo<Object?>> get all => AppManifest.all;
+
+  /// Each route by its typed-route class: [AppManifest.byType].
+  static Map<Type, RouteInfo<Object?>> get byType => AppManifest.byType;
+
+  /// Each route by its path template: [AppManifest.byPath].
+  static Map<String, RouteInfo<Object?>> get byPath => AppManifest.byPath;
+}
+
+/// What `fsp gen` knows about every route: its typed route, path template,
+/// folder, groups, layouts, parameters and `meta.dart`.
+abstract final class AppManifest {
+  /// Every route, in the order of the table at the top of the file.
+  static const List<RouteInfo<Object?>> all = [
+    RouteInfo(
+      type: HomeRoute,
+      path: '/',
+      folder: '',
+      layouts: [''],
+      meta: _i45.meta,
+    ),
+    RouteInfo(
+      type: SlugRoute,
+      path: '/:slug',
+      folder: '\$slug',
+      layouts: [''],
+      segments: [RouteParam('slug', 'String')],
+    ),
+    RouteInfo(
+      type: ProfileRoute,
+      path: '/profile',
+      folder: '(account)/profile',
+      groups: ['(account)'],
+      layouts: ['', '(account)'],
+    ),
+    RouteInfo(
+      type: SettingsRoute,
+      path: '/settings',
+      folder: '(account)/settings',
+      groups: ['(account)'],
+      layouts: ['', '(account)'],
+    ),
+    RouteInfo(
+      type: AdminRoute,
+      path: '/admin',
+      folder: '(members)/admin',
+      groups: ['(members)'],
+      layouts: [''],
+    ),
+    RouteInfo(
+      type: InboxRoute,
+      path: '/inbox',
+      folder: '(members)/inbox',
+      groups: ['(members)'],
+      layouts: [''],
+      query: [RouteParam('folder', 'String?')],
+    ),
+    RouteInfo(
+      type: CounterRoute,
+      path: '/counter',
+      folder: 'counter',
+      layouts: [''],
+      dataKeys: [],
+    ),
+    RouteInfo(
+      type: LoginRoute,
+      path: '/login',
+      folder: 'login',
+      layouts: [''],
+      query: [RouteParam('from', 'String?')],
+      meta: _i46.meta,
+    ),
+    RouteInfo(
+      type: OldSearchRoute,
+      path: '/old-search',
+      folder: 'old-search',
+      presentation: RoutePresentation.redirect,
+      layouts: [''],
+      query: [RouteParam('q', 'String?')],
+      meta: _i47.meta,
+    ),
+    RouteInfo(
+      type: OldShopsShopRoute,
+      path: '/old-shops/:shop',
+      folder: 'old-shops/\$shop',
+      presentation: RoutePresentation.redirect,
+      layouts: [''],
+      segments: [RouteParam('shop', 'String')],
+    ),
+    RouteInfo(
+      type: PhotosRoute,
+      path: '/photos',
+      folder: 'photos',
+      layouts: [''],
+      meta: _i48.meta,
+    ),
+    RouteInfo(
+      type: PhotoRoute,
+      path: '/photos/:id',
+      folder: 'photos/\$id',
+      layouts: [''],
+      segments: [RouteParam('id', 'int')],
+      meta: _i49.meta,
+    ),
+    RouteInfo(
+      type: SortRoute,
+      path: '/photos/sort',
+      folder: 'photos/sort',
+      layouts: [''],
+    ),
+    RouteInfo(
+      type: UploadRoute,
+      path: '/photos/upload',
+      folder: 'photos/upload',
+      layouts: [''],
+    ),
+    RouteInfo(
+      type: SearchRoute,
+      path: '/search',
+      folder: 'search',
+      layouts: [''],
+      query: [RouteParam('q', 'String?'), RouteParam('page', 'int?'), RouteParam('tags', 'List<String>')],
+      dataKeys: ['q', 'page'],
+    ),
+    RouteInfo(
+      type: ShopRoute,
+      path: '/shops/:shop',
+      folder: 'shops/\$shop',
+      layouts: ['', 'shops/\$shop'],
+      segments: [RouteParam('shop', 'String')],
+    ),
+    RouteInfo(
+      type: ItemRoute,
+      path: '/shops/:shop/items/:id',
+      folder: 'shops/\$shop/items/\$id',
+      layouts: ['', 'shops/\$shop'],
+      segments: [RouteParam('shop', 'String'), RouteParam('id', 'int')],
+      dataKeys: ['shop', 'id'],
+    ),
+    RouteInfo(
+      type: MembersRoute,
+      path: '/teams/:teamId/members',
+      folder: 'teams/\$teamId/members',
+      layouts: ['', 'teams/\$teamId'],
+      segments: [RouteParam('teamId', 'String')],
+    ),
+    RouteInfo(
+      type: MemberRoute,
+      path: '/teams/:teamId/members/:member',
+      folder: 'teams/\$teamId/members/\$member',
+      layouts: ['', 'teams/\$teamId'],
+      segments: [RouteParam('teamId', 'String'), RouteParam('member', 'int')],
+      dataKeys: ['member'],
+    ),
+    RouteInfo(
+      type: TeamSettingsRoute,
+      path: '/teams/:teamId/settings',
+      folder: 'teams/\$teamId/settings',
+      layouts: ['', 'teams/\$teamId'],
+      segments: [RouteParam('teamId', 'String')],
+    ),
+    RouteInfo(
+      type: TicksRoute,
+      path: '/ticks',
+      folder: 'ticks',
+      layouts: [''],
+      dataKeys: [],
+    ),
+  ];
+
+  /// Each route by its typed-route class: `AppManifest.byType[ProductRoute]`.
+  static final Map<Type, RouteInfo<Object?>> byType = Map.unmodifiable({
+    for (final r in all) r.type: r,
+  });
+
+  /// Each route by its path template: `AppManifest.byPath['/products/:id']`.
+  static final Map<String, RouteInfo<Object?>> byPath = Map.unmodifiable({
+    for (final r in all) r.path: r,
+  });
+
+  /// The route [state] is at, or null when it is not one of these (a not-found
+  /// page, say). Handy in a layout: `AppManifest.of(GoRouterState.of(context))`.
+  static RouteInfo<Object?>? of(GoRouterState state) =>
+      byPath[routeTemplate(state, AppRoutes.base)];
 }
 
 /// `/` → page.dart

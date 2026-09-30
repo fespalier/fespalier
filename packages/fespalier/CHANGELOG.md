@@ -1,3 +1,14 @@
+## Unreleased
+
+- `RouteInfo<M>`, `RouteParam`, `RouteTab`, `RoutePresentation` and `routeTemplate`: what the
+  generated route manifest (`AppManifest.all`, `byType`, `byPath`) is made of, with
+  `metaAs<T>()` for a route's `meta.dart`.
+- `layoutPage`: the page the generated router builds for a `layout.dart`, with a restoration
+  id that is stable across launches (go_router's own is the route's `hashCode`).
+- `Transitions.*` pages take their `restorationId` from the page key.
+- Regenerate `lib/app.g.dart` with the matching `fsp`: `AppRoutes.router` takes a
+  `restorationScopeId`, and layouts are built with `layoutPage`.
+
 ## 0.2.0 - 2026-09-30
 
 - Guards: `firstRedirect(guards)` chains the guards above a route (outermost first, the first

@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+### Route manifest and metadata
+
+- A generated route manifest: `AppRoutes.all`, `byType` (typed-route class) and `byPath` (path
+  template), a `const` list of `RouteInfo`s (`AppManifest`) with each route's typed route,
+  path, folder, `(group)` chain, layout chain, `page` or `redirect` presentation, segment and
+  query parameters (name and Dart type), tab membership (`RouteTab`), `data.dart` keys and
+  `meta`. `AppManifest.of(GoRouterState.of(context))` gives the route a layout is showing,
+  e.g. for the web tab title with Flutter's `Title` (see the README; `examples/features`).
+- `meta.dart` per folder: `const meta = <any const expression>;` is copied into the manifest
+  by reference (`_iN.meta`), untyped. It belongs to its own route (not inherited), and a
+  `meta` that isn't `const`, a `meta.dart` without one, or one declared twice is an error at the
+  declaration. `fespalier: { meta: required }` makes a route without one an error naming its
+  folder.
+- `fespalier: { output_manifest: lib/app.routes.g.dart }` writes the manifest to a library
+  of its own, importing `app.g.dart` for the typed routes, so production code that imports
+  `app.g.dart` alone never imports a `meta.dart`. `gen`, `check` and `watch` handle both files,
+  and the success line names both; `examples/tabs` uses it.
+- `fsp routes --json` adds `folder`, `presentation`, `groups`, `layouts`, `tabs`, `data_keys` and
+  `meta` (the route's meta.dart, or null) to each object; the shape is documented and pinned by a
+  test.
+
+### State restoration
+
+- `AppRoutes.router(restorationScopeId: ...)` passes the id to `GoRouter`. Tab layouts and
+  their branches (and plain layouts) get a stable `restorationScopeId` from their folder, and
+  a layout's page is built by the runtime's new `layoutPage`, with a restoration id from the
+  folder: go_router keys shell pages by the route's `hashCode`, which changes on every launch,
+  so the tabs and their stacks were never found again. The selected tab, each visited tab's
+  stack and a page's `RestorableProperty`s survive `tester.restartAndRestore()`
+  (`examples/tabs/test/restoration_test.dart`).
+- The pages `Transitions.*` build take their `restorationId` from the page key, so what a
+  page keeps in a `RestorationMixin` is restored too. A `Page` you write in a `transition.dart`
+  should pass `restorationId: key.value`.
+- Layouts are now built as `pageBuilder` pages (`layoutPage`: a Material page, or a Cupertino
+  one in a `CupertinoApp`) instead of `builder`. Regenerate `lib/app.g.dart`.
+
 ## 0.2.0 — 2026-09-30
 
 ### Guards and redirects

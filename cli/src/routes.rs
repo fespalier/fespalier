@@ -3,9 +3,19 @@
 //!
 //! Text: `/products/:id  ProductRoute  products/$id/page.dart  (data, transition)`.
 //!
-//! JSON, one object per route:
-//! `{"pattern","route","file","tags":[…],"params":[{"name","type","in"}]}`
-//! where `file` is relative to the project root and `in` is `path` or `query`.
+//! JSON, one object per route (the same data as `AppManifest` in the generated
+//! Dart, plus the file names):
+//!
+//! ```text
+//! {"pattern","route","file","tags":[…],"params":[{"name","type","in"}],
+//!  "folder","presentation","groups":[…],"layouts":[…],
+//!  "tabs":[{"layout","index","branch"}],"data_keys":[…]|null,"meta":"…"|null}
+//! ```
+//!
+//! `file` and `meta` are relative to the project root (`meta` is the route's
+//! meta.dart, or null); `folder`, `layouts` and `tabs[].layout` are relative to
+//! the app folder, with `""` for the app folder itself. `in` is `path` or
+//! `query`; `presentation` is `page` or `redirect`.
 
 use std::path::Path;
 
@@ -14,8 +24,8 @@ use serde_json::json;
 
 use crate::config::Config;
 use crate::emit;
-use crate::resolve::{self, App, Route};
-use crate::scan::Kind;
+use crate::manifest;
+use crate::resolve::{App, Route};
 use crate::{analyze, diag};
 
 pub fn run(project: &Path, json: bool) -> Result<()> {
@@ -39,14 +49,6 @@ pub fn run(project: &Path, json: bool) -> Result<()> {
 /// The routes (pages and redirects), in the order the generated file lists them.
 fn pages(app: &App) -> impl Iterator<Item = &Route> {
     app.routes.iter().filter(|r| r.is_route())
-}
-
-fn class(r: &Route) -> String {
-    format!("{}Route", r.name.as_deref().unwrap_or("?"))
-}
-
-fn file(r: &Route) -> String {
-    emit::rel(r, if r.page.is_some() { Kind::Page } else { Kind::Redirect })
 }
 
 /// What the route has besides its page; the same tags as the header of `app.g.dart`.
@@ -75,16 +77,27 @@ pub fn table(app: &App) -> Vec<String> {
 }
 
 pub fn json_lines(app: &App, app_dir: &str) -> Vec<String> {
+    let infos = manifest::collect(app);
     pages(app)
-        .map(|r| {
-            let path = app.typed_segs(r).into_iter().map(|(n, t)| json!({"name": n, "type": t, "in": "path"}));
-            let query = r.query.iter().map(|(n, t)| json!({"name": n, "type": t, "in": "query"}));
+        .zip(infos)
+        .map(|(r, i)| {
+            let path = i.segments.iter().map(|(n, t)| json!({"name": n, "type": t, "in": "path"}));
+            let query = i.query.iter().map(|(n, t)| json!({"name": n, "type": t, "in": "query"}));
+            let tabs: Vec<_> =
+                i.tabs.iter().map(|t| json!({"layout": t.layout, "index": t.index, "branch": t.branch})).collect();
             json!({
-                "pattern": resolve::pattern(&r.url),
-                "route": class(r),
-                "file": format!("{app_dir}/{}", file(r)),
+                "pattern": i.path,
+                "route": i.class,
+                "file": format!("{app_dir}/{}", i.file),
                 "tags": tags(r),
                 "params": path.chain(query).collect::<Vec<_>>(),
+                "folder": i.folder,
+                "presentation": if i.redirect { "redirect" } else { "page" },
+                "groups": i.groups,
+                "layouts": i.layouts,
+                "tabs": tabs,
+                "data_keys": i.data_keys,
+                "meta": i.meta.map(|m| format!("{app_dir}/{m}")),
             })
             .to_string()
         })

@@ -165,9 +165,9 @@ void main() => runApp(
     );
 ```
 
-`flutter create` also wrote `test/widget_test.dart`, which refers to the `MyApp` you just
-replaced, so `flutter analyze` fails on it. Delete it, or rewrite it (see
-[Testing](#testing)).
+A plain `flutter create` (not `flutter create --empty`) also wrote `test/widget_test.dart`,
+which refers to the `MyApp` you just replaced, so `flutter analyze` fails on it. Delete it,
+or rewrite it (see [Testing](#testing)).
 
 Already have a `GoRouter`? Mount the tree inside it instead. `at` is the URL prefix:
 

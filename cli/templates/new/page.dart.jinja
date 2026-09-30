@@ -1,3 +1,4 @@
+{% from "new/_macros.dart" import classdecl, ctor, func, arrow %}
 {% if function %}
 import 'package:flutter/material.dart';
 
@@ -6,34 +7,32 @@ const routeName = '{{ name }}';
 
 {% endif %}
 {% if data %}
-Widget page({required String data}) => Center(child: Text(data));
+{{ func("Widget page", [], ["required String data"], "", "Center(child: Text(data))") }}
 {% elif segs %}
-Widget page({ {%- for s in segs %}required {{ s.ty }} {{ s.name }}{{ ", " if not loop.last }}{% endfor -%} }) =>
-    Center(child: Text('{{ stem }}{{ label }}'));
+{{ func("Widget page", [], segs|map(attribute="param")|list, "", "Center(child: Text('" ~ stem ~ label ~ "'))") }}
 {% else %}
-Widget page() => const Center(child: Text('{{ stem }}'));
+{{ arrow("", "Widget page()", "const Center(child: Text('" ~ stem ~ "'))") }}
 {% endif %}
 {% else %}
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 
-class {{ stem }}Page extends HookConsumerWidget {
+{{ classdecl(stem ~ "Page", "HookConsumerWidget") }}
 {% if data %}
-  const {{ stem }}Page({super.key, required this.data});
+{{ ctor(stem ~ "Page", ["super.key", "required this.data"]) }}
 
   final String data;
 {% elif segs %}
-  const {{ stem }}Page({super.key{% for s in segs %}, required this.{{ s.name }}{% endfor %}});
+{{ ctor(stem ~ "Page", ["super.key"] + segs|map(attribute="field")|list) }}
 
 {% for s in segs %}
   final {{ s.ty }} {{ s.name }};
 {% endfor %}
 {% else %}
-  const {{ stem }}Page({super.key});
+{{ ctor(stem ~ "Page", ["super.key"]) }}
 {% endif %}
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) =>
-      Center(child: Text({{ "data" if data else "'" ~ stem ~ label ~ "'" }}));
+{{ arrow("  ", "Widget build(BuildContext context, WidgetRef ref)", "Center(child: Text(" ~ ("data" if data else "'" ~ stem ~ label ~ "'") ~ "))") }}
 }
 {% endif %}

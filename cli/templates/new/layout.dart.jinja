@@ -1,10 +1,11 @@
+{% from "new/_macros.dart" import classdecl, ctor %}
 import 'package:flutter/material.dart';
 
 {% if function %}
 Widget layout({required Widget child}) => child;
 {% else %}
-class {{ stem }}Layout extends StatelessWidget {
-  const {{ stem }}Layout({super.key, required this.child});
+{{ classdecl(stem ~ "Layout", "StatelessWidget") }}
+{{ ctor(stem ~ "Layout", ["super.key", "required this.child"]) }}
 
   final Widget child;
 

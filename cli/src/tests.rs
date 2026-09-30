@@ -96,7 +96,8 @@ fn committed_output_is_up_to_date() {
         // `format: true` (examples/minimal) commits the output as `dart format` leaves it. Without
         // `dart` on PATH (the generator's CI job) there is nothing to compare it with: skip.
         let code = if cfg.format {
-            let (formatted, warning) = crate::format::format_dart(&code, &examples(name).join(&cfg.output));
+            let (formatted, warning) =
+                crate::format::format_dart(&code, &examples(name).join(&cfg.output));
             if warning.is_some() {
                 continue;
             }
@@ -1184,7 +1185,7 @@ fn scaffold_writes_a_transition() {
     let t = fs::read_to_string(dir.path().join("lib/app/docs/transition.dart")).unwrap();
     assert!(
         t.contains(
-            "Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);"
+            "Page<void> transition(LocalKey key, Widget child) =>\n    Transitions.fade(key, child);"
         ),
         "{t}"
     );
@@ -1775,7 +1776,9 @@ fn init_creates_starters_that_pass_gen() {
         "{layout}"
     );
     assert!(
-        layout.contains("Scaffold(body: SafeArea(child: child))"),
+        layout.contains(
+            "Scaffold(\n    body: SafeArea(\n      child: Material(type: MaterialType.transparency, child: child),"
+        ),
         "{layout}"
     );
     let page = fs::read_to_string(dir.path().join("lib/app/page.dart")).unwrap();

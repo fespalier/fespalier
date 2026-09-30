@@ -72,6 +72,24 @@ struct Cx {
 struct SegCx {
     name: String,
     ty: String,
+    /// `required int id`: a named parameter of a function view.
+    param: String,
+    /// `required String id`: the same for a not-found view, which gets the raw segment.
+    string_param: String,
+    /// `required this.id`: a named parameter of a widget constructor.
+    field: String,
+}
+
+impl SegCx {
+    fn new(name: String, ty: String) -> Self {
+        Self {
+            param: format!("required {ty} {name}"),
+            string_param: format!("required String {name}"),
+            field: format!("required this.{name}"),
+            name,
+            ty,
+        }
+    }
 }
 
 /// Scaffolds the route, writing a page.dart unless the folder is a `(group)`.
@@ -140,10 +158,7 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
                     .get(dir.as_str())
                     .cloned()
                     .unwrap_or_else(|| "String".to_string());
-                seg_cx.push(SegCx {
-                    name: name.clone(),
-                    ty,
-                });
+                seg_cx.push(SegCx::new(name.clone(), ty));
             }
             Seg::CatchAll(name, _) => {
                 let dir = parts[..=i].join("/");
@@ -151,10 +166,7 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
                     .get(dir.as_str())
                     .cloned()
                     .unwrap_or_else(|| "List<String>".to_string());
-                seg_cx.push(SegCx {
-                    name: name.clone(),
-                    ty,
-                });
+                seg_cx.push(SegCx::new(name.clone(), ty));
             }
             _ => {}
         }

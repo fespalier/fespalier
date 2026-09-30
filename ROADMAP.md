@@ -4,11 +4,6 @@ What fespalier doesn't do yet. Released features are in CHANGELOG.md.
 
 ## In progress (0.2)
 
-**Guards and redirects**
-- `guard.dart` in a folder without a page, a `(group)` or the root, guarding every route below it (parent guards first).
-- `redirect.dart`: routes that only redirect (`/old` → `/new`).
-- A helper to send users back after a redirect (e.g. `?from=`).
-
 **Navigation**
 - Tab layouts nested inside tab layouts.
 - Per-tab options: `initialLocation`, `preload`.

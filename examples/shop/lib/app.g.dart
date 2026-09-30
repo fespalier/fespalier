@@ -77,17 +77,6 @@ abstract final class AppRoutes {
                 ),
               ),
               GoRoute(
-                path: 'greet/:name',
-                pageBuilder: (context, state) => _i3.transition(
-                  state.pageKey,
-                  buildWithParams(
-                    () => _params4(state),
-                    (v) => _i9.GreetPage(name: v.name),
-                    () => notFound(state.uri),
-                  ),
-                ),
-              ),
-              GoRoute(
                 path: 'products',
                 pageBuilder: (context, state) => _i3.transition(
                   state.pageKey,
@@ -118,6 +107,17 @@ abstract final class AppRoutes {
                     ),
                   ),
                 ],
+              ),
+              GoRoute(
+                path: 'greet/:name',
+                pageBuilder: (context, state) => _i3.transition(
+                  state.pageKey,
+                  buildWithParams(
+                    () => _params4(state),
+                    (v) => _i9.GreetPage(name: v.name),
+                    () => notFound(state.uri),
+                  ),
+                ),
               ),
             ],
           ),

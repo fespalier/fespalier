@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- `guard.dart` works in a folder without a `page.dart`, in a `(group)` and at the root, and
+  guards every route at and below its folder. Guards run outermost first and the first
+  location wins. Each page route's `redirect` chains the guards above it (`firstRedirect`).
+  An inherited guard takes the segments at its own folder level and query parameters.
+- Guards can take `Uri uri`, the requested location, to build a return-to link:
+  `LoginRoute(from: uri.toString()).location`. New `returnTo(from, fallback: '/')` in the
+  runtime accepts only in-app locations.
+- `redirect.dart` in place of `page.dart`: `String redirect({...})` makes a route that only
+  redirects (`/old-products/:id` to `/products/:id`). It gets a typed route named after its
+  path (`OldProductsIdRoute`) and takes part in route order checks.
+- A guard with no route at or below its folder is a warning; `guard.dart` no longer needs a
+  `page.dart` next to it.
+- Fix: static routes now sort before dynamic siblings below a page-less folder
+  (`shops/new` before `shops/$id`); before, both were kept in folder order and `shops/new`
+  could be reported unreachable. Regenerate `app.g.dart`: routes may move.
+
 ## 0.1.1 — 2026-09-30
 
 Fixes from first-use testing.

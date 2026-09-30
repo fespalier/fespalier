@@ -33,6 +33,9 @@ guardWithParams(
 {% endfor %}
 )
 {%- endmacro %}
+{% macro redirect_call(c) -%}
+{{ guard_with_segments(c.seg_fn, c.call) if c.seg_fn else c.call }}
+{%- endmacro %}
 {% macro layout_call(l) -%}
 {{ (with_segments(l.seg_fn, l.call) if l.seg_fn else l.call) | indent(2) }}
 {%- endmacro %}
@@ -64,14 +67,24 @@ ShellRoute(
 {%- else -%}
 GoRoute(
   path: {{ r.path }},
-{% if r.redirect %}
-  redirect: (context, state) => {{ (guard_with_segments(r.redirect.seg_fn, r.redirect.call) if r.redirect.seg_fn else r.redirect.call) | indent(2) }},
+{% if r.redirects | length == 1 %}
+  redirect: (context, state) => {{ redirect_call(r.redirects[0]) | indent(2) }},
+{% elif r.redirects %}
+  redirect: (context, state) => firstRedirect([
+{% for c in r.redirects %}
+    () => {{ redirect_call(c) | indent(4) }},
+{% endfor %}
+  ]),
 {% endif %}
+{% if r.page %}
 {% set page = with_segments(r.seg_fn, view(r)) if r.seg_fn else view(r) %}
 {% if r.transition %}
   pageBuilder: (context, state) => {{ with_transition(r.transition, page) | indent(2) }},
 {% else %}
   builder: (context, state) => {{ page | indent(2) }},
+{% endif %}
+{% elif r.not_found_builder %}
+  builder: (context, state) => notFound(state.uri),
 {% endif %}
 {% if r.routes %}
   routes: [

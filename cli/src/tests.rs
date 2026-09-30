@@ -270,7 +270,7 @@ fn misc_rules() {
     ]);
     let joined = e.join("\n");
     for needle in [
-        "a/guard.dart  guard.dart needs a page.dart",
+        "a/guard.dart  guard.dart guards no routes",
         "b/not_found.dart  not_found.dart only works at the root",
         "route name `HomeRoute` is already taken by page.dart",
         "d/page.dart:2  expected one public widget class, found A, B",
@@ -1194,4 +1194,448 @@ fn init_needs_a_pubspec_with_a_name() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("pubspec.yaml"), "description: x\n").unwrap();
     assert!(init::run(dir.path()).unwrap_err().to_string().contains("no `name:`"));
+}
+
+// ---- guards and redirects ----
+
+const NOOP_GUARD: &str = "GuardResult guard(ProviderContainer c) => null;";
+
+/// How many routes call a guard.
+fn guard_calls(code: &str) -> usize {
+    code.matches(".guard(ProviderScope").count()
+}
+
+/// The `_iN` prefix the generated code gives a file, e.g. `imp(&c, "old/guard.dart")`.
+fn imp(code: &str, file: &str) -> String {
+    let needle = format!("'app/{}' as ", file.replace('$', "\\$"));
+    let i = at(code, &needle) + needle.len();
+    code[i..].split(';').next().unwrap().to_string()
+}
+
+#[test]
+fn a_guard_in_a_page_less_folder_guards_every_route_below_it() {
+    let c = code(&[
+        ("admin/guard.dart", NOOP_GUARD),
+        ("admin/users/page.dart", &page("Users")),
+        ("admin/reports/page.dart", &page("Reports")),
+        ("admin/reports/$id/page.dart", &page("Report")),
+        ("open/page.dart", &page("Open")),
+    ]);
+    // /admin/users and /admin/reports each start with it; /admin/reports/:id is
+    // nested in /admin/reports, so it goes through its parent's redirect once.
+    assert_eq!(guard_calls(&c), 2, "{c}");
+    has(&c, &["path: joinLocation(at, '/admin/users'),", "path: joinLocation(at, '/admin/reports'),"]);
+    let users = at(&c, "'/admin/users'");
+    let open = at(&c, "'/open'");
+    assert!(c[users..open].contains(".guard(ProviderScope"), "{c}");
+    assert!(!c[open..].contains(".guard("), "{c}");
+    // A page-less folder has no route of its own, so there is nothing to nest under.
+    assert!(!c.contains("path: joinLocation(at, '/admin')"), "{c}");
+}
+
+#[test]
+fn a_root_guard_covers_the_whole_app() {
+    let c = code(&[
+        ("guard.dart", NOOP_GUARD),
+        ("a/page.dart", &page("A")),
+        ("(g)/b/page.dart", &page("B")),
+    ]);
+    assert_eq!(guard_calls(&c), 2, "{c}");
+
+    // With a root page, everything else nests inside it and shares its redirect.
+    let c = code(&[("guard.dart", NOOP_GUARD), ("page.dart", HOME), ("a/page.dart", &page("A"))]);
+    assert_eq!(guard_calls(&c), 1, "{c}");
+}
+
+#[test]
+fn guards_run_outermost_first() {
+    let c = code(&[
+        ("(members)/guard.dart", "GuardResult guard(ProviderContainer c) => null; // members"),
+        ("(members)/team/guard.dart", "GuardResult guard(ProviderContainer c) => null; // team"),
+        ("(members)/team/lead/guard.dart", "GuardResult guard(ProviderContainer c) => null; // lead"),
+        ("(members)/team/lead/page.dart", &page("Lead")),
+    ]);
+    let first = at(&c, "redirect: (context, state) => firstRedirect([");
+    let call = |file: &str| at(&c[first..], &format!("{}.guard(", imp(&c, file)));
+    let (group, team, lead) = (call("(members)/guard.dart"), call("(members)/team/guard.dart"), call("(members)/team/lead/guard.dart"));
+    assert!(group < team && team < lead, "{c}");
+    assert_eq!(c.matches("firstRedirect(").count(), 1, "{c}");
+}
+
+#[test]
+fn a_folders_own_guard_and_page_keep_todays_output_plus_inherited_ones() {
+    // Alone: the same single redirect as before.
+    let alone = code(&[("shop/guard.dart", NOOP_GUARD), ("shop/page.dart", &page("Shop"))]);
+    let g = imp(&alone, "shop/guard.dart");
+    has(&alone, &[&format!("redirect: (context, state) => {g}.guard(ProviderScope.containerOf(context, listen: false)),")]);
+    assert!(!alone.contains("firstRedirect"), "{alone}");
+
+    // With a guard above: inherited first, its own last.
+    let both = code(&[
+        ("guard.dart", NOOP_GUARD),
+        ("shop/guard.dart", NOOP_GUARD),
+        ("shop/page.dart", &page("Shop")),
+        ("shop/cart/page.dart", &page("Cart")),
+    ]);
+    // The root has no page, so /shop carries both; /shop/cart nests inside it.
+    assert_eq!(guard_calls(&both), 2, "{both}");
+    let (root, own) = (imp(&both, "guard.dart"), imp(&both, "shop/guard.dart"));
+    assert!(at(&both, &format!("{root}.guard(")) < at(&both, &format!("{own}.guard(")), "{both}");
+    assert_eq!(both.matches("firstRedirect(").count(), 1, "{both}");
+}
+
+#[test]
+fn inherited_guards_read_segments_at_their_folder_and_query_by_name() {
+    let c = code(&[
+        (
+            "$shop/guard.dart",
+            "GuardResult guard(ProviderContainer c, {required String shop, String? ref, Uri? uri}) => null;",
+        ),
+        ("$shop/items/$id/data.dart", "Future<int> data(Ref ref, {required int id}) async => id;"),
+        ("$shop/items/$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.data}); final int data; }"),
+    ]);
+    has(
+        &c,
+        &[
+            // Its own parse function: only what the guard asks for.
+            "({String shop, String? ref}) _guard1(GoRouterState s) => (shop: Segment.asString(s, 'shop'), ref: Query.asString(s, 'ref'));",
+            "redirect: (context, state) => guardWithParams(\n          () => _guard1(state),\n          (v) => _i0.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop, ref: v.ref, uri: state.uri),",
+        ],
+    );
+    // `?ref` belongs to the guard: it doesn't become a field of the routes below.
+    assert!(!c.contains("this.ref"), "{c}");
+    assert!(c.contains("const ItemRoute({required this.shop, required this.id});"), "{c}");
+}
+
+#[test]
+fn a_guard_can_take_only_the_uri() {
+    let c = code(&[
+        ("guard.dart", "GuardResult guard(ProviderContainer c, {required Uri uri}) => null;"),
+        ("a/page.dart", &page("A")),
+    ]);
+    has(&c, &["redirect: (context, state) => _i0.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri),"]);
+    assert!(!c.contains("_guard0"), "{c}");
+}
+
+#[test]
+fn a_guard_on_a_page_puts_its_query_on_the_typed_route() {
+    let c = code(&[
+        ("search/guard.dart", "GuardResult guard(ProviderContainer c, {bool? admin, Uri? uri}) => null;"),
+        ("search/page.dart", &page("Search")),
+    ]);
+    has(
+        &c,
+        &[
+            "(v) => _i1.guard(ProviderScope.containerOf(context, listen: false), admin: v.admin, uri: state.uri),",
+            "const SearchRoute({this.admin});",
+        ],
+    );
+}
+
+#[test]
+fn inherited_guard_errors() {
+    let joined = diags(&[
+        // Below its folder there is `$id`, but the guard's folder has no segments.
+        ("admin/guard.dart", "GuardResult guard(ProviderContainer c, {required int id}) => null;"),
+        ("admin/$id/page.dart", &page("Admin")),
+        // `uri` is a Uri.
+        ("b/guard.dart", "GuardResult guard(ProviderContainer c, {required String uri}) => null;"),
+        ("b/page.dart", &page("B")),
+        // The container comes first, and the return type is a GuardResult.
+        ("c/guard.dart", "String guard({int? x}) => 'x';"),
+        ("c/page.dart", &page("C")),
+        ("d/guard.dart", "void other() {}"),
+        ("d/page.dart", &page("D")),
+    ])
+    .join("\n");
+    for needle in [
+        "`id` isn't a segment of this path (it has none) at or above its folder; guard() can also take `Uri uri`",
+        "`uri` gets the requested Uri, but it's declared String",
+        "guard() must take `ProviderContainer c` first",
+        "expected `GuardResult guard(ProviderContainer c, {...segments})`",
+    ] {
+        assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
+    }
+}
+
+#[test]
+fn an_inherited_guard_cant_ask_for_a_segment_below_it() {
+    let e = diags(&[
+        ("$shop/guard.dart", "GuardResult guard(ProviderContainer c, {required String shop, required int id}) => null;"),
+        ("$shop/items/$id/page.dart", &page("Item")),
+    ]);
+    assert!(e.iter().any(|d| d.contains("`id` isn't a segment of this path ($shop)")), "{e:?}");
+}
+
+#[test]
+fn a_guard_types_the_segments_it_reads() {
+    let e = diags(&[
+        ("$id/guard.dart", "GuardResult guard(ProviderContainer c, {required int id}) => null;"),
+        ("$id/x/page.dart", "class XPage extends StatelessWidget { const XPage({super.key, required this.id}); final String id; }"),
+    ]);
+    assert!(e.iter().any(|d| d.contains("`$id` is int in $id/guard.dart:1 but String here")), "{e:?}");
+}
+
+#[test]
+fn a_guard_with_nothing_to_guard_is_warned_about() {
+    let e = diags(&[("page.dart", HOME), ("lonely/guard.dart", NOOP_GUARD)]);
+    assert!(e.iter().any(|d| d.contains("lonely/guard.dart") && d.contains("guards no routes")), "{e:?}");
+    // One warning is enough: not the "folder has no page.dart" one as well.
+    assert_eq!(e.len(), 1, "{e:?}");
+}
+
+#[test]
+fn guards_above_a_tab_layout_cover_every_tab() {
+    let c = code(&[
+        ("(tabs)/layout.dart", TABS),
+        ("(tabs)/guard.dart", NOOP_GUARD),
+        ("(tabs)/search/page.dart", &page("Search")),
+        ("(tabs)/profile/page.dart", &page("Profile")),
+        ("(tabs)/profile/edit/page.dart", &page("Edit")),
+    ]);
+    // One per tab's first-level route; /profile/edit nests inside /profile.
+    assert_eq!(guard_calls(&c), 2, "{c}");
+    assert!(!c.contains("firstRedirect"), "{c}");
+
+    // A guard in the tab layout's own folder, which has a page: it covers the
+    // page and the tabs beside it.
+    let c = code(&[
+        ("layout.dart", TABS),
+        ("page.dart", HOME),
+        ("guard.dart", NOOP_GUARD),
+        ("search/page.dart", &page("Search")),
+    ]);
+    assert_eq!(guard_calls(&c), 2, "{c}");
+}
+
+#[test]
+fn a_guard_inside_a_shell_stays_on_the_page_routes() {
+    let c = code(&[
+        ("(members)/layout.dart", "class MembersLayout extends StatelessWidget { const MembersLayout({super.key, required this.child}); final Widget child; }"),
+        ("(members)/guard.dart", NOOP_GUARD),
+        ("(members)/inbox/page.dart", &page("Inbox")),
+    ]);
+    // No `redirect` on the ShellRoute: go_router would run it, but the GoRoute is where it's explicit.
+    let shell = at(&c, "ShellRoute(");
+    let route = at(&c, "GoRoute(");
+    assert!(!c[shell..route].contains("redirect:"), "{c}");
+    assert!(c[route..].contains("redirect: (context, state) => _i1.guard("), "{c}");
+}
+
+// ---- redirect.dart ----
+
+#[test]
+fn redirect_dart_makes_a_route_that_only_redirects() {
+    let c = code(&[
+        ("page.dart", HOME),
+        ("old/$id/redirect.dart", "String redirect({required String id}) => '/new/$id';"),
+    ]);
+    has(
+        &c,
+        &[
+            "//   /old/:id  OldIdRoute  old/$id/redirect.dart  (redirect)",
+            "path: 'old/:id',",
+            "redirect: (context, state) => guardWithParams(",
+            "(v) => _i1.redirect(id: v.id),",
+            // A typed route, so links to the old URL stay typed.
+            "/// `/old/:id` → old/$id/redirect.dart\nfinal class OldIdRoute extends TypedLocation {",
+            "const OldIdRoute({required this.id});",
+            "String get location => joinLocation(AppRoutes.base, '/old/${Uri.encodeComponent(id)}');",
+        ],
+    );
+    // A String segment always parses, so the route has no page and no builder at all.
+    let route = at(&c, "path: 'old/:id'");
+    let end = route + c[route..].find("),\n").unwrap();
+    assert!(!c[route..end].contains("builder"), "{c}");
+}
+
+#[test]
+fn a_redirect_with_a_typed_segment_shows_not_found_when_it_does_not_parse() {
+    let c = code(&[(
+        "old/$id/redirect.dart",
+        "String redirect({required int id, String? tab}) => '/new/$id';",
+    )]);
+    has(
+        &c,
+        &[
+            "(v) => _i0.redirect(id: v.id, tab: v.tab),",
+            "builder: (context, state) => notFound(state.uri),",
+            "const OldIdRoute({required this.id, this.tab});",
+            "final int id;",
+            "withQuery(joinLocation(AppRoutes.base, '/old/$id'), {'tab': tab})",
+        ],
+    );
+}
+
+#[test]
+fn a_redirect_takes_an_optional_container_and_the_uri() {
+    let c = code(&[
+        ("a/redirect.dart", "String redirect() => '/b';"),
+        ("b/redirect.dart", "Future<String> redirect(ProviderContainer c, {required Uri uri}) async => '/a';"),
+    ]);
+    has(
+        &c,
+        &[
+            "redirect: (context, state) => _i0.redirect(),",
+            "redirect: (context, state) => _i1.redirect(ProviderScope.containerOf(context, listen: false), uri: state.uri),",
+        ],
+    );
+}
+
+#[test]
+fn a_redirect_route_starts_with_the_guards_above_it() {
+    let c = code(&[
+        ("(members)/guard.dart", NOOP_GUARD),
+        ("(members)/old/redirect.dart", "String redirect() => '/inbox';"),
+        ("(members)/inbox/page.dart", &page("Inbox")),
+    ]);
+    let old = at(&c, "path: joinLocation(at, '/old')");
+    let chain = &c[old..old + c[old..].find("]),\n").unwrap()];
+    let (g, r) = (imp(&c, "(members)/guard.dart"), imp(&c, "(members)/old/redirect.dart"));
+    let (g, r) = (format!("{g}.guard("), format!("{r}.redirect("));
+    assert!(chain.contains("firstRedirect([") && chain.contains(&g) && chain.contains(&r), "{c}");
+    assert!(chain.find(&g) < chain.find(&r), "{c}");
+}
+
+#[test]
+fn a_folder_with_a_guard_and_a_redirect_runs_the_guard_first() {
+    let c = code(&[
+        ("old/guard.dart", NOOP_GUARD),
+        ("old/redirect.dart", "String redirect() => '/new';"),
+        ("new/page.dart", &page("New")),
+    ]);
+    let old = at(&c, "'/old'");
+    let (g, r) = (imp(&c, "old/guard.dart"), imp(&c, "old/redirect.dart"));
+    assert!(c[old..].find(&format!("{g}.guard(")) < c[old..].find(&format!("{r}.redirect(")), "{c}");
+    assert_eq!(c.matches("firstRedirect(").count(), 1, "{c}");
+}
+
+#[test]
+fn routes_below_a_redirect_are_beside_it_not_inside() {
+    let c = code(&[
+        ("old/redirect.dart", "String redirect() => '/new';"),
+        ("old/deep/page.dart", &page("Deep")),
+        ("old/$id/redirect.dart", "String redirect({required String id}) => '/new/$id';"),
+    ]);
+    // A redirect always redirects, so anything nested in it could never be reached.
+    has(&c, &["path: joinLocation(at, '/old'),", "path: joinLocation(at, '/old/deep'),", "path: joinLocation(at, '/old/:id'),"]);
+    assert!(at(&c, "'/old/deep'") < at(&c, "'/old/:id'"), "static before dynamic:\n{c}");
+}
+
+#[test]
+fn redirect_dart_takes_part_in_route_order_checks() {
+    // `(g)/settings` can't be sorted around the root `$slug` page.
+    let e = diags(&[
+        ("$slug/page.dart", &page("Slug")),
+        ("(g)/layout.dart", "class GLayout extends StatelessWidget { const GLayout({super.key, required this.child}); final Widget child; }"),
+        ("(g)/settings/redirect.dart", "String redirect() => '/';"),
+        ("(g)/$other/page.dart", &page("Other")),
+    ]);
+    assert!(
+        e.iter().any(|d| d.contains("/settings is unreachable") && d.contains("(g)/settings/redirect.dart")),
+        "{e:?}"
+    );
+
+    let e = diags(&[
+        ("a/page.dart", &page("A")),
+        ("(g)/a/redirect.dart", "String redirect() => '/';"),
+        ("x/page.dart", &page("Old")),
+        ("y/redirect.dart", "String redirect() => '/';"),
+        ("old/page.dart", &page("Old")),
+    ]);
+    let joined = e.join("\n");
+    assert!(joined.contains("/a is served by both (g)/a/redirect.dart and a/page.dart"), "{joined}");
+}
+
+#[test]
+fn a_redirect_route_is_named_after_its_path() {
+    let e = diags(&[
+        ("old/redirect.dart", "String redirect() => '/';"),
+        ("x/page.dart", "class OldPage extends StatelessWidget { const OldPage({super.key}); }"),
+    ]);
+    assert!(e.iter().any(|d| d.contains("route name `OldRoute` is already taken by")), "{e:?}");
+
+    let c = code(&[
+        ("redirect.dart", "String redirect() => '/home';"),
+        ("home/page.dart", &page("Home")),
+        ("2024/redirect.dart", "String redirect() => '/home';"),
+        ("(g)/see-you/$name/redirect.dart", "String redirect({required String name}) => '/home';"),
+    ]);
+    has(
+        &c,
+        &["final class RootRoute extends", "final class Path2024Route extends", "final class SeeYouNameRoute extends"],
+    );
+}
+
+#[test]
+fn redirect_dart_errors() {
+    let joined = diags(&[
+        // Either a page or a redirect.
+        ("a/page.dart", &page("A")),
+        ("a/redirect.dart", "String redirect() => '/';"),
+        // The function and its return type.
+        ("b/redirect.dart", "void nothing() {}"),
+        ("c/redirect.dart", "int redirect() => 1;"),
+        // Parameters: segments of this path, optional query, uri.
+        ("$d/redirect.dart", "String redirect({required int nope}) => '/';"),
+        ("e/redirect.dart", "String redirect(String positional) => '/';"),
+        ("f/redirect.dart", "String redirect({required Uri uri, required String other}) => '/';"),
+        ("g/redirect.dart", "String redirect({required String uri}) => '/';"),
+        // data.dart has no page to feed here either.
+        ("h/redirect.dart", "String redirect() => '/';"),
+        ("h/data.dart", "Future<int> data(Ref ref) async => 1;"),
+    ])
+    .join("\n");
+    for needle in [
+        "a/redirect.dart  a folder has a page.dart or a redirect.dart, not both",
+        "b/redirect.dart  expected `String redirect({...segments})`",
+        "redirect() must return the location to go to: a String",
+        "`nope` isn't a segment of this path ($d) at or above its folder; redirect() can also take `Uri uri`",
+        "redirect() takes segments as named parameters",
+        "`other` isn't a segment of this path (it has none)",
+        "`uri` gets the requested Uri, but it's declared String",
+        "h/data.dart  data.dart has no page.dart to feed",
+    ] {
+        assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
+    }
+}
+
+#[test]
+fn a_tab_layout_folder_cant_hold_a_redirect() {
+    let e = diags(&[
+        ("(tabs)/layout.dart", TABS),
+        ("(tabs)/redirect.dart", "String redirect() => '/search';"),
+        ("(tabs)/search/page.dart", &page("Search")),
+        ("(tabs)/home/page.dart", &page("Home")),
+    ]);
+    assert!(e.iter().any(|d| d.contains("a tab layout folder can't hold a redirect.dart")), "{e:?}");
+}
+
+#[test]
+fn redirect_routes_are_routes_in_the_count_and_the_table() {
+    let dir = project(&[
+        ("page.dart", HOME),
+        ("old/redirect.dart", "String redirect() => '/';"),
+    ]);
+    let (code, diags, routes) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
+    assert!(diags.0.is_empty(), "{:?}", diags.0);
+    assert_eq!(routes, 2);
+    has(&code, &["//   /     HomeRoute  page.dart", "//   /old  OldRoute   old/redirect.dart  (redirect)"]);
+}
+
+#[test]
+fn a_redirect_inside_a_tab_keeps_the_tab_shape() {
+    let c = code(&[
+        ("(tabs)/layout.dart", TABS),
+        ("(tabs)/search/page.dart", &page("Search")),
+        ("(tabs)/find/redirect.dart", "String redirect() => '/search';"),
+    ]);
+    assert_eq!(c.matches("StatefulShellBranch(").count(), 2, "{c}");
+}
+
+#[test]
+fn static_routes_sort_before_dynamic_ones_below_a_folded_folder() {
+    // `shops` has no page, so its children's paths are `shops/:id` and `shops/new`.
+    let c = code(&[("shops/$id/page.dart", &page("Shop")), ("shops/new/page.dart", &page("New"))]);
+    assert!(at(&c, "'/shops/new'") < at(&c, "'/shops/:id'"), "{c}");
 }

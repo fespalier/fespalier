@@ -155,7 +155,7 @@ pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize
     let mut diags = diag::Diags::default();
     let tree = scan::scan(app_dir, &mut diags)?;
     let app = resolve::resolve(&tree, &mut diags);
-    let routes = app.routes.iter().filter(|r| r.page.is_some()).count();
+    let routes = app.routes.iter().filter(|r| r.is_route()).count();
     let code = emit::emit(&app, cfg, &mut diags);
     Ok((code, diags, routes))
 }

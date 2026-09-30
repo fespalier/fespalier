@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use serde::Serialize;
 
 use crate::config::Config;
-use crate::resolve::{self, App, Bind, Branch, Data, Route, Transition};
+use crate::resolve::{self, App, Bind, Branch, Data, Guard, Route, Transition};
 use crate::dart::Span;
 use crate::diag::Diags;
 use crate::scan::{Kind, Seg};
@@ -35,7 +35,12 @@ struct TreeCx {
     /// A tab layout's tabs, each holding the routes of one folder.
     branches: Vec<BranchCx>,
     path: String,
-    redirect: Option<CallCx>,
+    /// Guards (inherited, then its own) and, for a redirect.dart route, the
+    /// redirect itself: the first to return a location wins.
+    redirects: Vec<CallCx>,
+    /// A route that only redirects still builds not-found for a segment that
+    /// doesn't parse (go_router needs a builder to show anything).
+    not_found_builder: bool,
     seg_fn: Option<String>,
     page: String,
     data: Option<ViewDataCx>,
@@ -147,6 +152,8 @@ struct ParamsFnCx {
 enum ParamsFn {
     Route(usize),
     Layout(usize),
+    /// What one folder's guard reads from the URL.
+    Guard(usize),
 }
 
 impl ParamsFn {
@@ -154,6 +161,7 @@ impl ParamsFn {
         match self {
             ParamsFn::Route(id) => format!("_params{id}"),
             ParamsFn::Layout(id) => format!("_layout{id}"),
+            ParamsFn::Guard(id) => format!("_guard{id}"),
         }
     }
 }
@@ -169,7 +177,7 @@ struct ProviderCx {
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let mut fns = BTreeSet::new();
-    let tree = routes_of(app, 0, true, "", &mut fns);
+    let tree = routes_of(app, 0, true, "", &[], &mut fns);
     check_order(&tree, diags);
     check_tab_starts(&tree, diags);
     let cx = FileCx {
@@ -206,7 +214,9 @@ fn in_builder(b: &Bind) -> String {
 
 /// RouteBase entries for a folder. Page-less folders fold their segment into
 /// their children's paths; `layout.dart` wraps the result in a ShellRoute.
-fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<ParamsFn>) -> Vec<TreeCx> {
+/// `inherited` holds the guards (route ids) of the folders above that have no
+/// route of their own to nest under: every route here starts with them.
+fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize], fns: &mut BTreeSet<ParamsFn>) -> Vec<TreeCx> {
     let r = &app.routes[id];
     let own = match &r.seg {
         None | Some(Seg::Group(_)) => String::new(),
@@ -220,15 +230,22 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
     };
 
     if let (Some(layout), Some(tabs)) = (&r.layout, &r.tabs) {
-        return tab_routes(app, id, top, &path, layout, tabs, fns);
+        return tab_routes(app, id, top, &path, layout, tabs, inherited, fns);
     }
 
-    let mut out = match &r.page {
-        Some(_) => vec![page_route(app, id, top, &path, true, fns)],
-        None => {
-            let next = if path.is_empty() { String::new() } else { format!("{path}/") };
-            static_first(r.children.iter().flat_map(|&c| routes_of(app, c, top, &next, fns)).collect())
+    // Routes beside or below this folder that its own route doesn't contain.
+    let mut below = inherited.to_vec();
+    below.extend(r.guard.as_ref().map(|_| id));
+    let next = if path.is_empty() { String::new() } else { format!("{path}/") };
+    let mut out = match (&r.page, &r.redirect) {
+        (Some(_), _) => vec![page_route(app, id, top, &path, true, inherited, fns)],
+        // A redirect route always redirects, so what is below it can't nest inside it.
+        (None, Some(_)) => {
+            let mut out = vec![redirect_route(app, id, top, &path, inherited, fns)];
+            out.extend(r.children.iter().flat_map(|&c| routes_of(app, c, top, &next, &below, fns)));
+            static_first(out)
         }
+        (None, None) => static_first(r.children.iter().flat_map(|&c| routes_of(app, c, top, &next, &below, fns)).collect()),
     };
 
     if let (Some(layout), false) = (&r.layout, out.is_empty()) {
@@ -241,7 +258,8 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
             layout: Some(CallCx { seg_fn, call: layout.call(in_builder) }),
             branches: vec![],
             path: String::new(),
-            redirect: None,
+            redirects: vec![],
+            not_found_builder: false,
             seg_fn: None,
             page: String::new(),
             data: None,
@@ -255,29 +273,62 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
     out
 }
 
+/// The redirect chain of a route: the guards inherited from page-less folders
+/// above (outermost first), then the folder's own guard and `redirect.dart`.
+/// `seg_fn` parses the route's own params for the last two.
+fn redirects_of(app: &App, id: usize, inherited: &[usize], seg_fn: &Option<String>, fns: &mut BTreeSet<ParamsFn>) -> Vec<CallCx> {
+    let r = &app.routes[id];
+    let mut out = vec![];
+    for &g in inherited {
+        let guard = app.routes[g].guard.as_ref().expect("inherited guards have a guard");
+        let seg_fn = (!guard.keys().is_empty()).then(|| {
+            fns.insert(ParamsFn::Guard(g));
+            ParamsFn::Guard(g).name()
+        });
+        out.push(hook_call(guard, "guard", seg_fn));
+    }
+    for (hook, name) in [(&r.guard, "guard"), (&r.redirect, "redirect")] {
+        if let Some(h) = hook {
+            let own = seg_fn.clone().filter(|_| !h.keys().is_empty());
+            out.push(hook_call(h, name, own));
+        }
+    }
+    out
+}
+
+/// `_i3.guard(container, id: v.id, uri: state.uri)`; `seg_fn` parses `v`.
+fn hook_call(h: &Guard, name: &str, seg_fn: Option<String>) -> CallCx {
+    let mut args = vec![];
+    if h.container {
+        args.push("ProviderScope.containerOf(context, listen: false)".to_string());
+    }
+    args.extend(h.args.iter().map(|a| match a.bind {
+        Bind::Uri => format!("{}: state.uri", a.name),
+        _ => format!("{}: {}", a.name, in_builder(&a.bind)),
+    }));
+    CallCx { seg_fn, call: format!("_i{}.{name}({})", h.import, args.join(", ")) }
+}
+
+/// The parse function a route's own guard and redirect share, when it needs one.
+fn own_seg_fn(app: &App, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<String> {
+    (!app.url_params(&app.routes[id]).is_empty()).then(|| {
+        fns.insert(ParamsFn::Route(id));
+        ParamsFn::Route(id).name()
+    })
+}
+
 /// The GoRoute for a folder's page.dart. Its subfolders' routes nest below it,
 /// unless `nested` is off (a tab layout's own page sits beside its tabs).
-fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, fns: &mut BTreeSet<ParamsFn>) -> TreeCx {
+fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherited: &[usize], fns: &mut BTreeSet<ParamsFn>) -> TreeCx {
     let r = &app.routes[id];
     let page = r.page.as_ref().expect("page_route needs a page.dart");
     let routes = if nested {
-        static_first(r.children.iter().flat_map(|&c| routes_of(app, c, false, "", fns)).collect())
+        static_first(r.children.iter().flat_map(|&c| routes_of(app, c, false, "", &[], fns)).collect())
     } else {
         vec![]
     };
-    let seg_fn = (!app.url_params(r).is_empty()).then(|| {
-        fns.insert(ParamsFn::Route(id));
-        ParamsFn::Route(id).name()
-    });
-    let redirect = r.guard.as_ref().map(|g| {
-        let keys: Vec<String> = g.keys.iter().map(|k| format!("{k}: v.{k}")).collect();
-        let mut args = vec!["ProviderScope.containerOf(context, listen: false)".to_string()];
-        args.extend(keys);
-        CallCx {
-            seg_fn: (!g.keys.is_empty()).then(|| seg_fn.clone().unwrap()),
-            call: format!("_i{}.guard({})", g.import, args.join(", ")),
-        }
-    });
+    let seg_fn = own_seg_fn(app, id, fns);
+    let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
     let data = r.data.as_ref().map(|d| ViewDataCx {
         provider: format!("{}{}", provider_expr(id, d), key_expr(d, "v.")),
         loading: r.loading.as_ref().map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
@@ -287,20 +338,45 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, fns: &m
         layout: None,
         branches: vec![],
         path: if top { format!("joinLocation(at, '/{path}')") } else { format!("'{path}'") },
-        redirect,
+        redirects,
+        not_found_builder: false,
         seg_fn,
         page: page.call(in_builder),
         data,
         transition: r.transition.as_ref().map(transition_cx),
         routes,
-        dynamic: path.starts_with(':'),
+        dynamic: path.contains(':'),
         serves: Some((r.url.clone(), rel(r, Kind::Page), r.page_span.clone())),
+        has_params: path.contains(':'),
+    }
+}
+
+/// The GoRoute for a folder's redirect.dart: no page, just a redirect.
+fn redirect_route(app: &App, id: usize, top: bool, path: &str, inherited: &[usize], fns: &mut BTreeSet<ParamsFn>) -> TreeCx {
+    let r = &app.routes[id];
+    let seg_fn = own_seg_fn(app, id, fns);
+    let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
+    TreeCx {
+        layout: None,
+        branches: vec![],
+        path: if top { format!("joinLocation(at, '/{path}')") } else { format!("'{path}'") },
+        redirects,
+        // Only a segment that isn't a String can fail to parse.
+        not_found_builder: app.typed_segs(r).iter().any(|(_, t)| t != "String"),
+        seg_fn,
+        page: String::new(),
+        data: None,
+        transition: None,
+        routes: vec![],
+        dynamic: path.contains(':'),
+        serves: Some((r.url.clone(), rel(r, Kind::Redirect), r.page_span.clone())),
         has_params: path.contains(':'),
     }
 }
 
 /// A tab layout: one StatefulShellRoute whose branches are the layout folder's
 /// own page and each subfolder, laid out exactly as they would be without it.
+#[allow(clippy::too_many_arguments)]
 fn tab_routes(
     app: &App,
     id: usize,
@@ -308,16 +384,20 @@ fn tab_routes(
     path: &str,
     layout: &resolve::Widget,
     tabs: &[Branch],
+    inherited: &[usize],
     fns: &mut BTreeSet<ParamsFn>,
 ) -> Vec<TreeCx> {
     // The tabs are siblings of the folder's page, so they share its path.
     let next = if path.is_empty() { String::new() } else { format!("{path}/") };
+    // The folder's own guard covers its page, and the tabs beside it too.
+    let mut below = inherited.to_vec();
+    below.extend(app.routes[id].guard.as_ref().map(|_| id));
     let branches: Vec<BranchCx> = tabs
         .iter()
         .map(|b| BranchCx {
             routes: match *b {
-                Branch::Own => vec![page_route(app, id, top, path, false, fns)],
-                Branch::Folder(c) => static_first(routes_of(app, c, top, &next, fns)),
+                Branch::Own => vec![page_route(app, id, top, path, false, inherited, fns)],
+                Branch::Folder(c) => static_first(routes_of(app, c, top, &next, &below, fns)),
             },
         })
         .filter(|b| !b.routes.is_empty())
@@ -335,7 +415,8 @@ fn tab_routes(
         dynamic: branches.iter().flat_map(|b| &b.routes).any(|r| r.dynamic),
         branches,
         path: String::new(),
-        redirect: None,
+        redirects: vec![],
+        not_found_builder: false,
         seg_fn: None,
         page: String::new(),
         data: None,
@@ -430,7 +511,9 @@ fn key_expr(d: &Data, prefix: &str) -> String {
 
 fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
     let name = r.name.clone()?;
-    r.page.as_ref()?;
+    if !r.is_route() {
+        return None;
+    }
     let data = r.data.as_ref().map(|d| {
         let keyed = match d.keys.as_slice() {
             [] => String::new(),
@@ -447,7 +530,7 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
     });
     Some(RouteCx {
         pattern: resolve::pattern(&r.url),
-        file: rel(r, Kind::Page),
+        file: rel(r, if r.page.is_some() { Kind::Page } else { Kind::Redirect }),
         name,
         fields: app
             .url_params(r)
@@ -482,6 +565,15 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
             let r = &app.routes[id];
             let mut p = app.typed_segs(r);
             p.extend(r.layout_query.iter().cloned());
+            p
+        }
+        ParamsFn::Guard(id) => {
+            let r = &app.routes[id];
+            let keys = r.guard.as_ref().map(Guard::keys).unwrap_or_default();
+            let query = if r.is_route() { &r.query } else { &r.guard_query };
+            let mut p = app.typed_segs(r);
+            p.extend(query.iter().cloned());
+            p.retain(|(n, _)| keys.contains(n));
             p
         }
     };
@@ -535,9 +627,12 @@ fn table(app: &App) -> Vec<String> {
     let rows: Vec<(String, String, String)> = app
         .routes
         .iter()
-        .filter(|r| r.page.is_some())
+        .filter(|r| r.is_route())
         .map(|r| {
             let mut tags = vec![];
+            if r.redirect.is_some() {
+                tags.push("redirect");
+            }
             if r.data.is_some() {
                 tags.push("data");
             }
@@ -552,7 +647,7 @@ fn table(app: &App) -> Vec<String> {
             }
             let tags = if tags.is_empty() { String::new() } else { format!("  ({})", tags.join(", ")) };
             let name = format!("{}Route", r.name.as_deref().unwrap_or("?"));
-            (resolve::pattern(&r.url), name, format!("{}{tags}", rel(r, Kind::Page)))
+            (resolve::pattern(&r.url), name, format!("{}{tags}", rel(r, if r.page.is_some() { Kind::Page } else { Kind::Redirect })))
         })
         .collect();
     let w0 = rows.iter().map(|r| r.0.len()).max().unwrap_or(0);

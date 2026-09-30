@@ -16,18 +16,20 @@ pub enum Kind {
     Error,
     Layout,
     Guard,
+    Redirect,
     Transition,
     NotFound,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 8] = [
+    pub const ALL: [Kind; 9] = [
         Kind::Page,
         Kind::Data,
         Kind::Loading,
         Kind::Error,
         Kind::Layout,
         Kind::Guard,
+        Kind::Redirect,
         Kind::Transition,
         Kind::NotFound,
     ];
@@ -40,6 +42,7 @@ impl Kind {
             Kind::Error => "error.dart",
             Kind::Layout => "layout.dart",
             Kind::Guard => "guard.dart",
+            Kind::Redirect => "redirect.dart",
             Kind::Transition => "transition.dart",
             Kind::NotFound => "not_found.dart",
         }

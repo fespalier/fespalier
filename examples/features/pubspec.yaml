@@ -15,6 +15,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # go_router 18 looks for material_ui's MaterialApp, go_router 17 for
+  # flutter's; the tests nest both so they pass on either.
+  material_ui: ^1.0.0
 
 flutter:
   uses-material-design: true

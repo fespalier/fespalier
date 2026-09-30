@@ -1,14 +1,19 @@
 import 'package:features/app.g.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart' as mui;
 import 'package:flutter_test/flutter_test.dart';
 
 Future<void> boot(WidgetTester tester, String location) async {
   await tester.pumpWidget(
     ProviderScope(
       retry: (_, __) => null,
-      child: MaterialApp.router(
-        routerConfig: AppRoutes.router(initialLocation: location),
+      // go_router 17 detects flutter's MaterialApp, go_router 18 material_ui's;
+      // nesting both gives Material pages and error screens on either.
+      child: MaterialApp(
+        home: mui.MaterialApp.router(
+          routerConfig: AppRoutes.router(initialLocation: location),
+        ),
       ),
     ),
   );

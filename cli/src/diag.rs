@@ -95,3 +95,39 @@ pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
         }
     }
 }
+
+/// One diagnostic as a JSON object, for editors:
+/// `{"file","line","column","severity","message"}`. `file` is relative to the
+/// project root (`lib/app/products/$id/page.dart`); `line` and `column` are
+/// 1-based (the column counts characters) and `null` when the diagnostic isn't
+/// about a place in the file.
+pub fn json_line(app_dir: &Path, shown: &str, d: &Diag) -> String {
+    let (line, column) = match &d.span {
+        Some(span) => {
+            let column = std::fs::read_to_string(app_dir.join(&d.file)).ok().and_then(|src| {
+                let before = src.get(..span.bytes.start)?;
+                Some(before.rsplit('\n').next().unwrap_or("").chars().count() + 1)
+            });
+            (Some(span.line), column)
+        }
+        None => (None, None),
+    };
+    serde_json::json!({
+        "file": format!("{shown}/{}", d.file),
+        "line": line,
+        "column": column,
+        "severity": match d.level {
+            Level::Error => "error",
+            Level::Warning => "warning",
+        },
+        "message": d.msg,
+    })
+    .to_string()
+}
+
+/// Prints diagnostics to stdout as JSON lines (see [`json_line`]).
+pub fn render_json(app_dir: &Path, shown: &str, diags: &Diags) {
+    for d in &diags.0 {
+        println!("{}", json_line(app_dir, shown, d));
+    }
+}

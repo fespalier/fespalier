@@ -2,8 +2,10 @@ mod config;
 mod dart;
 mod diag;
 mod emit;
+mod format;
 mod init;
 mod resolve;
+mod routes;
 mod scaffold;
 mod scan;
 mod templates;
@@ -32,9 +34,26 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     /// Check the app folder (lib/app/) and write the generated file (lib/app.g.dart)
-    Gen,
+    Gen {
+        /// Run `dart format` on the generated file (needs `dart` on PATH; or set `format: true` in pubspec.yaml)
+        #[arg(long)]
+        format: bool,
+        /// Print diagnostics to stdout as JSON lines (file, line, column, severity, message)
+        #[arg(long)]
+        json: bool,
+    },
     /// Check the app folder only; non-zero exit on errors (for CI)
-    Check,
+    Check {
+        /// Print diagnostics to stdout as JSON lines (file, line, column, severity, message)
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print the route table: pattern, route class, file, tags
+    Routes {
+        /// One JSON object per route, one per line
+        #[arg(long)]
+        json: bool,
+    },
     /// Regenerate on every change under the app folder
     Watch,
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
@@ -48,15 +67,18 @@ fn main() {
     let result = (|| {
         let project = find_project(cli.project)?;
         match cli.cmd {
-            Cmd::Gen => {
-                eprintln!("{}", gen(&project, true)?.line());
+            Cmd::Gen { format, json } => {
+                let mut cfg = Config::load(&project)?;
+                cfg.format |= format;
+                eprintln!("{}", gen_opts(&project, &cfg, true, json)?.line());
                 Ok(())
             }
-            Cmd::Check => {
-                let o = gen(&project, false)?;
+            Cmd::Check { json } => {
+                let o = gen_opts(&project, &Config::load(&project)?, false, json)?;
                 eprintln!("✓ {}, no errors", plural(o.routes, "route"));
                 Ok(())
             }
+            Cmd::Routes { json } => routes::run(&project, json),
             Cmd::Watch => watch(&project),
             Cmd::Init => init::run(&project),
             Cmd::New(cmd) => {
@@ -125,7 +147,18 @@ pub fn gen(project: &Path, write: bool) -> Result<Outcome> {
 }
 
 pub fn gen_with(project: &Path, cfg: &Config, write: bool) -> Result<Outcome> {
-    gen_core(project, cfg, write, |app_dir, diags| diag::render(app_dir, &cfg.app_dir, diags))
+    gen_opts(project, cfg, write, false)
+}
+
+/// `json`: diagnostics go to stdout as JSON lines instead of the codespan rendering.
+pub fn gen_opts(project: &Path, cfg: &Config, write: bool, json: bool) -> Result<Outcome> {
+    gen_core(project, cfg, write, |app_dir, diags| {
+        if json {
+            diag::render_json(app_dir, &cfg.app_dir, diags)
+        } else {
+            diag::render(app_dir, &cfg.app_dir, diags)
+        }
+    })
 }
 
 /// `show` prints the diagnostics (watch mode skips ones it already showed).
@@ -134,12 +167,21 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, show: impl FnOnce(&Path, 
     if !app_dir.is_dir() {
         bail!("{} not found (set `fespalier: app_dir:` in pubspec.yaml, or run `fsp init`)", app_dir.display());
     }
-    let (code, diags, routes) = build(&app_dir, cfg)?;
+    let (mut code, diags, routes) = build(&app_dir, cfg)?;
     show(&app_dir, &diags);
     if diags.has_errors() {
         bail!("{} error(s); {} left unchanged", diags.error_count(), cfg.output);
     }
     let out = project.join(&cfg.output);
+    // `check` writes and compares nothing, so it never needs `dart`. `gen` formats
+    // before comparing, so a formatted file that is up to date reads "unchanged".
+    if write && cfg.format {
+        let (formatted, warning) = format::format_dart(&code, &out);
+        if let Some(w) = warning {
+            eprintln!("{w}");
+        }
+        code = formatted;
+    }
     let mut wrote = false;
     if write && fs::read_to_string(&out).ok().as_deref() != Some(code.as_str()) {
         if let Some(dir) = out.parent() {
@@ -152,12 +194,18 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, show: impl FnOnce(&Path, 
 }
 
 pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize)> {
+    let (code, diags, app) = analyze(app_dir, cfg)?;
+    let routes = app.routes.iter().filter(|r| r.page.is_some()).count();
+    Ok((code, diags, routes))
+}
+
+/// Like [`build`], but keeps the resolved app (for `fsp routes`).
+pub fn analyze(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, resolve::App)> {
     let mut diags = diag::Diags::default();
     let tree = scan::scan(app_dir, &mut diags)?;
     let app = resolve::resolve(&tree, &mut diags);
-    let routes = app.routes.iter().filter(|r| r.page.is_some()).count();
     let code = emit::emit(&app, cfg, &mut diags);
-    Ok((code, diags, routes))
+    Ok((code, diags, app))
 }
 
 /// Whether a filesystem event can change what the app folder generates.

@@ -27,7 +27,9 @@ dependencies:
 ```
 
 Needs Dart 3.8 and Flutter 3.32 or newer (go_router 18 needs Flutter 3.44). Works with
-go_router 17 and 18. Install the `fsp` CLI too; the main README's
+go_router 17 and 18. You also need the `fsp` CLI: install it, or run it without installing as
+`dart run fespalier <command>` (it downloads the release that matches this package's version
+on first use). The main README's
 [Getting started](https://github.com/vaam-apps/fespalier#getting-started) covers both, plus
 `fsp init`, `main.dart`, CI and web notes.
 

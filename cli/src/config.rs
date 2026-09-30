@@ -4,6 +4,7 @@
 //! fespalier:
 //!   app_dir: lib/app        # default
 //!   output: lib/app.g.dart  # default
+//!   format: false           # default; true runs `dart format` on the output
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -25,11 +26,13 @@ pub struct Config {
     pub app_dir: String,
     /// Normalized, `/`-separated: `lib/app.g.dart`.
     pub output: String,
+    /// Run `dart format` on the generated file (when `dart` is on PATH).
+    pub format: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { app_dir: DEFAULT_APP_DIR.into(), output: DEFAULT_OUTPUT.into() }
+        Config { app_dir: DEFAULT_APP_DIR.into(), output: DEFAULT_OUTPUT.into(), format: false }
     }
 }
 
@@ -54,6 +57,7 @@ struct RawPubspec {
 struct RawConfig {
     app_dir: Option<String>,
     output: Option<String>,
+    format: Option<bool>,
 }
 
 impl Config {
@@ -95,6 +99,7 @@ impl Pubspec {
         let raw: RawPubspec = serde_yaml_ng::from_str(yaml).context("invalid pubspec.yaml")?;
         let mut config = Config::default();
         if let Some(c) = raw.fespalier {
+            config.format = c.format.unwrap_or(false);
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }

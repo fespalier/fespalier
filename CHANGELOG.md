@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- `dart run fespalier <command>`: runs the `fsp` release that matches the package's version,
+  so nothing needs installing (Windows included). It downloads the release archive on first
+  use, checks its SHA-256 and caches it; `FSP_BINARY` runs a binary of your own, and a matching
+  `fsp` on PATH is used as is.
+- `install.ps1`: installs `fsp.exe` on Windows from PowerShell, like `install.sh`
+  (`FSP_VERSION`, `FSP_INSTALL_DIR`, SHA-256 check).
+- `fsp routes` prints the route table (pattern, route class, file, tags); `--json` prints one
+  object per route, with its parameters, for tools.
+- `fsp gen --json` and `fsp check --json` print diagnostics to stdout as JSON lines (file, line,
+  column, severity, message) instead of the code-frame rendering, for editors.
+- `fsp gen --format`, or `format: true` under `fespalier:` in pubspec.yaml, runs `dart format` on
+  the generated file (needs `dart` on PATH). Off by default, so committed output is unchanged.
+- CI checks that the versions in `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`, `fsp init`'s
+  `ref:` and the READMEs agree, and that `dart run fespalier` runs a freshly built `fsp`.
+
 ## 0.1.1 — 2026-09-30
 
 Fixes from first-use testing.

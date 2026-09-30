@@ -20,13 +20,6 @@ What fespalier doesn't do yet. Released features are in CHANGELOG.md.
 - `not_found.dart` in any folder.
 - `package:fespalier/testing.dart` with helpers to pump the router in widget tests.
 
-**Tooling and distribution**
-- `dart run fespalier <command>`: runs the matching `fsp` release binary, no curl or Rust needed (Windows included).
-- `install.ps1` for Windows.
-- `fsp routes` (route table, `--json`) and `--json` diagnostics for editors.
-- Optional `dart format` of the generated file.
-- CI check that versions agree (Cargo.toml, pubspec.yaml, `fsp init`'s `ref:`, README).
-
 ## Later
 
 - Catch-all segments (`[...slug]`): go_router parameters don't span `/`.

@@ -66,13 +66,31 @@ curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh
 
 It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.1.1`
 to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install
-elsewhere. On Windows, download `fsp-x86_64-pc-windows-msvc.zip` from the
-[Releases page](https://github.com/vaam-apps/fespalier/releases) and put `fsp.exe` on your
-`PATH`. With Rust installed, on any platform:
+elsewhere. On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.ps1 | iex
+```
+
+It puts `fsp.exe` in `%LOCALAPPDATA%\fespalier\bin` (tell it otherwise with
+`$env:FSP_INSTALL_DIR`, pick a release with `$env:FSP_VERSION`), checks the SHA-256, and
+prints how to add that folder to your `PATH` if it isn't there yet. With Rust installed, on
+any platform:
 
 ```sh
 cargo install --git https://github.com/vaam-apps/fespalier --tag v0.1.1 fespalier
 ```
+
+**Or install nothing.** Once the package is in your `pubspec.yaml` (step 2), `dart run
+fespalier <command>` runs `fsp` for you, so use it wherever this README says `fsp`:
+`dart run fespalier init`, `dart run fespalier watch`, `dart run fespalier check`. The first
+run downloads the `fsp` release that matches the package's version, checks its SHA-256 and
+keeps it in your user cache (`~/.cache/fespalier` on Linux, `~/Library/Caches/fespalier` on
+macOS, `%LOCALAPPDATA%\fespalier` on Windows; `FSP_CACHE_DIR` moves it), so later runs start
+at once. It needs `tar`, which macOS, Linux and Windows 10+ include. Set `FSP_BINARY=/path/to/fsp`
+to run a binary of your own, e.g. a build from source. An `fsp` on your `PATH` is used too when its
+version is the package's, so nothing is downloaded when you have both. The package and the
+binary are versioned together, and this is what keeps them in step.
 
 **2. Add the package** to your app's `pubspec.yaml`, then run `flutter pub get`:
 
@@ -142,6 +160,8 @@ Commit `lib/app.g.dart`: it's plain code, meant to be read, and the app builds w
 - run: fsp check
 ```
 
+or, with nothing to install (after `flutter pub get`): `- run: dart run fespalier check`.
+
 **Config.** `fsp` needs no configuration. To move things, add this optional section to
 `pubspec.yaml`. Both paths are relative to the project root and must be under `lib/`, and
 `output` must be a `.dart` file. These are the defaults:
@@ -150,7 +170,10 @@ Commit `lib/app.g.dart`: it's plain code, meant to be read, and the app builds w
 fespalier:
   app_dir: lib/app
   output: lib/app.g.dart
+  format: false
 ```
+
+`format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
 
 **Platform notes.**
 
@@ -382,6 +405,8 @@ checkout, run `cd cli && cargo build --release` (→ `cli/target/release/fsp`). 
 ```sh
 fsp init                # first-time setup: starter files, then gen
 fsp gen                 # check lib/app/, write lib/app.g.dart
+fsp gen --format        # ...and run `dart format` on it
+fsp routes              # print the route table (--json: one object per route)
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
@@ -399,6 +424,41 @@ group to serve its parent's URL. It then regenerates `lib/app.g.dart` and prints
 result line; if that fails, it lists the files it created. After `fsp new '(account)'
 --layout`, the generator warns "folder has no page.dart and no routes below it; skipped"
 until you add a route inside the group. That's expected.
+
+`fsp routes` prints what the header of `lib/app.g.dart` lists: each route's URL pattern, its typed
+route class, its `page.dart` and its tags (`data`, `guard`, `layout`, `transition`).
+
+```
+/products/:id  ProductRoute   products/$id/page.dart  (data, transition)
+```
+
+With `--json` it prints one JSON object per line, for scripts and editors, and adds each
+route's parameters; `file` is relative to the project root:
+
+```json
+{"pattern":"/products/:id","route":"ProductRoute","file":"lib/app/products/$id/page.dart","tags":["data","transition"],"params":[{"name":"id","type":"int","in":"path"}]}
+```
+
+**`--json` diagnostics.** `fsp gen --json` and `fsp check --json` print each diagnostic to
+stdout as one JSON object per line, instead of the rendering below, so an editor can turn them
+into squiggles. The success and failure lines still go to stderr, and stdout is empty when
+there is nothing to report:
+
+```json
+{"file":"lib/app/shops/$shop/items/$id/page.dart","line":6,"column":18,"severity":"error","message":"can't fill `label`: ..."}
+```
+
+`line` and `column` count from 1 (the column counts characters, not bytes) and are `null` for
+a diagnostic that isn't about a place in a file. `severity` is `error` or `warning`.
+
+**Formatting.** The generated file is not formatted by default, so a committed
+`app.g.dart` doesn't depend on which Dart SDK ran `fsp`. `fsp gen --format`, or `format: true` in
+the pubspec section, pipes it through `dart format` (which needs `dart` on your `PATH`; without
+it `fsp` warns and writes the unformatted code). It uses your package's language version
+and `analysis_options.yaml` (`formatter: page_width`), like `dart format lib/`, and
+`fsp gen` compares the formatted text with the file on disk, so a formatted file that is up
+to date stays "unchanged". `fsp watch`, `fsp new` and `fsp init` follow `format:` in the
+pubspec. `fsp check` writes and compares nothing, so it never runs `dart`.
 
 What the commands print:
 
@@ -476,7 +536,8 @@ them.
 ```
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
-packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation)
+packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
+                     and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
 examples/features/   every binding rule, with widget tests
 examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
@@ -493,7 +554,11 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
-with `fsp new` and runs `flutter analyze` on the result. After changing the emitter or a
+with `fsp new` and runs `flutter analyze` on the result, runs `dart run fespalier` against a
+freshly built `fsp`, and checks that the version agrees everywhere it is spelled out
+(`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`, the `ref:` that
+`fsp init` prints, and the READMEs' `ref:`, `--tag` and `FSP_VERSION`; the launcher reads its
+version from the pubspec). To release, bump those together. After changing the emitter or a
 template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
 a committed `app.g.dart` is stale.
 

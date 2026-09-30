@@ -126,7 +126,7 @@ GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])
 **4. Day to day.**
 
 ```sh
-fsp watch                                 # next to `flutter run`: regenerates on every save
+fsp watch                                 # next to `flutter run`: regenerates when the routing changes
 fsp new 'orders/[id]' --data --loading    # scaffold a route, then regenerate app.g.dart
 ```
 
@@ -226,6 +226,10 @@ A segment's type comes from the parameters that ask for it: `{required int id}` 
 `ProductRoute(id: 42)`, the page, and parsing: `/products/abc` goes to `not_found.dart`.
 Every file that asks for `$id` must agree on its type. When nobody gives one, a segment
 is a `String`. Segments are `String`, `int`, `double` or `bool`.
+
+`fsp new` scaffolds every segment as a `String`: `fsp new 'products/[id]' --data` writes
+`data(Ref ref, {required String id})`. To make `$id` an `int`, change the parameter type
+in each file that asks for it, then run `fsp gen` (or let `fsp watch` do it).
 
 ### `(group)` folders
 
@@ -364,6 +368,9 @@ with query parameters, its argument is a record naming the ones it uses, e.g.
 shows as soon as `data.dart` fails, and its `retry` callback is the retry path. A
 provider you write yourself keeps Riverpod's default unless you pass `retry:` to it.
 
+To see a scaffolded `error.dart` and its retry, throw from `data.dart`, e.g.
+`throw Exception('offline')`.
+
 ## The generator
 
 `cli/` is a Rust binary, `fsp`. A full scan, check and emit of an example runs in a few
@@ -375,7 +382,7 @@ checkout, run `cd cli && cargo build --release` (→ `cli/target/release/fsp`). 
 ```sh
 fsp init                # first-time setup: starter files, then gen
 fsp gen                 # check lib/app/, write lib/app.g.dart
-fsp watch               # same, on every change (keep it next to `flutter run`)
+fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
                         # [id] or :id both mean $id, so no shell quoting of $
@@ -389,15 +396,18 @@ already exist, and takes its class names from `--name` (default: from the path, 
 `--no-page` to leave `page.dart` out. A `(group)` target (like `'(account)'`) gets no
 `page.dart` either, since a group has no URL of its own; write one by hand if you want the
 group to serve its parent's URL. It then regenerates `lib/app.g.dart` and prints the
-result line; if that fails, it lists the files it created.
+result line; if that fails, it lists the files it created. After `fsp new '(account)'
+--layout`, the generator warns "folder has no page.dart and no routes below it; skipped"
+until you add a route inside the group. That's expected.
 
 What the commands print:
 
 - `fsp gen`: `✓ 12 routes → lib/app.g.dart`, or `✓ 12 routes, lib/app.g.dart unchanged`
   when the output didn't change.
 - `fsp check`: `✓ 12 routes, no errors`.
-- `fsp watch`: the `gen` line once at startup, then quiet until something changes. It
-  ignores its own output and file reads, so it doesn't loop while idle.
+- `fsp watch`: the `gen` line once at startup, then a line each time a save changes
+  `lib/app.g.dart`. An edit that doesn't (a widget's `build` method, say) prints nothing.
+  It ignores its own output and file reads, so it doesn't loop while idle.
 
 Errors point at the parameter or declaration at fault, and `app.g.dart` is left
 untouched while there are any. A file that can't be fully parsed gets a warning instead
@@ -506,6 +516,13 @@ testWidgets('shows a product', (tester) async {
   const ProductsRoute().go(context);
   await tester.pumpAndSettle();
 });
+```
+
+To import a file from a `$segment` folder, escape the `$`: an unescaped `$id` in an import
+is a Dart interpolation error ("URIs can't use string interpolation").
+
+```dart
+import 'package:my_app/app/products/\$id/page.dart';
 ```
 
 go_router builds the whole matched stack, so a deep link like `/products/2` also runs

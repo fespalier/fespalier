@@ -1990,6 +1990,10 @@ files a small part of it; a cache keyed on modification times would save less th
 
 ## Run the examples
 
+Start with [`examples/minimal`](examples/minimal): `flutter create` + `fsp init` and three pages
+(a class page, a function page and a `$id` page with a query parameter and a `data.dart`), with
+a README that goes through each file and a few widget tests. Then:
+
 ```sh
 cd examples/shop
 flutter create . --platforms=android,ios,web   # adds platform folders only
@@ -2047,6 +2051,7 @@ scripts/             packaging.py renders the Homebrew formula and Scoop manifes
                      pin_checksums.py writes the release's checksums into the Dart package
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
+examples/minimal/    the smallest app: `flutter create` + `fsp init` + three pages, with widget tests
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
 examples/features/   every binding rule, section data and nested not_found.dart, with widget tests
 examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
@@ -2054,9 +2059,11 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 
 ```sh
 (cd cli && cargo test && cargo clippy --all-targets -- -D warnings)
+(cd cli && cargo run -- check --project ../examples/minimal)
 (cd cli && cargo run -- check --project ../examples/shop)
 (cd cli && cargo run -- check --project ../examples/tabs)
 (cd packages/fespalier && flutter pub get && flutter analyze && flutter test)
+(cd examples/minimal && flutter pub get && flutter analyze && dart format --set-exit-if-changed . && flutter test)
 (cd examples/shop && flutter pub get && flutter analyze && flutter test)
 (cd examples/features && flutter pub get && flutter analyze && flutter test)
 (cd examples/tabs && flutter pub get && flutter analyze && flutter test)

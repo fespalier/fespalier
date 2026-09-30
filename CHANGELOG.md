@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### IntelliJ IDEA and Android Studio plugin
+
+- New `editors/intellij/`, a Kotlin plugin on top of `fsp check --json` (the counterpart of the
+  VS Code extension). Files under the app folder (`fespalier: app_dir:`, `lib/app` by default)
+  get the reported errors and warnings underlined in the editor, and saving one checks again;
+  *Tools | fespalier: Generate* runs `fsp gen` and *Tools | fespalier: Check* checks on demand,
+  each ending in a notification, which also says when `fsp` could not be run. Settings | Tools |
+  fespalier chooses the runner (auto: `fsp` from `PATH`, else `dart run fespalier`) and the
+  path to `fsp`. Platform 252 (2025.2) and later; built with JDK 21 and the IntelliJ Platform
+  Gradle Plugin 2. Not on the JetBrains Marketplace yet: build it with `./gradlew buildPlugin`
+  and install the zip from disk (README, "Editor support"). CI builds and tests it.
+
 ### Data refresh and retry
 
 - **Behaviour change: generated `data()` providers no longer switch off Riverpod's retry.**

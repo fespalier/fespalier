@@ -1133,12 +1133,31 @@ there is nothing to report:
 `line` and `column` count from 1 (the column counts characters, not bytes) and are `null` for
 a diagnostic that isn't about a place in a file. `severity` is `error` or `warning`.
 
-**Editor support.** `editors/vscode/` is a VS Code extension that runs `fsp check --json` when
-you save a file under the app folder and puts the diagnostics in the Problems panel, with a
-`fespalier: generate` command and a status bar item. It is not on the Marketplace yet: build
-it with `npm install && npm test && npx @vscode/vsce package` in that folder and install the
-`.vsix` (see `editors/vscode/README.md`). It uses `fsp` from your `PATH`, or `dart run
-fespalier` when there is none (`fespalier.runner` chooses).
+**Editor support.** Two editor plugins sit on top of the JSON diagnostics. Neither is on a
+marketplace yet, so you build them from source. Both use `fsp` from your `PATH`, or `dart run
+fespalier` when there is none, and both check again when you save a file under the app folder
+(`fespalier: app_dir:` in `pubspec.yaml`, `lib/app` by default).
+
+- **VS Code:** `editors/vscode/` puts the diagnostics in the Problems panel, with a
+  `fespalier: generate` command and a status bar item. Build it with `npm install && npm test
+  && npx @vscode/vsce package` in that folder and install the `.vsix` (see
+  `editors/vscode/README.md`). `fespalier.runner` chooses the runner.
+- **IntelliJ IDEA and Android Studio:** `editors/intellij/` (Kotlin) underlines the problems
+  in the editor, with their severity, in the files under the app folder, and adds
+  *Tools | fespalier: Generate* and *fespalier: Check*; a notification says when `fsp` could
+  not run. Settings | Tools | fespalier chooses the runner (auto, `fsp`, or `dart run
+  fespalier`) and the path to `fsp`. It works on platform 252 (2025.2) and later; the
+  highlighting of route files needs the Dart plugin, which Android Studio includes. Build it
+  with JDK 21:
+
+  ```sh
+  cd editors/intellij
+  ./gradlew build buildPlugin      # tests, then build/distributions/fespalier-intellij-<version>.zip
+  ```
+
+  Then *Settings | Plugins | gear icon | Install Plugin from Disk...* and pick the zip.
+  `./gradlew runIde` starts a sandbox IDE with the plugin instead. See
+  `editors/intellij/README.md`.
 
 **Formatting.** The generated file is not formatted by default, so a committed
 `app.g.dart` doesn't depend on which Dart SDK ran `fsp`. `fsp gen --format`, or `format: true` in
@@ -1243,6 +1262,7 @@ restart.
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
 editors/vscode/      the VS Code extension (TypeScript): fsp diagnostics in the Problems panel
+editors/intellij/    the IntelliJ / Android Studio plugin (Kotlin): fsp diagnostics in the editor
 scripts/             packaging.py renders the Homebrew formula and Scoop manifest for a release;
                      pin_checksums.py writes the release's checksums into the Dart package
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
@@ -1312,6 +1332,13 @@ Maintainers only. Bump the version everywhere (see the version checks above), up
 3. **Homebrew and Scoop.** Copy `fsp.rb` from the release into the `Formula/` folder of a tap
    repository and `fsp.json` into the `bucket/` folder of a bucket repository, or let the
    workflow do it (below).
+4. **JetBrains Marketplace (IntelliJ plugin).** Build the plugin from the tag with
+   `cd editors/intellij && ./gradlew buildPlugin` (JDK 21) and upload
+   `build/distributions/fespalier-intellij-<version>.zip` on the plugin's page in the
+   JetBrains Marketplace, or run `PUBLISH_TOKEN=<token> ./gradlew publishPlugin`. Bump
+   `version` in `editors/intellij/build.gradle.kts` first (the plugin is versioned on its
+   own, like the VS Code extension). The first upload needs a vendor account and a manual
+   review; later ones can use a permanent token from the Marketplace's *My Tokens* page.
 
 One-time setup:
 

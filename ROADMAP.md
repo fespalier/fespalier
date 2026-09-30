@@ -19,7 +19,6 @@ maintainer steps (pub.dev, Homebrew tap, Scoop bucket, Marketplace) are in READM
 - Typed catch-alls (`List<int>`); today a catch-all is a `List<String>`.
 - Per-folder `caseSensitive`, and a `case_sensitive` that keeps `.location` in the requested case.
 - `extra` for layouts and guards, and restoring it (an `extraCodec`) on the web.
-- An IntelliJ plugin on top of the JSON diagnostics.
 - Localized paths.
 - Incremental scan/resolve/emit for very large apps (`fsp watch` already reuses parse results).
 - Instance methods `ProductRoute(id: 2).watch(ref)` / `.read(ref)`: needs the generated file to name the data type (or Dart macros); `watch` and `read` are static for now.

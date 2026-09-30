@@ -9,9 +9,9 @@ import 'package:material_ui/material_ui.dart' as mui;
 void main() {
   group('the route manifest', () {
     test('lists every route once, by type and by path', () {
-      expect(AppManifest.all, hasLength(32));
-      expect(AppManifest.byType, hasLength(32));
-      expect(AppManifest.byPath, hasLength(32));
+      expect(AppManifest.all, hasLength(35));
+      expect(AppManifest.byType, hasLength(35));
+      expect(AppManifest.byPath, hasLength(35));
       // With the manifest inline, AppRoutes forwards to it.
       expect(AppRoutes.all, same(AppManifest.all));
       expect(AppRoutes.byType, same(AppManifest.byType));

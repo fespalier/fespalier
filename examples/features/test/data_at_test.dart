@@ -118,6 +118,30 @@ void main() {
       expect(dataAt('/CATALOG/42')!.single, ProductDetailRoute.data('42'));
     });
 
+    test('a typed catch-all parses each part; one that fails is no match', () {
+      expect(
+        dataAt('/compare/1/2/3')!.single,
+        CompareRoute.data(restKey([1, 2, 3])),
+      );
+      expect(AppRoutes.match(at('/compare/1/2/3'))!.params, {
+        'ids': [1, 2, 3],
+      });
+      expect(dataAt('/compare/1/x/3'), isNull);
+      expect(AppRoutes.match(at('/compare/1/x')), isNull);
+    });
+
+    test('each route matches by its own case setting (route.dart)', () {
+      // pubspec.yaml: any case. files/ has a route.dart that says exactly.
+      expect(AppRoutes.match(at('/DOCS/a'))!.info.path, '/docs/*rest');
+      expect(AppRoutes.match(at('/files/a'))!.info.path, '/files/*path?');
+      expect(AppRoutes.match(at('/Files/a')), isNull);
+      // /FILES isn't the exact-case files/ route: it is the app's `/:slug`.
+      expect(AppRoutes.match(at('/FILES'))!.info.path, '/:slug');
+      // A folder that is matched by case leaves the rest of the app alone.
+      expect(dataAt('/CATALOG/42')!.single, ProductDetailRoute.data('42'));
+      expect(dataAt('/Compare/1/2'), isNotNull);
+    });
+
     test('the mount point is taken off', () {
       addTearDown(AppRoutes.mount);
       AppRoutes.mount(at: '/app');

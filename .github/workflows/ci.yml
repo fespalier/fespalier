@@ -103,6 +103,32 @@ jobs:
       - name: Package the extension
         run: npx --no-install vsce package --no-dependencies
 
+  intellij:
+    name: IntelliJ plugin
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/intellij
+    steps:
+      - uses: actions/checkout@v4
+      # The 2025.2 platform the plugin builds against is compiled for Java 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: true
+      - name: Compile and test (unit tests, and one headless IDE test)
+        run: ./gradlew build --no-daemon
+      - name: Package the plugin
+        run: ./gradlew buildPlugin verifyPluginStructure --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fespalier-intellij
+          path: editors/intellij/build/distributions/*.zip
+          if-no-files-found: error
+
   packaging:
     name: Homebrew and Scoop files
     runs-on: ubuntu-latest

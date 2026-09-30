@@ -173,6 +173,49 @@ fn matchers_follow_the_case_sensitivity_config() {
 }
 
 #[test]
+fn each_matcher_carries_its_own_case_flag() {
+    // The pubspec says any case; a route.dart makes one folder exact.
+    let files = [
+        ("page.dart", HOME),
+        ("exact/route.dart", "const caseSensitive = true;"),
+        ("exact/page.dart", &page("Exact")),
+        ("exact/deep/page.dart", &page("Deep")),
+        ("loose/page.dart", &page("Loose")),
+    ];
+    let (c, _) = generated("fespalier:\n  case_sensitive: false\n", &files);
+    has(
+        &c,
+        &[
+            "RouteMatcher(['exact'], (s) => UrlMatch(s.uri, const ExactRoute(), {}, [])),",
+            "RouteMatcher(['exact', 'deep'], (s) => UrlMatch(s.uri, const DeepRoute(), {}, [])),",
+            "RouteMatcher(['loose'], (s) => UrlMatch(s.uri, const LooseRoute(), {}, []), caseSensitive: false),",
+            // The root folder's setting is the mount point's.
+            "matchRoutes(uri, base, _matchers, caseSensitive: false);",
+        ],
+    );
+    // And the other way round.
+    let (c, _) = generated("", &[("page.dart", HOME), ("ci/route.dart", "const caseSensitive = false;"), ("ci/page.dart", &page("Ci"))]);
+    has(&c, &["RouteMatcher(['ci'], (s) => UrlMatch(s.uri, const CiRoute(), {}, []), caseSensitive: false),", "matchRoutes(uri, base, _matchers);"]);
+}
+
+#[test]
+fn a_typed_catch_all_is_parsed_by_the_matcher_like_the_page_does() {
+    let c = code(&[
+        ("compare/$$ids/data.dart", "Future<int> data(Ref ref, {required List<int> ids}) async => 1;"),
+        ("compare/$$ids/page.dart", &widget("ComparePage", "final List<int> ids; final int n;", ", required this.ids, required this.n")),
+    ]);
+    has(
+        &c,
+        &[
+            "(ids: Segment.asIntRest(s, 'ids'))",
+            "RouteMatcher(['compare', '*ids'], (s) {",
+            // A part that isn't an int throws BadSegment in the parser: matchRoutes turns it into null.
+            "CompareRoute(ids: p.ids), {'ids': p.ids}, [_data2(restKey(p.ids))])",
+        ],
+    );
+}
+
+#[test]
 fn an_app_without_routes_still_generates_an_empty_matcher_list() {
     let (c, _) = generated("", &[("layout.dart", LAYOUT)]);
     has(&c, &["static final List<RouteMatcher> _matchers = [\n  ];"]);
@@ -469,7 +512,7 @@ fn a_not_found_gets_its_segments_as_strings() {
             // A route whose segment doesn't parse: the raw value is in the router's parameters.
             "() => _i2.ShopNotFound(uri: state.uri, shop: state.pathParameters['shop']!),",
             // An unknown URL under it: the part of the path at its place.
-            "(['shops', ':shop'], (uri) => _i2.ShopNotFound(uri: uri, shop: pathPart(uri, base, 1))),",
+            "(['shops', ':shop'], (uri) => _i2.ShopNotFound(uri: uri, shop: pathPart(uri, base, 1)), caseSensitive: true),",
         ],
     );
 }
@@ -502,7 +545,7 @@ fn a_not_found_segment_must_be_a_string() {
 
 // --- fsp new --not-found --------------------------------------------------------------------
 
-fn new_args(route: &str) -> NewArgs {
+fn new_args(route: &str, not_found: bool) -> NewArgs {
     NewArgs {
         route: route.into(),
         name: None,
@@ -512,13 +555,15 @@ fn new_args(route: &str) -> NewArgs {
         layout: false,
         guard: false,
         transition: false,
+        function: false,
+        not_found,
     }
 }
 
 #[test]
 fn new_not_found_scaffolds_a_file_that_takes_the_segments() {
     let dir = project("", &[("page.dart", HOME)]);
-    let created = scaffold::new_route_with(dir.path(), &new_args("shops/[shop]"), false, true).unwrap();
+    let created = scaffold::new_route_opts(dir.path(), &new_args("shops/[shop]", true), false).unwrap();
     assert_eq!(created, ["lib/app/shops/$shop/page.dart", "lib/app/shops/$shop/not_found.dart"]);
     let src = fs::read_to_string(dir.path().join("lib/app/shops/$shop/not_found.dart")).unwrap();
     assert!(src.contains("class ShopsShopNotFound extends StatelessWidget"), "{src}");
@@ -533,15 +578,15 @@ fn new_not_found_scaffolds_a_file_that_takes_the_segments() {
 #[test]
 fn new_not_found_alone_and_where_it_cannot_go() {
     let dir = project("", &[("page.dart", HOME)]);
-    let created = scaffold::new_route_with(dir.path(), &new_args("docs"), true, true).unwrap();
+    let created = scaffold::new_route_opts(dir.path(), &new_args("docs", true), true).unwrap();
     assert_eq!(created, ["lib/app/docs/not_found.dart"]);
     let src = fs::read_to_string(dir.path().join("lib/app/docs/not_found.dart")).unwrap();
     assert!(src.contains("DocsNotFound({super.key, required this.uri})"), "{src}");
     // Not for a catch-all: it matches everything below it.
-    let e = scaffold::new_route_with(dir.path(), &new_args("wiki/[...rest]"), false, true).unwrap_err().to_string();
+    let e = scaffold::new_route_opts(dir.path(), &new_args("wiki/[...rest]", true), false).unwrap_err().to_string();
     assert!(e.contains("catch-all folder can't have a not_found.dart"), "{e}");
     // Without the flag nothing changes.
-    let created = scaffold::new_route_with(dir.path(), &new_args("plain"), false, false).unwrap();
+    let created = scaffold::new_route_opts(dir.path(), &new_args("plain", false), false).unwrap();
     assert_eq!(created, ["lib/app/plain/page.dart"]);
 }
 

@@ -48,16 +48,28 @@ final matchers = <RouteMatcher>[
   }),
 ];
 
+/// [caseSensitive] is the root folder's (the mount point's); [matchers] carry their own.
 UrlMatch? at(
   String location, {
   String base = '/',
   bool caseSensitive = true,
+  List<RouteMatcher>? routes,
 }) => matchRoutes(
   Uri.parse(location),
   base,
-  matchers,
+  routes ?? matchers,
   caseSensitive: caseSensitive,
 );
+
+/// The same routes, each with the case setting of its folder's route.dart.
+List<RouteMatcher> withCase(Map<String, bool> byFirstPart) => [
+  for (final m in matchers)
+    RouteMatcher(
+      m.pattern,
+      m.build,
+      caseSensitive: byFirstPart[m.pattern.first] ?? true,
+    ),
+];
 
 class Probe extends ConsumerWidget {
   const Probe({super.key});
@@ -121,13 +133,34 @@ void main() {
       expect(at('/shop', base: '/shop'), isNull);
     });
 
-    test('case matters unless it is switched off', () {
+    test('case matters unless a route switches it off, each on its own', () {
       expect(at('/Products/5'), isNull);
-      expect(at('/Products/5', caseSensitive: false)!.type, ProductRoute);
+      final loose = withCase({'products': false});
+      expect(at('/Products/5', routes: loose)!.type, ProductRoute);
+      // Other routes keep their own setting.
+      expect(at('/About', routes: loose), isNull);
+      expect(at('/DOCS/a', routes: loose), isNull);
+      expect(at('/DOCS/a', routes: withCase({'docs': false}))!.type, DocsRoute);
+      // The mount point follows the root folder's setting.
       expect(
-        at('/SHOP/products/5', base: '/shop', caseSensitive: false),
+        at('/SHOP/products/5', base: '/shop', caseSensitive: false, routes: loose),
         isNotNull,
       );
+      expect(at('/SHOP/products/5', base: '/shop', routes: loose), isNull);
+    });
+
+    test('a typed catch-all part that fails to parse is no match', () {
+      final typed = <RouteMatcher>[
+        RouteMatcher(['nums', '*ids'], (s) {
+          final ids = Segment.asIntRest(s, 'ids');
+          return UrlMatch(s.uri, const AboutRoute(), {'ids': ids}, []);
+        }),
+      ];
+      expect(at('/nums/1/2/3', routes: typed)!.params, {
+        'ids': [1, 2, 3],
+      });
+      expect(at('/nums/1/x', routes: typed), isNull);
+      expect(at('/nums', routes: typed), isNull);
     });
   });
 

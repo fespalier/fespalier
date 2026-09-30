@@ -44,13 +44,83 @@
 - **`not_found.dart` can take the segments of its own path**, as `String`s exactly as the URL
   spells them (a segment that failed to parse is often why it is shown, so they aren't typed;
   `int teamId` there is an error). `pathPart` is the runtime helper.
-- **`fsp new --not-found`** scaffolds a `not_found.dart` that takes them.
+- `fsp new --not-found` (see below) writes the segments of the folder's path into the `not_found.dart` it scaffolds, class or function form.
 - **`meta_unique: [code, slug]`** under `fespalier:`: a value that two routes' `meta.dart` give
   to the same *literal* named argument of `meta`'s constructor call is an error naming both
   files. Expressions and left-out arguments are skipped; a listed name that no `meta.dart`
   gives a literal is a warning.
 - README "Design notes": why `ProductRoute(id: 2).watch(ref)` stays static (a `const` route can't
   have a late field, and an instance method would have to name the data type).
+
+### Typed catch-alls, and case per folder
+
+- **A catch-all can be typed.** A parameter named after a `$$rest` or `$$$rest` can be a
+  `List<int>`, `List<double>`, `List<num>`, `List<bool>` or `List<DateTime>` as well as the
+  `List<String>` it always was. Each part is read like one segment of that type
+  (`Segment.asIntRest`, `asDoubleRest`, `asNumRest`, `asBoolRest`, `asDateTimeRest`, built on
+  `asRest`); a part that doesn't parse renders `not_found`, as an unparsable `int` segment
+  does. The typed route's field takes the list, `.location` joins the encoded parts (a
+  `DateTime` as ISO 8601), and `$$$rest` is `[]` when absent. `data.dart` can take the typed list:
+  the provider is keyed by the path and `data()` gets the list back. The type must agree in
+  every file that asks for it, or it is an error with a code frame in the style of the
+  segment mismatch; other element types (`List<Object>`, `List<int?>`) are an error that lists
+  what is accepted. `restPath` and `restKey` take any `Iterable<Object>`. `fsp new` keeps the
+  type an existing catch-all has. Enums aren't supported (they aren't for ordinary segments
+  either). `examples/features` has `compare/$$ids`, a `List<int>` with a `data.dart`.
+- **`route.dart`, a per-folder `caseSensitive`.** A file `const caseSensitive = false;` (or
+  `true`) in a folder makes that folder and everything below it match paths in any case (or
+  exactly), the nearest one winning over the pubspec's `case_sensitive`. It is read from the
+  source like `meta.dart`, never imported, and must be a `true` or `false` literal: anything
+  else is an error. It is its own file because `meta.dart` is not inherited, `transition.dart`
+  is a function and `layout.dart` only exists where there is a layout. The generated
+  `caseSensitive: false` is now per `GoRoute`, and each `nearestNotFound` scope carries its
+  folder's setting. `examples/features` keeps `files/` exact while the rest of the app is not.
+- **Behaviour change in the runtime API:** `NotFoundScope` (what the generated `notFound`
+  passes to `nearestNotFound`) has a third field, `caseSensitive`, so **regenerate
+  `lib/app.g.dart`** with the matching `fsp`. A hand-written scope needs `caseSensitive: true`.
+- **The requested case is kept, and documented.** go_router doesn't lowercase anything:
+  navigating to `/Products/2` on a case-insensitive route leaves `GoRouterState.uri` and the
+  router's location as `/Products/2` (only `matchedLocation` is spelled by the route). Typed
+  routes' `.location` has no requested case and writes the folders' spelling. Tests in the
+  package and in `examples/features` pin this on go_router 17.5 and 18.
+
+### View files as functions, and `not-found.dart`
+
+- **`page.dart`, `loading.dart`, `error.dart`, `layout.dart` and `not_found.dart` can export a
+  function returning a `Widget`** in place of a widget class: `Widget page({required String
+  orderId}) => CancelOrderScreen(orderId: orderId);`. Its parameters are bound exactly like a
+  constructor's (segments, query, `data` by name or type, `child` or a shell, `error` and
+  `retry`, `uri`). Many routes can now build one screen with different constants, and a screen
+  can stay outside `lib/app/`. The function is named after the file (`notFound()` or
+  `not_found()` for the not-found view); a file with a public widget class and the function is
+  an error naming both. A function view can't use hooks or `ref`: put those in the widget it
+  returns. The class form is unchanged.
+- **Route names for function pages.** A page function takes the folder path, ignoring
+  `(group)` folders: `(kyc)/shop/name` is `ShopNameRoute`. `const routeName = 'KycShopName';`
+  in `page.dart` overrides it (and also renames a class page's route). A name clash is an
+  error that suggests `routeName`.
+- **`fsp new --function`** scaffolds the function form (`--name` writes `routeName`), and
+  **`fsp new --not-found`** scaffolds a `not_found.dart`.
+- **`not-found.dart` is accepted** as a spelling of `not_found.dart`, whatever the
+  configuration says (any future multi-word kind gets the same rule). Both in one folder is an
+  error with a code frame for each file. Diagnostics, the route table and `fsp routes --json`
+  name a file as spelled on disk.
+- **`file_style: snake | kebab`** (default `snake`) under `fespalier:` picks what `fsp init` and
+  `fsp new` write. Existing projects are unchanged.
+- `examples/features` gains two routes serving one `PlanScreen` with different constants
+  (`(plans)/free`, `(plans)/pro`), with a widget test for each.
+
+### IntelliJ IDEA and Android Studio plugin
+
+- New `editors/intellij/`, a Kotlin plugin on top of `fsp check --json` (the counterpart of the
+  VS Code extension). Files under the app folder (`fespalier: app_dir:`, `lib/app` by default)
+  get the reported errors and warnings underlined in the editor, and saving one checks again;
+  *Tools | fespalier: Generate* runs `fsp gen` and *Tools | fespalier: Check* checks on demand,
+  each ending in a notification, which also says when `fsp` could not be run. Settings | Tools |
+  fespalier chooses the runner (auto: `fsp` from `PATH`, else `dart run fespalier`) and the
+  path to `fsp`. Platform 252 (2025.2) and later; built with JDK 21 and the IntelliJ Platform
+  Gradle Plugin 2. Not on the JetBrains Marketplace yet: build it with `./gradlew buildPlugin`
+  and install the zip from disk (README, "Editor support"). CI builds and tests it.
 
 ### Data refresh and retry
 

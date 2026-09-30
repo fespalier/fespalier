@@ -328,7 +328,7 @@ fn not_found_in_a_folder_covers_the_urls_under_it() {
             "static Widget notFound(Uri uri) => nearestNotFound(",
             "base,",
             // Nearest first: the deeper folder, and a dynamic segment matches anything.
-            "(['shop', ':id'], (uri) => _i5.ItemNotFound(uri: uri)),\n          (['shop'], (uri) => _i3.ShopNotFound(uri: uri)),",
+            "(['shop', ':id'], (uri) => _i5.ItemNotFound(uri: uri), caseSensitive: true),\n          (['shop'], (uri) => _i3.ShopNotFound(uri: uri), caseSensitive: true),",
             "(uri) => _i1.RootNotFound(uri: uri),",
             // An unparsable `$id` shows its own folder's; the shop page's own segments can't fail.
             "() => _i5.ItemNotFound(uri: state.uri),",
@@ -394,6 +394,8 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
     let args = |route: &str, data: bool, layout: bool| NewArgs {
         route: route.into(),
         name: None,
+        function: false,
+        not_found: false,
         data,
         loading: false,
         error: false,

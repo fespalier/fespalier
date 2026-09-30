@@ -94,11 +94,14 @@ final class RouteMatch {
 /// One route as `AppRoutes.matchUrl` tries it: its path as parts (`['products', ':id']`;
 /// `*rest` is a catch-all of one or more parts, `*rest?` of none or more) and how to
 /// build what it matched, which throws [BadSegment] for a segment that doesn't parse.
+///
+/// [caseSensitive] is the route's own setting (its folder's `route.dart`, else the config).
 final class RouteMatcher {
-  const RouteMatcher(this.pattern, this.build);
+  const RouteMatcher(this.pattern, this.build, {this.caseSensitive = true});
 
   final List<String> pattern;
   final UrlMatch Function(GoRouterState state) build;
+  final bool caseSensitive;
 }
 
 /// What the generated `AppRoutes.matchUrl` calls: the first of [routes] whose pattern
@@ -118,7 +121,7 @@ UrlMatch? matchRoutes(
   final path = pathBelow(uri, base, caseSensitive: caseSensitive);
   if (path == null) return null;
   for (final route in routes) {
-    final params = _capture(route.pattern, path, caseSensitive);
+    final params = _capture(route.pattern, path, route.caseSensitive);
     if (params == null) continue;
     final state = _UrlState(uri, params, _fullPath(base, route.pattern));
     try {

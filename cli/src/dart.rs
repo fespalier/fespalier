@@ -30,11 +30,26 @@ pub struct Class {
     /// Parameters of the unnamed constructor; empty when there is none.
     pub params: Vec<Param>,
     pub span: Span,
+    /// Not a class: a view function (`Widget page(...)`) read as if it were the
+    /// widget's constructor. `name` is the function's.
+    pub function: bool,
 }
 
 impl Class {
     pub fn is_public(&self) -> bool {
         !self.name.starts_with('_')
+    }
+
+    /// How diagnostics name it: `ProductPage`, or `page()` for a function.
+    pub fn display(&self) -> String {
+        if self.function { format!("{}()", self.name) } else { self.name.clone() }
+    }
+}
+
+impl Function {
+    /// The function seen as a widget's constructor, for binding its parameters.
+    pub fn as_view(&self) -> Class {
+        Class { name: self.name.clone(), superclass: None, params: self.params.clone(), span: self.span.clone(), function: true }
     }
 }
 
@@ -55,6 +70,12 @@ pub struct Variable {
     /// Set when the initializer is a list of plain string literals, like
     /// `const tabs = ['home', 'search'];`: each string with where it sits.
     pub strings: Option<Vec<(String, Span)>>,
+    /// Set when the initializer is one plain string literal, like
+    /// `const routeName = 'KycShopName';`.
+    pub string: Option<String>,
+    /// Set when the initializer is a `true` or `false` literal, like
+    /// `const caseSensitive = false;`.
+    pub boolean: Option<bool>,
     /// Set when the initializer is a map from string literals to constructor
     /// calls, like `const tabOptions = {'search': TabOptions(preload: true)};`.
     pub objects: Option<Vec<ObjectEntry>>,
@@ -304,7 +325,7 @@ impl Reader<'_> {
             Some(list) => self.params(list, &fields),
             None => self.primary.get(&name_node.start_byte()).cloned().unwrap_or_default(),
         };
-        Some(Class { name, superclass, params, span: Span::of(name_node) })
+        Some(Class { name, superclass, params, span: Span::of(name_node), function: false })
     }
 
     /// The typed fields of a class cut short by a parse error, which the
@@ -365,7 +386,13 @@ impl Reader<'_> {
                 let strings = value.and_then(|v| self.strings(v));
                 let objects = value.and_then(|v| self.objects(v));
                 let ctor_args = value.and_then(|v| self.ctor_args(v));
-                out.push(Variable { name: self.text(name).to_string(), call, strings, objects, ctor_args, is_const, span: Span::of(name) });
+                let string = value.filter(|v| v.kind() == "string_literal").and_then(|v| string_value(self.text(v)));
+                let boolean = value.and_then(|v| match v.kind() {
+                    "true" => Some(true),
+                    "false" => Some(false),
+                    _ => None,
+                });
+                out.push(Variable { name: self.text(name).to_string(), call, strings, string, boolean, objects, ctor_args, is_const, span: Span::of(name) });
             }
         }
         out
@@ -1210,6 +1237,26 @@ mod tests {
         assert!(strings("data").is_none());
         // Each string knows its line, for diagnostics.
         assert_eq!(m.variables[0].strings.as_ref().unwrap()[0].1.line, 2);
+    }
+
+    #[test]
+    fn reads_top_level_bool_literals() {
+        let m = parse(
+            r#"
+            const on = true;
+            const bool off = false;
+            final loud = false;
+            const not = !true;
+            const text = 'true';
+            const number = 1;
+            const other = kFlag;
+            "#,
+        );
+        let b = |n: &str| m.variables.iter().find(|v| v.name == n).unwrap().boolean;
+        assert_eq!((b("on"), b("off"), b("loud")), (Some(true), Some(false), Some(false)));
+        for n in ["not", "text", "number", "other"] {
+            assert_eq!(b(n), None, "{n}");
+        }
     }
 
     #[test]

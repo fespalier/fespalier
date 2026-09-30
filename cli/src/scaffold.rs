@@ -11,7 +11,7 @@ use serde::Serialize;
 use crate::config::Config;
 use crate::diag::Diags;
 use crate::resolve::{self, pascal};
-use crate::scan::{self, parse_segment, Seg};
+use crate::scan::{self, parse_segment, FileStyle, Seg};
 use crate::templates;
 
 #[derive(Args)]
@@ -20,9 +20,13 @@ pub struct NewArgs {
     /// `[...rest]` for the catch-all `$$rest` and `[[...rest]]` for `$$$rest`, so you don't
     /// have to quote `$` in the shell.
     pub route: String,
-    /// Class name stem (default: from the path, e.g. `ProductsId`)
+    /// Class name stem (default: from the path, e.g. `ProductsId`); with --function,
+    /// the typed route's name, written as `const routeName = '...';`
     #[arg(long)]
     pub name: Option<String>,
+    /// Write the views as top-level functions (`Widget page(...)`) rather than widget classes
+    #[arg(long)]
+    pub function: bool,
     #[arg(long)]
     pub data: bool,
     #[arg(long)]
@@ -31,6 +35,8 @@ pub struct NewArgs {
     pub error: bool,
     #[arg(long)]
     pub layout: bool,
+    #[arg(long)]
+    pub not_found: bool,
     #[arg(long)]
     pub guard: bool,
     #[arg(long)]
@@ -45,15 +51,15 @@ pub struct NewCmd {
     /// Don't write page.dart (implied for a `(group)` folder, which can't have one)
     #[arg(long)]
     pub no_page: bool,
-    /// Also write not_found.dart: shown for unknown URLs under the folder, and for a segment
-    /// of its routes that doesn't parse. It takes the segments of its path as Strings.
-    #[arg(long)]
-    pub not_found: bool,
 }
 
 #[derive(Serialize)]
 struct Cx {
     stem: String,
+    /// The views are top-level functions.
+    function: bool,
+    /// `--name` with `--function`: the `routeName` to write.
+    name: Option<String>,
     segs: Vec<SegCx>,
     data: bool,
     /// ` $orderId $itemId`, appended to the page's placeholder text.
@@ -75,13 +81,7 @@ pub fn new_route(project: &Path, a: &NewArgs) -> Result<Vec<String>> {
     new_route_opts(project, a, false)
 }
 
-#[cfg(test)]
 pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<String>> {
-    new_route_with(project, a, no_page, false)
-}
-
-/// [`new_route_opts`], and `--not-found` too.
-pub fn new_route_with(project: &Path, a: &NewArgs, no_page: bool, not_found: bool) -> Result<Vec<String>> {
     let cfg = Config::load(project)?;
     let app_dir = project.join(&cfg.app_dir);
     let parts: Vec<String> = a
@@ -112,12 +112,12 @@ pub fn new_route_with(project: &Path, a: &NewArgs, no_page: bool, not_found: boo
 
     // Segments that already exist keep the type the tree gives them.
     let mut diags = Diags::default();
-    let app = resolve::resolve(&scan::scan(&app_dir, &mut diags)?, &mut diags);
+    let app = resolve::resolve(&scan::scan(&app_dir, &mut diags)?, true, &mut diags);
     let known: HashMap<&str, &str> = app
         .routes
         .iter()
         .enumerate()
-        .filter(|(_, r)| matches!(r.seg, Some(Seg::Dynamic(_))))
+        .filter(|(_, r)| matches!(r.seg, Some(Seg::Dynamic(_) | Seg::CatchAll(..))))
         .map(|(id, r)| (r.dir.as_str(), app.seg_type(id)))
         .collect();
     let mut seg_cx = vec![];
@@ -128,16 +128,27 @@ pub fn new_route_with(project: &Path, a: &NewArgs, no_page: bool, not_found: boo
                 let ty = known.get(dir.as_str()).copied().unwrap_or("String").to_string();
                 seg_cx.push(SegCx { name: name.clone(), ty });
             }
-            Seg::CatchAll(name, _) => seg_cx.push(SegCx { name: name.clone(), ty: "List<String>".into() }),
+            Seg::CatchAll(name, _) => {
+                let dir = parts[..=i].join("/");
+                let ty = known.get(dir.as_str()).copied().unwrap_or("List<String>").to_string();
+                seg_cx.push(SegCx { name: name.clone(), ty });
+            }
             _ => {}
         }
     }
 
+    if let (true, Some(n)) = (a.function, &a.name) {
+        if !resolve::valid_route_name(n) {
+            bail!("--name `{n}` names the route class `{n}Route`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName`");
+        }
+    }
     let stem = a.name.clone().unwrap_or_else(|| {
         let p = pascal(&rel);
         if p.is_empty() { "Home".into() } else { p }
     });
     let cx = Cx {
+        function: a.function,
+        name: a.name.clone().filter(|_| a.function),
         label: seg_cx.iter().map(|s| format!(" ${}", s.name)).collect(),
         path: format!("/{rel}"),
         stem,
@@ -148,7 +159,7 @@ pub fn new_route_with(project: &Path, a: &NewArgs, no_page: bool, not_found: boo
     // A group has no URL of its own, so it can't serve a page (and one would
     // collide with the page of the folder above it).
     let is_group = matches!(segs.last(), Some(Seg::Group(_)));
-    if not_found && matches!(segs.last(), Some(Seg::CatchAll(..))) {
+    if a.not_found && matches!(segs.last(), Some(Seg::CatchAll(..))) {
         bail!("a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown");
     }
     let wanted = [
@@ -157,13 +168,13 @@ pub fn new_route_with(project: &Path, a: &NewArgs, no_page: bool, not_found: boo
         ("loading", a.loading),
         ("error", a.error),
         ("layout", a.layout),
+        ("not_found", a.not_found),
         ("guard", a.guard),
         ("transition", a.transition),
-        ("not_found", not_found),
     ];
     if !wanted.iter().any(|(_, on)| *on) {
         let why = if is_group { "a (group) folder has no page" } else { "--no-page skips the page" };
-        bail!("nothing to create: {why}; also pass --layout, --loading, --error, --guard, --transition or --not-found");
+        bail!("nothing to create: {why}; also pass --layout, --loading, --error, --not-found, --guard or --transition");
     }
     let dir = app_dir.join(&rel);
     fs::create_dir_all(&dir)?;
@@ -172,10 +183,14 @@ pub fn new_route_with(project: &Path, a: &NewArgs, no_page: bool, not_found: boo
         if !on {
             continue;
         }
-        let path = dir.join(format!("{kind}.dart"));
-        let shown = format!("{}/{}{kind}.dart", cfg.app_dir, if rel.is_empty() { String::new() } else { format!("{rel}/") });
-        if path.exists() {
-            eprintln!("  skip  {shown} (exists)");
+        // `file_style` picks how a multi-word kind is spelled; the other spelling counts as there.
+        let (snake, kebab) = (format!("{kind}.dart"), format!("{}.dart", kind.replace('_', "-")));
+        let file = if cfg.file_style == FileStyle::Kebab { &kebab } else { &snake };
+        let at = |f: &str| format!("{}/{}{f}", cfg.app_dir, if rel.is_empty() { String::new() } else { format!("{rel}/") });
+        let path = dir.join(file);
+        let shown = at(file);
+        if let Some(present) = [&snake, &kebab].into_iter().find(|f| dir.join(f).exists()) {
+            eprintln!("  skip  {} (exists)", at(present));
             continue;
         }
         fs::write(&path, templates::render(&format!("new/{kind}.dart"), &cx))?;

@@ -86,7 +86,7 @@ ShellRoute(
 {%- else -%}
 GoRoute(
   path: {{ r.path }},
-{% if not case_sensitive %}
+{% if not r.case_sensitive %}
   caseSensitive: false,
 {% endif %}
 {% if r.redirects | length == 1 %}
@@ -173,7 +173,7 @@ abstract final class AppRoutes {
         base,
         [
 {% for n in not_founds %}
-          ({{ n.prefix }}, (uri) => {{ n.call }}),
+          ({{ n.prefix }}, (uri) => {{ n.call }}, caseSensitive: {{ "true" if n.case_sensitive else "false" }}),
 {% endfor %}
         ],
         (uri) => {{ not_found }},
@@ -194,9 +194,9 @@ abstract final class AppRoutes {
       {{ l }}
 {% endfor %}
       return UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }});
-    }),
+    }{{ ", caseSensitive: false" if not m.case_sensitive }}),
 {% else %}
-    RouteMatcher({{ m.pattern }}, (s) => UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }})),
+    RouteMatcher({{ m.pattern }}, (s) => UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }}){{ ", caseSensitive: false" if not m.case_sensitive }}),
 {% endif %}
 {% endfor %}
   ];

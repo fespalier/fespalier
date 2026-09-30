@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+{% if function %}
+Widget layout({required Widget child}) => child;
+{% else %}
 class {{ stem }}Layout extends StatelessWidget {
   const {{ stem }}Layout({super.key, required this.child});
 
@@ -8,3 +11,4 @@ class {{ stem }}Layout extends StatelessWidget {
   @override
   Widget build(BuildContext context) => child;
 }
+{% endif %}

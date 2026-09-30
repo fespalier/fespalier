@@ -13,12 +13,21 @@ use std::collections::{BTreeMap, HashMap};
 
 use heck::ToUpperCamelCase;
 
-use crate::dart::{self, Class, Lit, Module, Span, Ty};
+use crate::dart::{self, Class, Function, Lit, Module, Span, Ty};
 use crate::diag::Diags;
 use crate::extra::{self, ExtraType};
 use crate::scan::{Kind, Node, Seg, ROUTE_MEMBERS};
 
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
+
+/// What the parts of a catch-all can be, as `List<T>`: each part is read like one segment of
+/// that type (`num` and `DateTime` with `num.tryParse` and `DateTime.tryParse`).
+pub const CATCH_ALL_ITEMS: [&str; 6] = ["String", "int", "double", "num", "bool", "DateTime"];
+
+/// `int` for `List<int>`.
+pub fn list_item(ty: &str) -> Option<&str> {
+    ty.strip_prefix("List<")?.strip_suffix('>')
+}
 
 /// What a parameter receives.
 #[derive(Debug, Clone, PartialEq)]
@@ -186,6 +195,9 @@ pub struct Route {
     /// The sections (route ids) above this folder, outermost first, whose data.dart the
     /// layouts above load: what `AppRoutes.dataAt` lists before the route's own data.
     pub sections: Vec<usize>,
+    /// Whether this folder's paths match by case: the nearest `route.dart`'s
+    /// `caseSensitive` at or above it, else the pubspec's `case_sensitive`.
+    pub case_sensitive: bool,
 }
 
 impl Route {
@@ -201,6 +213,8 @@ impl Route {
 pub struct ScopedNotFound {
     pub url: Vec<Seg>,
     pub widget: Widget,
+    /// Whether the folder's own path matches by case (see [`Route::case_sensitive`]).
+    pub case_sensitive: bool,
 }
 
 #[derive(Debug, Default)]
@@ -292,6 +306,8 @@ struct Inherited {
     /// The data.dart files of the sections above, outermost first.
     sections: Vec<SectionRef>,
     not_found: Option<Widget>,
+    /// The nearest route.dart's `caseSensitive`, else the config's.
+    case_sensitive: bool,
 }
 
 /// A section's data.dart, as the files below its layout can receive it.
@@ -324,7 +340,8 @@ struct BindCx<'a> {
     scope: Option<Scope>,
 }
 
-pub fn resolve(root: &Node, diags: &mut Diags) -> App {
+/// `case_sensitive` is the config's default, for folders with no `route.dart` at or above them.
+pub fn resolve(root: &Node, case_sensitive: bool, diags: &mut Diags) -> App {
     let mut r = Resolver {
         app: App::default(),
         import_ix: HashMap::new(),
@@ -336,7 +353,7 @@ pub fn resolve(root: &Node, diags: &mut Diags) -> App {
         query_order: vec![],
         diags,
     };
-    r.node(root, &Inherited::default());
+    r.node(root, &Inherited { case_sensitive, ..Inherited::default() });
     r.settle_segment_types();
     for (scope, name) in std::mem::take(&mut r.query_order) {
         let ty = r.queries[&(scope, name.clone())].0.clone();
@@ -404,6 +421,7 @@ impl Resolver<'_> {
             extra: None,
             meta_args: vec![],
             sections: up.sections.iter().map(|s| s.id).collect(),
+            case_sensitive: up.case_sensitive,
         });
 
         let mut segs = up.segs.clone();
@@ -429,11 +447,26 @@ impl Resolver<'_> {
 
         // page.dart names the route; data.dart feeds it.
         let page_file = node.rel(Kind::Page);
-        let page_class = modules.get(&Kind::Page).and_then(|m| self.widget_class(m, &page_file));
-        let mut name = page_class.as_ref().map(|c| route_name(&c.name));
+        let page_class = modules.get(&Kind::Page).and_then(|m| self.widget_class(m, &page_file, Kind::Page));
+        // A class names its route after itself; a function has no name of its own to give
+        // (many routes can build one screen), so it takes the folder path. Either way
+        // `const routeName = '...';` in page.dart has the last word.
+        let given = match (&page_class, modules.get(&Kind::Page)) {
+            (Some(_), Some(m)) => self.route_name_var(m, &page_file),
+            _ => None,
+        };
+        let mut name = page_class.as_ref().map(|c| {
+            given.clone().unwrap_or_else(|| if c.function { path_name(&url) } else { route_name(&c.name) })
+        });
         let mut page_span = page_class.as_ref().map(|c| c.span.clone());
         if let (Some(n), Some(c)) = (&name, &page_class) {
-            self.claim(&url, n, &page_file, &c.span);
+            let fix = match (c.function, given.is_some()) {
+                (false, false) => "rename the class".to_string(),
+                (false, true) => "change its `routeName`".to_string(),
+                (true, false) => format!("give one a different name with `const routeName = 'Name';` in {page_file}"),
+                (true, true) => "change its `routeName`".to_string(),
+            };
+            self.claim(&url, n, &page_file, &c.span, &fix);
         }
         // Without a page.dart, a data.dart with a layout.dart beside it is the data of the
         // section that layout wraps; the query parameters it takes are the layout's.
@@ -476,12 +509,20 @@ impl Resolver<'_> {
                     self.diags.warn(
                         &page_file,
                         Some(&c.span),
-                        format!("{} doesn't take what data.dart yields; add `final {} data;` to its constructor", c.name, d.ty),
+                        if c.function {
+                            format!("{} doesn't take what data.dart yields; add a `{} data` parameter", c.display(), d.ty)
+                        } else {
+                            format!("{} doesn't take what data.dart yields; add `final {} data;` to its constructor", c.name, d.ty)
+                        },
                     );
                 }
             }
             w
         });
+
+        // route.dart's `caseSensitive` covers this folder and every folder below.
+        let case_sensitive = modules.get(&Kind::Route).and_then(|m| self.route_config(m, node)).unwrap_or(up.case_sensitive);
+        self.app.routes[id].case_sensitive = case_sensitive;
 
         // loading.dart / error.dart apply here and to every folder below.
         let mut here = Inherited {
@@ -492,6 +533,7 @@ impl Resolver<'_> {
             transition: up.transition.clone(),
             sections: up.sections.clone(),
             not_found: up.not_found.clone(),
+            case_sensitive,
         };
         if let (true, Some(d)) = (section, &data) {
             here.sections.push(SectionRef { id, ty: d.ty.clone(), file: node.rel(Kind::Data) });
@@ -499,7 +541,7 @@ impl Resolver<'_> {
         for (kind, slot) in [(Kind::Loading, &mut here.loading), (Kind::Error, &mut here.error)] {
             if let Some(m) = modules.get(&kind) {
                 let file = node.rel(kind);
-                if let Some(class) = self.widget_class(m, &file) {
+                if let Some(class) = self.widget_class(m, &file, kind) {
                     *slot = Some(Fallback { import: self.import(&file), class, file });
                 }
             }
@@ -535,7 +577,7 @@ impl Resolver<'_> {
 
         let layout = modules.get(&Kind::Layout).and_then(|m| {
             let file = node.rel(Kind::Layout);
-            let c = self.widget_class(m, &file)?;
+            let c = self.widget_class(m, &file, Kind::Layout)?;
             let cx = BindCx {
                 role: Role::Layout,
                 segs: &segs,
@@ -547,7 +589,7 @@ impl Resolver<'_> {
             };
             let w = self.bind(&c, &cx);
             if w.args.iter().any(|a| a.bind == Bind::Child) && w.args.iter().any(|a| a.bind == Bind::Shell) {
-                let msg = format!("{} asks for both a `child` and a navigation shell; a tab layout takes only the `StatefulNavigationShell`", c.name);
+                let msg = format!("{} asks for both a `child` and a navigation shell; a tab layout takes only the `StatefulNavigationShell`", c.display());
                 self.diags.error(&file, Some(&c.span), msg);
             }
             Some(w)
@@ -560,8 +602,8 @@ impl Resolver<'_> {
             if node.files.contains_key(&Kind::Page) {
                 self.diags.error(&file, None, "a folder has a page.dart or a redirect.dart, not both");
             } else if let Some((r, span)) = self.redirect(m, node, &segs, id) {
-                let n = redirect_name(&url);
-                self.claim(&url, &n, &file, &span);
+                let n = path_name(&url);
+                self.claim(&url, &n, &file, &span, "rename the class");
                 (redirect, name, page_span) = (Some(r), Some(n), Some(span));
             }
         }
@@ -570,7 +612,7 @@ impl Resolver<'_> {
         let mut not_found = up.not_found.clone();
         if let Some(m) = modules.get(&Kind::NotFound) {
             let file = node.rel(Kind::NotFound);
-            if let Some(c) = self.widget_class(m, &file) {
+            if let Some(c) = self.widget_class(m, &file, Kind::NotFound) {
                 if matches!(node.seg, Some(Seg::CatchAll(..))) {
                     let msg = "a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown";
                     self.diags.error(&file, None, msg);
@@ -596,7 +638,7 @@ impl Resolver<'_> {
                                 let msg = format!("{at} already has {prev}; (group) folders don't add to the URL, so move or rename one");
                                 self.diags.error(&file, None, msg);
                             }
-                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone() }),
+                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone(), case_sensitive }),
                         }
                     }
                     not_found = Some(w);
@@ -674,7 +716,7 @@ impl Resolver<'_> {
 
     /// Records the URL and typed-route name a page or redirect takes, and
     /// reports a clash with an earlier one.
-    fn claim(&mut self, url: &[Seg], name: &str, file: &str, span: &Span) {
+    fn claim(&mut self, url: &[Seg], name: &str, file: &str, span: &Span, fix: &str) {
         // `(a)/x/page.dart` and `(b)/x/page.dart` would both be /x: one error for that,
         // and the route-name clash only when the URLs differ.
         let pattern = pattern(url);
@@ -696,7 +738,7 @@ impl Resolver<'_> {
             );
             self.diags.error(file, Some(span), msg);
         } else if let Some(prev) = same_name {
-            self.diags.error(file, Some(span), format!("route name `{name}Route` is already taken by {prev}; rename the class"));
+            self.diags.error(file, Some(span), format!("route name `{name}Route` is already taken by {prev}; {fix}"));
         }
     }
 
@@ -854,6 +896,21 @@ impl Resolver<'_> {
         out
     }
 
+    /// `const routeName = 'KycShopName';` in page.dart: the name of the typed route.
+    fn route_name_var(&mut self, m: &Module, file: &str) -> Option<String> {
+        let v = m.variables.iter().find(|v| v.name == "routeName")?;
+        let Some(name) = &v.string else {
+            self.diags.error(file, Some(&v.span), "`routeName` must be a plain string literal, e.g. `const routeName = 'KycShopName';`");
+            return None;
+        };
+        if !valid_route_name(name) {
+            let msg = format!("`routeName` is `{name}`; it names the route class `{name}Route`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName`");
+            self.diags.error(file, Some(&v.span), msg);
+            return None;
+        }
+        Some(name.clone())
+    }
+
     /// `const meta = <any const expression>;` in a folder's meta.dart: the manifest
     /// refers to it by import, so it must be a `const` variable called `meta`.
     fn meta(&mut self, m: &Module, node: &Node, has_route: bool) -> Option<String> {
@@ -879,11 +936,57 @@ impl Resolver<'_> {
         Some(file)
     }
 
-    /// The one public widget class a view file exports.
-    fn widget_class(&mut self, m: &Module, file: &str) -> Option<Class> {
+    /// `const caseSensitive = false;` in a folder's route.dart: whether paths match by case
+    /// in this folder and below. It is read from the source, so it must be a `true` or `false`
+    /// literal.
+    fn route_config(&mut self, m: &Module, node: &Node) -> Option<bool> {
+        let file = node.rel(Kind::Route);
+        let mut found = m.variables.iter().filter(|v| v.name == "caseSensitive");
+        let Some(v) = found.next() else {
+            self.diags.error(&file, None, "expected `const caseSensitive = false;` (or `true`)");
+            return None;
+        };
+        if let Some(again) = found.next() {
+            self.diags.error(&file, Some(&again.span), "`caseSensitive` is declared twice");
+        }
+        if v.boolean.is_none() {
+            let msg = "`caseSensitive` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it";
+            self.diags.error(&file, Some(&v.span), msg);
+        }
+        v.boolean
+    }
+
+    /// The one public widget class a view file exports, or the top-level function named
+    /// after the file (`Widget page(...)`) that builds the widget instead.
+    fn widget_class(&mut self, m: &Module, file: &str, kind: Kind) -> Option<Class> {
         let public: Vec<&Class> = m.classes.iter().filter(|c| c.is_public()).collect();
         let widgets: Vec<&Class> =
             public.iter().copied().filter(|c| c.superclass.as_deref().is_some_and(|s| s.ends_with("Widget"))).collect();
+        let fns: Vec<&Function> = m.functions.iter().filter(|f| view_fn_names(kind).contains(&f.name.as_str())).collect();
+        if let Some(f) = fns.first() {
+            if let Some(other) = fns.get(1) {
+                let msg = format!("both `{}()` and `{}()` are here; keep one", f.name, other.name);
+                self.diags.error(file, Some(&other.span), msg);
+                return None;
+            }
+            if !widgets.is_empty() {
+                let names: Vec<&str> = widgets.iter().map(|c| c.name.as_str()).collect();
+                let msg = format!(
+                    "found the widget class {} and the function `{}()`; a view file has one or the other. Keep the class, or move it to its own file and build it from the function",
+                    names.join(", "),
+                    f.name
+                );
+                self.diags.error(file, Some(&f.span), msg);
+                return None;
+            }
+            let ret = f.ret.as_ref().map(|t| t.text.as_str());
+            if ret.is_some_and(|t| t == "void" || t.starts_with("Future")) {
+                let msg = format!("`{}()` must return a Widget, not {}", f.name, ret.unwrap_or_default());
+                self.diags.error(file, Some(&f.span), msg);
+                return None;
+            }
+            return Some(f.as_view());
+        }
         match (public.as_slice(), widgets.as_slice()) {
             ([one], _) | (_, [one]) => Some((*one).clone()),
             ([], _) => {
@@ -928,7 +1031,10 @@ impl Resolver<'_> {
             };
             let Some(bind) = bind else {
                 if p.required {
-                    let msg = unfillable(&p.name, cx);
+                    let mut msg = unfillable(&p.name, cx);
+                    if class.function && (p.name == "ref" || p.name == "context") {
+                        msg.push_str("; a view function is a plain function with no BuildContext or ref: put hooks and `ref` in the widget it returns");
+                    }
                     self.diags.error(cx.file, Some(&p.span), msg);
                 } else if !p.named {
                     positional_gap = true;
@@ -1161,7 +1267,7 @@ impl Resolver<'_> {
             if let Some((name, _)) = segs.iter().find(|(n, f)| keys.contains(n) && self.app.is_catch_all(*f)) {
                 let msg = format!(
                     "`{name}` is a catch-all, a List that a provider can't be keyed by (lists compare by identity); \
-                     write `Future<{ty}> data(Ref ref, {{required List<String> {name}}})` and fespalier keys it by the path"
+                     write `Future<{ty}> data(Ref ref, {{required List<T> {name}}})` (T being the parts' type) and fespalier keys it by the path"
                 );
                 self.diags.error(&file, Some(&v.span), msg);
             }
@@ -1313,8 +1419,11 @@ impl Resolver<'_> {
         let mut first: HashMap<usize, (String, String, usize)> = HashMap::new();
         for c in &self.constraints {
             if self.app.is_catch_all(c.folder) {
-                if c.ty.text != "List<String>" {
-                    let msg = format!("`{} {}`: a catch-all segment is the rest of the path, a `List<String>`", c.ty.text, c.name);
+                if !list_item(&c.ty.text).is_some_and(|i| CATCH_ALL_ITEMS.contains(&i)) {
+                    let msg = format!(
+                        "`{} {}`: a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime",
+                        c.ty.text, c.name
+                    );
                     self.diags.error(&c.file, Some(&c.span), msg);
                     continue;
                 }
@@ -1498,9 +1607,10 @@ fn show_dir(dir: &str) -> String {
     if dir.is_empty() { "/".into() } else { format!("{dir}/") }
 }
 
-/// The typed route's name for a `redirect.dart`, from its URL: `/old-products/:id`
-/// → `OldProductsId` (`OldProductsIdRoute`), the root → `Root`.
-fn redirect_name(url: &[Seg]) -> String {
+/// The typed route's name from its URL, for a `redirect.dart` and for a page written as a
+/// function: `/old-products/:id` → `OldProductsId` (`OldProductsIdRoute`), the root →
+/// `Root`. `(group)` folders add nothing.
+fn path_name(url: &[Seg]) -> String {
     let path: Vec<&str> = url
         .iter()
         .filter_map(|s| match s {
@@ -1526,6 +1636,24 @@ fn route_name(class: &str) -> String {
         }
     }
     class.to_string()
+}
+
+/// The names a view file's function can have: the file's own, and for a multi-word
+/// kind its lowerCamelCase spelling too (`not_found` or `notFound`).
+fn view_fn_names(kind: Kind) -> &'static [&'static str] {
+    match kind {
+        Kind::Page => &["page"],
+        Kind::Loading => &["loading"],
+        Kind::Error => &["error"],
+        Kind::Layout => &["layout"],
+        Kind::NotFound => &["not_found", "notFound"],
+        _ => &[],
+    }
+}
+
+/// Whether `name` can start a typed route's name: `KycShopName` (the route is `KycShopNameRoute`).
+pub fn valid_route_name(name: &str) -> bool {
+    name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// `products/$id` → `ProductsId`.

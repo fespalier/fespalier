@@ -199,4 +199,6 @@ final class ProductRoute extends TypedLocation {
 
 final _data6 = FutureProvider.autoDispose.family(
   (Ref ref, int id) => _i13.data(ref, id: id),
+  // No automatic retry: error.dart and its Retry button are the retry UX.
+  retry: (retryCount, error) => null,
 );

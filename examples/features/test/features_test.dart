@@ -1,4 +1,5 @@
 import 'package:features/app.g.dart';
+import 'package:features/app/shops/\$shop/items/\$id/data.dart' as item_data;
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:material_ui/material_ui.dart' as mui;
@@ -7,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 Future<void> boot(WidgetTester tester, String location) async {
   await tester.pumpWidget(
     ProviderScope(
-      retry: (_, __) => null,
       // go_router 17 detects flutter's MaterialApp, go_router 18 material_ui's;
       // nesting both gives Material pages and error screens on either.
       child: MaterialApp(
@@ -48,11 +48,37 @@ void main() {
       (tester) async {
     await boot(tester, '/shops/acme/items/0');
     await tester.pump(const Duration(milliseconds: 50));
-    expect(find.textContaining('Failed: Bad state: no item 0'), findsOneWidget);
+    expect(find.textContaining('Failed: Exception: no item 0'), findsOneWidget);
     await tester.tap(find.byType(TextButton));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.textContaining('Failed:'), findsOneWidget);
+  });
+
+  testWidgets('a failing data() shows error.dart at once: no Riverpod retries',
+      (tester) async {
+    // The harness has no `ProviderScope(retry: ...)`. Riverpod 3 would retry a
+    // provider that throws an Exception ~10 times with backoff (error view after
+    // ~38 s; it never retries an Error such as StateError); the
+    // providers fespalier generates opt out, so error.dart is the retry UX.
+    item_data.itemFetches = 0;
+    await boot(tester, '/shops/acme/items/0');
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.textContaining('Failed: Exception: no item 0'), findsOneWidget);
+    expect(item_data.itemFetches, 1);
+
+    // Nothing is scheduled behind the scenes (an armed retry timer would also
+    // fail this test when it ends).
+    await tester.pump(const Duration(seconds: 60));
+    expect(find.textContaining('Failed:'), findsOneWidget);
+    expect(item_data.itemFetches, 1);
+
+    // Retry is what runs it again.
+    await tester.tap(find.byType(TextButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.textContaining('Failed: Exception: no item 0'), findsOneWidget);
+    expect(item_data.itemFetches, 2);
   });
 
   testWidgets('an int segment that does not parse is not found',

@@ -184,7 +184,7 @@ fn error_views_get_error_and_retry_by_name_or_type() {
         &[
             "error: (e, st, retry) => _i2.E(e, retry, stackTrace: st),",
             "final _data0 = StreamProvider.autoDispose(",
-            "(Ref ref) => _i0.data(ref),",
+            "(Ref ref) => _i0.data(ref),\n  // No automatic retry: error.dart and its Retry button are the retry UX.\n  retry: (retryCount, error) => null,",
             "/// Restarts data.dart",
         ],
     );
@@ -279,6 +279,179 @@ fn misc_rules() {
     ] {
         assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
     }
+}
+
+#[test]
+fn generated_providers_switch_off_riverpod_retry() {
+    // Riverpod 3 retries failed providers with backoff for ~40 s; error.dart and
+    // its `retry` callback are the retry UX, so the wrappers fespalier writes opt out.
+    let c = code(&[
+        ("a/data.dart", "Future<int> data(Ref ref) async => 1;"),
+        ("a/page.dart", "class APage extends StatelessWidget { const APage(this.n, {super.key}); final int n; }"),
+        ("$id/data.dart", "Stream<int> data(Ref ref, {required int id}) => Stream.value(id);"),
+        ("$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage(this.n, {super.key}); final int n; }"),
+    ]);
+    assert_eq!(c.matches("retry: (retryCount, error) => null,").count(), 2, "{c}");
+    has(&c, &["= FutureProvider.autoDispose(", "= StreamProvider.autoDispose.family("]);
+
+    // A provider the user wrote is theirs: no wrapper, nothing added.
+    let c = code(&[
+        ("data.dart", "final data = FutureProvider<int>((ref) async => 1);"),
+        ("page.dart", "class HomePage extends StatelessWidget { const HomePage(this.n, {super.key}); final int n; }"),
+    ]);
+    assert!(!c.contains("retryCount") && !c.contains("_data"), "{c}");
+}
+
+#[test]
+fn syntax_errors_are_warned_about() {
+    let e = diags(&[("cart/page.dart", "class CartPage extends StatelessWidget {{\n  const CartPage({super.key});\n}\n")]);
+    assert_eq!(e.len(), 1, "{e:?}");
+    assert!(
+        e[0].starts_with("! cart/page.dart:1  couldn't fully parse this file; if it doesn't compile, the Dart compiler will say where"),
+        "{e:?}"
+    );
+
+    // Any file kind, and the warning points at the first problem, not at the class.
+    let e = diags(&[
+        ("page.dart", HOME),
+        ("data.dart", "Future<int> data(Ref ref) async => 1;\nFuture<int> other( async => ;;\n"),
+    ]);
+    assert!(e.iter().any(|m| m.starts_with("! data.dart:2  couldn't fully parse")), "{e:?}");
+
+    // A warning, not an error: generation goes ahead.
+    let dir = project(&[("page.dart", "class HomePage extends StatelessWidget {{ const HomePage({super.key}); }")]);
+    let (code, diags, _) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
+    assert!(!diags.has_errors(), "{:?}", diags.0);
+    assert!(code.contains("_i0.HomePage()"), "{code}");
+}
+
+#[test]
+fn valid_newer_syntax_and_primary_constructors_do_not_warn() {
+    let c = code(&[
+        ("page.dart", "class HomePage extends StatelessWidget {\n  const HomePage({super.key});\n  Widget build(BuildContext c) => Column(mainAxisAlignment: .center, children: [?null, ...[]]);\n}"),
+        ("a/page.dart", "class APage({super.key, final String? q}) extends StatelessWidget {}"),
+        ("b/page.dart", "class const BPage({super.key}) extends StatelessWidget {}"),
+    ]);
+    has(&c, &["_i1.APage(q: v.q)", "_i2.BPage()"]);
+}
+
+fn reserved(role: &str, src: &str, files: &[(&str, &str)]) -> Vec<String> {
+    let mut all = vec![(role, src)];
+    all.extend_from_slice(files);
+    diags(&all)
+}
+
+#[test]
+fn reserved_names_are_type_checked() {
+    let e = reserved(
+        "not_found.dart",
+        "class NotFoundPage extends StatelessWidget {\n  const NotFoundPage({super.key, required this.uri});\n  final String uri;\n}",
+        &[],
+    );
+    assert_eq!(e, vec!["✗ not_found.dart:2  `uri` gets the requested Uri, but it's declared String"]);
+
+    let layout = |ty: &str| format!("class L extends StatelessWidget {{ const L({{super.key, required this.child}}); final {ty} child; }}");
+    for (ty, ok) in [("Widget", true), ("Widget?", true), ("Object", true), ("dynamic", true), ("Text", false), ("String", false)] {
+        let e = reserved("layout.dart", &layout(ty), &[("a/page.dart", &page("A"))]);
+        if ok {
+            assert!(e.is_empty(), "{ty}: {e:?}");
+        } else {
+            assert_eq!(e, vec![format!("✗ layout.dart:1  `child` gets the page as a Widget, but it's declared {ty}")], "{ty}");
+        }
+    }
+
+    let shell = |ty: &str| format!("class L extends StatelessWidget {{ const L({{super.key, required this.shell}}); final {ty} shell; }}");
+    assert!(reserved("layout.dart", &shell("StatefulNavigationShell"), &[("a/page.dart", &page("A"))]).is_empty());
+    let e = reserved("layout.dart", &shell("int"), &[("a/page.dart", &page("A"))]);
+    assert_eq!(e, vec!["✗ layout.dart:1  `shell` gets the StatefulNavigationShell, but it's declared int"]);
+}
+
+#[test]
+fn error_view_names_are_type_checked() {
+    let error = |fields: &str, params: &str| {
+        let src = format!("class E extends StatelessWidget {{ const E({{super.key, {params}}}); {fields} }}");
+        reserved("error.dart", &src, &[("data.dart", "Future<int> data(Ref ref) async => 1;"), ("page.dart", "class HomePage extends StatelessWidget { const HomePage(this.n, {super.key}); final int n; }")])
+    };
+    for (fields, params) in [
+        ("final Object error; final StackTrace stackTrace; final VoidCallback retry;", "required this.error, required this.stackTrace, required this.retry"),
+        ("final Object? error; final StackTrace? stackTrace; final void Function() retry;", "required this.error, this.stackTrace, required this.retry"),
+        ("final dynamic error; final void Function()? retry;", "required this.error, this.retry"),
+        ("final Object error; final Function retry;", "required this.error, required this.retry"),
+    ] {
+        let e = error(fields, params);
+        // `Function` isn't one of the known callback spellings: that one is reported.
+        if fields.contains("final Function retry") {
+            assert_eq!(e, vec!["✗ error.dart:1  `retry` gets the retry callback, a VoidCallback, but it's declared Function"], "{e:?}");
+        } else {
+            assert!(e.is_empty(), "{fields}: {e:?}");
+        }
+    }
+    let e = error("final String error; final int stackTrace; final Future<void> retry;", "required this.error, required this.stackTrace, required this.retry");
+    assert_eq!(
+        e,
+        vec![
+            "✗ error.dart:1  `error` gets the error, an Object, but it's declared String",
+            "✗ error.dart:1  `stackTrace` gets the StackTrace, but it's declared int",
+            "✗ error.dart:1  `retry` gets the retry callback, a VoidCallback, but it's declared Future<void>",
+        ]
+    );
+    // No field type to go by: nothing to check.
+    let e = error("var error; var retry;", "required this.error, required this.retry");
+    assert!(e.is_empty(), "{e:?}");
+}
+
+#[test]
+fn transition_names_are_type_checked() {
+    for (sig, ok) in [
+        ("Widget child, LocalKey key, GoRouterState state", true),
+        ("Widget child, Key key", true),
+        ("Widget child, ValueKey<String> key", true),
+        ("Widget child, Object key", true),
+        ("Widget child, {GoRouterState? state}", true),
+        ("Widget child, String key", false),
+        ("String child", false),
+        ("Widget child, {required int state}", false),
+    ] {
+        let src = format!("Page<void> transition({sig}) => x;");
+        let e = diags(&[("transition.dart", &src), ("page.dart", HOME)]);
+        assert_eq!(e.is_empty(), ok, "{sig}: {e:?}");
+        if !ok {
+            assert!(e[0].starts_with("✗ transition.dart:1  `") && e[0].contains("` gets ") && e[0].contains(", but it's declared "), "{e:?}");
+        }
+    }
+    let e = diags(&[("transition.dart", "Page<void> transition(String key, Widget child) => x;"), ("page.dart", HOME)]);
+    assert_eq!(e, vec!["✗ transition.dart:1  `key` gets the page's key, a ValueKey<String>, but it's declared String"]);
+}
+
+#[test]
+fn one_error_for_a_url_served_twice() {
+    let cart = "class CartPage extends StatelessWidget {\n  const CartPage({super.key});\n}";
+    let e = diags(&[("(dup)/cart/page.dart", cart), ("cart/page.dart", cart)]);
+    assert_eq!(
+        e,
+        vec!["✗ cart/page.dart:1  /cart is served by both (dup)/cart/page.dart and cart/page.dart; (group) folders don't add to the URL, so move or rename one"]
+    );
+
+    // Different URLs, same class name: the route name is what clashes.
+    let e = diags(&[("a/page.dart", cart), ("b/page.dart", cart)]);
+    assert_eq!(e, vec!["✗ b/page.dart:1  route name `CartRoute` is already taken by a/page.dart; rename the class"]);
+}
+
+#[test]
+fn an_empty_page_is_one_error() {
+    for src in ["", "// TODO\n", "class _Private extends StatelessWidget {}"] {
+        let e = diags(&[("page.dart", HOME), ("cart/page.dart", src)]);
+        assert_eq!(e, vec!["✗ cart/page.dart  expected a public widget class"], "{src:?}");
+    }
+    // Still told about a folder that holds nothing at all.
+    let e = diags(&[("page.dart", HOME), ("empty/notes.txt", "hi"), ("nothing/_private/x.dart", "")]);
+    assert_eq!(
+        e,
+        vec![
+            "! empty  folder has no page.dart and no routes below it; skipped",
+            "! nothing  folder has no page.dart and no routes below it; skipped",
+        ]
+    );
 }
 
 #[test]
@@ -405,8 +578,8 @@ fn groups_cannot_serve_the_same_url_twice() {
     ]);
     let joined = e.join("\n");
     for needle in [
-        "(a)/page.dart:1  page.dart already serves /; (group) folders don't add to the URL",
-        "(b)/x/page.dart:1  (a)/x/page.dart already serves /x",
+        "(a)/page.dart:1  / is served by both page.dart and (a)/page.dart; (group) folders don't add to the URL, so move or rename one",
+        "(b)/x/page.dart:1  /x is served by both (a)/x/page.dart and (b)/x/page.dart; (group) folders don't add to the URL, so move or rename one",
         "`(bad name)`: a group name uses a-z, 0-9, - _ . ~",
     ] {
         assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
@@ -446,8 +619,8 @@ fn routes_a_group_cannot_order_are_reported() {
     assert_eq!(
         e,
         vec![
-            "✗ (app)/settings/page.dart  /settings is unreachable: $slug/page.dart (/:slug) comes first and matches it; move one of them into or out of its (group)",
-            "✗ (app)/$id/page.dart  /:id is unreachable: $slug/page.dart (/:slug) comes first and matches it; move one of them into or out of its (group)",
+            "✗ (app)/settings/page.dart:1  /settings is unreachable: $slug/page.dart (/:slug) comes first and matches it; move one of them into or out of its (group)",
+            "✗ (app)/$id/page.dart:1  /:id is unreachable: $slug/page.dart (/:slug) comes first and matches it; move one of them into or out of its (group)",
         ]
     );
 }
@@ -781,8 +954,8 @@ fn a_tab_cannot_start_on_a_path_with_a_segment() {
     ]);
     let joined = e.join("\n");
     for needle in [
-        "$shop/page.dart  /:shop is the first route of a tab, and go_router can't open a tab on a path with a `:segment` in it;",
-        "(all)/$id/page.dart  /:id is the first route of a tab",
+        "$shop/page.dart:1  /:shop is the first route of a tab, and go_router can't open a tab on a path with a `:segment` in it;",
+        "(all)/$id/page.dart:1  /:id is the first route of a tab",
     ] {
         assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
     }
@@ -794,7 +967,7 @@ fn a_tab_cannot_start_on_a_path_with_a_segment() {
         ("users/$name/page.dart", &page("User")),
     ]);
     assert_eq!(e.len(), 1, "{e:?}");
-    assert!(e[0].contains("users/$name/page.dart  /users/:name is the first route of a tab"), "{e:?}");
+    assert!(e[0].contains("users/$name/page.dart:1  /users/:name is the first route of a tab"), "{e:?}");
 }
 
 #[test]
@@ -837,7 +1010,7 @@ fn route_order_is_checked_across_branches() {
     };
     assert_eq!(
         files(TABS),
-        vec!["✗ (tabs)/about/page.dart  /about is unreachable: (tabs)/(main)/$slug/page.dart (/:slug) comes first and matches it; move one of them into or out of its (group)"]
+        vec!["✗ (tabs)/about/page.dart:1  /about is unreachable: (tabs)/(main)/$slug/page.dart (/:slug) comes first and matches it; move one of them into or out of its (group)"]
     );
 
     // Listing `about` first fixes it.

@@ -13,7 +13,6 @@ Future<ProviderContainer> boot(
   FakeApi? api,
 }) async {
   final container = ProviderContainer(
-    retry: (_, __) => null,
     overrides: [if (api != null) apiProvider.overrideWithValue(api)],
   );
   addTearDown(container.dispose);

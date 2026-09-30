@@ -320,12 +320,18 @@ final class TicksRoute extends TypedLocation {
 
 final _data6 = FutureProvider.autoDispose.family(
   (Ref ref, ({String? q, int? page}) k) => _i10.data(ref, q: k.q, page: k.page),
+  // No automatic retry: error.dart and its Retry button are the retry UX.
+  retry: (retryCount, error) => null,
 );
 
 final _data10 = FutureProvider.autoDispose.family(
   (Ref ref, ({String shop, int id}) k) => _i15.data(ref, shop: k.shop, id: k.id),
+  // No automatic retry: error.dart and its Retry button are the retry UX.
+  retry: (retryCount, error) => null,
 );
 
 final _data11 = StreamProvider.autoDispose(
   (Ref ref) => _i18.data(ref),
+  // No automatic retry: error.dart and its Retry button are the retry UX.
+  retry: (retryCount, error) => null,
 );

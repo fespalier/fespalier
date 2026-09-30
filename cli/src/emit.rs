@@ -10,6 +10,7 @@ use serde::Serialize;
 
 use crate::config::Config;
 use crate::resolve::{self, App, Bind, Branch, Data, Route, Transition};
+use crate::dart::Span;
 use crate::diag::Diags;
 use crate::scan::{Kind, Seg};
 use crate::templates;
@@ -43,13 +44,15 @@ struct TreeCx {
     /// Starts with a `:segment` (or, for a ShellRoute, holds a route that does).
     #[serde(skip)]
     dynamic: bool,
-    /// For a GoRoute: its URL and page file, to check matching order.
+    /// For a GoRoute: its URL, page file and page class, to check matching order.
     #[serde(skip)]
-    serves: Option<(Vec<Seg>, String)>,
+    serves: Option<Serves>,
     /// For a GoRoute: its own `path:` has a `:segment`.
     #[serde(skip)]
     has_params: bool,
 }
+
+type Serves = (Vec<Seg>, String, Option<Span>);
 
 #[derive(Serialize)]
 struct BranchCx {
@@ -291,7 +294,7 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, fns: &m
         transition: r.transition.as_ref().map(transition_cx),
         routes,
         dynamic: path.starts_with(':'),
-        serves: Some((r.url.clone(), rel(r, Kind::Page))),
+        serves: Some((r.url.clone(), rel(r, Kind::Page), r.page_span.clone())),
         has_params: path.contains(':'),
     }
 }
@@ -348,7 +351,7 @@ fn tab_routes(
 /// interleaved with its siblings', so `(group)/about` can still end up behind
 /// a `/:slug` outside the group. Report any page that is always caught first.
 fn check_order(tree: &[TreeCx], diags: &mut Diags) {
-    fn walk<'t>(t: &'t [TreeCx], out: &mut Vec<&'t (Vec<Seg>, String)>) {
+    fn walk<'t>(t: &'t [TreeCx], out: &mut Vec<&'t Serves>) {
         for r in t {
             out.extend(r.serves.as_ref());
             walk(&r.routes, out);
@@ -362,11 +365,11 @@ fn check_order(tree: &[TreeCx], diags: &mut Diags) {
     let catches = |a: &[Seg], b: &[Seg]| {
         a.len() == b.len() && a.iter().zip(b).all(|(x, y)| matches!(x, Seg::Dynamic(_)) || x == y)
     };
-    for (j, (url, file)) in order.iter().enumerate() {
-        if let Some((first, first_file)) = order[..j].iter().find(|(u, _)| u != url && catches(u, url)) {
+    for (j, (url, file, span)) in order.iter().enumerate() {
+        if let Some((first, first_file, _)) = order[..j].iter().find(|(u, ..)| u != url && catches(u, url)) {
             diags.error(
                 file,
-                None,
+                span.as_ref(),
                 format!(
                     "{} is unreachable: {first_file} ({}) comes first and matches it; move one of them into or out of its (group)",
                     resolve::pattern(url),
@@ -392,10 +395,10 @@ fn check_tab_starts(tree: &[TreeCx], diags: &mut Diags) {
     }
     for r in tree {
         for b in &r.branches {
-            if let Some((url, file)) = first_route(&b.routes).filter(|f| f.has_params).and_then(|f| f.serves.as_ref()) {
+            if let Some((url, file, span)) = first_route(&b.routes).filter(|f| f.has_params).and_then(|f| f.serves.as_ref()) {
                 diags.error(
                     file,
-                    None,
+                    span.as_ref(),
                     format!(
                         "{} is the first route of a tab, and go_router can't open a tab on a path with a `:segment` in it; \
                          put a page with a static path first in the tab, or move the tab layout below the folder that holds the segment",

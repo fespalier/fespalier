@@ -16,6 +16,11 @@ pub struct Module {
     pub classes: Vec<Class>,
     pub functions: Vec<Function>,
     pub variables: Vec<Variable>,
+    /// Where the grammar first gave up on the file (an ERROR or MISSING node),
+    /// after primary constructors were read separately. The file may still be
+    /// valid Dart the grammar is too old for; the declarations above are read
+    /// on a best-effort basis.
+    pub parse_error: Option<Span>,
 }
 
 #[derive(Debug, Clone)]
@@ -142,8 +147,8 @@ pub fn parse(src: &str) -> Module {
         }
     }
     let r = Reader { src: patched.as_deref().unwrap_or(src), primary };
-    let mut m = Module::default();
     let root = tree.root_node();
+    let mut m = Module { parse_error: first_error(root, r.src), ..Module::default() };
     let mut cur = root.walk();
     let top: Vec<Node> = root.named_children(&mut cur).collect();
     for (i, n) in top.iter().enumerate() {
@@ -162,6 +167,35 @@ pub fn parse(src: &str) -> Module {
         }
     }
     m
+}
+
+/// The first ERROR or MISSING node, cut to its first line so the code frame
+/// stays small when the grammar swallows the rest of the file.
+fn first_error(root: Node, src: &str) -> Option<Span> {
+    // An ERROR node can wrap everything from the top of the file; the innermost
+    // error or missing node inside it is closer to what went wrong.
+    fn find(n: Node) -> Option<Node> {
+        if n.is_missing() {
+            return Some(n);
+        }
+        if !n.has_error() {
+            return None;
+        }
+        let mut cur = n.walk();
+        let inner = n.children(&mut cur).find_map(find);
+        inner.or(n.is_error().then_some(n))
+    }
+    let n = find(root)?;
+    let start = n.start_byte();
+    let mut end = n.end_byte().min(src.len());
+    if let Some(nl) = src.get(start..end).and_then(|t| t.find('\n')) {
+        end = start + nl;
+    }
+    if end <= start {
+        // A MISSING node has no text: point at the character it should precede.
+        end = src[start.min(src.len())..].chars().next().map_or(start, |c| start + c.len_utf8());
+    }
+    Some(Span { line: n.start_position().row + 1, bytes: start..end.max(start) })
 }
 
 struct Reader<'a> {
@@ -1243,6 +1277,44 @@ mod tests {
         assert_eq!(ty(0), "Future<void> Function()");
         assert_eq!(ty(1), "({int id, String? tab})");
         assert_eq!(ty(2), "Map<String, List<int>?>?");
+    }
+
+    /// The text and line the grammar first gave up at, if it did.
+    fn error_at(src: &str) -> Option<(usize, String)> {
+        parse(src).parse_error.map(|s| (s.line, src[s.bytes].to_string()))
+    }
+
+    #[test]
+    fn reports_where_the_grammar_gives_up() {
+        let (line, text) = error_at("class CartPage extends StatelessWidget {{\n  const CartPage({super.key});\n}\n").unwrap();
+        assert_eq!((line, text.as_str()), (1, "{"));
+
+        // Cut to the first line, however much the grammar swallows.
+        let (line, text) = error_at("import 'a.dart';\n\nclass A extends B {\n  Widget build( { ;;\n  x\n  y\n").unwrap();
+        assert!(line >= 3 && !text.contains('\n'), "{line} {text:?}");
+
+        // Broken bodies are read anyway.
+        let m = parse("class A extends StatelessWidget { const A({super.key}); Widget build(c) { x = ;; ) } }");
+        assert!(m.parse_error.is_some());
+        assert_eq!(m.classes.len(), 1);
+    }
+
+    #[test]
+    fn valid_files_report_no_error() {
+        for src in [
+            "",
+            "// nothing here\n",
+            "class A extends StatelessWidget { const A({super.key, required this.id}); final int id; }",
+            // Primary constructors are read separately; when that recovers the file, no error.
+            "class A(final int id, {super.key}) extends StatelessWidget {}\nclass const B<T>({super.key, required T v}) extends StatelessWidget {}",
+            "class C extends StatelessWidget { const this({super.key, required final int id}); }",
+            "class A extends StatelessWidget { Widget build(c) => Column(mainAxisAlignment: .center, children: [?m, ...o]); }",
+            "final data = FutureProvider.autoDispose.family<int, ({int id})>((ref, k) async => switch (k.id) { 1 => 2, _ => 3 });",
+        ] {
+            assert_eq!(error_at(src), None, "{src}");
+        }
+        // But a primary constructor doesn't hide a real error after it.
+        assert!(error_at("class A(final int id) extends StatelessWidget {{}").is_some());
     }
 
     #[test]

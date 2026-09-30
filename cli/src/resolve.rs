@@ -113,6 +113,8 @@ pub struct Route {
     /// The URL's segments from the root down; `(group)` folders add none.
     pub url: Vec<Seg>,
     pub page: Option<Widget>,
+    /// Where the page's class is declared, for diagnostics that name the route.
+    pub page_span: Option<Span>,
     /// `Product` for `ProductPage`; the typed route is `ProductRoute`.
     pub name: Option<String>,
     pub data: Option<Data>,
@@ -279,6 +281,7 @@ impl Resolver<'_> {
             segs: vec![],
             url: vec![],
             page: None,
+            page_span: None,
             name: None,
             data: None,
             loading: None,
@@ -304,19 +307,32 @@ impl Resolver<'_> {
             url.push(seg.clone());
         }
         let modules: BTreeMap<Kind, Module> = node.files.iter().map(|(k, src)| (*k, dart::parse(src))).collect();
+        // The grammar may lag newer Dart, so this is a warning: the Dart compiler has the last word.
+        for (kind, m) in &modules {
+            if let Some(span) = &m.parse_error {
+                let msg = "couldn't fully parse this file; if it doesn't compile, the Dart compiler will say where";
+                self.diags.warn(&node.rel(*kind), Some(span), msg);
+            }
+        }
 
         // page.dart names the route; data.dart feeds it.
         let page_file = node.rel(Kind::Page);
         let page_class = modules.get(&Kind::Page).and_then(|m| self.widget_class(m, &page_file));
         let name = page_class.as_ref().map(|c| route_name(&c.name));
+        let page_span = page_class.as_ref().map(|c| c.span.clone());
         if let (Some(n), Some(c)) = (&name, &page_class) {
-            if let Some(prev) = self.route_names.insert(n.clone(), page_file.clone()) {
-                self.diags.error(&page_file, Some(&c.span), format!("route name `{n}Route` is already taken by {prev}; rename the class"));
-            }
-            // `(a)/x/page.dart` and `(b)/x/page.dart` would both be /x.
+            // `(a)/x/page.dart` and `(b)/x/page.dart` would both be /x: one error for that,
+            // and the route-name clash only when the URLs differ.
             let pattern = pattern(&url);
-            if let Some(prev) = self.patterns.insert(pattern.clone(), page_file.clone()) {
-                self.diags.error(&page_file, Some(&c.span), format!("{prev} already serves {pattern}; (group) folders don't add to the URL"));
+            let same_url = self.patterns.insert(pattern.clone(), page_file.clone());
+            let same_name = self.route_names.insert(n.clone(), page_file.clone());
+            if let Some(prev) = same_url {
+                let msg = format!(
+                    "{pattern} is served by both {prev} and {page_file}; (group) folders don't add to the URL, so move or rename one"
+                );
+                self.diags.error(&page_file, Some(&c.span), msg);
+            } else if let Some(prev) = same_name {
+                self.diags.error(&page_file, Some(&c.span), format!("route name `{n}Route` is already taken by {prev}; rename the class"));
             }
         }
         let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs, id));
@@ -412,6 +428,7 @@ impl Resolver<'_> {
         }
 
         let has_page = page.is_some();
+        self.app.routes[id].page_span = page_span;
         let transition = here.transition.clone().filter(|_| has_page);
         let r = &mut self.app.routes[id];
         (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard, r.transition) =
@@ -433,7 +450,7 @@ impl Resolver<'_> {
             let tabs = self.tabs(node, modules.get(&Kind::Layout), has_page, &with_routes);
             self.app.routes[id].tabs = Some(tabs);
         }
-        if !any_route && node.children.is_empty() && !node.dir.is_empty() {
+        if !any_route && node.children.is_empty() && !node.dir.is_empty() && !node.files.contains_key(&Kind::Page) {
             self.diags.warn(&node.dir, None, "folder has no page.dart and no routes below it; skipped");
         }
         self.app.routes[id].children = children;
@@ -536,6 +553,11 @@ impl Resolver<'_> {
                 }
                 continue;
             };
+            if let Some(ty) = &p.ty {
+                if let Some(msg) = mismatch(&p.name, &bind, ty) {
+                    self.diags.error(cx.file, Some(&p.span), msg);
+                }
+            }
             match (&bind, &p.ty, cx.data) {
                 (Bind::Segment(name), Some(ty), _) => {
                     let folder = cx.segs.iter().find(|(n, _)| n == name).map(|(_, f)| *f).unwrap();
@@ -775,6 +797,9 @@ impl Resolver<'_> {
                 }
                 continue;
             };
+            if let Some(msg) = p.ty.as_ref().and_then(|ty| mismatch(&p.name, &bind, ty)) {
+                self.diags.error(&file, Some(&p.span), msg);
+            }
             args.push(Arg { name: p.name.clone(), named: p.named, bind });
         }
         if !args.iter().any(|a| a.bind == Bind::Child) {
@@ -851,6 +876,33 @@ fn transition_bind(p: &dart::Param) -> Option<Bind> {
         "GoRouterState" => Some(Bind::State),
         _ => None,
     })
+}
+
+/// A parameter bound by name gets a fixed value; say so when it's declared as
+/// something that value can't be assigned to. `Object` and `dynamic` take anything.
+fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
+    let (gets, accepts): (&str, &[&str]) = match bind {
+        Bind::Uri => ("the requested Uri", &["Uri"]),
+        Bind::Child => ("the page as a Widget", &["Widget"]),
+        Bind::Shell => ("the StatefulNavigationShell", &["StatefulNavigationShell", "StatefulWidget", "Widget"]),
+        Bind::Error => ("the error, an Object", &[]),
+        Bind::StackTrace => ("the StackTrace", &["StackTrace"]),
+        Bind::Retry => ("the retry callback, a VoidCallback", &["VoidCallback", "void Function()"]),
+        Bind::PageKey => (
+            "the page's key, a ValueKey<String>",
+            &["LocalKey", "Key", "ValueKey", "ValueKey<String>", "ValueKey<Object>", "ValueKey<dynamic>"],
+        ),
+        Bind::State => ("the GoRouterState", &["GoRouterState"]),
+        // Data has its own message; segments and queries are settled with the segment types.
+        Bind::Data | Bind::Segment(_) | Bind::Query(_) => return None,
+    };
+    let bare = ty.text.trim_end_matches('?');
+    // `w.Widget` is `Widget` under an import prefix.
+    let bare = bare.rsplit_once('.').filter(|(p, t)| !format!("{p}{t}").contains(['<', '(', ' '])).map_or(bare, |(_, t)| t);
+    if matches!(bare, "Object" | "dynamic") || accepts.contains(&bare) {
+        return None;
+    }
+    Some(format!("`{name}` gets {gets}, but it's declared {}", ty.text))
 }
 
 fn unfillable(name: &str, cx: &BindCx) -> String {

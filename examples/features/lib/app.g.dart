@@ -3,13 +3,13 @@
 //
 //   /                       HomeRoute      page.dart  (layout)
 //   /:slug                  SlugRoute      $slug/page.dart
-//   /profile                ProfileRoute   (account)/profile/page.dart
-//   /settings               SettingsRoute  (account)/settings/page.dart
+//   /profile                ProfileRoute   (account)/profile/page.dart  (transition)
+//   /settings               SettingsRoute  (account)/settings/page.dart  (transition)
 //   /counter                CounterRoute   counter/page.dart  (data)
 //   /search                 SearchRoute    search/page.dart  (data)
 //   /shops/:shop            ShopRoute      shops/$shop/page.dart  (guard, layout)
 //   /shops/:shop/items/:id  ItemRoute      shops/$shop/items/$id/page.dart  (data)
-//   /ticks                  TicksRoute     ticks/page.dart  (data)
+//   /ticks                  TicksRoute     ticks/page.dart  (data, transition)
 
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/widgets.dart';
@@ -17,21 +17,23 @@ import 'package:flutter/widgets.dart';
 import 'app/page.dart' as _i0;
 import 'app/layout.dart' as _i1;
 import 'app/\$slug/page.dart' as _i2;
-import 'app/(account)/layout.dart' as _i3;
-import 'app/(account)/profile/page.dart' as _i4;
-import 'app/(account)/settings/page.dart' as _i5;
-import 'app/counter/data.dart' as _i6;
-import 'app/counter/page.dart' as _i7;
-import 'app/search/data.dart' as _i8;
-import 'app/search/page.dart' as _i9;
-import 'app/shops/\$shop/page.dart' as _i10;
-import 'app/shops/\$shop/layout.dart' as _i11;
-import 'app/shops/\$shop/guard.dart' as _i12;
-import 'app/shops/\$shop/items/\$id/data.dart' as _i13;
-import 'app/shops/\$shop/items/\$id/page.dart' as _i14;
-import 'app/shops/\$shop/items/\$id/error.dart' as _i15;
-import 'app/ticks/data.dart' as _i16;
-import 'app/ticks/page.dart' as _i17;
+import 'app/(account)/transition.dart' as _i3;
+import 'app/(account)/layout.dart' as _i4;
+import 'app/(account)/profile/page.dart' as _i5;
+import 'app/(account)/settings/page.dart' as _i6;
+import 'app/counter/data.dart' as _i7;
+import 'app/counter/page.dart' as _i8;
+import 'app/search/data.dart' as _i9;
+import 'app/search/page.dart' as _i10;
+import 'app/shops/\$shop/page.dart' as _i11;
+import 'app/shops/\$shop/layout.dart' as _i12;
+import 'app/shops/\$shop/guard.dart' as _i13;
+import 'app/shops/\$shop/items/\$id/data.dart' as _i14;
+import 'app/shops/\$shop/items/\$id/page.dart' as _i15;
+import 'app/shops/\$shop/items/\$id/error.dart' as _i16;
+import 'app/ticks/data.dart' as _i17;
+import 'app/ticks/page.dart' as _i18;
+import 'app/ticks/transition.dart' as _i19;
 
 /// The file tree under lib/app/, ready to mount.
 abstract final class AppRoutes {
@@ -68,24 +70,30 @@ abstract final class AppRoutes {
             builder: (context, state) => _i0.HomePage(),
             routes: [
               ShellRoute(
-                builder: (context, state, child) => _i3.AccountLayout(child: child),
+                builder: (context, state, child) => _i4.AccountLayout(child: child),
                 routes: [
                   GoRoute(
                     path: 'profile',
-                    builder: (context, state) => _i4.ProfilePage(),
+                    pageBuilder: (context, state) => _i3.transition(
+                      state.pageKey,
+                      _i5.ProfilePage(),
+                    ),
                   ),
                   GoRoute(
                     path: 'settings',
-                    builder: (context, state) => _i5.SettingsPage(),
+                    pageBuilder: (context, state) => _i3.transition(
+                      state.pageKey,
+                      _i6.SettingsPage(),
+                    ),
                   ),
                 ],
               ),
               GoRoute(
                 path: 'counter',
                 builder: (context, state) => DataView(
-                  watch: (ref) => ref.watch(_i6.data),
-                  refresh: (ref) => ref.invalidate(_i6.data),
-                  data: (d) => _i7.CounterPage(count: d),
+                  watch: (ref) => ref.watch(_i7.data),
+                  refresh: (ref) => ref.invalidate(_i7.data),
+                  data: (d) => _i8.CounterPage(count: d),
                   loading: () => const DefaultLoading(),
                   error: (e, st, retry) => DefaultError(error: e, retry: retry),
                 ),
@@ -97,7 +105,7 @@ abstract final class AppRoutes {
                   (v) => DataView(
                     watch: (ref) => ref.watch(_data6((q: v.q, page: v.page))),
                     refresh: (ref) => ref.invalidate(_data6((q: v.q, page: v.page))),
-                    data: (d) => _i9.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
+                    data: (d) => _i10.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
                     loading: () => const DefaultLoading(),
                     error: (e, st, retry) => DefaultError(error: e, retry: retry),
                   ),
@@ -107,7 +115,7 @@ abstract final class AppRoutes {
               ShellRoute(
                 builder: (context, state, child) => buildWithParams(
                   () => _layout8(state),
-                  (v) => _i11.ShopLayout(shop: v.shop, child: child),
+                  (v) => _i12.ShopLayout(shop: v.shop, child: child),
                   () => notFound(state.uri),
                 ),
                 routes: [
@@ -115,11 +123,11 @@ abstract final class AppRoutes {
                     path: 'shops/:shop',
                     redirect: (context, state) => guardWithParams(
                       () => _params8(state),
-                      (v) => _i12.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
+                      (v) => _i13.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
                     ),
                     builder: (context, state) => buildWithParams(
                       () => _params8(state),
-                      (v) => _i10.ShopPage(shop: v.shop),
+                      (v) => _i11.ShopPage(shop: v.shop),
                       () => notFound(state.uri),
                     ),
                     routes: [
@@ -130,9 +138,9 @@ abstract final class AppRoutes {
                           (v) => DataView(
                             watch: (ref) => ref.watch(_data10((shop: v.shop, id: v.id))),
                             refresh: (ref) => ref.invalidate(_data10((shop: v.shop, id: v.id))),
-                            data: (d) => _i14.ItemPage(d),
+                            data: (d) => _i15.ItemPage(d),
                             loading: () => const DefaultLoading(),
-                            error: (e, st, retry) => _i15.ItemError(e, retry),
+                            error: (e, st, retry) => _i16.ItemError(e, retry),
                           ),
                           () => notFound(state.uri),
                         ),
@@ -143,12 +151,15 @@ abstract final class AppRoutes {
               ),
               GoRoute(
                 path: 'ticks',
-                builder: (context, state) => DataView(
-                  watch: (ref) => ref.watch(_data11),
-                  refresh: (ref) => ref.invalidate(_data11),
-                  data: (d) => _i17.TicksPage(data: d),
-                  loading: () => const DefaultLoading(),
-                  error: (e, st, retry) => DefaultError(error: e, retry: retry),
+                pageBuilder: (context, state) => _i19.transition(
+                  state.pageKey,
+                  DataView(
+                    watch: (ref) => ref.watch(_data11),
+                    refresh: (ref) => ref.invalidate(_data11),
+                    data: (d) => _i18.TicksPage(data: d),
+                    loading: () => const DefaultLoading(),
+                    error: (e, st, retry) => DefaultError(error: e, retry: retry),
+                  ),
                 ),
               ),
               GoRoute(
@@ -208,7 +219,7 @@ final class CounterRoute extends TypedLocation {
   const CounterRoute();
 
   /// counter/data.dart as a Riverpod provider.
-  static final data = _i6.data;
+  static final data = _i7.data;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/counter');
@@ -289,13 +300,13 @@ final class TicksRoute extends TypedLocation {
 ({String shop}) _layout8(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
 
 final _data6 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String? q, int? page}) k) => _i8.data(ref, q: k.q, page: k.page),
+  (Ref ref, ({String? q, int? page}) k) => _i9.data(ref, q: k.q, page: k.page),
 );
 
 final _data10 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String shop, int id}) k) => _i13.data(ref, shop: k.shop, id: k.id),
+  (Ref ref, ({String shop, int id}) k) => _i14.data(ref, shop: k.shop, id: k.id),
 );
 
 final _data11 = StreamProvider.autoDispose(
-  (Ref ref) => _i16.data(ref),
+  (Ref ref) => _i17.data(ref),
 );

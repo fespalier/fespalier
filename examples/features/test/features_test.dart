@@ -125,6 +125,51 @@ void main() {
     expect(find.text('Page anything'), findsOneWidget);
   });
 
+  testWidgets('transition.dart picks the Page: nearest one wins',
+      (tester) async {
+    RouteSettings settings(String text) =>
+        ModalRoute.of(tester.element(find.text(text)))!.settings;
+
+    // (account)/transition.dart covers /profile.
+    await boot(tester, '/profile');
+    await tester.pumpAndSettle();
+    expect(settings('Profile'), isA<CustomTransitionPage<void>>());
+
+    // ticks/transition.dart is Transitions.none.
+    await boot(tester, '/ticks');
+    await tester.pumpAndSettle();
+    expect(settings('Tick 42'), isA<NoTransitionPage<void>>());
+
+    // No transition.dart above /search: go_router's default page.
+    await boot(tester, '/search');
+    await tester.pumpAndSettle();
+    expect(settings('everything, page 1: apple, apricot'),
+        isNot(isA<CustomTransitionPage<void>>()));
+  });
+
+  testWidgets('a route with a transition fades in', (tester) async {
+    await boot(tester, '/');
+    await tester.pumpAndSettle();
+
+    const ProfileRoute().go(tester.element(find.text('Home')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // The page's own fade is one of several FadeTransitions above the text.
+    final opacities = tester
+        .widgetList<FadeTransition>(
+          find.ancestor(
+            of: find.text('Profile'),
+            matching: find.byType(FadeTransition),
+          ),
+        )
+        .map((fade) => fade.opacity.value);
+    expect(opacities.any((o) => o > 0 && o < 1), isTrue, reason: '$opacities');
+
+    await tester.pumpAndSettle();
+    expect(find.text('Profile'), findsOneWidget);
+  });
+
   test('groups leave no trace in typed locations', () {
     expect(const ProfileRoute().location, '/profile');
     expect(const SlugRoute(slug: 'x').location, '/x');

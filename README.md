@@ -17,6 +17,7 @@ lib/app/
   loading.dart           RootLoading()                                  (inherited)
   error.dart             RootError({required Object error, required VoidCallback retry})
   not_found.dart         NotFound({required Uri uri})
+  transition.dart        Page<void> transition(LocalKey key, Widget child)  (inherited)
   products/
     data.dart            final data = FutureProvider<List<Product>>(…)
     page.dart            ProductsPage({required List<Product> products})  → /products
@@ -66,6 +67,7 @@ top-level function.
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
 | `layout.dart` | a widget; wraps this folder and below (ShellRoute) | `child`; segments at or above it; query |
 | `guard.dart` | `GuardResult guard(ProviderContainer c, {…})` | segments, query (named) |
+| `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
 | `not_found.dart` | a widget, root only; unknown paths and unparsable segments | `uri` |
 
 ### How parameters are filled
@@ -114,6 +116,24 @@ route can't be sorted around a dynamic sibling outside it:
 error: /settings is unreachable: $slug/page.dart (/:slug) comes first and matches it;
        move one of them into or out of its (group)
 ```
+
+### Transitions
+
+`transition.dart` says how a route animates in. It applies to its folder's route and
+every route below it, and the nearest one wins. A `transition.dart` at the root is the
+app-wide default; any folder or `(group)` folder can override it for its own routes.
+
+The function returns a `Page`, and takes the page's key as `LocalKey key`, the page
+itself as `Widget child`, and optionally `GoRouterState state`. `Transitions` has
+ready-made ones: `fade`, `slide`, `none`, `material` and `cupertino`.
+
+```dart
+// lib/app/transition.dart: every route fades in, unless a folder overrides it
+Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);
+```
+
+Routes with no `transition.dart` above them keep go_router's platform default. Scaffold
+one with `fsp new … --transition`.
 
 ### Query parameters
 
@@ -173,7 +193,7 @@ cd cli && cargo build --release        # → cli/target/release/fsp
 fsp gen                 # check lib/app/, write lib/app.g.dart
 fsp watch               # same, on every change (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
-fsp new 'products/[id]' --name Product --data --loading --error --layout --guard
+fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
                         # [id] or :id both mean $id, so no shell quoting of $
 ```
 
@@ -228,9 +248,10 @@ Try `/products/13`: it fails once, so you see `error.dart` and **Retry**. Try `/
 to `/cart`), and `/greet/you`.
 
 `examples/features` covers the rest: an `(account)` group next to a catch-all `$slug`
-page, data keyed by two segments, query parameters (in a
-page, `data.dart` and a layout), a page and error view bound by type, a layout and guard
-that take segments, a user-written `AsyncNotifierProvider`, and `Stream` data.
+page, per-route transitions (the group fades in, `/ticks` doesn't animate), data keyed
+by two segments, query parameters (in a page, `data.dart` and a layout), a page and error
+view bound by type, a layout and guard that take segments, a user-written
+`AsyncNotifierProvider`, and `Stream` data.
 
 ## Development
 
@@ -259,9 +280,9 @@ a committed `app.g.dart` is stale.
 
 This is an early version.
 
-- **Generator:** 26 tests cover parsing, every binding rule and contract error, query
-  parameters, `(group)` folders and route order, both data forms, scaffolding, and that
-  the committed outputs are up to date. Clippy is clean.
+- **Generator:** 32 tests cover parsing, every binding rule and contract error, query
+  parameters, `(group)` folders and route order, transitions, both data forms,
+  scaffolding, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17,
   hooks_riverpod 3, flutter_hooks 0.21). The widget tests in both examples drive the
   generated router through every file kind.
@@ -280,4 +301,4 @@ Things to know:
 - go_router builds the whole matched stack, so `/products/abc` also loads `/products`
   underneath the not-found view.
 
-Next steps: per-route transitions, a `StatefulShellRoute` layout for tab bars, and go_router 18.
+Next steps: a `StatefulShellRoute` layout for tab bars, and go_router 18.

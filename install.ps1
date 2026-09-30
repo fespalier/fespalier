@@ -3,7 +3,7 @@
 #   irm https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.ps1 | iex
 #
 # Environment:
-#   FSP_VERSION      release tag to install, e.g. v0.1.1 (default: latest release)
+#   FSP_VERSION      release tag to install, e.g. v0.2.0 (default: latest release)
 #   FSP_INSTALL_DIR  where to put fsp.exe (default: %LOCALAPPDATA%\fespalier\bin)
 #   FSP_BASE_URL     where releases are downloaded from
 #                    (default: https://github.com/vaam-apps/fespalier/releases/download)
@@ -51,11 +51,11 @@ function Install-Fsp {
             $response = $request.GetResponse()
             try { $latest = $response.ResponseUri.AbsoluteUri } finally { $response.Close() }
         } catch {
-            throw "could not look up the latest release ($($_.Exception.Message)); set `$env:FSP_VERSION (e.g. v0.1.1)"
+            throw "could not look up the latest release ($($_.Exception.Message)); set `$env:FSP_VERSION (e.g. v0.2.0)"
         }
         $version = ($latest -split '/')[-1]
         if ($version -notmatch '^v\d') {
-            throw "could not determine the latest release (got '$version'); set `$env:FSP_VERSION (e.g. v0.1.1)"
+            throw "could not determine the latest release (got '$version'); set `$env:FSP_VERSION (e.g. v0.2.0)"
         }
     }
     if (-not $version.StartsWith('v')) { $version = "v$version" }

@@ -4,7 +4,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
 #
 # Environment:
-#   FSP_VERSION      release tag to install, e.g. v0.1.0 (default: latest release)
+#   FSP_VERSION      release tag to install, e.g. v0.2.0 (default: latest release)
 #   FSP_INSTALL_DIR  where to put `fsp` (default: $HOME/.local/bin)
 #   FSP_BASE_URL     where releases are downloaded from
 #                    (default: https://github.com/vaam-apps/fespalier/releases/download)
@@ -67,7 +67,7 @@ if [ -z "$version" ]; then
   # /releases/latest redirects to /releases/tag/<tag>
   if have curl; then
     latest_url=$(curl -fsSL -o /dev/null -w '%{url_effective}' "${RELEASES_URL}/latest") \
-      || err "could not look up the latest release; set FSP_VERSION (e.g. v0.1.0)"
+      || err "could not look up the latest release; set FSP_VERSION (e.g. v0.2.0)"
   elif have wget; then
     latest_url=$(wget -q -S --spider "${RELEASES_URL}/latest" 2>&1 | sed -n 's/^ *[Ll]ocation: *//p' | tail -n 1 | tr -d '\r') \
       || true
@@ -77,7 +77,7 @@ if [ -z "$version" ]; then
   version="${latest_url##*/}"
   case "$version" in
     v[0-9]*) ;;
-    *) err "could not determine the latest release (got '${version}'); set FSP_VERSION (e.g. v0.1.0)" ;;
+    *) err "could not determine the latest release (got '${version}'); set FSP_VERSION (e.g. v0.2.0)" ;;
   esac
 fi
 case "$version" in

@@ -1,6 +1,6 @@
 name: fespalier
 description: File-tree routing for Flutter. Plain widgets and functions in lib/app/ (page, data, loading, error, layout, guard) wired into one mountable go_router entry point by the fsp generator.
-version: 0.1.1
+version: 0.2.0
 homepage: https://github.com/vaam-apps/fespalier
 repository: https://github.com/vaam-apps/fespalier/tree/main/packages/fespalier
 issue_tracker: https://github.com/vaam-apps/fespalier/issues

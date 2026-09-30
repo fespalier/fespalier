@@ -15,7 +15,7 @@ use heck::ToUpperCamelCase;
 
 use crate::dart::{self, Class, Module, Span, Ty};
 use crate::diag::Diags;
-use crate::scan::{Kind, Node, Seg};
+use crate::scan::{Kind, Node, Seg, ROUTE_MEMBERS};
 
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
 
@@ -25,6 +25,9 @@ pub enum Bind {
     Segment(String),
     Query(String),
     Data,
+    /// A section's data.dart, watched again below its layout: the id of the
+    /// folder that holds it.
+    Section(usize),
     Child,
     /// A tab layout's `StatefulNavigationShell`.
     Shell,
@@ -131,6 +134,24 @@ pub struct Route {
     pub layout_query: Vec<(String, String)>,
     /// Set when the layout asks for a `StatefulNavigationShell`: its tabs, in order.
     pub tabs: Option<Vec<Branch>>,
+    /// The nearest not_found.dart below the root at or above this folder: what an
+    /// unparsable segment shows. `None` means the root's.
+    pub not_found: Option<Widget>,
+}
+
+impl Route {
+    /// A page-less folder whose layout wraps a section, and whose data.dart
+    /// feeds the layout and the pages below it.
+    pub fn is_section(&self) -> bool {
+        self.page.is_none() && self.layout.is_some() && self.data.is_some()
+    }
+}
+
+/// A not_found.dart below the root, chosen for unknown URLs under `url`.
+#[derive(Debug, Clone)]
+pub struct ScopedNotFound {
+    pub url: Vec<Seg>,
+    pub widget: Widget,
 }
 
 #[derive(Debug, Default)]
@@ -138,6 +159,8 @@ pub struct App {
     pub imports: Vec<String>,
     pub routes: Vec<Route>,
     pub not_found: Option<Widget>,
+    /// The not_found.dart files in folders below the root (not `(group)`s).
+    pub not_founds: Vec<ScopedNotFound>,
     /// Type of each dynamic segment, keyed by the folder that declares it.
     pub seg_types: HashMap<usize, String>,
 }
@@ -202,6 +225,17 @@ struct Inherited {
     loading: Option<Fallback>,
     error: Option<Fallback>,
     transition: Option<Transition>,
+    /// The data.dart files of the sections above, outermost first.
+    sections: Vec<SectionRef>,
+    not_found: Option<Widget>,
+}
+
+/// A section's data.dart, as the files below its layout can receive it.
+#[derive(Clone)]
+struct SectionRef {
+    id: usize,
+    ty: String,
+    file: String,
 }
 
 /// "Segment `$id` is `int`", as declared by one parameter somewhere.
@@ -217,6 +251,8 @@ struct BindCx<'a> {
     role: Role,
     segs: &'a [(String, usize)],
     data: Option<&'a str>,
+    /// The sections above this file, whose data it can ask for by type or as `data`.
+    sections: &'a [SectionRef],
     file: &'a str,
     /// For inherited views: the folder of the route this use is for.
     covering: Option<&'a str>,
@@ -230,6 +266,7 @@ pub fn resolve(root: &Node, diags: &mut Diags) -> App {
         import_ix: HashMap::new(),
         route_names: HashMap::new(),
         patterns: HashMap::new(),
+        not_found_urls: HashMap::new(),
         constraints: vec![],
         queries: HashMap::new(),
         query_order: vec![],
@@ -253,6 +290,8 @@ struct Resolver<'a> {
     route_names: HashMap<String, String>,
     /// URL pattern → the page.dart that serves it.
     patterns: HashMap<String, String>,
+    /// URL pattern → the not_found.dart below the root that covers it.
+    not_found_urls: HashMap<String, String>,
     constraints: Vec<Constraint>,
     /// Query parameter types as first declared: (type, file, line).
     queries: HashMap<(Scope, String), (String, String, usize)>,
@@ -292,6 +331,7 @@ impl Resolver<'_> {
             query: vec![],
             layout_query: vec![],
             tabs: None,
+            not_found: None,
         });
 
         let mut segs = up.segs.clone();
@@ -336,14 +376,26 @@ impl Resolver<'_> {
             }
         }
         let data = modules.get(&Kind::Data).and_then(|m| self.data(m, node, &segs, id));
-        if data.is_some() && !node.files.contains_key(&Kind::Page) {
-            self.diags.error(&node.rel(Kind::Data), None, "data.dart has no page.dart to feed");
+        // Without a page.dart, a data.dart with a layout.dart beside it is the data of the
+        // section that layout wraps.
+        let section = data.is_some() && !node.files.contains_key(&Kind::Page) && node.files.contains_key(&Kind::Layout);
+        if data.is_some() && !section && !node.files.contains_key(&Kind::Page) {
+            let msg = "data.dart has no page.dart to feed; with a layout.dart beside it, it would be the data of the section below that layout";
+            self.diags.error(&node.rel(Kind::Data), None, msg);
         }
+        if let (true, Some(d)) = (section, &data) {
+            if let Some(q) = d.keys.iter().find(|k| !segs.iter().any(|(s, _)| s == *k)) {
+                let msg = format!("`{q}`: a section's data.dart can only take segments, not query parameters; the pages below it can't see them");
+                self.diags.error(&node.rel(Kind::Data), None, msg);
+            }
+        }
+
         let page = page_class.map(|c| {
             let cx = BindCx {
                 role: Role::Page,
                 segs: &segs,
                 data: data.as_ref().map(|d| d.ty.as_str()),
+                sections: &up.sections,
                 file: &page_file,
                 covering: None,
                 scope: Some(Scope::Route(id)),
@@ -368,7 +420,12 @@ impl Resolver<'_> {
             loading: up.loading.clone(),
             error: up.error.clone(),
             transition: up.transition.clone(),
+            sections: up.sections.clone(),
+            not_found: up.not_found.clone(),
         };
+        if let (true, Some(d)) = (section, &data) {
+            here.sections.push(SectionRef { id, ty: d.ty.clone(), file: node.rel(Kind::Data) });
+        }
         for (kind, slot) in [(Kind::Loading, &mut here.loading), (Kind::Error, &mut here.error)] {
             if let Some(m) = modules.get(&kind) {
                 let file = node.rel(kind);
@@ -385,13 +442,16 @@ impl Resolver<'_> {
             let covering = show_dir(&node.dir);
             let bind = |r: &mut Self, f: &Option<Fallback>, role| {
                 f.as_ref().map(|f| {
+                    // A section's views are built by its layout, which reads the URL for them.
+                    let scope = if section { Scope::Layout(id) } else { Scope::Route(id) };
                     let cx = BindCx {
                         role,
                         segs: &segs,
                         data: None,
+                        sections: &[],
                         file: &f.file,
                         covering: Some(&covering),
-                        scope: Some(Scope::Route(id)),
+                        scope: Some(scope),
                     };
                     let mut w = r.bind(&f.class, &cx);
                     w.import = f.import;
@@ -406,7 +466,15 @@ impl Resolver<'_> {
         let layout = modules.get(&Kind::Layout).and_then(|m| {
             let file = node.rel(Kind::Layout);
             let c = self.widget_class(m, &file)?;
-            let cx = BindCx { role: Role::Layout, segs: &segs, data: None, file: &file, covering: None, scope: Some(Scope::Layout(id)) };
+            let cx = BindCx {
+                role: Role::Layout,
+                segs: &segs,
+                data: data.as_ref().filter(|_| section).map(|d| d.ty.as_str()),
+                sections: &up.sections,
+                file: &file,
+                covering: None,
+                scope: Some(Scope::Layout(id)),
+            };
             let w = self.bind(&c, &cx);
             if w.args.iter().any(|a| a.bind == Bind::Child) && w.args.iter().any(|a| a.bind == Bind::Shell) {
                 let msg = format!("{} asks for both a `child` and a navigation shell; a tab layout takes only the `StatefulNavigationShell`", c.name);
@@ -415,20 +483,47 @@ impl Resolver<'_> {
             Some(w)
         });
         let guard = modules.get(&Kind::Guard).and_then(|m| self.guard(m, node, &segs, id));
+        // not_found.dart: the root's is the fallback for everything; one further down covers
+        // its folder, for unknown URLs under it and for unparsable segments in its routes.
+        let mut not_found = up.not_found.clone();
         if let Some(m) = modules.get(&Kind::NotFound) {
             let file = node.rel(Kind::NotFound);
-            if node.dir.is_empty() {
-                if let Some(c) = self.widget_class(m, &file) {
-                    let cx = BindCx { role: Role::NotFound, segs: &[], data: None, file: &file, covering: None, scope: None };
-                    self.app.not_found = Some(self.bind(&c, &cx));
+            if let Some(c) = self.widget_class(m, &file) {
+                let cx = BindCx {
+                    role: Role::NotFound,
+                    segs: &[],
+                    data: None,
+                    sections: &[],
+                    file: &file,
+                    covering: None,
+                    scope: None,
+                };
+                let w = self.bind(&c, &cx);
+                if node.dir.is_empty() {
+                    self.app.not_found = Some(w);
+                } else {
+                    // A `(group)` adds nothing to the URL, so it can't be told apart by it.
+                    if !matches!(node.seg, Some(Seg::Group(_))) {
+                        let at = pattern(&url);
+                        match self.not_found_urls.insert(at.clone(), file.clone()) {
+                            Some(prev) => {
+                                let msg = format!("{at} already has {prev}; (group) folders don't add to the URL, so move or rename one");
+                                self.diags.error(&file, None, msg);
+                            }
+                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone() }),
+                        }
+                    }
+                    not_found = Some(w);
                 }
-            } else {
-                self.diags.error(&file, None, "not_found.dart only works at the root of the app folder");
             }
         }
 
+        here.not_found = not_found.clone();
+
+
         let has_page = page.is_some();
         self.app.routes[id].page_span = page_span;
+        self.app.routes[id].not_found = not_found;
         let transition = here.transition.clone().filter(|_| has_page);
         let r = &mut self.app.routes[id];
         (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard, r.transition) =
@@ -543,6 +638,7 @@ impl Resolver<'_> {
                         self.declare_query(scope, &p.name, qty, cx.file, &p.span).then(|| Bind::Query(p.name.clone()))
                     })
                     .or_else(|| by_type(p.ty.as_ref()?, cx))
+                    .or_else(|| self.data_by_type(p, cx))
             };
             let Some(bind) = bind else {
                 if p.required {
@@ -555,6 +651,13 @@ impl Resolver<'_> {
             };
             if let Some(ty) = &p.ty {
                 if let Some(msg) = mismatch(&p.name, &bind, ty) {
+                    self.diags.error(cx.file, Some(&p.span), msg);
+                }
+            }
+            if let (Bind::Section(sid), Some(ty)) = (&bind, &p.ty) {
+                let sec = cx.sections.iter().find(|s| s.id == *sid).expect("a section bind names a section above");
+                if !ty.is(&sec.ty) {
+                    let msg = format!("`{}` is {} but the section's data.dart ({}) yields {}", p.name, ty.text, sec.file, sec.ty);
                     self.diags.error(cx.file, Some(&p.span), msg);
                 }
             }
@@ -580,7 +683,37 @@ impl Resolver<'_> {
         Widget { import, class: class.name.clone(), args }
     }
 
+    /// A parameter whose type is one a data.dart yields: the route's own, or a section
+    /// above. Two of them yielding the same type are ambiguous.
+    fn data_by_type(&mut self, p: &dart::Param, cx: &BindCx) -> Option<Bind> {
+        if !matches!(cx.role, Role::Page | Role::Layout) {
+            return None;
+        }
+        let ty = p.ty.as_ref()?;
+        let own = (cx.data == Some(ty.text.as_str())).then_some(Bind::Data);
+        let mut found: Vec<(Bind, String)> = own.into_iter().map(|b| (b, "this folder's data.dart".to_string())).collect();
+        for s in cx.sections.iter().filter(|s| ty.is(&s.ty)) {
+            found.push((Bind::Section(s.id), format!("the section's {}", s.file)));
+        }
+        if found.len() > 1 {
+            let names: Vec<&str> = found.iter().map(|(_, n)| n.as_str()).collect();
+            let msg = format!(
+                "`{}` is {}, which {} all yield; name the parameter `data` to get the nearest, or give one of them another type",
+                p.name,
+                ty.text,
+                names.join(" and ")
+            );
+            self.diags.error(cx.file, Some(&p.span), msg);
+        }
+        found.into_iter().next().map(|(b, _)| b)
+    }
+
     fn declare_query(&mut self, scope: Scope, name: &str, ty: String, file: &str, span: &Span) -> bool {
+        if matches!(scope, Scope::Route(_)) && ROUTE_MEMBERS.contains(&name) {
+            let msg = format!("`{name}` can't be a query parameter: the typed route class has a member called `{name}`; rename it");
+            self.diags.error(file, Some(span), msg);
+            return false;
+        }
         let key = (scope, name.to_string());
         match self.queries.get(&key) {
             None => {
@@ -836,7 +969,10 @@ impl Resolver<'_> {
 /// What a parameter called `name` receives in this role, going by its name.
 fn by_name(name: &str, cx: &BindCx) -> Option<Bind> {
     match (cx.role, name) {
-        (Role::Page, "data") if cx.data.is_some() => return Some(Bind::Data),
+        (Role::Page | Role::Layout, "data") if cx.data.is_some() => return Some(Bind::Data),
+        (Role::Page | Role::Layout, "data") if !cx.sections.is_empty() => {
+            return Some(Bind::Section(cx.sections.last().unwrap().id));
+        }
         (Role::Error, "error") => return Some(Bind::Error),
         (Role::Error, "stackTrace") => return Some(Bind::StackTrace),
         (Role::Error, "retry") => return Some(Bind::Retry),
@@ -851,7 +987,6 @@ fn by_name(name: &str, cx: &BindCx) -> Option<Bind> {
 /// What a parameter of type `ty` receives in this role, going by its type.
 fn by_type(ty: &Ty, cx: &BindCx) -> Option<Bind> {
     match (cx.role, ty.text.as_str()) {
-        (Role::Page, t) if cx.data == Some(t) => Some(Bind::Data),
         (Role::Error, "Object" | "Object?" | "dynamic") => Some(Bind::Error),
         (Role::Error, "StackTrace" | "StackTrace?") => Some(Bind::StackTrace),
         (Role::Error, "VoidCallback" | "void Function()") => Some(Bind::Retry),
@@ -894,7 +1029,7 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
         ),
         Bind::State => ("the GoRouterState", &["GoRouterState"]),
         // Data has its own message; segments and queries are settled with the segment types.
-        Bind::Data | Bind::Segment(_) | Bind::Query(_) => return None,
+        Bind::Data | Bind::Section(_) | Bind::Segment(_) | Bind::Query(_) => return None,
     };
     let bare = ty.text.trim_end_matches('?');
     // `w.Widget` is `Widget` under an import prefix.

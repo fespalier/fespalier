@@ -173,6 +173,15 @@ final class ProductsRoute extends TypedLocation {
   @override
   String get location => joinLocation(AppRoutes.base, '/products');
 
+  /// Watches products/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
+  static final watch = (WidgetRef ref) => ref.watch(data);
+
+  /// Reads products/data.dart once, keeping it alive until it completes.
+  static final read = (WidgetRef ref) => ref.readData(data);
+
+  /// Starts loading products/data.dart before navigating; kept for `keepFor` (default 30 s).
+  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
+
   /// Re-runs products/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
 }
@@ -188,6 +197,15 @@ final class ProductRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/products/$id');
+
+  /// Watches products/$id/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
+  static final watch = (WidgetRef ref, {required int id}) => ref.watch(data(id));
+
+  /// Reads products/$id/data.dart once, keeping it alive until it completes.
+  static final read = (WidgetRef ref, {required int id}) => ref.readData(data(id));
+
+  /// Starts loading products/$id/data.dart before navigating; kept for `keepFor` (default 30 s).
+  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(id), keepFor: keepFor);
 
   /// Re-runs products/$id/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);

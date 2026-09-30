@@ -118,10 +118,16 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
 
 /// Names a dynamic segment can't take: they are the parameters fespalier fills
 /// itself, or members of the generated route classes.
-pub const RESERVED: [&str; 16] = [
+pub const RESERVED: [&str; 21] = [
     "data", "child", "navigationShell", "shell", "error", "stackTrace", "retry", "uri", "key", "location", "go",
-    "push", "replace", "refresh", "hashCode", "runtimeType",
+    "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor", "hashCode", "runtimeType",
 ];
+
+/// Names a query parameter can't take either: the route class has a member of that name
+/// (or a member's parameter shadows the field). The parameters fespalier fills itself
+/// (`data`, `uri`, ...) are fine: those never reach the query.
+pub const ROUTE_MEMBERS: [&str; 11] =
+    ["location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor", "hashCode"];
 
 pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {
     if let Some(p) = name.strip_prefix('$') {

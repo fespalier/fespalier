@@ -262,7 +262,6 @@ fn misc_rules() {
     let e = diags(&[
         ("page.dart", HOME),
         ("a/guard.dart", "GuardResult guard(ProviderContainer c) => null;"),
-        ("b/not_found.dart", "class N extends StatelessWidget {}"),
         ("c/page.dart", "class HomeScreen extends StatelessWidget {}"),
         ("d/page.dart", "class A extends StatelessWidget {}\nclass B extends StatelessWidget {}"),
         ("Bad Name/page.dart", HOME),
@@ -271,7 +270,6 @@ fn misc_rules() {
     let joined = e.join("\n");
     for needle in [
         "a/guard.dart  guard.dart needs a page.dart",
-        "b/not_found.dart  not_found.dart only works at the root",
         "route name `HomeRoute` is already taken by page.dart",
         "d/page.dart:2  expected one public widget class, found A, B",
         "`Bad Name` is not a valid URL segment",

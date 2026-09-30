@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+- **Typed data helpers on routes.** A route with a `data.dart` gets `static watch(ref, {keys})`
+  (an `AsyncValue<T>`), `static read(ref, {keys})` (a `Future<T>`, kept alive until it
+  completes) and an instance `prefetch(ref, {keepFor})` that starts the load and keeps the result
+  (30 s by default) so the next page shows it at once. `T` is inferred from the provider, so
+  the generated file still never names your types; that's why `watch` and `read` are static and
+  not `ProductRoute(id: 2).watch(ref)`. New reserved names: `watch`, `read`, `prefetch`, `ref`
+  and `keepFor` can't be segment names, and a query parameter can't be called like a member of
+  the route class (`go`, `read`, `refresh`, ...). Regenerate `app.g.dart`.
+- **Section data.** A `data.dart` in a folder that has a `layout.dart` and no `page.dart` (a
+  page-less folder or a `(group)`) is the data of the whole section: the layout waits for it,
+  showing the nearest `loading.dart` / `error.dart`, and the layout and the pages below can take
+  it by type or as a parameter called `data`. The layout and pages share one provider, so
+  `data()` runs once. Two data.dart files yielding the same type for one parameter are an
+  error. Segments only, no query parameters.
+- **`not_found.dart` in any folder.** The nearest one covers unknown URLs under its folder
+  (`AppRoutes.notFound(uri)`, used by the router's `errorBuilder`) and unparsable segments in
+  the routes below it (a `(group)`'s too). It used to be an error outside the root.
+- **`package:fespalier/testing.dart`**: `pumpRouter(tester, router, {overrides, container,
+  settle})` and `currentLocation(tester)`. `fespalier` now lists `flutter_test` (an SDK
+  package) as a dependency; the main library doesn't import it.
+- Runtime: `DataRef.readData` / `prefetchData` on `WidgetRef`, `SectionView`,
+  `nearestNotFound`, `prefetchKeepAlive`.
+
 ## 0.1.1 — 2026-09-30
 
 Fixes from first-use testing.

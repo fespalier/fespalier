@@ -22,6 +22,8 @@ struct FileCx {
     imports: Vec<String>,
     tree: Vec<TreeCx>,
     not_found: String,
+    /// not_found.dart files below the root, deepest first.
+    not_founds: Vec<NotFoundCx>,
     routes: Vec<RouteCx>,
     params_fns: Vec<ParamsFnCx>,
     providers: Vec<ProviderCx>,
@@ -31,7 +33,7 @@ struct FileCx {
 /// `branches` is set too.
 #[derive(Serialize)]
 struct TreeCx {
-    layout: Option<CallCx>,
+    layout: Option<LayoutCx>,
     /// A tab layout's tabs, each holding the routes of one folder.
     branches: Vec<BranchCx>,
     path: String,
@@ -39,6 +41,8 @@ struct TreeCx {
     seg_fn: Option<String>,
     page: String,
     data: Option<ViewDataCx>,
+    /// What an unparsable segment shows.
+    not_found: String,
     transition: Option<TransitionCx>,
     routes: Vec<TreeCx>,
     /// Starts with a `:segment` (or, for a ShellRoute, holds a route that does).
@@ -70,6 +74,23 @@ fn static_first(mut routes: Vec<TreeCx>) -> Vec<TreeCx> {
 #[derive(Serialize)]
 struct CallCx {
     seg_fn: Option<String>,
+    call: String,
+}
+
+/// A layout's builder body: `page` is the layout widget, which a section's `data`
+/// (when set) loads first.
+#[derive(Serialize)]
+struct LayoutCx {
+    seg_fn: Option<String>,
+    page: String,
+    data: Option<ViewDataCx>,
+    not_found: String,
+}
+
+/// A not_found.dart below the root: its URL prefix (`['products', ':id']`) and widget.
+#[derive(Serialize)]
+struct NotFoundCx {
+    prefix: String,
     call: String,
 }
 
@@ -132,6 +153,9 @@ struct TypedDataCx {
     expr: String,
     verb: &'static str,
     key: String,
+    /// `, {required int id, int? page}`: the keys as named parameters of the static
+    /// `watch` and `read`, whose types are inferred from the provider.
+    args: String,
 }
 
 /// Parses what a route (or layout) reads from the URL into a record.
@@ -181,6 +205,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
             Some(w) => w.call(|_| "uri".into()),
             None => "DefaultNotFound(uri)".into(),
         },
+        not_founds: not_founds(app),
         routes: app.routes.iter().enumerate().filter_map(|(id, r)| typed_route(app, id, r)).collect(),
         params_fns: fns.into_iter().map(|f| params_fn(app, f)).collect(),
         providers: app.routes.iter().enumerate().filter_map(|(id, r)| provider(app, id, r)).collect(),
@@ -193,6 +218,7 @@ fn in_builder(b: &Bind) -> String {
     match b {
         Bind::Segment(s) | Bind::Query(s) => format!("v.{s}"),
         Bind::Data => "d".into(),
+        Bind::Section(id) => format!("s{id}"),
         Bind::Child => "child".into(),
         Bind::Shell => "navigationShell".into(),
         Bind::Error => "e".into(),
@@ -232,19 +258,15 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
     };
 
     if let (Some(layout), false) = (&r.layout, out.is_empty()) {
-        let reads_url = layout.args.iter().any(|a| matches!(a.bind, Bind::Segment(_) | Bind::Query(_)));
-        let seg_fn = reads_url.then(|| {
-            fns.insert(ParamsFn::Layout(id));
-            ParamsFn::Layout(id).name()
-        });
         out = vec![TreeCx {
-            layout: Some(CallCx { seg_fn, call: layout.call(in_builder) }),
+            layout: Some(layout_cx(app, id, layout, fns)),
             branches: vec![],
             path: String::new(),
             redirect: None,
             seg_fn: None,
             page: String::new(),
             data: None,
+            not_found: String::new(),
             transition: None,
             dynamic: out.iter().any(|r| r.dynamic),
             serves: None,
@@ -253,6 +275,86 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
         }];
     }
     out
+}
+
+/// What a folder's layout builds: the layout widget, behind its section's data.dart when
+/// it has one, and inside the data.dart files of the sections above it that it asks for.
+fn layout_cx(app: &App, id: usize, layout: &resolve::Widget, fns: &mut BTreeSet<ParamsFn>) -> LayoutCx {
+    let r = &app.routes[id];
+    let section = r.data.as_ref().filter(|_| r.is_section());
+    let has_params = !r.segs.is_empty() || !r.layout_query.is_empty();
+    let wrapped = with_sections(app, &layout.args, layout.call(in_builder));
+    let reads_url = has_params
+        && (section.is_some()
+            || wrapped != layout.call(in_builder)
+            || layout.args.iter().any(|a| matches!(a.bind, Bind::Segment(_) | Bind::Query(_))));
+    let seg_fn = reads_url.then(|| {
+        fns.insert(ParamsFn::Layout(id));
+        ParamsFn::Layout(id).name()
+    });
+    LayoutCx {
+        seg_fn,
+        page: wrapped,
+        data: section.map(|d| ViewDataCx {
+            provider: format!("{}{}", provider_expr(id, d), key_expr(d, "v.")),
+            loading: r.loading.as_ref().map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
+            error: r.error.as_ref().map_or("DefaultError(error: e, retry: retry)".into(), |w| w.call(in_builder)),
+        }),
+        not_found: not_found_call(r),
+    }
+}
+
+/// Wraps `inner` in a `SectionView` for each section above that its widget takes data
+/// from (`Bind::Section`): the section's layout has loaded it, so it's read from the
+/// same provider.
+fn with_sections(app: &App, args: &[resolve::Arg], inner: String) -> String {
+    let mut ids: Vec<usize> = vec![];
+    for a in args {
+        if let Bind::Section(id) = a.bind {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    ids.into_iter().rev().fold(inner, |acc, sid| {
+        let d = app.routes[sid].data.as_ref().expect("a section has data");
+        format!(
+            "SectionView(\n  watch: (ref) => ref.watch({}{}),\n  data: (s{sid}) => {},\n)",
+            provider_expr(sid, d),
+            key_expr(d, "v."),
+            acc.replace('\n', "\n  ")
+        )
+    })
+}
+
+/// What an unparsable segment shows: the nearest not_found.dart below the root, or the
+/// root's, which `notFound` picks.
+fn not_found_call(r: &Route) -> String {
+    r.not_found.as_ref().map_or("notFound(state.uri)".into(), |w| w.call(|_| "state.uri".into()))
+}
+
+/// The not_found.dart files below the root, deepest first, static folders before
+/// dynamic ones at the same depth, so the nearest match is the first.
+fn not_founds(app: &App) -> Vec<NotFoundCx> {
+    let mut all: Vec<&resolve::ScopedNotFound> = app.not_founds.iter().collect();
+    all.sort_by_key(|n| {
+        let dynamic = n.url.iter().filter(|s| matches!(s, Seg::Dynamic(_))).count();
+        (std::cmp::Reverse(n.url.len()), dynamic, resolve::pattern(&n.url))
+    });
+    all.into_iter()
+        .map(|n| {
+            let parts: Vec<String> = n
+                .url
+                .iter()
+                .filter_map(|s| match s {
+                    Seg::Static(s) => Some(format!("'{s}'")),
+                    Seg::Dynamic(d) => Some(format!("':{d}'")),
+                    Seg::Group(_) => None,
+                })
+                .collect();
+            NotFoundCx { prefix: format!("[{}]", parts.join(", ")), call: n.widget.call(|_| "uri".into()) }
+        })
+        .collect()
 }
 
 /// The GoRoute for a folder's page.dart. Its subfolders' routes nest below it,
@@ -289,8 +391,9 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, fns: &m
         path: if top { format!("joinLocation(at, '/{path}')") } else { format!("'{path}'") },
         redirect,
         seg_fn,
-        page: page.call(in_builder),
+        page: with_sections(app, &page.args, page.call(in_builder)),
         data,
+        not_found: not_found_call(r),
         transition: r.transition.as_ref().map(transition_cx),
         routes,
         dynamic: path.starts_with(':'),
@@ -325,13 +428,8 @@ fn tab_routes(
     if branches.is_empty() {
         return vec![];
     }
-    let reads_url = layout.args.iter().any(|a| matches!(a.bind, Bind::Segment(_) | Bind::Query(_)));
-    let seg_fn = reads_url.then(|| {
-        fns.insert(ParamsFn::Layout(id));
-        ParamsFn::Layout(id).name()
-    });
     vec![TreeCx {
-        layout: Some(CallCx { seg_fn, call: layout.call(in_builder) }),
+        layout: Some(layout_cx(app, id, layout, fns)),
         dynamic: branches.iter().flat_map(|b| &b.routes).any(|r| r.dynamic),
         branches,
         path: String::new(),
@@ -339,6 +437,7 @@ fn tab_routes(
         seg_fn: None,
         page: String::new(),
         data: None,
+        not_found: String::new(),
         transition: None,
         serves: None,
         has_params: false,
@@ -443,6 +542,7 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
             expr: provider_expr(id, d),
             verb: if d.stream { "Restarts" } else { "Re-runs" },
             key: key_expr(d, ""),
+            args: keyed_params(app, r, d),
         }
     });
     Some(RouteCx {
@@ -464,6 +564,18 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
         data,
         location: with_query(r, format!("joinLocation(AppRoutes.base, {})", location(app, r))),
     })
+}
+
+/// `, {required int id, int? page}` for the parameters `data.dart` is keyed by.
+fn keyed_params(app: &App, r: &Route, d: &Data) -> String {
+    let typed = app.url_params(r);
+    let params: Vec<String> = d
+        .keys
+        .iter()
+        .filter_map(|k| typed.iter().find(|(n, _)| n == k))
+        .map(|(n, ty)| if r.query.iter().any(|(q, _)| q == n) { format!("{ty} {n}") } else { format!("required {ty} {n}") })
+        .collect();
+    if params.is_empty() { String::new() } else { format!(", {{{}}}", params.join(", ")) }
 }
 
 /// `withQuery(<location>, {'page': page})` when the route reads the query.

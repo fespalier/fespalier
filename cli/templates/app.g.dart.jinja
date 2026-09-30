@@ -5,7 +5,7 @@
 DataView(
   watch: (ref) => ref.watch({{ b.data.provider }}),
   refresh: (ref) => ref.invalidate({{ b.data.provider }}),
-  data: (d) => {{ b.page }},
+  data: (d) => {{ b.page | indent(2) }},
   loading: () => {{ b.data.loading }},
   error: (e, st, retry) => {{ b.data.error }},
 )
@@ -13,11 +13,11 @@ DataView(
 {{ b.page }}
 {%- endif %}
 {%- endmacro %}
-{% macro with_segments(seg_fn, body) -%}
+{% macro with_segments(seg_fn, body, not_found) -%}
 buildWithParams(
   () => {{ seg_fn }}(state),
   (v) => {{ body | indent(2) }},
-  () => notFound(state.uri),
+  () => {{ not_found }},
 )
 {%- endmacro %}
 {% macro guard_with_segments(seg_fn, call) -%}
@@ -34,7 +34,7 @@ guardWithParams(
 )
 {%- endmacro %}
 {% macro layout_call(l) -%}
-{{ (with_segments(l.seg_fn, l.call) if l.seg_fn else l.call) | indent(2) }}
+{{ (with_segments(l.seg_fn, view(l), l.not_found) if l.seg_fn else view(l)) | indent(2) }}
 {%- endmacro %}
 {% macro route(r) -%}
 {% if r.branches -%}
@@ -67,7 +67,7 @@ GoRoute(
 {% if r.redirect %}
   redirect: (context, state) => {{ (guard_with_segments(r.redirect.seg_fn, r.redirect.call) if r.redirect.seg_fn else r.redirect.call) | indent(2) }},
 {% endif %}
-{% set page = with_segments(r.seg_fn, view(r)) if r.seg_fn else view(r) %}
+{% set page = with_segments(r.seg_fn, view(r), r.not_found) if r.seg_fn else view(r) %}
 {% if r.transition %}
   pageBuilder: (context, state) => {{ with_transition(r.transition, page) | indent(2) }},
 {% else %}
@@ -126,7 +126,21 @@ abstract final class AppRoutes {
     ];
   }
 
+{% if not_founds %}
+  /// The not_found.dart nearest to [uri]: the deepest folder whose path it is under.
+  static Widget notFound(Uri uri) => nearestNotFound(
+        uri,
+        base,
+        [
+{% for n in not_founds %}
+          ({{ n.prefix }}, (uri) => {{ n.call }}),
+{% endfor %}
+        ],
+        (uri) => {{ not_found }},
+      );
+{% else %}
   static Widget notFound(Uri uri) => {{ not_found }};
+{% endif %}
 }
 {% for r in routes %}
 
@@ -150,6 +164,15 @@ final class {{ r.name }}Route extends TypedLocation {
   @override
   String get location => {{ r.location }};
 {% if r.data %}
+
+  /// Watches {{ r.data.file }}: an `AsyncValue`, typed by inference (static, so it can name the keys).
+  static final watch = (WidgetRef ref{{ r.data.args }}) => ref.watch(data{{ r.data.key }});
+
+  /// Reads {{ r.data.file }} once, keeping it alive until it completes.
+  static final read = (WidgetRef ref{{ r.data.args }}) => ref.readData(data{{ r.data.key }});
+
+  /// Starts loading {{ r.data.file }} before navigating; kept for `keepFor` (default 30 s).
+  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data{{ r.data.key }}, keepFor: keepFor);
 
   /// {{ r.data.verb }} {{ r.data.file }}; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data{{ r.data.key }}.future);

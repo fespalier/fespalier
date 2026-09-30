@@ -12,5 +12,7 @@ export 'package:hooks_riverpod/hooks_riverpod.dart';
 
 export 'src/data_view.dart';
 export 'src/location.dart';
+export 'src/not_found.dart';
+export 'src/route_data.dart';
 export 'src/segments.dart';
 export 'src/transitions.dart';

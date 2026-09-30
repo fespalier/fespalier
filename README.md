@@ -16,7 +16,7 @@ lib/app/
   page.dart              HomePage()                                   → /
   loading.dart           RootLoading()                                  (inherited)
   error.dart             RootError({required Object error, required VoidCallback retry})
-  not_found.dart         NotFoundPage({required Uri uri})               (optional)
+  not_found.dart         NotFoundPage({required Uri uri})               (optional, in any folder)
   transition.dart        Page<void> transition(LocalKey key, Widget child)  (inherited)
   products/
     data.dart            final data = FutureProvider<List<Product>>(…)
@@ -34,6 +34,11 @@ lib/app/
     layout.dart            but adds nothing to their URLs (/profile, /settings)
     profile/page.dart
     settings/page.dart
+  teams/$teamId/         no page: its layout and data.dart cover the section below
+    data.dart            Future<Team> data(Ref ref, {required String teamId})
+    layout.dart          TeamLayout({required Team team, required Widget child})
+    members/page.dart    MembersPage(this.team)                       → /teams/:teamId/members
+    not_found.dart       TeamNotFound({required Uri uri})             (for unknown paths below)
   _components/           private: never routes
 ```
 
@@ -50,6 +55,9 @@ const SearchRoute(q: 'ap', page: 2).go(context);   // → /search?q=ap&page=2
 
 // each route's data.dart, as a Riverpod provider
 ref.watch(ProductRoute.data(42));
+ProductRoute.watch(ref, id: 42);             // the same, typed: AsyncValue<Product>
+await ProductRoute.read(ref, id: 42);        // Future<Product>
+ProductRoute(id: 42).prefetch(ref);          // start loading before navigating
 await const ProductsRoute().refresh(ref);
 ```
 
@@ -99,7 +107,8 @@ route animates with the Material transition), and writes `lib/app.g.dart`. It ne
 overwrites a file that exists: those are reported as `skip`.
 It then prints what is left to do (the dependency block above, if `pubspec.yaml` doesn't
 have it yet, and this `main.dart`). `not_found.dart` is optional: without it, unknown
-paths get a plain "Nothing at /path" view.
+paths get a plain "Nothing at /path" view. Other folders can have their own (see
+[Not-found views](#not-found-views)).
 
 ```dart
 import 'package:fespalier/fespalier.dart';
@@ -186,13 +195,13 @@ top-level function.
 | File | Exports | Its constructor / signature can ask for |
 |---|---|---|
 | `page.dart` | a widget | segments; query; what `data.dart` yields |
-| `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `final data = <Provider>(…)` | segments, query (named) |
+| `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data) | segments, query (named; a section's takes segments only) |
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
-| `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query |
+| `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside |
 | `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through | segments, query (named) |
 | `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
-| `not_found.dart` | a widget, root only, optional (without it, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
+| `not_found.dart` | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
 
 ### How parameters are filled
 
@@ -206,7 +215,8 @@ every parameter:
    `String`/`int`/`double`/`bool` is a query parameter: `int? page` gets `?page=2`, and
    `List<String> tags = const []` gets every `?tags=`.
 3. **By type.** Otherwise, a page's parameter whose type is what `data.dart` yields gets
-   the data, so `required this.product` with `final Product product;` works. An error
+   the data, so `required this.product` with `final Product product;` works. (A page or
+   layout below a [section](#section-data) can take the section's data the same way.) An error
    view's `Object` gets the error, `StackTrace` the stack trace and `VoidCallback` the
    retry. A layout's `Widget` gets the child, its `StatefulNavigationShell` gets the tab shell, and
    not-found's `Uri` gets the URI.
@@ -297,6 +307,25 @@ path, so a tab made only of dynamic routes, or a tab layout placed directly in a
 `$folder`, is an error (put the layout in a `(group)` below that folder instead); and `tabs` in a tab layout must be string literals, so name another list of destinations
 something else. See `examples/tabs`.
 
+### Not-found views
+
+A `not_found.dart` at the root is the app-wide one. Any other folder can have one too, and
+the nearest wins, for two things:
+
+- **Unknown paths.** An unknown URL shows the `not_found.dart` of the deepest folder it is
+  under (a `$dynamic` folder matches any value), or the root's. With `teams/$teamId/not_found.dart`
+  and `teams/$teamId/members/not_found.dart`, `/teams/a/members/1/x` shows the members one,
+  `/teams/a/x` the team one, and `/nope` the root's. This is what `AppRoutes.notFound(uri)`
+  does, and the router's `errorBuilder` calls it. The view shows without any layout, as ever.
+- **Unparsable segments.** `/teams/a/members/abc`, where a member's id is an `int`, shows the
+  nearest `not_found.dart` above that route (a `(group)`'s counts here).
+
+It still only gets `Uri uri`. A `(group)` folder adds nothing to the URL, so its
+`not_found.dart` can't be picked for unknown URLs: only for its own routes' bad segments.
+Two folders with the same URL (`(a)/x` and `(b)/x`) can't both have one; that's an error.
+When the tree is mounted under a prefix (`mount(at: '/shop')`), the prefix is skipped when
+looking for the folder, and a URL outside it gets the root's.
+
 ### Transitions
 
 `transition.dart` says how a route animates in. It applies to its folder's route and
@@ -370,6 +399,90 @@ provider you write yourself keeps Riverpod's default unless you pass `retry:` to
 
 To see a scaffolded `error.dart` and its retry, throw from `data.dart`, e.g.
 `throw Exception('offline')`.
+
+### Typed helpers on the route
+
+A route with a `data.dart` has three more helpers next to `.data` and `.refresh`:
+
+```dart
+final product = ProductRoute.watch(ref, id: 42);   // AsyncValue<Product>, for build()
+final p = await ProductRoute.read(ref, id: 42);    // Future<Product>, for callbacks
+ProductRoute(id: 42).prefetch(ref);                // void, before navigating
+```
+
+`watch` and `read` are *static*, and take the keys the provider uses as named arguments
+(`ItemRoute.watch(ref, shop: 'a', id: 1)`, `SearchRoute.watch(ref, q: 'ap', page: 2)`;
+none for a route without keys). They can't be instance methods: `ProductRoute(id: 42).watch(ref)`
+would have to write `AsyncValue<Product>` into the generated file, and the generator never
+copies your imports. A static function value takes its type from the provider by
+inference, so `Product` flows through and is never `dynamic`.
+
+`read` keeps the provider alive until it completes, which a plain `ref.read(p.future)`
+doesn't for an `autoDispose` provider. Don't call it from `build`.
+
+`prefetch(ref, {keepFor})` starts the load and keeps the result for `keepFor` (30 seconds
+by default), so the page you navigate to next shows it at once. The generated providers
+are `autoDispose`, so a prefetch nobody watches would be dropped in the same frame; this is
+why it holds on to it, and it lets go when the time is up. A failed load isn't kept:
+the page starts a fresh one instead. Call it before `go`, e.g. on hover:
+
+```dart
+MouseRegion(
+  onEnter: (_) => ProductRoute(id: p.id).prefetch(ref),
+  child: ListTile(onTap: () => ProductRoute(id: p.id).go(context), …),
+)
+```
+
+Two things to know: it lives as long as the widget whose `ref` you pass (a widget that is
+disposed ends it), and it holds a timer, so a widget test that prefetches should `pump`
+past `keepFor` (or pass `keepFor: Duration.zero`, which starts the load and keeps nothing).
+Because these are members of the route class, `watch`, `read`, `prefetch`, `refresh`, `ref`
+and `keepFor` can't be segment or query names.
+
+### Section data
+
+A folder with a `layout.dart` and no `page.dart` (a `(group)`, or a plain folder that only
+holds routes) can have a `data.dart` too. It is then the data of the whole section: the
+layout waits for it, and the layout and the pages below can take it.
+
+```dart
+// lib/app/teams/$teamId/data.dart
+Future<Team> data(Ref ref, {required String teamId}) => …;
+
+// lib/app/teams/$teamId/layout.dart: by type (or a parameter named `data`)
+class TeamLayout extends StatelessWidget {
+  const TeamLayout({super.key, required this.team, required this.child});
+  final Team team;
+  final Widget child;
+  …
+}
+
+// lib/app/teams/$teamId/members/page.dart: the page takes it by type as well
+class MembersPage extends StatelessWidget {
+  const MembersPage(this.team, {super.key});
+  final Team team;
+  …
+}
+```
+
+- **Loading and errors.** While the section loads, the nearest `loading.dart` (inherited as
+  usual) replaces the layout *and* the pages inside it, and a failure shows the nearest
+  `error.dart` with its `retry`. Nothing below is built until the data is there.
+- **Sharing.** The layout watches the provider and the pages below read the same one, so
+  `data()` runs once however many of them take it, and moving between the section's pages
+  doesn't load it again. When the data reloads (`retry`, an invalidation), the whole section
+  shows loading again.
+- **Which one.** A parameter called `data` gets the nearest data: the route's own
+  `data.dart`, then the section's, then the next section up. By type, a parameter gets the
+  data.dart that yields that type, and it is an error if two do (a page's own and a
+  section's, or two sections'): name the parameter `data` for the nearest, or give one of
+  them another type. A page can have its own `data.dart` and take a section's by type.
+- **Keys.** A section's `data()` takes segments only (at or above its folder), not query
+  parameters: the pages below have to compute the same key. It has no typed route class of
+  its own; write `final data = FutureProvider…` yourself if you need to reach it elsewhere.
+- **Where it applies.** A layout of any kind can be a section's, tab layouts included. A
+  `data.dart` beside a `page.dart` keeps feeding that page, so the folder that holds the
+  section's layout mustn't have a page.
 
 ## The generator
 
@@ -465,7 +578,8 @@ to `/cart`), and `/greet/you`.
 page, per-route transitions (the group fades in, `/ticks` doesn't animate), data keyed
 by two segments, query parameters (in a page, `data.dart` and a layout), a page and error
 view bound by type, a layout and guard that take segments, a user-written
-`AsyncNotifierProvider`, and `Stream` data.
+`AsyncNotifierProvider`, `Stream` data, and a `teams/$teamId` section whose `data.dart` feeds
+its layout and pages, with a `not_found.dart` at two levels.
 
 `examples/tabs` is a bottom navigation bar built as a tab layout: three tabs (one with a
 nested page), a counter that survives switching tabs, and a full-screen route outside
@@ -476,9 +590,9 @@ them.
 ```
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
-packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation)
+packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation), and testing.dart
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
-examples/features/   every binding rule, with widget tests
+examples/features/   every binding rule, section data and nested not_found.dart, with widget tests
 examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 ```
 
@@ -499,24 +613,42 @@ a committed `app.g.dart` is stale.
 
 ### Testing
 
-Boot the app in a widget test by giving the router an initial location:
+`package:fespalier/testing.dart` has two helpers for widget tests. Boot the app at a
+location with `pumpRouter`, and read where it is with `currentLocation`:
 
 ```dart
+import 'package:fespalier/testing.dart';
+
 testWidgets('shows a product', (tester) async {
-  await tester.pumpWidget(ProviderScope(
-    child: MaterialApp.router(
-      routerConfig: AppRoutes.router(initialLocation: '/products/2'),
-    ),
-  ));
-  await tester.pumpAndSettle();
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/products/2'),
+    overrides: [apiProvider.overrideWithValue(FakeApi())],
+  );
   expect(find.byType(ProductPage), findsOneWidget);
 
   // navigate with the typed routes, from any widget under the router
-  final context = tester.element(find.byType(ProductPage));
-  const ProductsRoute().go(context);
+  ProductsRoute().go(tester.element(find.byType(ProductPage)));
   await tester.pumpAndSettle();
+  expect(currentLocation(tester), '/products');
 });
 ```
+
+`pumpRouter(tester, router, {overrides, container, settle})` wraps the router in a
+`ProviderScope` and Flutter's `MaterialApp.router`, and returns the `ProviderContainer`
+(for `container.read(...)`). `settle` (on by default) pumps until nothing is scheduled: turn
+it off to look at a loading view, then `pump` the time you want. Pass your own `container`
+instead of `overrides` to share one with code outside the widget tree; it's yours to
+dispose. Make a new router per test, since a router remembers where it went. If a widget
+hangs on to its own `WidgetRef` (to call `prefetch` from a test, say), take it from an
+element: `tester.element(find.byType(AppLayout)) as WidgetRef`.
+
+The library is separate from `package:fespalier/fespalier.dart`, so your app never imports
+`flutter_test`. It's a regular `flutter_test: sdk: flutter` dependency of `fespalier`
+(pub allows the Flutter SDK's own packages), which your app has as a dev dependency
+anyway and doesn't ship. The helper uses Flutter's `MaterialApp`; with go_router 18 the
+note under [Getting started](#getting-started) applies: with a root `transition.dart`,
+which `fsp init` writes, routes animate and no nested `material_ui` app is needed in tests.
 
 To import a file from a `$segment` folder, escape the `$`: an unescaped `$id` in an import
 is a Dart interpolation error ("URIs can't use string interpolation").
@@ -534,12 +666,13 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 86 tests (79 unit, 7 CLI integration) cover parsing, every binding rule and contract error, query
+- **Generator:** 104 tests (97 unit, 7 CLI integration) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, transitions, both data
-  forms, scaffolding, and that the committed outputs are up to date. Clippy is clean.
+  forms, section data, nested `not_found.dart`, the typed helpers, scaffolding, and that the
+  committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 44 Flutter tests (the package 8, `shop` 12,
-  `features` 17, `tabs` 7); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 72 Flutter tests (the package 20, `shop` 20,
+  `features` 25, `tabs` 7); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

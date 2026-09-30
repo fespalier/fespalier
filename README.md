@@ -105,7 +105,11 @@ fespalier <command>` runs `fsp` for you, so use it wherever this README says `fs
 run downloads the `fsp` release that matches the package's version, checks its SHA-256 and
 keeps it in your user cache (`~/.cache/fespalier` on Linux, `~/Library/Caches/fespalier` on
 macOS, `%LOCALAPPDATA%\fespalier` on Windows; `FSP_CACHE_DIR` moves it), so later runs start
-at once. It needs `tar`, which macOS, Linux and Windows 10+ include. Set `FSP_BINARY=/path/to/fsp`
+at once. The download is checked against the SHA-256 that this package carries for its own
+version, so a tampered release is refused (a package built from a branch has no pins yet; it
+then checks the release's `.sha256` file instead and says so). Offline with an empty cache it
+stops with one line naming the missing version; with a warm cache it never uses the network.
+It needs `tar`, which macOS, Linux and Windows 10+ include. Set `FSP_BINARY=/path/to/fsp`
 to run a binary of your own, e.g. a build from source. An `fsp` on your `PATH` is used too when its
 version is the package's, so nothing is downloaded when you have both. The package and the
 binary are versioned together, and this is what keeps them in step.
@@ -170,8 +174,11 @@ fsp new 'orders/[id]' --data --loading    # scaffold a route, then regenerate ap
 `fsp new` runs `gen` right away, so the new route is usable as soon as it returns. See
 "The generator" for all flags.
 
-Commit `lib/app.g.dart`: it's plain code, meant to be read, and the app builds without
-`fsp` installed. In CI, run `fsp check`. It writes nothing and exits non-zero on errors:
+**Two ways to keep `app.g.dart`.** Pick one.
+
+*Commit it* (the default). `lib/app.g.dart` is plain code, meant to be read, and the app
+builds without `fsp` installed. In CI, run `fsp check`. It writes nothing (it never touches
+`app.g.dart`) and exits non-zero on routing errors:
 
 ```yaml
 - run: curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
@@ -180,6 +187,32 @@ Commit `lib/app.g.dart`: it's plain code, meant to be read, and the app builds w
 ```
 
 or, with nothing to install (after `flutter pub get`): `- run: dart run fespalier check`.
+
+*Generate, don't commit.* For projects that never commit generated code (`**/*.g.dart` is
+ignored already, and every generator runs before analysis). Add the file to `.gitignore`:
+
+```gitignore
+lib/app.g.dart
+```
+
+and generate it wherever the app is analyzed, tested or built: on a fresh clone, and in CI
+**before** `flutter analyze`, because `app.g.dart` doesn't exist until then:
+
+```yaml
+- run: flutter pub get
+- run: dart run fespalier gen   # writes lib/app.g.dart; fails on routing errors
+- run: flutter analyze
+- run: flutter test
+```
+
+The generator version needs no pin of its own: `dart run fespalier` runs the `fsp` release
+that matches the `fespalier` package your `pubspec.lock` resolved, so the generator and the
+runtime `app.g.dart` imports can't drift apart, and bumping the package bumps the generator.
+The first run downloads it (SHA-256 pinned in the package, see above) into the user cache;
+keep `~/.cache/fespalier` (`FSP_CACHE_DIR`) between CI runs with `actions/cache`, keyed on
+`pubspec.lock`, to skip that. Set `FSP_BINARY` to use a binary you built. Locally,
+`dart run fespalier watch` keeps the file current. `fsp check` still works in this mode
+(it checks the routing and writes nothing), and doesn't need the generated file to exist.
 
 **Config.** `fsp` needs no configuration. To move things, add this optional section to
 `pubspec.yaml`. Both paths are relative to the project root and must be under `lib/`, and
@@ -883,7 +916,8 @@ route (`/photos/:id`), a bottom sheet (`/photos/sort`) and a full-screen dialog
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
 editors/vscode/      the VS Code extension (TypeScript): fsp diagnostics in the Problems panel
-scripts/             packaging.py renders the Homebrew formula and Scoop manifest for a release
+scripts/             packaging.py renders the Homebrew formula and Scoop manifest for a release;
+                     pin_checksums.py writes the release's checksums into the Dart package
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
@@ -904,11 +938,12 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
 with `fsp new` and runs `flutter analyze` on the result, runs `dart run fespalier` against a
 freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
-rendering (`python3 scripts/test_packaging.py`), runs `flutter pub publish --dry-run` on the
+rendering and checksum pinning (`python3 scripts/test_packaging.py`,
+`python3 scripts/test_pin_checksums.py`), runs `flutter pub publish --dry-run` on the
 package, and checks that the version agrees everywhere it is spelled out
 (`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`, the `ref:` that
 `fsp init` prints, and the READMEs' `ref:`, `--tag` and `FSP_VERSION`; the launcher reads its
-version from the pubspec). To release, bump those together. After changing the emitter or a
+version from the pubspec, and `release_checksums.dart` pins nothing or this version). To release, bump those together. After changing the emitter or a
 template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
 a committed `app.g.dart` is stale.
 
@@ -922,6 +957,25 @@ Maintainers only. Bump the version everywhere (see the version checks above), up
    `fsp-<target>.tar.gz` / `.zip` with their `.sha256` files. It also renders `fsp.rb`
    (Homebrew formula) and `fsp.json` (Scoop manifest) from those checksums with
    `scripts/packaging.py` and attaches them to the release.
+
+   **Checksum pinning.** A manual publish runs in two phases. It builds the five targets from
+   the commit you dispatched it on (which must be the default branch); then a `pin` job writes
+   their SHA-256s to `packages/fespalier/lib/src/release_checksums.dart`
+   (`scripts/pin_checksums.py`), commits it to `main` as `Pin fsp <version> checksums`, and the
+   `v<version>` tag and the Release are created at *that* commit. A git dependency on
+   the `v<version>` tag, and the package published to pub.dev from the tag, therefore carry the
+   pins, and `dart run fespalier` refuses any download that doesn't match them (a checksum
+   served next to the binary can be replaced together with it; one in the package can't). The
+   binaries were built from the parent commit; the two commits differ only by that file, which
+   the `fsp` build doesn't read, so the code is identical. The workflow needs `contents:
+   write` and pushes with `GITHUB_TOKEN`: if `main` requires pull requests or status checks,
+   let the `github-actions` bot bypass them, or the `pin` job fails and nothing is published.
+   If `main` moved during the run, the push is rejected and you run it again. That push doesn't
+   start CI. Pushing a `v*` tag by hand still publishes, but the tag can't hold pins, so that
+   release's `dart run fespalier` falls back to its `.sha256` file with a warning.
+   After bumping the version for the next release, run `python3 scripts/pin_checksums.py
+   --reset` (`cli/tests/versions.rs` fails while the file pins another version); a version with
+   no pins is what development builds have.
 2. **pub.dev.** Run the *Publish to pub.dev* workflow from that tag: *Run workflow*, then
    *Use workflow from* > *Tag* > `v<version>`. It publishes `packages/fespalier` through
    pub.dev's GitHub OIDC automated publishing, with no stored token. It refuses to run from

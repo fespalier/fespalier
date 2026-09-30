@@ -44,6 +44,29 @@
   a shorter description and `example/README.md`). New `Publish to pub.dev` workflow: publishes
   through GitHub OIDC automated publishing when run from the `v<version>` tag.
 
+### `dart run fespalier`: pinned checksums, offline, "generate, don't commit"
+
+- **Checksums are pinned inside the package.** `lib/src/release_checksums.dart` holds the
+  SHA-256 of every `fsp` archive of the package's own version, and `dart run fespalier`
+  refuses a download that doesn't match (before, the `.sha256` came from the same release as
+  the binary, so it caught corruption but not a tampered release). A package with no pins for
+  its version (a development build from a branch) still checks the release's `.sha256` and
+  prints one warning line.
+- **Two-phase release.** The *Release* workflow (manual publish) builds the five targets, then
+  commits the pins to `main` as `Pin fsp <version> checksums` (`scripts/pin_checksums.py`,
+  tested by `scripts/test_pin_checksums.py`), and creates the `v<version>` tag and the Release
+  at that commit, so a git dependency on the tag carries the pins. The binaries are built from
+  the parent commit and differ only by that one file. Manual publish must now run on the
+  default branch, and the workflow needs to be able to push to it. After a version bump, run
+  `python3 scripts/pin_checksums.py --reset`; `cli/tests/versions.rs` checks that the file pins
+  nothing or the pubspec's version.
+- **Offline with an empty cache** stops with one line: `fespalier: fsp 0.3.0 isn't cached and
+  the download failed (offline?); run once online or set FSP_BINARY`. A cached binary never
+  touches the network.
+- README: a "Generate, don't commit" mode (gitignore `lib/app.g.dart`, run
+  `dart run fespalier gen` before `flutter analyze` in CI; the generator follows
+  `pubspec.lock`), next to the committed mode with `fsp check`, which still writes nothing.
+
 ## 0.2.0 — 2026-09-30
 
 ### Guards and redirects

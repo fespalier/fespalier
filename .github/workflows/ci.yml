@@ -110,3 +110,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Render from fake checksums
         run: python3 scripts/test_packaging.py
+      - name: Pin fake checksums in the Dart package
+        run: python3 scripts/test_pin_checksums.py

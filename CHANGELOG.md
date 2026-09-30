@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Faster on very large apps, and an incremental `fsp watch`
+
+Measured on synthetic apps of 500, 2,000 and 5,000 routes (`cd cli && cargo test --release
+bench -- --ignored --nocapture --test-threads=1`; numbers and method in README's
+"Performance").
+
+- **`fsp watch` skips work it has done.** A run that scans exactly the tree of the run before
+  (a save that changed nothing, or a file under `lib/app/` that isn't a route file) reuses its
+  diagnostics and generated code instead of resolving and rendering again: 424 ms → 77 ms at
+  5,000 routes. With `format: true`, `dart format` runs only on generated code it hasn't
+  formatted before, so a save that doesn't change the generated code (a `build` method, say)
+  no longer waits for the formatter: 12.7 s → 0.27 s at 5,000 routes, 1.2 s → 0.03 s at 500.
+  Writing only when the bytes differ was already so. Code that did change is still formatted
+  in full. The first run, and every run that changes the tree, resolve and emit as before: a
+  per-route cache was measured not to be worth it (a full resolve is 30 ms at 5,000 routes).
+- **A cold `gen` and `check` parse on all cores** once a run has about 64 files to parse
+  (std threads, no new dependency): 626 ms → 429 ms at 5,000 routes.
+- **The route-order check is no longer quadratic.** "`/:slug` hides `/about`" compared every
+  page with every earlier one; it is now indexed by first segment and gives the same answers
+  (a differential test checks it against the old comparison): emit at 5,000 routes 277 ms →
+  153 ms. The folder walk uses the file types `readdir` already returns instead of a `stat` each.
+- New tests: `watch`'s incremental output equals a from-scratch `gen` after each of adding and
+  removing a route, renaming folders, changing a data type, adding and removing layouts and
+  touching group folders, and after random edits from fixed seeds, errors included.
+  The benchmark (`cli/src/bench.rs`) replaces the old ignored one in `parse_cache.rs`.
+
 ### View files as functions, and `not-found.dart`
 
 - **`page.dart`, `loading.dart`, `error.dart`, `layout.dart` and `not_found.dart` can export a

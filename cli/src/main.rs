@@ -11,6 +11,7 @@ mod resolve;
 mod routes;
 mod scaffold;
 mod scan;
+mod session;
 mod templates;
 
 use std::path::{Path, PathBuf};
@@ -21,6 +22,7 @@ use std::{env, fs, process};
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 use config::Config;
+use session::{Run, Session};
 use notify::event::ModifyKind;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
@@ -156,7 +158,7 @@ pub fn gen_with(project: &Path, cfg: &Config, write: bool) -> Result<Outcome> {
 
 /// `json`: diagnostics go to stdout as JSON lines instead of the codespan rendering.
 pub fn gen_opts(project: &Path, cfg: &Config, write: bool, json: bool) -> Result<Outcome> {
-    gen_core(project, cfg, write, |app_dir, diags| {
+    gen_core(project, cfg, write, &mut Session::default(), |app_dir, diags| {
         if json {
             diag::render_json(app_dir, &cfg.app_dir, diags)
         } else {
@@ -165,38 +167,51 @@ pub fn gen_opts(project: &Path, cfg: &Config, write: bool, json: bool) -> Result
     })
 }
 
-/// `show` prints the diagnostics (watch mode skips ones it already showed).
-fn gen_core(project: &Path, cfg: &Config, write: bool, show: impl FnOnce(&Path, &diag::Diags)) -> Result<Outcome> {
+/// `show` prints the diagnostics (watch mode skips ones it already showed). `session` is what
+/// `watch` keeps from run to run; every other command passes a new one.
+fn gen_core(project: &Path, cfg: &Config, write: bool, session: &mut Session, show: impl FnOnce(&Path, &diag::Diags)) -> Result<Outcome> {
     let app_dir = project.join(&cfg.app_dir);
     if !app_dir.is_dir() {
         bail!("{} not found (set `fespalier: app_dir:` in pubspec.yaml, or run `fsp init`)", app_dir.display());
     }
-    let (code, diags, app) = analyze(&app_dir, cfg)?;
-    let routes = app.routes.iter().filter(|r| r.is_route()).count();
-    show(&app_dir, &diags);
-    if diags.has_errors() {
+    let mut diags = diag::Diags::default();
+    let tree = scan::scan(&app_dir, &mut diags)?;
+    let scan_diags = format!("{diags:?}");
+    let run = match session.last.reuse(&tree, &scan_diags) {
+        Some(run) => run,
+        None => {
+            let (code, app) = analyze_tree(&tree, cfg, &mut diags);
+            let routes = app.routes.iter().filter(|r| r.is_route()).count();
+            // The manifest is a second file when `output_manifest:` asks for one. `check`
+            // renders it too, but writes and compares nothing.
+            let mut files = vec![];
+            if !diags.has_errors() {
+                files.push((cfg.output.clone(), code));
+                files.extend(cfg.output_manifest.clone().zip(manifest::emit(&app, cfg)));
+            }
+            Run { diags, routes, files }
+        }
+    };
+    let run = session.last.keep(tree, scan_diags, run);
+    show(&app_dir, &run.diags);
+    if run.diags.has_errors() {
         let left = match &cfg.output_manifest {
             Some(m) => format!("{} and {m}", cfg.output),
             None => cfg.output.clone(),
         };
-        bail!("{} error(s); {left} left unchanged", diags.error_count());
+        bail!("{} error(s); {left} left unchanged", run.diags.error_count());
     }
-    // The manifest is a second file when `output_manifest:` asks for one. `check`
-    // renders it too, but writes and compares nothing.
-    let mut files = vec![(cfg.output.clone(), code)];
-    files.extend(cfg.output_manifest.clone().zip(manifest::emit(&app, cfg)));
     let mut wrote = false;
-    for (path, mut code) in files {
-        let out = project.join(&path);
+    for (path, code) in &run.files {
+        let out = project.join(path);
         // `check` writes and compares nothing, so it never needs `dart`. `gen` formats
         // before comparing, so a formatted file that is up to date reads "unchanged".
-        if write && cfg.format {
-            let (formatted, warning) = format::format_dart(&code, &out);
-            if let Some(w) = warning {
-                eprintln!("{w}");
-            }
-            code = formatted;
-        }
+        // `watch` doesn't run `dart` again on code it has formatted before.
+        let code = if write && cfg.format {
+            session.formats.get(path, code, |code| format::format_dart(code, &out))
+        } else {
+            code.clone()
+        };
         if write && fs::read_to_string(&out).ok().as_deref() != Some(code.as_str()) {
             if let Some(dir) = out.parent() {
                 fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
@@ -209,7 +224,7 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, show: impl FnOnce(&Path, 
         Some(m) => format!("{}, {m}", cfg.output),
         None => cfg.output.clone(),
     };
-    Ok(Outcome { wrote, routes, output })
+    Ok(Outcome { wrote, routes: run.routes, output })
 }
 
 pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize)> {
@@ -222,10 +237,18 @@ pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize
 pub fn analyze(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, resolve::App)> {
     let mut diags = diag::Diags::default();
     let tree = scan::scan(app_dir, &mut diags)?;
-    let app = resolve::resolve(&tree, &mut diags);
-    manifest::check(&app, cfg, &mut diags);
-    let code = emit::emit(&app, cfg, &mut diags);
+    let (code, app) = analyze_tree(&tree, cfg, &mut diags);
     Ok((code, diags, app))
+}
+
+/// Everything after the scan: resolve, check the manifest, emit. A function of the tree and
+/// the configuration alone, which is what lets `watch` skip it for a tree it has seen.
+fn analyze_tree(tree: &scan::Node, cfg: &Config, diags: &mut diag::Diags) -> (String, resolve::App) {
+    let _warm = parse_cache::prewarm(tree);
+    let app = resolve::resolve(tree, diags);
+    manifest::check(&app, cfg, diags);
+    let code = emit::emit(&app, cfg, diags);
+    (code, app)
 }
 
 /// Whether a filesystem event can change what the app folder generates.
@@ -253,12 +276,14 @@ fn watch(project: &Path) -> Result<()> {
     let app_dir = project.join(&cfg.app_dir);
     let outputs: Vec<PathBuf> = [Some(&cfg.output), cfg.output_manifest.as_ref()].into_iter().flatten().map(|o| project.join(o)).collect();
     let mut shown = Shown::default();
-    // A save changes one file: keep the parse results of the others between runs.
+    // A save changes one file: keep the parse results of the others between runs, and the
+    // last run's result and formatted text (see session.rs).
     parse_cache::enable();
+    let mut session = Session::default();
     let mut run = |first: bool| {
         let t = Instant::now();
         let mut diags = String::new();
-        let result = gen_core(project, &cfg, true, |dir, d| {
+        let result = gen_core(project, &cfg, true, &mut session, |dir, d| {
             diags = d.0.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\n");
             if diags != shown.diags {
                 diag::render(dir, &cfg.app_dir, d);
@@ -301,7 +326,11 @@ fn watch(project: &Path) -> Result<()> {
 }
 
 #[cfg(test)]
+mod bench;
+#[cfg(test)]
 mod cli_tests;
+#[cfg(test)]
+mod incremental_tests;
 #[cfg(test)]
 mod manifest_tests;
 #[cfg(test)]
@@ -314,6 +343,8 @@ mod refresh_tests;
 mod route_api_tests;
 #[cfg(test)]
 mod selector_tests;
+#[cfg(test)]
+mod synth;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

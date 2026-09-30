@@ -4,7 +4,7 @@
 //! This module works out every expression; `templates/app.g.dart.jinja` owns
 //! the layout of the file.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use serde::Serialize;
 
@@ -656,38 +656,75 @@ fn check_order(tree: &[TreeCx], diags: &mut Diags) {
     }
     let mut order = vec![];
     walk(tree, &mut order);
-    // `a` matches every URL `b` does: `/:x` catches `/about`, `/docs/*rest` catches `/docs/a/:b`.
-    let catches = |a: &[Seg], b: &[Seg]| {
-        let (a_rest, a_fixed) = split_catch_all(a);
-        let (b_rest, b_fixed) = split_catch_all(b);
-        let covered = |n: usize| a_fixed.iter().zip(b_fixed).take(n).all(|(x, y)| matches!(x, Seg::Dynamic(_)) || x == y);
-        match a_rest {
-            None => b_rest.is_none() && a_fixed.len() == b_fixed.len() && covered(a_fixed.len()),
-            Some(optional) => {
-                // Every URL of `b` must have enough left over for `a`'s catch-all.
-                let left = b_fixed.len().checked_sub(a_fixed.len());
-                let enough = match left {
-                    Some(0) => optional || b_rest == Some(false),
-                    Some(_) => true,
-                    None => false,
-                };
-                enough && covered(a_fixed.len())
-            }
-        }
-    };
-    for (j, (url, file, span)) in order.iter().enumerate() {
-        if let Some((first, first_file, _)) = order[..j].iter().find(|(u, ..)| u != url && catches(u, url)) {
+    let urls: Vec<&[Seg]> = order.iter().map(|(url, ..)| url.as_slice()).collect();
+    for (j, first) in first_catchers(&urls).into_iter().enumerate() {
+        let (url, file, span) = order[j];
+        if let Some(first) = first {
             diags.error(
                 file,
                 span.as_ref(),
                 format!(
-                    "{} is unreachable: {first_file} ({}) comes first and matches it; move one of them into or out of its (group)",
+                    "{} is unreachable: {} ({}) comes first and matches it; move one of them into or out of its (group)",
                     resolve::pattern(url),
-                    resolve::pattern(first)
+                    order[first].1,
+                    resolve::pattern(&order[first].0)
                 ),
             );
         }
     }
+}
+
+/// `a` matches every URL `b` does: `/:x` catches `/about`, `/docs/*rest` catches `/docs/a/:b`.
+fn catches(a: &[Seg], b: &[Seg]) -> bool {
+    let (a_rest, a_fixed) = split_catch_all(a);
+    let (b_rest, b_fixed) = split_catch_all(b);
+    let covered = |n: usize| a_fixed.iter().zip(b_fixed).take(n).all(|(x, y)| matches!(x, Seg::Dynamic(_)) || x == y);
+    match a_rest {
+        None => b_rest.is_none() && a_fixed.len() == b_fixed.len() && covered(a_fixed.len()),
+        Some(optional) => {
+            // Every URL of `b` must have enough left over for `a`'s catch-all.
+            let left = b_fixed.len().checked_sub(a_fixed.len());
+            let enough = match left {
+                Some(0) => optional || b_rest == Some(false),
+                Some(_) => true,
+                None => false,
+            };
+            enough && covered(a_fixed.len())
+        }
+    }
+}
+
+/// For each URL, the first URL before it, in order, that is a different one and catches it.
+///
+/// Trying every URL against every one before it is quadratic, and it was the slowest step of
+/// `emit` on a big app (125 ms of 195 at 5,000 routes). Only a URL with a `:param` or a
+/// catch-all can catch a different URL (an all-static one matches just itself), and it can
+/// only catch one that starts with the same static segment or with a `:param`: so the
+/// catching URLs are kept in order, under their first static segment, or in `wild` when they
+/// start with a param or a catch-all.
+fn first_catchers(urls: &[&[Seg]]) -> Vec<Option<usize>> {
+    let mut wild: Vec<usize> = vec![];
+    let mut by_first: HashMap<&str, Vec<usize>> = HashMap::new();
+    let mut out = Vec::with_capacity(urls.len());
+    for (j, url) in urls.iter().enumerate() {
+        let hit = |ids: &[usize]| ids.iter().copied().find(|&i| urls[i] != *url && catches(urls[i], url));
+        let in_wild = hit(&wild);
+        let in_first = match url.first() {
+            Some(Seg::Static(s)) => by_first.get(s.as_str()).and_then(|ids| hit(ids)),
+            _ => None,
+        };
+        out.push(match (in_wild, in_first) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        });
+        if url.iter().any(|s| matches!(s, Seg::Dynamic(_) | Seg::CatchAll(..))) {
+            match url.first() {
+                Some(Seg::Static(s)) => by_first.entry(s.as_str()).or_default().push(j),
+                _ => wild.push(j),
+            }
+        }
+    }
+    out
 }
 
 /// A URL without its trailing catch-all: `Some(optional)` when it has one.
@@ -1059,5 +1096,53 @@ fn location(app: &App, r: &Route) -> String {
         (Some(Seg::CatchAll(n, _)), _) if !path.is_empty() => format!("'/{path}${{restPath({n})}}'"),
         (Some(Seg::CatchAll(n, _)), _) => format!("'/${{restKey({n})}}'"),
         _ => format!("'/{path}'"),
+    }
+}
+
+#[cfg(test)]
+mod order_tests {
+    use super::*;
+    use crate::synth::Rng;
+
+    /// What `check_order` did before it kept the catching URLs apart: every URL against every one before it.
+    fn brute(urls: &[&[Seg]]) -> Vec<Option<usize>> {
+        (0..urls.len()).map(|j| urls[..j].iter().position(|u| *u != urls[j] && catches(u, urls[j]))).collect()
+    }
+
+    fn url(rng: &mut Rng) -> Vec<Seg> {
+        let mut url: Vec<Seg> = (0..rng.below(4))
+            .map(|_| match rng.below(5) {
+                0 => Seg::Dynamic("x".into()),
+                1 => Seg::Dynamic("y".into()),
+                n => Seg::Static(["a", "b", "c"][n - 2].into()),
+            })
+            .collect();
+        match rng.below(6) {
+            0 => url.push(Seg::CatchAll("rest".into(), false)),
+            1 => url.push(Seg::CatchAll("rest".into(), true)),
+            _ => {}
+        }
+        url
+    }
+
+    #[test]
+    fn the_indexed_check_finds_what_the_quadratic_one_did() {
+        let mut rng = Rng::new(7);
+        for _ in 0..300 {
+            let owned: Vec<Vec<Seg>> = (0..rng.below(40)).map(|_| url(&mut rng)).collect();
+            let urls: Vec<&[Seg]> = owned.iter().map(Vec::as_slice).collect();
+            assert_eq!(first_catchers(&urls), brute(&urls), "{owned:?}");
+        }
+    }
+
+    #[test]
+    fn a_param_catches_a_later_static_path_and_not_an_earlier_one() {
+        let (any, about, docs) = (
+            vec![Seg::Dynamic("slug".into())],
+            vec![Seg::Static("about".into())],
+            vec![Seg::Static("docs".into()), Seg::CatchAll("rest".into(), false)],
+        );
+        let urls: Vec<&[Seg]> = vec![&about, &any, &about, &docs];
+        assert_eq!(first_catchers(&urls), vec![None, None, Some(1), None]);
     }
 }

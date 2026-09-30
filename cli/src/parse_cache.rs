@@ -6,16 +6,27 @@
 //! is exact: there is no hash to collide and no mtime to trust. Entries a run didn't touch
 //! (deleted, renamed or edited files) are dropped by [`finish_run`], so the cache never
 //! outgrows the app folder.
+//!
+//! [`prewarm`] parses the files a run is missing on all cores before the resolver asks for
+//! them: a cold run of a big app is a third parsing, and each file parses on its own.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::thread;
 
 use crate::dart::{self, Module};
+use crate::scan::Node;
+
+/// Fewer missing files than this are parsed as the resolver asks: starting threads costs more.
+const PARALLEL_MIN: usize = 64;
 
 struct Entry {
     module: Module,
     /// Whether the current run used this entry.
     used: bool,
+    /// Parsed ahead by [`prewarm`] and not asked for yet: [`prewarm`] has already counted it
+    /// as parsed, so its first use isn't a reuse.
+    fresh: bool,
 }
 
 #[derive(Default)]
@@ -37,6 +48,65 @@ pub fn enable() {
     });
 }
 
+/// Turns the cache off again and forgets what it held.
+pub fn disable() {
+    CACHE.with(|c| *c.borrow_mut() = None);
+}
+
+/// Returned by [`prewarm`]: drops the cache when [`prewarm`] was what turned it on, so a
+/// one-off `gen` doesn't keep the sources of the whole app in a cache nobody reads again.
+pub struct Prewarmed {
+    turned_on: bool,
+}
+
+impl Drop for Prewarmed {
+    fn drop(&mut self) {
+        if self.turned_on {
+            disable();
+        }
+    }
+}
+
+/// Parses, on every core, the sources of `tree` that the cache hasn't seen, so the resolver
+/// finds them there. With the cache off (`gen`, `check`) it is on until the result is
+/// dropped. A handful of files aren't worth threads and are left to [`parse`].
+pub fn prewarm(tree: &Node) -> Prewarmed {
+    let turned_on = CACHE.with(|c| c.borrow().is_none());
+    enable();
+    let mut srcs: Vec<&str> = vec![];
+    fn collect<'t>(n: &'t Node, out: &mut Vec<&'t str>) {
+        out.extend(n.files.values().map(String::as_str));
+        n.children.iter().for_each(|c| collect(c, out));
+    }
+    collect(tree, &mut srcs);
+    let missing: Vec<&str> = CACHE.with(|c| {
+        let c = c.borrow();
+        let cache = c.as_ref().expect("enabled above");
+        let mut seen = HashSet::new();
+        srcs.into_iter().filter(|s| !cache.entries.contains_key(*s) && seen.insert(*s)).collect()
+    });
+    if missing.len() >= PARALLEL_MIN {
+        let threads = thread::available_parallelism().map_or(1, |n| n.get()).min(missing.len() / 16).max(1);
+        let per = missing.len().div_ceil(threads);
+        let parsed: Vec<Vec<(&str, Module)>> = thread::scope(|scope| {
+            let handles: Vec<_> = missing
+                .chunks(per)
+                .map(|chunk| scope.spawn(move || chunk.iter().map(|s| (*s, dart::parse(s))).collect::<Vec<_>>()))
+                .collect();
+            handles.into_iter().map(|h| h.join().expect("parsing panicked")).collect()
+        });
+        CACHE.with(|c| {
+            let mut c = c.borrow_mut();
+            let cache = c.as_mut().expect("enabled above");
+            for (src, module) in parsed.into_iter().flatten() {
+                cache.parsed += 1;
+                cache.entries.insert(src.to_string(), Entry { module, used: false, fresh: true });
+            }
+        });
+    }
+    Prewarmed { turned_on }
+}
+
 /// `dart::parse`, served from the cache when the cache is on and has seen this exact source.
 pub fn parse(src: &str) -> Module {
     CACHE.with(|c| {
@@ -44,12 +114,14 @@ pub fn parse(src: &str) -> Module {
         let Some(cache) = c.as_mut() else { return dart::parse(src) };
         if let Some(e) = cache.entries.get_mut(src) {
             e.used = true;
-            cache.reused += 1;
+            if !std::mem::take(&mut e.fresh) {
+                cache.reused += 1;
+            }
             return e.module.clone();
         }
         let module = dart::parse(src);
         cache.parsed += 1;
-        cache.entries.insert(src.to_string(), Entry { module: module.clone(), used: true });
+        cache.entries.insert(src.to_string(), Entry { module: module.clone(), used: true, fresh: false });
         module
     })
 }
@@ -67,7 +139,6 @@ pub fn finish_run() -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::Instant;
 
     use super::*;
     use crate::build;
@@ -94,13 +165,49 @@ mod tests {
     }
 
     #[test]
+    fn prewarming_parses_on_several_threads_what_the_resolver_would_and_counts_it_once() {
+        let dir = synthetic_app(200);
+        let tree = crate::scan::scan(&dir.path().join("lib/app"), &mut crate::diag::Diags::default()).unwrap();
+        // 200 pages (one text but for the class name) and 40 data files that differ by their string.
+        disable();
+        {
+            let _warm = prewarm(&tree);
+            assert_eq!(finish_run_counts(), (240, 0));
+            // The resolver's own calls: every one is served, the first use of each isn't a reuse.
+            let mut sources = vec![];
+            fn collect(n: &crate::scan::Node, out: &mut Vec<String>) {
+                out.extend(n.files.values().cloned());
+                n.children.iter().for_each(|c| collect(c, out));
+            }
+            collect(&tree, &mut sources);
+            for src in &sources {
+                assert_eq!(format!("{:?}", parse(src)), format!("{:?}", dart::parse(src)));
+            }
+            assert_eq!(finish_run(), (240, 0));
+        }
+        // It turned the cache on, so it turns it off again.
+        assert_eq!(finish_run(), (0, 0));
+        CACHE.with(|c| assert!(c.borrow().is_none()));
+        // A cache that was already on stays on, with its entries.
+        enable();
+        drop(prewarm(&tree));
+        CACHE.with(|c| assert_eq!(c.borrow().as_ref().unwrap().entries.len(), 240));
+        disable();
+    }
+
+    /// What [`prewarm`] counted, read without ending the run.
+    fn finish_run_counts() -> (usize, usize) {
+        CACHE.with(|c| c.borrow().as_ref().map(|c| (c.parsed, c.reused)).unwrap())
+    }
+
+    #[test]
     fn a_cache_off_thread_just_parses() {
         CACHE.with(|c| *c.borrow_mut() = None);
         assert_eq!(parse("class A { const A(); }").classes[0].name, "A");
         assert_eq!(finish_run(), (0, 0));
     }
 
-    /// A 1,000-route app: `lib/app/r0/.../page.dart`, `data.dart` on every fifth.
+    /// An app of `routes` routes: `lib/app/groupN/rI/page.dart`, `data.dart` on every fifth.
     fn synthetic_app(routes: usize) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("pubspec.yaml"), "name: demo\n").unwrap();
@@ -117,45 +224,6 @@ mod tests {
             }
         }
         dir
-    }
-
-    /// Cold and single-file-change regeneration of a 1,000-route app, with and without the
-    /// cache. Prints the timings: `cargo test --release parse_cache -- --ignored --nocapture`.
-    #[test]
-    #[ignore = "benchmark"]
-    fn bench_single_file_change_in_1000_routes() {
-        let dir = synthetic_app(1000);
-        let app = dir.path().join("lib/app");
-        let cfg = Config::default();
-        let run = || {
-            let t = Instant::now();
-            let (code, _diags, routes) = build(&app, &cfg).unwrap();
-            (t.elapsed(), code, routes)
-        };
-        let edit = |n: u32| {
-            fs::write(
-                app.join("group0/r0/page.dart"),
-                format!("{}\n// edit {n}\n", PAGE.replace("{N}", "R0")),
-            )
-            .unwrap();
-        };
-
-        CACHE.with(|c| *c.borrow_mut() = None);
-        let (cold, _, routes) = run();
-        edit(1);
-        let (uncached, code_uncached, _) = run();
-        println!("{routes} routes: cold {cold:.1?}; after a one-file edit, no cache {uncached:.1?}");
-
-        enable();
-        run();
-        finish_run();
-        edit(2);
-        let (cached, code_cached, _) = run();
-        let (parsed, reused) = finish_run();
-        println!("with cache: {cached:.1?} (parsed {parsed}, reused {reused})");
-        assert_eq!(parsed, 1);
-        assert_eq!(code_cached, code_uncached);
-        CACHE.with(|c| *c.borrow_mut() = None);
     }
 
     #[test]

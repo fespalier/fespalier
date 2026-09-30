@@ -112,7 +112,10 @@ cmd_stage() {
   for f in "$dir"/fsp-*.tar.gz "$dir"/fsp-*.zip "$dir/build-info.json"; do
     [[ -f "$f" ]] && expected+=("$f")
   done
-  [[ ${#expected[@]} -ge 6 ]] || { echo "::error::expected 5 archives and build-info.json in $dir, found ${#expected[@]} files" >&2; return 1; }
+  [[ ${#expected[@]} -ge 6 ]] || {
+    echo "::error::expected 5 archives and build-info.json in $dir, found ${#expected[@]} files" >&2
+    return 1
+  }
   drop_staging
   id="$(api -X POST "$REPO_API/releases" \
     -d "$(jq -n --arg tag "$STAGING_TAG" '{tag_name: $tag, name: "fsp staging (never publish)", draft: true, prerelease: false,
@@ -122,18 +125,27 @@ cmd_stage() {
   local have want
   have="$(asset_names "$id")"
   want="$(printf '%s\n' "${expected[@]}" | xargs -n1 basename | sort)"
-  [[ "$have" == "$want" ]] || { echo "::error::the staging draft holds [$have], expected [$want]" >&2; return 1; }
+  [[ "$have" == "$want" ]] || {
+    echo "::error::the staging draft holds [$have], expected [$want]" >&2
+    return 1
+  }
 }
 
 cmd_fetch() {
   local dir="$1" ids id name aid
   ids="$(staging_ids)"
-  [[ -n "$ids" ]] || { echo "::error::no staging draft '$STAGING_TAG': the release PR's binaries were never staged, or were deleted. Re-run the release-pins workflow on the release PR, or start the release over." >&2; return 1; }
+  [[ -n "$ids" ]] || {
+    echo "::error::no staging draft '$STAGING_TAG': the release PR's binaries were never staged, or were deleted. Re-run the release-pins workflow on the release PR, or start the release over." >&2
+    return 1
+  }
   id="$(head -n 1 <<< "$ids")"
   mkdir -p "$dir"
   api "$REPO_API/releases/$id" | jq -r '.assets[] | "\(.id) \(.name) \(.size)"' | while read -r aid name size; do
     download "$REPO_API/releases/assets/$aid" -o "$dir/$name"
-    [[ "$(wc -c < "$dir/$name" | tr -d ' ')" == "$size" ]] || { echo "::error::$name downloaded with the wrong size" >&2; exit 1; }
+    [[ "$(wc -c < "$dir/$name" | tr -d ' ')" == "$size" ]] || {
+      echo "::error::$name downloaded with the wrong size" >&2
+      exit 1
+    }
     echo "fetched $name"
   done
 }
@@ -168,14 +180,20 @@ cmd_attach() {
   local have
   have="$(asset_names "$id")"
   for f in "$@"; do
-    grep -qxF "$(basename "$f")" <<< "$have" || { echo "::error::$(basename "$f") is not on the release after the upload" >&2; return 1; }
+    grep -qxF "$(basename "$f")" <<< "$have" || {
+      echo "::error::$(basename "$f") is not on the release after the upload" >&2
+      return 1
+    }
   done
 }
 
 cmd_publish() {
   local id
   id="$(find_release "$1" | jq -r '.id // empty')"
-  [[ -n "$id" ]] || { echo "::error::there is no release for $1 to publish" >&2; return 1; }
+  [[ -n "$id" ]] || {
+    echo "::error::there is no release for $1 to publish" >&2
+    return 1
+  }
   api -X PATCH "$REPO_API/releases/$id" -d '{"draft": false, "make_latest": "true"}' | jq -r '"published \(.tag_name): \(.html_url)"'
 }
 
@@ -183,8 +201,18 @@ case "${1:-}" in
   stage) cmd_stage "${2:?DIR}" ;;
   fetch) cmd_fetch "${2:?DIR}" ;;
   ensure) cmd_ensure "${2:?TAG}" "${3:-600}" ;;
-  attach) [[ $# -ge 3 ]] || { echo "usage: $0 attach TAG FILE..." >&2; exit 2; }; shift; cmd_attach "$@" ;;
+  attach)
+    [[ $# -ge 3 ]] || {
+      echo "usage: $0 attach TAG FILE..." >&2
+      exit 2
+    }
+    shift
+    cmd_attach "$@"
+    ;;
   publish) cmd_publish "${2:?TAG}" ;;
   drop) drop_staging ;;
-  *) sed -n '2,25p' "$0" >&2; exit 2 ;;
+  *)
+    sed -n '2,25p' "$0" >&2
+    exit 2
+    ;;
 esac

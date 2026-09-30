@@ -58,6 +58,9 @@ pub struct Variable {
     /// Set when the initializer is a map from string literals to constructor
     /// calls, like `const tabOptions = {'search': TabOptions(preload: true)};`.
     pub objects: Option<Vec<ObjectEntry>>,
+    /// Set when the initializer is a constructor call, like `const meta = PageMeta(code: 'x')`:
+    /// its named arguments (positional ones are left out).
+    pub ctor_args: Option<Vec<ObjectArg>>,
     /// Declared with `const` (not `final`, `var` or `late`).
     pub is_const: bool,
     pub span: Span,
@@ -85,7 +88,9 @@ pub struct ObjectArg {
 pub enum Lit {
     Bool(bool),
     Str(String),
-    /// Anything else: a number, an interpolated string, an expression.
+    /// A number, as written (`42`, `-1.5`, `0xff`), without `_` separators.
+    Num(String),
+    /// Anything else: an interpolated string, an identifier, an expression.
     Other,
 }
 
@@ -143,6 +148,13 @@ impl Ty {
         args.push(inner[start..].trim());
         (&t[..open], args)
     }
+}
+
+/// `42`, `-1.5`, `1e3`, `0xff`, `1_000`.
+fn is_number(t: &str) -> bool {
+    let t = t.replace('_', "");
+    let t = t.strip_prefix('-').unwrap_or(&t);
+    t.parse::<f64>().is_ok() || t.strip_prefix("0x").is_some_and(|h| !h.is_empty() && h.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 /// Where a declaration sits in its file.
@@ -352,7 +364,8 @@ impl Reader<'_> {
                 let call = value.and_then(|v| self.call(v));
                 let strings = value.and_then(|v| self.strings(v));
                 let objects = value.and_then(|v| self.objects(v));
-                out.push(Variable { name: self.text(name).to_string(), call, strings, objects, is_const, span: Span::of(name) });
+                let ctor_args = value.and_then(|v| self.ctor_args(v));
+                out.push(Variable { name: self.text(name).to_string(), call, strings, objects, ctor_args, is_const, span: Span::of(name) });
             }
         }
         out
@@ -394,30 +407,11 @@ impl Reader<'_> {
                     if key.kind() != "string_literal" {
                         return None;
                     }
-                    let (class, args) = match value.kind() {
-                        "call_expression" => (value.child_by_field_name("function")?, value.child_by_field_name("arguments")?),
-                        "const_object_expression" => (value.child_by_field_name("type")?, value.child_by_field_name("arguments")?),
-                        _ => return None,
-                    };
-                    if !matches!(class.kind(), "identifier" | "type") {
-                        return None;
-                    }
+                    let (class, args) = self.ctor_parts(value)?;
                     let mut parsed = vec![];
                     let mut c2 = args.walk();
                     for a in args.named_children(&mut c2) {
-                        if a.kind() != "named_argument" {
-                            return None;
-                        }
-                        let label = first_named(a, "label")?;
-                        let expr = a.named_child(u32::try_from(a.named_child_count().checked_sub(1)?).ok()?)?;
-                        let lit = match expr.kind() {
-                            "true" => Lit::Bool(true),
-                            "false" => Lit::Bool(false),
-                            "string_literal" => string_value(self.text(expr)).map_or(Lit::Other, Lit::Str),
-                            _ => Lit::Other,
-                        };
-                        let name = self.text(label).trim_end_matches(':').trim().to_string();
-                        parsed.push(ObjectArg { name, value: lit, span: Span::of(expr) });
+                        parsed.push(self.named_arg(a)?);
                     }
                     out.push(ObjectEntry {
                         key: string_value(self.text(key))?,
@@ -430,6 +424,43 @@ impl Reader<'_> {
             }
         }
         Some(out)
+    }
+
+    /// The class and argument list of a constructor call: `Foo(...)`, `const Foo(...)`.
+    fn ctor_parts<'t>(&self, value: Node<'t>) -> Option<(Node<'t>, Node<'t>)> {
+        let (class, args) = match value.kind() {
+            "call_expression" => (value.child_by_field_name("function")?, value.child_by_field_name("arguments")?),
+            "const_object_expression" => (value.child_by_field_name("type")?, value.child_by_field_name("arguments")?),
+            _ => return None,
+        };
+        matches!(class.kind(), "identifier" | "type").then_some((class, args))
+    }
+
+    /// One `name: literal` argument; `None` for a positional argument.
+    fn named_arg(&self, a: Node) -> Option<ObjectArg> {
+        if a.kind() != "named_argument" {
+            return None;
+        }
+        let label = first_named(a, "label")?;
+        let expr = a.named_child(u32::try_from(a.named_child_count().checked_sub(1)?).ok()?)?;
+        let text = self.text(expr);
+        let lit = match expr.kind() {
+            "true" => Lit::Bool(true),
+            "false" => Lit::Bool(false),
+            "string_literal" => string_value(text).map_or(Lit::Other, Lit::Str),
+            _ if is_number(text) => Lit::Num(text.replace('_', "")),
+            _ => Lit::Other,
+        };
+        let name = self.text(label).trim_end_matches(':').trim().to_string();
+        Some(ObjectArg { name, value: lit, span: Span::of(expr) })
+    }
+
+    /// `Foo(a: 1, b: 'x')` → its named arguments; positional ones are skipped.
+    /// `None` when the value isn't a constructor call.
+    fn ctor_args(&self, v: Node) -> Option<Vec<ObjectArg>> {
+        let (_, args) = self.ctor_parts(v)?;
+        let mut cur = args.walk();
+        Some(args.named_children(&mut cur).filter_map(|a| self.named_arg(a)).collect())
     }
 
     /// `A.b.c<T, U>(...)` → chain `[A, b, c]`, type args `[T, U]`.

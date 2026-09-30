@@ -23,6 +23,8 @@
 //   /photos/:id                     PhotoRoute          photos/$id/page.dart  (transition)
 //   /photos/sort                    SortRoute           photos/sort/page.dart  (transition)
 //   /photos/upload                  UploadRoute         photos/upload/page.dart  (transition)
+//   /reports/monthly                MonthlyReportRoute  reports/monthly/page.dart  (transition)
+//   /reports/yearly                 YearlyReportRoute   reports/yearly/page.dart  (transition)
 //   /search                         SearchRoute         search/page.dart  (data, transition)
 //   /shops/:shop                    ShopRoute           shops/$shop/page.dart  (guard, layout, transition)
 //   /shops/:shop/items/:id          ItemRoute           shops/$shop/items/$id/page.dart  (data, transition)
@@ -72,36 +74,40 @@ import 'app/photos/sort/page.dart' as _i33;
 import 'app/photos/sort/transition.dart' as _i34;
 import 'app/photos/upload/page.dart' as _i35;
 import 'app/photos/upload/transition.dart' as _i36;
-import 'app/search/data.dart' as _i37;
-import 'app/search/page.dart' as _i38;
-import 'app/shops/\$shop/page.dart' as _i39;
-import 'app/shops/\$shop/layout.dart' as _i40;
-import 'app/shops/\$shop/guard.dart' as _i41;
-import 'app/shops/\$shop/items/\$id/data.dart' as _i42;
-import 'app/shops/\$shop/items/\$id/page.dart' as _i43;
-import 'app/shops/\$shop/items/\$id/error.dart' as _i44;
-import 'app/teams/\$teamId/data.dart' as _i45;
-import 'app/teams/\$teamId/loading.dart' as _i46;
-import 'app/teams/\$teamId/error.dart' as _i47;
-import 'app/teams/\$teamId/layout.dart' as _i48;
-import 'app/teams/\$teamId/not_found.dart' as _i49;
-import 'app/teams/\$teamId/members/page.dart' as _i50;
-import 'app/teams/\$teamId/members/not_found.dart' as _i51;
-import 'app/teams/\$teamId/members/\$member/data.dart' as _i52;
-import 'app/teams/\$teamId/members/\$member/page.dart' as _i53;
-import 'app/teams/\$teamId/settings/page.dart' as _i54;
-import 'app/ticks/data.dart' as _i55;
-import 'app/ticks/page.dart' as _i56;
-import 'app/ticks/transition.dart' as _i57;
-import 'app/wiki/\$\$article/data.dart' as _i58;
-import 'app/wiki/\$\$article/page.dart' as _i59;
-import 'app/meta.dart' as _i60;
-import 'app/docs/\$\$rest/meta.dart' as _i61;
-import 'app/files/\$\$\$path/meta.dart' as _i62;
-import 'app/login/meta.dart' as _i63;
-import 'app/old-search/meta.dart' as _i64;
-import 'app/photos/meta.dart' as _i65;
-import 'app/photos/\$id/meta.dart' as _i66;
+import 'app/reports/data.dart' as _i37;
+import 'app/reports/layout.dart' as _i38;
+import 'app/reports/monthly/page.dart' as _i39;
+import 'app/reports/yearly/page.dart' as _i40;
+import 'app/search/data.dart' as _i41;
+import 'app/search/page.dart' as _i42;
+import 'app/shops/\$shop/page.dart' as _i43;
+import 'app/shops/\$shop/layout.dart' as _i44;
+import 'app/shops/\$shop/guard.dart' as _i45;
+import 'app/shops/\$shop/items/\$id/data.dart' as _i46;
+import 'app/shops/\$shop/items/\$id/page.dart' as _i47;
+import 'app/shops/\$shop/items/\$id/error.dart' as _i48;
+import 'app/teams/\$teamId/data.dart' as _i49;
+import 'app/teams/\$teamId/loading.dart' as _i50;
+import 'app/teams/\$teamId/error.dart' as _i51;
+import 'app/teams/\$teamId/layout.dart' as _i52;
+import 'app/teams/\$teamId/not_found.dart' as _i53;
+import 'app/teams/\$teamId/members/page.dart' as _i54;
+import 'app/teams/\$teamId/members/not_found.dart' as _i55;
+import 'app/teams/\$teamId/members/\$member/data.dart' as _i56;
+import 'app/teams/\$teamId/members/\$member/page.dart' as _i57;
+import 'app/teams/\$teamId/settings/page.dart' as _i58;
+import 'app/ticks/data.dart' as _i59;
+import 'app/ticks/page.dart' as _i60;
+import 'app/ticks/transition.dart' as _i61;
+import 'app/wiki/\$\$article/data.dart' as _i62;
+import 'app/wiki/\$\$article/page.dart' as _i63;
+import 'app/meta.dart' as _i64;
+import 'app/docs/\$\$rest/meta.dart' as _i65;
+import 'app/files/\$\$\$path/meta.dart' as _i66;
+import 'app/login/meta.dart' as _i67;
+import 'app/old-search/meta.dart' as _i68;
+import 'app/photos/meta.dart' as _i69;
+import 'app/photos/\$id/meta.dart' as _i70;
 import 'package:features/models/note.dart' show Note;
 import 'package:flutter/material.dart' show Note;
 
@@ -374,17 +380,66 @@ abstract final class AppRoutes {
                   ),
                 ],
               ),
+              ShellRoute(
+                pageBuilder: (context, state, child) => layoutPage(
+                  context,
+                  state,
+                  'layout:reports/',
+                  buildWithParams(
+                    () => _layout27(state),
+                    (v) => DataView(
+                      watch: (ref) => ref.watch(_data27(v.period)),
+                      refresh: (ref) => ref.invalidate(_data27(v.period)),
+                      data: (d) => _i38.ReportsLayout(data: d, child: child),
+                      loading: () => const DefaultLoading(),
+                      error: (e, st, retry) => DefaultError(error: e, retry: retry),
+                      keepPrevious: true,
+                    ),
+                    () => notFound(state.uri),
+                  ),
+                ),
+                routes: [
+                  GoRoute(
+                    path: 'reports/monthly',
+                    caseSensitive: false,
+                    pageBuilder: (context, state) => _i1.transition(
+                      state.pageKey,
+                      buildWithParams(
+                        () => _params28(state),
+                        (v) => SectionView(
+                          watch: (ref) => ref.watch(_data27(v.period)),
+                          data: (s27) => _i39.MonthlyReportPage(data: s27),
+                        ),
+                        () => notFound(state.uri),
+                      ),
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'reports/yearly',
+                    caseSensitive: false,
+                    pageBuilder: (context, state) => _i1.transition(
+                      state.pageKey,
+                      buildWithParams(
+                        () => _params29(state),
+                        (v) => _i40.YearlyReportPage(),
+                        () => notFound(state.uri),
+                      ),
+                    ),
+                  ),
+                ],
+                restorationScopeId: 'layout:reports/',
+              ),
               GoRoute(
                 path: 'search',
                 caseSensitive: false,
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
                   buildWithParams(
-                    () => _params27(state),
+                    () => _params30(state),
                     (v) => DataView(
-                      watch: (ref) => ref.watch(_data27((q: v.q, page: v.page, tags: QueryList(v.tags)))),
-                      refresh: (ref) => ref.invalidate(_data27((q: v.q, page: v.page, tags: QueryList(v.tags)))),
-                      data: (d) => _i38.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
+                      watch: (ref) => ref.watch(_data30((q: v.q, page: v.page, tags: QueryList(v.tags)))),
+                      refresh: (ref) => ref.invalidate(_data30((q: v.q, page: v.page, tags: QueryList(v.tags)))),
+                      data: (d) => _i42.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
                       keepPrevious: true,
@@ -396,12 +451,12 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'ticks',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i57.transition(
+                pageBuilder: (context, state) => _i61.transition(
                   state.pageKey,
                   DataView(
-                    watch: (ref) => ref.watch(_data37),
-                    refresh: (ref) => ref.invalidate(_data37),
-                    data: (d) => _i56.TicksPage(data: d),
+                    watch: (ref) => ref.watch(_data40),
+                    refresh: (ref) => ref.invalidate(_data40),
+                    data: (d) => _i60.TicksPage(data: d),
                     loading: () => const DefaultLoading(),
                     error: (e, st, retry) => DefaultError(error: e, retry: retry),
                     keepPrevious: true,
@@ -446,8 +501,8 @@ abstract final class AppRoutes {
                   state,
                   'layout:shops/\$shop/',
                   buildWithParams(
-                    () => _layout29(state),
-                    (v) => _i40.ShopLayout(shop: v.shop, child: child),
+                    () => _layout32(state),
+                    (v) => _i44.ShopLayout(shop: v.shop, child: child),
                     () => notFound(state.uri),
                   ),
                 ),
@@ -456,14 +511,14 @@ abstract final class AppRoutes {
                     path: 'shops/:shop',
                     caseSensitive: false,
                     redirect: (context, state) => guardWithParams(
-                      () => _params29(state),
-                      (v) => _i41.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
+                      () => _params32(state),
+                      (v) => _i45.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
                     ),
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       buildWithParams(
-                        () => _params29(state),
-                        (v) => _i39.ShopPage(shop: v.shop),
+                        () => _params32(state),
+                        (v) => _i43.ShopPage(shop: v.shop),
                         () => notFound(state.uri),
                       ),
                     ),
@@ -474,13 +529,13 @@ abstract final class AppRoutes {
                         pageBuilder: (context, state) => _i1.transition(
                           state.pageKey,
                           buildWithParams(
-                            () => _params31(state),
+                            () => _params34(state),
                             (v) => DataView(
-                              watch: (ref) => ref.watch(_data31((shop: v.shop, id: v.id))),
-                              refresh: (ref) => ref.invalidate(_data31((shop: v.shop, id: v.id))),
-                              data: (d) => _i43.ItemPage(d),
+                              watch: (ref) => ref.watch(_data34((shop: v.shop, id: v.id))),
+                              refresh: (ref) => ref.invalidate(_data34((shop: v.shop, id: v.id))),
+                              data: (d) => _i47.ItemPage(d),
                               loading: () => const DefaultLoading(),
-                              error: (e, st, retry) => _i44.ItemError(e, retry),
+                              error: (e, st, retry) => _i48.ItemError(e, retry),
                               keepPrevious: true,
                             ),
                             () => notFound(state.uri),
@@ -498,16 +553,16 @@ abstract final class AppRoutes {
                   state,
                   'layout:teams/\$teamId/',
                   buildWithParams(
-                    () => _layout33(state),
+                    () => _layout36(state),
                     (v) => DataView(
-                      watch: (ref) => ref.watch(_data33(v.teamId)),
-                      refresh: (ref) => ref.invalidate(_data33(v.teamId)),
-                      data: (d) => _i48.TeamLayout(team: d, child: child),
-                      loading: () => _i46.TeamLoading(),
-                      error: (e, st, retry) => _i47.TeamError(error: e, retry: retry),
+                      watch: (ref) => ref.watch(_data36(v.teamId)),
+                      refresh: (ref) => ref.invalidate(_data36(v.teamId)),
+                      data: (d) => _i52.TeamLayout(team: d, child: child),
+                      loading: () => _i50.TeamLoading(),
+                      error: (e, st, retry) => _i51.TeamError(error: e, retry: retry),
                       keepPrevious: true,
                     ),
-                    () => _i49.TeamNotFound(uri: state.uri),
+                    () => _i53.TeamNotFound(uri: state.uri),
                   ),
                 ),
                 routes: [
@@ -517,12 +572,12 @@ abstract final class AppRoutes {
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       buildWithParams(
-                        () => _params34(state),
+                        () => _params37(state),
                         (v) => SectionView(
-                          watch: (ref) => ref.watch(_data33(v.teamId)),
-                          data: (s33) => _i50.MembersPage(s33),
+                          watch: (ref) => ref.watch(_data36(v.teamId)),
+                          data: (s36) => _i54.MembersPage(s36),
                         ),
-                        () => _i51.MembersNotFound(uri: state.uri),
+                        () => _i55.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                       ),
                     ),
                     routes: [
@@ -532,19 +587,19 @@ abstract final class AppRoutes {
                         pageBuilder: (context, state) => _i1.transition(
                           state.pageKey,
                           buildWithParams(
-                            () => _params35(state),
+                            () => _params38(state),
                             (v) => DataView(
-                              watch: (ref) => ref.watch(_data35(v.member)),
-                              refresh: (ref) => ref.invalidate(_data35(v.member)),
+                              watch: (ref) => ref.watch(_data38(v.member)),
+                              refresh: (ref) => ref.invalidate(_data38(v.member)),
                               data: (d) => SectionView(
-                                watch: (ref) => ref.watch(_data33(v.teamId)),
-                                data: (s33) => _i53.MemberPage(label: d, team: s33),
+                                watch: (ref) => ref.watch(_data36(v.teamId)),
+                                data: (s36) => _i57.MemberPage(label: d, team: s36),
                               ),
-                              loading: () => _i46.TeamLoading(),
-                              error: (e, st, retry) => _i47.TeamError(error: e, retry: retry),
+                              loading: () => _i50.TeamLoading(),
+                              error: (e, st, retry) => _i51.TeamError(error: e, retry: retry),
                               keepPrevious: true,
                             ),
-                            () => _i51.MembersNotFound(uri: state.uri),
+                            () => _i55.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                           ),
                         ),
                       ),
@@ -556,12 +611,12 @@ abstract final class AppRoutes {
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       buildWithParams(
-                        () => _params36(state),
+                        () => _params39(state),
                         (v) => SectionView(
-                          watch: (ref) => ref.watch(_data33(v.teamId)),
-                          data: (s33) => _i54.TeamSettingsPage(data: s33),
+                          watch: (ref) => ref.watch(_data36(v.teamId)),
+                          data: (s36) => _i58.TeamSettingsPage(data: s36),
                         ),
-                        () => _i49.TeamNotFound(uri: state.uri),
+                        () => _i53.TeamNotFound(uri: state.uri),
                       ),
                     ),
                   ),
@@ -586,11 +641,11 @@ abstract final class AppRoutes {
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
                   buildWithParams(
-                    () => _params39(state),
+                    () => _params42(state),
                     (v) => DataView(
-                      watch: (ref) => ref.watch(_data39(restKey(v.article))),
-                      refresh: (ref) => ref.invalidate(_data39(restKey(v.article))),
-                      data: (d) => _i59.WikiPage(article: v.article, data: d),
+                      watch: (ref) => ref.watch(_data42(restKey(v.article))),
+                      refresh: (ref) => ref.invalidate(_data42(restKey(v.article))),
+                      data: (d) => _i63.WikiPage(article: v.article, data: d),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
                       keepPrevious: true,
@@ -612,12 +667,121 @@ abstract final class AppRoutes {
         uri,
         base,
         [
-          (['teams', ':teamId', 'members'], (uri) => _i51.MembersNotFound(uri: uri)),
-          (['teams', ':teamId'], (uri) => _i49.TeamNotFound(uri: uri)),
+          (['teams', ':teamId', 'members'], (uri) => _i55.MembersNotFound(uri: uri, teamId: pathPart(uri, base, 1))),
+          (['teams', ':teamId'], (uri) => _i53.TeamNotFound(uri: uri)),
         ],
         (uri) => DefaultNotFound(uri),
         caseSensitive: false,
       );
+
+  /// Every route as [matchUrl] tries it, most specific first.
+  static final List<RouteMatcher> _matchers = [
+    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), {}, [])),
+    RouteMatcher(['profile'], (s) => UrlMatch(s.uri, const ProfileRoute(), {}, [])),
+    RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), {}, [])),
+    RouteMatcher(['admin'], (s) => UrlMatch(s.uri, const AdminRoute(), {}, [])),
+    RouteMatcher(['inbox'], (s) {
+      final p = _params7(s);
+      return UrlMatch(s.uri, InboxRoute(folder: p.folder), {'folder': p.folder}, []);
+    }),
+    RouteMatcher(['catalog'], (s) => UrlMatch(s.uri, const CatalogRoute(), {}, [_data8])),
+    RouteMatcher(['counter'], (s) => UrlMatch(s.uri, const CounterRoute(), {}, [_i20.data])),
+    RouteMatcher(['docs'], (s) => UrlMatch(s.uri, const DocsIndexRoute(), {}, [])),
+    RouteMatcher(['login'], (s) {
+      final p = _params17(s);
+      return UrlMatch(s.uri, LoginRoute(from: p.from), {'from': p.from}, []);
+    }),
+    RouteMatcher(['old-search'], (s) {
+      final p = _params20(s);
+      return UrlMatch(s.uri, OldSearchRoute(q: p.q), {'q': p.q}, []);
+    }),
+    RouteMatcher(['photos'], (s) => UrlMatch(s.uri, const PhotosRoute(), {}, [])),
+    RouteMatcher(['search'], (s) {
+      final p = _params30(s);
+      return UrlMatch(s.uri, SearchRoute(q: p.q, page: p.page, tags: p.tags), {'q': p.q, 'page': p.page, 'tags': p.tags}, [_data30((q: p.q, page: p.page, tags: QueryList(p.tags)))]);
+    }),
+    RouteMatcher(['ticks'], (s) => UrlMatch(s.uri, const TicksRoute(), {}, [_data40])),
+    RouteMatcher(['docs', 'new'], (s) => UrlMatch(s.uri, const NewDocRoute(), {}, [])),
+    RouteMatcher(['photos', 'sort'], (s) => UrlMatch(s.uri, const SortRoute(), {}, [])),
+    RouteMatcher(['photos', 'upload'], (s) => UrlMatch(s.uri, const UploadRoute(), {}, [])),
+    RouteMatcher(['reports', 'monthly'], (s) {
+      final p = _params28(s);
+      return UrlMatch(s.uri, MonthlyReportRoute(period: p.period), {'period': p.period}, [_data27(p.period)]);
+    }),
+    RouteMatcher(['reports', 'yearly'], (s) {
+      final p = _params29(s);
+      return UrlMatch(s.uri, YearlyReportRoute(period: p.period), {'period': p.period}, [_data27(p.period)]);
+    }),
+    RouteMatcher(['catalog', ':productId'], (s) {
+      final p = _params9(s);
+      return UrlMatch(s.uri, ProductDetailRoute(productId: p.productId), {'productId': p.productId}, [_data9(p.productId)]);
+    }),
+    RouteMatcher(['notes', ':id'], (s) {
+      final p = _params19(s);
+      return UrlMatch(s.uri, NoteRoute(id: p.id), {'id': p.id}, []);
+    }),
+    RouteMatcher(['old-shops', ':shop'], (s) {
+      final p = _params22(s);
+      return UrlMatch(s.uri, OldShopsShopRoute(shop: p.shop), {'shop': p.shop}, []);
+    }),
+    RouteMatcher(['photos', ':id'], (s) {
+      final p = _params24(s);
+      return UrlMatch(s.uri, PhotoRoute(id: p.id), {'id': p.id}, []);
+    }),
+    RouteMatcher(['shops', ':shop'], (s) {
+      final p = _params32(s);
+      return UrlMatch(s.uri, ShopRoute(shop: p.shop), {'shop': p.shop}, []);
+    }),
+    RouteMatcher(['catalog', ':productId', 'reviews'], (s) {
+      final p = _params10(s);
+      return UrlMatch(s.uri, ReviewsRoute(productId: p.productId, page: p.page), {'productId': p.productId, 'page': p.page}, [_data10((productId: p.productId, page: p.page))]);
+    }),
+    RouteMatcher(['teams', ':teamId', 'members'], (s) {
+      final p = _params37(s);
+      return UrlMatch(s.uri, MembersRoute(teamId: p.teamId), {'teamId': p.teamId}, [_data36(p.teamId)]);
+    }),
+    RouteMatcher(['teams', ':teamId', 'settings'], (s) {
+      final p = _params39(s);
+      return UrlMatch(s.uri, TeamSettingsRoute(teamId: p.teamId), {'teamId': p.teamId}, [_data36(p.teamId)]);
+    }),
+    RouteMatcher(['shops', ':shop', 'items', ':id'], (s) {
+      final p = _params34(s);
+      return UrlMatch(s.uri, ItemRoute(shop: p.shop, id: p.id), {'shop': p.shop, 'id': p.id}, [_data34((shop: p.shop, id: p.id))]);
+    }),
+    RouteMatcher(['teams', ':teamId', 'members', ':member'], (s) {
+      final p = _params38(s);
+      return UrlMatch(s.uri, MemberRoute(teamId: p.teamId, member: p.member), {'teamId': p.teamId, 'member': p.member}, [_data36(p.teamId), _data38(p.member)]);
+    }),
+    RouteMatcher(['docs', '*rest'], (s) {
+      final p = _params13(s);
+      return UrlMatch(s.uri, DocsRoute(rest: p.rest), {'rest': p.rest}, []);
+    }),
+    RouteMatcher(['files', '*path?'], (s) {
+      final p = _params16(s);
+      return UrlMatch(s.uri, FilesRoute(path: p.path), {'path': p.path}, []);
+    }),
+    RouteMatcher(['wiki', '*article'], (s) {
+      final p = _params42(s);
+      return UrlMatch(s.uri, WikiRoute(article: p.article), {'article': p.article}, [_data42(restKey(p.article))]);
+    }),
+    RouteMatcher([':slug'], (s) {
+      final p = _params1(s);
+      return UrlMatch(s.uri, SlugRoute(slug: p.slug), {'slug': p.slug}, []);
+    }),
+  ];
+
+  /// [uri] matched to its route: the typed route, the parameters parsed from the URL and
+  /// the providers of its data. Null when no route fits, or a segment doesn't parse (the
+  /// not-found rule). The mount point is taken off; no guard runs and no widget is built.
+  /// The route manifest adds `match`, which also names the route's info.
+  static UrlMatch? matchUrl(Uri uri) => matchRoutes(uri, base, _matchers, caseSensitive: false);
+
+  /// The providers of the data of the route at [uri], outermost first: the `data.dart` of
+  /// each section above it, then its own. They are the ones the page watches (`dataAt(uri)`
+  /// of `/products/42` is `[ProductRoute.data(42)]`), so warming them, with
+  /// `ref.prefetchAll(AppRoutes.dataAt(uri) ?? [])`, warms the page. Empty for a route
+  /// without data; null when no route fits or a segment doesn't parse.
+  static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
 
   /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
   static List<RouteInfo<Object?>> get all => AppManifest.all;
@@ -627,6 +791,10 @@ abstract final class AppRoutes {
 
   /// Each route by its path template: [AppManifest.byPath].
   static Map<String, RouteInfo<Object?>> get byPath => AppManifest.byPath;
+
+  /// [uri] matched to its route, with the [RouteInfo], the parsed parameters and the
+  /// providers of its data: [AppManifest.match].
+  static RouteMatch? match(Uri uri) => AppManifest.match(uri);
 }
 
 /// What `fsp gen` knows about every route: its typed route, path template,
@@ -639,7 +807,7 @@ abstract final class AppManifest {
       path: '/',
       folder: '',
       layouts: [''],
-      meta: _i60.meta,
+      meta: _i64.meta,
     ),
     RouteInfo(
       type: SlugRoute,
@@ -720,7 +888,7 @@ abstract final class AppManifest {
       folder: 'docs/\$\$rest',
       layouts: [''],
       segments: [RouteParam('rest', 'List<String>', catchAll: true)],
-      meta: _i61.meta,
+      meta: _i65.meta,
     ),
     RouteInfo(
       type: NewDocRoute,
@@ -734,7 +902,7 @@ abstract final class AppManifest {
       folder: 'files/\$\$\$path',
       layouts: [''],
       segments: [RouteParam('path', 'List<String>', catchAll: true)],
-      meta: _i62.meta,
+      meta: _i66.meta,
     ),
     RouteInfo(
       type: LoginRoute,
@@ -742,7 +910,7 @@ abstract final class AppManifest {
       folder: 'login',
       layouts: [''],
       query: [RouteParam('from', 'String?')],
-      meta: _i63.meta,
+      meta: _i67.meta,
     ),
     RouteInfo(
       type: NoteRoute,
@@ -758,7 +926,7 @@ abstract final class AppManifest {
       presentation: RoutePresentation.redirect,
       layouts: [''],
       query: [RouteParam('q', 'String?')],
-      meta: _i64.meta,
+      meta: _i68.meta,
     ),
     RouteInfo(
       type: OldShopsShopRoute,
@@ -773,7 +941,7 @@ abstract final class AppManifest {
       path: '/photos',
       folder: 'photos',
       layouts: [''],
-      meta: _i65.meta,
+      meta: _i69.meta,
     ),
     RouteInfo(
       type: PhotoRoute,
@@ -781,7 +949,7 @@ abstract final class AppManifest {
       folder: 'photos/\$id',
       layouts: [''],
       segments: [RouteParam('id', 'int')],
-      meta: _i66.meta,
+      meta: _i70.meta,
     ),
     RouteInfo(
       type: SortRoute,
@@ -794,6 +962,20 @@ abstract final class AppManifest {
       path: '/photos/upload',
       folder: 'photos/upload',
       layouts: [''],
+    ),
+    RouteInfo(
+      type: MonthlyReportRoute,
+      path: '/reports/monthly',
+      folder: 'reports/monthly',
+      layouts: ['', 'reports'],
+      query: [RouteParam('period', 'String?')],
+    ),
+    RouteInfo(
+      type: YearlyReportRoute,
+      path: '/reports/yearly',
+      folder: 'reports/yearly',
+      layouts: ['', 'reports'],
+      query: [RouteParam('period', 'String?')],
     ),
     RouteInfo(
       type: SearchRoute,
@@ -871,6 +1053,51 @@ abstract final class AppManifest {
   /// page, say). Handy in a layout: `AppManifest.of(GoRouterState.of(context))`.
   static RouteInfo<Object?>? of(GoRouterState state) =>
       lookupRoute(byPath, routeTemplate(state, AppRoutes.base));
+
+  /// [uri] matched to its route: the [RouteInfo], the parameters parsed from the URL and the
+  /// providers of its data (each section's, then the route's own), the same ones the page
+  /// watches. Null when no route fits or a segment doesn't parse (the not-found rule). The
+  /// mount point is taken off; no guard runs and no widget is built.
+  static RouteMatch? match(Uri uri) {
+    final m = AppRoutes.matchUrl(uri);
+    return m == null ? null : RouteMatch(byType[m.type]!, m);
+  }
+}
+
+/// Typed access to the data.dart of the section `reports/` wraps (reports/data.dart) keyed by `period`: the layout and the pages below it read it.
+abstract final class ReportsSection {
+  /// reports/data.dart as a Riverpod provider keyed by `period`.
+  static final data = _data27;
+
+  /// Watches reports/data.dart: an `AsyncValue`, typed by inference.
+  static final watch = (WidgetRef ref, {String? period}) => ref.watch(data(period));
+
+  /// Reads reports/data.dart once, keeping it alive until it completes.
+  static final read = (WidgetRef ref, {String? period}) => ref.readData(data(period));
+
+  /// Starts loading reports/data.dart; kept until the handle is closed (or `keepFor` passes).
+  static PrefetchHandle prefetch(WidgetRef ref, {String? period, Duration? keepFor}) => ref.prefetchData(data(period), keepFor: keepFor);
+
+  /// Re-runs reports/data.dart; completes with the fresh value.
+  static Future<void> refresh(WidgetRef ref, {String? period}) => ref.refresh(data(period).future);
+}
+
+/// Typed access to the data.dart of the section `teams/$teamId/` wraps (teams/$teamId/data.dart) keyed by `teamId`: the layout and the pages below it read it.
+abstract final class TeamsTeamIdSection {
+  /// teams/$teamId/data.dart as a Riverpod provider keyed by `teamId`.
+  static final data = _data36;
+
+  /// Watches teams/$teamId/data.dart: an `AsyncValue`, typed by inference.
+  static final watch = (WidgetRef ref, {required String teamId}) => ref.watch(data(teamId));
+
+  /// Reads teams/$teamId/data.dart once, keeping it alive until it completes.
+  static final read = (WidgetRef ref, {required String teamId}) => ref.readData(data(teamId));
+
+  /// Starts loading teams/$teamId/data.dart; kept until the handle is closed (or `keepFor` passes).
+  static PrefetchHandle prefetch(WidgetRef ref, {required String teamId, Duration? keepFor}) => ref.prefetchData(data(teamId), keepFor: keepFor);
+
+  /// Re-runs teams/$teamId/data.dart; completes with the fresh value.
+  static Future<void> refresh(WidgetRef ref, {required String teamId}) => ref.refresh(data(teamId).future);
 }
 
 /// `/` → page.dart
@@ -941,8 +1168,8 @@ final class CatalogRoute extends TypedLocation {
   /// Reads catalog/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref) => ref.readSelected(data);
 
-  /// Starts loading catalog/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
+  /// Starts loading catalog/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
 
   /// Re-runs catalog/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data);
@@ -966,8 +1193,8 @@ final class ProductDetailRoute extends TypedLocation {
   /// Reads catalog/$productId/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref, {required String productId}) => ref.readSelected(data(productId));
 
-  /// Starts loading catalog/$productId/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(productId), keepFor: keepFor);
+  /// Starts loading catalog/$productId/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(productId), keepFor: keepFor);
 
   /// Re-runs catalog/$productId/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data(productId));
@@ -992,8 +1219,8 @@ final class ReviewsRoute extends TypedLocation {
   /// Reads catalog/$productId/reviews/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref, {required String productId, int? page}) => ref.readSelected(data((productId: productId, page: page)));
 
-  /// Starts loading catalog/$productId/reviews/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data((productId: productId, page: page)), keepFor: keepFor);
+  /// Starts loading catalog/$productId/reviews/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data((productId: productId, page: page)), keepFor: keepFor);
 
   /// Re-runs catalog/$productId/reviews/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data((productId: productId, page: page)));
@@ -1015,8 +1242,8 @@ final class CounterRoute extends TypedLocation {
   /// Reads counter/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref) => ref.readData(data);
 
-  /// Starts loading counter/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
+  /// Starts loading counter/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
 
   /// Re-runs counter/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
@@ -1146,6 +1373,26 @@ final class UploadRoute extends TypedLocation {
   String get location => joinLocation(AppRoutes.base, '/photos/upload');
 }
 
+/// `/reports/monthly` → reports/monthly/page.dart
+final class MonthlyReportRoute extends TypedLocation {
+  const MonthlyReportRoute({this.period});
+
+  final String? period;
+
+  @override
+  String get location => withQuery(joinLocation(AppRoutes.base, '/reports/monthly'), {'period': period});
+}
+
+/// `/reports/yearly` → reports/yearly/page.dart
+final class YearlyReportRoute extends TypedLocation {
+  const YearlyReportRoute({this.period});
+
+  final String? period;
+
+  @override
+  String get location => withQuery(joinLocation(AppRoutes.base, '/reports/yearly'), {'period': period});
+}
+
 /// `/search` → search/page.dart
 final class SearchRoute extends TypedLocation {
   const SearchRoute({this.q, this.page, this.tags = const []});
@@ -1155,7 +1402,7 @@ final class SearchRoute extends TypedLocation {
   final List<String> tags;
 
   /// search/data.dart as a Riverpod provider keyed by `(q, page, tags)`.
-  static final data = _data27;
+  static final data = _data30;
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/search'), {'q': q, 'page': page, 'tags': tags});
@@ -1166,8 +1413,8 @@ final class SearchRoute extends TypedLocation {
   /// Reads search/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref, {String? q, int? page, List<String> tags = const []}) => ref.readData(data((q: q, page: page, tags: QueryList(tags))));
 
-  /// Starts loading search/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data((q: q, page: page, tags: QueryList(tags))), keepFor: keepFor);
+  /// Starts loading search/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data((q: q, page: page, tags: QueryList(tags))), keepFor: keepFor);
 
   /// Re-runs search/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data((q: q, page: page, tags: QueryList(tags))).future);
@@ -1191,7 +1438,7 @@ final class ItemRoute extends TypedLocation {
   final int id;
 
   /// shops/$shop/items/$id/data.dart as a Riverpod provider keyed by `(shop, id)`.
-  static final data = _data31;
+  static final data = _data34;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/shops/${Uri.encodeComponent(shop)}/items/$id');
@@ -1202,8 +1449,8 @@ final class ItemRoute extends TypedLocation {
   /// Reads shops/$shop/items/$id/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref, {required String shop, required int id}) => ref.readData(data((shop: shop, id: id)));
 
-  /// Starts loading shops/$shop/items/$id/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data((shop: shop, id: id)), keepFor: keepFor);
+  /// Starts loading shops/$shop/items/$id/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data((shop: shop, id: id)), keepFor: keepFor);
 
   /// Re-runs shops/$shop/items/$id/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data((shop: shop, id: id)).future);
@@ -1227,7 +1474,7 @@ final class MemberRoute extends TypedLocation {
   final int member;
 
   /// teams/$teamId/members/$member/data.dart as a Riverpod provider keyed by `member`.
-  static final data = _data35;
+  static final data = _data38;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/teams/${Uri.encodeComponent(teamId)}/members/$member');
@@ -1238,8 +1485,8 @@ final class MemberRoute extends TypedLocation {
   /// Reads teams/$teamId/members/$member/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref, {required int member}) => ref.readData(data(member));
 
-  /// Starts loading teams/$teamId/members/$member/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(member), keepFor: keepFor);
+  /// Starts loading teams/$teamId/members/$member/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(member), keepFor: keepFor);
 
   /// Re-runs teams/$teamId/members/$member/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(member).future);
@@ -1260,7 +1507,7 @@ final class TicksRoute extends TypedLocation {
   const TicksRoute();
 
   /// ticks/data.dart as a Riverpod provider.
-  static final data = _data37;
+  static final data = _data40;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/ticks');
@@ -1271,8 +1518,8 @@ final class TicksRoute extends TypedLocation {
   /// Reads ticks/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref) => ref.readData(data);
 
-  /// Starts loading ticks/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
+  /// Starts loading ticks/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
 
   /// Restarts ticks/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
@@ -1285,7 +1532,7 @@ final class WikiRoute extends TypedLocation {
   final List<String> article;
 
   /// wiki/$$article/data.dart as a Riverpod provider keyed by `article`.
-  static final data = _data39;
+  static final data = _data42;
 
   @override
   String get location {
@@ -1299,8 +1546,8 @@ final class WikiRoute extends TypedLocation {
   /// Reads wiki/$$article/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref, {required List<String> article}) => ref.readData(data(restKey(article)));
 
-  /// Starts loading wiki/$$article/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(restKey(article)), keepFor: keepFor);
+  /// Starts loading wiki/$$article/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(restKey(article)), keepFor: keepFor);
 
   /// Re-runs wiki/$$article/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(restKey(article)).future);
@@ -1328,25 +1575,31 @@ final class WikiRoute extends TypedLocation {
 
 ({int id}) _params24(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
-({String? q, int? page, List<String> tags}) _params27(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'));
+({String? period}) _params28(GoRouterState s) => (period: Query.asString(s, 'period'));
 
-({String shop}) _params29(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
+({String? period}) _params29(GoRouterState s) => (period: Query.asString(s, 'period'));
 
-({String shop, int id}) _params31(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'));
+({String? q, int? page, List<String> tags}) _params30(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'));
 
-({String teamId}) _params34(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
+({String shop}) _params32(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
 
-({String teamId, int member}) _params35(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'), member: Segment.asInt(s, 'member'));
+({String shop, int id}) _params34(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'));
 
-({String teamId}) _params36(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
+({String teamId}) _params37(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
 
-({List<String> article}) _params39(GoRouterState s) => (article: Segment.asRest(s, 'article'));
+({String teamId, int member}) _params38(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'), member: Segment.asInt(s, 'member'));
+
+({String teamId}) _params39(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
+
+({List<String> article}) _params42(GoRouterState s) => (article: Segment.asRest(s, 'article'));
 
 ({String? banner}) _layout0(GoRouterState s) => (banner: Query.asString(s, 'banner'));
 
-({String shop}) _layout29(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
+({String? period}) _layout27(GoRouterState s) => (period: Query.asString(s, 'period'));
 
-({String teamId}) _layout33(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
+({String shop}) _layout32(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
+
+({String teamId}) _layout36(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
 
 /// data.dart selects the app's own provider: nothing wraps it.
 final _data8 = _i12.data();
@@ -1358,25 +1611,29 @@ final _data9 = (String productId) => _i14.data(productId: productId);
 final _data10 = (({String productId, int? page}) k) => _i18.data(productId: k.productId, page: k.page);
 
 final _data27 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => _i37.data(ref, q: k.q, page: k.page, tags: k.tags),
+  (Ref ref, String? period) => _i37.data(ref, period: period),
 );
 
-final _data31 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String shop, int id}) k) => _i42.data(ref, shop: k.shop, id: k.id),
+final _data30 = FutureProvider.autoDispose.family(
+  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => _i41.data(ref, q: k.q, page: k.page, tags: k.tags),
 );
 
-final _data33 = FutureProvider.autoDispose.family(
-  (Ref ref, String teamId) => _i45.data(ref, teamId: teamId),
+final _data34 = FutureProvider.autoDispose.family(
+  (Ref ref, ({String shop, int id}) k) => _i46.data(ref, shop: k.shop, id: k.id),
 );
 
-final _data35 = FutureProvider.autoDispose.family(
-  (Ref ref, int member) => _i52.data(ref, member: member),
+final _data36 = FutureProvider.autoDispose.family(
+  (Ref ref, String teamId) => _i49.data(ref, teamId: teamId),
 );
 
-final _data37 = StreamProvider.autoDispose(
-  (Ref ref) => _i55.data(ref),
+final _data38 = FutureProvider.autoDispose.family(
+  (Ref ref, int member) => _i56.data(ref, member: member),
 );
 
-final _data39 = FutureProvider.autoDispose.family(
-  (Ref ref, String article) => _i58.data(ref, article: restParts(article)),
+final _data40 = StreamProvider.autoDispose(
+  (Ref ref) => _i59.data(ref),
+);
+
+final _data42 = FutureProvider.autoDispose.family(
+  (Ref ref, String article) => _i62.data(ref, article: restParts(article)),
 );

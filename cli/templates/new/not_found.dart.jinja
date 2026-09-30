@@ -1,0 +1,21 @@
+import 'package:flutter/material.dart';
+
+/// Shown for a URL nothing matches under this folder, and for a segment of its routes
+/// that doesn't parse. The segments of its path arrive as Strings, as the URL spells them.
+class {{ stem }}NotFound extends StatelessWidget {
+{% if segs %}
+  const {{ stem }}NotFound({super.key, required this.uri{% for s in segs %}, required this.{{ s.name }}{% endfor %}});
+
+  final Uri uri;
+{% for s in segs %}
+  final String {{ s.name }};
+{% endfor %}
+{% else %}
+  const {{ stem }}NotFound({super.key, required this.uri});
+
+  final Uri uri;
+{% endif %}
+
+  @override
+  Widget build(BuildContext context) => Center(child: Text('Nothing at ${uri.path}'));
+}

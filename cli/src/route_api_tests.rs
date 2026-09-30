@@ -69,7 +69,7 @@ fn data_routes_get_typed_watch_read_and_prefetch() {
             // No key: nothing to pass. The types are the provider's, inferred: never spelled.
             "static final watch = (WidgetRef ref) => ref.watch(data);",
             "static final read = (WidgetRef ref) => ref.readData(data);",
-            "void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);",
+            "PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);",
             // A segment and a query parameter, as the record key.
             "static final watch = (WidgetRef ref, {required int id, String? q}) => ref.watch(data((id: id, q: q)));",
             "static final read = (WidgetRef ref, {required int id, String? q}) => ref.readData(data((id: id, q: q)));",
@@ -90,7 +90,7 @@ fn a_single_key_is_passed_bare_and_routes_without_data_get_no_helpers() {
     has(&c, &["static final watch = (WidgetRef ref, {required int id}) => ref.watch(data(id));"]);
     // Only ItemRoute has the helpers.
     assert_eq!(c.matches("static final watch").count(), 1, "{c}");
-    assert_eq!(c.matches("void prefetch(").count(), 1, "{c}");
+    assert_eq!(c.matches("PrefetchHandle prefetch(").count(), 1, "{c}");
 }
 
 #[test]
@@ -150,10 +150,11 @@ fn a_layouts_data_dart_is_the_data_of_its_section() {
             "final _data1 = FutureProvider.autoDispose(",
         ],
     );
-    // A page that doesn't ask for it isn't wrapped, and the section has no route class of its own.
+    // A page that doesn't ask for it isn't wrapped, and the section has no route class of its own
+    // (its typed handle is `ShopSection`, see section_tests.rs).
     has(&c, &["_i3.PlainPage()"]);
     assert_eq!(c.matches("SectionView(").count(), 1, "{c}");
-    lacks(&c, &["class ShopRoute", "static final data = _data1"]);
+    lacks(&c, &["class ShopRoute"]);
 }
 
 #[test]
@@ -249,7 +250,6 @@ fn section_data_errors() {
     let e = diags(&[("a/data.dart", "Future<int> data(Ref ref) async => 1;"), ("a/b/page.dart", HOME)]).join("\n");
     assert!(e.contains("a/data.dart  data.dart has no page.dart to feed; with a layout.dart beside it"), "{e}");
 
-    // A section takes segments only.
     let e = errors(&[
         ("(s)/data.dart", "Future<int> data(Ref ref, {String? q}) async => 1;"),
         ("(s)/layout.dart", &widget("SLayout", "final Widget child;", ", required this.child")),
@@ -257,13 +257,6 @@ fn section_data_errors() {
     ]);
     // A page next to the layout means data.dart feeds the page, as always.
     assert!(e.is_empty(), "{e:?}");
-    let e = diags(&[
-        ("(s)/data.dart", "Future<int> data(Ref ref, {String? q}) async => 1;"),
-        ("(s)/layout.dart", &widget("SLayout", "final Widget child;", ", required this.child")),
-        ("(s)/x/page.dart", HOME),
-    ])
-    .join("\n");
-    assert!(e.contains("`q`: a section's data.dart can only take segments"), "{e}");
 
     // The same type twice is ambiguous by type, but `data` names the nearest.
     let e = diags(&[

@@ -45,6 +45,10 @@ pub struct NewCmd {
     /// Don't write page.dart (implied for a `(group)` folder, which can't have one)
     #[arg(long)]
     pub no_page: bool,
+    /// Also write not_found.dart: shown for unknown URLs under the folder, and for a segment
+    /// of its routes that doesn't parse. It takes the segments of its path as Strings.
+    #[arg(long)]
+    pub not_found: bool,
 }
 
 #[derive(Serialize)]
@@ -71,7 +75,13 @@ pub fn new_route(project: &Path, a: &NewArgs) -> Result<Vec<String>> {
     new_route_opts(project, a, false)
 }
 
+#[cfg(test)]
 pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<String>> {
+    new_route_with(project, a, no_page, false)
+}
+
+/// [`new_route_opts`], and `--not-found` too.
+pub fn new_route_with(project: &Path, a: &NewArgs, no_page: bool, not_found: bool) -> Result<Vec<String>> {
     let cfg = Config::load(project)?;
     let app_dir = project.join(&cfg.app_dir);
     let parts: Vec<String> = a
@@ -138,6 +148,9 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
     // A group has no URL of its own, so it can't serve a page (and one would
     // collide with the page of the folder above it).
     let is_group = matches!(segs.last(), Some(Seg::Group(_)));
+    if not_found && matches!(segs.last(), Some(Seg::CatchAll(..))) {
+        bail!("a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown");
+    }
     let wanted = [
         ("page", !no_page && !is_group),
         ("data", a.data),
@@ -146,10 +159,11 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         ("layout", a.layout),
         ("guard", a.guard),
         ("transition", a.transition),
+        ("not_found", not_found),
     ];
     if !wanted.iter().any(|(_, on)| *on) {
         let why = if is_group { "a (group) folder has no page" } else { "--no-page skips the page" };
-        bail!("nothing to create: {why}; also pass --layout, --loading, --error, --guard or --transition");
+        bail!("nothing to create: {why}; also pass --layout, --loading, --error, --guard, --transition or --not-found");
     }
     let dir = app_dir.join(&rel);
     fs::create_dir_all(&dir)?;

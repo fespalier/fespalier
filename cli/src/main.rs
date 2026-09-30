@@ -85,7 +85,7 @@ fn main() {
             Cmd::Watch => watch(&project),
             Cmd::Init => init::run(&project),
             Cmd::New(cmd) => {
-                let created = scaffold::new_route_opts(&project, &cmd.args, cmd.no_page)?;
+                let created = scaffold::new_route_with(&project, &cmd.args, cmd.no_page, cmd.not_found)?;
                 match gen(&project, true) {
                     Ok(o) => {
                         eprintln!("{}", o.line());
@@ -304,6 +304,8 @@ fn watch(project: &Path) -> Result<()> {
 mod cli_tests;
 #[cfg(test)]
 mod manifest_tests;
+#[cfg(test)]
+mod match_tests;
 #[cfg(test)]
 mod nav_tests;
 #[cfg(test)]

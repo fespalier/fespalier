@@ -158,6 +158,30 @@ abstract final class AppRoutes {
   }
 
   static Widget notFound(Uri uri) => DefaultNotFound(uri);
+
+  /// Every route as [matchUrl] tries it, most specific first.
+  static final List<RouteMatcher> _matchers = [
+    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), {}, [])),
+    RouteMatcher(['profile'], (s) => UrlMatch(s.uri, const ProfileRoute(), {}, [])),
+    RouteMatcher(['search'], (s) => UrlMatch(s.uri, const SearchRoute(), {}, [])),
+    RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), {}, [])),
+    RouteMatcher(['library', 'authors'], (s) => UrlMatch(s.uri, const AuthorsRoute(), {}, [])),
+    RouteMatcher(['library', 'books'], (s) => UrlMatch(s.uri, const BooksRoute(), {}, [])),
+    RouteMatcher(['profile', 'edit'], (s) => UrlMatch(s.uri, const EditProfileRoute(), {}, [])),
+  ];
+
+  /// [uri] matched to its route: the typed route, the parameters parsed from the URL and
+  /// the providers of its data. Null when no route fits, or a segment doesn't parse (the
+  /// not-found rule). The mount point is taken off; no guard runs and no widget is built.
+  /// The route manifest adds `match`, which also names the route's info.
+  static UrlMatch? matchUrl(Uri uri) => matchRoutes(uri, base, _matchers);
+
+  /// The providers of the data of the route at [uri], outermost first: the `data.dart` of
+  /// each section above it, then its own. They are the ones the page watches (`dataAt(uri)`
+  /// of `/products/42` is `[ProductRoute.data(42)]`), so warming them, with
+  /// `ref.prefetchAll(AppRoutes.dataAt(uri) ?? [])`, warms the page. Empty for a route
+  /// without data; null when no route fits or a segment doesn't parse.
+  static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
 }
 
 /// `/` → (tabs)/(home)/page.dart

@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+### From a location to its data, and a prefetch handle (#8)
+
+- **`AppRoutes.dataAt(Uri)`**: the providers of the data of the route at a location,
+  **outermost first** (each section's `data.dart`, then the route's own), for an app's own
+  prefetch queue or a test. It is built by the same parser the route uses, so
+  `dataAt(Uri.parse('/products/42')).single == ProductRoute.data(42)`, and for a `data.dart` that
+  selects a provider it is that provider. Query-keyed data is keyed by the query of the
+  location, a catch-all by its path, and the mount point is stripped. `null` when no route fits
+  or a segment doesn't parse (the `not_found.dart` rule), empty for a route without data. No
+  guard runs and no widget is built.
+- **`AppRoutes.match(Uri)`** (`AppManifest.match`, in the manifest library with
+  `output_manifest:`) returns a `RouteMatch`: the `RouteInfo`, the parsed `params` by name, the
+  typed `route` (`match.route.location`), and the same `data` list. `AppRoutes.matchUrl(uri)`
+  is its manifest-free half (`UrlMatch`) and always in `app.g.dart`; routes are tried most
+  specific first, like go_router. Regenerate `app.g.dart`.
+- **Behaviour change: `prefetch` returns a `PrefetchHandle`, and keeps the provider until it is
+  closed.** `ProductRoute(id: 2).prefetch(ref)` (and `ref.prefetchData(provider)`) used to hold
+  the provider for 30 seconds with a timer; now `handle.close()` lets go, `keepFor:` is an
+  optional auto-close, and a failed load closes its handle. Code that ignores the returned
+  handle keeps the provider as long as the widget behind `ref` lives, not 30 seconds. New
+  `ref.prefetchAll(providers)` closes several with one handle (`prefetchAll(AppRoutes.dataAt(uri) ??
+  [])`). `prefetchKeepAlive` is removed.
+- **`fespalier.dart` hides go_router's own `RouteMatch`** (an internal of its parser) to export
+  fespalier's. `import 'package:go_router/go_router.dart'` if you use that one.
+
+### Section data: query keys and a typed handle
+
+- **A section's `data.dart` can be keyed by query parameters**
+  (`Future<Report> data(Ref ref, {String? period})`; it used to be an error). The section's
+  layout reads them from the URL, and every route below the section gets them as query
+  parameters of its typed route (`MonthlyReportRoute(period: '2026-01')`), so the pages read
+  the same provider the layout loaded.
+- **Typed handle for a section:** `<Folder>Section` (`teams/$teamId` is `TeamsTeamIdSection`)
+  with static `data`, `watch`, `read`, `prefetch` and `refresh`, taking the section's keys as
+  named arguments. Two folders that would name the same class are an error, and a key can't be
+  called `ref` or `keepFor`.
+
+### Not-found, meta and `fsp new`
+
+- **`not_found.dart` can take the segments of its own path**, as `String`s exactly as the URL
+  spells them (a segment that failed to parse is often why it is shown, so they aren't typed;
+  `int teamId` there is an error). `pathPart` is the runtime helper.
+- **`fsp new --not-found`** scaffolds a `not_found.dart` that takes them.
+- **`meta_unique: [code, slug]`** under `fespalier:`: a value that two routes' `meta.dart` give
+  to the same *literal* named argument of `meta`'s constructor call is an error naming both
+  files. Expressions and left-out arguments are skipped; a listed name that no `meta.dart`
+  gives a literal is a warning.
+- README "Design notes": why `ProductRoute(id: 2).watch(ref)` stays static (a `const` route can't
+  have a late field, and an instance method would have to name the data type).
+
 ### Data refresh and retry
 
 - **Behaviour change: generated `data()` providers no longer switch off Riverpod's retry.**

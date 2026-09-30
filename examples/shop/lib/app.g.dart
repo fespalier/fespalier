@@ -138,6 +138,35 @@ abstract final class AppRoutes {
 
   static Widget notFound(Uri uri) => _i5.NotFound(uri: uri);
 
+  /// Every route as [matchUrl] tries it, most specific first.
+  static final List<RouteMatcher> _matchers = [
+    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), {}, [])),
+    RouteMatcher(['cart'], (s) => UrlMatch(s.uri, const CartRoute(), {}, [])),
+    RouteMatcher(['checkout'], (s) => UrlMatch(s.uri, const CheckoutRoute(), {}, [])),
+    RouteMatcher(['products'], (s) => UrlMatch(s.uri, const ProductsRoute(), {}, [_i10.data])),
+    RouteMatcher(['greet', ':name'], (s) {
+      final p = _params4(s);
+      return UrlMatch(s.uri, GreetRoute(name: p.name), {'name': p.name}, []);
+    }),
+    RouteMatcher(['products', ':id'], (s) {
+      final p = _params6(s);
+      return UrlMatch(s.uri, ProductRoute(id: p.id), {'id': p.id}, [_data6(p.id)]);
+    }),
+  ];
+
+  /// [uri] matched to its route: the typed route, the parameters parsed from the URL and
+  /// the providers of its data. Null when no route fits, or a segment doesn't parse (the
+  /// not-found rule). The mount point is taken off; no guard runs and no widget is built.
+  /// The route manifest adds `match`, which also names the route's info.
+  static UrlMatch? matchUrl(Uri uri) => matchRoutes(uri, base, _matchers);
+
+  /// The providers of the data of the route at [uri], outermost first: the `data.dart` of
+  /// each section above it, then its own. They are the ones the page watches (`dataAt(uri)`
+  /// of `/products/42` is `[ProductRoute.data(42)]`), so warming them, with
+  /// `ref.prefetchAll(AppRoutes.dataAt(uri) ?? [])`, warms the page. Empty for a route
+  /// without data; null when no route fits or a segment doesn't parse.
+  static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
+
   /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
   static List<RouteInfo<Object?>> get all => AppManifest.all;
 
@@ -146,6 +175,10 @@ abstract final class AppRoutes {
 
   /// Each route by its path template: [AppManifest.byPath].
   static Map<String, RouteInfo<Object?>> get byPath => AppManifest.byPath;
+
+  /// [uri] matched to its route, with the [RouteInfo], the parsed parameters and the
+  /// providers of its data: [AppManifest.match].
+  static RouteMatch? match(Uri uri) => AppManifest.match(uri);
 }
 
 /// What `fsp gen` knows about every route: its typed route, path template,
@@ -209,6 +242,15 @@ abstract final class AppManifest {
   /// page, say). Handy in a layout: `AppManifest.of(GoRouterState.of(context))`.
   static RouteInfo<Object?>? of(GoRouterState state) =>
       lookupRoute(byPath, routeTemplate(state, AppRoutes.base));
+
+  /// [uri] matched to its route: the [RouteInfo], the parameters parsed from the URL and the
+  /// providers of its data (each section's, then the route's own), the same ones the page
+  /// watches. Null when no route fits or a segment doesn't parse (the not-found rule). The
+  /// mount point is taken off; no guard runs and no widget is built.
+  static RouteMatch? match(Uri uri) {
+    final m = AppRoutes.matchUrl(uri);
+    return m == null ? null : RouteMatch(byType[m.type]!, m);
+  }
 }
 
 /// `/` → page.dart
@@ -261,8 +303,8 @@ final class ProductsRoute extends TypedLocation {
   /// Reads products/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref) => ref.readData(data);
 
-  /// Starts loading products/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
+  /// Starts loading products/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
 
   /// Re-runs products/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
@@ -286,8 +328,8 @@ final class ProductRoute extends TypedLocation {
   /// Reads products/$id/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref, {required int id}) => ref.readData(data(id));
 
-  /// Starts loading products/$id/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(id), keepFor: keepFor);
+  /// Starts loading products/$id/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(id), keepFor: keepFor);
 
   /// Re-runs products/$id/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);

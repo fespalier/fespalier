@@ -9,3 +9,6 @@ pubspec.lock
 .vscode/
 *.iml
 .claude/worktrees/
+
+# Node (ci/commit-message-parse)
+node_modules/

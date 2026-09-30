@@ -12,12 +12,21 @@ name: quality
 on:
   pull_request:
     branches: [main]
+  # The default branch has otherwise never been security-scanned: a fork PR
+  # gets no secrets (app-client-id/app-private-key), so Trivy silently never
+  # runs for it, and nothing else scans the default branch once a fork PR
+  # merges. This closes that gap by scanning on every push to it too.
+  push:
+    branches: [main]
 
 permissions: {}
 
 concurrency:
   group: quality-${{ github.ref }}
-  cancel-in-progress: true
+  # PR-only: on the default branch the group key is identical for every
+  # merge, so cancelling would let one merge abort the scan still verifying
+  # the merge before it.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
@@ -73,11 +82,17 @@ jobs:
   lint:
     name: lint
     needs: changes
-    if: needs.changes.outputs.any == 'true'
+    # PR-only: its `fix` input defaults to true, and on a push
+    # github.event.pull_request.head.repo.full_name is empty, so the
+    # reusable workflow's own "commit fixes onto the PR branch" step runs
+    # `git checkout -q -B superlinter-fixes ""` and fails. Linting is a
+    # PR-time concern anyway; the scanners are what need default-branch
+    # coverage.
+    if: github.event_name == 'pull_request' && needs.changes.outputs.any == 'true'
     permissions:
       contents: read
       statuses: write
-    uses: vaam-apps/.github/.github/workflows/lint.yml@b04a3ff5fd9334005b6cd9f14ac55bc1ae7f2879 # vaam-apps/.github main
+    uses: vaam-apps/.github/.github/workflows/lint.yml@01d7a15ee827152447d3b3b7031fdc8a02d98dd7 # vaam-apps/.github main
     with:
       filter-regex-exclude: '(^|/)(AGENTS|CLAUDE)\.md$'
     secrets:
@@ -91,7 +106,7 @@ jobs:
     permissions:
       security-events: write
       contents: read
-    uses: vaam-apps/.github/.github/workflows/trivy.yml@b04a3ff5fd9334005b6cd9f14ac55bc1ae7f2879 # vaam-apps/.github main
+    uses: vaam-apps/.github/.github/workflows/trivy.yml@01d7a15ee827152447d3b3b7031fdc8a02d98dd7 # vaam-apps/.github main
     with:
       scanners: "vuln,secret,misconfig"
       upload-sarif: true

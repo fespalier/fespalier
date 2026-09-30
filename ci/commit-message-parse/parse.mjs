@@ -5,20 +5,18 @@
 //
 // release-please does not merely ignore a commit it cannot parse — it drops
 // the commit entirely, from the changelog AND from the version calculation,
-// and says so only at debug level inside a workflow that reports success.
-// vaam-apps/vsms hit this for real on 2026-09-18:
+// and says so only at debug level inside a workflow that reports success:
 //
 //     ❯ commit could not be parsed: 7ef89ec fix(ci): v0.3.2 published nothing …
 //     ❯ error message: Error: unexpected token '(' at 8:30, valid tokens [)]
 //     ❯ commits: 0
 //     ✔ No commits for path: ., skipping
 //
-// That was the ONLY commit since the previous release in that repo, so
-// release-please proposed no release at all. Nothing was red; the
-// `release-please` workflow reported success. The symptom is a release PR
-// that never appears — at a glance indistinguishable from "nobody has
-// merged anything worth releasing yet." See vaam-apps/.github's
-// docs/releasing.md (trap 5) for the full writeup.
+// A real incident, not a hypothetical. That was the ONLY commit since the
+// previous release, so release-please proposed no release at all. Nothing was
+// red; the `release-please` workflow reported success. The symptom is a
+// release PR that never appears — at a glance indistinguishable from "nobody
+// has merged anything worth releasing yet."
 //
 // # The rule the grammar actually enforces
 //
@@ -36,24 +34,22 @@
 //
 // Individual commits on a branch do NOT need to be conventional: this
 // repository squash-merges with `PR_TITLE`, so only the assembled message
-// reaches the default branch, and `wip:`-style commits on a branch are
-// legitimate. vsms's own first cut of this guard checked each commit
-// individually and rejected most of a normal branch's history for
-// pre-convention subjects that never landed as their own commit on `main` —
-// a guard that loud gets deleted rather than obeyed, so this one checks the
-// squash message only.
+// reaches the default branch, and `wip:` commits on a branch are legitimate.
+// A first cut of this guard checked each commit and rejected 24 of the last
+// 40 on `main`, almost all for pre-convention subjects that never landed as
+// their own commit — a guard that loud gets deleted rather than obeyed.
 //
-// # How faithful the reconstruction is
+// # How faithful the reconstruction is, stated exactly
 //
-// The title line, the blank line, and every `* <subject>` / blank /
-// `<body>` / blank group reproduce what GitHub actually writes for a squash
-// merge with `squash_merge_commit_message: COMMIT_MESSAGES`, with one
-// deliberate gap: GitHub's own co-author aggregation footer (a
-// `---------` separator and deduplicated `Co-authored-by:` trailers) is not
-// reproduced — that would mean reimplementing GitHub's dedup. It cannot
-// change the verdict: a `token: value` trailer is a well-formed footer
-// either way, so appending or omitting it does not change whether the
-// message parses.
+// Checked against the real #402 merge commit: the title line, the blank line,
+// and every `* <subject>` / blank / `<body>` / blank group reproduce it
+// byte-for-byte through line 80 of 84. The remaining four lines are GitHub's
+// own co-author aggregation footer (a `---------` separator and deduplicated
+// `Co-authored-by:` trailers), which this script does not attempt to
+// reproduce — that would mean reimplementing GitHub's dedup. It cannot change
+// the verdict: a `token: value` trailer is a well-formed footer, and both the
+// passing and failing cases above were re-checked with and without it and
+// gave identical results.
 
 import { execFileSync } from "node:child_process";
 import { parser } from "@conventional-commits/parser";

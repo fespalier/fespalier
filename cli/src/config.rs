@@ -7,7 +7,7 @@
 //!   format: false           # default; true runs `dart format` on the output
 //!   output_manifest: lib/app.routes.g.dart   # default: none, the manifest is in `output`
 //!   meta: optional          # default; `required` makes a route without meta.dart an error
-//!   case_sensitive: true    # default; false matches `/Products` too
+//!   case_sensitive: true    # default; false matches `/Products` too (a route.dart sets it per folder)
 //!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
 //!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
@@ -52,7 +52,8 @@ pub struct Config {
     pub output_manifest: Option<String>,
     /// `meta: required`: every route needs a meta.dart.
     pub meta_required: bool,
-    /// Whether routes match paths by case; `false` emits `caseSensitive: false` on each.
+    /// Whether routes match paths by case; `false` emits `caseSensitive: false` on each. The
+    /// default for folders with no `route.dart` at or above them.
     pub case_sensitive: bool,
     pub data_retry: DataRetry,
     /// Keep rendering the old value or error while `data.dart` reloads.

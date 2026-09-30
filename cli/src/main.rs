@@ -222,7 +222,7 @@ pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize
 pub fn analyze(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, resolve::App)> {
     let mut diags = diag::Diags::default();
     let tree = scan::scan(app_dir, &mut diags)?;
-    let app = resolve::resolve(&tree, &mut diags);
+    let app = resolve::resolve(&tree, cfg.case_sensitive, &mut diags);
     manifest::check(&app, cfg, &mut diags);
     let code = emit::emit(&app, cfg, &mut diags);
     Ok((code, diags, app))
@@ -301,6 +301,8 @@ fn watch(project: &Path) -> Result<()> {
 }
 
 #[cfg(test)]
+mod case_tests;
+#[cfg(test)]
 mod cli_tests;
 #[cfg(test)]
 mod manifest_tests;
@@ -310,6 +312,8 @@ mod nav_tests;
 mod paths_tests;
 #[cfg(test)]
 mod refresh_tests;
+#[cfg(test)]
+mod rest_types_tests;
 #[cfg(test)]
 mod route_api_tests;
 #[cfg(test)]

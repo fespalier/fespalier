@@ -9,8 +9,6 @@ maintainer steps (pub.dev, Homebrew tap, Scoop bucket, Marketplace) are in READM
 - Root navigator per folder (`navigator.dart`, #1), non-inherited `present.dart` for sheets
   and dialogs on the root navigator (#2), tab `container` builder and shell transitions (#3);
   manifest `presentation` for them.
-- `page.dart` (and other views) as a function, `routeName` (#7); `not-found.dart` spelling and
-  `file_style` (#10).
 - `AppRoutes.dataAt(uri)` / `match(uri)` and a `prefetch` handle (#8).
 
 ## Later
@@ -24,4 +22,4 @@ maintainer steps (pub.dev, Homebrew tap, Scoop bucket, Marketplace) are in READM
 - Incremental scan/resolve/emit for very large apps (`fsp watch` already reuses parse results).
 - Instance methods `ProductRoute(id: 2).watch(ref)` / `.read(ref)`: needs the generated file to name the data type (or Dart macros); `watch` and `read` are static for now.
 - A section's `data.dart` keyed by query parameters, and a typed handle (`.data`, `.refresh`) for it.
-- `fsp new --not-found`, and a `not_found.dart` that can take the segments above it.
+- A `not_found.dart` that can take the segments above it.

@@ -241,6 +241,8 @@ fespalier:
 write `not-found.dart` instead of `not_found.dart` (see [File names](#file-names)).
 `meta: required` makes a route without a [`meta.dart`](#route-manifest-and-metadart) an error, and
 `output_manifest` writes the route manifest to a library of its own (same section).
+The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
+found by its name, like the other files.
 
 **Platform notes.**
 
@@ -279,12 +281,13 @@ that returns a widget. Function files export one top-level function.
 | `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data) | segments, query (named; a section's takes segments only) |
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
-| `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside |
-| `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder | `uri`; segments at or above its folder; query (named) |
-| `redirect.dart` | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `ProviderContainer c` first | `uri`; segments; query (named) |
+| `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside; the navigation [`extra`](#typed-extra) |
+| `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder | `uri`; segments at or above its folder; query (named); `extra` |
+| `redirect.dart` | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `ProviderContainer c` first | `uri`; segments; query (named); `extra` |
 | `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
 | `not_found.dart` | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
 | `meta.dart` | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart) | nothing: it is data |
+| `extra_codec.dart` | at the root of the app folder only: a top-level `extraCodec`, the `Codec<Object?, Object?>` the router saves an [`extra`](#restoring-extra-on-the-web) with | nothing: it is data |
 
 ### Function views
 
@@ -360,7 +363,8 @@ every parameter:
 
 1. **By name.** A parameter named like a `$segment` in the path gets that segment.
    `data`, `child`, `navigationShell` (or `shell`), `error`, `stackTrace`, `retry`, `uri`
-   and, in a page, `extra` get what their name says, in the files where they make sense.
+   and `extra` (in a page, a layout, a guard or a redirect) get what their name says, in the
+   files where they make sense.
 2. **Query.** An *optional* parameter that is nullable or a `List` of
    `String`/`int`/`double`/`bool` is a query parameter: `int? page` gets `?page=2`, and
    `List<String> tags = const []` gets every `?tags=`.
@@ -599,7 +603,7 @@ GuardResult guard(ProviderContainer c, {required Uri uri}) =>
   folder with a page and its own guard keeps its guard for that page and everything nested
   in it; guards above it run first.
 - **Parameters.** The `ProviderContainer` comes first, then named parameters: `uri` (the
-  requested location, a `Uri`), the segments of the guard's own folder and the ones above
+  requested location, a `Uri`), `extra` (see [Typed `extra`](#typed-extra)), the segments of the guard's own folder and the ones above
   it (`{required String shop}`), and query parameters (optional and nullable, `String? ref`).
   A guard above `$id` can't ask for `id`: that's an error at the parameter. Segments are
   typed like everywhere else. A guard's query parameters stay its own: they don't become
@@ -778,20 +782,111 @@ NoteRoute(id: 3).go(context, extra: 'oops');    // compile error: a String isn't
 ```
 
 The parameter **must be nullable** (`Note?`, `Object?` or `dynamic`; anything else is an
-error at that parameter). The object isn't in the URL, so a deep link, a reload, a page
-opened from `context.go('/notes/3')` and a restored state all get `null`: build the page
-from the URL (`id`) and treat `extra` as a shortcut, not the source of truth. Passing an
-object of the wrong type around the typed route (a plain `context.go(location, extra: …)`)
-is an assertion error in debug builds and reads as `null` in release builds.
+error at that parameter). The object isn't in the URL, so a deep link, a page opened from
+`context.go('/notes/3')` and (without an [`extraCodec`](#restoring-extra-on-the-web)) a
+reload or a restored state all get `null`: build the page from the URL (`id`) and treat
+`extra` as a shortcut, not the source of truth. Passing an object of the wrong type around
+the typed route (a plain `context.go(location, extra: …)`) is an assertion error in debug
+builds and reads as `null` in release builds.
 
-`extra` is a page-only name: a segment can't be called `extra`, and a query parameter of
+`extra` is a reserved name: a segment can't be called `extra`, and a query parameter of
 that name is the extra, not `?extra=`. The generated file has to name the type for the
 typed arguments, which is the one place it copies from your imports: it imports the type
-`show`ing that name from each of `page.dart`'s imports (a library that doesn't export it is
-ignored; a type declared in `page.dart` itself, or under an import prefix, is found too),
-so the type must be reachable from `page.dart`'s own imports. The built-in `dart:core`
-types need nothing. Only pages take an `extra`; go_router's `extra` isn't restored on web
-reloads unless you give the router an `extraCodec`.
+`show`ing that name from each of the file's imports (a library that doesn't export it is
+ignored; a type declared in the file itself, or under an import prefix, is found too),
+so the type must be reachable from the file's own imports. The built-in `dart:core`
+types need nothing.
+
+**Layouts, guards and redirects take it too.** A `layout.dart`, a `guard.dart` or a
+`redirect.dart` can ask for `extra` the same way (a nullable type; a guard and a redirect take
+it as a named parameter). Each gets the extra of the location it is at now, `state.extra`:
+
+```dart
+// notes/layout.dart: the frame above every note
+class NotesLayout extends StatelessWidget {
+  const NotesLayout({super.key, required this.child, this.extra});
+  final Widget child;
+  final Note? extra;
+  …
+}
+
+// notes/$id/guard.dart: a draft isn't shown yet
+GuardResult guard(ProviderContainer c, {Note? extra}) =>
+    extra?.title == 'draft' ? const HomeRoute().location : null;
+```
+
+A layout or a guard sees the extra of *every* route it covers, so its type has to fit theirs,
+or it's an error at its parameter, with a code frame that lists the routes:
+
+- A guard or layout takes `Object?` (or `dynamic`) to accept anything, or **the type of the
+  routes it covers**: `Note?` above pages that take `Note?`. Nullability aside, the names have
+  to match. A route that takes no extra puts no condition on it.
+- So a layout above routes with different extra types must take `Object?`; otherwise the
+  routes that don't fit are listed:
+
+  ```
+  error: `extra` is `Note?` here, but the routes it covers take other types: `/notes/:id/print`
+         (notes/$id/print/page.dart takes `Receipt?`); a layout sees the extra of every route it
+         covers, so declare it as `Object?` to accept any of them, or as their type when they share one
+    ┌─ lib/app/notes/layout.dart:3:53
+  ```
+
+  A page's or redirect's own type decides for a route; on a route without one, the guards and
+  layouts above it must agree with each other. A layout isn't compared with a `redirect.dart`
+  route below it, which never shows it.
+- A route that takes no extra of its own gets the type its guards and layouts agree on, so
+  `NoteRoute(...).go(context, extra: note)` is typed even if the page ignores it.
+  `Object?` says nothing about a type: it adds no typed argument.
+- **A wrong type never crashes them.** A layout, a guard or a redirect sees extras meant for
+  other routes, so an object that isn't a `Note` reads as `null` (`extraOrNull`), and so does an
+  extra that isn't there. Only a page asserts, as above. The type is nullable so that `null`
+  always fits.
+
+#### Restoring `extra` on the web
+
+go_router keeps a navigation's `extra` next to its location, for the browser's history and for
+state restoration, but can only save what is JSON. Without help, an object with a `toJson()`
+comes back as the JSON `jsonEncode` made of it (a `Map`), and any other object is dropped
+(and go_router logs a warning): neither is your type, so a page that asks for a `Note?` gets
+`null` in release builds and, for the `Map`, an assertion in debug builds. To get the object
+back, give the router an `extraCodec`.
+
+Put a top-level `extraCodec` in `lib/app/extra_codec.dart`, at the root of the app folder (a
+`const`, a `final` or a getter; `fsp` only looks for the name). The generated
+`AppRoutes.router()` passes it as `GoRouter(extraCodec: …)`:
+
+```dart
+// lib/app/extra_codec.dart
+import 'package:fespalier/fespalier.dart';
+
+final extraCodec = ExtraCodec({
+  Note: (toJson: (Note n) => n.toJson(), fromJson: Note.fromJson),
+  Mode: (toJson: (Mode m) => m.name, fromJson: Mode.values.byName),
+});
+```
+
+`ExtraCodec` takes each type and how it becomes JSON and back (annotate the parameter of
+`toJson`; a constructor tear-off does for `fromJson`), and saves an object under its type's
+name. `null`, strings, numbers, booleans and plain JSON lists and maps need no entry. It
+never breaks navigation: an object whose type isn't registered is saved as `null`, and saved
+data that no longer reads (the type was removed, or `fromJson` throws) comes back as `null`,
+so a page falls back to what the URL says. Pass `strict: true` to throw instead, in a test that
+checks you registered every type.
+
+- The type is looked up by its exact runtime type: register each subclass of a sealed class.
+- The name is `Type.toString()`, which a release build for the web minifies (stable within a
+  build, different in the next). To keep saved data readable across deployments, name the types:
+  `ExtraCodec({...}, names: {Note: 'note'})`.
+- Write your own `Codec<Object?, Object?>` instead if you like (`const extraCodec = MyCodec();`).
+- `AppRoutes.mount()` doesn't take it: a router you build yourself passes
+  `extraCodec: extraCodec` (imported from that file) to `GoRouter`. A router restores only what
+  it is given a `restorationScopeId` for (see [State restoration](#state-restoration)).
+- `extra_codec.dart` in a subfolder is a warning, and a file without an `extraCodec` is an
+  error.
+
+`examples/tabs` does this for a `ProfileDraft` passed to its edit page, and its restoration test
+restarts the app and checks the draft is still there (and, for contrast, what a router without the
+codec restores). `examples/features` has a layout and a guard that read a `Note?` extra.
 
 ### `data.dart`: a function, a selector or a provider
 
@@ -1140,9 +1235,13 @@ these pages with `layoutPage(...)`, with an id from the layout's folder instead.
 Material page (a Cupertino one inside a `CupertinoApp`); a layout's page is not where a
 route transition happens, so this changes nothing you see.
 
+- **`extra`.** An object passed with `context.go(…, extra: …)` is saved with the location if the
+  router has an [`extraCodec`](#restoring-extra-on-the-web) that knows its type (the same one
+  the browser's history uses on the web).
+
 Ids come from folder names, so renaming a folder drops what was saved under the old one, once.
-`examples/tabs/test/restoration_test.dart` restores the selected tab, a background tab's stack
-and a page's `RestorableInt` with `tester.restartAndRestore()`. Build the router in a
+`examples/tabs/test/restoration_test.dart` restores the selected tab, a background tab's stack,
+a page's `RestorableInt` and a page's `extra` with `tester.restartAndRestore()`. Build the router in a
 `State`, not a `final`, in such a test: a router remembers where it went.
 
 ## The generator
@@ -1264,8 +1363,8 @@ It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
 
 - **Types are never re-spelled.** The generator doesn't copy your imports. Values flow
   through inference, and each route's provider is a `static final` whose type is inferred.
-  The one exception is a page's [typed `extra`](#typed-extra), whose type the typed route
-  has to name; it imports that type by name from `page.dart`'s imports.
+  The one exception is a page's (or a layout's, guard's or redirect's) [typed `extra`](#typed-extra),
+  whose type the typed route has to name; it imports that type by name from the file's imports.
 - **Segments and query parameters are parsed into a record** (`({int id, int? page})`).
   Records compare by value, so providers are keyed by them directly.
 - **Page-less folders** fold into their children's paths (`greet/$name` → `'greet/:name'`).
@@ -1464,12 +1563,12 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 263 tests (237 unit, 21 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 287 tests (261 unit, 21 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, transitions, all three data
-  forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects,
+  forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
   scaffolding, the route manifest, meta.dart and restoration ids, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 232 Flutter tests (the package 100, `shop` 23, `features` 92, `tabs` 17); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 246 Flutter tests (the package 110, `shop` 23, `features` 94, `tabs` 19); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

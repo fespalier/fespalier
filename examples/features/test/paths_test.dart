@@ -150,6 +150,31 @@ void main() {
       expect(find.text('Note 6: no extra'), findsOneWidget);
     });
 
+    testWidgets('a layout gets the extra of the location it shows', (
+      tester,
+    ) async {
+      await boot(tester, '/');
+      const NoteRoute(id: 3)
+          .go(tester.element(find.text('Home')), extra: const Note('Hello'));
+      await tester.pumpAndSettle();
+      expect(find.text('Notes frame: Hello'), findsOneWidget);
+      expect(find.text('Note 3: Hello'), findsOneWidget);
+
+      await boot(tester, '/notes/3');
+      expect(find.text('Notes frame: no extra'), findsOneWidget);
+    });
+
+    testWidgets('and so does a guard: a draft goes home', (tester) async {
+      await boot(tester, '/');
+      const NoteRoute(id: 3).go(
+        tester.element(find.text('Home')),
+        extra: const Note('draft'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Notes frame: draft'), findsNothing);
+      expect(find.text('Home'), findsOneWidget);
+    });
+
     testWidgets('an object of another type is an error in debug builds',
         (tester) async {
       await boot(tester, '/');

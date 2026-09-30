@@ -16,7 +16,6 @@ maintainer steps (pub.dev, Homebrew tap, Scoop bucket, Marketplace) are in READM
 - `meta_unique: [code, slug]`: duplicate check over literal named arguments of `meta`.
 - Typed catch-alls (`List<int>`); today a catch-all is a `List<String>`.
 - Per-folder `caseSensitive`, and a `case_sensitive` that keeps `.location` in the requested case.
-- `extra` for layouts and guards, and restoring it (an `extraCodec`) on the web.
 - An IntelliJ plugin on top of the JSON diagnostics.
 - Localized paths.
 - Incremental scan/resolve/emit for very large apps (`fsp watch` already reuses parse results).

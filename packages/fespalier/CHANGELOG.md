@@ -1,5 +1,11 @@
 ## Unreleased
 
+- `ExtraCodec` and `ExtraJson`: a `Codec<Object?, Object?>` for `GoRouter(extraCodec:)` built from
+  a map of type to `toJson` and `fromJson`, so an `extra` survives the browser's history and state
+  restoration. It never throws by default (an unknown or unreadable object is `null`); `names:` and
+  `strict:` are options.
+- `extraOrNull<T>(state)`: what generated layouts, guards and redirects call for their `extra`;
+  unlike `extraOf` it never asserts. Regenerate `lib/app.g.dart` with the matching `fsp`.
 - `RouteInfo<M>`, `RouteParam` (with `catchAll`), `RouteTab`, `RoutePresentation`, `routeTemplate`
   and `lookupRoute`: what the generated route manifest (`AppManifest.all`, `byType`, `byPath`) is
   made of, with `metaAs<T>()` for a route's `meta.dart`.

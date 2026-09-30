@@ -16,6 +16,8 @@ pub struct Module {
     pub classes: Vec<Class>,
     pub functions: Vec<Function>,
     pub variables: Vec<Variable>,
+    /// Top-level getters: `Codec<Object?, Object?> get extraCodec => ...;`
+    pub getters: Vec<Getter>,
     /// Where the grammar first gave up on the file (an ERROR or MISSING node),
     /// after primary constructors were read separately. The file may still be
     /// valid Dart the grammar is too old for; the declarations above are read
@@ -60,6 +62,11 @@ pub struct Function {
     pub ret: Option<Ty>,
     pub params: Vec<Param>,
     pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Getter {
+    pub name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -212,6 +219,7 @@ pub fn parse(src: &str) -> Module {
             }
             "function_declaration" => m.functions.extend(r.function(*n)),
             "top_level_variable_declaration" => m.variables.extend(r.variables(*n)),
+            "getter_declaration" => m.getters.extend(r.getter(*n)),
             _ => {}
         }
     }
@@ -356,6 +364,11 @@ impl Reader<'_> {
             .map(|p| self.params(p, &HashMap::new()))
             .unwrap_or_default();
         Some(Function { name, ret, params, span: Span::of(name_node) })
+    }
+
+    fn getter(&self, n: Node) -> Option<Getter> {
+        let name = n.child_by_field_name("signature")?.child_by_field_name("name")?;
+        Some(Getter { name: self.text(name).to_string() })
     }
 
     fn variables(&self, n: Node) -> Vec<Variable> {

@@ -434,10 +434,14 @@ fn the_extra_type_comes_from_wherever_the_page_gets_it() {
 }
 
 #[test]
-fn only_pages_take_an_extra() {
-    let layout = "class ShopLayout extends StatelessWidget { const ShopLayout({super.key, required this.child, this.extra}); final Widget child; final Object? extra; }";
-    let e = errors(&[("shop/layout.dart", layout), ("shop/page.dart", &page("Shop"))]);
-    assert!(e.is_empty() || e.iter().all(|m| !m.contains("extra")), "an optional one is left at its default: {e:?}");
+fn loading_and_error_views_take_no_extra() {
+    // Layouts, guards and redirects do (see `extra_tests.rs`); a view built while data loads
+    // has no route of its own to have passed one to, so an optional one is left at its default.
+    let loading = "class ShopLoading extends StatelessWidget { const ShopLoading({super.key, this.extra}); final Object? extra; }";
+    let data = "Future<String> data(Ref ref) async => '';";
+    let shop = "class ShopPage extends StatelessWidget { const ShopPage({super.key, required this.data}); final String data; }";
+    let e = errors(&[("shop/loading.dart", loading), ("shop/data.dart", data), ("shop/page.dart", shop)]);
+    assert!(e.is_empty() || e.iter().all(|m| !m.contains("extra")), "{e:?}");
     let c = code(&[("page.dart", HOME)]);
     lacks(&c, &["extraOf", "extra:"]);
 }

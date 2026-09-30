@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 /// What go_router does with the paths the generated code hands it: catch-all
 /// parameters (`:rest(.+)`), `caseSensitive`, trailing slashes and `extra`.
 void main() {
+  int? seen;
+
   GoRouter router(String at, {bool caseSensitive = true}) => GoRouter(
     initialLocation: at,
     routes: [
@@ -34,6 +36,15 @@ void main() {
         path: '/item',
         caseSensitive: caseSensitive,
         builder: (context, state) => Text('item ${extraOf<int>(state)}'),
+      ),
+      GoRoute(
+        path: '/seen',
+        redirect: (context, state) {
+          // What a guard, a layout or a redirect reads: never an assertion.
+          seen = extraOrNull<int>(state);
+          return null;
+        },
+        builder: (context, state) => Text('seen $seen'),
       ),
     ],
   );
@@ -188,6 +199,23 @@ void main() {
       GoRouter.of(tester.element(find.text('home'))).go('/item', extra: 'x');
       await tester.pumpAndSettle();
       expect(tester.takeException(), isA<AssertionError>());
+    });
+
+    testWidgets('extraOrNull is null for another type, without an error', (
+      tester,
+    ) async {
+      await open(tester, '/');
+      final r = GoRouter.of(tester.element(find.text('home')));
+      r.go('/seen', extra: 7);
+      await tester.pumpAndSettle();
+      expect(find.text('seen 7'), findsOneWidget);
+      r.go('/seen', extra: 'x');
+      await tester.pumpAndSettle();
+      expect(find.text('seen null'), findsOneWidget);
+      r.go('/seen');
+      await tester.pumpAndSettle();
+      expect(find.text('seen null'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }

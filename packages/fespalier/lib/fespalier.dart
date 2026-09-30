@@ -13,6 +13,7 @@ export 'package:hooks_riverpod/hooks_riverpod.dart';
 export 'package:hooks_riverpod/misc.dart' show ProviderListenable;
 
 export 'src/data_view.dart';
+export 'src/extra_codec.dart';
 export 'src/guards.dart';
 export 'src/layout_page.dart';
 export 'src/location.dart';

@@ -32,6 +32,8 @@ struct FileCx {
     manifest: Option<ManifestCx>,
     /// `import '...' show Product;` lines for the types of typed `extra`s.
     extra_imports: Vec<String>,
+    /// `_i9.extraCodec`, from the app folder's `extra_codec.dart`: `router()` hands it to GoRouter.
+    extra_codec: Option<String>,
     /// Whether routes match paths by case.
     case_sensitive: bool,
     /// `keep_previous` from the config: the DataViews' `keepPrevious`.
@@ -275,6 +277,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         params_fns: fns.into_iter().map(|f| params_fn(app, f)).collect(),
         providers: app.routes.iter().enumerate().filter_map(|(id, r)| provider(app, cfg, id, r)).collect(),
         extra_imports: extra_imports(app, cfg),
+        extra_codec: app.extra_codec.as_ref().map(|c| format!("_i{}.extraCodec", c.import)),
         case_sensitive: cfg.case_sensitive,
         keep_previous: cfg.keep_previous,
     };
@@ -297,6 +300,16 @@ fn in_builder(b: &Bind) -> String {
         Bind::State => "state".into(),
         // Typed by the parameter it fills.
         Bind::Extra => "extraOf(state)".into(),
+    }
+}
+
+/// Like [`in_builder`] for what sees the extra of routes that aren't its own: a layout, a
+/// guard or a redirect. What isn't the type it asks for reads as `null`, where a page
+/// (whose route the extra was passed to) asserts.
+fn in_hook(b: &Bind) -> String {
+    match b {
+        Bind::Extra => "extraOrNull(state)".into(),
+        _ => in_builder(b),
     }
 }
 
@@ -400,10 +413,10 @@ fn layout_cx(app: &App, id: usize, layout: &resolve::Widget, fns: &mut BTreeSet<
     let r = &app.routes[id];
     let section = r.data.as_ref().filter(|_| r.is_section());
     let has_params = !r.segs.is_empty() || !r.layout_query.is_empty();
-    let wrapped = with_sections(app, &layout.args, layout.call(in_builder));
+    let wrapped = with_sections(app, &layout.args, layout.call(in_hook));
     let reads_url = has_params
         && (section.is_some()
-            || wrapped != layout.call(in_builder)
+            || wrapped != layout.call(in_hook)
             || layout.args.iter().any(|a| matches!(a.bind, Bind::Segment(_) | Bind::Query(_))));
     let seg_fn = reads_url.then(|| {
         fns.insert(ParamsFn::Layout(id));
@@ -507,7 +520,7 @@ fn hook_call(h: &Guard, name: &str, seg_fn: Option<String>) -> CallCx {
     }
     args.extend(h.args.iter().map(|a| match a.bind {
         Bind::Uri => format!("{}: state.uri", a.name),
-        _ => format!("{}: {}", a.name, in_builder(&a.bind)),
+        _ => format!("{}: {}", a.name, in_hook(&a.bind)),
     }));
     CallCx { seg_fn, call: format!("_i{}.{name}({})", h.import, args.join(", ")) }
 }

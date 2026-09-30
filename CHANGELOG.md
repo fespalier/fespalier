@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+### `extra` for layouts, guards and redirects, and an `extraCodec`
+
+- **`layout.dart`, `guard.dart` and `redirect.dart` can take `extra`**, bound from
+  `state.extra`: `const NotesLayout({super.key, required this.child, this.extra})` with
+  `final Note? extra;`, or `GuardResult guard(ProviderContainer c, {Note? extra})`. A layout gets
+  the extra of the location it is showing. Like a page's, the type must be nullable (an error at
+  the parameter otherwise), and a guard or redirect takes it as a named parameter.
+- **The types must agree, with an error at the parameter and a code frame.** A guard or layout
+  must take `Object?` (or `dynamic`) or the type of the routes it covers; one above routes with
+  different `extra` types must take `Object?`, or the error lists the routes that don't fit. A
+  page's (or redirect's) own type decides for its route; where a route has none, the guards and
+  layouts above it must agree with each other.
+- **A wrong type reads as `null`, never a crash,** for a layout, a guard and a redirect (the new
+  runtime function `extraOrNull<T>(state)`): they see extras meant for other routes. A page keeps
+  its `extraOf`, which asserts in debug builds and reads as `null` in release.
+- **A route without an `extra` of its own is typed by its guards and layouts:** when they ask for
+  one concrete type (not `Object?`), the typed route's `go`, `push` and `replace` take it as
+  `extra:`. A `redirect.dart` route gets a typed `extra:` like a page.
+- **`lib/app/extra_codec.dart` restores `extra`.** A top-level `extraCodec` in a file of that
+  name at the root of the app folder (a `const`, a `final` or a getter of a
+  `Codec<Object?, Object?>`) is found by `fsp` (no config key; `extra-codec.dart` works too) and
+  `AppRoutes.router()` passes it as `GoRouter(extraCodec: ...)`, so an `extra` survives the
+  browser's history and state restoration. Without one, go_router saves only JSON: an object
+  with `toJson()` came back as a `Map`. A missing `extraCodec` is an error, and the file in a
+  subfolder is a warning.
+- **`ExtraCodec` in the runtime package builds the codec** from a map of type to `toJson` and
+  `fromJson`: `ExtraCodec({Note: (toJson: (Note n) => n.toJson(), fromJson: Note.fromJson)})`. It
+  saves an object under its type's name, passes `null`, strings, numbers, bools and plain JSON
+  through, and never throws: an unregistered type is saved as `null`, and data that no longer
+  reads comes back as `null`. `names:` gives types a name that survives web minification, and
+  `strict: true` throws for tests.
+- `examples/tabs` passes a `ProfileDraft` to its edit page with a codec, and its restoration
+  test restarts the app and finds the draft again (and shows what a router without the codec
+  restores). `examples/features` has a layout and a guard that read a `Note?` extra.
+
 ### View files as functions, and `not-found.dart`
 
 - **`page.dart`, `loading.dart`, `error.dart`, `layout.dart` and `not_found.dart` can export a

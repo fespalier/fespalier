@@ -21,10 +21,12 @@ pub enum Kind {
     Transition,
     NotFound,
     Meta,
+    /// The app folder's own `extra_codec.dart`: read at the root only.
+    ExtraCodec,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 10] = [
+    pub const ALL: [Kind; 11] = [
         Kind::Page,
         Kind::Data,
         Kind::Loading,
@@ -35,6 +37,7 @@ impl Kind {
         Kind::Transition,
         Kind::NotFound,
         Kind::Meta,
+        Kind::ExtraCodec,
     ];
 
     pub fn file(self) -> &'static str {
@@ -49,6 +52,7 @@ impl Kind {
             Kind::Transition => "transition.dart",
             Kind::NotFound => "not_found.dart",
             Kind::Meta => "meta.dart",
+            Kind::ExtraCodec => "extra_codec.dart",
         }
     }
 

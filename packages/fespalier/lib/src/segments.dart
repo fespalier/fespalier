@@ -176,6 +176,15 @@ T? extraOf<T>(GoRouterState s) {
   return null;
 }
 
+/// A layout's, guard's or redirect's `extra` parameter: what the navigation to
+/// the location it is at passed, like [extraOf], but it never asserts. These see
+/// the extra of every route they cover, including routes that take another
+/// type or none, so an object that isn't a `T` is just `null` to them.
+T? extraOrNull<T>(GoRouterState s) {
+  final extra = s.extra;
+  return extra is T ? extra : null;
+}
+
 /// Generated builders call this: parse the segments and query parameters, or
 /// fall back to not-found when a segment doesn't fit its type
 /// (`/products/abc`).

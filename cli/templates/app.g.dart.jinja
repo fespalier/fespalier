@@ -152,6 +152,10 @@ abstract final class AppRoutes {
         initialLocation: initialLocation,
         observers: observers,
         restorationScopeId: restorationScopeId,
+{% if extra_codec %}
+        // extra_codec.dart: what a page's `extra` is saved as, so it survives a reload on the web.
+        extraCodec: {{ extra_codec }},
+{% endif %}
         routes: mount(),
         errorBuilder: (context, state) => notFound(state.uri),
       );
@@ -231,7 +235,11 @@ final class {{ r.name }}Route extends TypedLocation {
 {% endif %}
 {% if r.extra %}
 
+{% if extra_codec %}
+  /// Navigates here with an `extra`: an object that isn't in the URL, so a deep link leaves it null; a reload restores it through extra_codec.dart.
+{% else %}
   /// Navigates here with an `extra`: an object that isn't in the URL, so a deep link or a reload leaves it null.
+{% endif %}
   @override
   void go(BuildContext context, { {{- r.extra }} extra}) => context.go(location, extra: extra);
 

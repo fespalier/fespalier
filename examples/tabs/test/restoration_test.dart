@@ -8,7 +8,11 @@ import 'package:tabs/app.g.dart';
 /// `restartAndRestore` there is a new one, and only the restored state can put
 /// it back where it was.
 class RestorableApp extends StatefulWidget {
-  const RestorableApp({super.key});
+  /// [codec] false builds the router without `extra_codec.dart`'s codec, to
+  /// see what restoration does to an `extra` without one.
+  const RestorableApp({super.key, this.codec = true});
+
+  final bool codec;
 
   @override
   State<RestorableApp> createState() => _RestorableAppState();
@@ -16,7 +20,13 @@ class RestorableApp extends StatefulWidget {
 
 class _RestorableAppState extends State<RestorableApp> {
   // The one line an app adds to get restoration: the scope id.
-  late final GoRouter router = AppRoutes.router(restorationScopeId: 'router');
+  late final GoRouter router = widget.codec
+      ? AppRoutes.router(restorationScopeId: 'router')
+      : GoRouter(
+          restorationScopeId: 'router',
+          routes: AppRoutes.mount(),
+          errorBuilder: (context, state) => AppRoutes.notFound(state.uri),
+        );
 
   @override
   Widget build(BuildContext context) => ProviderScope(
@@ -64,6 +74,45 @@ void main() {
     expect(location(tester), '/profile/edit');
     expect(find.text('Edit profile'), findsOneWidget);
     expect(selected(tester), 2);
+  });
+
+  testWidgets('an extra survives it, saved by extra_codec.dart', (tester) async {
+    await tester.pumpWidget(const RestorableApp());
+    await tester.pumpAndSettle();
+
+    await tapTab(tester, 'Profile');
+    await tester.tap(find.text('Edit profile'));
+    await tester.pumpAndSettle();
+    // The page was opened with `extra: ProfileDraft(name: 'Ada')`.
+    expect(find.text('Draft for Ada'), findsOneWidget);
+
+    await tester.restartAndRestore();
+    await tester.pumpAndSettle();
+
+    // A new router, a new page: the extra is the object again, not lost (and
+    // not the JSON go_router would keep without a codec).
+    expect(location(tester), '/profile/edit');
+    expect(find.text('Draft for Ada'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('without the codec go_router keeps the JSON, not the object',
+      (tester) async {
+    await tester.pumpWidget(const RestorableApp(codec: false));
+    await tester.pumpAndSettle();
+
+    await tapTab(tester, 'Profile');
+    await tester.tap(find.text('Edit profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Draft for Ada'), findsOneWidget);
+
+    await tester.restartAndRestore();
+    await tester.pumpAndSettle();
+
+    // go_router saved what `jsonEncode` makes of the draft (its `toJson`), so
+    // the page gets a Map: an assertion in debug builds, `null` in release.
+    expect(tester.takeException(), isA<AssertionError>());
+    expect(find.text('Draft for Ada'), findsNothing);
   });
 
   testWidgets('a tab branch survives it: the tab and its own stack',

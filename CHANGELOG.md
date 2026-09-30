@@ -17,6 +17,9 @@ bench -- --ignored --nocapture --test-threads=1`; numbers and method in README's
   Writing only when the bytes differ was already so. Code that did change is still formatted
   in full. The first run, and every run that changes the tree, resolve and emit as before: a
   per-route cache was measured not to be worth it (a full resolve is 30 ms at 5,000 routes).
+  The files outside the app folder that were read for enum declarations are part of what has to
+  match, compared by content, and `watch` now also watches `lib/` (Dart files and folders), so
+  editing `lib/models/category.dart` regenerates.
 - **A cold `gen` and `check` parse on all cores** once a run has about 64 files to parse
   (std threads, no new dependency): 626 ms → 429 ms at 5,000 routes.
 - **The route-order check is no longer quadratic.** "`/:slug` hides `/about`" compared every
@@ -27,6 +30,40 @@ bench -- --ignored --nocapture --test-threads=1`; numbers and method in README's
   removing a route, renaming folders, changing a data type, adding and removing layouts and
   touching group folders, and after random edits from fixed seeds, errors included.
   The benchmark (`cli/src/bench.rs`) replaces the old ignored one in `parse_cache.rs`.
+
+### Enum segments, query parameters and catch-alls
+
+- **A segment, a query parameter and a catch-all can be an app enum.** `Category category` for
+  `$category`, `Sort? sort` and `List<Sort> sorts` for `?sort=`, and `List<Category> path` for
+  `$$path`, in any file that asks for them (a page, `data.dart`, a guard, a layout, `loading.dart`,
+  a provider's family argument). `/shop/shoes` is `Category.shoes`, read by name
+  (`Category.values.byName`); a segment or catch-all part that names no value is a `BadSegment`,
+  so the route shows `not_found.dart` like `/products/abc` does for an `int`, and a query
+  parameter that names none is `null` (or left out of a list). Where the route's paths match in
+  any case (`case_sensitive: false`, or a `route.dart`) the name does too; an exact match wins.
+- **`.location` writes the `name`,** and the typed route's field has the enum's type
+  (`ShopRoute(category: Category.hats, sort: Sort.price)`). `data.dart` can be keyed by an enum
+  (it is hashable, so the provider family takes it as it is), and `AppRoutes.match` and `dataAt`
+  parse it like the route does.
+- **`fsp gen` reads the enum's declaration** to tell an enum from a class, with the tree-sitter
+  Dart parser: in the file that names the type, or in a file it imports (relative, or `package:` of
+  the app's own package, followed through `export`s), with an import prefix (`m.Category`)
+  followed through its own import. The generated file imports the type the way it does a typed
+  `extra` (`import '...' show Category;`). A type it finds no enum for is an error at the
+  parameter that suggests taking a `String` and parsing it in the page; a private enum is an
+  error too. Files must agree on the enum (two enums of one name don't agree), with the error the
+  plain types give.
+- **An optional nullable parameter of a type no enum is found for** in a page, layout or view is
+  left to its default as before (it may be `Color? color`); a `data.dart`, `guard.dart` or
+  `redirect.dart` parameter that can't be a segment or a query is the error.
+- **The manifest and `fsp routes --json` show the type by name** (`Category`, `List<Category>`,
+  `Sort?`), without the import prefix the file used.
+- The runtime has `Segment.asEnum`, `Segment.asEnumRest`, `Query.asEnum` and `Query.asEnumList`;
+  `withQuery`, `restPath` and `restKey` write an enum as its `name`. Regenerate `lib/app.g.dart`
+  with the matching `fsp` if you use one.
+- `examples/features` has `shop/$category` (an enum from `lib/models/`, a `Sort?` query parameter
+  declared in the page's file, and `data.dart` keyed by the category) and `browse/$$categories`
+  (a `List<Category>` through an import prefix), with widget tests, and `dataAt` / `match` tests.
 
 ### `extra` for layouts, guards and redirects, and an `extraCodec`
 

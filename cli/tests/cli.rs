@@ -197,6 +197,41 @@ fn watch_ignores_an_output_file_inside_the_app_folder() {
     assert_eq!(w.lines(), 2, "{}", w.text());
 }
 
+/// An enum a segment names is declared under `lib/` but outside the app folder, and `watch`
+/// sees it: renaming the enum breaks the route, renaming it back mends it.
+#[test]
+fn watch_follows_an_enum_declared_outside_the_app_folder() {
+    let dir = project();
+    let root = dir.path();
+    fs::create_dir_all(root.join("lib/models")).unwrap();
+    fs::create_dir_all(root.join("lib/app/shop/$category")).unwrap();
+    fs::write(root.join("lib/models/category.dart"), "enum Category { shoes, hats }\n").unwrap();
+    fs::write(
+        root.join("lib/app/shop/$category/page.dart"),
+        format!("import 'package:demo/models/category.dart';\n{}", "class ShopPage extends StatelessWidget { const ShopPage({super.key, required this.category}); final Category category; }"),
+    )
+    .unwrap();
+    let w = Watch::start(root);
+    w.settle();
+    assert!(w.text().starts_with("✓ 2 routes → lib/app.g.dart ("), "{}", w.text());
+    assert!(fs::read_to_string(root.join("lib/app.g.dart")).unwrap().contains("Category.values"));
+
+    // Not a Dart file: nothing to regenerate.
+    fs::write(root.join("lib/models/notes.txt"), "hello").unwrap();
+    w.settle();
+    assert_eq!(w.lines(), 2, "{}", w.text());
+
+    fs::write(root.join("lib/models/category.dart"), "enum Kind { shoes, hats }\n").unwrap();
+    w.wait_for("error(s)");
+    w.settle();
+    assert!(w.text().contains("Category"), "{}", w.text());
+    let broken = w.lines();
+    fs::write(root.join("lib/models/category.dart"), "enum Category { shoes, hats }\n").unwrap();
+    w.wait_for("✓ 2 routes, lib/app.g.dart unchanged");
+    w.settle();
+    assert!(w.lines() > broken, "{}", w.text());
+}
+
 /// `watch` with `format: true` runs `dart format` when the generated code changes, and not
 /// when a save leaves it as it was (a widget's `build`, a file the generator doesn't read).
 #[cfg(unix)]

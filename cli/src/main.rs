@@ -2,6 +2,7 @@ mod config;
 mod dart;
 mod diag;
 mod emit;
+mod enums;
 mod extra;
 mod format;
 mod init;
@@ -177,10 +178,11 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, session: &mut Session, sh
     let mut diags = diag::Diags::default();
     let tree = scan::scan(&app_dir, &mut diags)?;
     let scan_diags = format!("{diags:?}");
-    let run = match session.last.reuse(&tree, &scan_diags) {
-        Some(run) => run,
+    let libs = enums::Libs::for_app(&app_dir, cfg);
+    let (run, reads) = match session.last.reuse(&tree, &scan_diags, &libs) {
+        Some(kept) => kept,
         None => {
-            let (code, app) = analyze_tree(&tree, cfg, &mut diags);
+            let (code, app) = analyze_tree(&tree, cfg, &libs, &mut diags);
             let routes = app.routes.iter().filter(|r| r.is_route()).count();
             // The manifest is a second file when `output_manifest:` asks for one. `check`
             // renders it too, but writes and compares nothing.
@@ -189,10 +191,10 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, session: &mut Session, sh
                 files.push((cfg.output.clone(), code));
                 files.extend(cfg.output_manifest.clone().zip(manifest::emit(&app, cfg)));
             }
-            Run { diags, routes, files }
+            (Run { diags, routes, files }, libs.reads())
         }
     };
-    let run = session.last.keep(tree, scan_diags, run);
+    let run = session.last.keep(tree, scan_diags, reads, run);
     show(&app_dir, &run.diags);
     if run.diags.has_errors() {
         let left = match &cfg.output_manifest {
@@ -237,15 +239,17 @@ pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize
 pub fn analyze(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, resolve::App)> {
     let mut diags = diag::Diags::default();
     let tree = scan::scan(app_dir, &mut diags)?;
-    let (code, app) = analyze_tree(&tree, cfg, &mut diags);
+    let libs = enums::Libs::for_app(app_dir, cfg);
+    let (code, app) = analyze_tree(&tree, cfg, &libs, &mut diags);
     Ok((code, diags, app))
 }
 
-/// Everything after the scan: resolve, check the manifest, emit. A function of the tree and
-/// the configuration alone, which is what lets `watch` skip it for a tree it has seen.
-fn analyze_tree(tree: &scan::Node, cfg: &Config, diags: &mut diag::Diags) -> (String, resolve::App) {
+/// Everything after the scan: resolve, check the manifest, emit. A function of the tree, the
+/// configuration and the files `libs` reads (see [`enums::Libs::reads`]), which is what lets
+/// `watch` skip it for a tree it has seen.
+fn analyze_tree(tree: &scan::Node, cfg: &Config, libs: &enums::Libs, diags: &mut diag::Diags) -> (String, resolve::App) {
     let _warm = parse_cache::prewarm(tree);
-    let app = resolve::resolve(tree, cfg.case_sensitive, diags);
+    let app = resolve::resolve(tree, cfg.case_sensitive, libs, diags);
     manifest::check(&app, cfg, diags);
     let code = emit::emit(&app, cfg, diags);
     (code, app)
@@ -254,12 +258,18 @@ fn analyze_tree(tree: &scan::Node, cfg: &Config, diags: &mut diag::Diags) -> (St
 /// Whether a filesystem event can change what the app folder generates.
 /// Reads (`Access`, which the generator itself causes) and metadata-only changes
 /// don't, and neither does the generated file when it lives in the app folder.
-fn relevant(ev: &Event, outputs: &[PathBuf]) -> bool {
+/// `watch` also sees `lib/` outside the app folder, because an enum a segment names is
+/// declared there (`lib/models/category.dart`): of those paths only Dart files and folders
+/// (a path with no extension) count, not the `.png` or `.json` beside them.
+fn relevant(ev: &Event, outputs: &[PathBuf], app_dir: &Path) -> bool {
     let kind_matters = match ev.kind {
         EventKind::Access(_) | EventKind::Modify(ModifyKind::Metadata(_)) => false,
         EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_) | EventKind::Any | EventKind::Other => true,
     };
-    kind_matters && (ev.paths.is_empty() || ev.paths.iter().any(|p| !outputs.contains(p)))
+    let matters = |p: &PathBuf| {
+        !outputs.contains(p) && (p.starts_with(app_dir) || p.extension().is_none_or(|e| e == "dart"))
+    };
+    kind_matters && (ev.paths.is_empty() || ev.paths.iter().any(matters))
 }
 
 /// What `watch` last showed, so an unchanged rerun stays quiet.
@@ -305,9 +315,10 @@ fn watch(project: &Path) -> Result<()> {
     run(true);
 
     let (tx, rx) = mpsc::channel();
+    let changes_under = app_dir.clone();
     let mut watcher = RecommendedWatcher::new(
         move |res: notify::Result<Event>| match res {
-            Ok(ev) if relevant(&ev, &outputs) => {
+            Ok(ev) if relevant(&ev, &outputs, &changes_under) => {
                 let _ = tx.send(());
             }
             Ok(_) => {}
@@ -315,7 +326,11 @@ fn watch(project: &Path) -> Result<()> {
         },
         notify::Config::default(),
     )?;
-    watcher.watch(&app_dir, RecursiveMode::Recursive)?;
+    // The app folder, and the rest of `lib/` too when it is there: that is where the enums are
+    // that segments and query parameters name, and editing one must regenerate.
+    let lib = project.join("lib");
+    let watched = if app_dir.starts_with(&lib) && lib.is_dir() { lib } else { app_dir.clone() };
+    watcher.watch(&watched, RecursiveMode::Recursive)?;
     eprintln!("watching {}/ …", cfg.app_dir);
     while rx.recv().is_ok() {
         // Editors save in bursts; one regeneration per burst.
@@ -329,6 +344,8 @@ fn watch(project: &Path) -> Result<()> {
 mod bench;
 #[cfg(test)]
 mod case_tests;
+#[cfg(test)]
+mod enum_tests;
 #[cfg(test)]
 mod cli_tests;
 #[cfg(test)]

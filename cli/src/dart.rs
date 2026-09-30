@@ -18,6 +18,10 @@ pub struct Module {
     pub variables: Vec<Variable>,
     /// Top-level getters: `Codec<Object?, Object?> get extraCodec => ...;`
     pub getters: Vec<Getter>,
+    /// Top-level enums: `enum Category { shoes, hats }`.
+    pub enums: Vec<String>,
+    /// The libraries it re-exports: `export 'category.dart';`, as written.
+    pub exports: Vec<String>,
     /// Where the grammar first gave up on the file (an ERROR or MISSING node),
     /// after primary constructors were read separately. The file may still be
     /// valid Dart the grammar is too old for; the declarations above are read
@@ -238,6 +242,8 @@ pub fn parse(src: &str) -> Module {
             "function_declaration" => m.functions.extend(r.function(*n)),
             "top_level_variable_declaration" => m.variables.extend(r.variables(*n)),
             "getter_declaration" => m.getters.extend(r.getter(*n)),
+            "enum_declaration" => m.enums.extend(r.enum_name(*n)),
+            "import_or_export" => m.exports.extend(first_named(*n, "library_export").and_then(|e| r.export(e))),
             _ => {}
         }
     }
@@ -382,6 +388,17 @@ impl Reader<'_> {
             .map(|p| self.params(p, &HashMap::new()))
             .unwrap_or_default();
         Some(Function { name, ret, params, span: Span::of(name_node) })
+    }
+
+    fn enum_name(&self, n: Node) -> Option<String> {
+        Some(self.text(n.child_by_field_name("name")?).to_string())
+    }
+
+    /// `export 'a.dart' show A;` → `a.dart`. A conditional export (`if (...) 'b.dart'`) is
+    /// its first library.
+    fn export(&self, n: Node) -> Option<String> {
+        let uri = first_named(first_named(n, "configurable_uri")?, "uri")?;
+        string_value(self.text(uri))
     }
 
     fn getter(&self, n: Node) -> Option<Getter> {

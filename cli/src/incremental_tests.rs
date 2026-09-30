@@ -96,6 +96,17 @@ impl Sim {
         fs::write(p, src).unwrap();
     }
 
+    /// A file under `lib/` but outside the app folder: `models/category.dart`.
+    fn lib_write(&self, rel: &str, src: &str) {
+        let p = self.dir.path().join("lib").join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, src).unwrap();
+    }
+
+    fn lib_remove(&self, rel: &str) {
+        let _ = fs::remove_file(self.dir.path().join("lib").join(rel));
+    }
+
     fn remove(&self, rel: &str) {
         let p = self.root().join(rel);
         if p.is_dir() {
@@ -117,7 +128,7 @@ impl Sim {
     fn fresh(&self) -> Report {
         let copy = tempfile::tempdir().unwrap();
         fs::write(copy.path().join("pubspec.yaml"), fs::read_to_string(self.dir.path().join("pubspec.yaml")).unwrap()).unwrap();
-        fs::create_dir_all(copy.path().join("lib/app")).unwrap();
+        fs::create_dir_all(copy.path().join("lib")).unwrap();
         fn copy_dir(from: &Path, to: &Path) {
             for e in fs::read_dir(from).unwrap() {
                 let e = e.unwrap();
@@ -130,7 +141,8 @@ impl Sim {
                 }
             }
         }
-        copy_dir(&self.root(), &copy.path().join("lib/app"));
+        // All of `lib/`: the enums segments name are declared outside the app folder.
+        copy_dir(&self.dir.path().join("lib"), &copy.path().join("lib"));
         let cfg = self.cfg.clone();
         std::thread::spawn(move || report(copy.path(), &cfg, &mut Session::default())).join().unwrap()
     }
@@ -299,6 +311,55 @@ fn route_dart_extra_codec_and_extra_on_layouts_follow() {
     assert!(!r.ok && r.diags.iter().any(|d| d.contains("mystery")), "{r:?}");
 }
 
+const CATEGORY: &str = "enum Category { shoes, hats }\n";
+
+/// Two routes with an enum segment: one imports the enum's file, one a file that exports it.
+fn with_enum_routes(sim: &Sim) {
+    sim.lib_write("models/category.dart", CATEGORY);
+    sim.lib_write("models/all.dart", "export 'category.dart';\n");
+    let shop = format!("import 'package:demo/models/category.dart';\n{}", page("ShopCat", "required Category category"));
+    let stock = format!("import 'package:demo/models/all.dart';\n{}", page("StockCat", "required Category category"));
+    sim.write("s1/shop/$category/page.dart", &shop);
+    sim.write("s1/stock/$category/page.dart", &stock);
+}
+
+#[test]
+fn an_enum_outside_the_app_folder_follows() {
+    let mut sim = Sim::new(&app(60), NO_CONFIG, 11);
+    with_enum_routes(&sim);
+    let r = sim.same("the first run");
+    assert!(r.ok && r.outputs[0].as_ref().unwrap().contains("Segment.asEnum(s, 'category', Category.values)"), "{r:?}");
+    // The enum's file is read each run and compared, and while it is the same nothing is parsed or resolved.
+    sim.regen();
+    assert_eq!(sim.parses, (0, 0));
+    sim.lib_write("widgets/unrelated.dart", "class W {}");
+    sim.regen();
+    assert_eq!(sim.parses, (0, 0));
+    // A value added: still an enum.
+    sim.lib_write("models/category.dart", "enum Category { shoes, hats, bags }\n");
+    assert!(sim.same("a new enum value").ok);
+    // The enum renamed: what the routes name is gone, so both are errors, as from scratch.
+    sim.lib_write("models/category.dart", "enum Kind { shoes, hats }\n");
+    let r = sim.same("the enum renamed");
+    assert!(!r.ok && r.diags.iter().any(|d| d.contains("Category")), "{r:?}");
+    sim.lib_write("models/category.dart", CATEGORY);
+    assert!(sim.same("and back").ok);
+    // It stops being an enum, is deleted, is exported from somewhere else.
+    sim.lib_write("models/category.dart", "class Category {}\n");
+    assert!(!sim.same("a class now").ok);
+    sim.lib_write("models/category.dart", CATEGORY);
+    sim.lib_remove("models/category.dart");
+    assert!(!sim.same("the file deleted").ok);
+    sim.lib_write("models/elsewhere.dart", CATEGORY);
+    sim.lib_write("models/all.dart", "export 'elsewhere.dart';\n");
+    let r = sim.same("declared in another file, exported by all.dart");
+    assert!(!r.ok, "the direct import no longer finds it: {r:?}");
+    sim.remove("s1/shop");
+    assert!(sim.same("without the route that imports the deleted file").ok);
+    sim.lib_write("models/all.dart", "// nothing exported\n");
+    assert!(!sim.same("the export removed").ok);
+}
+
 #[test]
 fn touch_a_group_folder() {
     let mut sim = Sim::new(&app(60), NO_CONFIG, 6);
@@ -381,7 +442,7 @@ impl Sim {
         let dirs = self.dirs();
         let pages: Vec<&String> = files.keys().filter(|f| f.ends_with("page.dart")).collect();
         let parent_of = |f: &str| f.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_default();
-        match self.rng.below(16) {
+        match self.rng.below(18) {
             0 | 1 => {
                 // A route: static or dynamic, sometimes a duplicate route name.
                 let mut sections = vec![String::new()];
@@ -527,31 +588,73 @@ impl Sim {
                     "adding extra_codec.dart".into()
                 }
             }
+            15 | 16 => {
+                // Outside the app folder: the enum's file, or the file that exports it.
+                const ENUMS: [&str; 5] = [
+                    "enum Category { shoes, hats }\n",
+                    "enum Category { shoes, hats, bags }\n",
+                    "enum Kind { shoes }\n",
+                    "class Category {}\n",
+                    "// emptied\n",
+                ];
+                match self.rng.below(4) {
+                    0 | 1 => {
+                        let src = self.rng.pick(&ENUMS);
+                        self.lib_write("models/category.dart", src);
+                        format!("models/category.dart is {src:?}")
+                    }
+                    2 => {
+                        self.lib_remove("models/category.dart");
+                        "deleting models/category.dart".into()
+                    }
+                    _ => {
+                        let src = if self.rng.below(2) == 0 { "export 'category.dart';\n" } else { "// nothing\n" };
+                        self.lib_write("models/all.dart", src);
+                        format!("models/all.dart is {src:?}")
+                    }
+                }
+            }
             _ => "nothing".into(),
         }
     }
 }
 
-/// The whole folder as it is on disk, to put back.
-fn snapshot(sim: &Sim) -> (BTreeMap<String, String>, Vec<String>) {
-    let (mut files, mut dirs) = (BTreeMap::new(), vec![]);
-    walk(&sim.root(), "", &mut files, &mut dirs);
-    (files, dirs)
+/// The whole folder as it is on disk, to put back: the app folder and the enum files beside it.
+struct Snapshot {
+    files: BTreeMap<String, String>,
+    dirs: Vec<String>,
+    models: Vec<(&'static str, Option<String>)>,
 }
 
-fn restore(sim: &Sim, (files, dirs): &(BTreeMap<String, String>, Vec<String>)) {
+const MODELS: [&str; 2] = ["models/category.dart", "models/all.dart"];
+
+fn snapshot(sim: &Sim) -> Snapshot {
+    let (mut files, mut dirs) = (BTreeMap::new(), vec![]);
+    walk(&sim.root(), "", &mut files, &mut dirs);
+    let models = MODELS.iter().map(|m| (*m, fs::read_to_string(sim.dir.path().join("lib").join(m)).ok())).collect();
+    Snapshot { files, dirs, models }
+}
+
+fn restore(sim: &Sim, snap: &Snapshot) {
     fs::remove_dir_all(sim.root()).unwrap();
     fs::create_dir_all(sim.root()).unwrap();
-    for d in dirs {
+    for d in &snap.dirs {
         fs::create_dir_all(sim.root().join(d)).unwrap();
     }
-    for (f, src) in files {
+    for (f, src) in &snap.files {
         sim.write(f, src);
+    }
+    for (m, src) in &snap.models {
+        match src {
+            Some(src) => sim.lib_write(m, src),
+            None => sim.lib_remove(m),
+        }
     }
 }
 
 fn random_edits(seed: u64, config: &str) -> (usize, usize) {
     let mut sim = Sim::new(&app(30), config, seed);
+    with_enum_routes(&sim);
     let mut good = snapshot(&sim);
     let (mut oks, mut errs, mut failing) = (0, 0, 0);
     let mut log = vec![];

@@ -1,5 +1,13 @@
 ## Unreleased
 
+- `Segment.asEnum`, `Segment.asEnumRest`, `Query.asEnum` and `Query.asEnumList`: what generated code
+  reads an enum segment (`Category category`), a catch-all of them (`List<Category> path`) and an
+  enum query parameter (`Sort? sort`, `List<Sort>`) with. They take the enum's `values` and read a
+  value by its `name`, exact by default or in any case with `caseSensitive: false` (the route's
+  setting); an unknown segment or catch-all part is a `BadSegment` (not-found), an unknown query
+  value is `null` or left out. `withQuery`, `restPath` and `restKey` write an enum as its `name`.
+  Regenerate `lib/app.g.dart` with the matching `fsp`.
+
 - `ExtraCodec` and `ExtraJson`: a `Codec<Object?, Object?>` for `GoRouter(extraCodec:)` built from
   a map of type to `toJson` and `fromJson`, so an `extra` survives the browser's history and state
   restoration. It never throws by default (an unknown or unreadable object is `null`); `names:` and

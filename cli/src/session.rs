@@ -2,11 +2,15 @@
 //! changed. Three layers, from the cheapest to skip to the dearest:
 //!
 //! 1. **The result of the last run.** Everything after the scan (resolve, check, emit) is a
-//!    pure function of the scanned tree (and the configuration, which `watch` reads once), so
+//!    function of the scanned tree, the files named below, and the configuration (which `watch`
+//!    reads once), so
 //!    a run that scans a tree equal to the last one's reuses the last run's diagnostics and
 //!    generated code without resolving or rendering again. Equal means equal: the same
-//!    folders, the same file names and byte-identical sources. A file the generator doesn't
-//!    read (a colocated widget in `lib/app/`) or a save that changed nothing is that case.
+//!    folders, the same file names and byte-identical sources, and the same contents in the
+//!    files outside the app folder that resolving read to find enum declarations
+//!    ([`crate::enums::Libs`]), which are compared by content on every run. A file the
+//!    generator doesn't read (a colocated widget in `lib/app/`) or a save that changed
+//!    nothing is that case.
 //! 2. **The formatted text.** `dart format` of the generated file takes seconds on a big app
 //!    and its output depends only on its input, so the last unformatted text and what it
 //!    formatted to are kept. A save that changes a page's `build` method changes the tree,
@@ -24,6 +28,7 @@
 use std::collections::HashMap;
 
 use crate::diag::Diags;
+use crate::enums::{Libs, Reads};
 use crate::scan::Node;
 
 /// What one scan → resolve → emit produced, before formatting.
@@ -40,6 +45,8 @@ struct Last {
     /// The diagnostics of the scan itself (a folder that isn't a valid segment is reported and
     /// left out of the tree, so the tree alone doesn't tell two such scans apart).
     scan_diags: String,
+    /// The files outside the app folder that resolving read (enum declarations) and what they held.
+    reads: Reads,
     run: Run,
 }
 
@@ -54,15 +61,16 @@ pub struct Session {
 pub struct LastRun(Option<Last>);
 
 impl LastRun {
-    /// The last run's result when it was made from this very tree.
-    pub fn reuse(&mut self, tree: &Node, scan_diags: &str) -> Option<Run> {
+    /// The last run's result, and the files it read, when it was made from this very tree and
+    /// those files still read the same.
+    pub fn reuse(&mut self, tree: &Node, scan_diags: &str, libs: &Libs) -> Option<(Run, Reads)> {
         let last = self.0.take()?;
-        (last.tree == *tree && last.scan_diags == scan_diags).then_some(last.run)
+        (last.tree == *tree && last.scan_diags == scan_diags && libs.unchanged_since(&last.reads)).then_some((last.run, last.reads))
     }
 
-    /// Keeps `run`, made from `tree`, for the next [`reuse`](LastRun::reuse).
-    pub fn keep(&mut self, tree: Node, scan_diags: String, run: Run) -> &Run {
-        &self.0.insert(Last { tree, scan_diags, run }).run
+    /// Keeps `run`, made from `tree` and the files `reads` lists, for the next [`reuse`](LastRun::reuse).
+    pub fn keep(&mut self, tree: Node, scan_diags: String, reads: Reads, run: Run) -> &Run {
+        &self.0.insert(Last { tree, scan_diags, reads, run }).run
     }
 }
 

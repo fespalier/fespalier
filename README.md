@@ -112,20 +112,48 @@ Try `/products/13`: it fails once, so you see `error.dart` and **Retry**. Try `/
 (the int parse fails → `not_found.dart`), `/checkout` with an empty cart (the guard redirects
 to `/cart`), and `/greet/you`.
 
+## Development
+
+```
+cli/                 the generator (Rust): scan → resolve/check → emit
+packages/trellis/    the runtime every user file imports (Screen, Loading, ErrorView, …)
+examples/shop/       end-to-end example; its lib/app.g.dart is committed
+```
+
+```sh
+(cd cli && cargo test && cargo clippy --all-targets)
+(cd cli && cargo run -- check --project ../examples/shop)
+(cd packages/trellis && flutter pub get && flutter analyze && flutter test)
+(cd examples/shop && flutter pub get && flutter analyze && flutter test)
+```
+
+CI (`.github/workflows/ci.yml`) runs all of the above. After changing the emitter,
+regenerate the example with `cargo run -- gen --project ../examples/shop`: a test
+fails if the committed `app.g.dart` is stale.
+
 ## Status
 
 This is a proof of concept.
 
-- **Verified:** the generator has 15 tests covering lexing, every contract error, stream data,
-  scaffolding, and that the committed `app.g.dart` is up to date. All Dart (runtime, example,
-  generated and scaffolded files) parses cleanly with a Dart grammar.
-- **Not yet verified:** a real `flutter analyze` / `flutter run`. The Dart parts were written
-  against go_router 17, Riverpod 3 and flutter_hooks 0.21 docs but haven't been compiled.
-  Expect to fix a few small API details on first run.
+- **Generator:** 15 tests cover lexing, every contract error, stream data,
+  scaffolding, and that the committed `app.g.dart` is up to date. Clippy is clean.
+- **Runtime + example:** `flutter analyze` is clean on Flutter 3.47 (go_router 17,
+  hooks_riverpod 3, flutter_hooks 0.21). Widget tests in `examples/shop/test/` drive the
+  generated router through every file kind: loading → page, error + retry, typed errors,
+  unparsable params and unknown paths → `not_found.dart`, guard redirect and pass-through,
+  generated params, `refresh()`, and `mount(at: '/shop')` inside a host GoRouter.
 - **The generator reads Dart lexically, not with the analyzer.** It knows the shapes above.
   Anything unusual (e.g. a `typedef`'d return type) passes through, and the Dart compiler
   still catches mismatches in the generated code.
 
+Things to know:
+
+- Pages render below their `layout.dart`, so a layout's `Scaffold` is not their nearest
+  `Material` during page transitions. Wrap `ListTile`-heavy pages in
+  `Material(type: MaterialType.transparency, …)`, as `products/page.dart` does.
+- go_router builds the whole matched stack, so `/products/abc` also loads `/products`
+  underneath the not-found view.
+
 Next steps: query params in `params.dart`, `(group)` folders for layouts without URL
-segments, per-route transitions, a `StatefulShellRoute` layout for tab bars, and
-`dart format` on output.
+segments, per-route transitions, a `StatefulShellRoute` layout for tab bars,
+`dart format` on output, and go_router 18.

@@ -1,0 +1,151 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shop/api.dart';
+import 'package:shop/app.g.dart';
+import 'package:shop/app/products/loading.dart';
+import 'package:shop/cart.dart';
+import 'package:trellis/trellis.dart';
+
+/// Boots the generated router at [location], the same way main.dart does.
+Future<ProviderContainer> boot(
+  WidgetTester tester,
+  String location, {
+  FakeApi? api,
+}) async {
+  final container = ProviderContainer(
+    retry: (_, __) => null,
+    overrides: [if (api != null) apiProvider.overrideWithValue(api)],
+  );
+  addTearDown(container.dispose);
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp.router(
+        routerConfig: AppRoutes.router(initialLocation: location),
+      ),
+    ),
+  );
+  return container;
+}
+
+void main() {
+  testWidgets('home renders inside the root layout', (tester) async {
+    await boot(tester, '/');
+    expect(find.text('Shop'), findsOneWidget);
+    expect(find.text('Browse products'), findsOneWidget);
+  });
+
+  testWidgets('data.dart: loading.dart first, then the page', (tester) async {
+    await boot(tester, '/products');
+    expect(find.byType(ProductsLoading), findsOneWidget);
+    expect(find.text('Ceramic mug'), findsNothing);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(ProductsLoading), findsNothing);
+    expect(find.text('Ceramic mug'), findsOneWidget);
+  });
+
+  testWidgets('typed route navigation with int params', (tester) async {
+    await boot(tester, '/products');
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.text('Pour-over kettle'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('€38.00'), findsOneWidget);
+    expect(const ProductRoute(id: 3).location, '/products/3');
+  });
+
+  testWidgets('error.dart and retry', (tester) async {
+    await boot(tester, '/products/13');
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.textContaining("Couldn't load product #13"), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Flaky grinder (fails once)'), findsOneWidget);
+  });
+
+  testWidgets('error.dart sees the typed error', (tester) async {
+    await boot(tester, '/products/99');
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Product #99 does not exist'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+  });
+
+  testWidgets('unparsable params go to not_found.dart', (tester) async {
+    await boot(tester, '/products/abc');
+    await tester.pump();
+    expect(find.text('Nothing at /products/abc'), findsOneWidget);
+    // go_router still builds the /products page underneath; let it load.
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('unknown paths go to not_found.dart', (tester) async {
+    await boot(tester, '/nope');
+    await tester.pump();
+    expect(find.text('Nothing at /nope'), findsOneWidget);
+  });
+
+  testWidgets('guard.dart redirects an empty cart to /cart', (tester) async {
+    await boot(tester, '/checkout');
+    await tester.pump();
+    expect(find.text('Your cart is empty'), findsOneWidget);
+  });
+
+  testWidgets('guard.dart lets a full cart through', (tester) async {
+    final c = await boot(tester, '/');
+    c.read(cartProvider.notifier).add(const Product(2, 'Ceramic mug', 12), 1);
+    await tester.pump();
+    final context = tester.element(find.text('Browse products'));
+    const CheckoutRoute().go(context);
+    await tester.pumpAndSettle();
+    expect(find.text('Place order'), findsOneWidget);
+  });
+
+  testWidgets('generated params for a folder without params.dart',
+      (tester) async {
+    await boot(tester, '/greet/you');
+    await tester.pump();
+    expect(find.text('Hello, you'), findsOneWidget);
+    expect(const GreetRoute(name: 'a b').location, '/greet/a%20b');
+  });
+
+  testWidgets('refresh() re-runs data.dart', (tester) async {
+    final api = CountingApi();
+    await boot(tester, '/products', api: api);
+    await tester.pump(const Duration(seconds: 1));
+    expect(api.calls, 1);
+    await tester.fling(find.text('Ceramic mug'), const Offset(0, 300), 1000);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(api.calls, 2);
+  });
+
+  testWidgets('mount(at:) embeds the tree under a prefix', (tester) async {
+    addTearDown(() => AppRoutes.mount()); // restore base for other tests
+    final router = GoRouter(
+      initialLocation: '/shop/greet/mounted',
+      routes: [
+        GoRoute(path: '/', builder: (_, __) => const Text('legacy home')),
+        ...AppRoutes.mount(at: '/shop'),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(child: MaterialApp.router(routerConfig: router)),
+    );
+    await tester.pump();
+    expect(find.text('Hello, mounted'), findsOneWidget);
+    expect(AppRoutes.base, '/shop');
+    expect(const ProductRoute(id: 1).location, '/shop/products/1');
+  });
+}
+
+class CountingApi extends FakeApi {
+  var calls = 0;
+
+  @override
+  Future<List<Product>> products() {
+    calls++;
+    return super.products();
+  }
+}

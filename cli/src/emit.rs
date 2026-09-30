@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use serde::Serialize;
 
 use crate::config::Config;
-use crate::resolve::{self, App, Bind, Data, Route, Transition};
+use crate::resolve::{self, App, Bind, Branch, Data, Route, Transition};
 use crate::diag::Diags;
 use crate::scan::{Kind, Seg};
 use crate::templates;
@@ -26,10 +26,13 @@ struct FileCx {
     providers: Vec<ProviderCx>,
 }
 
-/// A GoRoute, or a ShellRoute when `layout` is set.
+/// A GoRoute; a ShellRoute when `layout` is set; a StatefulShellRoute when
+/// `branches` is set too.
 #[derive(Serialize)]
 struct TreeCx {
     layout: Option<CallCx>,
+    /// A tab layout's tabs, each holding the routes of one folder.
+    branches: Vec<BranchCx>,
     path: String,
     redirect: Option<CallCx>,
     seg_fn: Option<String>,
@@ -43,6 +46,14 @@ struct TreeCx {
     /// For a GoRoute: its URL and page file, to check matching order.
     #[serde(skip)]
     serves: Option<(Vec<Seg>, String)>,
+    /// For a GoRoute: its own `path:` has a `:segment`.
+    #[serde(skip)]
+    has_params: bool,
+}
+
+#[derive(Serialize)]
+struct BranchCx {
+    routes: Vec<TreeCx>,
 }
 
 /// go_router takes the first route that matches, so `/about` must come
@@ -157,6 +168,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let mut fns = BTreeSet::new();
     let tree = routes_of(app, 0, true, "", &mut fns);
     check_order(&tree, diags);
+    check_tab_starts(&tree, diags);
     let cx = FileCx {
         app_dir: cfg.app_dir.clone(),
         table: table(app),
@@ -179,6 +191,7 @@ fn in_builder(b: &Bind) -> String {
         Bind::Segment(s) | Bind::Query(s) => format!("v.{s}"),
         Bind::Data => "d".into(),
         Bind::Child => "child".into(),
+        Bind::Shell => "navigationShell".into(),
         Bind::Error => "e".into(),
         Bind::StackTrace => "st".into(),
         Bind::Retry => "retry".into(),
@@ -203,40 +216,12 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
         (false, false) => format!("{prefix}{own}"),
     };
 
+    if let (Some(layout), Some(tabs)) = (&r.layout, &r.tabs) {
+        return tab_routes(app, id, top, &path, layout, tabs, fns);
+    }
+
     let mut out = match &r.page {
-        Some(page) => {
-            let routes = static_first(r.children.iter().flat_map(|&c| routes_of(app, c, false, "", fns)).collect());
-            let seg_fn = (!app.url_params(r).is_empty()).then(|| {
-                fns.insert(ParamsFn::Route(id));
-                ParamsFn::Route(id).name()
-            });
-            let redirect = r.guard.as_ref().map(|g| {
-                let keys: Vec<String> = g.keys.iter().map(|k| format!("{k}: v.{k}")).collect();
-                let mut args = vec!["ProviderScope.containerOf(context, listen: false)".to_string()];
-                args.extend(keys);
-                CallCx {
-                    seg_fn: (!g.keys.is_empty()).then(|| seg_fn.clone().unwrap()),
-                    call: format!("_i{}.guard({})", g.import, args.join(", ")),
-                }
-            });
-            let data = r.data.as_ref().map(|d| ViewDataCx {
-                provider: format!("{}{}", provider_expr(id, d), key_expr(d, "v.")),
-                loading: r.loading.as_ref().map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
-                error: r.error.as_ref().map_or("DefaultError(error: e, retry: retry)".into(), |w| w.call(in_builder)),
-            });
-            vec![TreeCx {
-                layout: None,
-                path: if top { format!("joinLocation(at, '/{path}')") } else { format!("'{path}'") },
-                redirect,
-                seg_fn,
-                page: page.call(in_builder),
-                data,
-                transition: r.transition.as_ref().map(transition_cx),
-                routes,
-                dynamic: path.starts_with(':'),
-                serves: Some((r.url.clone(), rel(r, Kind::Page))),
-            }]
-        }
+        Some(_) => vec![page_route(app, id, top, &path, true, fns)],
         None => {
             let next = if path.is_empty() { String::new() } else { format!("{path}/") };
             static_first(r.children.iter().flat_map(|&c| routes_of(app, c, top, &next, fns)).collect())
@@ -251,6 +236,7 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
         });
         out = vec![TreeCx {
             layout: Some(CallCx { seg_fn, call: layout.call(in_builder) }),
+            branches: vec![],
             path: String::new(),
             redirect: None,
             seg_fn: None,
@@ -259,10 +245,102 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
             transition: None,
             dynamic: out.iter().any(|r| r.dynamic),
             serves: None,
+            has_params: false,
             routes: out,
         }];
     }
     out
+}
+
+/// The GoRoute for a folder's page.dart. Its subfolders' routes nest below it,
+/// unless `nested` is off (a tab layout's own page sits beside its tabs).
+fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, fns: &mut BTreeSet<ParamsFn>) -> TreeCx {
+    let r = &app.routes[id];
+    let page = r.page.as_ref().expect("page_route needs a page.dart");
+    let routes = if nested {
+        static_first(r.children.iter().flat_map(|&c| routes_of(app, c, false, "", fns)).collect())
+    } else {
+        vec![]
+    };
+    let seg_fn = (!app.url_params(r).is_empty()).then(|| {
+        fns.insert(ParamsFn::Route(id));
+        ParamsFn::Route(id).name()
+    });
+    let redirect = r.guard.as_ref().map(|g| {
+        let keys: Vec<String> = g.keys.iter().map(|k| format!("{k}: v.{k}")).collect();
+        let mut args = vec!["ProviderScope.containerOf(context, listen: false)".to_string()];
+        args.extend(keys);
+        CallCx {
+            seg_fn: (!g.keys.is_empty()).then(|| seg_fn.clone().unwrap()),
+            call: format!("_i{}.guard({})", g.import, args.join(", ")),
+        }
+    });
+    let data = r.data.as_ref().map(|d| ViewDataCx {
+        provider: format!("{}{}", provider_expr(id, d), key_expr(d, "v.")),
+        loading: r.loading.as_ref().map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
+        error: r.error.as_ref().map_or("DefaultError(error: e, retry: retry)".into(), |w| w.call(in_builder)),
+    });
+    TreeCx {
+        layout: None,
+        branches: vec![],
+        path: if top { format!("joinLocation(at, '/{path}')") } else { format!("'{path}'") },
+        redirect,
+        seg_fn,
+        page: page.call(in_builder),
+        data,
+        transition: r.transition.as_ref().map(transition_cx),
+        routes,
+        dynamic: path.starts_with(':'),
+        serves: Some((r.url.clone(), rel(r, Kind::Page))),
+        has_params: path.contains(':'),
+    }
+}
+
+/// A tab layout: one StatefulShellRoute whose branches are the layout folder's
+/// own page and each subfolder, laid out exactly as they would be without it.
+fn tab_routes(
+    app: &App,
+    id: usize,
+    top: bool,
+    path: &str,
+    layout: &resolve::Widget,
+    tabs: &[Branch],
+    fns: &mut BTreeSet<ParamsFn>,
+) -> Vec<TreeCx> {
+    // The tabs are siblings of the folder's page, so they share its path.
+    let next = if path.is_empty() { String::new() } else { format!("{path}/") };
+    let branches: Vec<BranchCx> = tabs
+        .iter()
+        .map(|b| BranchCx {
+            routes: match *b {
+                Branch::Own => vec![page_route(app, id, top, path, false, fns)],
+                Branch::Folder(c) => static_first(routes_of(app, c, top, &next, fns)),
+            },
+        })
+        .filter(|b| !b.routes.is_empty())
+        .collect();
+    if branches.is_empty() {
+        return vec![];
+    }
+    let reads_url = layout.args.iter().any(|a| matches!(a.bind, Bind::Segment(_) | Bind::Query(_)));
+    let seg_fn = reads_url.then(|| {
+        fns.insert(ParamsFn::Layout(id));
+        ParamsFn::Layout(id).name()
+    });
+    vec![TreeCx {
+        layout: Some(CallCx { seg_fn, call: layout.call(in_builder) }),
+        dynamic: branches.iter().flat_map(|b| &b.routes).any(|r| r.dynamic),
+        branches,
+        path: String::new(),
+        redirect: None,
+        seg_fn: None,
+        page: String::new(),
+        data: None,
+        transition: None,
+        serves: None,
+        has_params: false,
+        routes: vec![],
+    }]
 }
 
 /// go_router tries routes depth-first, in order, and takes the first full
@@ -274,6 +352,9 @@ fn check_order(tree: &[TreeCx], diags: &mut Diags) {
         for r in t {
             out.extend(r.serves.as_ref());
             walk(&r.routes, out);
+            for b in &r.branches {
+                walk(&b.routes, out);
+            }
         }
     }
     let mut order = vec![];
@@ -293,6 +374,38 @@ fn check_order(tree: &[TreeCx], diags: &mut Diags) {
                 ),
             );
         }
+    }
+}
+
+/// go_router opens a tab on its first GoRoute and refuses one whose own path has
+/// a `:segment` (it would need a value to build the location from). Static
+/// routes sort first, so this only bites tabs made entirely of dynamic routes,
+/// and a tab layout sitting on a dynamic folder with no page of its own.
+fn check_tab_starts(tree: &[TreeCx], diags: &mut Diags) {
+    fn first_route(routes: &[TreeCx]) -> Option<&TreeCx> {
+        routes.iter().find_map(|r| {
+            if r.serves.is_some() {
+                return Some(r);
+            }
+            r.branches.iter().find_map(|b| first_route(&b.routes)).or_else(|| first_route(&r.routes))
+        })
+    }
+    for r in tree {
+        for b in &r.branches {
+            if let Some((url, file)) = first_route(&b.routes).filter(|f| f.has_params).and_then(|f| f.serves.as_ref()) {
+                diags.error(
+                    file,
+                    None,
+                    format!(
+                        "{} is the first route of a tab, and go_router can't open a tab on a path with a `:segment` in it; \
+                         put a page with a static path first in the tab, or move the tab layout below the folder that holds the segment",
+                        resolve::pattern(url)
+                    ),
+                );
+            }
+            check_tab_starts(&b.routes, diags);
+        }
+        check_tab_starts(&r.routes, diags);
     }
 }
 

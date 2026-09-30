@@ -65,7 +65,7 @@ top-level function.
 | `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `final data = <Provider>(…)` | segments, query (named) |
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
-| `layout.dart` | a widget; wraps this folder and below (ShellRoute) | `child`; segments at or above it; query |
+| `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query |
 | `guard.dart` | `GuardResult guard(ProviderContainer c, {…})` | segments, query (named) |
 | `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
 | `not_found.dart` | a widget, root only; unknown paths and unparsable segments | `uri` |
@@ -76,15 +76,16 @@ The generator reads each constructor (named or positional, `this.x` or typed) an
 every parameter:
 
 1. **By name.** A parameter named like a `$segment` in the path gets that segment.
-   `data`, `child`, `error`, `stackTrace`, `retry` and `uri` get what their name says, in
-   the files where they make sense.
+   `data`, `child`, `navigationShell` (or `shell`), `error`, `stackTrace`, `retry` and `uri`
+   get what their name says, in the files where they make sense.
 2. **Query.** An *optional* parameter that is nullable or a `List` of
    `String`/`int`/`double`/`bool` is a query parameter: `int? page` gets `?page=2`, and
    `List<String> tags = const []` gets every `?tags=`.
 3. **By type.** Otherwise, a page's parameter whose type is what `data.dart` yields gets
    the data, so `required this.product` with `final Product product;` works. An error
    view's `Object` gets the error, `StackTrace` the stack trace and `VoidCallback` the
-   retry. A layout's `Widget` gets the child, and not-found's `Uri` gets the URI.
+   retry. A layout's `Widget` gets the child, its `StatefulNavigationShell` gets the tab shell, and
+   not-found's `Uri` gets the URI.
 4. **Otherwise**, a required parameter is a generator error pointing at it. An optional
    one is left to its default.
 
@@ -116,6 +117,52 @@ route can't be sorted around a dynamic sibling outside it:
 error: /settings is unreachable: $slug/page.dart (/:slug) comes first and matches it;
        move one of them into or out of its (group)
 ```
+
+### Tab layouts
+
+A `layout.dart` that asks for a `StatefulNavigationShell` (named `navigationShell` or
+`shell`, or by that type) instead of a `Widget child` is a tab layout. It becomes a
+go_router `StatefulShellRoute.indexedStack`, so each tab keeps its own navigation stack
+and state while you look at another one. Asking for both a child and a shell is an error.
+
+```dart
+// lib/app/(tabs)/layout.dart
+const tabs = ['(home)', 'search', 'profile'];
+
+class TabsLayout extends StatelessWidget {
+  const TabsLayout({super.key, required this.navigationShell});
+  final StatefulNavigationShell navigationShell;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: navigationShell,
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: navigationShell.currentIndex,
+          onDestinationSelected: (i) => navigationShell.goBranch(
+            i,
+            initialLocation: i == navigationShell.currentIndex,
+          ),
+          destinations: [ … ],
+        ),
+      );
+}
+```
+
+Each tab (a branch) is the layout folder's own `page.dart`, if it has one, and then each
+direct subfolder that holds routes: a static or dynamic folder, or a `(group)`. Whatever
+is below a subfolder (nested pages, data, guards, transitions, more layouts) stays inside
+its tab. Branches follow folder order, which is alphabetical, unless `tabs` lists them.
+`tabs` is a top-level `const` list of string literals naming each folder as written, and
+`'.'` for the folder's own page. It must list every branch exactly once, and a name that
+is unknown, missing or repeated is an error. A tab layout can also ask for segments and
+query parameters like any other layout.
+
+Routes outside the layout's folder aren't in any tab, so they cover the whole screen: in
+`examples/tabs`, `/settings` has no navigation bar and `/profile/edit` does. Two things to
+know: go_router opens a tab on its first route, which can't have a `:segment` in its own
+path, so a tab made only of dynamic routes, or a tab layout placed directly in a
+`$folder`, is an error (put the layout in a `(group)` below that folder instead); and `tabs` in a tab layout must be string literals, so name another list of destinations
+something else. See `examples/tabs`.
 
 ### Transitions
 
@@ -253,6 +300,10 @@ by two segments, query parameters (in a page, `data.dart` and a layout), a page 
 view bound by type, a layout and guard that take segments, a user-written
 `AsyncNotifierProvider`, and `Stream` data.
 
+`examples/tabs` is a bottom navigation bar built as a tab layout: three tabs (one with a
+nested page), a counter that survives switching tabs, and a full-screen route outside
+them.
+
 ## Development
 
 ```
@@ -261,14 +312,17 @@ cli/templates/       minijinja templates for app.g.dart and `fsp new`
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation)
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
 examples/features/   every binding rule, with widget tests
+examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 ```
 
 ```sh
 (cd cli && cargo test && cargo clippy --all-targets)
 (cd cli && cargo run -- check --project ../examples/shop)
+(cd cli && cargo run -- check --project ../examples/tabs)
 (cd packages/fespalier && flutter pub get && flutter analyze && flutter test)
 (cd examples/shop && flutter pub get && flutter analyze && flutter test)
 (cd examples/features && flutter pub get && flutter analyze && flutter test)
+(cd examples/tabs && flutter pub get && flutter analyze && flutter test)
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above. It also scaffolds every file kind
@@ -280,11 +334,11 @@ a committed `app.g.dart` is stale.
 
 This is an early version.
 
-- **Generator:** 32 tests cover parsing, every binding rule and contract error, query
-  parameters, `(group)` folders and route order, transitions, both data forms,
-  scaffolding, and that the committed outputs are up to date. Clippy is clean.
+- **Generator:** 65 tests cover parsing, every binding rule and contract error, query
+  parameters, `(group)` folders and route order, tab layouts, transitions, both data
+  forms, scaffolding, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17,
-  hooks_riverpod 3, flutter_hooks 0.21). The widget tests in both examples drive the
+  hooks_riverpod 3, flutter_hooks 0.21). The widget tests in the examples drive the
   generated router through every file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The
@@ -301,4 +355,3 @@ Things to know:
 - go_router builds the whole matched stack, so `/products/abc` also loads `/products`
   underneath the not-found view.
 
-Next steps: a `StatefulShellRoute` layout for tab bars, and go_router 18.

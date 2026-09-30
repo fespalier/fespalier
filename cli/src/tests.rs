@@ -79,7 +79,7 @@ fn example_app_generates_cleanly() {
 
 #[test]
 fn committed_output_is_up_to_date() {
-    for name in ["shop", "features"] {
+    for name in ["shop", "features", "tabs"] {
         let (code, diags, _) = build(&examples(name).join("lib/app"), &Config::default()).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
         let committed = fs::read_to_string(examples(name).join("lib/app.g.dart")).unwrap_or_default();
@@ -579,6 +579,268 @@ fn scaffold_writes_a_transition() {
     gen(dir.path(), true).expect("scaffolded transition should check cleanly");
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
     has(&code, &["(transition)", "pageBuilder: (context, state) => _i2.transition("]);
+}
+
+// --- tab layouts -----------------------------------------------------------
+
+const TABS: &str =
+    "class TabsLayout extends StatelessWidget { const TabsLayout({super.key, required this.navigationShell}); final StatefulNavigationShell navigationShell; }";
+
+/// Where `needle` first appears in `code`; panics with the code if it doesn't.
+fn at(code: &str, needle: &str) -> usize {
+    code.find(needle).unwrap_or_else(|| panic!("missing `{needle}` in:\n{code}"))
+}
+
+#[test]
+fn tab_layout_makes_a_branch_of_each_folder() {
+    let c = code(&[
+        ("layout.dart", TABS),
+        ("page.dart", HOME),
+        ("search/page.dart", &page("Search")),
+        ("(account)/profile/page.dart", &page("Profile")),
+        ("(account)/profile/edit/page.dart", &page("Edit")),
+    ]);
+    has(
+        &c,
+        &[
+            "StatefulShellRoute.indexedStack(\n        builder: (context, state, navigationShell) => _i1.TabsLayout(navigationShell: navigationShell),\n        branches: [",
+            "StatefulShellBranch(\n            routes: [\n              GoRoute(\n                path: joinLocation(at, '/'),\n                builder: (context, state) => _i0.HomePage(),\n              ),\n            ],\n          ),",
+            "path: joinLocation(at, '/search'),",
+            // A group is a branch too, and adds nothing to the URL.
+            "path: joinLocation(at, '/profile'),",
+            "path: 'edit',",
+        ],
+    );
+    assert_eq!(c.matches("StatefulShellBranch(").count(), 3, "{c}");
+    assert!(!c.contains("ShellRoute(\n"), "no plain ShellRoute expected:\n{c}");
+    // The folder's own page first, then the subfolders in folder order: (account), search.
+    assert!(at(&c, "'/'),") < at(&c, "'/profile'),") && at(&c, "'/profile'),") < at(&c, "'/search'),"), "{c}");
+    // The own page doesn't nest the other tabs, and nothing else is a child of it.
+    assert_eq!(c.matches("routes: [").count(), 3 + 1, "{c}");
+}
+
+#[test]
+fn tab_order_can_be_set_with_a_tabs_list() {
+    let layout = format!("const tabs = ['search', '.', '(account)'];\n{TABS}");
+    let c = code(&[
+        ("layout.dart", &layout),
+        ("page.dart", HOME),
+        ("search/page.dart", &page("Search")),
+        ("(account)/profile/page.dart", &page("Profile")),
+    ]);
+    assert!(at(&c, "'/search'),") < at(&c, "'/'),") && at(&c, "'/'),") < at(&c, "'/profile'),"), "{c}");
+
+    // Typed and `const`-less lists work too.
+    let layout = format!("final List<String> tabs = <String>[\"b\", 'a'];\n{TABS}");
+    let c = code(&[("layout.dart", &layout), ("a/page.dart", &page("A")), ("b/page.dart", &page("B"))]);
+    assert!(at(&c, "'/b'),") < at(&c, "'/a'),"), "{c}");
+}
+
+#[test]
+fn tabs_list_errors_point_at_layout_dart() {
+    let files = |tabs: &str| {
+        diags(&[
+            ("layout.dart", &format!("{tabs}\n{TABS}")),
+            ("page.dart", HOME),
+            ("search/page.dart", &page("Search")),
+            ("profile/page.dart", &page("Profile")),
+        ])
+    };
+    assert_eq!(
+        files("const tabs = ['.', 'search', 'profile', 'help'];"),
+        vec!["✗ layout.dart:1  `tabs` lists `help`, which is not a branch here; the branches are `.`, `profile`, `search`"]
+    );
+    assert_eq!(
+        files("const tabs = ['.', 'search'];"),
+        vec!["✗ layout.dart:1  `tabs` is missing the branch `profile`; list every branch once (`.`, `profile`, `search`)"]
+    );
+    assert_eq!(files("const tabs = ['.', 'search', 'profile', 'search'];"), vec!["✗ layout.dart:1  `tabs` lists `search` twice"]);
+    // '.' means the folder's own page, so it must have one.
+    let e = diags(&[
+        ("layout.dart", &format!("const tabs = ['.', 'a', 'b'];\n{TABS}")),
+        ("a/page.dart", &page("A")),
+        ("b/page.dart", &page("B")),
+    ]);
+    assert_eq!(e, vec!["✗ layout.dart:1  `tabs` lists `.`, which is not a branch here; the branches are `a`, `b`"]);
+    // Not a folder with routes.
+    let e = diags(&[
+        ("layout.dart", &format!("const tabs = ['a', 'empty'];\n{TABS}")),
+        ("a/page.dart", &page("A")),
+        ("empty/layout.dart", "class L extends StatelessWidget { const L({super.key, required this.child}); final Widget child; }"),
+    ]);
+    assert!(e.iter().any(|m| m.contains("`tabs` lists `empty`, which is not a branch here")), "{e:?}");
+    // Something other than string literals.
+    for bad in ["const tabs = ['a', name];", "const tabs = ['a', 'b$x'];", "const tabs = buildTabs();"] {
+        let e = diags(&[("layout.dart", &format!("{bad}\n{TABS}")), ("a/page.dart", &page("A"))]);
+        assert_eq!(
+            e,
+            vec!["✗ layout.dart:1  `tabs` must be a list of string literals naming the branches, e.g. `const tabs = ['home', 'search'];`"],
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn a_layout_takes_a_child_or_a_shell_not_both() {
+    let e = diags(&[
+        (
+            "layout.dart",
+            "class Both extends StatelessWidget { const Both({super.key, required this.child, required this.shell}); final Widget child; final StatefulNavigationShell shell; }",
+        ),
+        ("a/page.dart", &page("A")),
+    ]);
+    assert_eq!(e, vec!["✗ layout.dart:1  Both asks for both a `child` and a navigation shell; a tab layout takes only the `StatefulNavigationShell`"]);
+}
+
+#[test]
+fn shell_is_found_by_name_or_by_type() {
+    for ctor in [
+        "const L(this.nav, {super.key}); final StatefulNavigationShell nav;",
+        "const L({super.key, required this.shell}); final StatefulNavigationShell shell;",
+        "const L({super.key, required this.navigationShell}); final StatefulNavigationShell navigationShell;",
+    ] {
+        let layout = format!("class L extends StatelessWidget {{ {ctor} }}");
+        let c = code(&[("layout.dart", &layout), ("a/page.dart", &page("A"))]);
+        let arg = if ctor.contains("this.nav,") { "_i0.L(navigationShell)" } else if ctor.contains("this.shell") { "_i0.L(shell: navigationShell)" } else { "_i0.L(navigationShell: navigationShell)" };
+        has(&c, &["StatefulShellRoute.indexedStack(", arg]);
+    }
+}
+
+#[test]
+fn a_tab_holds_nested_routes_data_guards_and_transitions() {
+    let c = code(&[
+        ("(tabs)/layout.dart", TABS),
+        ("transition.dart", FADE),
+        ("(tabs)/(home)/page.dart", HOME),
+        ("(tabs)/shop/loading.dart", "class Busy extends StatelessWidget { const Busy({super.key}); }"),
+        ("(tabs)/shop/data.dart", "Future<List<String>> data(Ref ref) async => [];"),
+        ("(tabs)/shop/page.dart", "class ShopPage extends StatelessWidget { const ShopPage(this.items, {super.key}); final List<String> items; }"),
+        ("(tabs)/shop/cart/guard.dart", "GuardResult guard(ProviderContainer c) => null;"),
+        ("(tabs)/shop/cart/page.dart", &page("Cart")),
+        ("(tabs)/shop/$id/data.dart", "Future<int> data(Ref ref, {required int id}) async => id;"),
+        ("(tabs)/shop/$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.data}); final int data; }"),
+        ("(tabs)/help/layout.dart", "class HelpLayout extends StatelessWidget { const HelpLayout({super.key, required this.child}); final Widget child; }"),
+        ("(tabs)/help/page.dart", &page("Help")),
+    ]);
+    has(
+        &c,
+        &[
+            "path: joinLocation(at, '/shop'),",
+            // Nested inside the tab, relative to the page, static before dynamic.
+            "path: 'cart',",
+            "redirect: (context, state) => _i11.guard(ProviderScope.containerOf(context, listen: false)),",
+            "path: ':id',",
+            "data: (d) => _i9.ItemPage(data: d),",
+            "data: (d) => _i6.ShopPage(d),",
+            "loading: () => _i7.Busy(),",
+            "pageBuilder: (context, state) => _i0.transition(",
+            // A plain layout inside a tab is still a ShellRoute, within the branch.
+            "ShellRoute(\n                builder: (context, state, child) => _i4.HelpLayout(child: child),",
+        ],
+    );
+    assert!(at(&c, "path: 'cart',") < at(&c, "path: ':id',"), "{c}");
+    assert_eq!(c.matches("StatefulShellBranch(").count(), 3, "{c}");
+}
+
+#[test]
+fn tab_layouts_read_segments_and_query_like_other_layouts() {
+    let c = code(&[
+        ("$shop/page.dart", "class ShopPage extends StatelessWidget { const ShopPage({super.key, required this.shop}); final int shop; }"),
+        (
+            "$shop/(tabs)/layout.dart",
+            "class ShopTabs extends StatelessWidget { const ShopTabs({super.key, required this.shell, required this.shop, this.theme}); final StatefulNavigationShell shell; final int shop; final String? theme; }",
+        ),
+        ("$shop/(tabs)/orders/page.dart", &page("Orders")),
+        ("$shop/(tabs)/profile/page.dart", &page("Profile")),
+    ]);
+    has(
+        &c,
+        &[
+            "StatefulShellRoute.indexedStack(\n            builder: (context, state, navigationShell) => buildWithParams(\n              () => _layout2(state),\n              (v) => _i1.ShopTabs(shell: navigationShell, shop: v.shop, theme: v.theme),\n              () => notFound(state.uri),\n            ),",
+            "({int shop, String? theme}) _layout2(GoRouterState s) => (shop: Segment.asInt(s, 'shop'), theme: Query.asString(s, 'theme'));",
+            // Below the page that holds `$shop`, the tabs' paths are relative to it.
+            "path: joinLocation(at, '/:shop'),",
+            "path: 'orders',",
+            "path: 'profile',",
+        ],
+    );
+    assert_eq!(c.matches("StatefulShellBranch(").count(), 2, "{c}");
+}
+
+#[test]
+fn a_tab_cannot_start_on_a_path_with_a_segment() {
+    // go_router opens a tab on its first GoRoute and refuses `:shop` in its path.
+    let e = diags(&[
+        ("$shop/layout.dart", TABS),
+        ("$shop/page.dart", &page("Shop")),
+        ("$shop/orders/page.dart", &page("Orders")),
+        ("(all)/layout.dart", TABS),
+        ("(all)/$id/page.dart", &page("Item")),
+    ]);
+    let joined = e.join("\n");
+    for needle in [
+        "$shop/page.dart  /:shop is the first route of a tab, and go_router can't open a tab on a path with a `:segment` in it;",
+        "(all)/$id/page.dart  /:id is the first route of a tab",
+    ] {
+        assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
+    }
+    // The tabs after the first one are fine, as are static routes ahead of dynamic ones.
+    let e = diags(&[
+        ("layout.dart", TABS),
+        ("items/page.dart", &page("Items")),
+        ("items/$id/page.dart", &page("Item")),
+        ("users/$name/page.dart", &page("User")),
+    ]);
+    assert_eq!(e.len(), 1, "{e:?}");
+    assert!(e[0].contains("users/$name/page.dart  /users/:name is the first route of a tab"), "{e:?}");
+}
+
+#[test]
+fn a_tab_layout_below_a_page_uses_relative_paths() {
+    let c = code(&[
+        ("account/page.dart", &page("Account")),
+        ("account/(tabs)/layout.dart", TABS),
+        ("account/(tabs)/orders/page.dart", &page("Orders")),
+        ("account/(tabs)/prefs/page.dart", &page("Prefs")),
+    ]);
+    has(&c, &["path: joinLocation(at, '/account'),", "StatefulShellRoute.indexedStack(", "path: 'orders',", "path: 'prefs',"]);
+    assert!(!c.contains("joinLocation(at, '/account/"), "{c}");
+}
+
+#[test]
+fn route_order_is_checked_across_branches() {
+    // Distinct URLs in different tabs never clash, dynamic ones included: what
+    // matters is that a tab's `/:id` comes after the static routes it could catch.
+    let c = code(&[
+        ("layout.dart", TABS),
+        ("page.dart", HOME),
+        ("about/page.dart", &page("About")),
+        ("items/page.dart", &page("Items")),
+        ("items/$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.id}); final String id; }"),
+        ("users/page.dart", &page("Users")),
+        ("users/$name/page.dart", "class UserPage extends StatelessWidget { const UserPage({super.key, required this.name}); final String name; }"),
+    ]);
+    has(&c, &["path: ':id',", "path: ':name',"]);
+
+    // Static goes before dynamic inside a tab, but the tabs themselves keep their
+    // order, so a tab holding `/:slug` ahead of one holding `/about` is reported.
+    let slug = "class SlugPage extends StatelessWidget { const SlugPage({super.key, required this.slug}); final String slug; }";
+    let files = |layout: &str| {
+        diags(&[
+            ("(tabs)/layout.dart", layout),
+            ("(tabs)/(main)/page.dart", HOME),
+            ("(tabs)/(main)/$slug/page.dart", slug),
+            ("(tabs)/about/page.dart", &page("About")),
+        ])
+    };
+    assert_eq!(
+        files(TABS),
+        vec!["✗ (tabs)/about/page.dart  /about is unreachable: (tabs)/(main)/$slug/page.dart (/:slug) comes first and matches it; move one of them into or out of its (group)"]
+    );
+
+    // Listing `about` first fixes it.
+    let e = files(&format!("const tabs = ['about', '(main)'];\n{TABS}"));
+    assert!(e.is_empty(), "{e:?}");
 }
 
 // --- configuration ---------------------------------------------------------

@@ -33,10 +33,28 @@ guardWithParams(
 {% endfor %}
 )
 {%- endmacro %}
+{% macro layout_call(l) -%}
+{{ (with_segments(l.seg_fn, l.call) if l.seg_fn else l.call) | indent(2) }}
+{%- endmacro %}
 {% macro route(r) -%}
-{% if r.layout -%}
+{% if r.branches -%}
+StatefulShellRoute.indexedStack(
+  builder: (context, state, navigationShell) => {{ layout_call(r.layout) }},
+  branches: [
+{% for b in r.branches %}
+    StatefulShellBranch(
+      routes: [
+{% for c in b.routes %}
+        {{ route(c) | indent(8) }},
+{% endfor %}
+      ],
+    ),
+{% endfor %}
+  ],
+)
+{%- elif r.layout -%}
 ShellRoute(
-  builder: (context, state, child) => {{ (with_segments(r.layout.seg_fn, r.layout.call) if r.layout.seg_fn else r.layout.call) | indent(2) }},
+  builder: (context, state, child) => {{ layout_call(r.layout) }},
   routes: [
 {% for c in r.routes %}
     {{ route(c) | indent(4) }},

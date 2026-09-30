@@ -47,6 +47,9 @@ pub struct Variable {
     pub name: String,
     /// Set when the initializer is a call like `FutureProvider.family<A, B>(...)`.
     pub call: Option<Call>,
+    /// Set when the initializer is a list of plain string literals, like
+    /// `const tabs = ['home', 'search'];`: each string with where it sits.
+    pub strings: Option<Vec<(String, Span)>>,
     pub span: Span,
 }
 
@@ -279,11 +282,31 @@ impl Reader<'_> {
             let mut c2 = list.walk();
             for d in list.named_children(&mut c2) {
                 let Some(name) = d.child_by_field_name("name") else { continue };
-                let call = d.child_by_field_name("value").and_then(|v| self.call(v));
-                out.push(Variable { name: self.text(name).to_string(), call, span: Span::of(name) });
+                let value = d.child_by_field_name("value");
+                let call = value.and_then(|v| self.call(v));
+                let strings = value.and_then(|v| self.strings(v));
+                out.push(Variable { name: self.text(name).to_string(), call, strings, span: Span::of(name) });
             }
         }
         out
+    }
+
+    /// `['a', 'b']` (optionally `const` or `<String>`) → its strings. `None` for
+    /// anything else, including a list with an interpolated or non-string element.
+    fn strings(&self, v: Node) -> Option<Vec<(String, Span)>> {
+        if v.kind() != "list_literal" {
+            return None;
+        }
+        let mut out = vec![];
+        let mut cur = v.walk();
+        for e in v.named_children(&mut cur) {
+            match e.kind() {
+                "type_arguments" | "comment" | "documentation_comment" => {}
+                "string_literal" => out.push((string_value(self.text(e))?, Span::of(e))),
+                _ => return None,
+            }
+        }
+        Some(out)
     }
 
     /// `A.b.c<T, U>(...)` → chain `[A, b, c]`, type args `[T, U]`.
@@ -410,6 +433,33 @@ impl Reader<'_> {
         });
         Ty { text, record }
     }
+}
+
+/// The value of a simple string literal, `None` when it interpolates. Only the
+/// escapes a folder name could need are understood: `\$`, `\\`, `\'` and `\"`.
+fn string_value(lit: &str) -> Option<String> {
+    let raw = lit.starts_with('r');
+    let q = lit.strip_prefix('r').unwrap_or(lit);
+    let inner = if q.len() >= 6 && (q.starts_with("'''") || q.starts_with("\"\"\"")) {
+        &q[3..q.len() - 3]
+    } else if q.len() >= 2 {
+        &q[1..q.len() - 1]
+    } else {
+        return None;
+    };
+    if raw {
+        return Some(inner.to_string());
+    }
+    let mut out = String::new();
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '$' => return None,
+            '\\' => out.push(chars.next().filter(|n| matches!(n, '$' | '\\' | '\'' | '"'))?),
+            c => out.push(c),
+        }
+    }
+    Some(out)
 }
 
 /// The class members of a body, looking through error recovery nodes.
@@ -964,6 +1014,36 @@ mod tests {
         assert_eq!(by("pair").ret.as_ref().unwrap().text, "(int, String)");
         assert_eq!(by("maybe").ret.as_ref().unwrap().text, "Widget Function(BuildContext)?");
         assert_eq!(sig(&by("transition").params), ["c:BuildContext", "{!child:Widget}", "{a:MainAxisAlignment}", "{p:EdgeInsets}"]);
+    }
+
+    #[test]
+    fn reads_top_level_string_lists() {
+        let m = parse(
+            r#"
+            const tabs = ['(home)', "search", 'profile',];
+            const List<String> typed = <String>['a', r'b'];
+            final empty = <String>[];
+            const mixed = ['a', 1];
+            const interp = ['a', 'b$x'];
+            const escaped = ['\$slug', r'$id', 'it\'s'];
+            const bad = ['a\n'];
+            const call = foo(['a']);
+            final data = FutureProvider<int>((ref) => 1);
+            "#,
+        );
+        let strings = |n: &str| {
+            let v = m.variables.iter().find(|v| v.name == n).unwrap();
+            v.strings.as_ref().map(|s| s.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>())
+        };
+        assert_eq!(strings("tabs").unwrap(), ["(home)", "search", "profile"]);
+        assert_eq!(strings("typed").unwrap(), ["a", "b"]);
+        assert_eq!(strings("empty").unwrap(), Vec::<&str>::new());
+        assert_eq!(strings("escaped").unwrap(), ["$slug", "$id", "it's"]);
+        assert!(strings("bad").is_none());
+        assert!(strings("mixed").is_none() && strings("interp").is_none() && strings("call").is_none());
+        assert!(strings("data").is_none());
+        // Each string knows its line, for diagnostics.
+        assert_eq!(m.variables[0].strings.as_ref().unwrap()[0].1.line, 2);
     }
 
     #[test]

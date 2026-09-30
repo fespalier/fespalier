@@ -1,0 +1,23 @@
+name: tabs
+description: fespalier example — a bottom navigation bar with one StatefulShellRoute branch per tab.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # go_router 18 looks for material_ui's MaterialApp, go_router 17 for
+  # flutter's; the tests nest both so they pass on either.
+  material_ui: ^1.0.0
+
+flutter:
+  uses-material-design: true

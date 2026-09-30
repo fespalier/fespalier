@@ -23,6 +23,9 @@ Initial version.
   `StreamNotifierProvider`.
 - `(group)` folders: a layout, loading and error view that apply to a set of routes
   without changing their URLs.
+- Tab layouts: a `layout.dart` that asks for a `StatefulNavigationShell` becomes a
+  `StatefulShellRoute.indexedStack`, with one branch per subfolder (order set by an
+  optional `const tabs = [...]`).
 - Route order is static-first (`/about` before `/:slug`). Duplicate URLs and unreachable
   routes are errors.
 - Ready-made `Transitions`: `fade`, `slide`, `none`, `material` and `cupertino`.

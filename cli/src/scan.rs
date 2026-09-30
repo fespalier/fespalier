@@ -118,9 +118,9 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
 
 /// Names a dynamic segment can't take: they are the parameters fespalier fills
 /// itself, or members of the generated route classes.
-pub const RESERVED: [&str; 14] = [
-    "data", "child", "error", "stackTrace", "retry", "uri", "key", "location", "go", "push", "replace",
-    "refresh", "hashCode", "runtimeType",
+pub const RESERVED: [&str; 16] = [
+    "data", "child", "navigationShell", "shell", "error", "stackTrace", "retry", "uri", "key", "location", "go",
+    "push", "replace", "refresh", "hashCode", "runtimeType",
 ];
 
 pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {

@@ -26,6 +26,8 @@ pub enum Bind {
     Query(String),
     Data,
     Child,
+    /// A tab layout's `StatefulNavigationShell`.
+    Shell,
     Error,
     StackTrace,
     Retry,
@@ -92,6 +94,15 @@ pub struct Guard {
     pub keys: Vec<String>,
 }
 
+/// One tab of a tab layout.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Branch {
+    /// The layout folder's own page.dart.
+    Own,
+    /// A subfolder holding routes: its route id.
+    Folder(usize),
+}
+
 #[derive(Debug)]
 pub struct Route {
     pub dir: String,
@@ -116,6 +127,8 @@ pub struct Route {
     pub query: Vec<(String, String)>,
     /// Query parameters this folder's layout asks for.
     pub layout_query: Vec<(String, String)>,
+    /// Set when the layout asks for a `StatefulNavigationShell`: its tabs, in order.
+    pub tabs: Option<Vec<Branch>>,
 }
 
 #[derive(Debug, Default)]
@@ -275,6 +288,7 @@ impl Resolver<'_> {
             transition: None,
             query: vec![],
             layout_query: vec![],
+            tabs: None,
         });
 
         let mut segs = up.segs.clone();
@@ -377,7 +391,12 @@ impl Resolver<'_> {
             let file = node.rel(Kind::Layout);
             let c = self.widget_class(m, &file)?;
             let cx = BindCx { role: Role::Layout, segs: &segs, data: None, file: &file, covering: None, scope: Some(Scope::Layout(id)) };
-            Some(self.bind(&c, &cx))
+            let w = self.bind(&c, &cx);
+            if w.args.iter().any(|a| a.bind == Bind::Child) && w.args.iter().any(|a| a.bind == Bind::Shell) {
+                let msg = format!("{} asks for both a `child` and a navigation shell; a tab layout takes only the `StatefulNavigationShell`", c.name);
+                self.diags.error(&file, Some(&c.span), msg);
+            }
+            Some(w)
         });
         let guard = modules.get(&Kind::Guard).and_then(|m| self.guard(m, node, &segs, id));
         if let Some(m) = modules.get(&Kind::NotFound) {
@@ -399,17 +418,67 @@ impl Resolver<'_> {
             (segs, url, page, name, data, loading, error, layout, guard, transition);
 
         let mut children = vec![];
+        let mut with_routes = vec![];
         let mut any_route = has_page;
         for c in &node.children {
             let (cid, routes) = self.node(c, &here);
             children.push(cid);
+            if routes {
+                with_routes.push(cid);
+            }
             any_route |= routes;
+        }
+        let is_tabs = self.app.routes[id].layout.as_ref().is_some_and(|w| w.args.iter().any(|a| a.bind == Bind::Shell));
+        if is_tabs {
+            let tabs = self.tabs(node, modules.get(&Kind::Layout), has_page, &with_routes);
+            self.app.routes[id].tabs = Some(tabs);
         }
         if !any_route && node.children.is_empty() && !node.dir.is_empty() {
             self.diags.warn(&node.dir, None, "folder has no page.dart and no routes below it; skipped");
         }
         self.app.routes[id].children = children;
         (id, any_route)
+    }
+
+    /// The tabs of a tab layout: the folder's own page, then each subfolder that
+    /// holds routes, or the order `const tabs = [...]` in layout.dart gives.
+    fn tabs(&mut self, node: &Node, layout: Option<&Module>, has_page: bool, with_routes: &[usize]) -> Vec<Branch> {
+        let file = node.rel(Kind::Layout);
+        let name_of = |r: &Self, b: Branch| match b {
+            Branch::Own => ".".to_string(),
+            Branch::Folder(c) => r.app.routes[c].dir.rsplit('/').next().unwrap_or_default().to_string(),
+        };
+        let mut all: Vec<Branch> = vec![];
+        if has_page {
+            all.push(Branch::Own);
+        }
+        all.extend(with_routes.iter().map(|&c| Branch::Folder(c)));
+        let Some(var) = layout.and_then(|m| m.variables.iter().find(|v| v.name == "tabs")) else { return all };
+        let Some(listed) = &var.strings else {
+            self.diags.error(&file, Some(&var.span), "`tabs` must be a list of string literals naming the branches, e.g. `const tabs = ['home', 'search'];`");
+            return all;
+        };
+        let known: Vec<String> = all.iter().map(|&b| name_of(self, b)).collect();
+        let mut order: Vec<Branch> = vec![];
+        for (name, span) in listed {
+            match known.iter().position(|k| k == name) {
+                None => {
+                    let msg = format!("`tabs` lists `{name}`, which is not a branch here; the branches are {}", show_list(&known));
+                    self.diags.error(&file, Some(span), msg);
+                }
+                Some(i) if order.contains(&all[i]) => {
+                    self.diags.error(&file, Some(span), format!("`tabs` lists `{name}` twice"));
+                }
+                Some(i) => order.push(all[i]),
+            }
+        }
+        for (b, name) in all.iter().zip(&known) {
+            if !order.contains(b) {
+                let msg = format!("`tabs` is missing the branch `{name}`; list every branch once ({})", show_list(&known));
+                self.diags.error(&file, Some(&var.span), msg);
+            }
+        }
+        order
     }
 
     /// The one public widget class a view file exports.
@@ -747,6 +816,7 @@ fn by_name(name: &str, cx: &BindCx) -> Option<Bind> {
         (Role::Error, "stackTrace") => return Some(Bind::StackTrace),
         (Role::Error, "retry") => return Some(Bind::Retry),
         (Role::Layout, "child") => return Some(Bind::Child),
+        (Role::Layout, "navigationShell" | "shell") => return Some(Bind::Shell),
         (Role::NotFound, "uri") => return Some(Bind::Uri),
         _ => {}
     }
@@ -761,6 +831,7 @@ fn by_type(ty: &Ty, cx: &BindCx) -> Option<Bind> {
         (Role::Error, "StackTrace" | "StackTrace?") => Some(Bind::StackTrace),
         (Role::Error, "VoidCallback" | "void Function()") => Some(Bind::Retry),
         (Role::Layout, "Widget") => Some(Bind::Child),
+        (Role::Layout, "StatefulNavigationShell") => Some(Bind::Shell),
         (Role::NotFound, "Uri") => Some(Bind::Uri),
         _ => None,
     }
@@ -793,7 +864,9 @@ fn unfillable(name: &str, cx: &BindCx) -> String {
             Some(t) => format!("can't fill `{name}`: it isn't a segment of this path ({segs}), data.dart's {t}, or a query parameter (optional and nullable)"),
             None => format!("can't fill `{name}`: it isn't a segment of this path ({segs}) or a query parameter (optional and nullable)"),
         },
-        (Role::Layout, _) => format!("can't fill `{name}`: a layout gets `Widget child` and the segments above it ({segs})"),
+        (Role::Layout, _) => format!(
+            "can't fill `{name}`: a layout gets `Widget child` (or, for tabs, a `StatefulNavigationShell`) and the segments above it ({segs})"
+        ),
         (Role::NotFound, _) => format!("can't fill `{name}`: not_found.dart only gets `Uri uri`"),
         _ => format!("can't fill `{name}`: it isn't a segment of this path ({segs})"),
     }
@@ -824,6 +897,10 @@ fn show_segs(segs: &[(String, usize)]) -> String {
         return "it has none".into();
     }
     segs.iter().map(|(n, _)| format!("${n}")).collect::<Vec<_>>().join(", ")
+}
+
+fn show_list(names: &[String]) -> String {
+    names.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ")
 }
 
 fn show_dir(dir: &str) -> String {

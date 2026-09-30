@@ -56,6 +56,16 @@ pub struct Libs {
     app_dir: String,
     /// Parsed files by their path relative to the project; `None` for one that can't be read.
     files: RefCell<HashMap<String, Option<Rc<Module>>>>,
+    /// What was read from disk for `files`: the path and the source, `None` when it couldn't be.
+    read: RefCell<Vec<(String, Option<String>)>>,
+}
+
+/// The files a [`Libs`] read from disk while resolving, with what was in them. `fsp watch` keeps
+/// it beside the result of a run: the result holds while every one of them still reads the same.
+#[derive(Debug, Default, PartialEq)]
+pub struct Reads {
+    package: Option<String>,
+    files: Vec<(String, Option<String>)>,
 }
 
 impl Libs {
@@ -63,7 +73,24 @@ impl Libs {
     pub fn for_app(app_dir: &Path, cfg: &Config) -> Libs {
         let project = app_dir.ancestors().nth(cfg.app_dir.split('/').count());
         let package = project.and_then(|p| Pubspec::load(p).ok()).and_then(|p| p.name);
-        Libs { root: project.map(Path::to_path_buf), package, app_dir: cfg.app_dir.clone(), files: RefCell::default() }
+        Libs { root: project.map(Path::to_path_buf), package, app_dir: cfg.app_dir.clone(), ..Libs::default() }
+    }
+
+    /// The files read from disk so far, for [`Libs::unchanged_since`].
+    pub fn reads(&self) -> Reads {
+        let mut files = self.read.borrow().clone();
+        files.sort();
+        Reads { package: self.package.clone(), files }
+    }
+
+    /// Whether everything `reads` saw reads the same now, and the package is the same one.
+    /// It compares contents: the files are few and small.
+    pub fn unchanged_since(&self, reads: &Reads) -> bool {
+        self.package == reads.package
+            && reads.files.iter().all(|(path, src)| {
+                let now = self.root.as_ref().and_then(|root| std::fs::read_to_string(root.join(path)).ok());
+                now == *src
+            })
     }
 
     /// Looks for the enum `ty` (`Category` or `m.Category`, as written) as the file `file`
@@ -107,11 +134,11 @@ impl Libs {
         if let Some(m) = self.files.borrow().get(path) {
             return m.clone();
         }
-        let module = self
-            .root
-            .as_ref()
-            .and_then(|root| std::fs::read_to_string(root.join(path)).ok())
-            .map(|src| Rc::new(crate::parse_cache::parse(&src)));
+        let src = self.root.as_ref().and_then(|root| std::fs::read_to_string(root.join(path)).ok());
+        let module = src.as_deref().map(|src| Rc::new(crate::parse_cache::parse(src)));
+        if self.root.is_some() {
+            self.read.borrow_mut().push((path.to_string(), src));
+        }
         self.files.borrow_mut().insert(path.to_string(), module.clone());
         module
     }

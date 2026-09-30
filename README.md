@@ -1881,7 +1881,12 @@ What the commands print:
 - `fsp watch`: the `gen` line once at startup, then a line each time a save changes
   `lib/app.g.dart`. An edit that doesn't (a widget's `build` method, say) prints nothing.
   It ignores its own output and file reads, so it doesn't loop while idle. It keeps the parse
-  results of files that didn't change, so a save parses only the file you saved.
+  results of files that didn't change, so a save parses only the file you saved; a save that
+  leaves everything the generator reads as it was (a colocated widget, say) doesn't resolve or
+  render again, and `dart format` (with `format: true`) only runs on generated code it hasn't
+  formatted before. It also watches the rest of `lib/` (Dart files and folders only), because the
+  enum a segment names is declared there: editing `lib/models/category.dart` regenerates. See
+  [Performance](#performance).
 
 Errors point at the parameter or declaration at fault, and `app.g.dart` is left
 untouched while there are any. A file that can't be fully parsed gets a warning instead
@@ -1925,6 +1930,63 @@ It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
 - **`AppRoutes.mount(at:)`** only changes the root path (and, with `navigatorKey:`, the
   root navigator's key). Typed routes read `AppRoutes.base`, so `.location` stays correct when
   mounted under `/shop`.
+
+### Performance
+
+Measured on synthetic apps (`cli/src/bench.rs`: sections of 25 routes with layouts and guards,
+a `data.dart` on every fifth route, query parameters on every third page, dynamic segments;
+5,000 routes are 7,400 files and a 5.8 MB `app.g.dart`), a release build, 4 cores, warm file
+cache. Re-run them with `cd cli && cargo test --release bench -- --ignored --nocapture
+--test-threads=1`. Milliseconds, before → after this change (run to run they vary by about
+15%; the 500-route cold run is within that):
+
+| Routes | `gen` cold | `watch`: a save, output unchanged | `watch`: a save, output changed | `watch`: a file `fsp` doesn't read |
+| -----: | ---------: | --------------------------------: | ------------------------------: | ----------------------------------: |
+| 500    | 53 → 56    | 31 → 28                           | 37 → 22                         | 36 → 7                              |
+| 2,000  | 284 → 156  | 121 → 113                         | 132 → 108                       | 107 → 28                            |
+| 5,000  | 626 → 429  | 405 → 263                         | 403 → 279                       | 424 → 77                            |
+
+With `format: true` (`dart format` of the generated file):
+
+| Routes | `gen` cold         | `watch`: a save, output unchanged | `watch`: a save, output changed | `watch`: a file `fsp` doesn't read |
+| -----: | -----------------: | --------------------------------: | ------------------------------: | ---------------------------------: |
+| 500    | 1.27 s → 1.41 s    | 1.24 s → 29 ms                    | 1.24 s → 1.27 s                 | 1.25 s → 8 ms                      |
+| 2,000  | 4.96 s → 5.05 s    | 4.84 s → 104 ms                   | 5.11 s → 4.93 s                 | 4.83 s → 30 ms                     |
+| 5,000  | 13.4 s → 13.4 s    | 12.7 s → 274 ms                   | 13.3 s → 14.1 s                 | 12.9 s → 77 ms                     |
+
+"Output unchanged" is a comment added to a page, which changes the file and not what is
+generated; "output changed" changes the type of a query parameter. Where the time goes at
+5,000 routes, cold: walking the folders and reading the files 82, parsing 208 (now spread
+over the cores), resolving 29, emitting 153 (the model 50, `minijinja` 105), writing 6.
+Emitting was 277 before: the check that a `/:slug` doesn't hide a page compared every page
+with every earlier one, 125 ms of it at 5,000 routes. And `dart format`, when it is on,
+dwarfs all of it: 1.4 s at 500 routes, 5.3 s at 2,000, 14 s at 5,000, because the formatter
+reads the whole file.
+
+What `watch` does about it:
+
+- **Only the files you changed are parsed** (the parse cache), and the first run parses on all cores.
+- **A tree the generator has seen isn't resolved or rendered again.** Resolve and emit depend
+  on nothing but the scanned folders and their sources, so a run that scans a tree equal to
+  the last one reuses its diagnostics and code. Editing a file under `lib/app/` that isn't
+  a route file, or saving without changes, costs a walk of the folders. The one input beside
+  the folders is the set of files outside the app folder that were read to find enum
+  declarations (`enums.rs`); their contents are compared on every run, so an enum renamed or
+  deleted there is never served stale.
+- **`dart format` runs only on code it hasn't formatted before**, so a save that doesn't change
+  the generated code (a `build` method, most of the time) skips it: the 1.2 to 13 s above
+  become the 30 to 270 ms of a run without `format:`. Code that did change is formatted in full, because the
+  formatter needs the whole file. If that hurts in a huge app, leave `format:` off in
+  `watch` and format in CI.
+- Nothing is written when the output is byte-identical to the file on disk (it always was so).
+
+What it doesn't do, and why: per-route caching of resolved results, and re-scanning only the
+changed folders. A full resolve is 30 ms at 5,000 routes, a tenth of a save that changes
+output, and resolving one route reads the folders above it and shares state with the others
+(names claimed, query types settled), so a per-route cache would have to replay those effects
+for a saving smaller than its bookkeeping. The walk is 80 ms at 5,000 routes, and reading the
+files a small part of it; a cache keyed on modification times would save less than it risks
+(an edit in the same timestamp tick, a file replaced by one with the same size and time).
 
 ## Run the examples
 
@@ -2173,10 +2235,10 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 452 tests (420 unit, 27 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 475 tests (441 unit, 29 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
-  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, and that the committed outputs are up to date. Clippy is clean.
+  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
   hooks_riverpod 3, flutter_hooks 0.21). 435 Flutter tests (the package 192, `shop` 24, `features` 184, `tabs` 35); the example tests drive the generated router through every
   file kind.

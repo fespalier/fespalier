@@ -88,10 +88,15 @@ struct Watch {
 
 impl Watch {
     fn start(dir: &Path) -> Watch {
+        Watch::start_with(dir, &[])
+    }
+
+    fn start_with(dir: &Path, env: &[(&str, &str)]) -> Watch {
         let log = dir.join("watch.log");
         let file = fs::File::create(&log).unwrap();
         let child = Command::new(env!("CARGO_BIN_EXE_fsp"))
             .arg("watch")
+            .envs(env.iter().copied())
             .current_dir(dir)
             .stdout(Stdio::null())
             .stderr(file)
@@ -190,6 +195,87 @@ fn watch_ignores_an_output_file_inside_the_app_folder() {
     sleep(Duration::from_secs(1));
     // Writing routes.g.dart into the watched folder must not loop.
     assert_eq!(w.lines(), 2, "{}", w.text());
+}
+
+/// An enum a segment names is declared under `lib/` but outside the app folder, and `watch`
+/// sees it: renaming the enum breaks the route, renaming it back mends it.
+#[test]
+fn watch_follows_an_enum_declared_outside_the_app_folder() {
+    let dir = project();
+    let root = dir.path();
+    fs::create_dir_all(root.join("lib/models")).unwrap();
+    fs::create_dir_all(root.join("lib/app/shop/$category")).unwrap();
+    fs::write(root.join("lib/models/category.dart"), "enum Category { shoes, hats }\n").unwrap();
+    fs::write(
+        root.join("lib/app/shop/$category/page.dart"),
+        format!("import 'package:demo/models/category.dart';\n{}", "class ShopPage extends StatelessWidget { const ShopPage({super.key, required this.category}); final Category category; }"),
+    )
+    .unwrap();
+    let w = Watch::start(root);
+    w.settle();
+    assert!(w.text().starts_with("✓ 2 routes → lib/app.g.dart ("), "{}", w.text());
+    assert!(fs::read_to_string(root.join("lib/app.g.dart")).unwrap().contains("Category.values"));
+
+    // Not a Dart file: nothing to regenerate.
+    fs::write(root.join("lib/models/notes.txt"), "hello").unwrap();
+    w.settle();
+    assert_eq!(w.lines(), 2, "{}", w.text());
+
+    fs::write(root.join("lib/models/category.dart"), "enum Kind { shoes, hats }\n").unwrap();
+    w.wait_for("error(s)");
+    w.settle();
+    assert!(w.text().contains("Category"), "{}", w.text());
+    let broken = w.lines();
+    fs::write(root.join("lib/models/category.dart"), "enum Category { shoes, hats }\n").unwrap();
+    w.wait_for("✓ 2 routes, lib/app.g.dart unchanged");
+    w.settle();
+    assert!(w.lines() > broken, "{}", w.text());
+}
+
+/// `watch` with `format: true` runs `dart format` when the generated code changes, and not
+/// when a save leaves it as it was (a widget's `build`, a file the generator doesn't read).
+#[cfg(unix)]
+#[test]
+fn watch_formats_only_code_it_has_not_formatted_before() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = project();
+    let root = dir.path();
+    fs::write(root.join("pubspec.yaml"), "name: demo\nfespalier:\n  format: true\n").unwrap();
+    let dart = root.join("counting-dart");
+    fs::write(&dart, "#!/bin/sh\n[ \"$1\" = format ] || exit 2\necho x >> \"$FAKE_DART_LOG\"\necho '// formatted'\ncat\n").unwrap();
+    fs::set_permissions(&dart, fs::Permissions::from_mode(0o755)).unwrap();
+    let calls = root.join("dart-calls.log");
+    let count = || fs::read_to_string(&calls).map(|s| s.lines().count()).unwrap_or(0);
+    let env = [("FSP_DART", dart.to_str().unwrap()), ("FAKE_DART_LOG", calls.to_str().unwrap())];
+    let w = Watch::start_with(root, &env);
+    w.settle();
+    assert_eq!(count(), 1, "{}", w.text());
+    let output = || fs::read_to_string(root.join("lib/app.g.dart")).unwrap();
+    assert!(output().starts_with("// formatted\n"));
+
+    // A save that doesn't change the generated code: the tree is new, the code isn't.
+    fs::write(root.join("lib/app/page.dart"), format!("{}\n// build() changed\n", page("HomePage"))).unwrap();
+    w.settle();
+    // A file the generator doesn't read.
+    fs::create_dir_all(root.join("lib/app/_widgets")).unwrap();
+    fs::write(root.join("lib/app/_widgets/card.dart"), "class Card {}").unwrap();
+    w.settle();
+    assert_eq!(count(), 1, "no new output, no `dart`: {}", w.text());
+    assert_eq!(w.lines(), 2, "{}", w.text());
+
+    // A new route changes the code: formatted once, and written formatted.
+    fs::create_dir_all(root.join("lib/app/about")).unwrap();
+    fs::write(root.join("lib/app/about/page.dart"), page("AboutPage")).unwrap();
+    w.wait_for("✓ 2 routes → lib/app.g.dart");
+    w.settle();
+    assert_eq!(count(), 2, "{}", w.text());
+    assert!(output().starts_with("// formatted\n") && output().contains("AboutRoute"));
+
+    // Deleting it again writes the smaller code, formatted.
+    fs::remove_dir_all(root.join("lib/app/about")).unwrap();
+    w.wait_for("✓ 1 route → lib/app.g.dart");
+    w.settle();
+    assert!(output().starts_with("// formatted\n") && !output().contains("AboutRoute"));
 }
 
 // --- routes, --json, --format ------------------------------------------------

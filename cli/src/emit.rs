@@ -4,7 +4,7 @@
 //! This module works out every expression; `templates/app.g.dart.jinja` owns
 //! the layout of the file.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use serde::Serialize;
 
@@ -814,65 +814,118 @@ fn check_order(tree: &[TreeCx], diags: &mut Diags) {
     }
     let mut order = vec![];
     walk(tree, &mut order);
-    // Every spelling of the static segment at `i`: a localized one has several.
-    let alts = |url: &[Seg], localized: &[Localized], i: usize| match &url[i] {
-        Seg::Static(s) => locale::at(localized, i).map_or(vec![s.clone()], Localized::alternatives),
-        _ => vec![],
-    };
-    // `a` matches every URL `b` does: `/:x` catches `/about`, `/docs/*rest` catches `/docs/a/:b`,
-    // and `/:x/y` catches `/produits/y` whatever `produits` is a spelling of.
-    let catches = |(a, al): (&[Seg], &[Localized]), (b, bl): (&[Seg], &[Localized])| {
-        let (a_rest, a_fixed) = split_catch_all(a);
-        let (b_rest, b_fixed) = split_catch_all(b);
-        let covered = |n: usize| {
-            a_fixed.iter().zip(b_fixed).enumerate().take(n).all(|(i, (x, y))| match (x, y) {
-                (Seg::Dynamic(_), _) => true,
-                (Seg::Static(_), Seg::Static(_)) => {
-                    let mine = alts(a, al, i);
-                    alts(b, bl, i).iter().all(|s| mine.contains(s))
-                }
-                _ => x == y,
-            })
-        };
-        match a_rest {
-            None => b_rest.is_none() && a_fixed.len() == b_fixed.len() && covered(a_fixed.len()),
-            Some(optional) => {
-                // Every URL of `b` must have enough left over for `a`'s catch-all.
-                let left = b_fixed.len().checked_sub(a_fixed.len());
-                let enough = match left {
-                    Some(0) => optional || b_rest == Some(false),
-                    Some(_) => true,
-                    None => false,
-                };
-                enough && covered(a_fixed.len())
-            }
-        }
-    };
-    // The same URL with the same spellings: a duplicate, which the resolver reports.
-    let same = |(a, al): (&[Seg], &[Localized]), (b, bl): (&[Seg], &[Localized])| {
-        a == b && (0..a.len()).all(|i| {
-            let (mut x, mut y) = (alts(a, al, i), alts(b, bl, i));
-            x.sort();
-            y.sort();
-            x == y
-        })
-    };
-    for (j, (url, file, span, localized)) in order.iter().enumerate() {
-        let found = order[..j].iter().find(|(u, _, _, ul)| {
-            !same((u, ul), (url, localized)) && catches((u, ul), (url, localized))
-        });
-        if let Some((first, first_file, _, _)) = found {
+    let urls: Vec<Shape> = order.iter().map(|(url, _, _, localized)| (url.as_slice(), localized.as_slice())).collect();
+    for (j, first) in first_catchers(&urls).into_iter().enumerate() {
+        let (url, file, span, _) = order[j];
+        if let Some(first) = first {
             diags.error(
                 file,
                 span.as_ref(),
                 format!(
-                    "{} is unreachable: {first_file} ({}) comes first and matches it; move one of them into or out of its (group)",
+                    "{} is unreachable: {} ({}) comes first and matches it; move one of them into or out of its (group)",
                     resolve::pattern(url),
-                    resolve::pattern(first)
+                    order[first].1,
+                    resolve::pattern(&order[first].0)
                 ),
             );
         }
     }
+}
+
+/// A route's URL and its localized segments: what decides which URLs it serves.
+type Shape<'a> = (&'a [Seg], &'a [Localized]);
+
+/// Every spelling of the static segment at `i`: a localized one has several. A segment that
+/// isn't static has none.
+fn alts((url, localized): Shape, i: usize) -> Vec<String> {
+    match &url[i] {
+        Seg::Static(s) => locale::at(localized, i).map_or(vec![s.clone()], Localized::alternatives),
+        _ => vec![],
+    }
+}
+
+/// The same URL, spelled the same ways: a duplicate, which the resolver reports.
+fn same(a: Shape, b: Shape) -> bool {
+    a.0 == b.0
+        && (0..a.0.len()).all(|i| {
+            let (mut x, mut y) = (alts(a, i), alts(b, i));
+            x.sort();
+            y.sort();
+            x == y
+        })
+}
+
+/// `a` matches every URL `b` does: `/:x` catches `/about`, `/docs/*rest` catches `/docs/a/:b`,
+/// and `/:x/y` catches `/produits/y` whatever `produits` is a spelling of. A static segment
+/// catches another only when it has every spelling the other has.
+fn catches(a: Shape, b: Shape) -> bool {
+    let (a_rest, a_fixed) = split_catch_all(a.0);
+    let (b_rest, b_fixed) = split_catch_all(b.0);
+    let covered = |n: usize| {
+        a_fixed.iter().zip(b_fixed).enumerate().take(n).all(|(i, (x, y))| match (x, y) {
+            (Seg::Dynamic(_), _) => true,
+            (Seg::Static(_), Seg::Static(_)) => {
+                let mine = alts(a, i);
+                alts(b, i).iter().all(|s| mine.contains(s))
+            }
+            _ => x == y,
+        })
+    };
+    match a_rest {
+        None => b_rest.is_none() && a_fixed.len() == b_fixed.len() && covered(a_fixed.len()),
+        Some(optional) => {
+            // Every URL of `b` must have enough left over for `a`'s catch-all.
+            let left = b_fixed.len().checked_sub(a_fixed.len());
+            let enough = match left {
+                Some(0) => optional || b_rest == Some(false),
+                Some(_) => true,
+                None => false,
+            };
+            enough && covered(a_fixed.len())
+        }
+    }
+}
+
+/// For each URL, the first URL before it, in order, that is a different one and catches it.
+///
+/// Trying every URL against every one before it is quadratic, and it was the slowest step of
+/// `emit` on a big app (125 ms of 195 at 5,000 routes). Only a URL with a `:param` or a
+/// catch-all can catch a different URL (an all-static one matches just itself, unless a segment
+/// has other spellings: `c/` also spelled `a` catches `a/`), and it can
+/// only catch one that starts with the same static segment or with a `:param`: so the
+/// catching URLs are kept in order, under their first static segment, or in `wild` when they
+/// start with a param or a catch-all. A localized first segment has several spellings, and
+/// catches a URL whose own are all among them: so it is kept under each of its spellings, and a
+/// URL looks under each of its own (a superset, which [`catches`] then settles). Segments are
+/// compared exactly (`caseSensitive: false` isn't looked at); if that ever changes, key the
+/// buckets by the lowercased segment, and keep the differential test in step.
+fn first_catchers(urls: &[Shape]) -> Vec<Option<usize>> {
+    let mut wild: Vec<usize> = vec![];
+    let mut by_first: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut out = Vec::with_capacity(urls.len());
+    for (j, url) in urls.iter().enumerate() {
+        let hit = |ids: &[usize]| ids.iter().copied().find(|&i| !same(urls[i], *url) && catches(urls[i], *url));
+        let mut best = hit(&wild);
+        if matches!(url.0.first(), Some(Seg::Static(_))) {
+            for spelling in alts(*url, 0) {
+                if let Some(h) = by_first.get(&spelling).and_then(|ids| hit(ids)) {
+                    best = best.map_or(Some(h), |b| Some(b.min(h)));
+                }
+            }
+        }
+        out.push(best);
+        if !url.1.is_empty() || url.0.iter().any(|s| matches!(s, Seg::Dynamic(_) | Seg::CatchAll(..))) {
+            match url.0.first() {
+                Some(Seg::Static(_)) => {
+                    for spelling in alts(*url, 0) {
+                        by_first.entry(spelling).or_default().push(j);
+                    }
+                }
+                _ => wild.push(j),
+            }
+        }
+    }
+    out
 }
 
 /// A URL without its trailing catch-all: `Some(optional)` when it has one.
@@ -1486,5 +1539,103 @@ fn location(app: &App, r: &Route, localized: bool) -> String {
         (Some(Seg::CatchAll(n, _)), _) if !path.is_empty() => format!("'/{path}${{restPath({n})}}'"),
         (Some(Seg::CatchAll(n, _)), _) => format!("'/${{restKey({n})}}'"),
         _ => format!("'/{path}'"),
+    }
+}
+
+#[cfg(test)]
+mod order_tests {
+    use super::*;
+    use crate::synth::Rng;
+
+    /// What `check_order` did before it kept the catching URLs apart: every URL against every one before it.
+    fn brute(urls: &[Shape]) -> Vec<Option<usize>> {
+        (0..urls.len()).map(|j| urls[..j].iter().position(|u| !same(*u, urls[j]) && catches(*u, urls[j]))).collect()
+    }
+
+    fn url(rng: &mut Rng) -> Vec<Seg> {
+        let mut url: Vec<Seg> = (0..rng.below(4))
+            .map(|_| match rng.below(5) {
+                0 => Seg::Dynamic("x".into()),
+                1 => Seg::Dynamic("y".into()),
+                n => Seg::Static(["a", "b", "c"][n - 2].into()),
+            })
+            .collect();
+        match rng.below(6) {
+            0 => url.push(Seg::CatchAll("rest".into(), false)),
+            1 => url.push(Seg::CatchAll("rest".into(), true)),
+            _ => {}
+        }
+        url
+    }
+
+    /// Some of the URL's static segments get spellings: `a`, `b` and `c` are also each other and `d`, `e`.
+    fn localize(rng: &mut Rng, url: &[Seg]) -> Vec<Localized> {
+        url.iter()
+            .enumerate()
+            .filter_map(|(at, s)| match s {
+                Seg::Static(canonical) if rng.below(2) == 0 => {
+                    let names = ["a", "b", "c", "d", "e"];
+                    let spellings = (0..1 + rng.below(3))
+                        .map(|k| locale::Spelling { locale: format!("l{k}"), path: names[rng.below(5)].into(), span: Default::default() })
+                        .collect();
+                    Some(Localized { at, canonical: canonical.clone(), file: "route.dart".into(), spellings })
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_indexed_check_finds_what_the_quadratic_one_did() {
+        let mut rng = Rng::new(7);
+        for _ in 0..300 {
+            let owned: Vec<Vec<Seg>> = (0..rng.below(40)).map(|_| url(&mut rng)).collect();
+            let urls: Vec<Shape> = owned.iter().map(|u| (u.as_slice(), &[][..])).collect();
+            assert_eq!(first_catchers(&urls), brute(&urls), "{owned:?}");
+        }
+    }
+
+    #[test]
+    fn the_indexed_check_finds_what_the_quadratic_one_did_with_localized_segments() {
+        let mut rng = Rng::new(11);
+        for _ in 0..300 {
+            let owned: Vec<(Vec<Seg>, Vec<Localized>)> = (0..rng.below(40))
+                .map(|_| {
+                    let u = url(&mut rng);
+                    let l = localize(&mut rng, &u);
+                    (u, l)
+                })
+                .collect();
+            let urls: Vec<Shape> = owned.iter().map(|(u, l)| (u.as_slice(), l.as_slice())).collect();
+            assert_eq!(first_catchers(&urls), brute(&urls), "{owned:?}");
+        }
+    }
+
+    #[test]
+    fn a_localized_static_segment_is_caught_by_a_param_and_by_a_wider_spelling_set() {
+        let spelled = |canonical: &str, others: &[&str]| Localized {
+            at: 0,
+            canonical: canonical.into(),
+            file: "route.dart".into(),
+            spellings: others.iter().enumerate().map(|(k, p)| locale::Spelling { locale: format!("l{k}"), path: (*p).into(), span: Default::default() }).collect(),
+        };
+        let (a, b, any) = (vec![Seg::Static("a".into()), Seg::Dynamic("x".into())], vec![Seg::Static("b".into()), Seg::Dynamic("x".into())], vec![Seg::Dynamic("y".into()), Seg::Dynamic("x".into())]);
+        // `a/:x` also answers `/b/:x`, so it catches `b/:x`; `b/:x` alone doesn't catch `a/:x`.
+        let (la, lb, none) = (vec![spelled("a", &["b"])], vec![], vec![]);
+        assert_eq!(first_catchers(&[(&a, &la), (&b, &lb)]), vec![None, Some(0)]);
+        assert_eq!(first_catchers(&[(&b, &lb), (&a, &la)]), vec![None, None]);
+        // A param catches it whatever the spelling.
+        assert_eq!(first_catchers(&[(&any, &none), (&a, &la)]), vec![None, Some(0)]);
+    }
+
+    #[test]
+    fn a_param_catches_a_later_static_path_and_not_an_earlier_one() {
+        let (any, about, docs) = (
+            vec![Seg::Dynamic("slug".into())],
+            vec![Seg::Static("about".into())],
+            vec![Seg::Static("docs".into()), Seg::CatchAll("rest".into(), false)],
+        );
+        let urls: Vec<Shape> = [&about, &any, &about, &docs].iter().map(|u| (u.as_slice(), &[][..])).collect();
+        assert_eq!(first_catchers(&urls), vec![None, None, Some(1), None]);
     }
 }

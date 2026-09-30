@@ -1,6 +1,7 @@
 //! Walks `lib/app/` into a tree of route folders.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -101,7 +102,8 @@ pub enum Seg {
     Group(String),
 }
 
-#[derive(Debug)]
+/// `PartialEq` lets `fsp watch` tell that a run saw exactly the tree of the run before.
+#[derive(Debug, PartialEq)]
 pub struct Node {
     /// Relative to `lib/app`, with `/` separators. Root is `""`.
     pub dir: String,
@@ -139,14 +141,23 @@ pub fn scan(app_dir: &Path, diags: &mut Diags) -> Result<Node> {
 }
 
 fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
-    let mut entries: Vec<PathBuf> = fs::read_dir(dir)
+    // The entry's own file type saves a `stat` per entry; only a symlink has to be followed.
+    let mut entries: Vec<(OsString, PathBuf, bool)> = fs::read_dir(dir)
         .with_context(|| format!("reading {}", dir.display()))?
-        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter_map(|e| {
+            let e = e.ok()?;
+            let path = e.path();
+            let is_dir = match e.file_type().ok()? {
+                t if t.is_symlink() => path.is_dir(),
+                t => t.is_dir(),
+            };
+            Some((e.file_name(), path, is_dir))
+        })
         .collect();
     entries.sort();
-    for path in entries {
-        let name = path.file_name().unwrap().to_string_lossy().to_string();
-        if path.is_dir() {
+    for (name, path, is_dir) in entries {
+        let name = name.to_string_lossy().to_string();
+        if is_dir {
             // `_components/` etc. are private: colocated, never routes.
             if name.starts_with('_') || name.starts_with('.') {
                 continue;

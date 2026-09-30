@@ -1074,7 +1074,7 @@ fn config_errors_are_clear() {
 
 #[test]
 fn import_paths_are_relative_to_the_output() {
-    let at = |app_dir: &str, output: &str| Config { app_dir: app_dir.into(), output: output.into() };
+    let at = |app_dir: &str, output: &str| Config { app_dir: app_dir.into(), output: output.into(), ..Config::default() };
     assert_eq!(Config::default().import_path("page.dart"), "app/page.dart");
     assert_eq!(at("lib/pages", "lib/router/routes.g.dart").import_path("a/page.dart"), "../pages/a/page.dart");
     assert_eq!(at("lib/features/app", "lib/features/routes.g.dart").import_path("page.dart"), "app/page.dart");

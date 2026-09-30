@@ -1,3 +1,10 @@
+## Unreleased
+
+- `dart run fespalier <command>` runs the `fsp` release that matches this package's version,
+  downloading and caching it on first use (SHA-256 checked). `FSP_BINARY` runs a binary of
+  your own; an `fsp` on PATH is used when its version matches. The package also declares an
+  `fsp` executable for `dart pub global activate`.
+
 ## 0.1.1 - 2026-09-30
 
 - Generated `data()` providers turn off Riverpod's automatic retry, so `error.dart` shows

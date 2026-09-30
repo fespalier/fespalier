@@ -42,7 +42,7 @@ case "$os" in
   Linux) os_part="unknown-linux-gnu" ;;
   Darwin) os_part="apple-darwin" ;;
   MINGW* | MSYS* | CYGWIN* | Windows_NT)
-    err "Windows is not supported by this script. Download fsp-x86_64-pc-windows-msvc.zip from ${RELEASES_URL} and put fsp.exe on your PATH."
+    err "Windows is not supported by this script. In PowerShell run: irm https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.ps1 | iex (or download fsp-x86_64-pc-windows-msvc.zip from ${RELEASES_URL} and put fsp.exe on your PATH)."
     ;;
   *) err "unsupported operating system: ${os} (supported: Linux, macOS). Prebuilt binaries are listed at ${RELEASES_URL}; otherwise build from source with cargo." ;;
 esac

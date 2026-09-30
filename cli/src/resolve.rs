@@ -7,7 +7,8 @@
 //! type (`Product product` ← what `data.dart` yields). Anything else that is
 //! nullable or a List of String/int/double/bool is a query parameter
 //! (`int? page` ← `?page=2`). `transition()` is filled the same way: `key`,
-//! `child` and `state`.
+//! `child` and `state`. A segment or query parameter can also be an app enum
+//! (`Category category`, `Sort? sort`, `List<Category> path`): see `enums.rs`.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -15,14 +16,17 @@ use heck::ToUpperCamelCase;
 
 use crate::dart::{self, Class, Function, Lit, Module, Span, Ty};
 use crate::diag::Diags;
+use crate::enums::{self, Libs, Lookup};
 use crate::extra::{self, ExtraType};
 use crate::locale::{self, Localized};
 use crate::scan::{Kind, Node, Seg, ROUTE_MEMBERS};
 
+/// What a segment can be, besides an enum.
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
 
 /// What the parts of a catch-all can be, as `List<T>`: each part is read like one segment of
-/// that type (`num` and `DateTime` with `num.tryParse` and `DateTime.tryParse`).
+/// that type (`num` and `DateTime` with `num.tryParse` and `DateTime.tryParse`). An enum is
+/// one too, read by name.
 pub const CATCH_ALL_ITEMS: [&str; 6] = ["String", "int", "double", "num", "bool", "DateTime"];
 
 /// `int` for `List<int>`.
@@ -262,6 +266,8 @@ pub struct ScopedNotFound {
     pub case_sensitive: bool,
     /// The localized segments of its URL, so `/produits/x` is under it as `/products/x` is.
     pub localized: Vec<Localized>,
+    /// The not_found.dart, relative to the app folder.
+    pub file: String,
 }
 
 #[derive(Debug, Default)]
@@ -275,6 +281,12 @@ pub struct App {
     pub seg_types: HashMap<usize, String>,
     /// The `extra_codec.dart` at the root of the app folder: `GoRouter(extraCodec:)`.
     pub extra_codec: Option<ExtraCodec>,
+    /// The enums of segments and query parameters, as the generated file names them: it
+    /// imports each the way it imports the type of an `extra`.
+    pub enum_types: Vec<ExtraType>,
+    /// The type of each of those as the generated file spells it (`List<_i3.Category>`) → as the
+    /// app does (`List<Category>`): what the manifest and `fsp routes` show.
+    pub type_names: HashMap<String, String>,
 }
 
 /// The app folder's `extra_codec.dart`, which exports `extraCodec`.
@@ -299,6 +311,12 @@ impl App {
     /// Whether the folder is a `$$rest` / `$$$rest` catch-all.
     pub fn is_catch_all(&self, folder: usize) -> bool {
         matches!(self.routes[folder].seg, Some(Seg::CatchAll(..)))
+    }
+
+    /// A segment's or query parameter's type as the app writes it, for what shows types: an
+    /// enum is `Category`, where the generated file spells it `_i3.Category`.
+    pub fn display_type(&self, ty: &str) -> String {
+        self.type_names.get(ty).cloned().unwrap_or_else(|| ty.to_string())
     }
 
     /// `(name, type)` for each of a route's segments, in path order.
@@ -332,6 +350,45 @@ fn query_type(ty: &Ty) -> Option<String> {
     let list = t.strip_suffix('?').unwrap_or(t);
     let inner = list.strip_prefix("List<")?.strip_suffix('>')?;
     SEGMENT_TYPES.contains(&inner).then(|| format!("List<{inner}>"))
+}
+
+/// A URL parameter's type, worked out.
+#[derive(Debug, Clone)]
+struct Typed {
+    /// As the generated file spells it: `int?`, `List<_i3.Category>`.
+    spelled: String,
+    /// What two files that declare the type must agree on: the type itself, and for an enum the
+    /// declaration it names.
+    key: String,
+    /// As the file that declares the parameter wrote it, for the errors that name it.
+    shown: String,
+    /// What the generated file imports to name an enum.
+    import: Option<ExtraType>,
+    /// The file that declares the enum, relative to the project.
+    decl: Option<String>,
+}
+
+impl Typed {
+    fn plain(text: String) -> Typed {
+        Typed { spelled: text.clone(), key: text.clone(), shown: text, import: None, decl: None }
+    }
+
+    /// For "`$x` is A here but B there" when A and B are enums that are spelled alike.
+    fn same_name_as(&self, other: &Typed) -> String {
+        match (&self.decl, &other.decl) {
+            (Some(a), Some(b)) if self.shown == other.shown => format!(" (two different enums: {a} and {b})"),
+            _ => String::new(),
+        }
+    }
+}
+
+/// Whether a parameter's type is one a query parameter can have.
+enum QueryTy {
+    Is(Box<Typed>),
+    /// Not one: the parameter is something else (or nothing).
+    Isnt,
+    /// Meant as one, but it names an enum that can't be found or used; the error is reported.
+    Broken,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -400,9 +457,15 @@ struct BindCx<'a> {
 }
 
 /// `case_sensitive` is the config's default, for folders with no `route.dart` at or above them.
-pub fn resolve(root: &Node, case_sensitive: bool, diags: &mut Diags) -> App {
+/// `libs` is where the enums of segments are looked for besides the files that name them.
+pub fn resolve(root: &Node, case_sensitive: bool, libs: &Libs, diags: &mut Diags) -> App {
+    let mut sources = HashMap::new();
+    collect_sources(root, &mut sources);
     let mut r = Resolver {
         app: App::default(),
+        libs,
+        sources,
+        tags: 0,
         import_ix: HashMap::new(),
         route_names: HashMap::new(),
         patterns: HashMap::new(),
@@ -418,7 +481,7 @@ pub fn resolve(root: &Node, case_sensitive: bool, diags: &mut Diags) -> App {
     r.settle_extras();
     locale::check_collisions(&r.app, r.diags);
     for (scope, name) in std::mem::take(&mut r.query_order) {
-        let ty = r.queries[&(scope, name.clone())].0.clone();
+        let ty = r.queries[&(scope, name.clone())].0.spelled.clone();
         match scope {
             Scope::Route(id) => r.app.routes[id].query.push((name, ty)),
             Scope::Layout(id) => r.app.routes[id].layout_query.push((name, ty)),
@@ -428,8 +491,23 @@ pub fn resolve(root: &Node, case_sensitive: bool, diags: &mut Diags) -> App {
     r.app
 }
 
+/// Every file of the tree by its path relative to the app folder.
+fn collect_sources<'n>(node: &'n Node, out: &mut HashMap<String, &'n str>) {
+    for (kind, src) in &node.files {
+        out.insert(node.rel(*kind), src.as_str());
+    }
+    for c in &node.children {
+        collect_sources(c, out);
+    }
+}
+
 struct Resolver<'a> {
     app: App,
+    libs: &'a Libs,
+    /// The source of each file, for the enums the files name.
+    sources: HashMap<String, &'a str>,
+    /// Counts the uses of an enum's import, for the aliases of a prefixed type (see `extra_type`).
+    tags: usize,
     import_ix: HashMap<String, usize>,
     route_names: HashMap<String, String>,
     /// URL pattern → the page.dart that serves it.
@@ -438,7 +516,7 @@ struct Resolver<'a> {
     not_found_urls: HashMap<String, String>,
     constraints: Vec<Constraint>,
     /// Query parameter types as first declared: (type, file, line).
-    queries: HashMap<(Scope, String), (String, String, usize)>,
+    queries: HashMap<(Scope, String), (Typed, String, usize)>,
     query_order: Vec<(Scope, String)>,
     diags: &'a mut Diags,
 }
@@ -601,7 +679,7 @@ impl Resolver<'_> {
         if let Some(m) = modules.get(&Kind::Route) {
             let file = node.rel(Kind::Route);
             let spelled = locale::read(m, &file, node.seg.as_ref(), url.len().saturating_sub(1), self.diags);
-            localized.extend(spelled);
+            localized.extend(spelled.filter(|l| !l.spellings.is_empty()));
             case_sensitive = self.route_config(m, &file).unwrap_or(up.case_sensitive);
         }
         self.app.routes[id].case_sensitive = case_sensitive;
@@ -744,7 +822,7 @@ impl Resolver<'_> {
                                 let msg = format!("{at} already has {prev}; (group) folders don't add to the URL, so move or rename one");
                                 self.diags.error(&file, None, msg);
                             }
-                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone(), case_sensitive, localized: localized.clone() }),
+                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone(), case_sensitive, localized: localized.clone(), file: file.clone() }),
                         }
                     }
                     not_found = Some(w);
@@ -982,7 +1060,7 @@ impl Resolver<'_> {
                             long_enough
                                 && segs.iter().take(fixed).zip(&want).enumerate().all(|(i, (s, w))| match s {
                                     // A localized folder is reached by any of its spellings.
-                                    Seg::Static(x) => locale::at(localized, i).map_or(x == w, |l| l.alternatives().iter().any(|a| a == w)),
+                                    Seg::Static(x) => locale::at(localized, i).map_or(x == w, |l| l.alternatives().iter().any(|a| a == w || locale::percent_encode(a) == *w)),
                                     _ => true,
                                 })
                         };
@@ -1216,10 +1294,11 @@ impl Resolver<'_> {
             } else {
                 by_name(&p.name, cx)
                     .or_else(|| {
-                        // Optional, and nullable or a List: it comes from the query.
+                        // Optional, and nullable or a List: it comes from the query. (Of a type that isn't
+                        // a plain one, it is when that is an enum: other optional parameters are left alone.)
                         let (scope, ty) = (cx.scope.filter(|_| !p.required)?, p.ty.as_ref()?);
-                        let qty = query_type(ty)?;
-                        self.declare_query(scope, &p.name, qty, cx.file, &p.span).then(|| Bind::Query(p.name.clone()))
+                        let QueryTy::Is(qty) = self.query_typed(ty, cx.file, None) else { return None };
+                        self.declare_query(scope, &p.name, *qty, cx.file, &p.span).then(|| Bind::Query(p.name.clone()))
                     })
                     .or_else(|| by_type(p.ty.as_ref()?, cx))
                     .or_else(|| self.data_by_type(p, cx))
@@ -1295,7 +1374,64 @@ impl Resolver<'_> {
         found.into_iter().next().map(|(b, _)| b)
     }
 
-    fn declare_query(&mut self, scope: Scope, name: &str, ty: String, file: &str, span: &Span) -> bool {
+    /// A query parameter's type: a plain one, or an enum's (`Sort?`, `List<Sort>`). With `strict`
+    /// (the parameter and where to point at: a `data()`'s or a guard's, which can't be anything
+    /// else) a type that should be an enum but can't be found is an error.
+    fn query_typed(&mut self, ty: &Ty, file: &str, strict: Option<(&Span, &str)>) -> QueryTy {
+        if let Some(q) = query_type(ty) {
+            return QueryTy::Is(Box::new(Typed::plain(q)));
+        }
+        let Some((base, list)) = enums::query_shape(&ty.text) else { return QueryTy::Isnt };
+        let whole = if list { format!("List<{base}>") } else { format!("{base}?") };
+        self.tags += 1;
+        let tag = format!("q{}", self.tags);
+        let err = strict.map(|(span, name)| {
+            let fallback = if list { format!("List<String> {name}") } else { format!("String? {name}") };
+            (span, format!("{} {name}", ty.text), "a query parameter", fallback)
+        });
+        match self.enum_typed(base, &whole, file, &tag, err.as_ref().map(|(s, d, w, f)| (*s, d.as_str(), *w, f.as_str()))) {
+            Some(t) => QueryTy::Is(Box::new(t)),
+            None if strict.is_some() => QueryTy::Broken,
+            None => QueryTy::Isnt,
+        }
+    }
+
+    /// The enum `base` as the file `file` names it, as the type `whole` (`base`, nullable or in a
+    /// list). `None` when it isn't one fsp can find or name; `err` (where to point at, the
+    /// parameter as written, what it is, what to write instead) says so, when given.
+    fn enum_typed(&mut self, base: &str, whole: &str, file: &str, tag: &str, err: Option<(&Span, &str, &str, &str)>) -> Option<Typed> {
+        let src = *self.sources.get(file)?;
+        let lookup = self.libs.find(file, src, base);
+        if let Lookup::Found(found) = lookup {
+            let import = self.import(file);
+            let spelled = extra::extra_type(whole, src, file, import, tag);
+            let key = whole.replacen(base, &found.key(), 1);
+            let decl = Some(found.decl.clone());
+            return Some(Typed { spelled: spelled.ty.clone(), key, shown: whole.to_string(), import: Some(spelled), decl });
+        }
+        if let Some((span, decl, what, fallback)) = err {
+            let msg = match lookup {
+                Lookup::Private => format!(
+                    "`{decl}`: `{base}` is private to its file, so the generated file can't name it; make the enum public"
+                ),
+                _ => format!(
+                    "`{decl}`: no enum called `{base}` in this file or the files it imports or exports under this package's lib/; {what} can only be a String, int, double or bool, or an enum. If `{base}` is declared elsewhere, take a `{fallback}` and parse it in the page"
+                ),
+            };
+            self.diags.error(file, Some(span), msg);
+        }
+        None
+    }
+
+    /// Lists the type of an enum segment or query parameter for the generated file to import.
+    fn use_type(&mut self, t: &Typed) {
+        if let Some(import) = &t.import {
+            self.app.type_names.insert(t.spelled.clone(), extra::unprefixed(&import.source));
+            self.app.enum_types.push(import.clone());
+        }
+    }
+
+    fn declare_query(&mut self, scope: Scope, name: &str, ty: Typed, file: &str, span: &Span) -> bool {
         if matches!(scope, Scope::Route(_)) && ROUTE_MEMBERS.contains(&name) {
             let msg = format!("`{name}` can't be a query parameter: the typed route class has a member called `{name}`; rename it");
             self.diags.error(file, Some(span), msg);
@@ -1304,12 +1440,13 @@ impl Resolver<'_> {
         let key = (scope, name.to_string());
         match self.queries.get(&key) {
             None => {
+                self.use_type(&ty);
                 self.queries.insert(key.clone(), (ty, file.to_string(), span.line));
                 self.query_order.push(key);
                 true
             }
-            Some((t0, f0, l0)) if *t0 != ty => {
-                let msg = format!("`?{name}` is {t0} in {f0}:{l0} but {ty} here");
+            Some((t0, f0, l0)) if t0.key != ty.key => {
+                let msg = format!("`?{name}` is {} in {f0}:{l0} but {} here{}", t0.shown, ty.shown, t0.same_name_as(&ty));
                 self.diags.error(file, Some(span), msg);
                 false
             }
@@ -1332,17 +1469,21 @@ impl Resolver<'_> {
             return None;
         }
         let Some((_, folder)) = segs.iter().find(|(n, _)| n == &p.name) else {
-            let Some(qty) = p.ty.as_ref().and_then(query_type).filter(|_| !p.required) else {
-                let hooks = what == "guard()" || what == "redirect()";
-                let msg = format!(
-                    "`{}` isn't a segment of this path ({}){}; for a query parameter make it optional and nullable, e.g. `String? {}`",
-                    p.name,
-                    show_segs(segs),
-                    if hooks { format!(" at or above its folder; {what} can also take `Uri uri` and `extra`") } else { String::new() },
-                    p.name
-                );
-                self.diags.error(file, Some(&p.span), msg);
-                return None;
+            let qty = match p.ty.as_ref().filter(|_| !p.required).map(|t| self.query_typed(t, file, Some((&p.span, &p.name)))) {
+                Some(QueryTy::Is(t)) => *t,
+                Some(QueryTy::Broken) => return None,
+                _ => {
+                    let hooks = what == "guard()" || what == "redirect()";
+                    let msg = format!(
+                        "`{}` isn't a segment of this path ({}){}; for a query parameter make it optional and nullable, e.g. `String? {}`",
+                        p.name,
+                        show_segs(segs),
+                        if hooks { format!(" at or above its folder; {what} can also take `Uri uri` and `extra`") } else { String::new() },
+                        p.name
+                    );
+                    self.diags.error(file, Some(&p.span), msg);
+                    return None;
+                }
             };
             return self.declare_query(scope, &p.name, qty, file, &p.span).then(|| p.name.clone());
         };
@@ -1708,34 +1849,55 @@ impl Resolver<'_> {
 
     /// Every file that uses `$id` must agree on its type; nobody saying means String.
     fn settle_segment_types(&mut self) {
-        let mut first: HashMap<usize, (String, String, usize)> = HashMap::new();
-        for c in &self.constraints {
-            if self.app.is_catch_all(c.folder) {
-                if !list_item(&c.ty.text).is_some_and(|i| CATCH_ALL_ITEMS.contains(&i)) {
+        let mut first: HashMap<usize, (Typed, String, usize)> = HashMap::new();
+        for c in std::mem::take(&mut self.constraints) {
+            let catch_all = self.app.is_catch_all(c.folder);
+            let text = c.ty.text.as_str();
+            // A catch-all is a `List` of its parts' type.
+            let (item, plain): (Option<&str>, &[&str]) =
+                if catch_all { (list_item(text), &CATCH_ALL_ITEMS) } else { (Some(text), &SEGMENT_TYPES) };
+            let typed = match item {
+                Some(i) if plain.contains(&i) => Typed::plain(text.to_string()),
+                Some(i) if enums::is_candidate(i) => {
+                    let (what, fallback) = if catch_all {
+                        ("a catch-all segment's part", format!("List<String> {}", c.name))
+                    } else {
+                        ("a segment", format!("String {}", c.name))
+                    };
+                    let decl = format!("{text} {}", c.name);
+                    match self.enum_typed(i, text, &c.file, &format!("s{}", c.folder), Some((&c.span, &decl, what, &fallback))) {
+                        Some(t) => t,
+                        None => continue,
+                    }
+                }
+                _ if catch_all => {
                     let msg = format!(
-                        "`{} {}`: a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime",
+                        "`{} {}`: a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime, or of an enum",
                         c.ty.text, c.name
                     );
                     self.diags.error(&c.file, Some(&c.span), msg);
                     continue;
                 }
-            } else if !SEGMENT_TYPES.contains(&c.ty.text.as_str()) {
-                self.diags.error(&c.file, Some(&c.span), format!("`{} {}`: segments are String, int, double or bool", c.ty.text, c.name));
-                continue;
-            }
+                _ => {
+                    let msg = format!("`{} {}`: segments are String, int, double or bool, or an enum", c.ty.text, c.name);
+                    self.diags.error(&c.file, Some(&c.span), msg);
+                    continue;
+                }
+            };
             match first.get(&c.folder) {
                 None => {
-                    first.insert(c.folder, (c.ty.text.clone(), c.file.clone(), c.span.line));
+                    self.use_type(&typed);
+                    first.insert(c.folder, (typed, c.file.clone(), c.span.line));
                 }
-                Some((t0, f0, l0)) if *t0 != c.ty.text => self.diags.error(
+                Some((t0, f0, l0)) if t0.key != typed.key => self.diags.error(
                     &c.file,
                     Some(&c.span),
-                    format!("`${}` is {t0} in {f0}:{l0} but {} here", c.name, c.ty.text),
+                    format!("`${}` is {} in {f0}:{l0} but {} here{}", c.name, t0.shown, typed.shown, t0.same_name_as(&typed)),
                 ),
                 _ => {}
             }
         }
-        self.app.seg_types = first.into_iter().map(|(k, (t, _, _))| (k, t)).collect();
+        self.app.seg_types = first.into_iter().map(|(k, (t, _, _))| (k, t.spelled)).collect();
     }
 }
 

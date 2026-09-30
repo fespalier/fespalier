@@ -211,6 +211,22 @@ fn a_segment_called_locale_is_not_shadowed() {
     has(&c, &["final String locale;", "localizedSegment(_locale, 'products', {'fr': 'produits', 'de': 'produkte'})}/${Uri.encodeComponent(locale)}"]);
 }
 
+#[test]
+fn an_enum_segment_below_a_localized_folder_parses_and_is_written_by_name() {
+    let p = "enum Category { shoes, hats }\nclass ShopPage extends StatelessWidget { const ShopPage({super.key, required this.category}); final Category category; }";
+    let c = code(&[("shop/route.dart", "const paths = {'fr': 'boutique'};"), ("shop/$category/page.dart", p)]);
+    has(
+        &c,
+        &[
+            "path: joinLocation(at, '/:_l0(shop|boutique)/:category'),",
+            "category: Segment.asEnum(s, 'category', _i0.Category.values)",
+            "'/${localizedSegment(_locale, 'shop', {'fr': 'boutique'})}/${category.name}'",
+            "RouteMatcher(['shop|boutique', ':category']",
+            "paths: {'fr': '/boutique/:category'},",
+        ],
+    );
+}
+
 // --- the other surfaces -----------------------------------------------------------------
 
 #[test]
@@ -333,16 +349,104 @@ fn keys_and_values_must_be_string_literals() {
 
 #[test]
 fn a_spelling_must_be_one_valid_url_segment() {
-    for bad in ["a/b", "", "a b", "a?b", "a#b", "..", ".", "über", "a%20b", "a:b", "a|b", "(a)", "$a"] {
+    for bad in ["a/b", "", "a b", "a?b", "a#b", "..", ".", "a%20b", "a:b", "a|b", "(a)", "$a", "a\tb", "a\u{a0}b", "a\u{7}b", "a\\b", "a*b", "a=b"] {
         let body = format!("const paths = {{'fr': {}}};", crate::emit::dart_str(bad));
         let e = errors(&[("x/route.dart", &body), ("x/page.dart", &page("X"))]);
         assert_eq!(e.len(), 1, "`{bad}`: {e:?}");
         assert!(e[0].contains(&format!("`{bad}` is not a valid URL segment for `fr`")), "`{bad}`: {e:?}");
     }
-    for good in ["produits", "a-b", "a_b", "v1.0", "A", "~a", "x9"] {
+    for good in ["produits", "a-b", "a_b", "v1.0", "A", "~a", "x9", "über", "продукты", "製品", "café-été", "e\u{301}te\u{301}"] {
         let body = format!("const paths = {{'fr': '{good}'}};");
         assert_eq!(errors(&[("x/route.dart", &body), ("x/page.dart", &page("X"))]), Vec::<String>::new(), "`{good}`");
     }
+}
+
+#[test]
+fn letters_beyond_ascii_are_matched_percent_encoded_and_compared_decoded() {
+    // go_router matches `Uri.path`, which is percent-encoded (`/über` is `/%C3%BCber` to it), so the
+    // route's pattern has the encoded spelling; the matchers and the not-found scopes compare the
+    // decoded segments, so they have it as written; `locationFor` gets it as written and encodes it.
+    let c = code(&[
+        ("shop/route.dart", "const paths = {'de': 'über', 'ru': 'продукты'};"),
+        ("shop/page.dart", &page("Shop")),
+        ("shop/not_found.dart", &NOT_FOUND.replace("NotFound", "ShopNotFound")),
+        ("not_found.dart", NOT_FOUND),
+    ]);
+    has(
+        &c,
+        &[
+            "path: joinLocation(at, '/:_l0(shop|%C3%BCber|%D0%BF%D1%80%D0%BE%D0%B4%D1%83%D0%BA%D1%82%D1%8B)'),",
+            "RouteMatcher(['shop|über|продукты']",
+            "(['shop|über|продукты'], (uri) =>",
+            "localizedSegment(_locale, 'shop', {'de': 'über', 'ru': 'продукты'})",
+            "paths: {'de': '/über', 'ru': '/продукты'},",
+        ],
+    );
+}
+
+#[test]
+fn a_tab_options_initial_location_may_spell_the_segment_raw_or_encoded() {
+    for spelling in ["/überall", "/%C3%BCberall"] {
+        let layout = format!("{TABS}\nconst tabOptions = {{'search': TabOptions(initialLocation: '{spelling}')}};");
+        let e = errors(&[
+            ("layout.dart", &layout),
+            ("home/page.dart", &page("Home")),
+            ("search/route.dart", "const paths = {'de': 'überall'};"),
+            ("search/page.dart", &page("Search")),
+        ]);
+        assert_eq!(e, Vec::<String>::new(), "{spelling}");
+    }
+}
+
+#[test]
+fn percent_encode_writes_each_byte_of_a_non_ascii_letter_in_upper_case() {
+    use crate::locale::percent_encode;
+    assert_eq!(percent_encode("über"), "%C3%BCber");
+    assert_eq!(percent_encode("製品"), "%E8%A3%BD%E5%93%81");
+    assert_eq!(percent_encode("a-b_c.d~e"), "a-b_c.d~e");
+}
+
+#[test]
+fn a_spelling_that_collides_is_found_while_the_file_has_other_errors() {
+    // `'es': 'a b'` and `bad: 'x'` are errors of their own, and are left out; the two entries that
+    // read still collide with `about/`, which is reported with them.
+    let e = errors(&[
+        ("about/page.dart", &page("About")),
+        ("products/route.dart", "const paths = {\n  'fr': 'about',\n  'es': 'a b',\n  bad: 'x',\n  'de': 'fine',\n};"),
+        ("products/page.dart", &page("Products")),
+    ]);
+    assert_eq!(e.len(), 4, "{e:?}");
+    assert!(e.iter().any(|m| m.starts_with("✗ products/route.dart:3  `a b` is not a valid URL segment for `es`")), "{e:?}");
+    assert!(e.iter().any(|m| m.starts_with("✗ products/route.dart:4  a key of `paths` must be a string literal")), "{e:?}");
+    assert!(e.iter().any(|m| m.starts_with("✗ products/route.dart:2  `fr: 'about'` makes /about, which about/page.dart serves too")), "{e:?}");
+    assert!(e.iter().any(|m| m.starts_with("✗ about/page.dart:1  /about is also reached through `fr: 'about'` in products/route.dart:2")), "{e:?}");
+}
+
+#[test]
+fn a_map_that_is_not_a_map_literal_reports_no_collision() {
+    // Nothing was read, so there is nothing to collide.
+    let e = errors(&[("about/page.dart", &page("About")), ("products/route.dart", "const paths = names;"), ("products/page.dart", &page("Products"))]);
+    assert_eq!(e.len(), 1, "{e:?}");
+}
+
+#[test]
+fn two_not_found_files_that_share_a_url_through_a_spelling_collide() {
+    let nf = |name: &str| NOT_FOUND.replace("NotFound", name);
+    let e = errors(&[
+        ("not_found.dart", NOT_FOUND),
+        ("about/page.dart", &page("About")),
+        ("about/not_found.dart", &nf("AboutNotFound")),
+        ("products/route.dart", "const paths = {\n  'fr': 'about',\n};"),
+        ("products/page.dart", &page("Products")),
+        ("products/not_found.dart", &nf("ProductsNotFound")),
+    ]);
+    assert_eq!(e.len(), 4, "{e:?}");
+    assert!(e.contains(&"✗ products/route.dart:2  `fr: 'about'` makes /about, which about/not_found.dart serves too; rename the spelling, or the folder it collides with".to_string()), "{e:?}");
+    assert!(e.contains(&"✗ about/not_found.dart  /about is also reached through `fr: 'about'` in products/route.dart:2; rename the spelling, or this folder".to_string()), "{e:?}");
+    // The page collision is reported on its own, in its own pair.
+    assert!(e.iter().any(|m| m.starts_with("✗ about/page.dart:1")), "{e:?}");
+    // A not_found.dart and a page at one URL are not a clash.
+    assert_eq!(errors(&[("a/page.dart", &page("A")), ("a/not_found.dart", &nf("ANotFound")), ("b/route.dart", "const paths = {'fr': 'x'};"), ("b/page.dart", &page("B")), ("not_found.dart", NOT_FOUND)]), Vec::<String>::new());
 }
 
 #[test]

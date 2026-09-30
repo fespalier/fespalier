@@ -1,6 +1,7 @@
 // Localized paths: `help/route.dart` says `const paths = {'fr': 'aide', 'de': 'hilfe'};`, so
 // the folder also answers /aide and /hilfe. The typed route, the page and its data stay single.
 import 'package:features/app.g.dart';
+import 'package:features/models/category.dart';
 import 'package:features/app/help/\$topic/page.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
@@ -245,6 +246,104 @@ void main() {
       await tester.pumpAndSettle();
       expect(where(tester), '/aide/routing');
       expect(tester.element(find.byType(HelpTopicPage)), same(before));
+    });
+  });
+
+  group('letters beyond ASCII', () {
+    // `guide/route.dart`: {'de': 'führer', 'ru': 'руководство'}. go_router matches the
+    // percent-encoded path (`Uri.path`), which is how `Uri` writes `/führer` however it was
+    // typed, so the routes carry the encoded spelling and a deep link works raw or encoded.
+    testWidgets('a deep link works raw, encoded and in any hex case', (
+      tester,
+    ) async {
+      for (final path in [
+        '/führer',
+        '/f%C3%BChrer',
+        '/f%c3%bchrer',
+        '/руководство',
+        '/%D1%80%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE',
+        '/guide',
+      ]) {
+        await boot(tester, path);
+        expect(find.text('Guide'), findsOneWidget, reason: path);
+      }
+    });
+
+    testWidgets('the router location is the encoded form', (tester) async {
+      await boot(tester, '/führer');
+      expect(where(tester), '/f%C3%BChrer');
+    });
+
+    test('locationFor writes the spelling percent-encoded', () {
+      expect(const GuideRoute().location, '/guide');
+      expect(const GuideRoute().locationFor('de'), '/f%C3%BChrer');
+      expect(
+        const GuideRoute().locationFor('ru'),
+        '/%D1%80%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE',
+      );
+      // The location decodes to the word, and is the same URL as the raw one.
+      expect(Uri.parse(const GuideRoute().locationFor('de')).pathSegments,
+          ['führer']);
+      expect(Uri.parse(const GuideRoute().locationFor('de')),
+          Uri.parse('/führer'));
+    });
+
+    testWidgets('go(locale:) navigates to the encoded location', (
+      tester,
+    ) async {
+      await boot(tester, '/');
+      const GuideRoute().go(tester.element(find.text('Home')), locale: 'de');
+      await tester.pumpAndSettle();
+      expect(find.text('Guide'), findsOneWidget);
+      expect(where(tester), '/f%C3%BChrer');
+    });
+
+    test(
+        'match reads the decoded segment, and the manifest lists it as written',
+        () {
+      for (final path in ['/f%C3%BChrer', '/führer']) {
+        final m = AppRoutes.match(Uri.parse(path))!;
+        expect(m.route, isA<GuideRoute>(), reason: path);
+      }
+      expect(AppManifest.byType[GuideRoute]!.paths,
+          {'de': '/führer', 'ru': '/руководство'});
+      expect(AppManifest.byType[GuideRoute]!.pathFor('de'), '/führer');
+      expect(AppRoutes.match(Uri.parse('/fuhrer/x/y')), isNull);
+    });
+  });
+
+  group('an enum segment below a localized folder', () {
+    // `shop/route.dart`: {'fr': 'boutique', 'de': 'laden'}; `shop/$category` is a `Category`.
+    testWidgets('is parsed at every spelling', (tester) async {
+      for (final path in ['/shop/hats', '/boutique/hats', '/laden/hats']) {
+        await boot(tester, path);
+        expect(find.text('Shop hats: cap, beret'), findsOneWidget,
+            reason: path);
+      }
+      await boot(tester, '/boutique/hats?sort=name');
+      expect(find.text('sorted by name'), findsOneWidget);
+      // Case-insensitive here, spellings and the enum's name alike.
+      await boot(tester, '/LADEN/HATS');
+      expect(find.text('Shop hats: cap, beret'), findsOneWidget);
+    });
+
+    testWidgets('a name that is no value is not found, at any spelling', (
+      tester,
+    ) async {
+      await boot(tester, '/boutique/socks');
+      expect(find.text('Nothing at /boutique/socks'), findsOneWidget);
+    });
+
+    test('locationFor writes the enum by name, and match reads it back', () {
+      const route = CategoryShopRoute(category: Category.hats);
+      expect(route.location, '/shop/hats');
+      expect(route.locationFor('fr'), '/boutique/hats');
+      expect(route.locationFor('de'), '/laden/hats');
+      final m = AppRoutes.match(Uri.parse('/laden/hats'))!;
+      expect(m.params['category'], Category.hats);
+      expect(m.route.location, '/shop/hats');
+      expect(AppRoutes.dataAt(Uri.parse('/boutique/hats'))!.single,
+          CategoryShopRoute.data(Category.hats));
     });
   });
 

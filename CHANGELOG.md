@@ -26,15 +26,54 @@
 - **`fsp routes`** lists the spellings under a route's row, and `--json` has a `paths` object for a
   route that has them (other rows are unchanged). The route table in the header of `app.g.dart` shows them too.
 - **Errors, with code frames:** `paths` on a `$dynamic`, `$$catch-all`, `(group)` or app folder; a
-  value that is not one URL segment (`a-z 0-9 - _ . ~`, so no accents yet); a key that is not a
-  string literal or a locale tag, or repeats; and a spelling that makes a URL another route serves
-  (`fr: 'about'` beside a real `about/`) is reported at the entry and at the route it collides with.
-  The unreachable-route check knows the spellings.
+  value that is not one URL segment (no `/ ? # %`, whitespace, control characters or
+  `: | ( ) ' " $ \`); a key that is not a string literal or a locale tag, or repeats; and a
+  spelling that makes a URL another route serves (`fr: 'about'` beside a real `about/`, or two
+  `not_found.dart` files) is reported at the entry and at the other file, even while the rest of the
+  file has errors (an entry with an error is left out). The unreachable-route check knows the spellings.
+- **Non-ASCII spellings** (`{'de': 'über', 'ru': 'продукты'}`): go_router matches `Uri.path`, which
+  is percent-encoded however a location was typed, so the route's pattern has each spelling encoded
+  (`%C3%BCber`), the matchers and not-found scopes compare decoded segments, and `locationFor` writes
+  the spelling encoded. A deep link works raw, encoded or in lower-case hex. Case-insensitive
+  matching of such letters is go_router's (hex and `A-Z` only).
 - **Tabs:** go_router refuses a tab whose first route has a path parameter, which a localized
   segment is, so `fsp gen` writes that tab's `initialLocation` (the canonical one). A `tabOptions`
   `initialLocation` may name a spelling. A localized first route below a `:segment` is an error.
 - `examples/features` has `help/` (`aide`, `hilfe`: a dynamic child, a nested localized child, a
   `not_found.dart`) and `examples/tabs` a Search tab that also answers `/recherche`, with widget tests.
+### Enum segments, query parameters and catch-alls
+
+- **A segment, a query parameter and a catch-all can be an app enum.** `Category category` for
+  `$category`, `Sort? sort` and `List<Sort> sorts` for `?sort=`, and `List<Category> path` for
+  `$$path`, in any file that asks for them (a page, `data.dart`, a guard, a layout, `loading.dart`,
+  a provider's family argument). `/shop/shoes` is `Category.shoes`, read by name
+  (`Category.values.byName`); a segment or catch-all part that names no value is a `BadSegment`,
+  so the route shows `not_found.dart` like `/products/abc` does for an `int`, and a query
+  parameter that names none is `null` (or left out of a list). Where the route's paths match in
+  any case (`case_sensitive: false`, or a `route.dart`) the name does too; an exact match wins.
+- **`.location` writes the `name`,** and the typed route's field has the enum's type
+  (`ShopRoute(category: Category.hats, sort: Sort.price)`). `data.dart` can be keyed by an enum
+  (it is hashable, so the provider family takes it as it is), and `AppRoutes.match` and `dataAt`
+  parse it like the route does.
+- **`fsp gen` reads the enum's declaration** to tell an enum from a class, with the tree-sitter
+  Dart parser: in the file that names the type, or in a file it imports (relative, or `package:` of
+  the app's own package, followed through `export`s), with an import prefix (`m.Category`)
+  followed through its own import. The generated file imports the type the way it does a typed
+  `extra` (`import '...' show Category;`). A type it finds no enum for is an error at the
+  parameter that suggests taking a `String` and parsing it in the page; a private enum is an
+  error too. Files must agree on the enum (two enums of one name don't agree), with the error the
+  plain types give.
+- **An optional nullable parameter of a type no enum is found for** in a page, layout or view is
+  left to its default as before (it may be `Color? color`); a `data.dart`, `guard.dart` or
+  `redirect.dart` parameter that can't be a segment or a query is the error.
+- **The manifest and `fsp routes --json` show the type by name** (`Category`, `List<Category>`,
+  `Sort?`), without the import prefix the file used.
+- The runtime has `Segment.asEnum`, `Segment.asEnumRest`, `Query.asEnum` and `Query.asEnumList`;
+  `withQuery`, `restPath` and `restKey` write an enum as its `name`. Regenerate `lib/app.g.dart`
+  with the matching `fsp` if you use one.
+- `examples/features` has `shop/$category` (an enum from `lib/models/`, a `Sort?` query parameter
+  declared in the page's file, and `data.dart` keyed by the category) and `browse/$$categories`
+  (a `List<Category>` through an import prefix), with widget tests, and `dataAt` / `match` tests.
 
 ### `extra` for layouts, guards and redirects, and an `extraCodec`
 

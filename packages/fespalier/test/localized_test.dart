@@ -475,6 +475,113 @@ void main() {
     });
   });
 
+  group('letters beyond ASCII', () {
+    // `Uri.path` is percent-encoded however a location was typed, and go_router matches it, so
+    // a route carries the encoded spelling; decoded segments are what the matchers compare.
+    const pattern = '/:_l0(tools|t%C3%B6ols|%D0%B8%D0%BD%D1%81%D1%82)/:id';
+
+    Future<void> at(WidgetTester tester, String location) async {
+      final router = GoRouter(
+        initialLocation: location,
+        routes: [
+          GoRoute(
+            path: pattern,
+            builder: (context, s) => Text('tool ${s.pathParameters['id']}'),
+          ),
+        ],
+      );
+      await boot(tester, router);
+    }
+
+    testWidgets('a location reaches the route raw, encoded, or with lower-case '
+        'hex', (tester) async {
+      for (final path in [
+        '/töols/1',
+        '/t%C3%B6ols/1',
+        '/t%c3%b6ols/1',
+        '/инст/1',
+        '/%D0%B8%D0%BD%D1%81%D1%82/1',
+        '/tools/1',
+      ]) {
+        await at(tester, path);
+        expect(find.text('tool 1'), findsOneWidget, reason: path);
+      }
+    });
+
+    testWidgets('the router location is the encoded form', (tester) async {
+      final router = GoRouter(
+        initialLocation: '/töols/1',
+        routes: [
+          GoRoute(path: pattern, builder: (c, s) => const Text('found')),
+        ],
+      );
+      await boot(tester, router);
+      expect(
+        router.routeInformationProvider.value.uri.toString(),
+        '/t%C3%B6ols/1',
+      );
+    });
+
+    testWidgets('a different letter is not found', (tester) async {
+      await at(tester, '/toöls/1');
+      expect(find.text('tool 1'), findsNothing);
+    });
+
+    test('localizedSegment writes the spelling percent-encoded', () {
+      const spellings = {'de': 'töols', 'ru': 'инст', 'fr': 'outils'};
+      expect(localizedSegment('de', 'tools', spellings), 't%C3%B6ols');
+      expect(
+        localizedSegment('ru', 'tools', spellings),
+        '%D0%B8%D0%BD%D1%81%D1%82',
+      );
+      expect(localizedSegment('de-AT', 'tools', spellings), 't%C3%B6ols');
+      expect(localizedSegment('fr', 'tools', spellings), 'outils');
+      expect(localizedSegment('es', 'tools', spellings), 'tools');
+      // What `location` holds is the URL `Uri` would write for the raw one.
+      expect(
+        Uri.parse('/${localizedSegment('de', 'tools', spellings)}'),
+        Uri.parse('/töols'),
+      );
+    });
+
+    test('matchRoutes and nearestNotFound compare the decoded segments', () {
+      final matchers = [
+        RouteMatcher(['tools|töols|инст', ':id'], (s) {
+          return UrlMatch(s.uri, const AboutRoute(), {
+            'id': s.pathParameters['id'],
+          }, const []);
+        }),
+      ];
+      for (final path in [
+        '/töols/1',
+        '/t%C3%B6ols/1',
+        '/%D0%B8%D0%BD%D1%81%D1%82/1',
+      ]) {
+        expect(matchRoutes(Uri.parse(path), '/', matchers)?.params, {
+          'id': '1',
+        }, reason: path);
+      }
+      expect(matchRoutes(Uri.parse('/toöls/1'), '/', matchers), isNull);
+
+      Widget scoped(Uri uri) => nearestNotFound(uri, '/', [
+        (
+          ['tools|töols'],
+          (uri) => Text('tools ${uri.path}'),
+          caseSensitive: true,
+        ),
+      ], (uri) => Text('root ${uri.path}'));
+      expect(
+        (scoped(Uri.parse('/t%C3%B6ols/x')) as Text).data,
+        'tools /t%C3%B6ols/x',
+      );
+      expect(
+        (scoped(Uri.parse('/töols/x')) as Text).data,
+        'tools /t%C3%B6ols/x',
+      );
+      expect((scoped(Uri.parse('/toöls/x')) as Text).data, startsWith('root'));
+    });
+  });
+
   group('RouteInfo', () {
     const info = RouteInfo<Object?>(
       type: ProductRoute,

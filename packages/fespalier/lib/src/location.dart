@@ -44,9 +44,12 @@ bool sameLocale(String a, String b) =>
 
 /// The spelling of one localized path segment in [locale], which a generated
 /// `locationFor` calls for each one. [spellings] is the folder's `paths` (locale
-/// tag to spelling) and [canonical] the folder's name, for a locale it has no entry
-/// for. A tag with a region (`fr-CA`) falls back to its language (`fr`) when it has no
-/// entry of its own.
+/// tag to spelling, as written: `'über'`) and [canonical] the folder's name, for a
+/// locale it has no entry for. A tag with a region (`fr-CA`) falls back to its
+/// language (`fr`) when it has no entry of its own.
+///
+/// The result is ready to go in a location: a spelling with letters beyond ASCII is
+/// percent-encoded, as `Uri` writes a path (`über` is `%C3%BCber`).
 String localizedSegment(
   String? locale,
   String canonical,
@@ -56,8 +59,8 @@ String localizedSegment(
   final language = locale.split(RegExp('[-_]')).first;
   String? fallback;
   for (final MapEntry(:key, :value) in spellings.entries) {
-    if (sameLocale(key, locale)) return value;
+    if (sameLocale(key, locale)) return Uri.encodeComponent(value);
     if (sameLocale(key, language)) fallback = value;
   }
-  return fallback ?? canonical;
+  return fallback == null ? canonical : Uri.encodeComponent(fallback);
 }

@@ -2,6 +2,7 @@ mod config;
 mod dart;
 mod diag;
 mod emit;
+mod enums;
 mod extra;
 mod format;
 mod init;
@@ -223,7 +224,8 @@ pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize
 pub fn analyze(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, resolve::App)> {
     let mut diags = diag::Diags::default();
     let tree = scan::scan(app_dir, &mut diags)?;
-    let app = resolve::resolve(&tree, cfg.case_sensitive, &mut diags);
+    let libs = enums::Libs::for_app(app_dir, cfg);
+    let app = resolve::resolve(&tree, cfg.case_sensitive, &libs, &mut diags);
     manifest::check(&app, cfg, &mut diags);
     let code = emit::emit(&app, cfg, &mut diags);
     Ok((code, diags, app))
@@ -303,6 +305,8 @@ fn watch(project: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod case_tests;
+#[cfg(test)]
+mod enum_tests;
 #[cfg(test)]
 mod cli_tests;
 #[cfg(test)]

@@ -11,6 +11,16 @@
   spellings joined by `|` (`'products|produits'`), matched by the new `partMatches`; `routeTemplate`
   turns go_router's `:_l0(products|produits)` back into the canonical `products`, so
   `AppManifest.of` and `byPath` keep working.
+- `localizedSegment` returns a spelling with letters beyond ASCII percent-encoded (`'über'` is
+  `%C3%BCber`), so a generated `locationFor` holds a valid location; the matcher and not-found parts
+  (`'shop|über'`) are compared with decoded segments.
+- `Segment.asEnum`, `Segment.asEnumRest`, `Query.asEnum` and `Query.asEnumList`: what generated code
+  reads an enum segment (`Category category`), a catch-all of them (`List<Category> path`) and an
+  enum query parameter (`Sort? sort`, `List<Sort>`) with. They take the enum's `values` and read a
+  value by its `name`, exact by default or in any case with `caseSensitive: false` (the route's
+  setting); an unknown segment or catch-all part is a `BadSegment` (not-found), an unknown query
+  value is `null` or left out. `withQuery`, `restPath` and `restKey` write an enum as its `name`.
+  Regenerate `lib/app.g.dart` with the matching `fsp`.
 
 - `ExtraCodec` and `ExtraJson`: a `Codec<Object?, Object?>` for `GoRouter(extraCodec:)` built from
   a map of type to `toJson` and `fromJson`, so an `extra` survives the browser's history and state

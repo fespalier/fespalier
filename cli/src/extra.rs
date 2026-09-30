@@ -1,6 +1,7 @@
 //! Typed `extra`: how the generated file can name the type of a page's `extra`
 //! parameter (`Product? extra`), so a typed route can take `extra: Product?`, and
 //! whether the `extra` types of a guard, a layout and the routes below them agree.
+//! Enum segments and query parameters (`enums.rs`) are named and imported the same way.
 //!
 //! The generated file doesn't import what page.dart imports, and the syntax tree
 //! doesn't say which import a type comes from. So the type is found the way the
@@ -43,6 +44,11 @@ const CORE: [&str; 33] = [
     "Duration", "Future", "Stream", "Function", "Type", "Record", "Never", "Null", "BigInt", "RegExp", "Symbol",
     "Enum", "Comparable", "Exception", "Error", "StackTrace", "Iterator", "Pattern", "Match", "Sink", "Stopwatch",
 ];
+
+/// Whether `dart:core` gives every file a type called `name`.
+pub fn is_core(name: &str) -> bool {
+    CORE.contains(&name)
+}
 
 /// The `import` lines of a Dart file.
 pub fn imports(src: &str) -> Vec<Import> {
@@ -155,6 +161,19 @@ fn type_refs(ty: &str) -> Vec<TypeRef> {
     out
 }
 
+/// `ty` without the import prefixes of its types: `List<m.Category>?` is `List<Category>?`.
+pub fn unprefixed(ty: &str) -> String {
+    let mut out = String::new();
+    let mut last = 0;
+    for r in type_refs(ty) {
+        out.push_str(&ty[last..r.at.start]);
+        out.push_str(&r.name);
+        last = r.at.end;
+    }
+    out.push_str(&ty[last..]);
+    out
+}
+
 /// Works out the generated spelling of `ty`, the type of `extra` in `src` (the
 /// source of the page, layout, guard or redirect at `file`, whose import in the generated
 /// file is `_i{import}`). `tag` keeps the aliases of one use apart from another's:
@@ -219,6 +238,14 @@ mod tests {
         assert!(declares(SRC, "Local"));
         assert!(!declares(SRC, "Product"));
         assert!(!declares(SRC, "nope"));
+    }
+
+    #[test]
+    fn takes_import_prefixes_off_types() {
+        assert_eq!(unprefixed("List<m.Category>?"), "List<Category>?");
+        assert_eq!(unprefixed("Map<a.K, b.V>"), "Map<K, V>");
+        assert_eq!(unprefixed("Sort?"), "Sort?");
+        assert_eq!(unprefixed("({int id, m.Product p})"), "({int id, Product p})");
     }
 
     #[test]

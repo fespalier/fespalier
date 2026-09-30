@@ -112,25 +112,26 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
 
     // Segments that already exist keep the type the tree gives them.
     let mut diags = Diags::default();
-    let app = resolve::resolve(&scan::scan(&app_dir, &mut diags)?, true, &mut diags);
-    let known: HashMap<&str, &str> = app
+    let libs = crate::enums::Libs::for_app(&app_dir, &cfg);
+    let app = resolve::resolve(&scan::scan(&app_dir, &mut diags)?, true, &libs, &mut diags);
+    let known: HashMap<&str, String> = app
         .routes
         .iter()
         .enumerate()
         .filter(|(_, r)| matches!(r.seg, Some(Seg::Dynamic(_) | Seg::CatchAll(..))))
-        .map(|(id, r)| (r.dir.as_str(), app.seg_type(id)))
+        .map(|(id, r)| (r.dir.as_str(), app.display_type(app.seg_type(id))))
         .collect();
     let mut seg_cx = vec![];
     for (i, s) in segs.iter().enumerate() {
         match s {
             Seg::Dynamic(name) => {
                 let dir = parts[..=i].join("/");
-                let ty = known.get(dir.as_str()).copied().unwrap_or("String").to_string();
+                let ty = known.get(dir.as_str()).cloned().unwrap_or_else(|| "String".to_string());
                 seg_cx.push(SegCx { name: name.clone(), ty });
             }
             Seg::CatchAll(name, _) => {
                 let dir = parts[..=i].join("/");
-                let ty = known.get(dir.as_str()).copied().unwrap_or("List<String>").to_string();
+                let ty = known.get(dir.as_str()).cloned().unwrap_or_else(|| "List<String>".to_string());
                 seg_cx.push(SegCx { name: name.clone(), ty });
             }
             _ => {}

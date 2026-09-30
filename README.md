@@ -389,8 +389,8 @@ every parameter:
    and `extra` (in a page, a layout, a guard or a redirect) get what their name says, in the
    files where they make sense.
 2. **Query.** An *optional* parameter that is nullable or a `List` of
-   `String`/`int`/`double`/`bool` is a query parameter: `int? page` gets `?page=2`, and
-   `List<String> tags = const []` gets every `?tags=`.
+   `String`/`int`/`double`/`bool` (or of an [enum](#enum-segments)) is a query parameter:
+   `int? page` gets `?page=2`, and `List<String> tags = const []` gets every `?tags=`.
 3. **By type.** Otherwise, a page's parameter whose type is what `data.dart` yields gets
    the data, so `required this.product` with `final Product product;` works. (A page or
    layout below a [section](#section-data) can take the section's data the same way.) An error
@@ -412,12 +412,83 @@ A segment's type comes from the parameters that ask for it: `{required int id}` 
 `products/$id/data.dart` makes `$id` an `int` everywhere. That covers the typed
 `ProductRoute(id: 42)`, the page, and parsing: `/products/abc` goes to `not_found.dart`.
 Every file that asks for `$id` must agree on its type. When nobody gives one, a segment
-is a `String`. Segments are `String`, `int`, `double` or `bool`. (A [catch-all](#catch-all-segments)
-is a `List` of those, or of `num` or `DateTime`.)
+is a `String`. Segments are `String`, `int`, `double`, `bool` or an [enum](#enum-segments) of your
+app. (A [catch-all](#catch-all-segments) is a `List` of those, or of `num` or `DateTime`.)
 
 `fsp new` scaffolds every segment as a `String`: `fsp new 'products/[id]' --data` writes
 `data(Ref ref, {required String id})`. To make `$id` an `int`, change the parameter type
 in each file that asks for it, then run `fsp gen` (or let `fsp watch` do it).
+
+### Enum segments
+
+A segment, a [query parameter](#query-parameters) and the parts of a [catch-all](#catch-all-segments)
+can be an enum of your app. The parameter is typed with it, in the file that asks:
+
+```
+shop/$category/page.dart   /shop/shoes              category == Category.shoes
+                           /shop/socks              not found: `socks` isn't a Category
+browse/$$categories/       /browse/shoes/hats       categories == [Category.shoes, Category.hats]
+```
+
+```dart
+enum Category { shoes, hats }        // in the file that uses it, or in any file it imports
+
+class ShopPage extends StatelessWidget {
+  const ShopPage({super.key, required this.category, this.sort});
+  final Category category;           // the segment
+  final Sort? sort;                  // the query: /shop/shoes?sort=price
+}
+
+const ShopRoute(category: Category.hats, sort: Sort.price).go(context);   // → /shop/hats?sort=price
+```
+
+- **Read by name.** A value is the one whose `name` the text spells (`Category.values.byName`).
+  A segment or catch-all part that names no value sends the route to `not_found.dart`, like a
+  bad `int` (`BadSegment`): the page is never built and a guard is skipped. A query parameter
+  that names none is `null`, or left out of a list, like any query parameter that doesn't parse.
+- **Case follows the route.** Names match exactly by default. Where the route's paths match in
+  any case ([`case_sensitive: false`, or a `route.dart`](#case-and-trailing-slashes)) `/shop/SHOES`
+  is `Category.shoes` too (in a query parameter as well). A name that matches exactly always
+  wins, so an enum with `a` and `A` still tells them apart.
+- **Written by name.** `.location` writes `.name`, for a segment, each part of a catch-all
+  (encoded on its own, like any part) and a query parameter, and the typed route's field has the
+  enum's type.
+- **Finding the enum.** Nothing in a syntax tree says that `Category` is an enum, so `fsp gen`
+  reads the declaration: in the file that names the type (`page.dart`, `data.dart`, `guard.dart`,
+  …), or in a file it imports, through `export`s too (a barrel file). It reads relative imports and
+  `package:` imports of your own package, which are files under `lib/`; `dart:` and other packages
+  are not read. A type it doesn't find an enum for (a class, one from another package, one that
+  isn't imported) is an error at the parameter that suggests the `String` to take instead and
+  parse in the page, and so is a private enum (`_Mode`), which the generated file couldn't name.
+  An import prefix (`m.Category`) is followed through that import only.
+- **Imports in `app.g.dart`.** The generated file names the type the way it does a
+  [typed `extra`](#typed-extra): from the declaring file's own import when the enum is in the
+  view file, otherwise through `import '…' show Category;` (or `as _es2_m` for a prefixed one)
+  lines that follow the view's imports.
+- **The type must agree across files.** `Category` in `page.dart` and `Size` in `data.dart` is
+  the error a mismatched `int` is (`` `$category` is Size in data.dart:1 but Category here ``);
+  `Category` and `m.Category` are the same type when they name the same enum, and two enums that
+  share a name are not.
+- **`data.dart` can be keyed by an enum.** An enum is hashable, so `{required Category category}` keys
+  the provider by the enum itself, and `ShopRoute.watch(ref, category: Category.hats)` takes it. A
+  `List<Category>` catch-all is keyed by its path, like any catch-all, and `data()` gets the list
+  back; a `List<Category>` query parameter is keyed by a `QueryList`, as for any list.
+  `AppRoutes.match(uri).params` and `AppRoutes.dataAt` have the enum values.
+- **The manifest and `fsp routes --json`** show the type by name (`Category`, `List<Category>`,
+  `Sort?`), without the prefix or alias it was imported under.
+
+Limits: an enum is read by `name` only (a `static Category? fromSegment(String)` convention to
+read another spelling may come later). A parameter that is `Sort sort = Sort.price` (not
+nullable) isn't a query parameter, as for `int`, and an *optional* nullable parameter of a type
+that `fsp` finds no enum for is still left to its default rather than being an error, since it may
+be plain widget configuration (`Color? color`): it is when a `data.dart`, `guard.dart` or
+`redirect.dart` asks for it that the error comes. `fsp watch` watches the app folder, so after
+adding an enum elsewhere run `fsp gen`. `fsp new` below an enum segment writes its type name into
+the new files, and you add the import.
+
+`examples/features` has `shop/$category` (an enum from `lib/models/`, a `Sort?` query parameter whose enum is
+declared in the page's file, and `data.dart` keyed by the category) and `browse/$$categories` (a
+`List<Category>` catch-all through an import prefix), with widget tests.
 
 ### Catch-all segments
 
@@ -476,8 +547,8 @@ route with a parameter. A part of `.` or `..` is read as a dot segment by the UR
 #### Typed catch-alls
 
 Like a segment, a catch-all takes its type from the parameters that ask for it, and a
-`List<String>` is the default. Ask for a `List<int>`, `List<double>`, `List<num>`, `List<bool>`
-or `List<DateTime>` and every part is read like one segment of that type:
+`List<String>` is the default. Ask for a `List<int>`, `List<double>`, `List<num>`, `List<bool>`,
+`List<DateTime>` or a `List` of an [enum](#enum-segments) and every part is read like one segment of that type:
 
 ```
 compare/$$ids/page.dart   /compare/3/7/12           ids == [3, 7, 12]
@@ -506,7 +577,7 @@ const CompareRoute(ids: [3, 7, 12]).go(context);   // → /compare/3/7/12
   (`List<Object>`, `List<int?>`, `Set<int>`) is an error that lists what a catch-all can be.
 - **`data.dart`** takes the typed list too: the provider is keyed by the encoded path, and
   `data()` gets the list back as a `List<int>`.
-- Enums aren't supported, for catch-alls or for ordinary segments.
+- A catch-all can also be a `List` of an [enum](#enum-segments).
 
 `examples/features` has one at `compare/$$ids` (with a `data.dart`), and a widget test.
 
@@ -590,13 +661,18 @@ The folder's name stays the canonical spelling: it is what `.location`, the rout
   parent. It is an error in the `route.dart` of a `$dynamic`, a `$$catch-all` or a `(group)` folder
   or of the app folder itself (none has a word to spell), and a `route.dart` may hold `paths`
   alone, without a `caseSensitive`.
-- **What a spelling can be.** One URL segment of the characters a folder name may use: `a-z`,
-  `0-9` and `- _ . ~`. A key is a locale tag (`fr`, `pt-BR`), and each tag may appear once
-  (`fr` and `FR` are the same tag). A value with a `/`, an empty one, `.`, `..`, or letters
-  outside those (an accent, a `:`) is an error at the value. Two locales may share a spelling, and
-  a spelling may equal the folder's own name.
+- **What a spelling can be.** One URL segment: letters and digits, `- _ . ~`, and letters
+  beyond ASCII (`'über'`, `'продукты'`, `'製品'`; see [below](#non-ascii-spellings)). A key is a
+  locale tag (`fr`, `pt-BR`), and each tag may appear once (`fr` and `FR` are the same tag). A value
+  that is empty, `.` or `..`, or has a `/`, `?`, `#`, `%`, whitespace, a control character, or any of
+  `: | ( ) [ ] { } ' " $ \ * =`, is an error at the value (a `%` is what a spelling is encoded
+  with: write the letter, not its encoding). Two locales may share a spelling, and a spelling may
+  equal the folder's own name. An entry with an error is left out, and the rest of the map
+  still takes part in the collision check below.
 - **Collisions are errors, with a code frame on each side.** A spelling that makes a URL another
-  route serves is reported at the entry and at the route it collides with:
+  route serves is reported at the entry and at the route it collides with (or at both entries, when
+  both are spellings). Two [`not_found.dart`](#not-found-views) files that would cover one URL
+  through a spelling collide the same way, at the entry and at the other file:
 
   ```
   error: `fr: 'about'` makes /about, which about/page.dart serves too; rename the spelling, or the folder it collides with
@@ -679,8 +755,28 @@ notes](#design-notes). Things to know:
   `'/recherche'`). The one place that can't be written down is a localized first tab route below a
   `:segment` (the location would need a value): that is an error that says so.
 - A localized static folder still sorts before dynamic siblings, so `/produits` isn't caught by a `/:slug`.
-- Spellings are ASCII for now: a word with an accent or another script would have to be matched
-  percent-encoded (see [ROADMAP](ROADMAP.md)).
+
+#### Non-ASCII spellings
+
+`const paths = {'de': 'über', 'ru': 'продукты'};` works. A URL carries only ASCII: `Uri.path` is always
+percent-encoded, whether a location was typed `/über`, arrives from the browser as `/%C3%BCber` or as
+`/%c3%bcber` (`Uri.parse` normalizes all three to `/%C3%BCber`, and go_router's `router` location,
+`GoRouterState.uri` and `currentLocation` are that form). So:
+
+- **The route matches the encoded spelling.** `fsp gen` writes it into go_router's pattern encoded,
+  UTF-8 bytes in upper-case hex: `':_l0(shop|%C3%BCber|%D0%BF%D1%80%D0%BE%D0%B4%D1%83%D0%BA%D1%82%D1%8B)'`.
+  A deep link raw, encoded or in lower-case hex, `go('/über')` and `go('/%C3%BCber')` all reach it.
+- **The runtime helpers compare decoded segments,** so `AppRoutes.match`, `dataAt` and `nearestNotFound`
+  (and the manifest, `fsp routes` and diagnostics) have the word as written: `'shop|über|продукты'`.
+- **`locationFor` writes it encoded,** as `Uri` would: `ProductsRoute().locationFor('de')` is
+  `/%C3%BCber`, the same URL as `Uri.parse('/über')`, so it is safe to compare, store and share.
+  `.location` (canonical) is always ASCII.
+- **Case and normalization.** With [`caseSensitive: false`](#case-and-trailing-slashes), go_router's
+  case-insensitive match is on the encoded text: it folds `A-Z` and the hex digits, but `/ÜBER` is not
+  `/über` (they encode to different bytes). `AppRoutes.match` lowercases Unicode, so it may say a
+  route fits where go_router's own matching would not; list the capital spelling in `paths` if you need
+  it. A letter written two ways (`ü` as one character, or `u` plus a combining diaeresis) is two
+  spellings to go_router: fsp compares what you wrote, so write the precomposed form browsers send.
 
 `examples/features` has `help/` (`aide`, `hilfe`) with a dynamic child, a nested localized child, a static
 sibling that only one locale spells, a `not_found.dart`, and widget tests for deep links through each
@@ -1074,7 +1170,8 @@ A query parameter's type comes from the parameters that ask for it, like a segme
 for `?page` must agree on its type. A missing or unparsable value is `null` (or left out
 of a list); unlike a bad segment, it never leads to not-found. The typed route takes
 query parameters as optional arguments and writes them into `.location`, leaving out
-nulls and empty lists.
+nulls and empty lists. A query parameter can be an [enum](#enum-segments) too (`Sort? sort`,
+`List<Sort> sorts`): a value that names none is `null`, and `.location` writes `.name`.
 
 `data.dart` can take query parameters too, and its provider is then keyed by them, so
 `/search?page=2` and `?page=3` load separately. A `List` works as a key too: lists
@@ -1816,8 +1913,9 @@ It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
 
 - **Types are never re-spelled.** The generator doesn't copy your imports. Values flow
   through inference, and each route's provider is a `static final` whose type is inferred.
-  The one exception is a page's (or a layout's, guard's or redirect's) [typed `extra`](#typed-extra),
-  whose type the typed route has to name; it imports that type by name from the file's imports.
+  The exceptions are a page's (or a layout's, guard's or redirect's) [typed `extra`](#typed-extra)
+  and an [enum segment or query parameter](#enum-segments), whose types the typed route has to
+  name; it imports those types by name from the file's imports.
 - **Segments and query parameters are parsed into a record** (`({int id, int? page})`).
   Records compare by value, so providers are keyed by them directly.
 - **Page-less folders** fold into their children's paths (`greet/$name` → `'greet/:name'`).
@@ -1847,10 +1945,13 @@ by two segments, query parameters (in a page, `data.dart` and a layout), a page 
 view bound by type, a layout and guard that take segments, a user-written
 `AsyncNotifierProvider`, `Stream` data, and a `teams/$teamId` section whose `data.dart` feeds
 its layout and pages, with a `not_found.dart` at two levels (which takes the team's id), a `reports` section keyed by a
-query parameter, and `AppRoutes.dataAt` / `match` and the prefetch handle in `test/data_at_test.dart`.
+query parameter, enum segments, query parameters and catch-alls (`shop/$category`, `browse/$$categories`), and
+`AppRoutes.dataAt` / `match` and the prefetch handle in `test/data_at_test.dart`.
 
 `examples/features` also has localized paths: `help/` answers `/aide` and `/hilfe` too, with a dynamic
-child, a nested child that is localized itself, and a `not_found.dart` that covers every spelling.
+child, a nested child that is localized itself, and a `not_found.dart` that covers every spelling; `guide/`, with
+spellings beyond ASCII (`/führer`, `/руководство`); and `shop/`, a page-less folder spelled `boutique` and
+`laden` with an enum segment below it.
 
 `examples/tabs` is a bottom navigation bar built as a tab layout: four tabs (one with nested
 pages, and a Library tab that is a tab layout of its own, with two inner tabs), a
@@ -2072,24 +2173,25 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 421 tests (389 unit, 27 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 452 tests (420 unit, 27 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
-  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, per-folder case, localized paths, and that the committed outputs are up to date. Clippy is clean.
+  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 391 Flutter tests (the package 170, `shop` 24, `features` 162, `tabs` 35); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 435 Flutter tests (the package 192, `shop` 24, `features` 184, `tabs` 35); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The
-  Dart compiler still catches real mismatches in the generated code.
+  Dart compiler still catches real mismatches in the generated code. (An enum is the one type
+  it does look up: it reads the declaration, and compares enums by it.)
 
 Things to know:
 
 - Pages render below their `layout.dart`, so a layout's `Scaffold` is not their nearest
   `Material` during page transitions. Wrap `ListTile`-heavy pages in
   `Material(type: MaterialType.transparency, …)`, as `products/page.dart` does.
-- In a route file, any optional nullable parameter of a primitive type becomes a query
-  parameter, including one you meant as widget configuration (`String? title`). Keep such
+- In a route file, any optional nullable parameter of a primitive type (or of an enum) becomes a
+  query parameter, including one you meant as widget configuration (`String? title`). Keep such
   parameters on inner widgets instead of the file's exported one.
 - go_router builds the whole matched stack, so `/products/abc` also loads `/products`
   underneath the not-found view.

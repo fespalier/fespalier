@@ -10,13 +10,13 @@
 //! {"pattern","route","file","tags":[…],"params":[{"name","type","in"}],
 //!  "folder","presentation","groups":[…],"layouts":[…],
 //!  "tabs":[{"layout","index","branch"}],"data_keys":[…]|null,"meta":"…"|null,
-//!  "catch_all":{"name","optional"}|null}
+//!  "catch_all":{"name","optional"}|null,"paths":{"fr":"/produits/:id"}}
 //! ```
 //!
 //! `file` and `meta` are relative to the project root (`meta` is the route's
 //! meta.dart, or null); `folder`, `layouts` and `tabs[].layout` are relative to
 //! the app folder, with `""` for the app folder itself. `in` is `path` or
-//! `query`; `presentation` is `page`, `redirect`, `root` (on the root navigator, from a
+//! `query`; `paths` is the route's path in each locale its folders spell it in, and only there for a route with a localized segment; `presentation` is `page`, `redirect`, `root` (on the root navigator, from a
 //! `navigator.dart`) or `custom` (a `present.dart` builds its page).
 
 use std::path::Path;
@@ -66,7 +66,7 @@ pub fn json_lines(app: &App, app_dir: &str) -> Vec<String> {
             let query = i.query.iter().map(|(n, t)| json!({"name": n, "type": t, "in": "query"}));
             let tabs: Vec<_> =
                 i.tabs.iter().map(|t| json!({"layout": t.layout, "index": t.index, "branch": t.branch})).collect();
-            json!({
+            let mut row = json!({
                 "pattern": i.path,
                 "route": i.class,
                 "file": format!("{app_dir}/{}", i.file),
@@ -80,8 +80,12 @@ pub fn json_lines(app: &App, app_dir: &str) -> Vec<String> {
                 "data_keys": i.data_keys,
                 "meta": i.meta.map(|m| format!("{app_dir}/{m}")),
                 "catch_all": i.catch_all.map(|(name, optional)| json!({"name": name, "optional": optional})),
-            })
-            .to_string()
+            });
+            // Only for a route with a localized segment, so the rows of an app without any are as they were.
+            if !i.paths.is_empty() {
+                row["paths"] = i.paths.iter().map(|(l, p)| (l.clone(), json!(p))).collect::<serde_json::Map<_, _>>().into();
+            }
+            row.to_string()
         })
         .collect()
 }

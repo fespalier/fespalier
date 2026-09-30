@@ -64,6 +64,7 @@ abstract final class AppManifest {
     RouteInfo(
       type: SearchRoute,
       path: '/search',
+      paths: {'fr': '/recherche'},
       folder: '(tabs)/search',
       groups: ['(tabs)'],
       layouts: ['(tabs)'],

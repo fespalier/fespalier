@@ -94,7 +94,7 @@ fn a_function_layout_takes_the_extra_too() {
     let f = "import '../../models.dart';\nWidget layout(Widget child, {Product? extra}) => Column(children: [child]);";
     let c = code(&[("page.dart", HOME), ("shop/layout.dart", f), ("shop/page.dart", &page("Shop", Some("Product?")))]);
     let l = imp(&c, "shop/layout.dart");
-    has(&c, &[&format!("{l}.layout(child, extra: extraOrNull(state))"), "{Product? extra}"]);
+    has(&c, &[&format!("{l}.layout(child, extra: extraOrNull(state))"), "{Product? extra, String? locale}"]);
     // The same rules: nullable, and the type of the routes below it.
     let e = errors(&[("page.dart", HOME), ("shop/layout.dart", "Widget layout(Widget child, {Product extra}) => child;"), ("shop/page.dart", &page("Shop", None))]);
     assert!(e.iter().any(|m| m.contains("declare it nullable")), "{e:?}");
@@ -164,7 +164,7 @@ fn a_redirect_takes_the_extra_and_its_route_passes_one() {
         &c,
         &[
             &format!("{f}.redirect(extra: extraOrNull(state))"),
-            "void go(BuildContext context, {Product? extra}) => context.go(location, extra: extra);",
+            "void go(BuildContext context, {Product? extra, String? locale}) => context.go(locationFor(locale), extra: extra);",
             "import 'app/models.dart' show Product;",
         ],
     );
@@ -312,22 +312,22 @@ fn the_route_own_type_has_the_last_word() {
 #[test]
 fn a_route_without_an_extra_takes_the_one_its_guard_or_layout_asks_for() {
     let c = code(&[("page.dart", HOME), ("shop/guard.dart", &guard("Product?")), ("shop/page.dart", &page("Shop", None))]);
-    has(&c, &["void go(BuildContext context, {Product? extra}) => context.go(location, extra: extra);", "import 'models.dart' show Product;"]);
+    has(&c, &["void go(BuildContext context, {Product? extra, String? locale}) => context.go(locationFor(locale), extra: extra);", "import 'models.dart' show Product;"]);
     // From a layout, and for the pages below it; the home page is outside it.
     let c = code(&[("page.dart", HOME), ("shop/layout.dart", &layout("Product?")), ("shop/page.dart", &page("Shop", None))]);
-    has(&c, &["{Product? extra}"]);
+    has(&c, &["{Product? extra, String? locale}"]);
     let home = &c[c.find("final class HomeRoute").unwrap()..c.find("final class ShopRoute").unwrap()];
     lacks(home, &["extra"]);
     // `Object?` says nothing about the type: the route takes no typed extra.
     let c = code(&[("page.dart", HOME), ("shop/guard.dart", &guard("Object?")), ("shop/page.dart", &page("Shop", None))]);
-    lacks(&c, &["context.go(location, extra: extra)"]);
+    lacks(&c, &["extra: extra)"]);
 }
 
 #[test]
 fn a_pages_own_type_is_the_typed_routes() {
     let c = code(&[("page.dart", HOME), ("shop/guard.dart", &guard("Object?")), ("shop/page.dart", &page("Shop", Some("Product?")))]);
     let p = imp(&c, "shop/page.dart");
-    has(&c, &["{Product? extra}", &format!("{p}.ShopPage(extra: extraOf(state))"), "extra: extraOrNull(state)"]);
+    has(&c, &["{Product? extra, String? locale}", &format!("{p}.ShopPage(extra: extraOf(state))"), "extra: extraOrNull(state)"]);
 }
 
 #[test]
@@ -337,7 +337,7 @@ fn types_named_by_a_guard_and_a_page_do_not_share_aliases() {
     let c = code(&[("page.dart", HOME), ("guard.dart", g), ("other/page.dart", p)]);
     // The page's own type is spelled under its own alias; the guard's, which types the home
     // page that has none, under an alias of its own: one prefix, two libraries.
-    has(&c, &["as _e1_m;", "{_e1_m.Thing? extra}", "import 'a.dart' as _eg0_m;", "{_eg0_m.Thing? extra}"]);
+    has(&c, &["as _e1_m;", "{_e1_m.Thing? extra, String? locale}", "import 'a.dart' as _eg0_m;", "{_eg0_m.Thing? extra, String? locale}"]);
     lacks(&c, &["import 'a.dart' as _e1_m;", "import 'b.dart' as _eg0_m;"]);
 }
 

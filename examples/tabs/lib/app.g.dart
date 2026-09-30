@@ -8,6 +8,7 @@
 //   /profile/edit      EditProfileRoute  (tabs)/profile/edit/page.dart  (transition, root)
 //   /profile/security  SecurityRoute     (tabs)/profile/security/page.dart  (transition)
 //   /search            SearchRoute       (tabs)/search/page.dart  (transition)
+//     fr  /recherche
 //   /settings          SettingsRoute     settings/page.dart  (transition)
 
 import 'package:fespalier/fespalier.dart';
@@ -93,10 +94,11 @@ abstract final class AppRoutes {
             restorationScopeId: 'tab:(tabs)/(home)',
           ),
           StatefulShellBranch(
+            initialLocation: joinLocation(at, '/search'),
             preload: true,
             routes: [
               GoRoute(
-                path: joinLocation(at, '/search'),
+                path: joinLocation(at, '/:_l0(search|recherche)'),
                 pageBuilder: (context, state) => _i0.transition(
                   state.pageKey,
                   _i9.SearchPage(),
@@ -193,7 +195,7 @@ abstract final class AppRoutes {
   static final List<RouteMatcher> _matchers = [
     RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), {}, [])),
     RouteMatcher(['profile'], (s) => UrlMatch(s.uri, const ProfileRoute(), {}, [])),
-    RouteMatcher(['search'], (s) => UrlMatch(s.uri, const SearchRoute(), {}, [])),
+    RouteMatcher(['search|recherche'], (s) => UrlMatch(s.uri, const SearchRoute(), {}, [])),
     RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), {}, [])),
     RouteMatcher(['library', 'authors'], (s) => UrlMatch(s.uri, const AuthorsRoute(), {}, [])),
     RouteMatcher(['library', 'books'], (s) => UrlMatch(s.uri, const BooksRoute(), {}, [])),
@@ -256,14 +258,14 @@ final class EditProfileRoute extends TypedLocation {
 
   /// Navigates here with an `extra`: an object that isn't in the URL, so a deep link leaves it null; a reload restores it through extra_codec.dart.
   @override
-  void go(BuildContext context, {ProfileDraft? extra}) => context.go(location, extra: extra);
+  void go(BuildContext context, {ProfileDraft? extra, String? locale}) => context.go(locationFor(locale), extra: extra);
 
   @override
-  Future<T?> push<T extends Object?>(BuildContext context, {ProfileDraft? extra}) =>
-      context.push<T>(location, extra: extra);
+  Future<T?> push<T extends Object?>(BuildContext context, {ProfileDraft? extra, String? locale}) =>
+      context.push<T>(locationFor(locale), extra: extra);
 
   @override
-  void replace(BuildContext context, {ProfileDraft? extra}) => context.replace(location, extra: extra);
+  void replace(BuildContext context, {ProfileDraft? extra, String? locale}) => context.replace(locationFor(locale), extra: extra);
 }
 
 /// `/profile/security` → (tabs)/profile/security/page.dart
@@ -280,6 +282,13 @@ final class SearchRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/search');
+
+  /// The location with each localized segment spelled as `_locale` has it (`fr-CA` falls back to
+  /// `fr`); a segment with no spelling for it keeps its canonical one. `location` is the canonical spelling.
+  @override
+  String locationFor(String? _locale) {
+    return joinLocation(AppRoutes.base, '/${localizedSegment(_locale, 'search', {'fr': 'recherche'})}');
+  }
 }
 
 /// `/settings` → settings/page.dart

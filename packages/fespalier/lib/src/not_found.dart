@@ -3,7 +3,8 @@ import 'package:flutter/widgets.dart';
 import 'route_match.dart';
 
 /// A `not_found.dart` below the root: the URL prefix of its folder (a segment
-/// starting with `:` matches anything), the widget to show, and whether the
+/// starting with `:` matches anything, and a localized folder is all its
+/// spellings joined by `|`: `products|produits`), the widget to show, and whether the
 /// folder's own path matches by case (its `route.dart`, else the config).
 typedef NotFoundScope = (
   List<String> prefix,
@@ -25,8 +26,6 @@ Widget nearestNotFound(
   Widget Function(Uri uri) root, {
   bool caseSensitive = true,
 }) {
-  bool same(String a, String b, bool sensitive) =>
-      sensitive ? a == b : a.toLowerCase() == b.toLowerCase();
   final path = pathBelow(uri, base, caseSensitive: caseSensitive);
   if (path == null) return root(uri);
   for (final (prefix, build, caseSensitive: sensitive) in scopes) {
@@ -34,7 +33,8 @@ Widget nearestNotFound(
     var matches = true;
     for (var i = 0; i < prefix.length && matches; i++) {
       matches =
-          prefix[i].startsWith(':') || same(prefix[i], path[i], sensitive);
+          prefix[i].startsWith(':') ||
+          partMatches(prefix[i], path[i], sensitive);
     }
     if (matches) return build(uri);
   }

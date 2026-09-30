@@ -86,6 +86,9 @@ pub struct Variable {
     /// Set when the initializer is a map from string literals to constructor
     /// calls, like `const tabOptions = {'search': TabOptions(preload: true)};`.
     pub objects: Option<Vec<ObjectEntry>>,
+    /// Set when the initializer is a map literal, like `const paths = {'fr': 'produits'};`:
+    /// each pair with its key and value as string literals, where they are.
+    pub pairs: Option<Vec<StringPair>>,
     /// Set when the initializer is a constructor call, like `const meta = PageMeta(code: 'x')`:
     /// its named arguments (positional ones are left out).
     pub ctor_args: Option<Vec<ObjectArg>>,
@@ -95,6 +98,17 @@ pub struct Variable {
     /// Declared with `const` (not `final`, `var` or `late`).
     pub is_const: bool,
     pub span: Span,
+}
+
+/// `'fr': 'produits'`: one pair of a map literal.
+#[derive(Debug, Clone)]
+pub struct StringPair {
+    /// `None` when the key isn't a plain string literal (an identifier, an interpolation).
+    pub key: Option<String>,
+    pub key_span: Span,
+    /// `None` when the value isn't a plain string literal.
+    pub value: Option<String>,
+    pub value_span: Span,
 }
 
 /// `'search': TabOptions(preload: true, initialLocation: '/search')`
@@ -401,6 +415,7 @@ impl Reader<'_> {
                 let call = value_node.and_then(|v| self.call(v));
                 let strings = value_node.and_then(|v| self.strings(v));
                 let objects = value_node.and_then(|v| self.objects(v));
+                let pairs = value_node.and_then(|v| self.pairs(v));
                 let ctor_args = value_node.and_then(|v| self.ctor_args(v));
                 let value = value_node.map(|v| self.text(v).split_whitespace().collect::<String>());
                 let string = value_node.filter(|v| v.kind() == "string_literal").and_then(|v| string_value(self.text(v)));
@@ -409,7 +424,7 @@ impl Reader<'_> {
                     "false" => Some(false),
                     _ => None,
                 });
-                out.push(Variable { name: self.text(name).to_string(), call, strings, string, boolean, objects, ctor_args, value, is_const, span: Span::of(name) });
+                out.push(Variable { name: self.text(name).to_string(), call, strings, string, boolean, objects, pairs, ctor_args, value, is_const, span: Span::of(name) });
             }
         }
         out
@@ -463,6 +478,31 @@ impl Reader<'_> {
                         class: self.text(class).to_string(),
                         args: parsed,
                     });
+                }
+                _ => return None,
+            }
+        }
+        Some(out)
+    }
+
+    /// `{'fr': 'produits', 'de': 'produkte'}` (optionally `const` or `<String, String>`) → its
+    /// pairs, with each key and value read as a plain string literal when it is one. `None`
+    /// when it isn't a map literal, or has an element that isn't a `key: value` pair (a spread,
+    /// an `if`, a set element).
+    fn pairs(&self, v: Node) -> Option<Vec<StringPair>> {
+        if v.kind() != "set_or_map_literal" {
+            return None;
+        }
+        let literal = |n: Node| (n.kind() == "string_literal").then(|| string_value(self.text(n))).flatten();
+        let mut out = vec![];
+        let mut cur = v.walk();
+        for e in v.named_children(&mut cur) {
+            match e.kind() {
+                "type_arguments" | "comment" | "documentation_comment" => {}
+                "pair" => {
+                    let key = e.child_by_field_name("key")?;
+                    let value = e.child_by_field_name("value")?;
+                    out.push(StringPair { key: literal(key), key_span: Span::of(key), value: literal(value), value_span: Span::of(value) });
                 }
                 _ => return None,
             }
@@ -1313,6 +1353,41 @@ mod tests {
             assert!(var(bad).objects.is_none(), "{bad}");
         }
         assert!(var("list").strings.is_some());
+    }
+
+    #[test]
+    fn reads_top_level_string_maps() {
+        let m = parse(
+            r#"
+            const paths = {
+              'fr': 'produits',
+              "de": "produkte",
+              'pt-BR': r'produtos',
+            };
+            const typed = <String, String>{'a': 'b'};
+            const constant = const {'a': 'b'};
+            const empty = <String, String>{};
+            const odd = {fr: 'x', 'de': name, 'es': 'a$b', 'it': 'ok'};
+            const spread = {...other, 'a': 'b'};
+            const set = {'a'};
+            const list = ['a'];
+            "#,
+        );
+        let var = |n: &str| m.variables.iter().find(|v| v.name == n).unwrap();
+        let pairs = var("paths").pairs.as_ref().unwrap();
+        let read: Vec<_> = pairs.iter().map(|p| (p.key.as_deref().unwrap(), p.value.as_deref().unwrap())).collect();
+        assert_eq!(read, [("fr", "produits"), ("de", "produkte"), ("pt-BR", "produtos")]);
+        assert_eq!((pairs[0].key_span.line, pairs[0].value_span.line), (3, 3));
+        assert_eq!(var("typed").pairs.as_ref().unwrap().len(), 1);
+        assert_eq!(var("constant").pairs.as_ref().unwrap().len(), 1);
+        assert!(var("empty").pairs.as_ref().unwrap().is_empty());
+        // A key or value that isn't a plain string literal is kept, as `None`, so the caller can point at it.
+        let odd = var("odd").pairs.as_ref().unwrap();
+        assert_eq!(odd.iter().map(|p| (p.key.is_some(), p.value.is_some())).collect::<Vec<_>>(), [(false, true), (true, false), (true, false), (true, true)]);
+        // Anything that isn't a literal of pairs is not a map.
+        for bad in ["spread", "set", "list"] {
+            assert!(var(bad).pairs.is_none(), "{bad}");
+        }
     }
 
     #[test]

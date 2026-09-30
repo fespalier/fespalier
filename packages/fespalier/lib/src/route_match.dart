@@ -92,7 +92,8 @@ final class RouteMatch {
 }
 
 /// One route as `AppRoutes.matchUrl` tries it: its path as parts (`['products', ':id']`;
-/// `*rest` is a catch-all of one or more parts, `*rest?` of none or more) and how to
+/// `*rest` is a catch-all of one or more parts, `*rest?` of none or more; a localized folder
+/// is all its spellings joined by `|`, `'products|produits'`) and how to
 /// build what it matched, which throws [BadSegment] for a segment that doesn't parse.
 ///
 /// [caseSensitive] is the route's own setting (its folder's `route.dart`, else the config).
@@ -133,6 +134,18 @@ UrlMatch? matchRoutes(
   return null;
 }
 
+/// Whether [segment] is the static pattern part [part]: a part is one spelling
+/// (`products`), or, for a localized folder, all of them joined by `|`
+/// (`products|produits|produkte`). No segment can hold a `|`, so this can't be mistaken
+/// for a spelling.
+bool partMatches(String part, String segment, bool caseSensitive) {
+  bool same(String a, String b) =>
+      caseSensitive ? a == b : a.toLowerCase() == b.toLowerCase();
+  return part.contains('|')
+      ? part.split('|').any((spelling) => same(spelling, segment))
+      : same(part, segment);
+}
+
 /// The path parameters [pattern] takes out of [path]; null when it doesn't fit.
 Map<String, String>? _capture(
   List<String> pattern,
@@ -155,9 +168,7 @@ Map<String, String>? _capture(
     if (i >= path.length) return null;
     if (part.startsWith(':')) {
       params[part.substring(1)] = path[i];
-    } else if (caseSensitive
-        ? part != path[i]
-        : part.toLowerCase() != path[i].toLowerCase()) {
+    } else if (!partMatches(part, path[i], caseSensitive)) {
       return null;
     }
   }
@@ -165,13 +176,16 @@ Map<String, String>? _capture(
 }
 
 /// go_router's spelling of the route's path, mount point included
-/// (`/shop/docs/:rest(.+)`), which `Segment.asRest` reads to count the parts before
+/// (`/shop/docs/:rest(.+)`, `/:_l0(products|produits)/:id`), which `Segment.asRest` reads to count the parts before
 /// a catch-all.
 String _fullPath(String base, List<String> pattern) {
   final parts = [
-    for (final p in pattern)
+    for (final (i, p) in pattern.indexed)
       if (p.startsWith('*'))
         ':${p.substring(1, p.endsWith('?') ? p.length - 1 : null)}(.+)'
+      else if (p.contains('|'))
+        // A localized folder is a parameter that matches each spelling.
+        ':_l$i(${p.replaceAll('.', r'\.')})'
       else
         p,
   ];

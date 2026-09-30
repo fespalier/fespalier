@@ -16,6 +16,7 @@ use heck::ToUpperCamelCase;
 use crate::dart::{self, Class, Function, Lit, Module, Span, Ty};
 use crate::diag::Diags;
 use crate::extra::{self, ExtraType};
+use crate::locale::{self, Localized};
 use crate::scan::{Kind, Node, Seg, ROUTE_MEMBERS};
 
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
@@ -239,6 +240,9 @@ pub struct Route {
     /// Whether this folder's paths match by case: the nearest `route.dart`'s
     /// `caseSensitive` at or above it, else the pubspec's `case_sensitive`.
     pub case_sensitive: bool,
+    /// The localized segments of this route's URL, outermost first: the `paths` of the
+    /// `route.dart` of each folder at or above it that has one (see `locale.rs`).
+    pub localized: Vec<Localized>,
 }
 
 impl Route {
@@ -256,6 +260,8 @@ pub struct ScopedNotFound {
     pub widget: Widget,
     /// Whether the folder's own path matches by case (see [`Route::case_sensitive`]).
     pub case_sensitive: bool,
+    /// The localized segments of its URL, so `/produits/x` is under it as `/products/x` is.
+    pub localized: Vec<Localized>,
 }
 
 #[derive(Debug, Default)]
@@ -359,6 +365,8 @@ struct Inherited {
     not_found: Option<Widget>,
     /// The nearest route.dart's `caseSensitive`, else the config's.
     case_sensitive: bool,
+    /// The `paths` of the route.dart files above, outermost first.
+    localized: Vec<Localized>,
 }
 
 /// A section's data.dart, as the files below its layout can receive it.
@@ -408,6 +416,7 @@ pub fn resolve(root: &Node, case_sensitive: bool, diags: &mut Diags) -> App {
     r.extra_codec(root);
     r.settle_segment_types();
     r.settle_extras();
+    locale::check_collisions(&r.app, r.diags);
     for (scope, name) in std::mem::take(&mut r.query_order) {
         let ty = r.queries[&(scope, name.clone())].0.clone();
         match scope {
@@ -481,6 +490,7 @@ impl Resolver<'_> {
             meta_args: vec![],
             sections: up.sections.iter().map(|s| s.id).collect(),
             case_sensitive: up.case_sensitive,
+            localized: up.localized.clone(),
         });
 
         let mut segs = up.segs.clone();
@@ -584,9 +594,18 @@ impl Resolver<'_> {
             w
         });
 
-        // route.dart's `caseSensitive` covers this folder and every folder below.
-        let case_sensitive = modules.get(&Kind::Route).and_then(|m| self.route_config(m, node)).unwrap_or(up.case_sensitive);
+        // route.dart's `caseSensitive` covers this folder and every folder below; its `paths`
+        // are this folder's own segment's other spellings, and every route below has them in its URL.
+        let mut localized = up.localized.clone();
+        let mut case_sensitive = up.case_sensitive;
+        if let Some(m) = modules.get(&Kind::Route) {
+            let file = node.rel(Kind::Route);
+            let spelled = locale::read(m, &file, node.seg.as_ref(), url.len().saturating_sub(1), self.diags);
+            localized.extend(spelled);
+            case_sensitive = self.route_config(m, &file).unwrap_or(up.case_sensitive);
+        }
         self.app.routes[id].case_sensitive = case_sensitive;
+        self.app.routes[id].localized = localized.clone();
 
         // loading.dart / error.dart apply here and to every folder below.
         let mut here = Inherited {
@@ -599,6 +618,7 @@ impl Resolver<'_> {
             sections: up.sections.clone(),
             not_found: up.not_found.clone(),
             case_sensitive,
+            localized: localized.clone(),
         };
         if let (true, Some(d)) = (section, &data) {
             here.sections.push(SectionRef { id, ty: d.ty.clone(), file: node.rel(Kind::Data) });
@@ -724,7 +744,7 @@ impl Resolver<'_> {
                                 let msg = format!("{at} already has {prev}; (group) folders don't add to the URL, so move or rename one");
                                 self.diags.error(&file, None, msg);
                             }
-                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone(), case_sensitive }),
+                            None => self.app.not_founds.push(ScopedNotFound { url: url.clone(), widget: w.clone(), case_sensitive, localized: localized.clone() }),
                         }
                     }
                     not_found = Some(w);
@@ -882,12 +902,12 @@ impl Resolver<'_> {
         }
     }
 
-    /// The URLs of the pages inside a tab.
-    fn tab_urls(&self, layout: usize, b: Branch) -> Vec<&[Seg]> {
-        fn walk<'a>(app: &'a App, id: usize, out: &mut Vec<&'a [Seg]>) {
+    /// The URLs of the pages inside a tab, with their localized segments.
+    fn tab_urls(&self, layout: usize, b: Branch) -> Vec<(&[Seg], &[Localized])> {
+        fn walk<'a>(app: &'a App, id: usize, out: &mut Vec<(&'a [Seg], &'a [Localized])>) {
             let r = &app.routes[id];
             if r.page.is_some() {
-                out.push(&r.url);
+                out.push((&r.url, &r.localized));
             }
             for &c in &r.children {
                 walk(app, c, out);
@@ -895,7 +915,7 @@ impl Resolver<'_> {
         }
         let mut out = vec![];
         match b {
-            Branch::Own => out.push(self.app.routes[layout].url.as_slice()),
+            Branch::Own => out.push((self.app.routes[layout].url.as_slice(), self.app.routes[layout].localized.as_slice())),
             Branch::Folder(c) => walk(&self.app, c, &mut out),
         }
         out
@@ -948,7 +968,7 @@ impl Resolver<'_> {
                         let path = loc.split(['?', '#']).next().unwrap_or_default();
                         let want: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
                         let urls = self.tab_urls(layout_id, all[i]);
-                        let matches = |u: &[Seg]| {
+                        let matches = |(u, localized): &(&[Seg], &[Localized])| {
                             let segs: Vec<&Seg> = u.iter().filter(|s| !matches!(s, Seg::Group(_))).collect();
                             let rest = match segs.last() {
                                 Some(Seg::CatchAll(_, optional)) => Some(*optional),
@@ -960,16 +980,17 @@ impl Resolver<'_> {
                                 None => want.len() == fixed,
                             };
                             long_enough
-                                && segs.iter().take(fixed).zip(&want).all(|(s, w)| match s {
-                                    Seg::Static(x) => x == w,
+                                && segs.iter().take(fixed).zip(&want).enumerate().all(|(i, (s, w))| match s {
+                                    // A localized folder is reached by any of its spellings.
+                                    Seg::Static(x) => locale::at(localized, i).map_or(x == w, |l| l.alternatives().iter().any(|a| a == w)),
                                     _ => true,
                                 })
                         };
                         if !loc.starts_with('/') {
                             let msg = format!("`initialLocation` is an app location and starts with `/`, e.g. `/{}`", loc.trim_start_matches('.'));
                             self.diags.error(&file, Some(&a.span), msg);
-                        } else if !urls.iter().any(|u| matches(u)) {
-                            let routes: Vec<String> = urls.iter().map(|u| pattern(u)).collect();
+                        } else if !urls.iter().any(matches) {
+                            let routes: Vec<String> = urls.iter().map(|(u, _)| pattern(u)).collect();
                             let msg = format!(
                                 "`initialLocation` `{loc}` is not a route in the `{}` tab; go_router needs one of them: {}",
                                 e.key,
@@ -1111,19 +1132,21 @@ impl Resolver<'_> {
     /// `const caseSensitive = false;` in a folder's route.dart: whether paths match by case
     /// in this folder and below. It is read from the source, so it must be a `true` or `false`
     /// literal.
-    fn route_config(&mut self, m: &Module, node: &Node) -> Option<bool> {
-        let file = node.rel(Kind::Route);
+    fn route_config(&mut self, m: &Module, file: &str) -> Option<bool> {
         let mut found = m.variables.iter().filter(|v| v.name == "caseSensitive");
         let Some(v) = found.next() else {
-            self.diags.error(&file, None, "expected `const caseSensitive = false;` (or `true`)");
+            // A route.dart may hold only `paths`.
+            if !m.variables.iter().any(|v| v.name == "paths") {
+                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), or `const paths = {'fr': 'produits'};`");
+            }
             return None;
         };
         if let Some(again) = found.next() {
-            self.diags.error(&file, Some(&again.span), "`caseSensitive` is declared twice");
+            self.diags.error(file, Some(&again.span), "`caseSensitive` is declared twice");
         }
         if v.boolean.is_none() {
             let msg = "`caseSensitive` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it";
-            self.diags.error(&file, Some(&v.span), msg);
+            self.diags.error(file, Some(&v.span), msg);
         }
         v.boolean
     }

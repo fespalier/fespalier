@@ -5,6 +5,7 @@ mod emit;
 mod extra;
 mod format;
 mod init;
+mod locale;
 mod manifest;
 mod parse_cache;
 mod resolve;
@@ -306,6 +307,8 @@ mod case_tests;
 mod cli_tests;
 #[cfg(test)]
 mod extra_tests;
+#[cfg(test)]
+mod locale_tests;
 #[cfg(test)]
 mod manifest_tests;
 #[cfg(test)]

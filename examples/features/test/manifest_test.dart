@@ -9,9 +9,9 @@ import 'package:material_ui/material_ui.dart' as mui;
 void main() {
   group('the route manifest', () {
     test('lists every route once, by type and by path', () {
-      expect(AppManifest.all, hasLength(37));
-      expect(AppManifest.byType, hasLength(37));
-      expect(AppManifest.byPath, hasLength(37));
+      expect(AppManifest.all, hasLength(41));
+      expect(AppManifest.byType, hasLength(41));
+      expect(AppManifest.byPath, hasLength(41));
       // With the manifest inline, AppRoutes forwards to it.
       expect(AppRoutes.all, same(AppManifest.all));
       expect(AppRoutes.byType, same(AppManifest.byType));
@@ -98,7 +98,7 @@ void main() {
         for (final info in AppManifest.all)
           if (info.metaAs<PageMeta>() case final meta?) meta.code,
       ];
-      expect(codes, hasLength(7));
+      expect(codes, hasLength(8));
       expect(codes.toSet(), hasLength(codes.length));
     });
   });
@@ -154,6 +154,14 @@ void main() {
       expect(labels.last, 'Files');
       await boot(tester, '/files/a/b');
       expect(labels.last, 'Files');
+    });
+
+    testWidgets('is found at any spelling of a localized path', (tester) async {
+      // The route is `:_l0(help|aide|hilfe)` to go_router; the manifest knows it as /help.
+      await boot(tester, '/aide');
+      expect(labels.last, 'Help');
+      await boot(tester, '/hilfe');
+      expect(labels.last, 'Help');
     });
 
     testWidgets('follows the location', (tester) async {

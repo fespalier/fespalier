@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::config::Config;
 use crate::diag::Diags;
 use crate::emit::{dart_str, rel};
+use crate::locale;
 use crate::resolve::{self, App, Branch, Route};
 use crate::scan::{Kind, Seg};
 use crate::templates;
@@ -35,6 +36,9 @@ pub struct Info {
     pub class: String,
     /// `/products/:id`, without the mount point.
     pub path: String,
+    /// The path in each locale its segments have a spelling for (`fr`: `/produits/:id`); the
+    /// canonical spelling where a level has none. Empty without a localized segment.
+    pub paths: Vec<(String, String)>,
     /// The route's folder relative to the app folder; empty for the app folder itself.
     pub folder: String,
     /// page.dart or redirect.dart, relative to the app folder.
@@ -91,6 +95,13 @@ pub fn collect(app: &App) -> Vec<Info> {
             Info {
                 class: format!("{}Route", r.name.as_deref().unwrap_or("?")),
                 path: resolve::pattern(&r.url),
+                paths: locale::locales(&r.localized)
+                    .into_iter()
+                    .map(|l| {
+                        let path = locale::pattern_in(&r.url, &r.localized, &l);
+                        (l, path)
+                    })
+                    .collect(),
                 folder: r.dir.clone(),
                 file: rel(r, kind),
                 presentation: match (r.page.is_some(), r.present.is_some(), r.root) {
@@ -228,6 +239,8 @@ pub struct ManifestCx {
 struct RouteInfoCx {
     class: String,
     path: String,
+    /// `{'fr': '/produits/:id'}`, `None` without a localized segment.
+    paths: Option<String>,
     folder: String,
     /// `redirect`, `root` or `custom`: a `RoutePresentation`; `None` for a plain page.
     presentation: Option<&'static str>,
@@ -275,6 +288,10 @@ pub fn cx(app: &App, first_import: usize) -> (ManifestCx, Vec<String>) {
             RouteInfoCx {
                 class: i.class,
                 path: dart_str(&i.path),
+                paths: (!i.paths.is_empty()).then(|| {
+                    let entries: Vec<String> = i.paths.iter().map(|(l, p)| format!("{}: {}", dart_str(l), dart_str(p))).collect();
+                    format!("{{{}}}", entries.join(", "))
+                }),
                 folder: dart_str(&i.folder),
                 presentation: i.presentation,
                 groups: list(i.groups.iter().map(|g| dart_str(g)).collect()),

@@ -10,6 +10,9 @@ abstract final class AppManifest {
     RouteInfo(
       type: {{ r.class }},
       path: {{ r.path }},
+{% if r.paths %}
+      paths: {{ r.paths }},
+{% endif %}
       folder: {{ r.folder }},
 {% if r.presentation %}
       presentation: RoutePresentation.{{ r.presentation }},

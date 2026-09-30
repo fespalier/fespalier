@@ -376,6 +376,41 @@ fn routes_json_pins_the_manifest_fields() {
     assert_eq!(home["layouts"], serde_json::json!([]));
 }
 
+/// Localized paths through the binary: the route table and `--json` list the spellings, and a
+/// spelling that collides with another route fails `check` with a frame on both files.
+#[test]
+fn routes_lists_localized_spellings_and_check_reports_a_collision() {
+    let dir = project();
+    let root = dir.path();
+    let write = |rel: &str, body: &str| {
+        let p = root.join("lib/app").join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, body).unwrap();
+    };
+    write("products/page.dart", &page("ProductsPage"));
+    write("products/route.dart", "const paths = {'fr': 'produits', 'de': 'produkte'};");
+    write("about/page.dart", &page("AboutPage"));
+    let (ok, out, err) = fsp_full(root, &["routes"], &[]);
+    assert!(ok, "{err}");
+    let lines: Vec<&str> = out.lines().collect();
+    assert!(lines[1].starts_with("/about "), "{out}");
+    assert!(lines[2].starts_with("/products "), "{out}");
+    assert_eq!(&lines[3..], ["  fr  /produits", "  de  /produkte"], "{out}");
+    let (ok, out, err) = fsp_full(root, &["routes", "--json"], &[]);
+    assert!(ok, "{err}");
+    let rows: Vec<serde_json::Value> = out.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let products = rows.iter().find(|r| r["pattern"] == "/products").unwrap();
+    assert_eq!(products["paths"], serde_json::json!({"fr": "/produits", "de": "/produkte"}));
+    assert!(rows.iter().find(|r| r["pattern"] == "/about").unwrap().get("paths").is_none());
+    assert_eq!(fsp(root, &["check"]), (true, "✓ 3 routes, no errors\n".into()));
+
+    write("products/route.dart", "const paths = {'fr': 'about'};");
+    let (ok, err) = fsp(root, &["check"]);
+    assert!(!ok && err.contains("2 error(s)"), "{err}");
+    assert!(err.contains("lib/app/products/route.dart") && err.contains("lib/app/about/page.dart"), "{err}");
+    assert!(err.contains("`fr: 'about'` makes /about, which about/page.dart serves too"), "{err}");
+}
+
 #[test]
 fn output_manifest_writes_a_second_library_that_check_knows_about() {
     let dir = project();

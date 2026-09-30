@@ -1,5 +1,7 @@
 import 'package:go_router/go_router.dart';
 
+import 'location.dart';
+
 /// How a route is served.
 enum RoutePresentation {
   /// A `page.dart`.
@@ -65,6 +67,7 @@ class RouteInfo<M> {
   const RouteInfo({
     required this.type,
     required this.path,
+    this.paths = const {},
     required this.folder,
     this.presentation = RoutePresentation.page,
     this.groups = const [],
@@ -81,6 +84,26 @@ class RouteInfo<M> {
 
   /// The path template, without the mount point: `/products/:id`.
   final String path;
+
+  /// The path template in each locale the route's folders spell their segment in
+  /// (`{'fr': '/produits/:id', 'de': '/produkte/:id'}`, from the `paths` of their
+  /// `route.dart` files); a level with no spelling for a locale keeps its canonical
+  /// one. Empty for a route with no localized segment. [path] is always the canonical
+  /// spelling, and what [AppManifest.byPath] is keyed by.
+  final Map<String, String> paths;
+
+  /// The path template as [locale] spells it: its entry in [paths] (`fr-CA` falls back to
+  /// `fr`), else [path].
+  String pathFor(String? locale) {
+    if (locale == null || paths.isEmpty) return path;
+    final language = locale.split(RegExp('[-_]')).first;
+    String? fallback;
+    for (final MapEntry(:key, :value) in paths.entries) {
+      if (sameLocale(key, locale)) return value;
+      if (sameLocale(key, language)) fallback = value;
+    }
+    return fallback ?? path;
+  }
 
   /// The route's folder relative to the app folder: `products/$id`; empty for
   /// the app folder itself.
@@ -127,7 +150,8 @@ class RouteInfo<M> {
 
 /// The path template of the route [state] is at, with the mount point [base]
 /// (`AppRoutes.base`) taken off, spelled as `AppManifest.byPath` does: go_router's
-/// `:rest(.+)` is `*rest`. Null when go_router has no path for it (an error page).
+/// `:rest(.+)` is `*rest` and a localized folder is its canonical spelling. Null when
+/// go_router has no path for it (an error page).
 /// (An optional catch-all's route without the catch-all has no `?` here: use
 /// [lookupRoute].)
 String? routeTemplate(GoRouterState state, [String base = '/']) {
@@ -137,6 +161,12 @@ String? routeTemplate(GoRouterState state, [String base = '/']) {
   if (prefix.isNotEmpty && (path == prefix || path.startsWith('$prefix/'))) {
     path = path.substring(prefix.length);
   }
+  // A localized folder is a parameter of its own, `:_l0(products|produits)`: its first
+  // alternative is the folder's name.
+  path = path.replaceAllMapped(
+    RegExp(r':_l\d+\(((?:\\.|[^|\\()])*)(?:\|(?:\\.|[^\\()])*)*\)'),
+    (m) => m[1]!.replaceAll(r'\.', '.'),
+  );
   path = path.replaceAllMapped(
     RegExp(r':(\w+)\(\.\+\)\??'),
     (m) => '*${m[1]}',

@@ -12,6 +12,7 @@ use crate::config::{Config, DataRetry};
 use crate::resolve::{self, App, Bind, Branch, Data, Guard, Route, Transition};
 use crate::dart::Span;
 use crate::diag::Diags;
+use crate::locale::{self, Localized};
 use crate::manifest::{self, ManifestCx};
 use crate::scan::{Kind, Seg};
 use crate::templates;
@@ -86,9 +87,13 @@ struct TreeCx {
     has_params: bool,
     /// For a GoRoute: whether its whole path matches by case (`caseSensitive: false` when not).
     case_sensitive: bool,
+    /// For a GoRoute: its own `path:` has a localized segment (`:_l0(products|produits)`).
+    #[serde(skip)]
+    localized: bool,
 }
 
-type Serves = (Vec<Seg>, String, Option<Span>);
+/// A GoRoute's URL, page file and page class, and the localized segments of the URL.
+type Serves = (Vec<Seg>, String, Option<Span>, Vec<Localized>);
 
 #[derive(Serialize)]
 struct BranchCx {
@@ -98,6 +103,12 @@ struct BranchCx {
     preload: bool,
     /// A Dart string literal: the tab's Navigator scope, from its folder.
     restoration_id: String,
+}
+
+/// A route's path as it goes between the quotes of a Dart string literal: the `\.` that
+/// keeps a dot in a localized spelling from matching any character needs its backslash doubled.
+fn path_literal(path: &str) -> String {
+    path.replace('\\', "\\\\")
 }
 
 /// `'it\'s'`: a Dart string literal for `s`.
@@ -206,6 +217,9 @@ struct RouteCx {
     location: String,
     /// A catch-all that can't be empty: `location` checks it.
     location_assert: Option<String>,
+    /// `locationFor`: the location with the segments in a locale's spelling; only for a route
+    /// with a localized segment, else the inherited `locationFor` answers with `location`.
+    location_for: Option<String>,
     /// The type of the page's `extra`, when it takes one.
     extra: Option<String>,
 }
@@ -387,7 +401,11 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize],
     let r = &app.routes[id];
     let own = match &r.seg {
         None | Some(Seg::Group(_)) => String::new(),
-        Some(Seg::Static(s)) => s.clone(),
+        // A localized segment is a parameter that matches every spelling (see `locale.rs`).
+        Some(Seg::Static(s)) => match locale::at(&r.localized, r.url.len().saturating_sub(1)) {
+            Some(l) => l.go_router_part(),
+            None => s.clone(),
+        },
         Some(Seg::Dynamic(n)) => format!(":{n}"),
         // A catch-all is a parameter with its own pattern: one or more segments.
         Some(Seg::CatchAll(n, _)) => format!(":{n}(.+)"),
@@ -450,6 +468,7 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize],
             serves: None,
             has_params: false,
             case_sensitive: true,
+            localized: false,
             routes: out,
         }];
     }
@@ -471,8 +490,8 @@ fn branch_name(app: &App, b: Branch) -> String {
 
 /// The route for the path above an optional catch-all: it serves that URL, not the folder's.
 fn without_catch_all(mut t: TreeCx, r: &Route) -> TreeCx {
-    if let (Some((_, file, span)), Some((_, parent))) = (t.serves.take(), r.url.split_last()) {
-        t.serves = Some((parent.to_vec(), file, span));
+    if let (Some((_, file, span, localized)), Some((_, parent))) = (t.serves.take(), r.url.split_last()) {
+        t.serves = Some((parent.to_vec(), file, span, localized));
     }
     t
 }
@@ -562,11 +581,13 @@ fn not_founds(app: &App) -> Vec<NotFoundCx> {
     });
     all.into_iter()
         .map(|n| {
+            // A localized segment is all its spellings, joined by `|`.
             let parts: Vec<String> = n
                 .url
                 .iter()
-                .filter_map(|s| match s {
-                    Seg::Static(s) => Some(format!("'{s}'")),
+                .enumerate()
+                .filter_map(|(i, s)| match s {
+                    Seg::Static(s) => Some(format!("'{}'", locale::at(&n.localized, i).map_or(s.clone(), Localized::matcher_part))),
                     Seg::Dynamic(d) | Seg::CatchAll(d, _) => Some(format!("':{d}'")),
                     Seg::Group(_) => None,
                 })
@@ -650,7 +671,7 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
     TreeCx {
         layout: None,
         branches: vec![],
-        path: if top { format!("joinLocation(at, '/{path}')") } else { format!("'{path}'") },
+        path: if top { format!("joinLocation(at, '/{}')", path_literal(path)) } else { format!("'{}'", path_literal(path)) },
         redirects,
         not_found_builder: false,
         seg_fn,
@@ -666,11 +687,12 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
         root_at: root_key.then(|| (rel(r, Kind::Page), r.page_span.clone())),
         container: None,
         routes,
-        dynamic: path.contains(':'),
+        dynamic: locale::has_params(path),
         catch_all: path.contains("(.+)"),
-        serves: Some((r.url.clone(), rel(r, Kind::Page), r.page_span.clone())),
-        has_params: path.contains(':'),
+        serves: Some((r.url.clone(), rel(r, Kind::Page), r.page_span.clone(), r.localized.clone())),
+        has_params: locale::has_params(path),
         case_sensitive: r.case_sensitive,
+        localized: locale::is_localized(path),
     }
 }
 
@@ -682,7 +704,7 @@ fn redirect_route(app: &App, id: usize, top: bool, path: &str, inherited: &[usiz
     TreeCx {
         layout: None,
         branches: vec![],
-        path: if top { format!("joinLocation(at, '/{path}')") } else { format!("'{path}'") },
+        path: if top { format!("joinLocation(at, '/{}')", path_literal(path)) } else { format!("'{}'", path_literal(path)) },
         redirects,
         // Only a segment that isn't a String can fail to parse.
         not_found_builder: app.typed_segs(r).iter().any(|(_, t)| t != "String" && t != "List<String>"),
@@ -695,11 +717,12 @@ fn redirect_route(app: &App, id: usize, top: bool, path: &str, inherited: &[usiz
         root_at: None,
         container: None,
         routes: vec![],
-        dynamic: path.contains(':'),
+        dynamic: locale::has_params(path),
         catch_all: path.contains("(.+)"),
-        serves: Some((r.url.clone(), rel(r, Kind::Redirect), r.page_span.clone())),
-        has_params: path.contains(':'),
+        serves: Some((r.url.clone(), rel(r, Kind::Redirect), r.page_span.clone(), r.localized.clone())),
+        has_params: locale::has_params(path),
         case_sensitive: r.case_sensitive,
+        localized: locale::is_localized(path),
     }
 }
 
@@ -725,17 +748,25 @@ fn tab_routes(
     let branches: Vec<BranchCx> = tabs
         .iter()
         .enumerate()
-        .map(|(i, b)| BranchCx {
-            routes: match *b {
+        .map(|(i, b)| {
+            let routes = match *b {
                 Branch::Own => vec![page_route(app, id, top, path, false, inherited, fns)],
                 Branch::Folder(c) => static_first(routes_of(app, c, top, &next, &below, fns)),
-            },
-            initial_location: options
-                .get(i)
-                .and_then(|o| o.initial_location.as_ref())
-                .map(|l| format!("joinLocation(at, {})", dart_str(l))),
-            preload: options.get(i).is_some_and(|o| o.preload),
-            restoration_id: dart_str(&format!("tab:{}{}", folder_id(&app.routes[id].dir), branch_name(app, *b))),
+            };
+            // go_router opens a tab at its first route, and can't do that for a route with a
+            // path parameter, which a localized segment is: say where, in its canonical spelling.
+            let own = options.get(i).and_then(|o| o.initial_location.as_ref()).map(|l| format!("joinLocation(at, {})", dart_str(l)));
+            let initial_location = own.or_else(|| {
+                let first = first_route(&routes).filter(|f| f.localized && !f.has_params)?;
+                let (url, ..) = first.serves.as_ref()?;
+                url.iter().all(|s| matches!(s, Seg::Static(_))).then(|| format!("joinLocation(at, {})", dart_str(&resolve::pattern(url))))
+            });
+            BranchCx {
+                routes,
+                initial_location,
+                preload: options.get(i).is_some_and(|o| o.preload),
+                restoration_id: dart_str(&format!("tab:{}{}", folder_id(&app.routes[id].dir), branch_name(app, *b))),
+            }
         })
         .filter(|b| !b.routes.is_empty())
         .collect();
@@ -761,6 +792,7 @@ fn tab_routes(
         serves: None,
         has_params: false,
         case_sensitive: true,
+        localized: false,
         routes: vec![],
     }]
 }
@@ -781,11 +813,26 @@ fn check_order(tree: &[TreeCx], diags: &mut Diags) {
     }
     let mut order = vec![];
     walk(tree, &mut order);
-    // `a` matches every URL `b` does: `/:x` catches `/about`, `/docs/*rest` catches `/docs/a/:b`.
-    let catches = |a: &[Seg], b: &[Seg]| {
+    // Every spelling of the static segment at `i`: a localized one has several.
+    let alts = |url: &[Seg], localized: &[Localized], i: usize| match &url[i] {
+        Seg::Static(s) => locale::at(localized, i).map_or(vec![s.clone()], Localized::alternatives),
+        _ => vec![],
+    };
+    // `a` matches every URL `b` does: `/:x` catches `/about`, `/docs/*rest` catches `/docs/a/:b`,
+    // and `/:x/y` catches `/produits/y` whatever `produits` is a spelling of.
+    let catches = |(a, al): (&[Seg], &[Localized]), (b, bl): (&[Seg], &[Localized])| {
         let (a_rest, a_fixed) = split_catch_all(a);
         let (b_rest, b_fixed) = split_catch_all(b);
-        let covered = |n: usize| a_fixed.iter().zip(b_fixed).take(n).all(|(x, y)| matches!(x, Seg::Dynamic(_)) || x == y);
+        let covered = |n: usize| {
+            a_fixed.iter().zip(b_fixed).enumerate().take(n).all(|(i, (x, y))| match (x, y) {
+                (Seg::Dynamic(_), _) => true,
+                (Seg::Static(_), Seg::Static(_)) => {
+                    let mine = alts(a, al, i);
+                    alts(b, bl, i).iter().all(|s| mine.contains(s))
+                }
+                _ => x == y,
+            })
+        };
         match a_rest {
             None => b_rest.is_none() && a_fixed.len() == b_fixed.len() && covered(a_fixed.len()),
             Some(optional) => {
@@ -800,8 +847,20 @@ fn check_order(tree: &[TreeCx], diags: &mut Diags) {
             }
         }
     };
-    for (j, (url, file, span)) in order.iter().enumerate() {
-        if let Some((first, first_file, _)) = order[..j].iter().find(|(u, ..)| u != url && catches(u, url)) {
+    // The same URL with the same spellings: a duplicate, which the resolver reports.
+    let same = |(a, al): (&[Seg], &[Localized]), (b, bl): (&[Seg], &[Localized])| {
+        a == b && (0..a.len()).all(|i| {
+            let (mut x, mut y) = (alts(a, al, i), alts(b, bl, i));
+            x.sort();
+            y.sort();
+            x == y
+        })
+    };
+    for (j, (url, file, span, localized)) in order.iter().enumerate() {
+        let found = order[..j].iter().find(|(u, _, _, ul)| {
+            !same((u, ul), (url, localized)) && catches((u, ul), (url, localized))
+        });
+        if let Some((first, first_file, _, _)) = found {
             diags.error(
                 file,
                 span.as_ref(),
@@ -823,24 +882,41 @@ fn split_catch_all(url: &[Seg]) -> (Option<bool>, &[Seg]) {
     }
 }
 
+/// The first GoRoute in `routes`, depth first: what go_router opens a tab on.
+fn first_route(routes: &[TreeCx]) -> Option<&TreeCx> {
+    routes.iter().find_map(|r| {
+        if r.serves.is_some() {
+            return Some(r);
+        }
+        r.branches.iter().find_map(|b| first_route(&b.routes)).or_else(|| first_route(&r.routes))
+    })
+}
+
 /// go_router opens a tab on its first GoRoute and refuses one whose own path has
 /// a `:segment` (it would need a value to build the location from). Static
 /// routes sort first, so this only bites tabs made entirely of dynamic routes,
 /// and a tab layout sitting on a dynamic folder with no page of its own.
 fn check_tab_starts(tree: &[TreeCx], diags: &mut Diags) {
-    fn first_route(routes: &[TreeCx]) -> Option<&TreeCx> {
-        routes.iter().find_map(|r| {
-            if r.serves.is_some() {
-                return Some(r);
-            }
-            r.branches.iter().find_map(|b| first_route(&b.routes)).or_else(|| first_route(&r.routes))
-        })
-    }
     for r in tree {
         for b in &r.branches {
             // With an `initialLocation`, go_router doesn't look at the tab's first route.
             let first = first_route(&b.routes).filter(|f| f.has_params && b.initial_location.is_none());
-            if let Some((url, file, span)) = first.and_then(|f| f.serves.as_ref()) {
+            // A localized first route gets an `initialLocation` of its own, unless a `:segment`
+            // above it means the location can't be written down here.
+            let unsayable = first_route(&b.routes).filter(|f| f.localized && !f.has_params && b.initial_location.is_none());
+            if let Some((url, file, span, _)) = unsayable.and_then(|f| f.serves.as_ref()) {
+                diags.error(
+                    file,
+                    span.as_ref(),
+                    format!(
+                        "{} is the first route of a tab, and a localized segment is a path parameter: go_router can't open a tab on it \
+                         when a `:segment` sits above it (fsp would write the tab's initialLocation, but not with a value in it); \
+                         put a page without `paths` first in the tab (`tabs` in layout.dart orders them), or drop the `paths`",
+                        resolve::pattern(url)
+                    ),
+                );
+            }
+            if let Some((url, file, span, _)) = first.and_then(|f| f.serves.as_ref()) {
                 diags.error(
                     file,
                     span.as_ref(),
@@ -1014,8 +1090,9 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
         let parts: Vec<String> = r
             .url
             .iter()
-            .filter_map(|s| match s {
-                Seg::Static(s) => Some(dart_str(s)),
+            .enumerate()
+            .filter_map(|(i, s)| match s {
+                Seg::Static(s) => Some(dart_str(&locale::at(&r.localized, i).map_or(s.clone(), Localized::matcher_part))),
                 Seg::Dynamic(n) => Some(dart_str(&format!(":{n}"))),
                 Seg::CatchAll(n, optional) => Some(dart_str(&format!("*{n}{}", if *optional { "?" } else { "" }))),
                 Seg::Group(_) => None,
@@ -1099,7 +1176,9 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
             })
             .collect(),
         data,
-        location: with_query(r, format!("joinLocation(AppRoutes.base, {})", location(app, r))),
+        location: with_query(r, format!("joinLocation(AppRoutes.base, {})", location(app, r, false))),
+        location_for: (!r.localized.is_empty())
+            .then(|| with_query(r, format!("joinLocation(AppRoutes.base, {})", location(app, r, true)))),
         location_assert: match r.url.last() {
             Some(Seg::CatchAll(n, false)) => Some(format!(
                 "assert({n}.isNotEmpty, '{name}Route needs at least one part in `{n}`; the path without it isn\\'t this route')",
@@ -1334,7 +1413,7 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
 
 /// The route table in the header of app.g.dart; `fsp routes` prints the same rows.
 pub fn table(app: &App) -> Vec<String> {
-    let rows: Vec<(String, String, String)> = app
+    let rows: Vec<(String, String, String, &Route)> = app
         .routes
         .iter()
         .filter(|r| r.is_route())
@@ -1342,26 +1421,44 @@ pub fn table(app: &App) -> Vec<String> {
             let tags = tags(r);
             let tags = if tags.is_empty() { String::new() } else { format!("  ({})", tags.join(", ")) };
             let name = format!("{}Route", r.name.as_deref().unwrap_or("?"));
-            (resolve::pattern(&r.url), name, format!("{}{tags}", rel(r, if r.page.is_some() { Kind::Page } else { Kind::Redirect })))
+            (resolve::pattern(&r.url), name, format!("{}{tags}", rel(r, if r.page.is_some() { Kind::Page } else { Kind::Redirect })), r)
         })
         .collect();
     let w0 = rows.iter().map(|r| r.0.len()).max().unwrap_or(0);
     let w1 = rows.iter().map(|r| r.1.len()).max().unwrap_or(0);
-    rows.into_iter().map(|(p, n, f)| format!("{p:w0$}  {n:w1$}  {f}")).collect()
+    let mut out = vec![];
+    for (p, n, f, r) in rows {
+        out.push(format!("{p:w0$}  {n:w1$}  {f}"));
+        // A localized route lists each spelling under it: `  fr  /produits/:id`.
+        let locales = locale::locales(&r.localized);
+        let w = locales.iter().map(String::len).max().unwrap_or(0);
+        for l in &locales {
+            out.push(format!("  {l:w$}  {}", locale::pattern_in(&r.url, &r.localized, l)));
+        }
+    }
+    out
 }
 
 pub fn rel(r: &Route, kind: Kind) -> String {
     if r.dir.is_empty() { kind.file().to_string() } else { format!("{}/{}", r.dir, kind.file()) }
 }
 
-/// A Dart string literal for the route's location, e.g. `'/products/$id'`.
-fn location(app: &App, r: &Route) -> String {
+/// A Dart string literal for the route's location, e.g. `'/products/$id'`. With `localized`,
+/// each localized segment is the spelling `locationFor`'s locale asks for (`_locale`).
+fn location(app: &App, r: &Route, localized: bool) -> String {
     let types = app.typed_segs(r);
     let (rest, fixed) = split_catch_all(&r.url);
     let parts: Vec<String> = fixed
         .iter()
-        .filter_map(|s| match s {
-            Seg::Static(s) => Some(s.clone()),
+        .enumerate()
+        .filter_map(|(i, s)| match s {
+            Seg::Static(s) => match locale::at(&r.localized, i).filter(|_| localized) {
+                Some(l) => {
+                    let map: Vec<String> = l.spellings.iter().map(|p| format!("{}: {}", dart_str(&p.locale), dart_str(&p.path))).collect();
+                    Some(format!("${{localizedSegment(_locale, {}, {{{}}})}}", dart_str(s), map.join(", ")))
+                }
+                None => Some(s.clone()),
+            },
             Seg::Dynamic(n) if types.iter().any(|(m, t)| m == n && t == "String") => {
                 Some(format!("${{Uri.encodeComponent({n})}}"))
             }

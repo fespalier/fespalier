@@ -1,5 +1,17 @@
 ## Unreleased
 
+- Localized paths (`const paths = {'fr': 'produits'};` in a folder's `route.dart`):
+  `TypedLocation.locationFor(locale)` (canonical `location` unchanged), and `go`, `push` and `replace`
+  take `locale:`. `localizedSegment` and `sameLocale` are what the generated `locationFor` calls:
+  exact tag, then language (`fr-CA` is `fr`), else the canonical spelling. **Regenerate `lib/app.g.dart`
+  with the matching `fsp`**: a route with a typed `extra` overrides `go`, `push` and `replace`, and the
+  overrides must now accept `locale` too.
+- `RouteInfo.paths` (the path in each locale) and `RouteInfo.pathFor(locale)`.
+- A `RouteMatcher` pattern part and a `NotFoundScope` prefix part may be all of a localized folder's
+  spellings joined by `|` (`'products|produits'`), matched by the new `partMatches`; `routeTemplate`
+  turns go_router's `:_l0(products|produits)` back into the canonical `products`, so
+  `AppManifest.of` and `byPath` keep working.
+
 - `ExtraCodec` and `ExtraJson`: a `Codec<Object?, Object?>` for `GoRouter(extraCodec:)` built from
   a map of type to `toJson` and `fromJson`, so an `extra` survives the browser's history and state
   restoration. It never throws by default (an unknown or unreadable object is `null`); `names:` and

@@ -274,7 +274,7 @@ fn it_must_be_a_bool_literal() {
 #[test]
 fn a_route_dart_without_the_constant_is_an_error() {
     let e = errors(&[("shop/route.dart", "const other = true;"), ("shop/page.dart", &page("Shop"))]);
-    assert_eq!(e, ["✗ shop/route.dart  expected `const caseSensitive = false;` (or `true`)"]);
+    assert_eq!(e, ["✗ shop/route.dart  expected `const caseSensitive = false;` (or `true`), or `const paths = {'fr': 'produits'};`"]);
     // A getter isn't a constant: the generator can't read its value.
     for body in ["", "bool get caseSensitive => false;"] {
         let e = errors(&[("shop/route.dart", body), ("shop/page.dart", &page("Shop"))]);

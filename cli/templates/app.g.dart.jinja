@@ -329,6 +329,18 @@ final class {{ r.name }}Route extends TypedLocation {
   @override
   String get location => {{ r.location }};
 {% endif %}
+{% if r.location_for %}
+
+  /// The location with each localized segment spelled as `_locale` has it (`fr-CA` falls back to
+  /// `fr`); a segment with no spelling for it keeps its canonical one. `location` is the canonical spelling.
+  @override
+  String locationFor(String? _locale) {
+{% if r.location_assert %}
+    {{ r.location_assert }};
+{% endif %}
+    return {{ r.location_for }};
+  }
+{% endif %}
 {% if r.extra %}
 
 {% if extra_codec %}
@@ -337,14 +349,14 @@ final class {{ r.name }}Route extends TypedLocation {
   /// Navigates here with an `extra`: an object that isn't in the URL, so a deep link or a reload leaves it null.
 {% endif %}
   @override
-  void go(BuildContext context, { {{- r.extra }} extra}) => context.go(location, extra: extra);
+  void go(BuildContext context, { {{- r.extra }} extra, String? locale}) => context.go(locationFor(locale), extra: extra);
 
   @override
-  Future<T?> push<T extends Object?>(BuildContext context, { {{- r.extra }} extra}) =>
-      context.push<T>(location, extra: extra);
+  Future<T?> push<T extends Object?>(BuildContext context, { {{- r.extra }} extra, String? locale}) =>
+      context.push<T>(locationFor(locale), extra: extra);
 
   @override
-  void replace(BuildContext context, { {{- r.extra }} extra}) => context.replace(location, extra: extra);
+  void replace(BuildContext context, { {{- r.extra }} extra, String? locale}) => context.replace(locationFor(locale), extra: extra);
 {% endif %}
 {% if r.data %}
 

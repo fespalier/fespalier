@@ -387,10 +387,10 @@ fn a_page_can_ask_for_the_extra_object() {
             "_i0.ProductPage(id: v.id, extra: extraOf(state))",
             // The type is imported wherever page.dart imports from.
             "import 'models/product.dart' show Product;",
-            "void go(BuildContext context, {Product? extra}) => context.go(location, extra: extra);",
-            "Future<T?> push<T extends Object?>(BuildContext context, {Product? extra}) =>",
-            "context.push<T>(location, extra: extra);",
-            "void replace(BuildContext context, {Product? extra}) => context.replace(location, extra: extra);",
+            "void go(BuildContext context, {Product? extra, String? locale}) => context.go(locationFor(locale), extra: extra);",
+            "Future<T?> push<T extends Object?>(BuildContext context, {Product? extra, String? locale}) =>",
+            "context.push<T>(locationFor(locale), extra: extra);",
+            "void replace(BuildContext context, {Product? extra, String? locale}) => context.replace(locationFor(locale), extra: extra);",
             "unused_element, undefined_shown_name",
         ],
     );
@@ -423,16 +423,16 @@ fn the_extra_type_comes_from_wherever_the_page_gets_it() {
     // Declared in page.dart itself.
     let p = "import 'package:flutter/widgets.dart';\nenum Mode { a, b }\nclass ModePage extends StatelessWidget { const ModePage({super.key, this.extra}); final Mode? extra; }";
     let c = code(&[("mode/page.dart", p)]);
-    has(&c, &["extra: extraOf(state)", "{_i0.Mode? extra}"]);
+    has(&c, &["extra: extraOf(state)", "{_i0.Mode? extra, String? locale}"]);
     lacks(&c, &["undefined_shown_name"]);
     // Under an import prefix, and inside a generic type.
     let p = "import 'package:flutter/widgets.dart';\nimport '../models.dart' as m;\nclass ListPage extends StatelessWidget { const ListPage({super.key, this.extra}); final List<m.Item>? extra; }";
     let c = code(&[("list/page.dart", p)]);
-    has(&c, &["import 'app/models.dart' as _e1_m;", "{List<_e1_m.Item>? extra}"]);
+    has(&c, &["import 'app/models.dart' as _e1_m;", "{List<_e1_m.Item>? extra, String? locale}"]);
     // Built-in types need nothing.
     let p = "import 'package:flutter/widgets.dart';\nclass TextPage extends StatelessWidget { const TextPage({super.key, this.extra}); final String? extra; }";
     let c = code(&[("text/page.dart", p)]);
-    has(&c, &["{String? extra}"]);
+    has(&c, &["{String? extra, String? locale}"]);
     lacks(&c, &["show", "undefined_shown_name"]);
 }
 

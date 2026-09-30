@@ -20,6 +20,7 @@ lib/app/
   transition.dart        Page<void> transition(LocalKey key, Widget child)  (inherited)
   route.dart             const caseSensitive = false;                   (inherited: this folder and below match in any case)
   products/
+    route.dart           const paths = {'fr': 'produits', 'de': 'produkte'};  (this folder also answers /produits, /produkte)
     data.dart            final data = FutureProvider<List<Product>>(…)
     page.dart            ProductsPage({required List<Product> products})  → /products
     loading.dart         ProductsLoading()
@@ -58,6 +59,7 @@ GoRouter(routes: [...legacyRoutes, ...AppRoutes.mount(at: '/shop')]);
 // typed navigation, generated from the tree
 ProductRoute(id: 42).go(context);
 const SearchRoute(q: 'ap', page: 2).go(context);   // → /search?q=ap&page=2
+ProductRoute(id: 42).go(context, locale: 'fr');    // → /produits/42 (`location` stays /products/42)
 
 // each route's data.dart, as a Riverpod provider
 ref.watch(ProductRoute.data(42));
@@ -251,7 +253,8 @@ fespalier:
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
 `case_sensitive: false` makes paths match in any case, and a [`route.dart`](#case-and-trailing-slashes) sets that
-per folder (see [Case and trailing slashes](#case-and-trailing-slashes)).
+per folder (see [Case and trailing slashes](#case-and-trailing-slashes)); the same file gives a folder
+[other spellings per locale](#localized-paths) with `paths`.
 `data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
 [Retries and reloads](#retries-and-reloads). `file_style: kebab` makes `fsp init` and `fsp new`
 write `not-found.dart` instead of `not_found.dart` (see [File names](#file-names)).
@@ -307,7 +310,7 @@ that returns a widget. Function files export one top-level function.
 | `not_found.dart` | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
 | `meta.dart` | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart) | nothing: it is data |
 | `extra_codec.dart` | at the root of the app folder only: a top-level `extraCodec`, the `Codec<Object?, Object?>` the router saves an [`extra`](#restoring-extra-on-the-web) with | nothing: it is data |
-| `route.dart` | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`. Read from the source, never imported | nothing: it is data |
+| `route.dart` | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`; and/or `const paths = {'fr': 'produits'};` in a static folder: [its other spellings per locale](#localized-paths). Read from the source, never imported | nothing: it is data |
 
 ### Function views
 
@@ -540,7 +543,8 @@ read from the source when the tree is generated, never imported or run, so it mu
 or `false` literal: anything else, a missing `caseSensitive`, or two of them is an error with a
 code frame. Unlike `meta.dart` it needs no page beside it, is inherited (`(group)` folders and
 folders without a page pass it on) and can sit at the root, where it replaces the pubspec's
-value for the whole app. A `route.dart` doesn't add or remove any route.
+value for the whole app. A `route.dart` doesn't add or remove any route (its `paths` spell a
+folder's URL more than one way, see [Localized paths](#localized-paths)).
 (It's a file of its own because `meta.dart` describes one route and is never inherited,
 `transition.dart` is a function, and `layout.dart` only exists where a layout does.)
 
@@ -559,6 +563,128 @@ parameters as typed). A typed route has no requested case: `ProductRoute(id: 2).
 writes the folders' spelling, so `.location` is unchanged by the setting, and if you want the
 canonical spelling in the address bar you have to navigate to it yourself. (Checked against
 go_router 17.5 and 18.0, in `packages/fespalier/test/paths_test.dart` and `examples/features`.)
+
+### Localized paths
+
+One folder can answer several URL spellings, one per locale, while the typed route, the page and
+its data stay single. Give the folder a `route.dart` with a `paths` map from a locale tag to that
+folder's name in it:
+
+```dart
+// lib/app/products/route.dart: /products also answers /produits (fr) and /produkte (de)
+const paths = {'fr': 'produits', 'de': 'produkte'};
+```
+
+```
+/products/2    /produits/2    /produkte/2      → the same ProductPage(id: 2), the same data
+/products      /produits      /produkte        → the same ProductsPage
+```
+
+The folder's name stays the canonical spelling: it is what `.location`, the route table and
+`AppManifest.byPath` say, and what a locale with no entry gets. `paths` is read from the source
+(like `caseSensitive`), so it must be a map literal of string literals.
+
+- **Only its own segment.** `paths` spells the one static folder it sits in. Folders below have
+  their own `route.dart` (or none), and each level is spelled on its own, so `/aide/routing/exemples`
+  (`help/` → `aide`, `$topic/examples/` → `exemples`) is a nested child under the localized
+  parent. It is an error in the `route.dart` of a `$dynamic`, a `$$catch-all` or a `(group)` folder
+  or of the app folder itself (none has a word to spell), and a `route.dart` may hold `paths`
+  alone, without a `caseSensitive`.
+- **What a spelling can be.** One URL segment of the characters a folder name may use: `a-z`,
+  `0-9` and `- _ . ~`. A key is a locale tag (`fr`, `pt-BR`), and each tag may appear once
+  (`fr` and `FR` are the same tag). A value with a `/`, an empty one, `.`, `..`, or letters
+  outside those (an accent, a `:`) is an error at the value. Two locales may share a spelling, and
+  a spelling may equal the folder's own name.
+- **Collisions are errors, with a code frame on each side.** A spelling that makes a URL another
+  route serves is reported at the entry and at the route it collides with:
+
+  ```
+  error: `fr: 'about'` makes /about, which about/page.dart serves too; rename the spelling, or the folder it collides with
+    ┌─ lib/app/products/route.dart:2:9
+  error: /about is also reached through `fr: 'about'` in products/route.dart:2; rename the spelling, or this folder
+    ┌─ lib/app/about/page.dart:1:7
+  ```
+
+  The [unreachable-route](#group-folders) check knows the spellings too.
+
+**Typed locations.** `.location` is canonical, `locationFor(locale)` spells the locale, and
+`go`, `push` and `replace` take an optional `locale:`:
+
+```dart
+ProductRoute(id: 2).location;                 // '/products/2'
+ProductRoute(id: 2).locationFor('fr');        // '/produits/2'
+ProductRoute(id: 2).locationFor('fr-CA');     // '/produits/2': a region falls back to its language
+ProductRoute(id: 2).locationFor('es');        // '/products/2': nobody spells it
+ProductRoute(id: 2).go(context, locale: 'de');  // → /produkte/2; also push<T>(…, locale:) and replace(…, locale:)
+```
+
+A level with no spelling for the locale keeps its canonical one, each level on its own (with
+`help/` spelled `fr` and `contact/` only `de`, `ContactRoute().locationFor('fr')` is
+`/aide/contact`). Tags compare without regard to case and `_` is `-`; an exact tag wins over its
+language. Every route has `locationFor` (a route with no localized segment answers `location`), and
+`query` parameters are kept.
+
+*Why a parameter and not an `AppRoutes.locale` the typed routes read.* A global would make
+`ProductRoute(id: 2).go(context)` and `context.go(ProductRoute(id: 2).location)` different, `.location`
+depend on when it is read, and every test depend on what the last one left in a static. A
+`locale:` argument keeps a route a value, and the app (which owns its locale: `Localizations`, a
+provider, the user's setting) decides where to pass it. An app that wants its locale everywhere can
+wrap it once: `extension on TypedLocation { void goHere(BuildContext c) => go(c, locale: currentLocaleTag()); }`.
+(A `$locale` folder, `/:locale/products`, is a different way to localize and needs none of this.)
+
+**Every surface knows the spellings.** A deep link, `context.go('/produits/2')`, the router's
+location (it stays as it was asked: `/produits/2`, nothing is redirected to the canonical URL),
+and the helpers that read a location:
+
+- `AppRoutes.match` / `matchUrl` / `dataAt` and `RouteMatcher` match every spelling and return the
+  canonical typed route (`match.route.location` is `/products/2`). `nearestNotFound`, so
+  `AppRoutes.notFound(uri)`, treats a localized prefix as all its spellings: a
+  [`not_found.dart`](#not-found-views) in `help/` covers `/help/x`, `/aide/x` and `/hilfe/x`.
+  Case follows the route's [`caseSensitive`](#case-and-trailing-slashes): with it off, `/AIDE` is `/aide`.
+- `AppManifest.of(state)` finds the route at any spelling. The [manifest](#route-manifest-and-metadart)'s
+  `RouteInfo` has `paths` (`{'fr': '/produits/:id', 'de': '/produkte/:id'}`, with each level's
+  canonical spelling where a locale has none) and `pathFor(locale)`; `path` and `byPath` stay canonical.
+- `fsp routes` lists the spellings under the route, and `--json` has a `paths` object for a route that has
+  them (the key is left out for the others):
+
+  ```
+  /products/:id  ProductRoute  products/$id/page.dart  (data)
+    fr  /produits/:id
+    de  /produkte/:id
+  ```
+
+**How it is routed.** A localized folder is *one* `GoRoute`, whose segment is a path parameter with
+its own pattern, which go_router supports (like the catch-all's `:rest(.+)`): the route for
+`products/$id` is `path: ':_l0(products|produits|produkte)/:id'`, its first alternative the folder's name.
+go_router matches the pattern with one regular expression (`patternToRegExp`, identical in 17.5 and 18.0), so a
+deep link, a redirect and `go` take any spelling, and everything below the folder, its
+nested routes, its layout, its guards and its `not_found.dart`, is the same route as without
+`paths`. Because it is one route, `state.pageKey` is the same for every spelling (navigating from
+`/products/2` to `/produits/2` updates the page instead of building another), the restoration ids
+(made from folders) are unchanged, and there is no second route to keep in order, dedupe or
+guard. Two routes with the same builder, or a redirect from each spelling to the canonical
+path (which would change the URL the user sees) were the alternatives: see [Design
+notes](#design-notes). Things to know:
+
+- The parameter is named `_l<n>` after the segment's place in the URL (`_l0`, `_l1`; a segment can't
+  start with `_`, so it never clashes, and go_router refuses a name that repeats down a branch). It
+  shows up in `GoRouterState.pathParameters` and `fullPath`, which fespalier's own readers already
+  ignore; don't read it. `state.matchedLocation` is spelled as requested (`/produits/2`).
+- Spellings are also matched when they are mixed (`/help/routing/exemples`,
+  `/aide/routing/examples`): each level is its own alternation. A typed route never writes one; if you
+  want mixed URLs refused or redirected, a `guard.dart` can read the `uri`.
+- **A tab's first route.** go_router opens a tab on its first route and asserts that it has no path
+  parameter, which a localized segment is. `fsp gen` writes the tab's `initialLocation` for you (the
+  canonical one, `/search`), unless you gave it one in `tabOptions` (which can be a spelling:
+  `'/recherche'`). The one place that can't be written down is a localized first tab route below a
+  `:segment` (the location would need a value): that is an error that says so.
+- A localized static folder still sorts before dynamic siblings, so `/produits` isn't caught by a `/:slug`.
+- Spellings are ASCII for now: a word with an accent or another script would have to be matched
+  percent-encoded (see [ROADMAP](ROADMAP.md)).
+
+`examples/features` has `help/` (`aide`, `hilfe`) with a dynamic child, a nested localized child, a static
+sibling that only one locale spells, a `not_found.dart`, and widget tests for deep links through each
+spelling, `locationFor`, `go(locale:)` and the manifest; `examples/tabs` localizes the Search tab.
 
 ### `(group)` folders
 
@@ -1402,6 +1528,7 @@ Each `RouteInfo<M>` has:
 |---|---|
 | `type` | the typed-route class: `ProductRoute` |
 | `path` | the path template, without the mount point: `/products/:id`; a [catch-all](#catch-all-segments) is `/docs/*rest`, or `/files/*path?` when optional (as in `fsp routes`). Case-insensitive paths (`case_sensitive: false`) don't change it |
+| `paths` | the path in each locale its folders spell it in, `{'fr': '/produits/:id'}` (a level with no spelling for a locale keeps its own); empty without [localized paths](#localized-paths). `pathFor(locale)` picks one, falling back to `path` |
 | `folder` | the route's folder relative to the app folder: `(buyer)/products/$id` (empty for the app folder itself) |
 | `presentation` | `RoutePresentation.page`; `.redirect` for a `redirect.dart` (`isRedirect`); `.root` for a page on the [root navigator](#the-root-navigator-navigatordart) through `navigator.dart`; `.custom` for a page a [`present.dart`](#presentdart-a-page-of-your-own) builds (it is on the root navigator too, unless a `navigator.dart` beside it says otherwise). Whether a page opens as a dialog or sheet is up to its `transition.dart` or `present.dart` at runtime, so it isn't listed |
 | `groups` | the `(group)` folders above it, outermost first, parentheses included |
@@ -1502,7 +1629,9 @@ are relative to the project root; `folder`, `layouts` and `tabs[].layout` to the
 for a route in a tab; `data_keys` and `meta` are `null` when the route has no `data.dart` or
 `meta.dart`. The meta itself is Dart, so JSON only says where it is. `catch_all` is
 `{"name":"rest","optional":false}` for a route that ends in a `$$rest` (or `$$$rest`, `"optional":true`)
-catch-all, else `null`; the catch-all is also in `params` as a path parameter of its `List` type.
+catch-all, else `null`; the catch-all is also in `params` as a path parameter of its `List` type. A route
+with [localized paths](#localized-paths) has one more key after `catch_all`, `"paths":{"fr":"/produits/:id"}`
+(the manifest's `paths`); the other routes have none.
 
 ### State restoration
 
@@ -1589,6 +1718,8 @@ route class, its `page.dart` and its tags (`data`, `guard`, `layout`, `transitio
 ```
 /products/:id  ProductRoute   products/$id/page.dart  (data, transition)
 ```
+
+A route with [localized paths](#localized-paths) lists each spelling under its row (`  fr  /produits/:id`).
 
 With `--json` it prints one JSON object per line, for scripts and editors, with each
 route's parameters and the [manifest](#route-manifest-and-metadart)'s fields; `file` is relative to
@@ -1718,9 +1849,12 @@ view bound by type, a layout and guard that take segments, a user-written
 its layout and pages, with a `not_found.dart` at two levels (which takes the team's id), a `reports` section keyed by a
 query parameter, and `AppRoutes.dataAt` / `match` and the prefetch handle in `test/data_at_test.dart`.
 
+`examples/features` also has localized paths: `help/` answers `/aide` and `/hilfe` too, with a dynamic
+child, a nested child that is localized itself, and a `not_found.dart` that covers every spelling.
+
 `examples/tabs` is a bottom navigation bar built as a tab layout: four tabs (one with nested
 pages, and a Library tab that is a tab layout of its own, with two inner tabs), a
-counter that survives switching tabs, `tabOptions`, a cross-fading `container`, a full-screen route
+counter that survives switching tabs, `tabOptions`, a cross-fading `container`, a Search tab that also answers `/recherche` (`route.dart` with `paths`), a full-screen route
 outside them (`/settings`), one that stays under `/profile` but renders on the root navigator
 (`/profile/edit`, `navigator.dart`), and a Cupertino `transition.dart` that also moves the tab layout
 itself aside when one of those opens over it.
@@ -1911,16 +2045,39 @@ don't (`prefetch`, `refresh`, `go`, `location`) are instance methods. If Dart ma
 type through the import machinery that `extra` already uses, become an option, this can be
 reopened; today the trade is a `const` route and a type that is never `dynamic`.
 
+**Why a localized path is one route with an alternation.** `products/` answering `/produits` could be
+done three ways in go_router, and only one keeps the URL and the route one thing.
+
+1. *A redirect from each spelling to the canonical path.* It changes the URL the user came for
+   (`/produits/2` turns into `/products/2` in the address bar and in shared links), which is the
+   opposite of a localized path, and every nested route would need its own redirect.
+2. *A sibling `GoRoute` per spelling sharing the builder.* The URL stays, but the subtree is copied
+   per spelling (nested routes, layouts, guards), the copies have different page keys (navigating
+   from one spelling to another rebuilds the page), restoration ids and a tab's branch would see
+   several routes, and the order and duplicate checks multiply.
+3. *One `GoRoute`, the segment a path parameter with its own pattern*, `:_l0(products|produits)`.
+   go_router matches a route with a regular expression made from its `path`, where `:name(pattern)`
+   is a parameter with a pattern of its own (`path_utils.dart`, `patternToRegExp`, the same in go_router
+   17.5 and 18.0; the catch-all's `:rest(.+)` is one). A deep link, `go`, a redirect and the tab
+   stack all see one route, and its subtree is written once. The costs are small and all handled:
+   the parameter shows up in `pathParameters` and `fullPath` (fespalier's readers skip it and
+   `routeTemplate` turns it back into the canonical path), a spelling is escaped for the regular
+   expression, and go_router's rule that a tab opens on a route without parameters needs an
+   `initialLocation`, which `fsp gen` writes.
+
+And the typed side takes the locale as an argument (`locationFor(locale)`, `go(context, locale:)`) rather
+than from a global, so that a route stays a value: see [Localized paths](#localized-paths).
+
 ## Status
 
 This is an early version.
 
-- **Generator:** 383 tests (352 unit, 26 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 421 tests (389 unit, 27 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
-  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, per-folder case, and that the committed outputs are up to date. Clippy is clean.
+  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, per-folder case, localized paths, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 326 Flutter tests (the package 138, `shop` 24, `features` 134, `tabs` 30); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 391 Flutter tests (the package 170, `shop` 24, `features` 162, `tabs` 35); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

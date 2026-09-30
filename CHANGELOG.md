@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+### Localized paths
+
+- **`route.dart` can give a folder more spellings per locale:** `const paths = {'fr': 'produits', 'de': 'produkte'};`
+  in `products/route.dart` makes `/products` also answer `/produits` and `/produkte`, while the
+  typed route, the page and its data stay single. It spells that folder's own static segment
+  only; children below it resolve under every spelling, each level on its own. A `route.dart` may
+  hold `paths` alone (no `caseSensitive` needed).
+- **One `GoRoute`, not one per spelling.** The segment becomes a path parameter with an alternation,
+  `:_l0(products|produits|produkte)` (go_router's `:name(pattern)`, which `patternToRegExp` supports in
+  17.5 and 18.0), so nested routes, page keys (the same for every spelling), restoration ids and tab
+  stacks see one route. Static routes still sort before dynamic siblings, dots in a spelling are
+  escaped, and case follows the route's `caseSensitive`.
+- **Typed locations:** `locationFor(locale)` on every typed route (`ProductRoute(id: 2).locationFor('fr')`
+  is `/produits/2`; `.location` stays canonical), and `go`, `push` and `replace` take `locale:`. A level with
+  no spelling for the locale keeps its canonical one, and `fr-CA` falls back to `fr`. No global locale:
+  a route stays a value. **Regenerate `lib/app.g.dart`**: the generated `go`/`push`/`replace` overrides of a route
+  with an `extra` now take `locale` too.
+- **Every surface knows the spellings:** `AppRoutes.match`, `matchUrl` and `dataAt`, `RouteMatcher`,
+  `nearestNotFound` (a `not_found.dart` in a localized folder covers all its spellings) and
+  `AppManifest.of`. The manifest's `RouteInfo` has `paths` (`{'fr': '/produits/:id'}`) and `pathFor(locale)`;
+  `path` and `byPath` stay canonical.
+- **`fsp routes`** lists the spellings under a route's row, and `--json` has a `paths` object for a
+  route that has them (other rows are unchanged). The route table in the header of `app.g.dart` shows them too.
+- **Errors, with code frames:** `paths` on a `$dynamic`, `$$catch-all`, `(group)` or app folder; a
+  value that is not one URL segment (`a-z 0-9 - _ . ~`, so no accents yet); a key that is not a
+  string literal or a locale tag, or repeats; and a spelling that makes a URL another route serves
+  (`fr: 'about'` beside a real `about/`) is reported at the entry and at the route it collides with.
+  The unreachable-route check knows the spellings.
+- **Tabs:** go_router refuses a tab whose first route has a path parameter, which a localized
+  segment is, so `fsp gen` writes that tab's `initialLocation` (the canonical one). A `tabOptions`
+  `initialLocation` may name a spelling. A localized first route below a `:segment` is an error.
+- `examples/features` has `help/` (`aide`, `hilfe`: a dynamic child, a nested localized child, a
+  `not_found.dart`) and `examples/tabs` a Search tab that also answers `/recherche`, with widget tests.
+
 ### `extra` for layouts, guards and redirects, and an `extraCodec`
 
 - **`layout.dart`, `guard.dart` and `redirect.dart` can take `extra`**, bound from

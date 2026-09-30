@@ -182,9 +182,13 @@ fespalier:
   app_dir: lib/app
   output: lib/app.g.dart
   format: false
+  data_retry: inherit
+  keep_previous: true
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
+`data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
+[Retries and reloads](#retries-and-reloads).
 
 **Platform notes.**
 
@@ -538,12 +542,17 @@ query parameters as optional arguments and writes them into `.location`, leaving
 nulls and empty lists.
 
 `data.dart` can take query parameters too, and its provider is then keyed by them, so
-`/search?page=2` and `?page=3` load separately. It can't take a `List`: lists compare by
-identity, so they can't key a provider. Take a `String?` and split it instead.
+`/search?page=2` and `?page=3` load separately. A `List` works as a key too: lists
+compare by identity, so the generated provider is keyed by a `QueryList` (a `List` with value
+equality, exported by fespalier) holding the same elements, and `?tags=a&tags=b` is one provider
+however many times the page builds a new list. Your `data()` still takes and receives a plain
+`List<String>`, and the typed helpers take one (`SearchRoute.watch(ref, tags: ['a', 'b'])`).
+Order counts: `[a, b]` and `[b, a]` are different keys. (A provider you write yourself can't
+be keyed by a query parameter, only by segments.)
 
 ```dart
 // search/data.dart
-Future<List<Hit>> data(Ref ref, {String? q, int? page}) => …;
+Future<List<Hit>> data(Ref ref, {String? q, int? page, List<String> tags = const []}) => …;
 
 // search/page.dart
 class SearchPage extends StatelessWidget {
@@ -575,13 +584,54 @@ A family provider you write yourself follows the same rule. With several paramet
 with query parameters, its argument is a record naming the ones it uses, e.g.
 `({int id, int? page})`.
 
-**Retries.** Riverpod 3 retries a failed provider with backoff by default. The generated
-`data()` providers turn that off (`retry: (retryCount, error) => null`), so `error.dart`
-shows as soon as `data.dart` fails, and its `retry` callback is the retry path. A
-provider you write yourself keeps Riverpod's default unless you pass `retry:` to it.
-
 To see a scaffolded `error.dart` and its retry, throw from `data.dart`, e.g.
 `throw Exception('offline')`.
+
+#### Retries and reloads
+
+Two settings in the `fespalier:` section of `pubspec.yaml` decide what a route shows while
+its `data.dart` fails or loads again:
+
+```yaml
+fespalier:
+  data_retry: inherit   # inherit | none
+  keep_previous: true   # true | false
+```
+
+**`keep_previous: true` (the default).** `loading.dart` is only for the first load. Once
+the provider has a value or an error, a reload (`ref.invalidate`, `refresh`, the section's
+dependencies changing) keeps rendering it: the old page stays until the new value arrives,
+instead of blinking to `loading.dart` and back. `error.dart`'s `retry` still invalidates the
+provider; the error stays up until the new run has an answer. Off, `loading.dart` shows
+whenever the provider is loading (a refresh included). This is `skipLoadingOnReload` and
+`skipLoadingOnRefresh` on Riverpod's `AsyncValue.when`. It applies to a route's `data.dart` and
+to a section's, including a provider you write yourself.
+
+**`data_retry: inherit` (the default).** Riverpod 3 retries a failed provider on its own,
+with backoff, and the app's `ProviderScope(retry: ...)` or `ProviderContainer(retry: ...)`
+decides how. The providers fespalier generates for `data()` functions don't set their own
+policy, so the app's applies. An app that wants a failure to settle into `error.dart` after
+a few attempts writes:
+
+```dart
+ProviderScope(
+  retry: (retryCount, error) => retryCount < 3 ? const Duration(seconds: 1) : null,
+  child: …,
+)
+```
+
+Riverpod's own default (10 retries with doubling delays, none for an `Error`) applies when the
+app sets none. A provider you write yourself always follows the app's policy, or its own `retry:`.
+
+Together the two make `error.dart` show as soon as `data.dart` fails, retrying or not:
+a provider that failed and is being retried is `AsyncLoading` with its error still held, and
+with `keep_previous` on `DataView` shows that error, not `loading.dart`, for the whole retry
+window. It goes to the data when a retry succeeds, and stays on the error when the policy gives up.
+With `keep_previous: false` a retry shows `loading.dart` again.
+
+**`data_retry: none`.** Every generated `data()` provider gets
+`retry: (retryCount, error) => null`, whatever the app's policy is: a failure is final until
+`error.dart`'s `retry` runs it again, which is how 0.1.1 behaved.
 
 ### Typed helpers on the route
 
@@ -653,8 +703,8 @@ class MembersPage extends StatelessWidget {
   `error.dart` with its `retry`. Nothing below is built until the data is there.
 - **Sharing.** The layout watches the provider and the pages below read the same one, so
   `data()` runs once however many of them take it, and moving between the section's pages
-  doesn't load it again. When the data reloads (`retry`, an invalidation), the whole section
-  shows loading again.
+  doesn't load it again. When the data reloads (`retry`, an invalidation), the section keeps
+  showing what it has (`keep_previous`; with `keep_previous: false` it shows loading again).
 - **Which one.** A parameter called `data` gets the nearest data: the route's own
   `data.dart`, then the section's, then the next section up. By type, a parameter gets the
   data.dart that yields that type, and it is an error if two do (a page's own and a

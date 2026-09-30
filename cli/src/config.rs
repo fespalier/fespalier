@@ -5,6 +5,8 @@
 //!   app_dir: lib/app        # default
 //!   output: lib/app.g.dart  # default
 //!   format: false           # default; true runs `dart format` on the output
+//!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
+//!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -20,6 +22,17 @@ use serde_yaml_ng::Value;
 pub const DEFAULT_APP_DIR: &str = "lib/app";
 pub const DEFAULT_OUTPUT: &str = "lib/app.g.dart";
 
+/// What the providers fespalier generates for `data()` functions do when they fail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DataRetry {
+    /// Riverpod's own retry: the `ProviderScope(retry:)` or `ProviderContainer(retry:)`
+    /// of the app decides.
+    Inherit,
+    /// `retry: (retryCount, error) => null`: a failure is final until `error.dart`'s retry.
+    None,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// Normalized, `/`-separated, no trailing slash: `lib/app`.
@@ -28,11 +41,20 @@ pub struct Config {
     pub output: String,
     /// Run `dart format` on the generated file (when `dart` is on PATH).
     pub format: bool,
+    pub data_retry: DataRetry,
+    /// Keep rendering the old value or error while `data.dart` reloads.
+    pub keep_previous: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { app_dir: DEFAULT_APP_DIR.into(), output: DEFAULT_OUTPUT.into(), format: false }
+        Config {
+            app_dir: DEFAULT_APP_DIR.into(),
+            output: DEFAULT_OUTPUT.into(),
+            format: false,
+            data_retry: DataRetry::Inherit,
+            keep_previous: true,
+        }
     }
 }
 
@@ -58,6 +80,8 @@ struct RawConfig {
     app_dir: Option<String>,
     output: Option<String>,
     format: Option<bool>,
+    data_retry: Option<DataRetry>,
+    keep_previous: Option<bool>,
 }
 
 impl Config {
@@ -100,6 +124,8 @@ impl Pubspec {
         let mut config = Config::default();
         if let Some(c) = raw.fespalier {
             config.format = c.format.unwrap_or(false);
+            config.data_retry = c.data_retry.unwrap_or(config.data_retry);
+            config.keep_previous = c.keep_previous.unwrap_or(config.keep_previous);
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }

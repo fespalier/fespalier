@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use serde::Serialize;
 
-use crate::config::Config;
+use crate::config::{Config, DataRetry};
 use crate::resolve::{self, App, Bind, Branch, Data, Guard, Route, Transition};
 use crate::dart::Span;
 use crate::diag::Diags;
@@ -27,6 +27,8 @@ struct FileCx {
     routes: Vec<RouteCx>,
     params_fns: Vec<ParamsFnCx>,
     providers: Vec<ProviderCx>,
+    /// `keep_previous` from the config: the DataViews' `keepPrevious`.
+    keep_previous: bool,
 }
 
 /// A GoRoute; a ShellRoute when `layout` is set; a StatefulShellRoute when
@@ -213,6 +215,8 @@ struct ProviderCx {
     family: bool,
     params: String,
     call: String,
+    /// `data_retry: none`: the provider opts out of Riverpod's retry.
+    no_retry: bool,
 }
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
@@ -232,7 +236,8 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         not_founds: not_founds(app),
         routes: app.routes.iter().enumerate().filter_map(|(id, r)| typed_route(app, id, r)).collect(),
         params_fns: fns.into_iter().map(|f| params_fn(app, f)).collect(),
-        providers: app.routes.iter().enumerate().filter_map(|(id, r)| provider(app, id, r)).collect(),
+        providers: app.routes.iter().enumerate().filter_map(|(id, r)| provider(app, cfg, id, r)).collect(),
+        keep_previous: cfg.keep_previous,
     };
     templates::render("app.g.dart", &cx)
 }
@@ -330,7 +335,7 @@ fn layout_cx(app: &App, id: usize, layout: &resolve::Widget, fns: &mut BTreeSet<
         seg_fn,
         page: wrapped,
         data: section.map(|d| ViewDataCx {
-            provider: format!("{}{}", provider_expr(id, d), key_expr(d, "v.")),
+            provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
             loading: r.loading.as_ref().map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
             error: r.error.as_ref().map_or("DefaultError(error: e, retry: retry)".into(), |w| w.call(in_builder)),
         }),
@@ -355,7 +360,7 @@ fn with_sections(app: &App, args: &[resolve::Arg], inner: String) -> String {
         format!(
             "SectionView(\n  watch: (ref) => ref.watch({}{}),\n  data: (s{sid}) => {},\n)",
             provider_expr(sid, d),
-            key_expr(d, "v."),
+            key_expr(app, &app.routes[sid], d, "v."),
             acc.replace('\n', "\n  ")
         )
     })
@@ -448,7 +453,7 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
     let seg_fn = own_seg_fn(app, id, fns);
     let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
     let data = r.data.as_ref().map(|d| ViewDataCx {
-        provider: format!("{}{}", provider_expr(id, d), key_expr(d, "v.")),
+        provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
         loading: r.loading.as_ref().map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
         error: r.error.as_ref().map_or("DefaultError(error: e, retry: retry)".into(), |w| w.call(in_builder)),
     });
@@ -622,13 +627,24 @@ fn provider_expr(id: usize, d: &Data) -> String {
     if d.provider { format!("_i{}.data", d.import) } else { format!("_data{id}") }
 }
 
-/// The family argument: nothing, `(v.id)`, or `((a: v.a, b: v.b))`.
-fn key_expr(d: &Data, prefix: &str) -> String {
+/// The keys of a `data()` function that are `List` query parameters. A list compares by
+/// identity, so the provider is keyed by a `QueryList` (equal when its elements are).
+fn list_keys(app: &App, r: &Route, d: &Data) -> Vec<String> {
+    if d.provider {
+        return vec![];
+    }
+    app.url_params(r).into_iter().filter(|(n, t)| d.keys.contains(n) && t.starts_with("List<")).map(|(n, _)| n).collect()
+}
+
+/// The family argument: nothing, `(v.id)`, or `((a: v.a, b: v.b))`; `QueryList(v.tags)` for lists.
+fn key_expr(app: &App, r: &Route, d: &Data, prefix: &str) -> String {
+    let lists = list_keys(app, r, d);
+    let value = |k: &String| if lists.contains(k) { format!("QueryList({prefix}{k})") } else { format!("{prefix}{k}") };
     match (d.keys.as_slice(), d.record) {
         ([], _) => String::new(),
-        ([k], false) => format!("({prefix}{k})"),
+        ([k], false) => format!("({})", value(k)),
         (keys, _) => {
-            let fields: Vec<String> = keys.iter().map(|k| format!("{k}: {prefix}{k}")).collect();
+            let fields: Vec<String> = keys.iter().map(|k| format!("{k}: {}", value(k))).collect();
             format!("(({}))", fields.join(", "))
         }
     }
@@ -650,7 +666,7 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
             keyed,
             expr: provider_expr(id, d),
             verb: if d.stream { "Restarts" } else { "Re-runs" },
-            key: key_expr(d, ""),
+            key: key_expr(app, r, d, ""),
             args: keyed_params(app, r, d),
         }
     });
@@ -682,7 +698,11 @@ fn keyed_params(app: &App, r: &Route, d: &Data) -> String {
         .keys
         .iter()
         .filter_map(|k| typed.iter().find(|(n, _)| n == k))
-        .map(|(n, ty)| if r.query.iter().any(|(q, _)| q == n) { format!("{ty} {n}") } else { format!("required {ty} {n}") })
+        .map(|(n, ty)| match (r.query.iter().any(|(q, _)| q == n), ty.starts_with("List<")) {
+            (true, true) => format!("{ty} {n} = const []"),
+            (true, false) => format!("{ty} {n}"),
+            _ => format!("required {ty} {n}"),
+        })
         .collect();
     if params.is_empty() { String::new() } else { format!(", {{{}}}", params.join(", ")) }
 }
@@ -738,10 +758,18 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
 }
 
 /// The provider fespalier wraps around a `data()` function.
-fn provider(app: &App, id: usize, r: &Route) -> Option<ProviderCx> {
+fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx> {
     let d = r.data.as_ref().filter(|d| !d.provider)?;
-    let types: Vec<(String, String)> =
-        app.url_params(r).into_iter().filter(|(n, _)| d.keys.contains(n)).collect();
+    // A list key is a `QueryList` (see `list_keys`); `data()` still takes a `List`.
+    let types: Vec<(String, String)> = app
+        .url_params(r)
+        .into_iter()
+        .filter(|(n, _)| d.keys.contains(n))
+        .map(|(n, t)| {
+            let t = t.strip_prefix("List<").map_or(t.clone(), |inner| format!("QueryList<{inner}"));
+            (n, t)
+        })
+        .collect();
     let (params, args) = match (types.as_slice(), d.record) {
         ([], _) => ("Ref ref".to_string(), vec![]),
         ([(n, t)], false) => (format!("Ref ref, {t} {n}"), vec![format!("{n}: {n}")]),
@@ -758,6 +786,7 @@ fn provider(app: &App, id: usize, r: &Route) -> Option<ProviderCx> {
         family: !d.keys.is_empty(),
         params,
         call: format!("_i{}.data({})", d.import, call_args.join(", ")),
+        no_retry: cfg.data_retry == DataRetry::None,
     })
 }
 

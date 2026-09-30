@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
@@ -76,6 +77,28 @@ abstract final class Query {
         'false' => false,
         _ => null,
       };
+}
+
+/// A list with value equality, so a `List` query parameter can key a provider
+/// family: two lists with the same elements are the same key. Generated code
+/// wraps `data.dart`'s `List<T>` parameters in one; `data()` still gets a plain
+/// `List<T>` (this is one, and it can't be changed).
+final class QueryList<T> extends UnmodifiableListView<T> {
+  /// Copies [items], so changing the source list later doesn't change the key.
+  QueryList(Iterable<T> items) : super(List<T>.of(items));
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! QueryList<Object?> || other.length != length) return false;
+    for (var i = 0; i < length; i++) {
+      if (this[i] != other[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(this);
 }
 
 /// Appends a typed route's query parameters to its location. `null` values

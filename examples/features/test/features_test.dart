@@ -1,13 +1,22 @@
 import 'package:features/app.g.dart';
+import 'package:features/app/search/data.dart' as search_data;
 import 'package:features/app/shops/\$shop/items/\$id/data.dart' as item_data;
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:material_ui/material_ui.dart' as mui;
 import 'package:flutter_test/flutter_test.dart';
 
-Future<void> boot(WidgetTester tester, String location) async {
+/// The app's retry policy in tests: none, so a failing data() leaves no timer behind.
+Duration? noRetry(int retryCount, Object error) => null;
+
+Future<void> boot(
+  WidgetTester tester,
+  String location, {
+  Duration? Function(int retryCount, Object error)? retry = noRetry,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
+      retry: retry,
       // go_router 17 detects flutter's MaterialApp, go_router 18 material_ui's;
       // nesting both gives Material pages and error screens on either.
       child: MaterialApp(
@@ -55,30 +64,80 @@ void main() {
     expect(find.textContaining('Failed:'), findsOneWidget);
   });
 
-  testWidgets('a failing data() shows error.dart at once: no Riverpod retries',
-      (tester) async {
-    // The harness has no `ProviderScope(retry: ...)`. Riverpod 3 would retry a
-    // provider that throws an Exception ~10 times with backoff (error view after
-    // ~38 s; it never retries an Error such as StateError); the
-    // providers fespalier generates opt out, so error.dart is the retry UX.
-    item_data.itemFetches = 0;
-    await boot(tester, '/shops/acme/items/0');
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.textContaining('Failed: Exception: no item 0'), findsOneWidget);
-    expect(item_data.itemFetches, 1);
+  group('retries: the app decides (data_retry: inherit)', () {
+    setUp(() {
+      item_data.itemFetches = 0;
+      item_data.flakyRuns = 0;
+    });
 
-    // Nothing is scheduled behind the scenes (an armed retry timer would also
-    // fail this test when it ends).
-    await tester.pump(const Duration(seconds: 60));
-    expect(find.textContaining('Failed:'), findsOneWidget);
-    expect(item_data.itemFetches, 1);
+    /// Retry twice, 100 ms apart, like a bounded policy.
+    Duration? twice(int retryCount, Object error) =>
+        retryCount < 2 ? const Duration(milliseconds: 100) : null;
 
-    // Retry is what runs it again.
-    await tester.tap(find.byType(TextButton));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.textContaining('Failed: Exception: no item 0'), findsOneWidget);
-    expect(item_data.itemFetches, 2);
+    testWidgets('a container policy is honoured: retries, then settles',
+        (tester) async {
+      await boot(tester, '/shops/acme/items/0', retry: twice);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.textContaining('Failed: Exception: no item 0'),
+          findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+      // The generated provider ran three times: once, plus the two retries
+      // the policy allows. It doesn't override the app's policy with its own.
+      expect(item_data.itemFetches, 3);
+      expect(find.textContaining('Failed: Exception: no item 0'),
+          findsOneWidget);
+      await tester.pump(const Duration(minutes: 2));
+      expect(item_data.itemFetches, 3);
+    });
+
+    testWidgets('Riverpod default policy applies when the app has none',
+        (tester) async {
+      await boot(tester, '/shops/acme/items/0', retry: null);
+      await tester.pump(const Duration(seconds: 2));
+      expect(item_data.itemFetches, greaterThan(2));
+      // A retry timer is pending; end the test by unmounting the tree.
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('error.dart shows at once and stays through the retries',
+        (tester) async {
+      // Fails twice (runs 1 and 2), then yields.
+      await boot(tester, '/shops/acme/items/13', retry: twice);
+      expect(find.byType(DefaultLoading), findsOneWidget);
+      var errors = 0;
+      for (var ms = 10; ms <= 400; ms += 10) {
+        await tester.pump(const Duration(milliseconds: 10));
+        expect(find.byType(DefaultLoading), findsNothing, reason: 'at $ms ms');
+        if (find.textContaining('Failed: Exception: flaky').evaluate().isNotEmpty) {
+          errors++;
+        }
+      }
+      expect(item_data.flakyRuns, 3);
+      expect(errors, greaterThan(15));
+      expect(find.text('Item acme #13'), findsOneWidget);
+      expect(find.textContaining('Failed:'), findsNothing);
+    });
+
+    testWidgets("error.dart's retry callback still runs data.dart again",
+        (tester) async {
+      await boot(tester, '/shops/acme/items/0');
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(item_data.itemFetches, 1);
+      expect(find.textContaining('Failed: Exception: no item 0'),
+          findsOneWidget);
+
+      // Nothing runs behind the scenes; retry is what runs it again.
+      await tester.pump(const Duration(seconds: 60));
+      expect(item_data.itemFetches, 1);
+      await tester.tap(find.byType(TextButton));
+      await tester.pump();
+      // The error stays up while it runs.
+      expect(find.byType(DefaultLoading), findsNothing);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.textContaining('Failed: Exception: no item 0'),
+          findsOneWidget);
+      expect(item_data.itemFetches, 2);
+    });
   });
 
   testWidgets('an int segment that does not parse is not found',
@@ -105,16 +164,50 @@ void main() {
 
   testWidgets('query parameters reach the page and key data.dart',
       (tester) async {
-    await boot(tester, '/search?q=ap&tags=red&tags=ripe');
+    await boot(tester, '/search?q=ap&tags=sweet');
     await tester.pump();
     expect(find.text('ap, page 1: apple, apricot'), findsOneWidget);
-    expect(find.text('tags: red, ripe'), findsOneWidget);
+    expect(find.text('tags: sweet'), findsOneWidget);
 
     // Typed navigation carries the query; a new `page` is a new data key.
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
     expect(find.text('ap, page 2: '), findsOneWidget);
-    expect(find.text('tags: red, ripe'), findsOneWidget);
+    expect(find.text('tags: sweet'), findsOneWidget);
+  });
+
+  testWidgets('a List query parameter is part of the data key', (tester) async {
+    search_data.searchFetches = 0;
+    await boot(tester, '/search?tags=red');
+    await tester.pump();
+    expect(find.text('everything, page 1: apple, cherry'), findsOneWidget);
+
+    // Same route, another list: another provider, another result.
+    final context = tester.element(find.text('Next'));
+    const SearchRoute(tags: ['red', 'sweet']).go(context);
+    await tester.pumpAndSettle();
+    expect(find.text('everything, page 1: apple'), findsOneWidget);
+    expect(search_data.searchFetches, 2);
+  });
+
+  test('lists with the same elements are one data key', () async {
+    search_data.searchFetches = 0;
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    // A new list each time, as a rebuilt page makes; the provider is
+    // autoDispose, so hold it the way a mounted page does.
+    ({String? q, int? page, QueryList<String> tags}) key(List<String> tags) =>
+        (q: null, page: null, tags: QueryList(tags));
+    final sub = container.listen(SearchRoute.data(key(['red'])), (_, __) {});
+    addTearDown(sub.close);
+    expect(await container.read(SearchRoute.data(key(['red'])).future),
+        ['apple', 'cherry']);
+    expect(await container.read(SearchRoute.data(key(['red'])).future),
+        ['apple', 'cherry']);
+    expect(search_data.searchFetches, 1);
+    expect(await container.read(SearchRoute.data(key(['sweet'])).future),
+        ['apple', 'apricot']);
+    expect(search_data.searchFetches, 2);
   });
 
   testWidgets('absent or unparsable query parameters are null', (tester) async {

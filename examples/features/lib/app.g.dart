@@ -161,6 +161,7 @@ abstract final class AppRoutes {
                     data: (d) => _i13.CounterPage(count: d),
                     loading: () => const DefaultLoading(),
                     error: (e, st, retry) => DefaultError(error: e, retry: retry),
+                    keepPrevious: true,
                   ),
                 ),
               ),
@@ -223,11 +224,12 @@ abstract final class AppRoutes {
                   buildWithParams(
                     () => _params17(state),
                     (v) => DataView(
-                      watch: (ref) => ref.watch(_data17((q: v.q, page: v.page))),
-                      refresh: (ref) => ref.invalidate(_data17((q: v.q, page: v.page))),
+                      watch: (ref) => ref.watch(_data17((q: v.q, page: v.page, tags: QueryList(v.tags)))),
+                      refresh: (ref) => ref.invalidate(_data17((q: v.q, page: v.page, tags: QueryList(v.tags)))),
                       data: (d) => _i25.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
+                      keepPrevious: true,
                     ),
                     () => notFound(state.uri),
                   ),
@@ -243,6 +245,7 @@ abstract final class AppRoutes {
                     data: (d) => _i43.TicksPage(data: d),
                     loading: () => const DefaultLoading(),
                     error: (e, st, retry) => DefaultError(error: e, retry: retry),
+                    keepPrevious: true,
                   ),
                 ),
               ),
@@ -298,6 +301,7 @@ abstract final class AppRoutes {
                               data: (d) => _i30.ItemPage(d),
                               loading: () => const DefaultLoading(),
                               error: (e, st, retry) => _i31.ItemError(e, retry),
+                              keepPrevious: true,
                             ),
                             () => notFound(state.uri),
                           ),
@@ -316,6 +320,7 @@ abstract final class AppRoutes {
                     data: (d) => _i35.TeamLayout(team: d, child: child),
                     loading: () => _i33.TeamLoading(),
                     error: (e, st, retry) => _i34.TeamError(error: e, retry: retry),
+                    keepPrevious: true,
                   ),
                   () => _i36.TeamNotFound(uri: state.uri),
                 ),
@@ -349,6 +354,7 @@ abstract final class AppRoutes {
                               ),
                               loading: () => _i33.TeamLoading(),
                               error: (e, st, retry) => _i34.TeamError(error: e, retry: retry),
+                              keepPrevious: true,
                             ),
                             () => _i38.MembersNotFound(uri: state.uri),
                           ),
@@ -538,23 +544,23 @@ final class SearchRoute extends TypedLocation {
   final int? page;
   final List<String> tags;
 
-  /// search/data.dart as a Riverpod provider keyed by `(q, page)`.
+  /// search/data.dart as a Riverpod provider keyed by `(q, page, tags)`.
   static final data = _data17;
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/search'), {'q': q, 'page': page, 'tags': tags});
 
   /// Watches search/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
-  static final watch = (WidgetRef ref, {String? q, int? page}) => ref.watch(data((q: q, page: page)));
+  static final watch = (WidgetRef ref, {String? q, int? page, List<String> tags = const []}) => ref.watch(data((q: q, page: page, tags: QueryList(tags))));
 
   /// Reads search/data.dart once, keeping it alive until it completes.
-  static final read = (WidgetRef ref, {String? q, int? page}) => ref.readData(data((q: q, page: page)));
+  static final read = (WidgetRef ref, {String? q, int? page, List<String> tags = const []}) => ref.readData(data((q: q, page: page, tags: QueryList(tags))));
 
   /// Starts loading search/data.dart before navigating; kept for `keepFor` (default 30 s).
-  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data((q: q, page: page)), keepFor: keepFor);
+  void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data((q: q, page: page, tags: QueryList(tags))), keepFor: keepFor);
 
   /// Re-runs search/data.dart; completes with the fresh value.
-  Future<void> refresh(WidgetRef ref) => ref.refresh(data((q: q, page: page)).future);
+  Future<void> refresh(WidgetRef ref) => ref.refresh(data((q: q, page: page, tags: QueryList(tags))).future);
 }
 
 /// `/shops/:shop` → shops/$shop/page.dart
@@ -693,31 +699,21 @@ final class TicksRoute extends TypedLocation {
 ({String teamId}) _layout23(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
 
 final _data17 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String? q, int? page}) k) => _i24.data(ref, q: k.q, page: k.page),
-  // No automatic retry: error.dart and its Retry button are the retry UX.
-  retry: (retryCount, error) => null,
+  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => _i24.data(ref, q: k.q, page: k.page, tags: k.tags),
 );
 
 final _data21 = FutureProvider.autoDispose.family(
   (Ref ref, ({String shop, int id}) k) => _i29.data(ref, shop: k.shop, id: k.id),
-  // No automatic retry: error.dart and its Retry button are the retry UX.
-  retry: (retryCount, error) => null,
 );
 
 final _data23 = FutureProvider.autoDispose.family(
   (Ref ref, String teamId) => _i32.data(ref, teamId: teamId),
-  // No automatic retry: error.dart and its Retry button are the retry UX.
-  retry: (retryCount, error) => null,
 );
 
 final _data25 = FutureProvider.autoDispose.family(
   (Ref ref, int member) => _i39.data(ref, member: member),
-  // No automatic retry: error.dart and its Retry button are the retry UX.
-  retry: (retryCount, error) => null,
 );
 
 final _data27 = StreamProvider.autoDispose(
   (Ref ref) => _i42.data(ref),
-  // No automatic retry: error.dart and its Retry button are the retry UX.
-  retry: (retryCount, error) => null,
 );

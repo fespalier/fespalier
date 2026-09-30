@@ -82,7 +82,8 @@ fn example_app_generates_cleanly() {
 #[test]
 fn committed_output_is_up_to_date() {
     for name in ["shop", "features", "tabs"] {
-        let (code, diags, _) = build(&examples(name).join("lib/app"), &Config::default()).unwrap();
+        let cfg = Config::load(&examples(name)).unwrap();
+        let (code, diags, _) = build(&examples(name).join("lib/app"), &cfg).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
         let committed = fs::read_to_string(examples(name).join("lib/app.g.dart")).unwrap_or_default();
         assert!(committed == code, "examples/{name}/lib/app.g.dart is stale; run `fsp gen --project examples/{name}`");
@@ -184,7 +185,7 @@ fn error_views_get_error_and_retry_by_name_or_type() {
         &[
             "error: (e, st, retry) => _i2.E(e, retry, stackTrace: st),",
             "final _data0 = StreamProvider.autoDispose(",
-            "(Ref ref) => _i0.data(ref),\n  // No automatic retry: error.dart and its Retry button are the retry UX.\n  retry: (retryCount, error) => null,",
+            "(Ref ref) => _i0.data(ref),\n);",
             "/// Restarts data.dart",
         ],
     );
@@ -280,16 +281,17 @@ fn misc_rules() {
 }
 
 #[test]
-fn generated_providers_switch_off_riverpod_retry() {
-    // Riverpod 3 retries failed providers with backoff for ~40 s; error.dart and
-    // its `retry` callback are the retry UX, so the wrappers fespalier writes opt out.
+fn generated_providers_inherit_the_apps_retry_policy() {
+    // Riverpod 3 retries failed providers with backoff for ~40 s. The wrappers fespalier
+    // writes leave that to the app's ProviderScope (`data_retry: none` opts out; see
+    // refresh_tests.rs).
     let c = code(&[
         ("a/data.dart", "Future<int> data(Ref ref) async => 1;"),
         ("a/page.dart", "class APage extends StatelessWidget { const APage(this.n, {super.key}); final int n; }"),
         ("$id/data.dart", "Stream<int> data(Ref ref, {required int id}) => Stream.value(id);"),
         ("$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage(this.n, {super.key}); final int n; }"),
     ]);
-    assert_eq!(c.matches("retry: (retryCount, error) => null,").count(), 2, "{c}");
+    assert!(!c.contains("retryCount"), "{c}");
     has(&c, &["= FutureProvider.autoDispose(", "= StreamProvider.autoDispose.family("]);
 
     // A provider the user wrote is theirs: no wrapper, nothing added.
@@ -523,13 +525,12 @@ fn query_params_reach_every_file_and_key_data() {
 #[test]
 fn query_param_rules() {
     let e = diags(&[
-        ("a/data.dart", "Future<int> data(Ref ref, {int? page, List<String> tags = const [], required int n}) async => 1;"),
+        ("a/data.dart", "Future<int> data(Ref ref, {int? page, required int n}) async => 1;"),
         ("a/page.dart", "class APage extends StatelessWidget { const APage(this.x, {super.key, this.page}); final int x; final String? page; }"),
     ]);
     let joined = e.join("\n");
     for needle in [
         "a/page.dart:1  `?page` is int? in a/data.dart:1 but String? here",
-        "`tags`: data can't be keyed by a List; take a `String?` and split it",
         "`n` isn't a segment of this path (it has none); for a query parameter make it optional and nullable, e.g. `String? n`",
     ] {
         assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");

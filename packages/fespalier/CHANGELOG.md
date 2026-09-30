@@ -1,8 +1,13 @@
-## 0.1.0
+## 0.1.0 - 2026-09-30
 
-- Initial release: runtime for the `fsp` file-tree router generator, built on go_router (17 and 18), hooks_riverpod 3 and flutter_hooks.
-- File kinds under `lib/app/`: page, data, loading, error, layout and guard, wired together by the generated `lib/app.g.dart`.
-- Typed routes (`TypedLocation`) with dynamic path segments and typed query parameters (`Segment` / `Query` helpers for string, int, double, bool and list values).
-- `(group)` folders that organize files without affecting the URL.
-- Per-route page transitions, plus `Transitions` helpers (`fade`, `slide`, `none`, `material`).
-- `DataView` for async data with default loading, error and not-found widgets.
+- Initial release: the runtime for the `fsp` file-tree router generator, built on go_router
+  (17 and 18), hooks_riverpod 3 and flutter_hooks. It re-exports all three from
+  `package:fespalier/fespalier.dart`.
+- Generated `lib/app.g.dart` uses this package for typed route locations (`TypedLocation`),
+  segment parsing (`int`, `double`, `bool`, `String`) and query parameter helpers,
+  including list values.
+- `DataView`: renders a Riverpod `AsyncValue` with the route's page, loading and error widgets,
+  with default loading and error widgets when the tree has none.
+- `Transitions` for `transition.dart`: `fade`, `slide`, `none`, `material` and `cupertino`.
+- Supports `(group)` folders, tab layouts (`StatefulNavigationShell`) and `AppRoutes.mount(at:)`
+  in the generated code.

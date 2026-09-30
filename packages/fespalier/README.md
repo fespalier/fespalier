@@ -2,12 +2,12 @@
 
 File-tree routing for Flutter, in the spirit of the Next.js app router. You write
 plain widgets and functions under `lib/app/` (page, data, loading, error, layout,
-guard); the `fsp` CLI generates `lib/app.g.dart`, one mountable
+guard, transition, not_found); the `fsp` CLI generates `lib/app.g.dart`, one mountable
 [go_router](https://pub.dev/packages/go_router) entry point with typed routes.
 
 This package is the runtime that generated code depends on: typed route
 locations, segment and query parameter helpers, page transitions
-(`Transitions.fade`, `slide`, `none`, `material`), and `DataView`. It also
+(`Transitions.fade`, `slide`, `none`, `material`, `cupertino`), and `DataView`. It also
 re-exports `go_router`, `hooks_riverpod` and `flutter_hooks`, so an app can
 import a single package.
 
@@ -26,7 +26,10 @@ dependencies:
       ref: v0.1.0
 ```
 
-Works with go_router 17 and 18.
+Needs Dart 3.8 and Flutter 3.32 or newer (go_router 18 needs Flutter 3.44). Works with
+go_router 17 and 18. Install the `fsp` CLI too; the main README's
+[Getting started](https://github.com/vaam-apps/fespalier#getting-started) covers both, plus
+`fsp init`, `main.dart`, CI and web notes.
 
 ## Learn more
 

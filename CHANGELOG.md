@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-09-30
 
 Initial version.
 
@@ -28,11 +28,16 @@ Initial version.
   optional `const tabs = [...]`).
 - Route order is static-first (`/about` before `/:slug`). Duplicate URLs and unreachable
   routes are errors.
-- Ready-made `Transitions`: `fade`, `slide`, `none`, `material` and `cupertino`.
+- `transition.dart`: sets how a folder's routes animate (nearest one wins), with ready-made
+  `Transitions`: `fade`, `slide`, `none`, `material` and `cupertino`.
 - `fsp` generator (Rust, tree-sitter based): `fsp gen`, `fsp check` (for CI; writes
-  nothing), `fsp watch` and `fsp new` (scaffolds route files). Errors point at the
-  offending parameter or declaration, and `app.g.dart` is left untouched while there are
-  any.
+  nothing), `fsp watch`, `fsp new` (scaffolds route files) and `fsp init` (sets up an
+  existing Flutter project without overwriting anything). Errors point at the offending
+  parameter or declaration, and `app.g.dart` is left untouched while there are any.
+- Optional `fespalier:` section in `pubspec.yaml` to move the app folder (`app_dir`, default
+  `lib/app`) and the generated file (`output`, default `lib/app.g.dart`).
+- Works with go_router 17 and 18. On go_router 18 with Flutter's `MaterialApp`, routes
+  without a `transition.dart` don't animate; see the README's Getting started.
 - Output is a single readable `lib/app.g.dart` with `AppRoutes.router()` for a whole app
   and `AppRoutes.mount(at:)` to embed it in an existing GoRouter.
 - Prebuilt `fsp` binaries for Linux, macOS and Windows on each GitHub Release, and an

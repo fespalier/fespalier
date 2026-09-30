@@ -53,6 +53,120 @@ ref.watch(ProductRoute.data(42));
 await const ProductsRoute().refresh(ref);
 ```
 
+## Getting started
+
+You need Flutter 3.32 or newer (Dart 3.8) for the package. go_router 18 needs Flutter
+3.44 or newer.
+
+**1. Install the CLI.** On Linux and macOS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
+```
+
+It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.1.0`
+to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install
+elsewhere. On Windows, download `fsp-x86_64-pc-windows-msvc.zip` from the
+[Releases page](https://github.com/vaam-apps/fespalier/releases) and put `fsp.exe` on your
+`PATH`. With Rust installed, on any platform:
+
+```sh
+cargo install --git https://github.com/vaam-apps/fespalier --tag v0.1.0 fespalier
+```
+
+**2. Add the package** to your app's `pubspec.yaml`, then run `flutter pub get`:
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/vaam-apps/fespalier
+      path: packages/fespalier
+      ref: v0.1.0
+```
+
+It depends on go_router (17 or 18), hooks_riverpod 3 and flutter_hooks, and
+`package:fespalier/fespalier.dart` re-exports all three, so you don't add them yourself.
+
+**3. Run `fsp init`** in the project root:
+
+```sh
+fsp init
+```
+
+It creates `lib/app/layout.dart`, `page.dart` and `not_found.dart`, and writes
+`lib/app.g.dart`. It never overwrites a file that exists: those are reported as `skip`.
+It then prints what is left to do (the dependency block above, if `pubspec.yaml` doesn't
+have it yet, and this `main.dart`):
+
+```dart
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+void main() => runApp(
+      ProviderScope(
+        child: MaterialApp.router(routerConfig: AppRoutes.router()),
+      ),
+    );
+```
+
+Already have a `GoRouter`? Mount the tree inside it instead. `at` is the URL prefix:
+
+```dart
+GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])
+```
+
+**4. Day to day.**
+
+```sh
+fsp watch                                 # next to `flutter run`: regenerates on every save
+fsp new 'orders/[id]' --data --loading    # scaffold a route; see "The generator" for all flags
+```
+
+Commit `lib/app.g.dart`: it's plain code, meant to be read, and the app builds without
+`fsp` installed. In CI, run `fsp check`. It writes nothing and exits non-zero on errors:
+
+```yaml
+- run: curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
+- run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+- run: fsp check
+```
+
+**Config.** `fsp` needs no configuration. To move things, add this optional section to
+`pubspec.yaml`. Both paths are relative to the project root and must be under `lib/`, and
+`output` must be a `.dart` file. These are the defaults:
+
+```yaml
+fespalier:
+  app_dir: lib/app
+  output: lib/app.g.dart
+```
+
+**Platform notes.**
+
+- **Web URLs.** Flutter web uses hash URLs (`/#/products/1`) unless you switch to path
+  URLs. Add `flutter_web_plugins: {sdk: flutter}` to `dependencies` and call
+  `usePathUrlStrategy()` (from `package:flutter_web_plugins/url_strategy.dart`) before
+  `runApp`. Your web server must also serve `index.html` for unknown paths.
+- **go_router 18 and Material.** go_router 18 checks for `MaterialApp` from
+  `package:material_ui`, not the one in `package:flutter/material.dart`. With Flutter's
+  `MaterialApp`, it treats your app as a plain widgets app: routes without a
+  `transition.dart` don't animate at all, and go_router's own error screen is unstyled.
+  go_router 17 checks Flutter's `MaterialApp` and has no such problem. There are two ways
+  around it:
+  - Add a root `lib/app/transition.dart` that says how routes animate, e.g.
+    `Page<void> transition(LocalKey key, Widget child) => Transitions.material(key, child);`
+    (or `cupertino`). This works with either `MaterialApp`. It's the easy fix.
+  - Or use `MaterialApp` from `package:material_ui` (add `material_ui` to `dependencies`).
+    It has its own `Theme` and localizations, which widgets from
+    `package:flutter/material.dart` don't read, so it only makes sense if you import
+    `package:material_ui/material_ui.dart` everywhere. Mixing the two loses your theme.
+
+  Or stay on go_router 17 by adding `go_router: ^17.0.0` to your `dependencies`. The
+  examples use Flutter's `MaterialApp`, so on go_router 18 their routes don't animate
+  unless a `transition.dart` says how.
+
 ## File kinds
 
 Each view file exports one public widget class, of any kind: `StatelessWidget`,
@@ -179,8 +293,9 @@ ready-made ones: `fade`, `slide`, `none`, `material` and `cupertino`.
 Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);
 ```
 
-Routes with no `transition.dart` above them keep go_router's platform default. Scaffold
-one with `fsp new … --transition`.
+Routes with no `transition.dart` above them keep go_router's default for your app type:
+the platform transition under a Material or Cupertino app, none otherwise (see the go_router
+18 note in [Getting started](#getting-started)). Scaffold one with `fsp new … --transition`.
 
 ### Query parameters
 
@@ -234,15 +349,22 @@ with query parameters, its argument is a record naming the ones it uses, e.g.
 `cli/` is a Rust binary, `fsp`. A full scan, check and emit of an example runs in a few
 milliseconds, fast enough to run on every save.
 
-```sh
-cd cli && cargo build --release        # → cli/target/release/fsp
+`fsp` installs as described in [Getting started](#getting-started). To build it from a
+checkout, run `cd cli && cargo build --release` (→ `cli/target/release/fsp`). Commands:
 
+```sh
+fsp init                # first-time setup: starter files, then gen
 fsp gen                 # check lib/app/, write lib/app.g.dart
 fsp watch               # same, on every change (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
                         # [id] or :id both mean $id, so no shell quoting of $
 ```
+
+All commands take `--project <dir>` (default: the nearest folder with a `pubspec.yaml`).
+`fsp new` always writes `page.dart` (plus the kinds you ask for with flags), skips files
+that already exist, and takes its class names from `--name` (default: from the path, e.g.
+`ProductsId`). A segment that already has a type elsewhere in the tree keeps it.
 
 Errors point at the parameter or declaration at fault, and `app.g.dart` is left
 untouched while there are any:
@@ -337,7 +459,7 @@ This is an early version.
 - **Generator:** 65 tests cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, transitions, both data
   forms, scaffolding, and that the committed outputs are up to date. Clippy is clean.
-- **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17,
+- **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
   hooks_riverpod 3, flutter_hooks 0.21). The widget tests in the examples drive the
   generated router through every file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,

@@ -41,6 +41,7 @@ String pathPart(Uri uri, String base, int index) {
 /// This is the half of [RouteMatch] that needs nothing but `app.g.dart`
 /// (`AppRoutes.matchUrl`); the route manifest adds the [RouteInfo].
 final class UrlMatch {
+  /// Creates a match of [uri] against [route], with the parsed [params] and loaded [data].
   const UrlMatch(this.uri, this.route, this.params, this.data);
 
   /// The location that was matched, as given.
@@ -64,6 +65,7 @@ final class UrlMatch {
 /// What `AppRoutes.match(uri)` found: a location matched to its route, without
 /// running any guard or building any widget.
 final class RouteMatch {
+  /// Creates the match of [url] against the route described by [info].
   const RouteMatch(this.info, this.url);
 
   /// What `fsp gen` knows about the route: its path, folder, layouts, meta, ...
@@ -98,10 +100,16 @@ final class RouteMatch {
 ///
 /// [caseSensitive] is the route's own setting (its folder's `route.dart`, else the config).
 final class RouteMatcher {
+  /// Creates a matcher for [pattern] that [build]s a [UrlMatch].
   const RouteMatcher(this.pattern, this.build, {this.caseSensitive = true});
 
+  /// The URL's path segments; `:name` ones are parameters.
   final List<String> pattern;
+
+  /// Turns the matched go_router state into a [UrlMatch].
   final UrlMatch Function(GoRouterState state) build;
+
+  /// Whether the pattern is compared case-sensitively.
   final bool caseSensitive;
 }
 

@@ -23,8 +23,10 @@ enum RoutePresentation {
 /// A segment (`$id`) or a query parameter a route reads, as the generated
 /// route class takes it.
 class RouteParam {
+  /// Creates a parameter called [name] of Dart [type].
   const RouteParam(this.name, this.type, {this.catchAll = false});
 
+  /// The parameter's name, as the route class and the URL (`:name`) spell it.
   final String name;
 
   /// A `$$rest` / `$$$rest` catch-all: the rest of the path, a `List<String>`
@@ -42,6 +44,7 @@ class RouteParam {
 
 /// A tab a route sits in: one branch of the tab layout in [layout].
 class RouteTab {
+  /// Creates the tab at [index] of the layout in [layout], named [branch].
   const RouteTab(this.layout, this.index, this.branch);
 
   /// The tab layout's folder, relative to the app folder (`(tabs)`).
@@ -65,6 +68,7 @@ class RouteTab {
 /// `RouteInfo<Object?>`, so read [meta] with a check (`meta is PageMeta`) or
 /// [metaAs].
 class RouteInfo<M> {
+  /// Creates the description of one route; the generated manifest fills it in.
   const RouteInfo({
     required this.type,
     required this.path,
@@ -110,6 +114,7 @@ class RouteInfo<M> {
   /// the app folder itself.
   final String folder;
 
+  /// How the route is shown: a page, a dialog, a sheet or something custom.
   final RoutePresentation presentation;
 
   /// The `(group)` folders above the route, outermost first, parentheses

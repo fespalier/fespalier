@@ -11,6 +11,7 @@
 /// literal with string keys (the tab names, as in `tabs`) and constructor
 /// calls with literal arguments. Nothing reads it at runtime.
 class TabOptions {
+  /// Creates the options of one tab.
   const TabOptions({this.preload = false, this.initialLocation});
 
   /// Build the tab as soon as the layout first shows, instead of on its first

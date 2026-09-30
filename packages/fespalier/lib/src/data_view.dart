@@ -13,6 +13,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// provider that failed and is being retried keeps showing its `error`. Off,
 /// `loading` shows whenever the provider is loading.
 class DataView<T> extends ConsumerWidget {
+  /// Creates a view of the data [watch] reads, shown with [data], [loading] or [error].
   const DataView({
     super.key,
     required this.watch,
@@ -23,12 +24,23 @@ class DataView<T> extends ConsumerWidget {
     this.keepPrevious = true,
   });
 
+  /// Reads the provider's state; called on every build.
   final AsyncValue<T> Function(WidgetRef ref) watch;
+
+  /// Invalidates the provider so it loads again (the `retry` of [error]).
   final void Function(WidgetRef ref) refresh;
+
+  /// Builds the view once the data has arrived.
   final Widget Function(T data) data;
+
+  /// Builds the view while the data is loading.
   final Widget Function() loading;
+
+  /// Builds the view when loading failed; `retry` loads it again.
   final Widget Function(Object error, StackTrace stackTrace, VoidCallback retry)
   error;
+
+  /// Whether the previous data stays on screen while a refresh loads.
   final bool keepPrevious;
 
   @override
@@ -43,6 +55,7 @@ class DataView<T> extends ConsumerWidget {
 
 /// Fallback when no `loading.dart` exists anywhere up the tree.
 class DefaultLoading extends StatelessWidget {
+  /// Creates the fallback loading view.
   const DefaultLoading({super.key});
 
   @override
@@ -56,9 +69,13 @@ class DefaultLoading extends StatelessWidget {
 
 /// Fallback when no `error.dart` exists anywhere up the tree.
 class DefaultError extends StatelessWidget {
+  /// Creates the fallback error view for [error], with a button that calls [retry].
   const DefaultError({super.key, required this.error, required this.retry});
 
+  /// What went wrong.
   final Object error;
+
+  /// Loads the data again.
   final VoidCallback retry;
 
   @override
@@ -76,8 +93,10 @@ class DefaultError extends StatelessWidget {
 
 /// Fallback when the root has no `not_found.dart`.
 class DefaultNotFound extends StatelessWidget {
+  /// Creates the fallback not-found view for [uri].
   const DefaultNotFound(this.uri, {super.key});
 
+  /// The location that matched nothing.
   final Uri uri;
 
   @override

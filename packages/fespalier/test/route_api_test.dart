@@ -175,7 +175,7 @@ void main() {
             ),
           ),
         ),
-        GoRoute(path: '/next', builder: (_, __) => const Text('next')),
+        GoRoute(path: '/next', builder: (_, _) => const Text('next')),
       ],
     );
 

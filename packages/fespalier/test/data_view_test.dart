@@ -54,7 +54,7 @@ void main() {
         final p = FutureProvider.autoDispose((ref) => flaky());
         await tester.pumpWidget(
           ProviderScope(
-            retry: (_, __) => null,
+            retry: (_, _) => null,
             child: view(p, keepPrevious: keep),
           ),
         );
@@ -88,7 +88,7 @@ void main() {
         });
         await tester.pumpWidget(
           ProviderScope(
-            retry: (_, __) => null,
+            retry: (_, _) => null,
             child: view(p, keepPrevious: keep),
           ),
         );
@@ -186,7 +186,7 @@ void main() {
       final flaky = Flaky(100);
       final p = FutureProvider.autoDispose(
         (ref) => flaky(),
-        retry: (_, __) => null,
+        retry: (_, _) => null,
       );
       await tester.pumpWidget(ProviderScope(child: view(p)));
       await ms(tester, 20);
@@ -230,7 +230,7 @@ void main() {
       addTearDown(container.dispose);
       final sub = container.listen(
         family((q: 'a', tags: QueryList(['x', 'y']))),
-        (_, __) {},
+        (_, _) {},
       );
       expect(
         await container.read(

@@ -96,10 +96,10 @@ impl Formats {
         code: &str,
         format: impl FnOnce(&str) -> (String, Option<String>),
     ) -> String {
-        if let Some((raw, done)) = self.0.get(path) {
-            if raw == code {
-                return done.clone();
-            }
+        if let Some((raw, done)) = self.0.get(path)
+            && raw == code
+        {
+            return done.clone();
         }
         let (done, warning) = format(code);
         match warning {

@@ -4,6 +4,11 @@
 //! This module works out every expression; `templates/app.g.dart.jinja` owns
 //! the layout of the file.
 
+#![allow(
+    clippy::expect_used,
+    reason = "the resolver checked a route's `data` and `page` before emission; these expects state that invariant"
+)]
+
 use std::collections::{BTreeSet, HashMap};
 
 use serde::Serialize;
@@ -25,7 +30,7 @@ struct FileCx {
     imports: Vec<String>,
     tree: Vec<TreeCx>,
     not_found: String,
-    /// not_found.dart files below the root, deepest first.
+    /// `not_found.dart` files below the root, deepest first.
     not_founds: Vec<NotFoundCx>,
     routes: Vec<RouteCx>,
     /// A typed handle for each section's data.dart.
@@ -42,11 +47,11 @@ struct FileCx {
     extra_codec: Option<String>,
     /// Whether the root matches paths by case: what the mount point is compared with.
     case_sensitive: bool,
-    /// `keep_previous` from the config: the DataViews' `keepPrevious`.
+    /// `keep_previous` from the config: the `DataViews`' `keepPrevious`.
     keep_previous: bool,
 }
 
-/// A GoRoute; a ShellRoute when `layout` is set; a StatefulShellRoute when
+/// A `GoRoute`; a `ShellRoute` when `layout` is set; a `StatefulShellRoute` when
 /// `branches` is set too.
 #[derive(Serialize)]
 struct TreeCx {
@@ -58,7 +63,7 @@ struct TreeCx {
     /// redirect itself: the first to return a location wins.
     redirects: Vec<CallCx>,
     /// A route that only redirects still builds not-found for a segment that
-    /// doesn't parse (go_router needs a builder to show anything).
+    /// doesn't parse (`go_router` needs a builder to show anything).
     not_found_builder: bool,
     seg_fn: Option<String>,
     page: String,
@@ -68,32 +73,32 @@ struct TreeCx {
     transition: Option<TransitionCx>,
     /// `parentNavigatorKey: rootNavigatorKey`: a page (or a shell) that goes on the root navigator.
     root: bool,
-    /// Where `root` comes from, for the error when go_router can't honour it.
+    /// Where `root` comes from, for the error when `go_router` can't honour it.
     #[serde(skip)]
     root_at: Option<(String, Option<Span>)>,
     /// A tab shell's `navigatorContainerBuilder`, when its layout.dart has a `container`.
     container: Option<String>,
     routes: Vec<TreeCx>,
-    /// Starts with a `:segment` (or, for a ShellRoute, holds a route that does).
+    /// Starts with a `:segment` (or, for a `ShellRoute`, holds a route that does).
     #[serde(skip)]
     dynamic: bool,
     /// Ends in a catch-all `:rest(.+)` (or a shell holds a route that does): tried last.
     #[serde(skip)]
     catch_all: bool,
-    /// For a GoRoute: its URL, page file and page class, to check matching order.
+    /// For a `GoRoute`: its URL, page file and page class, to check matching order.
     #[serde(skip)]
     serves: Option<Serves>,
-    /// For a GoRoute: its own `path:` has a `:segment`.
+    /// For a `GoRoute`: its own `path:` has a `:segment`.
     #[serde(skip)]
     has_params: bool,
-    /// For a GoRoute: whether its whole path matches by case (`caseSensitive: false` when not).
+    /// For a `GoRoute`: whether its whole path matches by case (`caseSensitive: false` when not).
     case_sensitive: bool,
-    /// For a GoRoute: its own `path:` has a localized segment (`:_l0(products|produits)`).
+    /// For a `GoRoute`: its own `path:` has a localized segment (`:_l0(products|produits)`).
     #[serde(skip)]
     localized: bool,
 }
 
-/// A GoRoute's URL, page file and page class, and the localized segments of the URL.
+/// A `GoRoute`'s URL, page file and page class, and the localized segments of the URL.
 type Serves = (Vec<Seg>, String, Option<Span>, Vec<Localized>);
 
 #[derive(Serialize)]
@@ -125,7 +130,7 @@ pub fn dart_str(s: &str) -> String {
     out
 }
 
-/// go_router takes the first route that matches, so `/about` must come before
+/// `go_router` takes the first route that matches, so `/about` must come before
 /// `/:id`, and both before a catch-all `/:rest(.+)`. The sort is stable:
 /// otherwise folders keep their order.
 fn static_first(mut routes: Vec<TreeCx>) -> Vec<TreeCx> {
@@ -154,7 +159,7 @@ struct LayoutCx {
     transition: Option<TransitionCx>,
 }
 
-/// A not_found.dart below the root: its URL prefix (`['products', ':id']`) and widget.
+/// A `not_found.dart` below the root: its URL prefix (`['products', ':id']`) and widget.
 #[derive(Serialize)]
 struct NotFoundCx {
     prefix: String,
@@ -419,8 +424,8 @@ fn in_hook(b: &Bind) -> String {
     }
 }
 
-/// RouteBase entries for a folder. Page-less folders fold their segment into
-/// their children's paths; `layout.dart` wraps the result in a ShellRoute.
+/// `RouteBase` entries for a folder. Page-less folders fold their segment into
+/// their children's paths; `layout.dart` wraps the result in a `ShellRoute`.
 /// `inherited` holds the guards (route ids) of the folders above that have no
 /// route of their own to nest under: every route here starts with them.
 fn routes_of(
@@ -616,10 +621,10 @@ fn with_sections(
 ) -> String {
     let mut ids: Vec<usize> = vec![];
     for a in args {
-        if let Bind::Section(id) = a.bind {
-            if !ids.contains(&id) {
-                ids.push(id);
-            }
+        if let Bind::Section(id) = a.bind
+            && !ids.contains(&id)
+        {
+            ids.push(id);
         }
     }
     ids.into_iter().rev().fold(inner, |acc, sid| {
@@ -643,7 +648,7 @@ fn with_sections(
     })
 }
 
-/// What an unparsable segment shows: the nearest not_found.dart below the root, or the
+/// What an unparsable segment shows: the nearest `not_found.dart` below the root, or the
 /// root's, which `notFound` picks.
 fn not_found_call(r: &Route) -> String {
     r.not_found
@@ -656,7 +661,7 @@ fn not_found_call(r: &Route) -> String {
         })
 }
 
-/// The not_found.dart files below the root, deepest first, static folders before
+/// The `not_found.dart` files below the root, deepest first, static folders before
 /// dynamic ones at the same depth, so the nearest match is the first.
 fn not_founds(app: &App) -> Vec<NotFoundCx> {
     let mut all: Vec<&resolve::ScopedNotFound> = app.not_founds.iter().collect();
@@ -765,7 +770,7 @@ fn own_seg_fn(app: &App, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<Stri
     })
 }
 
-/// The GoRoute for a folder's page.dart. Its subfolders' routes nest below it,
+/// The `GoRoute` for a folder's page.dart. Its subfolders' routes nest below it,
 /// unless `nested` is off (a tab layout's own page sits beside its tabs).
 fn page_route(
     app: &App,
@@ -845,7 +850,7 @@ fn page_route(
     }
 }
 
-/// The GoRoute for a folder's redirect.dart: no page, just a redirect.
+/// The `GoRoute` for a folder's redirect.dart: no page, just a redirect.
 fn redirect_route(
     app: &App,
     id: usize,
@@ -894,7 +899,7 @@ fn redirect_route(
     }
 }
 
-/// A tab layout: one StatefulShellRoute whose branches are the layout folder's
+/// A tab layout: one `StatefulShellRoute` whose branches are the layout folder's
 /// own page and each subfolder, laid out exactly as they would be without it.
 #[allow(clippy::too_many_arguments)]
 fn tab_routes(
@@ -982,8 +987,8 @@ fn tab_routes(
     }]
 }
 
-/// go_router tries routes depth-first, in order, and takes the first full
-/// match. Static routes are sorted first, but a ShellRoute's routes can't be
+/// `go_router` tries routes depth-first, in order, and takes the first full
+/// match. Static routes are sorted first, but a `ShellRoute`'s routes can't be
 /// interleaved with its siblings', so `(group)/about` can still end up behind
 /// a `/:slug` outside the group. Report any page that is always caught first.
 fn check_order(tree: &[TreeCx], diags: &mut Diags) {
@@ -1137,7 +1142,7 @@ fn split_catch_all(url: &[Seg]) -> (Option<bool>, &[Seg]) {
     }
 }
 
-/// The first GoRoute in `routes`, depth first: what go_router opens a tab on.
+/// The first `GoRoute` in `routes`, depth first: what `go_router` opens a tab on.
 fn first_route(routes: &[TreeCx]) -> Option<&TreeCx> {
     routes.iter().find_map(|r| {
         if r.serves.is_some() {
@@ -1150,7 +1155,7 @@ fn first_route(routes: &[TreeCx]) -> Option<&TreeCx> {
     })
 }
 
-/// go_router opens a tab on its first GoRoute and refuses one whose own path has
+/// `go_router` opens a tab on its first `GoRoute` and refuses one whose own path has
 /// a `:segment` (it would need a value to build the location from). Static
 /// routes sort first, so this only bites tabs made entirely of dynamic routes,
 /// and a tab layout sitting on a dynamic folder with no page of its own.
@@ -1193,7 +1198,7 @@ fn check_tab_starts(tree: &[TreeCx], diags: &mut Diags) {
     }
 }
 
-/// go_router puts a route on the root navigator by lifting it out of the shell that
+/// `go_router` puts a route on the root navigator by lifting it out of the shell that
 /// would hold it, and can only do that for a route below another route: a direct child of
 /// a `ShellRoute` or a tab (`StatefulShellBranch`) with a `parentNavigatorKey` of its own is
 /// an assertion at startup.
@@ -1362,7 +1367,7 @@ fn sections(app: &App, diags: &mut Diags) -> Vec<SectionCx> {
 
 /// How `AppRoutes.matchUrl` reads each route: its path, then what it builds from the
 /// parsed URL. Most specific first (static parts, then `:params`, then catch-alls), which is
-/// the order go_router tries them in.
+/// the order `go_router` tries them in.
 fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
     let mut all: Vec<(Vec<u8>, MatcherCx)> = vec![];
     for (id, r) in app.routes.iter().enumerate() {
@@ -1975,11 +1980,11 @@ mod order_tests {
             .filter_map(|(at, s)| match s {
                 Seg::Static(canonical) if rng.below(2) == 0 => {
                     let names = ["a", "b", "c", "d", "e"];
-                    let spellings = (0..1 + rng.below(3))
+                    let spellings = (0..=rng.below(3))
                         .map(|k| locale::Spelling {
                             locale: format!("l{k}"),
                             path: names[rng.below(5)].into(),
-                            span: Default::default(),
+                            span: Span::default(),
                         })
                         .collect();
                     Some(Localized {
@@ -2035,7 +2040,7 @@ mod order_tests {
                 .map(|(k, p)| locale::Spelling {
                     locale: format!("l{k}"),
                     path: (*p).into(),
-                    span: Default::default(),
+                    span: Span::default(),
                 })
                 .collect(),
         };

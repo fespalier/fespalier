@@ -31,7 +31,11 @@ fn configured(fespalier: &str, files: &[(&str, &str)]) -> tempfile::TempDir {
 fn diags(files: &[(&str, &str)]) -> Vec<String> {
     let dir = project(files);
     let (_, diags, _) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
-    diags.0.iter().map(|d| d.to_string()).collect()
+    diags
+        .0
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect()
 }
 
 fn code(files: &[(&str, &str)]) -> String {
@@ -638,7 +642,11 @@ fn both_spellings_in_one_folder_are_an_error_for_each_file() {
         ("not-found.dart", NF),
     ]);
     let (_, diags, _) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
-    let e: Vec<String> = diags.0.iter().map(|d| d.to_string()).collect();
+    let e: Vec<String> = diags
+        .0
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     assert_eq!(e.len(), 2, "{e:?}");
     assert!(
         e.iter().any(|m| m.starts_with(

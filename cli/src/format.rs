@@ -3,7 +3,7 @@
 //! is written until the formatted text is known: `gen` compares it with the file
 //! on disk, and a formatted file that is already up to date stays "unchanged".
 //! `--stdin-name` points at the output path, so the formatter finds the
-//! project's package config (language version) and analysis_options.yaml
+//! project's package config (language version) and `analysis_options.yaml`
 //! (`formatter: page_width`), exactly as `dart format lib/` would.
 
 use std::io::Write;

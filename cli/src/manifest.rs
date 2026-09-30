@@ -6,6 +6,11 @@
 //! The manifest never interprets a route's `meta.dart`: it lists it by import
 //! (`_iN.meta`) and the app decides what the type means.
 
+#![allow(
+    clippy::unwrap_used,
+    reason = "the parent chain always holds the route it started from"
+)]
+
 use std::collections::HashMap;
 
 use serde::Serialize;

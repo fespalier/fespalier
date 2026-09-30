@@ -111,7 +111,7 @@ pub struct Node {
     pub dir: String,
     pub seg: Option<Seg>,
     pub files: BTreeMap<Kind, String>,
-    /// The name a file has on disk when it isn't the kind's snake_case one (`not-found.dart`).
+    /// The name a file has on disk when it isn't the kind's `snake_case` one (`not-found.dart`).
     pub spelled: BTreeMap<Kind, String>,
     pub children: Vec<Node>,
 }

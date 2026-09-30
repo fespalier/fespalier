@@ -1,5 +1,5 @@
 //! `AppRoutes.match` / `dataAt`, a section's typed handle and query keys, `meta_unique`,
-//! not_found.dart taking segments, and `fsp new --not-found`. (The rest of the generator's
+//! `not_found.dart` taking segments, and `fsp new --not-found`. (The rest of the generator's
 //! tests are in `tests.rs`.)
 
 use std::fs;
@@ -42,7 +42,11 @@ fn diags(yaml: &str, files: &[(&str, &str)]) -> Vec<String> {
     let dir = project(yaml, files);
     let cfg = Config::load(dir.path()).unwrap();
     let (_, diags, _) = analyze(&dir.path().join("lib/app"), &cfg).unwrap();
-    diags.0.iter().map(|d| d.to_string()).collect()
+    diags
+        .0
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect()
 }
 
 fn errors(yaml: &str, files: &[(&str, &str)]) -> Vec<String> {

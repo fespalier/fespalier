@@ -5,6 +5,12 @@
 //!
 //! When this fails after a version bump, update the places it names.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "integration-test helpers: a failed unwrap is a failed test"
+)]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

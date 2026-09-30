@@ -46,7 +46,7 @@ fn bench_stages() {
         let (t_scan, tree) = time(|| scan::scan(&app_dir, &mut Diags::default()).unwrap());
         let mut srcs = vec![];
         sources(&tree, &mut srcs);
-        let (t_parse, _) = time(|| srcs.iter().for_each(|s| drop(crate::dart::parse(s))));
+        let (t_parse, ()) = time(|| srcs.iter().for_each(|s| drop(crate::dart::parse(s))));
         // Resolve alone: the parses come from the cache.
         parse_cache::enable();
         resolve::resolve(
@@ -65,10 +65,10 @@ fn bench_stages() {
             )
         });
         parse_cache::disable();
-        let (t_check, _) = time(|| manifest::check(&app, &cfg, &mut Diags::default()));
+        let (t_check, ()) = time(|| manifest::check(&app, &cfg, &mut Diags::default()));
         let (t_emit, code) = time(|| emit::emit(&app, &cfg, &mut Diags::default()));
         let (t_format, _) = time(|| format::format_dart(&code, &out));
-        let (t_write, _) = time(|| {
+        let (t_write, ()) = time(|| {
             fs::create_dir_all(out.parent().unwrap()).unwrap();
             fs::write(&out, &code).unwrap();
         });
@@ -88,8 +88,11 @@ fn bench_stages() {
 }
 
 fn walk(dir: &std::path::Path, read: bool, stat: bool, n: &mut usize) {
-    let mut entries: Vec<_> = fs::read_dir(dir).unwrap().filter_map(|e| e.ok()).collect();
-    entries.sort_by_key(|e| e.file_name());
+    let mut entries: Vec<_> = fs::read_dir(dir)
+        .unwrap()
+        .filter_map(std::result::Result::ok)
+        .collect();
+    entries.sort_by_key(std::fs::DirEntry::file_name);
     for e in entries {
         let ft = e.file_type().unwrap();
         if ft.is_dir() {
@@ -115,7 +118,7 @@ fn bench_walk() {
     for (read, stat) in [(false, false), (false, true), (true, false), (true, true)] {
         let mut n = 0;
         walk(&app, read, stat, &mut n);
-        let (t, _) = time(|| walk(&app, read, stat, &mut n));
+        let (t, ()) = time(|| walk(&app, read, stat, &mut n));
         println!("walk read={read} stat={stat}: {}", ms(t));
     }
     let (t, _) = time(|| scan::scan(&app, &mut Diags::default()).unwrap());

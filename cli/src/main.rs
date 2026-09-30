@@ -137,6 +137,7 @@ pub struct Outcome {
 
 impl Outcome {
     /// The success line shared by `gen`, `new`, `init` and `watch`.
+    #[must_use]
     pub fn line(&self) -> String {
         let routes = plural(self.routes, "route");
         if self.wrote {
@@ -147,6 +148,7 @@ impl Outcome {
     }
 }
 
+#[must_use]
 pub fn plural(n: usize, noun: &str) -> String {
     if n == 1 {
         format!("1 {noun}")
@@ -173,9 +175,9 @@ pub fn gen_opts(project: &Path, cfg: &Config, write: bool, json: bool) -> Result
         &mut Session::default(),
         |app_dir, diags| {
             if json {
-                diag::render_json(app_dir, &cfg.app_dir, diags)
+                diag::render_json(app_dir, &cfg.app_dir, diags);
             } else {
-                diag::render(app_dir, &cfg.app_dir, diags)
+                diag::render(app_dir, &cfg.app_dir, diags);
             }
         },
     )
@@ -201,27 +203,26 @@ fn gen_core(
     let tree = scan::scan(&app_dir, &mut diags)?;
     let scan_diags = format!("{diags:?}");
     let libs = enums::Libs::for_app(&app_dir, cfg);
-    let (run, reads) = match session.last.reuse(&tree, &scan_diags, &libs) {
-        Some(kept) => kept,
-        None => {
-            let (code, app) = analyze_tree(&tree, cfg, &libs, &mut diags);
-            let routes = app.routes.iter().filter(|r| r.is_route()).count();
-            // The manifest is a second file when `output_manifest:` asks for one. `check`
-            // renders it too, but writes and compares nothing.
-            let mut files = vec![];
-            if !diags.has_errors() {
-                files.push((cfg.output.clone(), code));
-                files.extend(cfg.output_manifest.clone().zip(manifest::emit(&app, cfg)));
-            }
-            (
-                Run {
-                    diags,
-                    routes,
-                    files,
-                },
-                libs.reads(),
-            )
+    let (run, reads) = if let Some(kept) = session.last.reuse(&tree, &scan_diags, &libs) {
+        kept
+    } else {
+        let (code, app) = analyze_tree(&tree, cfg, &libs, &mut diags);
+        let routes = app.routes.iter().filter(|r| r.is_route()).count();
+        // The manifest is a second file when `output_manifest:` asks for one. `check`
+        // renders it too, but writes and compares nothing.
+        let mut files = vec![];
+        if !diags.has_errors() {
+            files.push((cfg.output.clone(), code));
+            files.extend(cfg.output_manifest.clone().zip(manifest::emit(&app, cfg)));
         }
+        (
+            Run {
+                diags,
+                routes,
+                files,
+            },
+            libs.reads(),
+        )
     };
     let run = session.last.keep(tree, scan_diags, reads, run);
     show(&app_dir, &run.diags);
@@ -348,7 +349,7 @@ fn watch(project: &Path) -> Result<()> {
         let result = gen_core(project, &cfg, true, &mut session, |dir, d| {
             diags =
                 d.0.iter()
-                    .map(|d| d.to_string())
+                    .map(std::string::ToString::to_string)
                     .collect::<Vec<_>>()
                     .join("\n");
             if diags != shown.diags {

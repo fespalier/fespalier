@@ -102,7 +102,7 @@ pub fn imports(src: &str) -> Vec<Import> {
         let Some(close) = stmt[1..].find(q) else {
             continue;
         };
-        let uri = stmt[1..1 + close].to_string();
+        let uri = stmt[1..=close].to_string();
         let tail: Vec<&str> = stmt[close + 2..]
             .split(|c: char| c.is_whitespace() || c == ',')
             .filter(|t| !t.is_empty())
@@ -111,7 +111,7 @@ pub fn imports(src: &str) -> Vec<Import> {
             .iter()
             .position(|t| *t == "as")
             .and_then(|i| tail.get(i + 1))
-            .map(|p| p.to_string());
+            .map(std::string::ToString::to_string);
         out.push(Import { uri, prefix });
     }
     out

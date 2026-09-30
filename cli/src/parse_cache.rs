@@ -10,6 +10,11 @@
 //! [`prewarm`] parses the files a run is missing on all cores before the resolver asks for
 //! them: a cold run of a big app is a third parsing, and each file parses on its own.
 
+#![allow(
+    clippy::expect_used,
+    reason = "the cache is enabled at the top of each function, and a parser-thread panic is propagated"
+)]
+
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::thread;
@@ -89,7 +94,7 @@ pub fn prewarm(tree: &Node) -> Prewarmed {
     });
     if missing.len() >= PARALLEL_MIN {
         let threads = thread::available_parallelism()
-            .map_or(1, |n| n.get())
+            .map_or(1, std::num::NonZero::get)
             .min(missing.len() / 16)
             .max(1);
         let per = missing.len().div_ceil(threads);

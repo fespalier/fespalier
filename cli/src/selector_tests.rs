@@ -21,7 +21,11 @@ fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
 fn diags_with(cfg: &Config, files: &[(&str, &str)]) -> Vec<String> {
     let dir = project(files);
     let (_, diags, _) = build(&dir.path().join("lib/app"), cfg).unwrap();
-    diags.0.iter().map(|d| d.to_string()).collect()
+    diags
+        .0
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect()
 }
 
 fn errors(files: &[(&str, &str)]) -> Vec<String> {

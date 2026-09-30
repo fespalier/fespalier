@@ -2,7 +2,7 @@
 //! `route.dart` gives that folder's own static segment more spellings, so `products/` also
 //! answers `/produits` and `/produkte` while the typed route, the page and the data stay single.
 //!
-//! In go_router a localized segment is a path parameter with an alternation of its own:
+//! In `go_router` a localized segment is a path parameter with an alternation of its own:
 //! `:_l1(products|produits|produkte)`, where `1` is the segment's place in the URL. It is one
 //! `GoRoute` whatever the spelling, so nested routes, the page key, restoration ids and a tab's
 //! `StatefulShellBranch` see one route; the first alternative is always the folder's name.
@@ -10,6 +10,11 @@
 //! This module reads and checks the declaration, spells the paths, and reports URLs that two
 //! routes would both serve. Everything else (the `GoRoute`s, the matchers, the manifest) asks
 //! it for the spellings.
+
+#![allow(
+    clippy::expect_used,
+    reason = "a collision always has a localized side; the expect states that invariant"
+)]
 
 use std::collections::BTreeMap;
 
@@ -20,7 +25,7 @@ use crate::scan::{Kind, Seg};
 
 /// The name of the path parameter that carries a localized segment: `_l1` for the second segment
 /// of the URL. Segments can't start with `_`, so it never clashes with one, and it is unique in a
-/// path (go_router refuses a parameter name used twice down one branch).
+/// path (`go_router` refuses a parameter name used twice down one branch).
 fn param(at: usize) -> String {
     format!("_l{at}")
 }
@@ -71,8 +76,8 @@ impl Localized {
             .map_or(self.canonical.as_str(), |s| s.path.as_str())
     }
 
-    /// The segment as go_router reads it: a parameter that matches any of the spellings.
-    /// go_router matches the percent-encoded path (`Uri.path`), so a spelling with letters
+    /// The segment as `go_router` reads it: a parameter that matches any of the spellings.
+    /// `go_router` matches the percent-encoded path (`Uri.path`), so a spelling with letters
     /// beyond ASCII goes in encoded (`%C3%BCber`), and `.` is escaped: nothing else in a
     /// spelling is special in a regular expression.
     pub fn go_router_part(&self) -> String {
@@ -337,7 +342,7 @@ struct Item<'a> {
     localized: &'a [Localized],
     /// The file a diagnostic names, relative to the app folder.
     file: String,
-    /// Where in that file: the class name of a page; none for a not_found.dart.
+    /// Where in that file: the class name of a page; none for a `not_found.dart`.
     span: Option<&'a Span>,
 }
 
@@ -480,23 +485,20 @@ fn page_file(r: &Route) -> String {
 
 /// The diagnostic for `me`: at its spelling when it has one, else at its own file.
 fn report(path: &str, me: Side, other: Side, diags: &mut Diags) {
-    match me.1 {
-        Some((l, s)) => {
-            let msg = format!(
-                "`{}: '{}'` makes {path}, which {} serves too; rename the spelling, or the folder it collides with",
-                s.locale,
-                s.path,
-                describe(&other)
-            );
-            diags.error(&l.file, Some(&s.span), msg);
-        }
-        None => {
-            let (l, s) = other.1.expect("a collision has a localized side");
-            let msg = format!(
-                "{path} is also reached through `{}: '{}'` in {}:{}; rename the spelling, or this folder",
-                s.locale, s.path, l.file, s.span.line
-            );
-            diags.error(&me.0.file, me.0.span, msg);
-        }
+    if let Some((l, s)) = me.1 {
+        let msg = format!(
+            "`{}: '{}'` makes {path}, which {} serves too; rename the spelling, or the folder it collides with",
+            s.locale,
+            s.path,
+            describe(&other)
+        );
+        diags.error(&l.file, Some(&s.span), msg);
+    } else {
+        let (l, s) = other.1.expect("a collision has a localized side");
+        let msg = format!(
+            "{path} is also reached through `{}: '{}'` in {}:{}; rename the spelling, or this folder",
+            s.locale, s.path, l.file, s.span.line
+        );
+        diags.error(&me.0.file, me.0.span, msg);
     }
 }

@@ -10,6 +10,12 @@
 //! `child` and `state`. A segment or query parameter can also be an app enum
 //! (`Category category`, `Sort? sort`, `List<Category> path`): see `enums.rs`.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "sections and data are bound before the lookups that unwrap them; the resolver states those invariants"
+)]
+
 use std::collections::{BTreeMap, HashMap};
 
 use heck::ToUpperCamelCase;
@@ -59,7 +65,7 @@ pub enum Bind {
     IsShell,
     /// A page's `extra` parameter: the object passed to `go(..., extra:)`.
     Extra,
-    /// A segment above a not_found.dart, as the URL spells it: a `String`, because the
+    /// A segment above a `not_found.dart`, as the URL spells it: a `String`, because the
     /// ones that failed to parse are the reason the file is shown.
     Raw(String),
 }
@@ -234,7 +240,7 @@ pub struct Route {
     pub tabs: Option<Vec<Branch>>,
     /// The options of each tab, in the same order as `tabs`.
     pub tab_options: Vec<BranchOptions>,
-    /// The nearest not_found.dart below the root at or above this folder: what an
+    /// The nearest `not_found.dart` below the root at or above this folder: what an
     /// unparsable segment shows. `None` means the root's.
     pub not_found: Option<Widget>,
     /// The folder's `meta.dart` (relative to the app folder) when it has a valid
@@ -266,7 +272,7 @@ impl Route {
     }
 }
 
-/// A not_found.dart below the root, chosen for unknown URLs under `url`.
+/// A `not_found.dart` below the root, chosen for unknown URLs under `url`.
 #[derive(Debug, Clone)]
 pub struct ScopedNotFound {
     pub url: Vec<Seg>,
@@ -275,7 +281,7 @@ pub struct ScopedNotFound {
     pub case_sensitive: bool,
     /// The localized segments of its URL, so `/produits/x` is under it as `/products/x` is.
     pub localized: Vec<Localized>,
-    /// The not_found.dart, relative to the app folder.
+    /// The `not_found.dart`, relative to the app folder.
     pub file: String,
 }
 
@@ -284,7 +290,7 @@ pub struct App {
     pub imports: Vec<String>,
     pub routes: Vec<Route>,
     pub not_found: Option<Widget>,
-    /// The not_found.dart files in folders below the root (not `(group)`s).
+    /// The `not_found.dart` files in folders below the root (not `(group)`s).
     pub not_founds: Vec<ScopedNotFound>,
     /// Type of each dynamic segment, keyed by the folder that declares it.
     pub seg_types: HashMap<usize, String>,
@@ -481,7 +487,7 @@ struct BindCx<'a> {
     file: &'a str,
     /// For inherited views: the folder of the route this use is for.
     covering: Option<&'a str>,
-    /// Where query parameters land; `None` where there are none (not_found).
+    /// Where query parameters land; `None` where there are none (`not_found`).
     scope: Option<Scope>,
 }
 
@@ -547,7 +553,7 @@ struct Resolver<'a> {
     route_names: HashMap<String, String>,
     /// URL pattern → the page.dart that serves it.
     patterns: HashMap<String, String>,
-    /// URL pattern → the not_found.dart below the root that covers it.
+    /// URL pattern → the `not_found.dart` below the root that covers it.
     not_found_urls: HashMap<String, String>,
     constraints: Vec<Constraint>,
     /// Query parameter types as first declared: (type, file, line).
@@ -719,13 +725,12 @@ impl Resolver<'_> {
                 scope: Some(Scope::Route(id)),
             };
             let w = self.bind(&c, &cx);
-            if let (Some(ty), Some(src)) = (&extra_ty, node.files.get(&Kind::Page)) {
-                if w.args.iter().any(|a| a.bind == Bind::Extra) {
+            if let (Some(ty), Some(src)) = (&extra_ty, node.files.get(&Kind::Page))
+                && w.args.iter().any(|a| a.bind == Bind::Extra) {
                     extra = Some(extra::extra_type(&ty.text, src, &page_file, w.import, &id.to_string()));
                 }
-            }
-            if let Some(d) = &data {
-                if !w.args.iter().any(|a| a.bind == Bind::Data) {
+            if let Some(d) = &data
+                && !w.args.iter().any(|a| a.bind == Bind::Data) {
                     self.diags.warn(
                         &page_file,
                         Some(&c.span),
@@ -736,7 +741,6 @@ impl Resolver<'_> {
                         },
                     );
                 }
-            }
             w
         });
 
@@ -1051,14 +1055,13 @@ impl Resolver<'_> {
             }
             self.app.routes[id].tab_options = options;
         }
-        if !is_tabs {
-            if let Some(f) = modules
+        if !is_tabs
+            && let Some(f) = modules
                 .get(&Kind::Layout)
                 .and_then(|m| m.functions.iter().find(|f| f.name == "container"))
-            {
-                let msg = "container() is only used by a tab layout (one that takes a `StatefulNavigationShell`); it is ignored here";
-                self.diags.warn(&node.rel(Kind::Layout), Some(&f.span), msg);
-            }
+        {
+            let msg = "container() is only used by a tab layout (one that takes a `StatefulNavigationShell`); it is ignored here";
+            self.diags.warn(&node.rel(Kind::Layout), Some(&f.span), msg);
         }
         if self.app.routes[id].guard.is_some() && !any_route {
             let msg = "guard.dart guards no routes: there is no page.dart or redirect.dart at or below this folder";
@@ -1590,10 +1593,10 @@ impl Resolver<'_> {
                 }
                 continue;
             };
-            if let Some(ty) = &p.ty {
-                if let Some(msg) = mismatch(&p.name, &bind, ty) {
-                    self.diags.error(cx.file, Some(&p.span), msg);
-                }
+            if let Some(ty) = &p.ty
+                && let Some(msg) = mismatch(&p.name, &bind, ty)
+            {
+                self.diags.error(cx.file, Some(&p.span), msg);
             }
             if let (Bind::Section(sid), Some(ty)) = (&bind, &p.ty) {
                 let sec = cx
@@ -2241,7 +2244,7 @@ impl Resolver<'_> {
                             name: "uri".into(),
                             named: true,
                             bind: Bind::Uri,
-                        })
+                        });
                     }
                 }
                 continue;
@@ -2801,10 +2804,10 @@ fn path_name(url: &[Seg]) -> String {
 /// `ProductPage` → `Product`; also strips `Screen` and `View`.
 fn route_name(class: &str) -> String {
     for suffix in ["Page", "Screen", "View"] {
-        if let Some(stem) = class.strip_suffix(suffix) {
-            if !stem.is_empty() {
-                return stem.to_string();
-            }
+        if let Some(stem) = class.strip_suffix(suffix)
+            && !stem.is_empty()
+        {
+            return stem.to_string();
         }
     }
     class.to_string()

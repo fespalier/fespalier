@@ -1,6 +1,12 @@
 //! Runs the built `fsp` binary on the two spellings of `not_found.dart`, and on
 //! function views.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "integration-test helpers: a failed unwrap is a failed test"
+)]
+
 use std::fs;
 use std::path::Path;
 use std::process::Command;

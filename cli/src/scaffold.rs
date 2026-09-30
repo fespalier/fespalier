@@ -160,12 +160,12 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         }
     }
 
-    if let (true, Some(n)) = (a.function, &a.name) {
-        if !resolve::valid_route_name(n) {
-            bail!(
-                "--name `{n}` names the route class `{n}Route`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName`"
-            );
-        }
+    if let (true, Some(n)) = (a.function, &a.name)
+        && !resolve::valid_route_name(n)
+    {
+        bail!(
+            "--name `{n}` names the route class `{n}Route`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName`"
+        );
     }
     let stem = a.name.clone().unwrap_or_else(|| {
         let p = pascal(&rel);

@@ -6,6 +6,11 @@
 //! canonical spelling. Anything that slips through is still caught by the Dart
 //! compiler in the generated code.
 
+#![allow(
+    clippy::expect_used,
+    reason = "the bundled tree-sitter Dart grammar always loads"
+)]
+
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -187,7 +192,7 @@ impl Ty {
         self.text == s
     }
 
-    /// `Future<List<A>>` → ("Future", ["List<A>"]).
+    /// `Future<List<A>>` → `("Future", ["List<A>"])`.
     pub fn generic(&self) -> (&str, Vec<&str>) {
         let t = self.text.as_str();
         let (Some(open), true) = (t.find('<'), t.ends_with('>')) else {
@@ -367,17 +372,18 @@ impl Reader<'_> {
                     _ => continue,
                 };
                 // `final Type a, b;` — instance fields with an explicit type.
-                if part.kind() == "declaration" && !kids.iter().any(|k| k.kind() == "static") {
-                    if let (Some(ty), Some(list)) = (
+                if part.kind() == "declaration"
+                    && !kids.iter().any(|k| k.kind() == "static")
+                    && let (Some(ty), Some(list)) = (
                         kids.iter().find(|k| k.kind() == "type"),
                         kids.iter()
                             .find(|k| k.kind() == "initialized_identifier_list"),
-                    ) {
-                        let mut c3 = list.walk();
-                        for id in list.named_children(&mut c3) {
-                            if let Some(f) = id.child_by_field_name("name") {
-                                fields.insert(self.text(f).to_string(), self.ty(*ty));
-                            }
+                    )
+                {
+                    let mut c3 = list.walk();
+                    for id in list.named_children(&mut c3) {
+                        if let Some(f) = id.child_by_field_name("name") {
+                            fields.insert(self.text(f).to_string(), self.ty(*ty));
                         }
                     }
                 }
@@ -833,13 +839,13 @@ impl Reader<'_> {
                 .named_children(&mut cur)
                 .filter(|f| f.kind() == "record_type_named_field")
             {
-                if let Some(ti) = first_named(f, "typed_identifier") {
-                    if let (Some(t), Some(name)) = (
+                if let Some(ti) = first_named(f, "typed_identifier")
+                    && let (Some(t), Some(name)) = (
                         ti.child_by_field_name("type"),
                         ti.child_by_field_name("name"),
-                    ) {
-                        out.push((self.text(name).to_string(), self.ty(t)));
-                    }
+                    )
+                {
+                    out.push((self.text(name).to_string(), self.ty(t)));
                 }
             }
             out
@@ -1054,7 +1060,7 @@ fn skip_literal(b: &[u8], i: usize) -> Option<usize> {
                 match b[j] {
                     b'\\' if !raw => j += 2,
                     b'$' if !raw && b.get(j + 1) == Some(&b'{') => {
-                        j = closer(b, j + 1).map_or(n, |e| e + 1)
+                        j = closer(b, j + 1).map_or(n, |e| e + 1);
                     }
                     b'\n' if !triple => return Some(j),
                     c if c == q && (!triple || b[j..].starts_with(&[q, q, q])) => {
@@ -1079,7 +1085,7 @@ fn split_primary(
     let blank = |b: &mut [u8], r: Range<usize>| {
         b[r].iter_mut()
             .filter(|c| **c != b'\n')
-            .for_each(|c| *c = b' ')
+            .for_each(|c| *c = b' ');
     };
     let mut patched = src.as_bytes().to_vec();
     // A scratch file where each list reads as `Name(params) {}`, at its own offset.
@@ -1126,17 +1132,16 @@ fn split_primary(
 
 fn first_named<'t>(n: Node<'t>, kind: &str) -> Option<Node<'t>> {
     let mut cur = n.walk();
-    let found = n.named_children(&mut cur).find(|c| c.kind() == kind);
-    found
+
+    n.named_children(&mut cur).find(|c| c.kind() == kind)
 }
 
 fn last_named<'t>(n: Node<'t>, kind: &str) -> Option<Node<'t>> {
     let mut cur = n.walk();
-    let found = n
-        .named_children(&mut cur)
+
+    n.named_children(&mut cur)
         .filter(|c| c.kind() == kind)
-        .last();
-    found
+        .last()
 }
 
 fn leaves<'t>(n: Node<'t>, f: &mut impl FnMut(Node<'t>)) {
@@ -1157,7 +1162,7 @@ mod tests {
     #[test]
     fn reads_widget_constructor() {
         let m = parse(
-            r#"
+            r"
             import 'package:x/y.dart'; // class Fake extends Nope {}
             class ProductPage extends HookConsumerWidget {
               const ProductPage(this.id, {super.key, required this.product, int? limit = 1});
@@ -1169,7 +1174,7 @@ mod tests {
               Widget build(BuildContext context, WidgetRef ref) => Text('class Nope extends X ${id}');
             }
             class _Private extends StatelessWidget {}
-            "#,
+            ",
         );
         assert_eq!(m.classes.len(), 2);
         let c = &m.classes[0];
@@ -1314,7 +1319,13 @@ mod tests {
     fn assert_class(m: &Module, name: &str, sup: &str, params: &[&str]) {
         assert_eq!(
             class_sig(m, name),
-            (Some(sup), params.iter().map(|s| s.to_string()).collect()),
+            (
+                Some(sup),
+                params
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect()
+            ),
             "{name}"
         );
     }
@@ -1322,7 +1333,7 @@ mod tests {
     #[test]
     fn reads_class_modifiers_and_clauses() {
         let m = parse(
-            r#"
+            r"
             library;
             import 'package:flutter/material.dart';
             export 'b.dart' show B;
@@ -1343,7 +1354,7 @@ mod tests {
             }
             class Gen<T extends Object?> extends Base<T, List<T>> { const Gen(this.x); final T x; }
             class Prefixed extends w.StatelessWidget { const Prefixed({super.key}); }
-            "#,
+            ",
         );
         for n in ["A1", "A2", "A3", "A4", "A5", "A6"] {
             assert_class(&m, n, "StatelessWidget", &["{super.key}"]);
@@ -1363,7 +1374,7 @@ mod tests {
     #[test]
     fn reads_state_pair() {
         let m = parse(
-            r#"
+            r"
             class ProductPage extends ConsumerStatefulWidget {
               const ProductPage({super.key, required this.id});
               final int id;
@@ -1374,7 +1385,7 @@ mod tests {
               @override
               Widget build(BuildContext context) => Text('${widget.id}');
             }
-            "#,
+            ",
         );
         assert_eq!(m.classes.len(), 2);
         assert_class(
@@ -1390,7 +1401,7 @@ mod tests {
     #[test]
     fn reads_constructor_shapes() {
         let m = parse(
-            r#"
+            r"
             class P1 extends StatelessWidget {
               const P1({Key? key, required this.id}) : assert(id > 0, 'id must be positive'), super(key: key);
               @override
@@ -1438,7 +1449,7 @@ mod tests {
               P9({super.key, required this.a, required this.b});
               late final int a, b;
             }
-            "#,
+            ",
         );
         assert_class(&m, "P1", "StatelessWidget", &["{key:Key?}", "{!id:int}"]);
         assert_class(
@@ -1488,7 +1499,7 @@ mod tests {
     #[test]
     fn reads_parameter_annotations_and_function_types() {
         let m = parse(
-            r#"
+            r"
             class P extends StatelessWidget {
               const P({
                 super.key,
@@ -1505,7 +1516,7 @@ mod tests {
               final List<Product>? items;
               final void Function(int a, String b)? cb;
             }
-            "#,
+            ",
         );
         assert_class(
             &m,
@@ -1528,14 +1539,14 @@ mod tests {
     #[test]
     fn reads_private_named_and_untyped_fields() {
         let m = parse(
-            r#"
+            r"
             class P extends StatelessWidget {
               const P({super.key, required this._id, this._x = 1, required this.inferred});
               final int _id;
               final int _x;
               final inferred = 1;
             }
-            "#,
+            ",
         );
         assert_class(
             &m,
@@ -1548,7 +1559,7 @@ mod tests {
     #[test]
     fn reads_functions() {
         let m = parse(
-            r#"
+            r"
             @riverpod
             Future<List<Product>> data(Ref ref, {required int id}) async {
               final client = ref.watch(clientProvider);
@@ -1556,7 +1567,7 @@ mod tests {
               final f = (int a) => a + 1;
               return [for (final p in await client.all()) if (p.id == id) p];
             }
-            "#,
+            ",
         );
         assert_eq!(m.functions.len(), 1);
         let f = &m.functions[0];
@@ -1564,14 +1575,14 @@ mod tests {
         assert_eq!(sig(&f.params), ["ref:Ref", "{!id:int}"]);
 
         let m = parse(
-            r#"
+            r"
             Stream<int> data(Ref ref) async* { yield 1; yield* Stream.value(2); }
             FutureOr<String?> guard(ProviderContainer c, {String? next}) async => null;
             T generic<T extends Object>(Ref ref, {required T id}) => id;
             (int, String) pair(Ref ref) => (1, 'a');
             Widget Function(BuildContext)? maybe(Ref ref) => null;
             void transition(BuildContext c, {required Widget child, MainAxisAlignment a = .center, EdgeInsets p = const .all(8)}) {}
-            "#,
+            ",
         );
         let by = |n: &str| m.functions.iter().find(|f| f.name == n).unwrap();
         assert_eq!(by("data").ret.as_ref().unwrap().text, "Stream<int>");
@@ -1636,7 +1647,7 @@ mod tests {
     #[test]
     fn reads_top_level_bool_literals() {
         let m = parse(
-            r#"
+            r"
             const on = true;
             const bool off = false;
             final loud = false;
@@ -1644,7 +1655,7 @@ mod tests {
             const text = 'true';
             const number = 1;
             const other = kFlag;
-            "#,
+            ",
         );
         let b = |n: &str| m.variables.iter().find(|v| v.name == n).unwrap().boolean;
         assert_eq!(
@@ -1761,7 +1772,7 @@ mod tests {
     #[test]
     fn reads_provider_shapes() {
         let m = parse(
-            r#"
+            r"
             final data = FutureProvider.autoDispose<List<Product>>((ref) async {
               final c = ref.watch(clientProvider);
               return c.all();
@@ -1771,7 +1782,7 @@ mod tests {
             final data4 = r.FutureProvider<int>((ref) => 1);
             final FutureProvider<int> data5 = FutureProvider<int>((ref) => 1);
             final int plain = 3, other = 4;
-            "#,
+            ",
         );
         let call = |n: &str| {
             m.variables
@@ -1809,7 +1820,7 @@ mod tests {
     #[test]
     fn ignores_noise_around_the_declarations() {
         let m = parse(
-            r##"
+            r#"
             import 'package:flutter/material.dart';
             part 'page.g.dart';
 
@@ -1846,7 +1857,7 @@ mod tests {
               }
             }
             final data = FutureProvider<int>((ref) => 1);
-            "##,
+            "#,
         );
         assert_eq!(m.classes.len(), 1);
         assert_class(
@@ -1967,7 +1978,7 @@ mod tests {
     #[test]
     fn reads_primary_constructors() {
         let m = parse(
-            r#"
+            r"
             import 'package:flutter/material.dart';
             const note = 'class Fake(int a) extends Nope {}';
             class A(final int id, {super.key, final String? tag, required final List<int> xs = const [1, 2]}) extends StatelessWidget {
@@ -1987,7 +1998,7 @@ mod tests {
             ) extends StatelessWidget {}
             class Z extends StatelessWidget { const Z({super.key}); }
             final data = FutureProvider<int>((ref) => 1);
-            "#,
+            ",
         );
         assert_class(
             &m,
@@ -2071,11 +2082,11 @@ mod tests {
 
     #[test]
     fn never_panics_on_truncated_files() {
-        let src = r##"part of 'x.dart';
+        let src = r"part of 'x.dart';
             class const A<T>(final int id, {super.key}) extends S { final s = 'é ${a('}')}'; }
             class B extends S { const B({super.key, required this.x}) : assert(x > 0); final int x;
               Widget build(c) => switch (x) { 1 => .new(), _ => r'''raw''' }; }
-            final data = FutureProvider.autoDispose.family<int, ({int id})>((ref, k) async => 1);"##;
+            final data = FutureProvider.autoDispose.family<int, ({int id})>((ref, k) async => 1);";
         for (i, _) in src.char_indices() {
             parse(&src[..i]);
         }

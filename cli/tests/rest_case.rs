@@ -1,6 +1,12 @@
 //! Runs the built `fsp` binary on typed catch-alls and per-folder `caseSensitive`: what
 //! the code frames say, and what `fsp routes --json` reports.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "integration-test helpers: a failed unwrap is a failed test"
+)]
+
 use std::fs;
 use std::path::Path;
 use std::process::Command;

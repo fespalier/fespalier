@@ -1,5 +1,11 @@
 //! Runs the built `fsp` binary: success lines, `fsp new`, and `fsp watch`.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    reason = "integration-test helpers: a failed unwrap is a failed test"
+)]
+
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -348,11 +354,7 @@ fn watch_formats_only_code_it_has_not_formatted_before() {
     fs::write(&dart, "#!/bin/sh\n[ \"$1\" = format ] || exit 2\necho x >> \"$FAKE_DART_LOG\"\necho '// formatted'\ncat\n").unwrap();
     fs::set_permissions(&dart, fs::Permissions::from_mode(0o755)).unwrap();
     let calls = root.join("dart-calls.log");
-    let count = || {
-        fs::read_to_string(&calls)
-            .map(|s| s.lines().count())
-            .unwrap_or(0)
-    };
+    let count = || fs::read_to_string(&calls).map_or(0, |s| s.lines().count());
     let env = [
         ("FSP_DART", dart.to_str().unwrap()),
         ("FAKE_DART_LOG", calls.to_str().unwrap()),

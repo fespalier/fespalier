@@ -196,7 +196,7 @@ mod tests {
                 .0
                 .iter()
                 .take(5)
-                .map(|d| d.to_string())
+                .map(std::string::ToString::to_string)
                 .collect::<Vec<_>>()
         );
         assert_eq!(routes, 200 + 1);

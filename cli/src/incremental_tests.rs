@@ -28,17 +28,14 @@ struct Report {
 fn report(project: &Path, cfg: &Config, session: &mut Session) -> Report {
     let mut diags = vec![];
     let result = gen_core(project, cfg, true, session, |_, d| {
-        diags = d.0.iter().map(|d| d.to_string()).collect()
+        diags = d.0.iter().map(std::string::ToString::to_string).collect();
     });
     let outputs = [Some(&cfg.output), cfg.output_manifest.as_ref()]
         .into_iter()
         .flatten()
         .map(|o| fs::read_to_string(project.join(o)).ok())
         .collect();
-    let (wrote, routes) = result
-        .as_ref()
-        .map(|o| (o.wrote, o.routes))
-        .unwrap_or((false, 0));
+    let (wrote, routes) = result.as_ref().map_or((false, 0), |o| (o.wrote, o.routes));
     Report {
         ok: result.is_ok(),
         error: result.err().map(|e| format!("{e:#}")).unwrap_or_default(),
@@ -52,7 +49,7 @@ fn report(project: &Path, cfg: &Config, session: &mut Session) -> Report {
 /// Every file under `dir`, relative, with `/` separators.
 fn walk(dir: &Path, rel: &str, files: &mut BTreeMap<String, String>, dirs: &mut Vec<String>) {
     let mut entries: Vec<_> = fs::read_dir(dir).unwrap().map(|e| e.unwrap()).collect();
-    entries.sort_by_key(|e| e.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
     for e in entries {
         let name = e.file_name().to_string_lossy().to_string();
         let rel = if rel.is_empty() {
@@ -603,7 +600,7 @@ impl Sim {
                 format!("adding {dir}")
             }
             2 if !pages.is_empty() => {
-                let picked = self.rng.pick(&pages).to_string();
+                let picked = (*self.rng.pick(&pages)).clone();
                 let dir = parent_of(&picked);
                 if dir.is_empty() {
                     return "nothing (the root page stays)".into();
@@ -635,16 +632,14 @@ impl Sim {
                 if datas.is_empty() {
                     return "nothing (no data.dart)".into();
                 }
-                let data = self.rng.pick(&datas).to_string();
+                let data = (*self.rng.pick(&datas)).clone();
                 let src = files[&data].clone();
                 let both = self.rng.below(2) == 0;
                 let page_file = format!("{}/page.dart", parent_of(&data));
                 if src.contains("int? page") {
                     self.write(&data, &src.replace("int? page", "String? page"));
-                    if both {
-                        if let Some(p) = files.get(&page_file) {
-                            self.write(&page_file, &p.replace("int? page", "String? page"));
-                        }
+                    if both && let Some(p) = files.get(&page_file) {
+                        self.write(&page_file, &p.replace("int? page", "String? page"));
                     }
                 } else {
                     self.write(
@@ -663,7 +658,7 @@ impl Sim {
                 if candidates.is_empty() {
                     return "nothing".into();
                 }
-                let d = self.rng.pick(&candidates).to_string();
+                let d = (*self.rng.pick(&candidates)).clone();
                 self.write(&format!("{d}/layout.dart"), &layout(&format!("L{n}"), ""));
                 format!("adding {d}/layout.dart")
             }
@@ -675,7 +670,7 @@ impl Sim {
                 if layouts.is_empty() {
                     return "nothing".into();
                 }
-                let l = self.rng.pick(&layouts).to_string();
+                let l = (*self.rng.pick(&layouts)).clone();
                 self.remove(&l);
                 format!("removing {l}")
             }
@@ -689,7 +684,7 @@ impl Sim {
                     fs::create_dir_all(self.root().join(format!("(new{n})"))).unwrap();
                     return format!("creating an empty group (new{n})");
                 }
-                let g = self.rng.pick(&groups).to_string();
+                let g = (*self.rng.pick(&groups)).clone();
                 match self.rng.below(3) {
                     0 => {
                         self.write(
@@ -718,7 +713,7 @@ impl Sim {
             }
             8 | 9 => {
                 let dart: Vec<&String> = files.keys().filter(|f| f.ends_with(".dart")).collect();
-                let f = self.rng.pick(&dart).to_string();
+                let f = (*self.rng.pick(&dart)).clone();
                 let src = files[&f].clone();
                 let new = if self.rng.below(2) == 0 {
                     format!("{src}\n// edit {n}\n")
@@ -734,12 +729,12 @@ impl Sim {
                 format!("a widget in {d}/_widgets")
             }
             11 if !pages.is_empty() => {
-                let p = self.rng.pick(&pages).to_string();
+                let p = (*self.rng.pick(&pages)).clone();
                 self.write(&p, "class P extends StatelessWidget { const P({super.key, required this.x}); final int x; }");
                 format!("breaking {p}")
             }
             12 => {
-                let f = self.rng.pick(&files.keys().collect::<Vec<_>>()).to_string();
+                let f = (*self.rng.pick(&files.keys().collect::<Vec<_>>())).clone();
                 self.remove(&f);
                 format!("deleting {f}")
             }

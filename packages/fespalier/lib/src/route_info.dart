@@ -168,10 +168,7 @@ String? routeTemplate(GoRouterState state, [String base = '/']) {
     RegExp(r':_l\d+\(((?:\\.|[^|\\()])*)(?:\|(?:\\.|[^\\()])*)*\)'),
     (m) => m[1]!.replaceAll(r'\.', '.'),
   );
-  path = path.replaceAllMapped(
-    RegExp(r':(\w+)\(\.\+\)\??'),
-    (m) => '*${m[1]}',
-  );
+  path = path.replaceAllMapped(RegExp(r':(\w+)\(\.\+\)\??'), (m) => '*${m[1]}');
   return path.isEmpty ? '/' : path;
 }
 

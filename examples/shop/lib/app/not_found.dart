@@ -8,15 +8,15 @@ class NotFound extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Nothing at ${uri.path}'),
-            TextButton(
-              onPressed: () => const HomeRoute().go(context),
-              child: const Text('Home'),
-            ),
-          ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('Nothing at ${uri.path}'),
+        TextButton(
+          onPressed: () => const HomeRoute().go(context),
+          child: const Text('Home'),
         ),
-      );
+      ],
+    ),
+  );
 }

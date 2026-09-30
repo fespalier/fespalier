@@ -17,8 +17,9 @@ class CountingApi extends FakeApi {
 }
 
 void main() {
-  testWidgets('invalidating a loaded route never shows loading.dart',
-      (tester) async {
+  testWidgets('invalidating a loaded route never shows loading.dart', (
+    tester,
+  ) async {
     final api = CountingApi();
     final container = await pumpRouter(
       tester,
@@ -51,48 +52,52 @@ void main() {
   });
 
   testWidgets(
-      'data_retry: none: error.dart at once, no retries, even when the app '
-      'uses Riverpod default retry', (tester) async {
-    final api = CountingApi();
-    // `retry: null` is Riverpod's own policy (10 retries with backoff).
-    await pumpRouter(
-      tester,
-      AppRoutes.router(initialLocation: '/products/13'),
-      overrides: [apiProvider.overrideWithValue(api)],
-      retry: null,
-      settle: false,
-    );
-    await tester.pump(const Duration(milliseconds: 600));
-    expect(find.textContaining("Couldn't load product #13"), findsOneWidget);
-    expect(api.productCalls, 1);
+    'data_retry: none: error.dart at once, no retries, even when the app '
+    'uses Riverpod default retry',
+    (tester) async {
+      final api = CountingApi();
+      // `retry: null` is Riverpod's own policy (10 retries with backoff).
+      await pumpRouter(
+        tester,
+        AppRoutes.router(initialLocation: '/products/13'),
+        overrides: [apiProvider.overrideWithValue(api)],
+        retry: null,
+        settle: false,
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.textContaining("Couldn't load product #13"), findsOneWidget);
+      expect(api.productCalls, 1);
 
-    // Nothing is scheduled behind the scenes: an armed retry timer would
-    // also fail this test when it ends.
-    await tester.pump(const Duration(minutes: 2));
-    expect(find.textContaining("Couldn't load product #13"), findsOneWidget);
-    expect(api.productCalls, 1);
-  });
+      // Nothing is scheduled behind the scenes: an armed retry timer would
+      // also fail this test when it ends.
+      await tester.pump(const Duration(minutes: 2));
+      expect(find.textContaining("Couldn't load product #13"), findsOneWidget);
+      expect(api.productCalls, 1);
+    },
+  );
 
-  testWidgets("error.dart's retry invalidates, and its error stays up meanwhile",
-      (tester) async {
-    final api = CountingApi();
-    await pumpRouter(
-      tester,
-      AppRoutes.router(initialLocation: '/products/13'),
-      overrides: [apiProvider.overrideWithValue(api)],
-      settle: false,
-    );
-    await tester.pump(const Duration(milliseconds: 600));
-    expect(find.text('Retry'), findsOneWidget);
+  testWidgets(
+    "error.dart's retry invalidates, and its error stays up meanwhile",
+    (tester) async {
+      final api = CountingApi();
+      await pumpRouter(
+        tester,
+        AppRoutes.router(initialLocation: '/products/13'),
+        overrides: [apiProvider.overrideWithValue(api)],
+        settle: false,
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(find.text('Retry'), findsOneWidget);
 
-    await tester.tap(find.text('Retry'));
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(api.productCalls, 2);
-    expect(find.byType(ProductsLoading), findsNothing);
-    expect(find.textContaining("Couldn't load product #13"), findsOneWidget);
+      await tester.tap(find.text('Retry'));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(api.productCalls, 2);
+      expect(find.byType(ProductsLoading), findsNothing);
+      expect(find.textContaining("Couldn't load product #13"), findsOneWidget);
 
-    await tester.pump(const Duration(seconds: 1));
-    expect(find.text('Flaky grinder (fails once)'), findsOneWidget);
-    expect(find.textContaining("Couldn't load"), findsNothing);
-  });
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Flaky grinder (fails once)'), findsOneWidget);
+      expect(find.textContaining("Couldn't load"), findsNothing);
+    },
+  );
 }

@@ -31,17 +31,19 @@ void main() {
       expect(dataAt('/counter')!.single, same(CounterRoute.data));
     });
 
-    test('a function data.dart: the generated provider, keyed by the segments',
-        () {
-      expect(
-        dataAt('/shops/acme/items/7')!.single,
-        ItemRoute.data((shop: 'acme', id: 7)),
-      );
-      expect(
-        dataAt('/shops/acme/items/7')!.single,
-        isNot(ItemRoute.data((shop: 'acme', id: 8))),
-      );
-    });
+    test(
+      'a function data.dart: the generated provider, keyed by the segments',
+      () {
+        expect(
+          dataAt('/shops/acme/items/7')!.single,
+          ItemRoute.data((shop: 'acme', id: 7)),
+        );
+        expect(
+          dataAt('/shops/acme/items/7')!.single,
+          isNot(ItemRoute.data((shop: 'acme', id: 8))),
+        );
+      },
+    );
 
     test('a segment that does not parse is null, like not_found.dart', () {
       expect(dataAt('/shops/acme/items/seven'), isNull);
@@ -62,14 +64,16 @@ void main() {
     test('query-keyed data is keyed by the query of the location', () {
       expect(
         dataAt('/search?q=ap&page=2&tags=red&tags=sweet')!.single,
-        SearchRoute.data(
-            (q: 'ap', page: 2, tags: QueryList(['red', 'sweet']))),
+        SearchRoute.data((q: 'ap', page: 2, tags: QueryList(['red', 'sweet']))),
       );
       expect(
         dataAt('/search?q=ap')!.single,
         SearchRoute.data((q: 'ap', page: null, tags: QueryList(<String>[]))),
       );
-      expect(dataAt('/search?q=ap')!.single, isNot(dataAt('/search?q=b')!.single));
+      expect(
+        dataAt('/search?q=ap')!.single,
+        isNot(dataAt('/search?q=b')!.single),
+      );
       // The same query in another order is the same key.
       expect(
         dataAt('/search?q=a&tags=x&tags=y')!.single,
@@ -94,26 +98,36 @@ void main() {
       expect(dataAt('/wiki/a/b')!.single, isNot(dataAt('/wiki/a/c')!.single));
     });
 
-    test('section data comes first, outermost first, then the route\'s own',
-        () {
-      final all = dataAt('/teams/acme/members/7')!;
-      expect(all, hasLength(2));
-      expect(all[0], TeamsTeamIdSection.data('acme'));
-      expect(all[1], MemberRoute.data(7));
-      // A route with no data.dart of its own still has its section's.
-      expect(dataAt('/teams/acme/settings')!.single,
-          TeamsTeamIdSection.data('acme'));
-    });
+    test(
+      'section data comes first, outermost first, then the route\'s own',
+      () {
+        final all = dataAt('/teams/acme/members/7')!;
+        expect(all, hasLength(2));
+        expect(all[0], TeamsTeamIdSection.data('acme'));
+        expect(all[1], MemberRoute.data(7));
+        // A route with no data.dart of its own still has its section's.
+        expect(
+          dataAt('/teams/acme/settings')!.single,
+          TeamsTeamIdSection.data('acme'),
+        );
+      },
+    );
 
     test('a section keyed by a query parameter, on every page below it', () {
-      expect(dataAt('/reports/monthly?period=2026-01')!.single,
-          ReportsSection.data('2026-01'));
-      expect(dataAt('/reports/yearly?period=2026-01')!.single,
-          ReportsSection.data('2026-01'));
+      expect(
+        dataAt('/reports/monthly?period=2026-01')!.single,
+        ReportsSection.data('2026-01'),
+      );
+      expect(
+        dataAt('/reports/yearly?period=2026-01')!.single,
+        ReportsSection.data('2026-01'),
+      );
       expect(dataAt('/reports/yearly')!.single, ReportsSection.data(null));
       // The typed route writes the query it is keyed by.
-      expect(const MonthlyReportRoute(period: '2026-01').location,
-          '/reports/monthly?period=2026-01');
+      expect(
+        const MonthlyReportRoute(period: '2026-01').location,
+        '/reports/monthly?period=2026-01',
+      );
     });
 
     test('paths match by case here (case_sensitive: false)', () {
@@ -133,7 +147,10 @@ void main() {
     });
 
     test('an enum segment is read by name; an unknown name is no match', () {
-      expect(dataAt('/shop/hats')!.single, CategoryShopRoute.data(Category.hats));
+      expect(
+        dataAt('/shop/hats')!.single,
+        CategoryShopRoute.data(Category.hats),
+      );
       expect(
         dataAt('/shop/hats')!.single,
         isNot(CategoryShopRoute.data(Category.shoes)),
@@ -226,7 +243,7 @@ void main() {
       final m = AppRoutes.match(at('/docs/a/b%2Fc/d'))!;
       expect(m.info.path, '/docs/*rest');
       expect(m.params, {
-        'rest': ['a', 'b/c', 'd']
+        'rest': ['a', 'b/c', 'd'],
       });
       expect(AppRoutes.match(at('/files'))!.params, {'path': <String>[]});
     });
@@ -273,8 +290,8 @@ void main() {
         tester,
         AppRoutes.router(initialLocation: '/catalog'),
       );
-      final ref = tester.element(find.byType(DataView<List<String>>))
-          as WidgetRef;
+      final ref =
+          tester.element(find.byType(DataView<List<String>>)) as WidgetRef;
 
       final handle = const ProductDetailRoute(productId: '2').prefetch(ref);
       await tester.pump(const Duration(milliseconds: 50));
@@ -286,8 +303,8 @@ void main() {
       expect(productFetches, 1);
 
       // The page it warmed finds it loaded.
-      const ProductDetailRoute(productId: '2').go(tester.element(find.byType(
-          DataView<List<String>>)));
+      const ProductDetailRoute(productId: '2')
+          .go(tester.element(find.byType(DataView<List<String>>)));
       await tester.pumpAndSettle();
       expect(find.text('Product 2'), findsOneWidget);
       expect(productFetches, 1);
@@ -302,8 +319,8 @@ void main() {
         tester,
         AppRoutes.router(initialLocation: '/catalog'),
       );
-      final ref = tester.element(find.byType(DataView<List<String>>))
-          as WidgetRef;
+      final ref =
+          tester.element(find.byType(DataView<List<String>>)) as WidgetRef;
       final handle = ref.prefetchAll(dataAt('/catalog/9')!);
       await tester.pump(const Duration(milliseconds: 50));
       expect(container.read(productProvider('9')).value?.name, 'Product 9');
@@ -317,40 +334,47 @@ void main() {
   });
 
   group('a section\'s typed handle', () {
-    testWidgets('watches, reads, refreshes and prefetches what the section loads',
-        (tester) async {
-      final container = await pumpRouter(
-        tester,
-        AppRoutes.router(initialLocation: '/reports/monthly?period=2026-01'),
-      );
-      expect(find.text('Reports: Report 2026-01'), findsOneWidget);
-      expect(find.text('Monthly: Report 2026-01'), findsOneWidget);
-      // The layout and the page read the one provider: one run.
-      expect(report_data.reportFetches, 1);
-      expect(container.read(ReportsSection.data('2026-01')).value,
-          'Report 2026-01');
+    testWidgets(
+      'watches, reads, refreshes and prefetches what the section loads',
+      (tester) async {
+        final container = await pumpRouter(
+          tester,
+          AppRoutes.router(initialLocation: '/reports/monthly?period=2026-01'),
+        );
+        expect(find.text('Reports: Report 2026-01'), findsOneWidget);
+        expect(find.text('Monthly: Report 2026-01'), findsOneWidget);
+        // The layout and the page read the one provider: one run.
+        expect(report_data.reportFetches, 1);
+        expect(
+          container.read(ReportsSection.data('2026-01')).value,
+          'Report 2026-01',
+        );
 
-      final ref = tester.element(find.byType(DataView<String>).first)
-          as WidgetRef;
-      expect(await ReportsSection.read(ref, period: '2026-01'),
-          'Report 2026-01');
-      expect(report_data.reportFetches, 1);
+        final ref =
+            tester.element(find.byType(DataView<String>).first) as WidgetRef;
+        expect(
+          await ReportsSection.read(ref, period: '2026-01'),
+          'Report 2026-01',
+        );
+        expect(report_data.reportFetches, 1);
 
-      final refreshing = ReportsSection.refresh(ref, period: '2026-01');
-      await tester.pump();
-      await refreshing;
-      expect(report_data.reportFetches, 2);
+        final refreshing = ReportsSection.refresh(ref, period: '2026-01');
+        await tester.pump();
+        await refreshing;
+        expect(report_data.reportFetches, 2);
 
-      // Another period is another provider.
-      final handle = ReportsSection.prefetch(ref, period: '2026-02');
-      await tester.pump();
-      expect(report_data.reportFetches, 3);
-      expect(container.exists(ReportsSection.data('2026-02')), isTrue);
-      handle.close();
-    });
+        // Another period is another provider.
+        final handle = ReportsSection.prefetch(ref, period: '2026-02');
+        await tester.pump();
+        expect(report_data.reportFetches, 3);
+        expect(container.exists(ReportsSection.data('2026-02')), isTrue);
+        handle.close();
+      },
+    );
 
-    testWidgets('navigating with the typed route changes the section\'s key',
-        (tester) async {
+    testWidgets('navigating with the typed route changes the section\'s key', (
+      tester,
+    ) async {
       await pumpRouter(
         tester,
         AppRoutes.router(initialLocation: '/reports/monthly?period=a'),
@@ -370,8 +394,10 @@ void main() {
         tester,
         AppRoutes.router(initialLocation: '/teams/acme/members/7/deeper'),
       );
-      expect(find.text('No member at /teams/acme/members/7/deeper'),
-          findsOneWidget);
+      expect(
+        find.text('No member at /teams/acme/members/7/deeper'),
+        findsOneWidget,
+      );
       expect(find.text('Team: acme'), findsOneWidget);
     });
 
@@ -380,8 +406,10 @@ void main() {
         tester,
         AppRoutes.router(initialLocation: '/teams/Acme%20Co/members/x'),
       );
-      expect(find.text('No member at /teams/Acme%20Co/members/x'),
-          findsOneWidget);
+      expect(
+        find.text('No member at /teams/Acme%20Co/members/x'),
+        findsOneWidget,
+      );
       expect(find.text('Team: Acme Co'), findsOneWidget);
     });
   });

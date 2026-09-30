@@ -15,7 +15,7 @@ class SheetPage<T> extends Page<T> {
 
 class _SheetRoute<T> extends PopupRoute<T> {
   _SheetRoute({required RouteSettings settings, required this.child})
-      : super(settings: settings);
+    : super(settings: settings);
 
   final Widget child;
 
@@ -36,41 +36,39 @@ class _SheetRoute<T> extends PopupRoute<T> {
     BuildContext context,
     Animation<double> animation,
     Animation<double> secondaryAnimation,
-  ) =>
-      Align(
-        alignment: Alignment.bottomCenter,
-        child: ConstrainedBox(
-          // A width cap, the way a tablet gets one.
-          constraints: const BoxConstraints(maxWidth: 640),
-          child: SlideTransition(
-            position: Tween(begin: const Offset(0, 1), end: Offset.zero)
-                .animate(CurvedAnimation(
-                    parent: animation, curve: Curves.easeOutCubic)),
-            child: Material(
-              color: Colors.white,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      key: const ValueKey('app-sheet-handle'),
-                      width: 36,
-                      height: 4,
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.black26,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    child,
-                  ],
+  ) => Align(
+    alignment: Alignment.bottomCenter,
+    child: ConstrainedBox(
+      // A width cap, the way a tablet gets one.
+      constraints: const BoxConstraints(maxWidth: 640),
+      child: SlideTransition(
+        position: Tween(begin: const Offset(0, 1), end: Offset.zero).animate(
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+        ),
+        child: Material(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  key: const ValueKey('app-sheet-handle'),
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
+                child,
+              ],
             ),
           ),
         ),
-      );
+      ),
+    ),
+  );
 }

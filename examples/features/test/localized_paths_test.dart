@@ -48,8 +48,9 @@ void main() {
       expect(find.text('Help index'), findsOneWidget);
     });
 
-    testWidgets('matches in any case, like the rest of this app',
-        (tester) async {
+    testWidgets('matches in any case, like the rest of this app', (
+      tester,
+    ) async {
       await boot(tester, '/AIDE');
       expect(find.text('Help index'), findsOneWidget);
       await boot(tester, '/Hilfe/Routing/Beispiele');
@@ -103,13 +104,13 @@ void main() {
       }
     });
 
-    testWidgets(
-        'the parent page is built under the child, as it is without '
+    testWidgets('the parent page is built under the child, as it is without '
         'localization', (tester) async {
       await boot(tester, '/aide/routing/exemples');
       // `help/$topic/page.dart` is the child's parent: go_router builds its stack.
-      final router =
-          GoRouter.of(tester.element(find.text('Examples of routing')));
+      final router = GoRouter.of(
+        tester.element(find.text('Examples of routing')),
+      );
       router.pop();
       await tester.pumpAndSettle();
       expect(find.text('Help topic routing'), findsOneWidget);
@@ -161,7 +162,9 @@ void main() {
       expect(topic.locationFor('fr'), '/aide/routing');
       expect(topic.locationFor('de'), '/hilfe/routing');
       expect(
-          const HelpTopicRoute(topic: 'a b').locationFor('de'), '/hilfe/a%20b');
+        const HelpTopicRoute(topic: 'a b').locationFor('de'),
+        '/hilfe/a%20b',
+      );
     });
 
     test('a locale nobody spells, or none, is the canonical location', () {
@@ -171,13 +174,15 @@ void main() {
       expect(topic.locationFor(''), topic.location);
     });
 
-    test('a region falls back to its language, and tags are not case-bound',
-        () {
-      const topic = HelpTopicRoute(topic: 'routing');
-      expect(topic.locationFor('fr-CA'), '/aide/routing');
-      expect(topic.locationFor('fr_CA'), '/aide/routing');
-      expect(topic.locationFor('DE'), '/hilfe/routing');
-    });
+    test(
+      'a region falls back to its language, and tags are not case-bound',
+      () {
+        const topic = HelpTopicRoute(topic: 'routing');
+        expect(topic.locationFor('fr-CA'), '/aide/routing');
+        expect(topic.locationFor('fr_CA'), '/aide/routing');
+        expect(topic.locationFor('DE'), '/hilfe/routing');
+      },
+    );
 
     test('a level without a spelling for the locale keeps its own', () {
       // `help/` spells fr, `contact/` only de, `$topic/examples/` both.
@@ -203,24 +208,31 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Help topic x'), findsOneWidget);
       expect(
-          GoRouter.of(tester.element(find.text('Help topic x'))).state.uri.path,
-          '/hilfe/x');
+        GoRouter.of(tester.element(find.text('Help topic x'))).state.uri.path,
+        '/hilfe/x',
+      );
 
-      const ContactRoute()
-          .push<void>(tester.element(find.text('Help topic x')), locale: 'fr');
+      const ContactRoute().push<void>(
+        tester.element(find.text('Help topic x')),
+        locale: 'fr',
+      );
       await tester.pumpAndSettle();
       expect(find.text('Contact us'), findsOneWidget);
       expect(
-          GoRouter.of(tester.element(find.text('Contact us'))).state.uri.path,
-          '/aide/contact');
+        GoRouter.of(tester.element(find.text('Contact us'))).state.uri.path,
+        '/aide/contact',
+      );
 
-      const HelpRoute()
-          .replace(tester.element(find.text('Contact us')), locale: 'de');
+      const HelpRoute().replace(
+        tester.element(find.text('Contact us')),
+        locale: 'de',
+      );
       await tester.pumpAndSettle();
       expect(find.text('Help index'), findsOneWidget);
       expect(
-          GoRouter.of(tester.element(find.text('Help index'))).state.uri.path,
-          '/hilfe');
+        GoRouter.of(tester.element(find.text('Help index'))).state.uri.path,
+        '/hilfe',
+      );
     });
 
     testWidgets('without a locale they go to the canonical location', (
@@ -231,8 +243,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Help index'), findsOneWidget);
       expect(
-          GoRouter.of(tester.element(find.text('Help index'))).state.uri.path,
-          '/help');
+        GoRouter.of(tester.element(find.text('Help index'))).state.uri.path,
+        '/help',
+      );
     });
 
     testWidgets('moving between spellings updates the page in place', (
@@ -282,10 +295,13 @@ void main() {
         '/%D1%80%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE',
       );
       // The location decodes to the word, and is the same URL as the raw one.
-      expect(Uri.parse(const GuideRoute().locationFor('de')).pathSegments,
-          ['führer']);
-      expect(Uri.parse(const GuideRoute().locationFor('de')),
-          Uri.parse('/führer'));
+      expect(Uri.parse(const GuideRoute().locationFor('de')).pathSegments, [
+        'führer',
+      ]);
+      expect(
+        Uri.parse(const GuideRoute().locationFor('de')),
+        Uri.parse('/führer'),
+      );
     });
 
     testWidgets('go(locale:) navigates to the encoded location', (
@@ -299,17 +315,20 @@ void main() {
     });
 
     test(
-        'match reads the decoded segment, and the manifest lists it as written',
-        () {
-      for (final path in ['/f%C3%BChrer', '/führer']) {
-        final m = AppRoutes.match(Uri.parse(path))!;
-        expect(m.route, isA<GuideRoute>(), reason: path);
-      }
-      expect(AppManifest.byType[GuideRoute]!.paths,
-          {'de': '/führer', 'ru': '/руководство'});
-      expect(AppManifest.byType[GuideRoute]!.pathFor('de'), '/führer');
-      expect(AppRoutes.match(Uri.parse('/fuhrer/x/y')), isNull);
-    });
+      'match reads the decoded segment, and the manifest lists it as written',
+      () {
+        for (final path in ['/f%C3%BChrer', '/führer']) {
+          final m = AppRoutes.match(Uri.parse(path))!;
+          expect(m.route, isA<GuideRoute>(), reason: path);
+        }
+        expect(AppManifest.byType[GuideRoute]!.paths, {
+          'de': '/führer',
+          'ru': '/руководство',
+        });
+        expect(AppManifest.byType[GuideRoute]!.pathFor('de'), '/führer');
+        expect(AppRoutes.match(Uri.parse('/fuhrer/x/y')), isNull);
+      },
+    );
   });
 
   group('an enum segment below a localized folder', () {
@@ -317,8 +336,11 @@ void main() {
     testWidgets('is parsed at every spelling', (tester) async {
       for (final path in ['/shop/hats', '/boutique/hats', '/laden/hats']) {
         await boot(tester, path);
-        expect(find.text('Shop hats: cap, beret'), findsOneWidget,
-            reason: path);
+        expect(
+          find.text('Shop hats: cap, beret'),
+          findsOneWidget,
+          reason: path,
+        );
       }
       await boot(tester, '/boutique/hats?sort=name');
       expect(find.text('sorted by name'), findsOneWidget);
@@ -342,8 +364,10 @@ void main() {
       final m = AppRoutes.match(Uri.parse('/laden/hats'))!;
       expect(m.params['category'], Category.hats);
       expect(m.route.location, '/shop/hats');
-      expect(AppRoutes.dataAt(Uri.parse('/boutique/hats'))!.single,
-          CategoryShopRoute.data(Category.hats));
+      expect(
+        AppRoutes.dataAt(Uri.parse('/boutique/hats'))!.single,
+        CategoryShopRoute.data(Category.hats),
+      );
     });
   });
 
@@ -362,15 +386,21 @@ void main() {
         expect(m.route.location, '/help/routing/examples');
         expect(m.uri.path, path);
       }
-      expect(AppRoutes.match(Uri.parse('/aide/routing/examples'))!.route,
-          isA<HelpExamplesRoute>());
+      expect(
+        AppRoutes.match(Uri.parse('/aide/routing/examples'))!.route,
+        isA<HelpExamplesRoute>(),
+      );
     });
 
     test('a static sibling is tried before the dynamic one', () {
-      expect(AppRoutes.match(Uri.parse('/hilfe/kontakt'))!.route,
-          isA<ContactRoute>());
-      expect(AppRoutes.match(Uri.parse('/hilfe/other'))!.route,
-          isA<HelpTopicRoute>());
+      expect(
+        AppRoutes.match(Uri.parse('/hilfe/kontakt'))!.route,
+        isA<ContactRoute>(),
+      );
+      expect(
+        AppRoutes.match(Uri.parse('/hilfe/other'))!.route,
+        isA<HelpTopicRoute>(),
+      );
     });
 
     test('match and dataAt are case-insensitive here, spellings included', () {

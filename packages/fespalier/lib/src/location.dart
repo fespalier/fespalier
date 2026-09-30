@@ -40,7 +40,8 @@ String joinLocation(String base, String path) {
 /// Whether two locale tags are the same: without regard to case, and `_` is `-`
 /// (`fr_CA` is `fr-ca`).
 bool sameLocale(String a, String b) =>
-    a.replaceAll('_', '-').toLowerCase() == b.replaceAll('_', '-').toLowerCase();
+    a.replaceAll('_', '-').toLowerCase() ==
+    b.replaceAll('_', '-').toLowerCase();
 
 /// The spelling of one localized path segment in [locale], which a generated
 /// `locationFor` calls for each one. [spellings] is the folder's `paths` (locale

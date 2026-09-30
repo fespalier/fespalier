@@ -28,8 +28,9 @@ ModalRoute<Object?> shellRoute(WidgetTester tester) =>
     ModalRoute.of(tester.element(find.byType(NavigationBar)))!;
 
 void main() {
-  testWidgets('the shell is a page from transition.dart, with a stable key',
-      (tester) async {
+  testWidgets('the shell is a page from transition.dart, with a stable key', (
+    tester,
+  ) async {
     await boot(tester, '/');
     final page = shellRoute(tester).settings as Page<Object?>;
     expect(page, isA<CupertinoPage<void>>());
@@ -37,17 +38,20 @@ void main() {
     expect(page.restorationId, 'layout:(tabs)/');
   });
 
-  testWidgets('switching routes inside the shell does not animate the shell',
-      (tester) async {
+  testWidgets('switching routes inside the shell does not animate the shell', (
+    tester,
+  ) async {
     await boot(tester, '/');
     final route = shellRoute(tester);
     expect(route.animation!.status, AnimationStatus.completed);
     final bar = tester.getTopLeft(find.byType(NavigationBar));
 
-    await tester.tap(find.descendant(
-      of: find.byType(NavigationBar),
-      matching: find.text('Profile'),
-    ));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Profile'),
+      ),
+    );
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 50));
       expect(route.animation!.status, AnimationStatus.completed);
@@ -64,8 +68,9 @@ void main() {
     expect(tester.getTopLeft(find.byType(NavigationBar)), bar);
   });
 
-  testWidgets('the shell animates under a push on the root navigator',
-      (tester) async {
+  testWidgets('the shell animates under a push on the root navigator', (
+    tester,
+  ) async {
     await boot(tester, '/');
     final bar = tester.getTopLeft(find.byType(NavigationBar));
 

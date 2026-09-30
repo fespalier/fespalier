@@ -8,10 +8,10 @@ class RootError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: TextButton.icon(
-          onPressed: retry,
-          icon: const Icon(Icons.refresh),
-          label: Text('$error'),
-        ),
-      );
+    child: TextButton.icon(
+      onPressed: retry,
+      icon: const Icon(Icons.refresh),
+      label: Text('$error'),
+    ),
+  );
 }

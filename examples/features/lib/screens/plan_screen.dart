@@ -11,7 +11,6 @@ class PlanScreen extends StatelessWidget {
   final String? coupon;
 
   @override
-  Widget build(BuildContext context) => Text(
-        'Plan ${plan.name}${coupon == null ? '' : ' (coupon $coupon)'}',
-      );
+  Widget build(BuildContext context) =>
+      Text('Plan ${plan.name}${coupon == null ? '' : ' (coupon $coupon)'}');
 }

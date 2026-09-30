@@ -146,14 +146,17 @@ abstract final class Query {
   static List<String> asStringList(GoRouterState s, String name) =>
       s.uri.queryParametersAll[name] ?? const [];
 
-  static List<int> asIntList(GoRouterState s, String name) =>
-      [...asStringList(s, name).map(int.tryParse).nonNulls];
+  static List<int> asIntList(GoRouterState s, String name) => [
+    ...asStringList(s, name).map(int.tryParse).nonNulls,
+  ];
 
-  static List<double> asDoubleList(GoRouterState s, String name) =>
-      [...asStringList(s, name).map(double.tryParse).nonNulls];
+  static List<double> asDoubleList(GoRouterState s, String name) => [
+    ...asStringList(s, name).map(double.tryParse).nonNulls,
+  ];
 
-  static List<bool> asBoolList(GoRouterState s, String name) =>
-      [...asStringList(s, name).map(_bool).nonNulls];
+  static List<bool> asBoolList(GoRouterState s, String name) => [
+    ...asStringList(s, name).map(_bool).nonNulls,
+  ];
 
   /// A query parameter that is an enum (`Sort? sort`): the value of [values] whose `name` it
   /// spells, or `null` when it is missing or names none. [caseSensitive] is as for
@@ -178,10 +181,10 @@ abstract final class Query {
   ];
 
   static bool? _bool(String? raw) => switch (raw) {
-        'true' => true,
-        'false' => false,
-        _ => null,
-      };
+    'true' => true,
+    'false' => false,
+    _ => null,
+  };
 }
 
 /// The value of [values] whose `name` is [raw], or `null` when there is none. An exact match

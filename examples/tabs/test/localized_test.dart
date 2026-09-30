@@ -28,10 +28,9 @@ Future<void> boot(WidgetTester tester, String location) async {
 String get location => router.routeInformationProvider.value.uri.toString();
 
 Future<void> tapTab(WidgetTester tester, String label) async {
-  await tester.tap(find.descendant(
-    of: find.byType(NavigationBar),
-    matching: find.text(label),
-  ));
+  await tester.tap(
+    find.descendant(of: find.byType(NavigationBar), matching: find.text(label)),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -39,8 +38,9 @@ int selected(WidgetTester tester) =>
     tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex;
 
 void main() {
-  testWidgets('a deep link through the localized spelling opens the tab',
-      (tester) async {
+  testWidgets('a deep link through the localized spelling opens the tab', (
+    tester,
+  ) async {
     await boot(tester, '/recherche');
     expect(find.text('Search count 0'), findsOneWidget);
     expect(selected(tester), 1);
@@ -54,8 +54,9 @@ void main() {
     expect(location, '/search');
   });
 
-  testWidgets('the tab opens at its canonical location from another tab',
-      (tester) async {
+  testWidgets('the tab opens at its canonical location from another tab', (
+    tester,
+  ) async {
     await boot(tester, '/');
     await tapTab(tester, 'Search');
     expect(location, '/search');
@@ -63,23 +64,25 @@ void main() {
     expect(selected(tester), 1);
   });
 
-  testWidgets('a tab reached by the localized spelling keeps it and its state',
-      (tester) async {
-    await boot(tester, '/recherche');
-    await tester.tap(find.byTooltip('+'));
-    await tester.pump();
-    expect(find.text('Search count 1'), findsOneWidget);
+  testWidgets(
+    'a tab reached by the localized spelling keeps it and its state',
+    (tester) async {
+      await boot(tester, '/recherche');
+      await tester.tap(find.byTooltip('+'));
+      await tester.pump();
+      expect(find.text('Search count 1'), findsOneWidget);
 
-    await tapTab(tester, 'Profile');
-    expect(location, '/profile');
-    await tapTab(tester, 'Search');
-    expect(location, '/recherche');
-    expect(find.text('Search count 1'), findsOneWidget);
+      await tapTab(tester, 'Profile');
+      expect(location, '/profile');
+      await tapTab(tester, 'Search');
+      expect(location, '/recherche');
+      expect(find.text('Search count 1'), findsOneWidget);
 
-    // Tapping the current tab goes back to its first page: the canonical location.
-    await tapTab(tester, 'Search');
-    expect(location, '/search');
-  });
+      // Tapping the current tab goes back to its first page: the canonical location.
+      await tapTab(tester, 'Search');
+      expect(location, '/search');
+    },
+  );
 
   test('the typed route and the manifest know the spelling', () {
     expect(const SearchRoute().location, '/search');

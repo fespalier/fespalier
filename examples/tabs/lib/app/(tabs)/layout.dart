@@ -25,8 +25,7 @@ Widget container(
   BuildContext context,
   StatefulNavigationShell shell,
   List<Widget> children,
-) =>
-    CrossFadeContainer(currentIndex: shell.currentIndex, children: children);
+) => CrossFadeContainer(currentIndex: shell.currentIndex, children: children);
 
 class TabsLayout extends StatelessWidget {
   const TabsLayout({super.key, required this.navigationShell});
@@ -35,20 +34,23 @@ class TabsLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: navigationShell,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: navigationShell.currentIndex,
-          onDestinationSelected: (i) => navigationShell.goBranch(
-            i,
-            // Tapping the current tab goes back to its first page.
-            initialLocation: i == navigationShell.currentIndex,
-          ),
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-            NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
-            NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
-            NavigationDestination(icon: Icon(Icons.library_books), label: 'Library'),
-          ],
+    body: navigationShell,
+    bottomNavigationBar: NavigationBar(
+      selectedIndex: navigationShell.currentIndex,
+      onDestinationSelected: (i) => navigationShell.goBranch(
+        i,
+        // Tapping the current tab goes back to its first page.
+        initialLocation: i == navigationShell.currentIndex,
+      ),
+      destinations: const [
+        NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
+        NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
+        NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+        NavigationDestination(
+          icon: Icon(Icons.library_books),
+          label: 'Library',
         ),
-      );
+      ],
+    ),
+  );
 }

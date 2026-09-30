@@ -29,16 +29,16 @@ class _SearchPageState extends State<SearchPage> with RestorationMixin {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Search count ${_count.value}'),
-            IconButton(
-              icon: const Icon(Icons.add),
-              tooltip: '+',
-              onPressed: () => setState(() => _count.value++),
-            ),
-          ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('Search count ${_count.value}'),
+        IconButton(
+          icon: const Icon(Icons.add),
+          tooltip: '+',
+          onPressed: () => setState(() => _count.value++),
         ),
-      );
+      ],
+    ),
+  );
 }

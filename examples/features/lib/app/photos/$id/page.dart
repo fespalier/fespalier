@@ -10,12 +10,9 @@ class PhotoPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: Text('Photo $id'),
-        actions: [
-          TextButton(
-            onPressed: () => context.pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      );
+    title: Text('Photo $id'),
+    actions: [
+      TextButton(onPressed: () => context.pop(), child: const Text('Close')),
+    ],
+  );
 }

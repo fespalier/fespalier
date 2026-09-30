@@ -62,7 +62,7 @@ void main() {
       withQuery('/p', {
         'q': 'a b',
         'page': 2,
-        'tag': ['x', 'y']
+        'tag': ['x', 'y'],
       }),
       '/p?q=a+b&page=2&tag=x&tag=y',
     );

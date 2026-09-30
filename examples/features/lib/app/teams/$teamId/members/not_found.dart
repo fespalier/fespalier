@@ -11,9 +11,6 @@ class MembersNotFound extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        children: [
-          Text('No member at ${uri.path}'),
-          Text('Team: $teamId'),
-        ],
-      );
+    children: [Text('No member at ${uri.path}'), Text('Team: $teamId')],
+  );
 }

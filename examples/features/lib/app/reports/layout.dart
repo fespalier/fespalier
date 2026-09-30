@@ -9,9 +9,9 @@ class ReportsLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        children: [
-          Text('Reports: $data'),
-          Expanded(child: child),
-        ],
-      );
+    children: [
+      Text('Reports: $data'),
+      Expanded(child: child),
+    ],
+  );
 }

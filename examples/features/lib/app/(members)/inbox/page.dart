@@ -11,16 +11,16 @@ class InboxPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Column(
-        children: [
-          Text('Inbox: ${folder ?? 'all'}'),
-          TextButton(
-            onPressed: () => const AdminRoute().go(context),
-            child: const Text('Admin'),
-          ),
-          TextButton(
-            onPressed: () => ref.read(session.notifier).set(false),
-            child: const Text('Sign out'),
-          ),
-        ],
-      );
+    children: [
+      Text('Inbox: ${folder ?? 'all'}'),
+      TextButton(
+        onPressed: () => const AdminRoute().go(context),
+        child: const Text('Admin'),
+      ),
+      TextButton(
+        onPressed: () => ref.read(session.notifier).set(false),
+        child: const Text('Sign out'),
+      ),
+    ],
+  );
 }

@@ -28,17 +28,17 @@ class DataView<T> extends ConsumerWidget {
   final Widget Function(T data) data;
   final Widget Function() loading;
   final Widget Function(Object error, StackTrace stackTrace, VoidCallback retry)
-      error;
+  error;
   final bool keepPrevious;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => watch(ref).when(
-        skipLoadingOnReload: keepPrevious,
-        skipLoadingOnRefresh: keepPrevious,
-        data: data,
-        loading: loading,
-        error: (e, st) => error(e, st, () => refresh(ref)),
-      );
+    skipLoadingOnReload: keepPrevious,
+    skipLoadingOnRefresh: keepPrevious,
+    data: data,
+    loading: loading,
+    error: (e, st) => error(e, st, () => refresh(ref)),
+  );
 }
 
 /// Fallback when no `loading.dart` exists anywhere up the tree.
@@ -47,11 +47,11 @@ class DefaultLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Center(
-        child: SizedBox.square(
-          dimension: 32,
-          child: CircularProgressIndicator.adaptive(),
-        ),
-      );
+    child: SizedBox.square(
+      dimension: 32,
+      child: CircularProgressIndicator.adaptive(),
+    ),
+  );
 }
 
 /// Fallback when no `error.dart` exists anywhere up the tree.
@@ -63,15 +63,15 @@ class DefaultError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('$error', textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            TextButton(onPressed: retry, child: const Text('Retry')),
-          ],
-        ),
-      );
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('$error', textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        TextButton(onPressed: retry, child: const Text('Retry')),
+      ],
+    ),
+  );
 }
 
 /// Fallback when the root has no `not_found.dart`.

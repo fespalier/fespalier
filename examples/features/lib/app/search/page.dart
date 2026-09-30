@@ -20,16 +20,14 @@ class SearchPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        children: [
-          Text(
-              '${q ?? 'everything'}, page ${page ?? 1}: ${results.join(', ')}'),
-          Text('tags: ${tags.join(', ')}'),
-          TextButton(
-            onPressed: () =>
-                SearchRoute(q: q, page: (page ?? 1) + 1, tags: tags)
-                    .go(context),
-            child: const Text('Next'),
-          ),
-        ],
-      );
+    children: [
+      Text('${q ?? 'everything'}, page ${page ?? 1}: ${results.join(', ')}'),
+      Text('tags: ${tags.join(', ')}'),
+      TextButton(
+        onPressed: () =>
+            SearchRoute(q: q, page: (page ?? 1) + 1, tags: tags).go(context),
+        child: const Text('Next'),
+      ),
+    ],
+  );
 }

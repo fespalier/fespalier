@@ -14,6 +14,6 @@ class BrowsePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Text(
-        'Browse ${categories.map((c) => c.name).join(' + ')} ($data different)',
-      );
+    'Browse ${categories.map((c) => c.name).join(' + ')} ($data different)',
+  );
 }

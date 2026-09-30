@@ -37,10 +37,14 @@ WidgetRef viewRef<T>(WidgetTester tester) =>
 /// The static type of the expression it's given: `dynamic` if inference failed.
 Type staticType<T>(T value) => T;
 
-typedef WatchProduct = AsyncValue<Product> Function(WidgetRef ref,
-    {required String productId});
-typedef ReadProduct = Future<Product> Function(WidgetRef ref,
-    {required String productId});
+typedef WatchProduct = AsyncValue<Product> Function(
+  WidgetRef ref, {
+  required String productId,
+});
+typedef ReadProduct = Future<Product> Function(
+  WidgetRef ref, {
+  required String productId,
+});
 
 void main() {
   setUp(() {
@@ -62,13 +66,17 @@ void main() {
     );
   });
 
-  test('the typed helpers are typed by the AsyncValue<T> that was selected', () {
-    expect(staticType(ProductDetailRoute.watch), WatchProduct);
-    expect(staticType(ProductDetailRoute.read), ReadProduct);
-  });
+  test(
+    'the typed helpers are typed by the AsyncValue<T> that was selected',
+    () {
+      expect(staticType(ProductDetailRoute.watch), WatchProduct);
+      expect(staticType(ProductDetailRoute.read), ReadProduct);
+    },
+  );
 
-  testWidgets('one fetch per navigation, and loading.dart before it',
-      (tester) async {
+  testWidgets('one fetch per navigation, and loading.dart before it', (
+    tester,
+  ) async {
     await boot(tester, '/catalog/1');
     expect(find.text('Loading product'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 50));
@@ -80,27 +88,32 @@ void main() {
     expect(productFetches, 1);
   });
 
-  testWidgets('a route without keys selects the provider itself',
-      (tester) async {
+  testWidgets('a route without keys selects the provider itself', (
+    tester,
+  ) async {
     await boot(tester, '/catalog');
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Featured: alpha, beta'), findsOneWidget);
     expect(featuredFetches, 1);
   });
 
-  testWidgets('a segment and a query parameter key a record family',
-      (tester) async {
+  testWidgets('a segment and a query parameter key a record family', (
+    tester,
+  ) async {
     await boot(tester, '/catalog/7/reviews?page=2');
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('7 review, page 2'), findsOneWidget);
     expect(reviewFetches, 1);
-    expect(const ReviewsRoute(productId: '7', page: 2).location,
-        '/catalog/7/reviews?page=2');
+    expect(
+      const ReviewsRoute(productId: '7', page: 2).location,
+      '/catalog/7/reviews?page=2',
+    );
   });
 
   group('refresh', () {
-    testWidgets('re-runs the selected provider once, keeping the old page up',
-        (tester) async {
+    testWidgets('re-runs the selected provider once, keeping the old page up', (
+      tester,
+    ) async {
       await boot(tester, '/catalog/1');
       await tester.pump(const Duration(milliseconds: 50));
       expect(productFetches, 1);
@@ -128,12 +141,15 @@ void main() {
       expect(featuredFetches, 2);
     });
 
-    testWidgets("error.dart's retry runs the selected provider again",
-        (tester) async {
+    testWidgets("error.dart's retry runs the selected provider again", (
+      tester,
+    ) async {
       await boot(tester, '/catalog/bad');
       await tester.pump(const Duration(seconds: 5));
-      expect(find.text('Product failed: Exception: no product bad'),
-          findsOneWidget);
+      expect(
+        find.text('Product failed: Exception: no product bad'),
+        findsOneWidget,
+      );
       final before = productFetches;
       await tester.tap(find.byType(TextButton));
       await tester.pump();
@@ -141,16 +157,19 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       // The selected provider ran again, with nothing wrapped around it.
       expect(productFetches, greaterThan(before));
-      expect(find.text('Product failed: Exception: no product bad'),
-          findsOneWidget);
+      expect(
+        find.text('Product failed: Exception: no product bad'),
+        findsOneWidget,
+      );
     });
   });
 
   group("the app's own retry policy on the selected provider is what runs", () {
     const failed = 'Product failed: Exception: no product bad';
 
-    testWidgets('productProvider retries twice, whatever the scope says',
-        (tester) async {
+    testWidgets('productProvider retries twice, whatever the scope says', (
+      tester,
+    ) async {
       // The scope's policy is "never retry"; the provider's own says twice.
       await boot(tester, '/catalog/bad');
       await tester.pump(const Duration(milliseconds: 50));
@@ -169,8 +188,9 @@ void main() {
       expect(find.text(failed), findsOneWidget);
     });
 
-    testWidgets('error.dart stays up through the retries, then the data',
-        (tester) async {
+    testWidgets('error.dart stays up through the retries, then the data', (
+      tester,
+    ) async {
       // Fails runs 1 and 2, succeeds on the third.
       await boot(tester, '/catalog/flaky');
       expect(find.text('Loading product'), findsOneWidget);
@@ -189,8 +209,9 @@ void main() {
   });
 
   group('the typed helpers', () {
-    testWidgets('read completes with the value, running the provider once',
-        (tester) async {
+    testWidgets('read completes with the value, running the provider once', (
+      tester,
+    ) async {
       await boot(tester, '/catalog');
       await tester.pump(const Duration(milliseconds: 50));
       final product = ProductDetailRoute.read(
@@ -202,8 +223,9 @@ void main() {
       expect(productFetches, 1);
     });
 
-    testWidgets('prefetch warms the provider the page then watches',
-        (tester) async {
+    testWidgets('prefetch warms the provider the page then watches', (
+      tester,
+    ) async {
       await boot(tester, '/catalog');
       await tester.pump(const Duration(milliseconds: 50));
       const ProductDetailRoute(productId: '2')
@@ -221,16 +243,22 @@ void main() {
     });
   });
 
-  testWidgets('a listenable that is not a provider says so when refreshed',
-      (tester) async {
+  testWidgets('a listenable that is not a provider says so when refreshed', (
+    tester,
+  ) async {
     await boot(tester, '/catalog');
     await tester.pump(const Duration(milliseconds: 50));
     final ref = viewRef<List<String>>(tester);
     final selected = featuredProvider.select((value) => value);
     expect(
       () => ref.invalidateSelected(selected),
-      throwsA(isA<StateError>().having(
-          (e) => e.message, 'message', contains('cannot be invalidated'))),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('cannot be invalidated'),
+        ),
+      ),
     );
     expect(() => ref.refreshSelected(selected), throwsA(isA<StateError>()));
     expect(() => ref.readSelected(selected), throwsA(isA<StateError>()));

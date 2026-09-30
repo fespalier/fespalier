@@ -10,16 +10,16 @@ class LoginPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Column(
-        children: [
-          Text('Log in${from == null ? '' : ' to see $from'}'),
-          TextButton(
-            onPressed: () {
-              ref.read(session.notifier).set(true);
-              // Only in-app locations count: anything else falls back to `/`.
-              context.go(returnTo(from));
-            },
-            child: const Text('Sign in'),
-          ),
-        ],
-      );
+    children: [
+      Text('Log in${from == null ? '' : ' to see $from'}'),
+      TextButton(
+        onPressed: () {
+          ref.read(session.notifier).set(true);
+          // Only in-app locations count: anything else falls back to `/`.
+          context.go(returnTo(from));
+        },
+        child: const Text('Sign in'),
+      ),
+    ],
+  );
 }

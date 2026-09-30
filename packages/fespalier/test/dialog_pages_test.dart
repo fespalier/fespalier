@@ -18,12 +18,12 @@ class _StackState extends State<_Stack> {
 
   @override
   Widget build(BuildContext context) => Navigator(
-        pages: pages,
-        onDidRemovePage: (page) {
-          widget.removed.add(page as Page<void>);
-          setState(() => pages = [...pages]..remove(page));
-        },
-      );
+    pages: pages,
+    onDidRemovePage: (page) {
+      widget.removed.add(page as Page<void>);
+      setState(() => pages = [...pages]..remove(page));
+    },
+  );
 }
 
 const _base = ValueKey('base');
@@ -51,10 +51,13 @@ void main() {
     return removed;
   }
 
-  testWidgets('dialog shows over the previous page and pops with its barrier',
-      (tester) async {
-    final removed =
-        await pump(tester, Transitions.dialog(_top, const Center(child: Text('dialog'))));
+  testWidgets('dialog shows over the previous page and pops with its barrier', (
+    tester,
+  ) async {
+    final removed = await pump(
+      tester,
+      Transitions.dialog(_top, const Center(child: Text('dialog'))),
+    );
     expect(find.text('dialog'), findsOneWidget);
     expect(find.text('below'), findsOneWidget);
     final route = ModalRoute.of(tester.element(find.text('dialog')))!;
@@ -69,12 +72,16 @@ void main() {
     expect(removed.map((p) => p.key), [_top]);
   });
 
-  testWidgets('a dialog can refuse to be dismissed by its barrier',
-      (tester) async {
+  testWidgets('a dialog can refuse to be dismissed by its barrier', (
+    tester,
+  ) async {
     final removed = await pump(
       tester,
-      Transitions.dialog(_top, const Center(child: Text('dialog')),
-          barrierDismissible: false),
+      Transitions.dialog(
+        _top,
+        const Center(child: Text('dialog')),
+        barrierDismissible: false,
+      ),
     );
     await tester.tapAt(const Offset(2, 2));
     await tester.pumpAndSettle();
@@ -89,22 +96,30 @@ void main() {
 
   testWidgets('a dialog does not need MaterialLocalizations', (tester) async {
     await pump(
-        tester, Transitions.dialog(_top, const Center(child: Text('dialog'))),
-        material: false);
+      tester,
+      Transitions.dialog(_top, const Center(child: Text('dialog'))),
+      material: false,
+    );
     expect(find.text('dialog'), findsOneWidget);
   });
 
-  testWidgets('sheet is a modal bottom sheet at the bottom of the screen',
-      (tester) async {
+  testWidgets('sheet is a modal bottom sheet at the bottom of the screen', (
+    tester,
+  ) async {
     final removed = await pump(
       tester,
-      Transitions.sheet(_top, const SizedBox(height: 100, child: Text('sheet')),
-          showDragHandle: true),
+      Transitions.sheet(
+        _top,
+        const SizedBox(height: 100, child: Text('sheet')),
+        showDragHandle: true,
+      ),
     );
     expect(find.text('sheet'), findsOneWidget);
     expect(find.text('below'), findsOneWidget);
-    expect(ModalRoute.of(tester.element(find.text('sheet'))),
-        isA<ModalBottomSheetRoute<void>>());
+    expect(
+      ModalRoute.of(tester.element(find.text('sheet'))),
+      isA<ModalBottomSheetRoute<void>>(),
+    );
     expect(find.byType(BottomSheet), findsOneWidget);
     // At the bottom: below the middle of the 600 px screen.
     expect(tester.getCenter(find.text('sheet')).dy, greaterThan(400));
@@ -118,8 +133,12 @@ void main() {
   testWidgets('a sheet that is not dismissible stays', (tester) async {
     final removed = await pump(
       tester,
-      Transitions.sheet(_top, const Text('sheet'),
-          isDismissible: false, enableDrag: false),
+      Transitions.sheet(
+        _top,
+        const Text('sheet'),
+        isDismissible: false,
+        enableDrag: false,
+      ),
     );
     await tester.tapAt(const Offset(400, 20));
     await tester.pumpAndSettle();
@@ -127,8 +146,9 @@ void main() {
     expect(removed, isEmpty);
   });
 
-  testWidgets('fullscreenDialog is a Material page that slides up',
-      (tester) async {
+  testWidgets('fullscreenDialog is a Material page that slides up', (
+    tester,
+  ) async {
     final page = Transitions.fullscreenDialog(_top, const Text('full'));
     expect(page, isA<MaterialPage<void>>());
     expect((page as MaterialPage<void>).fullscreenDialog, isTrue);

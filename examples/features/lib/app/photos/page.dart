@@ -15,32 +15,32 @@ class _PhotosPageState extends State<PhotosPage> {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Photos'),
-            Text('Liked: ${_liked ? 'yes' : 'no'}'),
-            TextButton(
-              onPressed: () => setState(() => _liked = !_liked),
-              child: const Text('Like'),
-            ),
-            TextButton(
-              onPressed: () => const PhotoRoute(id: 7).push(context),
-              child: const Text('Open photo 7'),
-            ),
-            TextButton(
-              onPressed: () => const SortRoute().push(context),
-              child: const Text('Sort'),
-            ),
-            TextButton(
-              onPressed: () => const UploadRoute().push(context),
-              child: const Text('Upload'),
-            ),
-            TextButton(
-              onPressed: () => const ShareSheetRoute().push(context),
-              child: const Text('Share'),
-            ),
-          ],
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Photos'),
+        Text('Liked: ${_liked ? 'yes' : 'no'}'),
+        TextButton(
+          onPressed: () => setState(() => _liked = !_liked),
+          child: const Text('Like'),
         ),
-      );
+        TextButton(
+          onPressed: () => const PhotoRoute(id: 7).push(context),
+          child: const Text('Open photo 7'),
+        ),
+        TextButton(
+          onPressed: () => const SortRoute().push(context),
+          child: const Text('Sort'),
+        ),
+        TextButton(
+          onPressed: () => const UploadRoute().push(context),
+          child: const Text('Upload'),
+        ),
+        TextButton(
+          onPressed: () => const ShareSheetRoute().push(context),
+          child: const Text('Share'),
+        ),
+      ],
+    ),
+  );
 }

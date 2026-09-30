@@ -10,9 +10,9 @@ class TeamLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        children: [
-          Text('Team ${team.name}'),
-          Expanded(child: child),
-        ],
-      );
+    children: [
+      Text('Team ${team.name}'),
+      Expanded(child: child),
+    ],
+  );
 }

@@ -247,8 +247,9 @@ void main() {
     /// A `.tar.gz` holding a shell script called `fsp`, and a fetch that serves it.
     Future<Fetch> release({String? sum, String file = 'fsp'}) async {
       final src = Directory('${tmp.path}/src')..createSync();
-      File('${src.path}/$file')
-          .writeAsStringSync('#!/bin/sh\necho "fsp 0.1.1"\n');
+      File(
+        '${src.path}/$file',
+      ).writeAsStringSync('#!/bin/sh\necho "fsp 0.1.1"\n');
       await Process.run('chmod', ['+x', '${src.path}/$file']);
       final archive = File('${tmp.path}/fsp.tar.gz');
       final r = await Process.run('tar', [

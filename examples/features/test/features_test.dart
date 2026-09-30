@@ -30,8 +30,9 @@ Future<void> boot(
 }
 
 void main() {
-  testWidgets('layouts and pages get the segments they ask for',
-      (tester) async {
+  testWidgets('layouts and pages get the segments they ask for', (
+    tester,
+  ) async {
     await boot(tester, '/shops/acme');
     expect(find.text('Shop: acme'), findsOneWidget);
     expect(find.text('Welcome to acme'), findsOneWidget);
@@ -43,18 +44,22 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
   });
 
-  testWidgets('data keyed by two segments, bound to the page by type',
-      (tester) async {
+  testWidgets('data keyed by two segments, bound to the page by type', (
+    tester,
+  ) async {
     await boot(tester, '/shops/acme/items/7');
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Shop: acme'), findsOneWidget);
     expect(find.text('Item acme #7'), findsOneWidget);
     expect(
-        const ItemRoute(shop: 'a b', id: 7).location, '/shops/a%20b/items/7');
+      const ItemRoute(shop: 'a b', id: 7).location,
+      '/shops/a%20b/items/7',
+    );
   });
 
-  testWidgets('error.dart bound by type; retry re-runs data.dart',
-      (tester) async {
+  testWidgets('error.dart bound by type; retry re-runs data.dart', (
+    tester,
+  ) async {
     await boot(tester, '/shops/acme/items/0');
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.textContaining('Failed: Exception: no item 0'), findsOneWidget);
@@ -74,24 +79,30 @@ void main() {
     Duration? twice(int retryCount, Object error) =>
         retryCount < 2 ? const Duration(milliseconds: 100) : null;
 
-    testWidgets('a container policy is honoured: retries, then settles',
-        (tester) async {
+    testWidgets('a container policy is honoured: retries, then settles', (
+      tester,
+    ) async {
       await boot(tester, '/shops/acme/items/0', retry: twice);
       await tester.pump(const Duration(milliseconds: 50));
-      expect(find.textContaining('Failed: Exception: no item 0'),
-          findsOneWidget);
+      expect(
+        find.textContaining('Failed: Exception: no item 0'),
+        findsOneWidget,
+      );
       await tester.pump(const Duration(seconds: 5));
       // The generated provider ran three times: once, plus the two retries
       // the policy allows. It doesn't override the app's policy with its own.
       expect(item_data.itemFetches, 3);
-      expect(find.textContaining('Failed: Exception: no item 0'),
-          findsOneWidget);
+      expect(
+        find.textContaining('Failed: Exception: no item 0'),
+        findsOneWidget,
+      );
       await tester.pump(const Duration(minutes: 2));
       expect(item_data.itemFetches, 3);
     });
 
-    testWidgets('Riverpod default policy applies when the app has none',
-        (tester) async {
+    testWidgets('Riverpod default policy applies when the app has none', (
+      tester,
+    ) async {
       await boot(tester, '/shops/acme/items/0', retry: null);
       await tester.pump(const Duration(seconds: 2));
       expect(item_data.itemFetches, greaterThan(2));
@@ -99,8 +110,9 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('error.dart shows at once and stays through the retries',
-        (tester) async {
+    testWidgets('error.dart shows at once and stays through the retries', (
+      tester,
+    ) async {
       // Fails twice (runs 1 and 2), then yields.
       await boot(tester, '/shops/acme/items/13', retry: twice);
       expect(find.byType(DefaultLoading), findsOneWidget);
@@ -108,7 +120,10 @@ void main() {
       for (var ms = 10; ms <= 400; ms += 10) {
         await tester.pump(const Duration(milliseconds: 10));
         expect(find.byType(DefaultLoading), findsNothing, reason: 'at $ms ms');
-        if (find.textContaining('Failed: Exception: flaky').evaluate().isNotEmpty) {
+        if (find
+            .textContaining('Failed: Exception: flaky')
+            .evaluate()
+            .isNotEmpty) {
           errors++;
         }
       }
@@ -118,13 +133,16 @@ void main() {
       expect(find.textContaining('Failed:'), findsNothing);
     });
 
-    testWidgets("error.dart's retry callback still runs data.dart again",
-        (tester) async {
+    testWidgets("error.dart's retry callback still runs data.dart again", (
+      tester,
+    ) async {
       await boot(tester, '/shops/acme/items/0');
       await tester.pump(const Duration(milliseconds: 50));
       expect(item_data.itemFetches, 1);
-      expect(find.textContaining('Failed: Exception: no item 0'),
-          findsOneWidget);
+      expect(
+        find.textContaining('Failed: Exception: no item 0'),
+        findsOneWidget,
+      );
 
       // Nothing runs behind the scenes; retry is what runs it again.
       await tester.pump(const Duration(seconds: 60));
@@ -134,20 +152,24 @@ void main() {
       // The error stays up while it runs.
       expect(find.byType(DefaultLoading), findsNothing);
       await tester.pump(const Duration(milliseconds: 50));
-      expect(find.textContaining('Failed: Exception: no item 0'),
-          findsOneWidget);
+      expect(
+        find.textContaining('Failed: Exception: no item 0'),
+        findsOneWidget,
+      );
       expect(item_data.itemFetches, 2);
     });
   });
 
-  testWidgets('an int segment that does not parse is not found',
-      (tester) async {
+  testWidgets('an int segment that does not parse is not found', (
+    tester,
+  ) async {
     await boot(tester, '/shops/acme/items/x');
     expect(find.text('Nothing at /shops/acme/items/x'), findsOneWidget);
   });
 
-  testWidgets('a user-written AsyncNotifierProvider, exposed on the route',
-      (tester) async {
+  testWidgets('a user-written AsyncNotifierProvider, exposed on the route', (
+    tester,
+  ) async {
     await boot(tester, '/counter');
     await tester.pump();
     expect(find.text('Count 0'), findsOneWidget);
@@ -162,8 +184,9 @@ void main() {
     expect(find.text('Tick 42'), findsOneWidget);
   });
 
-  testWidgets('query parameters reach the page and key data.dart',
-      (tester) async {
+  testWidgets('query parameters reach the page and key data.dart', (
+    tester,
+  ) async {
     await boot(tester, '/search?q=ap&tags=sweet');
     await tester.pump();
     expect(find.text('ap, page 1: apple, apricot'), findsOneWidget);
@@ -200,13 +223,19 @@ void main() {
         (q: null, page: null, tags: QueryList(tags));
     final sub = container.listen(SearchRoute.data(key(['red'])), (_, __) {});
     addTearDown(sub.close);
-    expect(await container.read(SearchRoute.data(key(['red'])).future),
-        ['apple', 'cherry']);
-    expect(await container.read(SearchRoute.data(key(['red'])).future),
-        ['apple', 'cherry']);
+    expect(await container.read(SearchRoute.data(key(['red'])).future), [
+      'apple',
+      'cherry',
+    ]);
+    expect(await container.read(SearchRoute.data(key(['red'])).future), [
+      'apple',
+      'cherry',
+    ]);
     expect(search_data.searchFetches, 1);
-    expect(await container.read(SearchRoute.data(key(['sweet'])).future),
-        ['apple', 'apricot']);
+    expect(await container.read(SearchRoute.data(key(['sweet'])).future), [
+      'apple',
+      'apricot',
+    ]);
     expect(search_data.searchFetches, 2);
   });
 
@@ -230,8 +259,9 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
   });
 
-  testWidgets('(group) layouts wrap their routes, not their siblings',
-      (tester) async {
+  testWidgets('(group) layouts wrap their routes, not their siblings', (
+    tester,
+  ) async {
     await boot(tester, '/profile');
     expect(find.text('Account'), findsOneWidget);
     expect(find.text('Profile'), findsOneWidget);
@@ -249,8 +279,9 @@ void main() {
     expect(find.text('Page anything'), findsOneWidget);
   });
 
-  testWidgets('transition.dart picks the Page: nearest one wins',
-      (tester) async {
+  testWidgets('transition.dart picks the Page: nearest one wins', (
+    tester,
+  ) async {
     RouteSettings settings(String text) =>
         ModalRoute.of(tester.element(find.text(text)))!.settings;
 
@@ -267,8 +298,10 @@ void main() {
     // Nothing closer to /search: the root transition.dart, Transitions.material.
     await boot(tester, '/search');
     await tester.pumpAndSettle();
-    expect(settings('everything, page 1: apple, apricot'),
-        isA<MaterialPage<void>>());
+    expect(
+      settings('everything, page 1: apple, apricot'),
+      isA<MaterialPage<void>>(),
+    );
   });
 
   testWidgets('a route with a transition fades in', (tester) async {
@@ -323,31 +356,36 @@ void main() {
     String location() =>
         router.routerDelegate.currentConfiguration.last.matchedLocation;
 
-    testWidgets('a route with Transitions.dialog opens over the previous page',
-        (tester) async {
-      await bootPhotos(tester, '/photos');
-      expect(find.byType(AlertDialog), findsNothing);
+    testWidgets(
+      'a route with Transitions.dialog opens over the previous page',
+      (tester) async {
+        await bootPhotos(tester, '/photos');
+        expect(find.byType(AlertDialog), findsNothing);
 
-      await tester.tap(find.text('Open photo 7'));
-      await tester.pumpAndSettle();
-      expect(location(), '/photos/7');
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.text('Photo 7'), findsOneWidget);
-      // The page below is still there, behind the barrier.
-      expect(find.text('Photos'), findsOneWidget);
-      expect(ModalRoute.of(tester.element(find.text('Photo 7'))),
-          isA<DialogRoute<void>>());
+        await tester.tap(find.text('Open photo 7'));
+        await tester.pumpAndSettle();
+        expect(location(), '/photos/7');
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(find.text('Photo 7'), findsOneWidget);
+        // The page below is still there, behind the barrier.
+        expect(find.text('Photos'), findsOneWidget);
+        expect(
+          ModalRoute.of(tester.element(find.text('Photo 7'))),
+          isA<DialogRoute<void>>(),
+        );
 
-      // context.pop() in the dialog returns to the page.
-      await tester.tap(find.text('Close'));
-      await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(location(), '/photos');
-      expect(find.text('Photos'), findsOneWidget);
-    });
+        // context.pop() in the dialog returns to the page.
+        await tester.tap(find.text('Close'));
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsNothing);
+        expect(location(), '/photos');
+        expect(find.text('Photos'), findsOneWidget);
+      },
+    );
 
-    testWidgets('the barrier and the back button pop a dialog route',
-        (tester) async {
+    testWidgets('the barrier and the back button pop a dialog route', (
+      tester,
+    ) async {
       await bootPhotos(tester, '/photos');
       await tester.tap(find.text('Open photo 7'));
       await tester.pumpAndSettle();
@@ -366,8 +404,9 @@ void main() {
       expect(location(), '/photos');
     });
 
-    testWidgets('a deep link opens the dialog over its parent page',
-        (tester) async {
+    testWidgets('a deep link opens the dialog over its parent page', (
+      tester,
+    ) async {
       await bootPhotos(tester, '/photos/7');
       expect(find.text('Photo 7'), findsOneWidget);
       expect(find.text('Photos'), findsOneWidget);
@@ -381,16 +420,17 @@ void main() {
       expect(const PhotoRoute(id: 7).location, '/photos/7');
     });
 
-    testWidgets('Transitions.sheet opens a modal bottom sheet',
-        (tester) async {
+    testWidgets('Transitions.sheet opens a modal bottom sheet', (tester) async {
       await bootPhotos(tester, '/photos');
       await tester.tap(find.text('Sort'));
       await tester.pumpAndSettle();
       expect(location(), '/photos/sort');
       expect(find.text('Sort photos by'), findsOneWidget);
       expect(find.text('Photos'), findsOneWidget);
-      expect(ModalRoute.of(tester.element(find.text('Sort photos by'))),
-          isA<ModalBottomSheetRoute<void>>());
+      expect(
+        ModalRoute.of(tester.element(find.text('Sort photos by'))),
+        isA<ModalBottomSheetRoute<void>>(),
+      );
 
       await tester.tap(find.text('Newest'));
       await tester.pumpAndSettle();
@@ -406,8 +446,9 @@ void main() {
       expect(location(), '/photos');
     });
 
-    testWidgets('Transitions.fullscreenDialog slides up with a close button',
-        (tester) async {
+    testWidgets('Transitions.fullscreenDialog slides up with a close button', (
+      tester,
+    ) async {
       await bootPhotos(tester, '/photos');
       await tester.tap(find.text('Upload'));
       await tester.pumpAndSettle();

@@ -7,16 +7,13 @@ class SortPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Sort photos by'),
-            ListTile(
-              title: const Text('Newest'),
-              onTap: () => context.pop(),
-            ),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Sort photos by'),
+        ListTile(title: const Text('Newest'), onTap: () => context.pop()),
+      ],
+    ),
+  );
 }

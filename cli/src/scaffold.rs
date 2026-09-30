@@ -36,6 +36,16 @@ pub struct NewArgs {
     pub transition: bool,
 }
 
+/// What `fsp new` parses: the route flags plus `--no-page`.
+#[derive(Args)]
+pub struct NewCmd {
+    #[command(flatten)]
+    pub args: NewArgs,
+    /// Don't write page.dart (implied for a `(group)` folder, which can't have one)
+    #[arg(long)]
+    pub no_page: bool,
+}
+
 #[derive(Serialize)]
 struct Cx {
     stem: String,
@@ -53,7 +63,14 @@ struct SegCx {
     ty: String,
 }
 
-pub fn new_route(project: &Path, a: &NewArgs) -> Result<()> {
+/// Scaffolds the route, writing a page.dart unless the folder is a `(group)`.
+#[cfg(test)]
+/// Returns the files it created, as `lib/app/...` paths.
+pub fn new_route(project: &Path, a: &NewArgs) -> Result<Vec<String>> {
+    new_route_opts(project, a, false)
+}
+
+pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<String>> {
     let cfg = Config::load(project)?;
     let app_dir = project.join(&cfg.app_dir);
     let parts: Vec<String> = a
@@ -100,8 +117,11 @@ pub fn new_route(project: &Path, a: &NewArgs) -> Result<()> {
         data: a.data,
     };
 
+    // A group has no URL of its own, so it can't serve a page (and one would
+    // collide with the page of the folder above it).
+    let is_group = matches!(segs.last(), Some(Seg::Group(_)));
     let wanted = [
-        ("page", true),
+        ("page", !no_page && !is_group),
         ("data", a.data),
         ("loading", a.loading),
         ("error", a.error),
@@ -109,9 +129,13 @@ pub fn new_route(project: &Path, a: &NewArgs) -> Result<()> {
         ("guard", a.guard),
         ("transition", a.transition),
     ];
+    if !wanted.iter().any(|(_, on)| *on) {
+        let why = if is_group { "a (group) folder has no page" } else { "--no-page skips the page" };
+        bail!("nothing to create: {why}; also pass --layout, --loading, --error, --guard or --transition");
+    }
     let dir = app_dir.join(&rel);
     fs::create_dir_all(&dir)?;
-    let mut wrote = 0;
+    let mut created = vec![];
     for (kind, on) in wanted {
         if !on {
             continue;
@@ -124,10 +148,10 @@ pub fn new_route(project: &Path, a: &NewArgs) -> Result<()> {
         }
         fs::write(&path, templates::render(&format!("new/{kind}.dart"), &cx))?;
         eprintln!("  new   {shown}");
-        wrote += 1;
+        created.push(shown);
     }
-    if wrote == 0 {
+    if created.is_empty() {
         bail!("nothing to create");
     }
-    Ok(())
+    Ok(created)
 }

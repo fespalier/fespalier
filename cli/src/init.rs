@@ -34,7 +34,7 @@ pub fn run(project: &Path) -> Result<()> {
     }
 
     let o = crate::gen_with(project, cfg, true)?;
-    eprintln!("✓ {} routes → {}", o.routes, cfg.output);
+    eprintln!("{}", o.line());
 
     let mut step = 0;
     let mut next = |title: &str| {

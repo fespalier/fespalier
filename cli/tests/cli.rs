@@ -327,26 +327,35 @@ fn routes_json_pins_the_manifest_fields() {
     write("old/redirect.dart", "String redirect() => '/';");
     write("(tabs)/layout.dart", "class TabsLayout extends StatelessWidget { const TabsLayout({super.key, required this.shell}); final StatefulNavigationShell shell; }");
     write("(tabs)/one/page.dart", &page("OnePage"));
+    write("docs/$$rest/page.dart", "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest}); final List<String> rest; }");
+    write("files/$$$path/page.dart", "class FilesPage extends StatelessWidget { const FilesPage({super.key, required this.path}); final List<String> path; }");
     let (ok, out, err) = fsp_full(root, &["routes", "--json"], &[]);
     assert!(ok, "{err}");
     let rows: Vec<&str> = out.lines().collect();
-    assert_eq!(rows.len(), 4, "{out}");
+    assert_eq!(rows.len(), 6, "{out}");
     let row = |pattern: &str| {
         rows.iter().find(|r| serde_json::from_str::<serde_json::Value>(r).unwrap()["pattern"] == pattern).unwrap().to_string()
     };
     // Key order is part of the shape (serde_json keeps it), so compare the text.
     assert_eq!(
         row("/products/:id"),
-        r#"{"pattern":"/products/:id","route":"ProductRoute","file":"lib/app/(buyer)/products/$id/page.dart","tags":["data"],"params":[{"name":"id","type":"int","in":"path"},{"name":"tab","type":"String?","in":"query"}],"folder":"(buyer)/products/$id","presentation":"page","groups":["(buyer)"],"layouts":["(buyer)"],"tabs":[],"data_keys":["id"],"meta":"lib/app/(buyer)/products/$id/meta.dart"}"#
+        r#"{"pattern":"/products/:id","route":"ProductRoute","file":"lib/app/(buyer)/products/$id/page.dart","tags":["data"],"params":[{"name":"id","type":"int","in":"path"},{"name":"tab","type":"String?","in":"query"}],"folder":"(buyer)/products/$id","presentation":"page","groups":["(buyer)"],"layouts":["(buyer)"],"tabs":[],"data_keys":["id"],"meta":"lib/app/(buyer)/products/$id/meta.dart","catch_all":null}"#
     );
     assert_eq!(
         row("/old"),
-        r#"{"pattern":"/old","route":"OldRoute","file":"lib/app/old/redirect.dart","tags":["redirect"],"params":[],"folder":"old","presentation":"redirect","groups":[],"layouts":[],"tabs":[],"data_keys":null,"meta":null}"#
+        r#"{"pattern":"/old","route":"OldRoute","file":"lib/app/old/redirect.dart","tags":["redirect"],"params":[],"folder":"old","presentation":"redirect","groups":[],"layouts":[],"tabs":[],"data_keys":null,"meta":null,"catch_all":null}"#
     );
     assert_eq!(
         row("/one"),
-        r#"{"pattern":"/one","route":"OneRoute","file":"lib/app/(tabs)/one/page.dart","tags":[],"params":[],"folder":"(tabs)/one","presentation":"page","groups":["(tabs)"],"layouts":["(tabs)"],"tabs":[{"layout":"(tabs)","index":0,"branch":"one"}],"data_keys":null,"meta":null}"#
+        r#"{"pattern":"/one","route":"OneRoute","file":"lib/app/(tabs)/one/page.dart","tags":[],"params":[],"folder":"(tabs)/one","presentation":"page","groups":["(tabs)"],"layouts":["(tabs)"],"tabs":[{"layout":"(tabs)","index":0,"branch":"one"}],"data_keys":null,"meta":null,"catch_all":null}"#
     );
+    // A catch-all is the last path parameter, a List<String>, and named in `catch_all`.
+    assert_eq!(
+        row("/docs/*rest"),
+        r#"{"pattern":"/docs/*rest","route":"DocsRoute","file":"lib/app/docs/$$rest/page.dart","tags":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"folder":"docs/$$rest","presentation":"page","groups":[],"layouts":[],"tabs":[],"data_keys":null,"meta":null,"catch_all":{"name":"rest","optional":false}}"#
+    );
+    let files: serde_json::Value = serde_json::from_str(&row("/files/*path?")).unwrap();
+    assert_eq!(files["catch_all"], serde_json::json!({"name": "path", "optional": true}));
     // The app folder's own page has an empty folder.
     let home: serde_json::Value = serde_json::from_str(&row("/")).unwrap();
     assert_eq!(home["folder"], "");

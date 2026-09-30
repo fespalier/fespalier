@@ -1,0 +1,48 @@
+# Publishes packages/fespalier to pub.dev with pub.dev's GitHub Actions automated publishing
+# (OIDC: no token or secret is stored anywhere).
+#
+# Run it manually, from the tag of the release: Actions > Publish to pub.dev > Run workflow >
+# "Use workflow from" > Tag > v<version>. pub.dev only accepts an OIDC token whose ref is a tag
+# matching its "tag pattern" (v{{version}}), so a run from a branch is refused here first.
+# `release.yml` creates that v<version> tag (manual publish, or push the tag yourself).
+#
+# One-time setup on pub.dev is described in "Releasing" in the README.
+name: Publish to pub.dev
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify the tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The tag matches packages/fespalier/pubspec.yaml
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::run this workflow from the release tag (Use workflow from > Tag > v<version>), not from ${GITHUB_REF_NAME}; pub.dev only accepts tag runs"
+            exit 1
+          fi
+          version=$(sed -n 's/^version: *//p' packages/fespalier/pubspec.yaml | head -n 1 | tr -d "\"' ")
+          if [ "$GITHUB_REF_NAME" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match packages/fespalier/pubspec.yaml version ${version} (pub.dev's tag pattern is v{{version}})"
+            exit 1
+          fi
+          echo "publishing fespalier ${version} from ${GITHUB_REF_NAME}"
+
+  publish:
+    name: Publish
+    needs: verify
+    permissions:
+      id-token: write # the OIDC token pub.dev verifies
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1
+    with:
+      working-directory: packages/fespalier
+      # To gate every publish behind reviewers, create a GitHub environment named `pub.dev`,
+      # tick "Require GitHub Actions environment" on pub.dev, and uncomment:
+      # environment: pub.dev

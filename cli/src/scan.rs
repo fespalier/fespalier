@@ -60,6 +60,9 @@ impl Kind {
 pub enum Seg {
     Static(String),
     Dynamic(String),
+    /// `$$name` (one or more remaining segments) or `$$$name` (zero or more, the
+    /// flag): the rest of the path, as a `List<String>`.
+    CatchAll(String, bool),
     /// `(name)`: groups routes (for a layout, loading or error view) without
     /// adding to the URL.
     Group(String),
@@ -124,9 +127,9 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
 
 /// Names a dynamic segment can't take: they are the parameters fespalier fills
 /// itself, or members of the generated route classes.
-pub const RESERVED: [&str; 21] = [
+pub const RESERVED: [&str; 22] = [
     "data", "child", "navigationShell", "shell", "error", "stackTrace", "retry", "uri", "key", "location", "go",
-    "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor", "hashCode", "runtimeType",
+    "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor", "hashCode", "runtimeType", "extra",
 ];
 
 /// Names a query parameter can't take either: the route class has a member of that name
@@ -136,6 +139,22 @@ pub const ROUTE_MEMBERS: [&str; 11] =
     ["location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor", "hashCode"];
 
 pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {
+    // `$$$rest` (zero or more) and `$$rest` (one or more): the rest of the path.
+    for (marks, optional) in [("$$$", true), ("$$", false)] {
+        if let Some(p) = name.strip_prefix(marks) {
+            let valid = p.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+                && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if !valid {
+                return Err(format!(
+                    "`{name}`: a catch-all segment must be a lowerCamel Dart identifier, e.g. `$$rest` (one or more segments) or `$$$rest` (zero or more)"
+                ));
+            }
+            if RESERVED.contains(&p) {
+                return Err(format!("`{name}` is reserved (fespalier fills parameters called `{p}` itself); pick another name"));
+            }
+            return Ok(Seg::CatchAll(p.to_string(), optional));
+        }
+    }
     if let Some(p) = name.strip_prefix('$') {
         let valid = p.chars().next().is_some_and(|c| c.is_ascii_lowercase())
             && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');

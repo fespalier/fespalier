@@ -9,7 +9,8 @@
 //! ```text
 //! {"pattern","route","file","tags":[…],"params":[{"name","type","in"}],
 //!  "folder","presentation","groups":[…],"layouts":[…],
-//!  "tabs":[{"layout","index","branch"}],"data_keys":[…]|null,"meta":"…"|null}
+//!  "tabs":[{"layout","index","branch"}],"data_keys":[…]|null,"meta":"…"|null,
+//!  "catch_all":{"name","optional"}|null}
 //! ```
 //!
 //! `file` and `meta` are relative to the project root (`meta` is the route's
@@ -98,6 +99,7 @@ pub fn json_lines(app: &App, app_dir: &str) -> Vec<String> {
                 "tabs": tabs,
                 "data_keys": i.data_keys,
                 "meta": i.meta.map(|m| format!("{app_dir}/{m}")),
+                "catch_all": i.catch_all.map(|(name, optional)| json!({"name": name, "optional": optional})),
             })
             .to_string()
         })

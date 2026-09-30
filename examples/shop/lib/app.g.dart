@@ -93,6 +93,7 @@ abstract final class AppRoutes {
                     data: (d) => _i11.ProductsPage(products: d),
                     loading: () => _i12.ProductsLoading(),
                     error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
+                    keepPrevious: true,
                   ),
                 ),
                 routes: [
@@ -108,6 +109,7 @@ abstract final class AppRoutes {
                           data: (d) => _i14.ProductPage(product: d),
                           loading: () => _i12.ProductsLoading(),
                           error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),
+                          keepPrevious: true,
                         ),
                         () => notFound(state.uri),
                       ),
@@ -206,7 +208,7 @@ abstract final class AppManifest {
   /// The route [state] is at, or null when it is not one of these (a not-found
   /// page, say). Handy in a layout: `AppManifest.of(GoRouterState.of(context))`.
   static RouteInfo<Object?>? of(GoRouterState state) =>
-      byPath[routeTemplate(state, AppRoutes.base)];
+      lookupRoute(byPath, routeTemplate(state, AppRoutes.base));
 }
 
 /// `/` → page.dart

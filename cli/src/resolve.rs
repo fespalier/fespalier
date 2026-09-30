@@ -15,6 +15,7 @@ use heck::ToUpperCamelCase;
 
 use crate::dart::{self, Class, Lit, Module, Span, Ty};
 use crate::diag::Diags;
+use crate::extra::{self, ExtraType};
 use crate::scan::{Kind, Node, Seg, ROUTE_MEMBERS};
 
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
@@ -39,6 +40,8 @@ pub enum Bind {
     PageKey,
     /// A transition's `GoRouterState`.
     State,
+    /// A page's `extra` parameter: the object passed to `go(..., extra:)`.
+    Extra,
 }
 
 #[derive(Debug, Clone)]
@@ -169,6 +172,8 @@ pub struct Route {
     /// The folder's `meta.dart` (relative to the app folder) when it has a valid
     /// one and a route to describe. Not inherited: it belongs to this route alone.
     pub meta: Option<String>,
+    /// The type of the page's `extra` parameter, when it takes one.
+    pub extra: Option<ExtraType>,
 }
 
 impl Route {
@@ -206,7 +211,13 @@ impl Route {
 
 impl App {
     pub fn seg_type(&self, folder: usize) -> &str {
-        self.seg_types.get(&folder).map_or("String", String::as_str)
+        let default = if self.is_catch_all(folder) { "List<String>" } else { "String" };
+        self.seg_types.get(&folder).map_or(default, String::as_str)
+    }
+
+    /// Whether the folder is a `$$rest` / `$$$rest` catch-all.
+    pub fn is_catch_all(&self, folder: usize) -> bool {
+        matches!(self.routes[folder].seg, Some(Seg::CatchAll(..)))
     }
 
     /// `(name, type)` for each of a route's segments, in path order.
@@ -378,10 +389,11 @@ impl Resolver<'_> {
             not_found: None,
             tab_options: vec![],
             meta: None,
+            extra: None,
         });
 
         let mut segs = up.segs.clone();
-        if let Some(Seg::Dynamic(n)) = &node.seg {
+        if let Some(Seg::Dynamic(n) | Seg::CatchAll(n, _)) = &node.seg {
             if segs.iter().any(|(s, _)| s == n) {
                 self.diags.error(&node.dir, None, format!("`${n}` is already a segment higher up this path"));
             } else {
@@ -389,10 +401,10 @@ impl Resolver<'_> {
             }
         }
         let mut url = up.url.clone();
-        if let Some(seg @ (Seg::Static(_) | Seg::Dynamic(_))) = &node.seg {
+        if let Some(seg @ (Seg::Static(_) | Seg::Dynamic(_) | Seg::CatchAll(..))) = &node.seg {
             url.push(seg.clone());
         }
-        let modules: BTreeMap<Kind, Module> = node.files.iter().map(|(k, src)| (*k, dart::parse(src))).collect();
+        let modules: BTreeMap<Kind, Module> = node.files.iter().map(|(k, src)| (*k, crate::parse_cache::parse(src))).collect();
         // The grammar may lag newer Dart, so this is a warning: the Dart compiler has the last word.
         for (kind, m) in &modules {
             if let Some(span) = &m.parse_error {
@@ -424,6 +436,8 @@ impl Resolver<'_> {
             }
         }
 
+        let extra_ty = page_class.as_ref().and_then(|c| c.params.iter().find(|p| !p.is_super && p.name == "extra")?.ty.clone());
+        let mut extra = None;
         let page = page_class.map(|c| {
             let cx = BindCx {
                 role: Role::Page,
@@ -435,6 +449,11 @@ impl Resolver<'_> {
                 scope: Some(Scope::Route(id)),
             };
             let w = self.bind(&c, &cx);
+            if let (Some(ty), Some(src)) = (&extra_ty, node.files.get(&Kind::Page)) {
+                if w.args.iter().any(|a| a.bind == Bind::Extra) {
+                    extra = Some(extra::extra_type(&ty.text, src, &page_file, w.import, id));
+                }
+            }
             if let Some(d) = &data {
                 if !w.args.iter().any(|a| a.bind == Bind::Data) {
                     self.diags.warn(
@@ -535,6 +554,10 @@ impl Resolver<'_> {
         if let Some(m) = modules.get(&Kind::NotFound) {
             let file = node.rel(Kind::NotFound);
             if let Some(c) = self.widget_class(m, &file) {
+                if matches!(node.seg, Some(Seg::CatchAll(..))) {
+                    let msg = "a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown";
+                    self.diags.error(&file, None, msg);
+                }
                 let cx = BindCx {
                     role: Role::NotFound,
                     segs: &[],
@@ -572,6 +595,7 @@ impl Resolver<'_> {
         self.app.routes[id].page_span = page_span;
         self.app.routes[id].not_found = not_found;
         self.app.routes[id].meta = modules.get(&Kind::Meta).and_then(|m| self.meta(m, node, has_route));
+        self.app.routes[id].extra = extra;
         let transition = here.transition.clone().filter(|_| has_page);
         let r = &mut self.app.routes[id];
         (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard, r.redirect, r.transition) =
@@ -587,6 +611,10 @@ impl Resolver<'_> {
                 with_routes.push(cid);
             }
             any_route |= routes;
+        }
+        if matches!(node.seg, Some(Seg::CatchAll(..))) && !with_routes.is_empty() {
+            let msg = "a catch-all matches the rest of the path, so no route can go below it; move the routes beside it";
+            self.diags.error(&node.dir, None, msg);
         }
         let is_tabs = self.app.routes[id].layout.as_ref().is_some_and(|w| w.args.iter().any(|a| a.bind == Bind::Shell));
         if is_tabs {
@@ -617,6 +645,16 @@ impl Resolver<'_> {
         // `(a)/x/page.dart` and `(b)/x/page.dart` would both be /x: one error for that,
         // and the route-name clash only when the URLs differ.
         let pattern = pattern(url);
+        // An optional catch-all (`/docs/*rest?`) also serves the path without it (`/docs`).
+        if let Some((Seg::CatchAll(_, true), parent)) = url.split_last() {
+            let at = self::pattern(parent);
+            if let Some(prev) = self.patterns.get(&at).filter(|p| p.as_str() != file) {
+                let msg = format!("{at} is served by both {prev} and {file}: an optional catch-all also matches the path without it; use `$$rest` instead, or drop the page above");
+                self.diags.error(file, Some(span), msg);
+            } else {
+                self.patterns.insert(at, file.to_string());
+            }
+        }
         let same_url = self.patterns.insert(pattern.clone(), file.to_string());
         let same_name = self.route_names.insert(name.to_string(), file.to_string());
         if let Some(prev) = same_url {
@@ -739,8 +777,17 @@ impl Resolver<'_> {
                         let urls = self.tab_urls(layout_id, all[i]);
                         let matches = |u: &[Seg]| {
                             let segs: Vec<&Seg> = u.iter().filter(|s| !matches!(s, Seg::Group(_))).collect();
-                            segs.len() == want.len()
-                                && segs.iter().zip(&want).all(|(s, w)| match s {
+                            let rest = match segs.last() {
+                                Some(Seg::CatchAll(_, optional)) => Some(*optional),
+                                _ => None,
+                            };
+                            let fixed = segs.len() - usize::from(rest.is_some());
+                            let long_enough = match rest {
+                                Some(optional) => want.len() >= fixed + usize::from(!optional),
+                                None => want.len() == fixed,
+                            };
+                            long_enough
+                                && segs.iter().take(fixed).zip(&want).all(|(s, w)| match s {
                                     Seg::Static(x) => x == w,
                                     _ => true,
                                 })
@@ -945,7 +992,6 @@ impl Resolver<'_> {
         segs: &[(String, usize)],
         scope: Scope,
         what: &str,
-        keyed: bool,
     ) -> Option<String> {
         if !p.named {
             self.diags.error(file, Some(&p.span), format!("{what} takes segments as named parameters, e.g. `{{required int {}}}`", p.name));
@@ -964,12 +1010,6 @@ impl Resolver<'_> {
                 self.diags.error(file, Some(&p.span), msg);
                 return None;
             };
-            if keyed && qty.starts_with("List<") {
-                // Lists compare by identity, so they can't key a provider.
-                let msg = format!("`{}`: data can't be keyed by a List; take a `String?` and split it", p.name);
-                self.diags.error(file, Some(&p.span), msg);
-                return None;
-            }
             return self.declare_query(scope, &p.name, qty, file, &p.span).then(|| p.name.clone());
         };
         match &p.ty {
@@ -995,7 +1035,7 @@ impl Resolver<'_> {
             }
             let mut keys = vec![];
             for p in f.params.iter().skip(1) {
-                keys.extend(self.url_param(&file, p, segs, scope, "data()", true));
+                keys.extend(self.url_param(&file, p, segs, scope, "data()"));
             }
             let Some(ret) = &f.ret else {
                 self.diags.error(&file, Some(&f.span), "data() needs an explicit return type (Future<T>, Stream<T> or T)");
@@ -1055,7 +1095,7 @@ impl Resolver<'_> {
                             is_super: false,
                             span: v.span.clone(),
                         };
-                        keys.extend(self.url_param(&file, &p, segs, scope, "the family argument", true));
+                        keys.extend(self.url_param(&file, &p, segs, scope, "the family argument"));
                     }
                 } else if let [(name, folder)] = segs {
                     keys.push(name.clone());
@@ -1078,6 +1118,13 @@ impl Resolver<'_> {
                 }
             }
             let keys = in_path_order(keys, segs);
+            if let Some((name, _)) = segs.iter().find(|(n, f)| keys.contains(n) && self.app.is_catch_all(*f)) {
+                let msg = format!(
+                    "`{name}` is a catch-all, a List that a provider can't be keyed by (lists compare by identity); \
+                     write `Future<{ty}> data(Ref ref, {{required List<String> {name}}})` and fespalier keys it by the path"
+                );
+                self.diags.error(&file, Some(&v.span), msg);
+            }
             let import = self.import(&file);
             return Some(Data { import, provider: true, stream, ty, keys, record });
         }
@@ -1149,7 +1196,7 @@ impl Resolver<'_> {
                 }
                 continue;
             }
-            keys.extend(self.url_param(file, p, segs, scope, what, false));
+            keys.extend(self.url_param(file, p, segs, scope, what));
         }
         let mut args: Vec<Arg> = in_path_order(keys, segs)
             .into_iter()
@@ -1203,7 +1250,13 @@ impl Resolver<'_> {
     fn settle_segment_types(&mut self) {
         let mut first: HashMap<usize, (String, String, usize)> = HashMap::new();
         for c in &self.constraints {
-            if !SEGMENT_TYPES.contains(&c.ty.text.as_str()) {
+            if self.app.is_catch_all(c.folder) {
+                if c.ty.text != "List<String>" {
+                    let msg = format!("`{} {}`: a catch-all segment is the rest of the path, a `List<String>`", c.ty.text, c.name);
+                    self.diags.error(&c.file, Some(&c.span), msg);
+                    continue;
+                }
+            } else if !SEGMENT_TYPES.contains(&c.ty.text.as_str()) {
                 self.diags.error(&c.file, Some(&c.span), format!("`{} {}`: segments are String, int, double or bool", c.ty.text, c.name));
                 continue;
             }
@@ -1236,6 +1289,7 @@ fn by_name(name: &str, cx: &BindCx) -> Option<Bind> {
         (Role::Layout, "child") => return Some(Bind::Child),
         (Role::Layout, "navigationShell" | "shell") => return Some(Bind::Shell),
         (Role::NotFound, "uri") => return Some(Bind::Uri),
+        (Role::Page, "extra") => return Some(Bind::Extra),
         _ => {}
     }
     cx.segs.iter().any(|(n, _)| n == name).then(|| Bind::Segment(name.to_string()))
@@ -1285,6 +1339,15 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
             &["LocalKey", "Key", "ValueKey", "ValueKey<String>", "ValueKey<Object>", "ValueKey<dynamic>"],
         ),
         Bind::State => ("the GoRouterState", &["GoRouterState"]),
+        Bind::Extra => {
+            let ok = ty.text.ends_with('?') || ty.text == "dynamic";
+            return (!ok).then(|| {
+                format!(
+                    "`{name}` gets the object passed on navigation, but it isn't in the URL: a deep link or a reload leaves it null, so declare it nullable, e.g. `{}? {name}`",
+                    ty.text
+                )
+            });
+        }
         // Data has its own message; segments and queries are settled with the segment types.
         Bind::Data | Bind::Section(_) | Bind::Segment(_) | Bind::Query(_) => return None,
     };
@@ -1324,6 +1387,7 @@ pub fn pattern(url: &[Seg]) -> String {
         .filter_map(|s| match s {
             Seg::Static(s) => Some(s.clone()),
             Seg::Dynamic(n) => Some(format!(":{n}")),
+            Seg::CatchAll(n, optional) => Some(format!("*{n}{}", if *optional { "?" } else { "" })),
             Seg::Group(_) => None,
         })
         .collect();
@@ -1363,7 +1427,7 @@ fn redirect_name(url: &[Seg]) -> String {
     let path: Vec<&str> = url
         .iter()
         .filter_map(|s| match s {
-            Seg::Static(n) | Seg::Dynamic(n) => Some(n.as_str()),
+            Seg::Static(n) | Seg::Dynamic(n) | Seg::CatchAll(n, _) => Some(n.as_str()),
             Seg::Group(_) => None,
         })
         .collect();

@@ -7,6 +7,9 @@
 //!   format: false           # default; true runs `dart format` on the output
 //!   output_manifest: lib/app.routes.g.dart   # default: none, the manifest is in `output`
 //!   meta: optional          # default; `required` makes a route without meta.dart an error
+//!   case_sensitive: true    # default; false matches `/Products` too
+//!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
+//!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -22,6 +25,17 @@ use serde_yaml_ng::Value;
 pub const DEFAULT_APP_DIR: &str = "lib/app";
 pub const DEFAULT_OUTPUT: &str = "lib/app.g.dart";
 
+/// What the providers fespalier generates for `data()` functions do when they fail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DataRetry {
+    /// Riverpod's own retry: the `ProviderScope(retry:)` or `ProviderContainer(retry:)`
+    /// of the app decides.
+    Inherit,
+    /// `retry: (retryCount, error) => null`: a failure is final until `error.dart`'s retry.
+    None,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// Normalized, `/`-separated, no trailing slash: `lib/app`.
@@ -35,6 +49,11 @@ pub struct Config {
     pub output_manifest: Option<String>,
     /// `meta: required`: every route needs a meta.dart.
     pub meta_required: bool,
+    /// Whether routes match paths by case; `false` emits `caseSensitive: false` on each.
+    pub case_sensitive: bool,
+    pub data_retry: DataRetry,
+    /// Keep rendering the old value or error while `data.dart` reloads.
+    pub keep_previous: bool,
 }
 
 impl Default for Config {
@@ -45,6 +64,9 @@ impl Default for Config {
             format: false,
             output_manifest: None,
             meta_required: false,
+            case_sensitive: true,
+            data_retry: DataRetry::Inherit,
+            keep_previous: true,
         }
     }
 }
@@ -73,6 +95,9 @@ struct RawConfig {
     format: Option<bool>,
     output_manifest: Option<String>,
     meta: Option<String>,
+    case_sensitive: Option<bool>,
+    data_retry: Option<DataRetry>,
+    keep_previous: Option<bool>,
 }
 
 impl Config {
@@ -106,6 +131,28 @@ impl Config {
         if dir.is_empty() { rel.to_string() } else { format!("{dir}/{rel}") }
     }
 
+    /// The import path, from the output file, of `uri` as written in the file `file`
+    /// (relative to the app folder). `dart:` and `package:` imports are as they were.
+    pub fn import_from_file(&self, file: &str, uri: &str) -> String {
+        if uri.contains(':') {
+            return uri.to_string();
+        }
+        let mut parts: Vec<&str> = self.app_dir.split('/').collect();
+        parts.extend(parent(file).split('/').filter(|p| !p.is_empty()));
+        for seg in uri.split('/') {
+            match seg {
+                "" | "." => {}
+                ".." => {
+                    parts.pop();
+                }
+                s => parts.push(s),
+            }
+        }
+        let name = parts.pop().unwrap_or_default();
+        let dir = relative_dir(parent(&self.output), &parts.join("/"));
+        if dir.is_empty() { name.to_string() } else { format!("{dir}/{name}") }
+    }
+
     /// The output path relative to `lib/`, as a `package:` import spells it.
     pub fn output_in_lib(&self) -> &str {
         self.output.strip_prefix("lib/").unwrap_or(&self.output)
@@ -131,6 +178,9 @@ impl Pubspec {
         let mut config = Config::default();
         if let Some(c) = raw.fespalier {
             config.format = c.format.unwrap_or(false);
+            config.case_sensitive = c.case_sensitive.unwrap_or(true);
+            config.data_retry = c.data_retry.unwrap_or(config.data_retry);
+            config.keep_previous = c.keep_previous.unwrap_or(config.keep_previous);
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }

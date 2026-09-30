@@ -52,6 +52,6 @@ abstract final class AppManifest {
   /// The route [state] is at, or null when it is not one of these (a not-found
   /// page, say). Handy in a layout: `AppManifest.of(GoRouterState.of(context))`.
   static RouteInfo<Object?>? of(GoRouterState state) =>
-      byPath[routeTemplate(state, AppRoutes.base)];
+      lookupRoute(byPath, routeTemplate(state, AppRoutes.base));
 }
 {%- endmacro %}

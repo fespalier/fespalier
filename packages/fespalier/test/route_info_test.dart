@@ -113,6 +113,40 @@ void main() {
     });
   });
 
+  group('lookupRoute', () {
+    const docs = RouteInfo<Object?>(
+      type: ProductRoute,
+      path: '/docs/*rest',
+      folder: 'docs',
+      segments: [RouteParam('rest', 'List<String>', catchAll: true)],
+    );
+    const files = RouteInfo<Object?>(
+      type: String,
+      path: '/files/*path?',
+      folder: 'files',
+      segments: [RouteParam('path', 'List<String>', catchAll: true)],
+    );
+    const root = RouteInfo<Object?>(
+      type: int,
+      path: '/*all?',
+      folder: '',
+      segments: [RouteParam('all', 'List<String>', catchAll: true)],
+    );
+    final byPath = {for (final r in [docs, files, root, _all.first]) r.path: r};
+
+    test('finds a route by its path, and an optional catch-all without it', () {
+      expect(lookupRoute(byPath, '/products/:id'), _all.first);
+      expect(lookupRoute(byPath, '/docs/*rest'), docs);
+      expect(lookupRoute(byPath, '/files/*path'), files);
+      expect(lookupRoute(byPath, '/files'), files);
+      expect(lookupRoute(byPath, '/'), root);
+      // The path above a required catch-all is not that route.
+      expect(lookupRoute(byPath, '/docs'), isNull);
+      expect(lookupRoute(byPath, '/nope'), isNull);
+      expect(lookupRoute(byPath, null), isNull);
+    });
+  });
+
   group('restoration ids', () {
     test('Transitions give their pages the key as restoration id', () {
       const key = ValueKey('/products/:id');

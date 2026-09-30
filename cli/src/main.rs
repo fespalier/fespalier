@@ -2,9 +2,11 @@ mod config;
 mod dart;
 mod diag;
 mod emit;
+mod extra;
 mod format;
 mod init;
 mod manifest;
+mod parse_cache;
 mod resolve;
 mod routes;
 mod scaffold;
@@ -251,6 +253,8 @@ fn watch(project: &Path) -> Result<()> {
     let app_dir = project.join(&cfg.app_dir);
     let outputs: Vec<PathBuf> = [Some(&cfg.output), cfg.output_manifest.as_ref()].into_iter().flatten().map(|o| project.join(o)).collect();
     let mut shown = Shown::default();
+    // A save changes one file: keep the parse results of the others between runs.
+    parse_cache::enable();
     let mut run = |first: bool| {
         let t = Instant::now();
         let mut diags = String::new();
@@ -271,6 +275,7 @@ fn watch(project: &Path) -> Result<()> {
             _ => {}
         }
         shown = Shown { diags, outcome };
+        parse_cache::finish_run();
     };
     run(true);
 
@@ -301,6 +306,10 @@ mod cli_tests;
 mod manifest_tests;
 #[cfg(test)]
 mod nav_tests;
+#[cfg(test)]
+mod paths_tests;
+#[cfg(test)]
+mod refresh_tests;
 #[cfg(test)]
 mod route_api_tests;
 #[cfg(test)]

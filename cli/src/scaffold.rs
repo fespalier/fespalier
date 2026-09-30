@@ -16,8 +16,9 @@ use crate::templates;
 
 #[derive(Args)]
 pub struct NewArgs {
-    /// Route path under the app folder (lib/app). `[id]` and `:id` are accepted for `$id`
-    /// so you don't have to quote `$` in the shell.
+    /// Route path under the app folder (lib/app). `[id]` and `:id` are accepted for `$id`,
+    /// `[...rest]` for the catch-all `$$rest` and `[[...rest]]` for `$$$rest`, so you don't
+    /// have to quote `$` in the shell.
     pub route: String,
     /// Class name stem (default: from the path, e.g. `ProductsId`)
     #[arg(long)]
@@ -78,9 +79,22 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         .trim_matches('/')
         .split('/')
         .filter(|s| !s.is_empty())
-        .map(|p| match p.strip_prefix('[').and_then(|p| p.strip_suffix(']')).or_else(|| p.strip_prefix(':')) {
-            Some(n) => format!("${n}"),
-            None => p.to_string(),
+        .map(|p| {
+            let bracketed = |p: &str| p.strip_prefix('[').and_then(|p| p.strip_suffix(']')).map(str::to_string);
+            // `[[...rest]]` → `$$$rest`, `[...rest]` → `$$rest`, `[id]` → `$id`.
+            if let Some(n) = bracketed(p).and_then(|i| bracketed(&i)).and_then(|i| i.strip_prefix("...").map(str::to_string)) {
+                return format!("$$${n}");
+            }
+            match bracketed(p) {
+                Some(n) => match n.strip_prefix("...") {
+                    Some(rest) => format!("$${rest}"),
+                    None => format!("${n}"),
+                },
+                None => match p.strip_prefix(':') {
+                    Some(n) => format!("${n}"),
+                    None => p.to_string(),
+                },
+            }
         })
         .collect();
     let segs: Vec<Seg> = parts.iter().map(|p| parse_segment(p).map_err(anyhow::Error::msg)).collect::<Result<_>>()?;
@@ -98,10 +112,14 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         .collect();
     let mut seg_cx = vec![];
     for (i, s) in segs.iter().enumerate() {
-        if let Seg::Dynamic(name) = s {
-            let dir = parts[..=i].join("/");
-            let ty = known.get(dir.as_str()).copied().unwrap_or("String").to_string();
-            seg_cx.push(SegCx { name: name.clone(), ty });
+        match s {
+            Seg::Dynamic(name) => {
+                let dir = parts[..=i].join("/");
+                let ty = known.get(dir.as_str()).copied().unwrap_or("String").to_string();
+                seg_cx.push(SegCx { name: name.clone(), ty });
+            }
+            Seg::CatchAll(name, _) => seg_cx.push(SegCx { name: name.clone(), ty: "List<String>".into() }),
+            _ => {}
         }
     }
 

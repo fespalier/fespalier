@@ -2,8 +2,21 @@
 # install it without Rust (see install.sh).
 #   - push of a `v*` tag: verify the tag matches cli/Cargo.toml, build, publish a GitHub Release
 #   - manual run (workflow_dispatch): build only, archives are kept as workflow artifacts;
-#     with `publish` ticked it also publishes the Release for the cli/Cargo.toml version,
-#     creating its v<version> tag at the dispatched commit (for when tags cannot be pushed)
+#     with `publish` ticked it also publishes the Release for the cli/Cargo.toml version
+#     (for when tags cannot be pushed), in two phases within this one run:
+#       1. build the five targets from the dispatched commit (the "parent")
+#       2. the `pin` job writes their SHA-256s into packages/fespalier/lib/src/release_checksums.dart
+#          (scripts/pin_checksums.py), commits that to the default branch as
+#          "Pin fsp <version> checksums", and the v<version> tag and the Release are created at
+#          THAT commit, so a git dependency on ref v<version> carries the pins that
+#          `dart run fespalier` verifies its download against. The binaries were built from the
+#          parent commit; the two commits differ only by that one file, which the fsp build does
+#          not read.
+#     A pushed `v*` tag is published as it is: the tag already exists, so nothing can be pinned
+#     (the launcher then falls back to each release's .sha256 with a warning).
+# Every run also renders the Homebrew formula (fsp.rb) and Scoop manifest (fsp.json) from the
+# archives' checksums (scripts/packaging.py); a published release attaches them, and pushes them
+# to the tap and bucket repos when the PACKAGING_TOKEN secret exists (see "Releasing" in the README).
 name: Release
 
 on:
@@ -38,6 +51,7 @@ jobs:
         id: resolve
         env:
           PUBLISH_INPUT: ${{ inputs.publish }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           # `version = "x.y.z"` from the [package] section
           crate_version=$(sed -n '/^\[package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' cli/Cargo.toml | head -n 1)
@@ -55,7 +69,12 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$PUBLISH_INPUT" = "true" ]; then
-            # Manual publish: the tag is created at this commit, but never over an existing one
+            # Manual publish: the checksum commit goes on the default branch, so run from it
+            if [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
+              echo "::error::publish from ${DEFAULT_BRANCH} (Use workflow from > ${DEFAULT_BRANCH}), not ${GITHUB_REF_NAME}: the checksum commit is pushed there"
+              exit 1
+            fi
+            # The tag is created after the checksum commit, but never over an existing one
             tag="v${crate_version}"
             if [ -n "$(git ls-remote --tags origin "refs/tags/${tag}")" ]; then
               echo "::error::tag ${tag} already exists; bump the version in cli/Cargo.toml"
@@ -126,10 +145,96 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # fsp.rb (Homebrew) and fsp.json (Scoop), rendered from the archives' .sha256 files.
+  packaging:
+    name: Render Homebrew and Scoop files
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fsp-*
+          path: dist
+          merge-multiple: true
+
+      - name: Render
+        run: |
+          crate_version=$(sed -n '/^\[package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' cli/Cargo.toml | head -n 1)
+          python3 scripts/test_packaging.py
+          python3 scripts/packaging.py --version "$crate_version" --dist dist --out packaging
+          cat packaging/fsp.rb packaging/fsp.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          # `fsp-*` so the release job's download picks it up with the archives
+          name: fsp-packaging
+          path: packaging/*
+          if-no-files-found: error
+
+  # Phase two of a manual publish: pins the archives' SHA-256s in the package and commits them
+  # to the default branch on top of the built commit. Needs contents: write and pushes with
+  # GITHUB_TOKEN, so the branch must accept that (no required PR or status checks for the
+  # github-actions bot, or add it as a bypass actor); otherwise the push fails and nothing is
+  # published. A push made with GITHUB_TOKEN does not start other workflows (CI does not run on
+  # the checksum commit; `cli/tests/versions.rs` ran on its parent).
+  pin:
+    name: Pin checksums in the package
+    if: needs.plan.outputs.publish == 'true'
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.pin.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # the exact commit that was built, not whatever the branch is by now
+          ref: ${{ github.sha }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fsp-*
+          path: dist
+          merge-multiple: true
+
+      - name: Pin and commit
+        id: pin
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          python3 scripts/test_pin_checksums.py
+          crate_version=$(sed -n '/^\[package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' cli/Cargo.toml | head -n 1)
+
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "::warning::${GITHUB_REF_NAME} was pushed as a tag, so its checksums cannot be pinned in the package; dart run fespalier falls back to the release's .sha256 (dispatch the Release workflow with publish ticked instead)"
+            echo "commit=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python3 scripts/pin_checksums.py --version "$crate_version" --dist dist
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/fespalier/lib/src/release_checksums.dart
+          if git diff --cached --quiet; then
+            echo "::error::release_checksums.dart already pins these checksums; was ${crate_version} released before?"
+            exit 1
+          fi
+          git commit \
+            -m "Pin fsp ${crate_version} checksums" \
+            -m "The SHA-256 of the fsp ${crate_version} release archives, for dart run fespalier to verify its download against. The binaries were built from ${GITHUB_SHA}; this commit differs from it only by release_checksums.dart. The v${crate_version} tag points here."
+          if ! git push origin "HEAD:refs/heads/${DEFAULT_BRANCH}"; then
+            echo "::error::could not push to ${DEFAULT_BRANCH}: it moved since this run started, or it does not accept pushes from github-actions. Nothing was published; run the workflow again."
+            exit 1
+          fi
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   release:
     name: Publish GitHub Release
     if: needs.plan.outputs.publish == 'true'
-    needs: [plan, build]
+    needs: [plan, build, packaging, pin]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -146,8 +251,66 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.plan.outputs.tag }}
-          # Creates the tag at this commit when it does not exist yet (manual publish)
-          target_commitish: ${{ github.sha }}
+          # Creates the tag when it does not exist yet (manual publish): at the checksum commit
+          # from the pin job, so the tag contains the pins
+          target_commitish: ${{ needs.pin.outputs.commit }}
           name: ${{ needs.plan.outputs.tag }}
           files: dist/*
           generate_release_notes: true
+
+  # Pushes fsp.rb / fsp.json to the Homebrew tap and the Scoop bucket. Needs a token that can
+  # write to both repos in the PACKAGING_TOKEN secret; without it the job does nothing.
+  # Repos default to vaam-apps/homebrew-tap and vaam-apps/scoop-bucket (override with the
+  # HOMEBREW_TAP_REPO / SCOOP_BUCKET_REPO repository variables).
+  taps:
+    name: Update Homebrew tap and Scoop bucket
+    if: needs.plan.outputs.publish == 'true'
+    needs: [plan, release]
+    runs-on: ubuntu-latest
+    env:
+      PACKAGING_TOKEN: ${{ secrets.PACKAGING_TOKEN }}
+      TAG: ${{ needs.plan.outputs.tag }}
+    steps:
+      - name: Skip without a token
+        if: env.PACKAGING_TOKEN == ''
+        run: echo "::notice::PACKAGING_TOKEN is not set; skipping the Homebrew tap and Scoop bucket update"
+
+      - uses: actions/download-artifact@v4
+        if: env.PACKAGING_TOKEN != ''
+        with:
+          name: fsp-packaging
+          path: packaging
+
+      - uses: actions/checkout@v4
+        if: env.PACKAGING_TOKEN != ''
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPO || 'vaam-apps/homebrew-tap' }}
+          token: ${{ secrets.PACKAGING_TOKEN }}
+          path: tap
+
+      - uses: actions/checkout@v4
+        if: env.PACKAGING_TOKEN != ''
+        with:
+          repository: ${{ vars.SCOOP_BUCKET_REPO || 'vaam-apps/scoop-bucket' }}
+          token: ${{ secrets.PACKAGING_TOKEN }}
+          path: bucket
+
+      - name: Commit and push
+        if: env.PACKAGING_TOKEN != ''
+        run: |
+          push() {
+            dir=$1; src=$2; dest=$3
+            mkdir -p "$dir/$(dirname "$dest")"
+            cp "$src" "$dir/$dest"
+            git -C "$dir" config user.name "github-actions[bot]"
+            git -C "$dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git -C "$dir" add "$dest"
+            if git -C "$dir" diff --cached --quiet; then
+              echo "$dir: $dest is already up to date"
+            else
+              git -C "$dir" commit -m "fsp ${TAG#v}"
+              git -C "$dir" push
+            fi
+          }
+          push tap packaging/fsp.rb Formula/fsp.rb
+          push bucket packaging/fsp.json bucket/fsp.json

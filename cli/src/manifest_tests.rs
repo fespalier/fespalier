@@ -376,3 +376,72 @@ fn restoration_ids_escape_dollar_signs() {
     let (c, _) = generated("", &[("page.dart", HOME), ("$shop/layout.dart", LAYOUT), ("$shop/page.dart", &page("Shop"))]);
     has(&c, &["'layout:\\$shop/'"]);
 }
+
+// --- with catch-alls, case-insensitive paths and typed extra -----------------------
+
+const DOCS: &str = "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest}); final List<String> rest; }";
+const FILES: &str = "class FilesPage extends StatelessWidget { const FilesPage({super.key, required this.path}); final List<String> path; }";
+const PRODUCT: &str = "import '../../../models/product.dart';\nclass ProductPage extends StatelessWidget { const ProductPage({super.key, required this.id, this.extra}); final int id; final Product? extra; }";
+
+fn together(yaml: &str) -> (String, Option<String>) {
+    generated(
+        yaml,
+        &[
+            ("layout.dart", LAYOUT),
+            ("page.dart", HOME),
+            ("meta.dart", "const meta = 'home';"),
+            ("docs/$$rest/page.dart", DOCS),
+            ("docs/$$rest/meta.dart", "const meta = 'docs';"),
+            ("files/$$$path/page.dart", FILES),
+            ("products/$id/page.dart", PRODUCT),
+            ("products/$id/meta.dart", "const meta = 'product';"),
+        ],
+    )
+}
+
+#[test]
+fn a_catch_all_is_listed_as_the_last_segment_and_marked() {
+    let (c, _) = together("");
+    has(
+        &c,
+        &[
+            // The path template is the one the route table shows; go_router's `:rest(.+)` is not it.
+            "type: DocsRoute,\n      path: '/docs/*rest',\n      folder: 'docs/\\$\\$rest',\n      layouts: [''],\n      segments: [RouteParam('rest', 'List<String>', catchAll: true)],\n      meta: _i",
+            "path: '/files/*path?',",
+            "segments: [RouteParam('path', 'List<String>', catchAll: true)],",
+            "segments: [RouteParam('id', 'int')],",
+            "lookupRoute(byPath, routeTemplate(state, AppRoutes.base))",
+        ],
+    );
+    // The routes are still go_router's, in a layout built with a stable restoration id.
+    has(&c, &["path: 'docs/:rest(.+)',", "pageBuilder: (context, state, child) => layoutPage("]);
+}
+
+#[test]
+fn case_insensitive_paths_do_not_change_the_templates() {
+    let (a, _) = together("");
+    let (b, _) = together("fespalier:\n  case_sensitive: false\n");
+    assert!(b.contains("caseSensitive: false,") && !a.contains("caseSensitive"), "{b}");
+    let manifest = |c: &str| c[c.find("abstract final class AppManifest").unwrap()..c.find("final class HomeRoute").unwrap()].to_string();
+    assert_eq!(manifest(&a), manifest(&b));
+}
+
+#[test]
+fn meta_imports_and_extra_imports_do_not_share_numbers() {
+    // Inline: the meta files are numbered after the app's own imports, and the
+    // `show` import for the extra's type is a line of its own.
+    let (c, _) = together("");
+    has(&c, &["import 'models/product.dart' show Product;", "import 'app/meta.dart' as _i", "import 'app/docs/\\$\\$rest/meta.dart' as _i"]);
+    let metas: Vec<&str> = c.lines().filter(|l| l.contains("meta.dart' as _i")).collect();
+    assert_eq!(metas.len(), 3, "{c}");
+    for line in &metas {
+        let n = line.rsplit("as _i").next().unwrap().trim_end_matches(';');
+        assert!(c.contains(&format!("meta: _i{n}.meta,")), "{line}\n{c}");
+    }
+    // Separate: the app file has no meta import, the manifest none of the extras'.
+    let (main, manifest) = together("fespalier:\n  output_manifest: lib/app.routes.g.dart\n");
+    let manifest = manifest.unwrap();
+    assert!(!main.contains("meta.dart") && main.contains("import 'models/product.dart' show Product;"), "{main}");
+    assert!(manifest.contains("import 'app/meta.dart' as _i0;") && !manifest.contains("show Product"), "{manifest}");
+    assert_eq!(manifest.matches("meta: _i").count(), 3, "{manifest}");
+}

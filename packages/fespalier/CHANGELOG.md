@@ -1,13 +1,18 @@
 ## Unreleased
 
-- `RouteInfo<M>`, `RouteParam`, `RouteTab`, `RoutePresentation` and `routeTemplate`: what the
-  generated route manifest (`AppManifest.all`, `byType`, `byPath`) is made of, with
-  `metaAs<T>()` for a route's `meta.dart`.
+- `RouteInfo<M>`, `RouteParam` (with `catchAll`), `RouteTab`, `RoutePresentation`, `routeTemplate`
+  and `lookupRoute`: what the generated route manifest (`AppManifest.all`, `byType`, `byPath`) is
+  made of, with `metaAs<T>()` for a route's `meta.dart`.
 - `layoutPage`: the page the generated router builds for a `layout.dart`, with a restoration
   id that is stable across launches (go_router's own is the route's `hashCode`).
 - `Transitions.*` pages take their `restorationId` from the page key.
 - Regenerate `lib/app.g.dart` with the matching `fsp`: `AppRoutes.router` takes a
   `restorationScopeId`, and layouts are built with `layoutPage`.
+- `dart run fespalier` checks its download against SHA-256 checksums pinned in this package
+  (`lib/src/release_checksums.dart`) and refuses a mismatch. A build from a branch, with no
+  pins for its version, falls back to the release's `.sha256` with a warning.
+- Offline with nothing cached, it stops with one line naming the missing `fsp` version; a
+  cached binary never touches the network.
 
 ## 0.2.0 - 2026-09-30
 

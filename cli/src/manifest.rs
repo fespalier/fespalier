@@ -45,6 +45,9 @@ pub struct Info {
     /// The folders of the layouts that wrap it, outermost first.
     pub layouts: Vec<String>,
     pub segments: Vec<(String, String)>,
+    /// The `$$rest` / `$$$rest` catch-all segment at the end of the path: its name, and whether
+    /// the path without it is the route's too. Its type in `segments` is `List<String>`.
+    pub catch_all: Option<(String, bool)>,
     pub query: Vec<(String, String)>,
     /// What data.dart is keyed by; `None` without a data.dart.
     pub data_keys: Option<Vec<String>>,
@@ -92,6 +95,10 @@ pub fn collect(app: &App) -> Vec<Info> {
                 groups,
                 layouts,
                 segments: app.typed_segs(r),
+                catch_all: match r.url.last() {
+                    Some(Seg::CatchAll(n, optional)) => Some((n.clone(), *optional)),
+                    _ => None,
+                },
                 query: r.query.clone(),
                 data_keys: r.data.as_ref().map(|d| d.keys.clone()),
                 tabs: tabs.get(&id).cloned().unwrap_or_default(),
@@ -215,7 +222,16 @@ pub fn cx(app: &App, first_import: usize) -> (ManifestCx, Vec<String>) {
                 redirect: i.redirect,
                 groups: list(i.groups.iter().map(|g| dart_str(g)).collect()),
                 layouts: list(i.layouts.iter().map(|l| dart_str(l)).collect()),
-                segments: params(&i.segments),
+                segments: list(
+                    i.segments
+                        .iter()
+                        .map(|(n, t)| {
+                            let rest = i.catch_all.as_ref().is_some_and(|(c, _)| c == n);
+                            let flag = if rest { ", catchAll: true" } else { "" };
+                            format!("RouteParam({}, {}{flag})", dart_str(n), dart_str(t))
+                        })
+                        .collect(),
+                ),
                 query: params(&i.query),
                 tabs: list(
                     i.tabs

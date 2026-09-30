@@ -12,9 +12,13 @@ enum RoutePresentation {
 /// A segment (`$id`) or a query parameter a route reads, as the generated
 /// route class takes it.
 class RouteParam {
-  const RouteParam(this.name, this.type);
+  const RouteParam(this.name, this.type, {this.catchAll = false});
 
   final String name;
+
+  /// A `$$rest` / `$$$rest` catch-all: the rest of the path, a `List<String>`,
+  /// always the last segment.
+  final bool catchAll;
 
   /// The Dart type as the route class spells it: `int`, `String`, `int?`
   /// (an optional query parameter), `List<String>` (every `?x=` value).
@@ -113,8 +117,10 @@ class RouteInfo<M> {
 }
 
 /// The path template of the route [state] is at, with the mount point [base]
-/// (`AppRoutes.base`) taken off: the key `AppManifest.byPath` uses. Null when
-/// go_router has no path for it (an error page).
+/// (`AppRoutes.base`) taken off, spelled as `AppManifest.byPath` does: go_router's
+/// `:rest(.+)` is `*rest`. Null when go_router has no path for it (an error page).
+/// (An optional catch-all's route without the catch-all has no `?` here: use
+/// [lookupRoute].)
 String? routeTemplate(GoRouterState state, [String base = '/']) {
   var path = state.fullPath;
   if (path == null) return null;
@@ -122,5 +128,32 @@ String? routeTemplate(GoRouterState state, [String base = '/']) {
   if (prefix.isNotEmpty && (path == prefix || path.startsWith('$prefix/'))) {
     path = path.substring(prefix.length);
   }
+  path = path.replaceAllMapped(
+    RegExp(r':(\w+)\(\.\+\)\??'),
+    (m) => '*${m[1]}',
+  );
   return path.isEmpty ? '/' : path;
+}
+
+/// The route in [byPath] that [template] (from [routeTemplate]) is: its own
+/// path, or the optional catch-all route (`/files/*path?`) it is the path
+/// with or without the catch-all of.
+RouteInfo<Object?>? lookupRoute(
+  Map<String, RouteInfo<Object?>> byPath,
+  String? template,
+) {
+  if (template == null) return null;
+  final found = byPath[template] ?? byPath['$template?'];
+  if (found != null) return found;
+  final prefix = template == '/' ? '' : template;
+  for (final info in byPath.values) {
+    final rest = info.segments.isEmpty ? null : info.segments.last;
+    if (rest != null &&
+        rest.catchAll &&
+        info.path.endsWith('?') &&
+        info.path == '$prefix/*${rest.name}?') {
+      return info;
+    }
+  }
+  return null;
 }

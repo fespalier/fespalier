@@ -5,8 +5,14 @@
 ///  1. `FSP_BINARY`, a path you give.
 ///  2. The cache (`<cache>/fespalier/<version>-<target>/`).
 ///  3. An `fsp` on PATH whose `--version` is this package's version.
-///  4. A download from the GitHub release, verified against its `.sha256` and
-///     cached.
+///  4. A download from the GitHub release, verified and cached. The archive's
+///     SHA-256 must equal the one pinned in this package
+///     (`release_checksums.dart`, written by the release workflow); a mismatch is
+///     a hard failure. A package with no pins for its version (a development
+///     build from a branch) falls back to the release's `.sha256` file, with a
+///     warning, which only catches corruption.
+///
+/// A cached binary never touches the network, so a warm cache works offline.
 ///
 /// The version is read from this package's own `pubspec.yaml`, so the package
 /// and the binary it runs can't drift apart.
@@ -23,6 +29,8 @@ import 'dart:ffi' show Abi;
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
+
+import 'release_checksums.dart' as pinned;
 
 /// Where releases are downloaded from unless `FSP_BASE_URL` says otherwise.
 const defaultBaseUrl =
@@ -264,7 +272,8 @@ String sha256Hex(List<int> data) {
 
 // --- The launcher --------------------------------------------------------------
 
-/// Fetches a URL's bytes; throws [LauncherException] when it can't.
+/// Fetches a URL's bytes. Throws an [IOException] when the network is unreachable
+/// (the launcher says so in one line) or a [LauncherException] for anything else.
 typedef Fetch = Future<List<int>> Function(Uri url);
 
 /// Finds (or downloads) the `fsp` for [version] and runs it.
@@ -278,7 +287,11 @@ class Launcher {
     void Function(String message)? log,
     Future<String?> Function(String executable)? probe,
     Future<void> Function(File archive, Directory into)? extract,
-  }) : fetch = fetch ?? httpFetch,
+    String? pinnedVersion,
+    Map<String, String>? pins,
+  }) : pinnedVersion = pinnedVersion ?? pinned.pinnedVersion,
+       pins = pins ?? pinned.pinnedChecksums,
+       fetch = fetch ?? httpFetch,
        log = log ?? ((m) => stderr.writeln(m)),
        probe = probe ?? probeFspVersion,
        extract = extract ?? extractArchive;
@@ -298,6 +311,11 @@ class Launcher {
   /// What `<executable> --version` printed, or `null` if it couldn't run.
   final Future<String?> Function(String executable) probe;
   final Future<void> Function(File archive, Directory into) extract;
+
+  /// The version [pins] belong to (`''` for none), and target -> SHA-256 of its archive.
+  /// Defaults to `release_checksums.dart`.
+  final String pinnedVersion;
+  final Map<String, String> pins;
 
   /// A launcher for this machine and this package.
   static Future<Launcher> forThisMachine() async {
@@ -349,15 +367,34 @@ class Launcher {
     final name = archiveName(target);
     final archiveUrl = releaseUrl(_baseUrl, version, name);
     log('fespalier: downloading fsp $version ($target) from $archiveUrl');
-    final bytes = await fetch(archiveUrl);
-    final sumFile = String.fromCharCodes(
-      await fetch(releaseUrl(_baseUrl, version, '$name.sha256')),
-    );
-    final expected = parseChecksum(sumFile);
-    if (expected == null)
-      throw LauncherException(
-        'the checksum file for $name is not a SHA-256 hash',
+    final bytes = await _get(archiveUrl);
+
+    final String expected;
+    if (pinnedVersion == version) {
+      // The pins ship inside the package, so a tampered release can't vouch for itself.
+      final pin = pins[target];
+      if (pin == null) {
+        throw LauncherException(
+          'this package pins checksums for fsp $version but none for $target',
+        );
+      }
+      expected = pin;
+    } else {
+      log(
+        'fespalier: warning: this package has no pinned checksums for fsp $version '
+        "(a development build); checking the release's own .sha256 instead",
       );
+      final sumFile = String.fromCharCodes(
+        await _get(releaseUrl(_baseUrl, version, '$name.sha256')),
+      );
+      final sum = parseChecksum(sumFile);
+      if (sum == null) {
+        throw LauncherException(
+          'the checksum file for $name is not a SHA-256 hash',
+        );
+      }
+      expected = sum;
+    }
     final actual = sha256Hex(bytes);
     if (actual != expected) {
       throw LauncherException(
@@ -390,6 +427,18 @@ class Launcher {
       if (tmp.existsSync()) tmp.deleteSync(recursive: true);
     }
     log('fespalier: cached ${to.path}');
+  }
+
+  /// [fetch] with a network failure turned into the one line to show when nothing is cached.
+  Future<List<int>> _get(Uri url) async {
+    try {
+      return await fetch(url);
+    } on IOException {
+      throw LauncherException(
+        "fsp $version isn't cached and the download failed (offline?); "
+        'run once online or set FSP_BINARY',
+      );
+    }
   }
 
   /// Runs `fsp` with [args], sharing this process's stdio; returns its exit code.
@@ -467,8 +516,6 @@ Future<List<int>> httpFetch(Uri url) async {
     final out = BytesBuilder(copy: false);
     await response.forEach(out.add);
     return out.takeBytes();
-  } on IOException catch (e) {
-    throw LauncherException('could not download $url: $e');
   } finally {
     client.close();
   }

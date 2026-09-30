@@ -2,6 +2,97 @@
 
 ## Unreleased
 
+### Data refresh and retry
+
+- **Behaviour change: generated `data()` providers no longer switch off Riverpod's retry.**
+  0.1.1 gave them `retry: (retryCount, error) => null`, which overrode the app's
+  `ProviderScope(retry: ...)`. Now the app's policy applies (Riverpod's default, 10 retries
+  with backoff, when it sets none), so a failing `data.dart` is run again in the background.
+  What the route shows is unchanged (see `keep_previous`), but the provider runs more than
+  once, so a test that counts calls or ends with a pending timer will notice. To keep the old
+  behaviour, add `data_retry: none` to the `fespalier:` section of `pubspec.yaml`, or give the
+  app a retry policy of its own. Regenerate `app.g.dart`.
+- **`DataView` keeps the old state on screen while `data.dart` reloads.** `loading.dart` is
+  now only for the first load. A refresh or reload keeps rendering the old value (or error),
+  and a provider that failed and is being retried keeps showing `error.dart` for the whole
+  retry window, then the data once a retry succeeds. Before, a reload driven by a dependency
+  and every retry blinked to `loading.dart`. A section's data reloading no longer shows loading
+  for the whole section. `keep_previous: false` restores the loading view for every load.
+  (`AsyncValue.when` with `skipLoadingOnReload` and `skipLoadingOnRefresh`.)
+- New `fespalier:` config keys: `data_retry: inherit | none` (default `inherit`) and
+  `keep_previous: true | false` (default `true`). The generated `DataView` gets a
+  `keepPrevious:` argument.
+- **`List` query parameters can key `data.dart`.** `data(Ref ref, {List<String> tags = const []})`
+  is accepted, and `?tags=a&tags=b` is one provider whatever list instance the page builds:
+  the generated key wraps the list in the new runtime `QueryList<T>`, a list with value
+  equality. `data()` and the typed helpers still take a plain `List<T>`. It used to be an error.
+- `pumpRouter` in `package:fespalier/testing.dart` takes `retry:` and defaults to no retries,
+  so a failing `data.dart` shows `error.dart` at once and leaves no timer behind in a test.
+  Pass `ProviderContainer.defaultRetry` (or `null`, Riverpod's default) to test retries.
+- **`fsp watch` parses only what changed.** It keeps the parse results of every file between
+  runs, keyed by the file's source, so a save re-parses the file you saved and nothing else.
+  On a synthetic 1,000-route app a regeneration after a one-file edit takes about 32 ms
+  instead of about 50 ms in a release build (the rest is scanning, resolving and emitting).
+  `gen` and `check` are unchanged.
+- **VS Code extension** (`editors/vscode/`, not published yet): `fsp check --json` on save
+  becomes Problems panel diagnostics, plus `fespalier: generate`, `fespalier: check` and a
+  status bar item. Runs `fsp`, or `dart run fespalier` when `fsp` isn't on `PATH`.
+- **Homebrew and Scoop.** Each release attaches `fsp.rb` and `fsp.json`, rendered from the
+  archives' checksums by `scripts/packaging.py`, and pushes them to a tap and bucket when
+  the `PACKAGING_TOKEN` secret exists.
+- **pub.dev.** `flutter pub publish --dry-run` is clean and checked in CI (the package gains
+  a shorter description and `example/README.md`). New `Publish to pub.dev` workflow: publishes
+  through GitHub OIDC automated publishing when run from the `v<version>` tag.
+
+### Paths
+
+- **Catch-all segments.** A folder `$$rest` matches one or more remaining segments and
+  `$$$rest` zero or more; the page takes them as a `List<String>`, each part decoded on
+  its own. It is a go_router parameter with its own pattern (`docs/:rest(.+)`), so deep
+  links, guards and redirects work as for any route; `$$$rest` is two routes with one builder
+  (`/files` and `/files/:path(.+)`). The typed route is `DocsRoute(rest: ['a', 'b c'])`
+  (`/docs/a/b%20c`, each part encoded). Siblings are ordered static, dynamic, then catch-all,
+  and the unreachable-route check knows catch-alls. `data.dart` can be keyed by one (the
+  provider takes the path as an encoded string: new `restKey` / `restParts`). Limits: last
+  segment only, `List<String>` only, nothing below it, no `not_found.dart` in it.
+  `fsp new 'docs/[...rest]'` and `'docs/[[...rest]]'` scaffold them. Runtime: `Segment.asRest`,
+  `restPath`, `restKey`, `restParts`. `fsp routes` shows `/docs/*rest` and `/files/*path?`.
+- **`case_sensitive: false`** under `fespalier:` in pubspec.yaml emits `caseSensitive: false` on
+  every route, so `/Products` reaches `/products` (parameters keep their case). The
+  nearest-`not_found.dart` lookup (`nearestNotFound(..., caseSensitive:)`) follows it. The default
+  is unchanged.
+- **Trailing slashes** need no option: go_router drops them before matching, so `/products/`
+  and `/products/?page=2` reach `/products` (checked on go_router 17.5 and 18, and now tested).
+- **Typed `extra`.** A page parameter called `extra` receives what `context.go(location,
+  extra: obj)` passed, and the typed route takes it: `NoteRoute(id: 3).go(context, extra:
+  note)` (also `push` and `replace`), checked at compile time. The parameter must be nullable:
+  the URL alone can't produce it, so a deep link or a reload gets `null`. The generated file
+  imports the type by name (`show`) from `page.dart`'s imports, the one place it names one of
+  your types. Runtime: `extraOf<T>(state)`. New reserved name: `extra` can't be a segment.
+
+### `dart run fespalier`: pinned checksums, offline, "generate, don't commit"
+
+- **Checksums are pinned inside the package.** `lib/src/release_checksums.dart` holds the
+  SHA-256 of every `fsp` archive of the package's own version, and `dart run fespalier`
+  refuses a download that doesn't match (before, the `.sha256` came from the same release as
+  the binary, so it caught corruption but not a tampered release). A package with no pins for
+  its version (a development build from a branch) still checks the release's `.sha256` and
+  prints one warning line.
+- **Two-phase release.** The *Release* workflow (manual publish) builds the five targets, then
+  commits the pins to `main` as `Pin fsp <version> checksums` (`scripts/pin_checksums.py`,
+  tested by `scripts/test_pin_checksums.py`), and creates the `v<version>` tag and the Release
+  at that commit, so a git dependency on the tag carries the pins. The binaries are built from
+  the parent commit and differ only by that one file. Manual publish must now run on the
+  default branch, and the workflow needs to be able to push to it. After a version bump, run
+  `python3 scripts/pin_checksums.py --reset`; `cli/tests/versions.rs` checks that the file pins
+  nothing or the pubspec's version.
+- **Offline with an empty cache** stops with one line: `fespalier: fsp 0.3.0 isn't cached and
+  the download failed (offline?); run once online or set FSP_BINARY`. A cached binary never
+  touches the network.
+- README: a "Generate, don't commit" mode (gitignore `lib/app.g.dart`, run
+  `dart run fespalier gen` before `flutter analyze` in CI; the generator follows
+  `pubspec.lock`), next to the committed mode with `fsp check`, which still writes nothing.
+
 ### Route manifest and metadata
 
 - A generated route manifest: `AppRoutes.all`, `byType` (typed-route class) and `byPath` (path
@@ -20,8 +111,9 @@
   `app.g.dart` alone never imports a `meta.dart`. `gen`, `check` and `watch` handle both files,
   and the success line names both; `examples/tabs` uses it.
 - `fsp routes --json` adds `folder`, `presentation`, `groups`, `layouts`, `tabs`, `data_keys` and
-  `meta` (the route's meta.dart, or null) to each object; the shape is documented and pinned by a
-  test.
+  `meta` (the route's meta.dart, or null) and `catch_all` to each object; the shape is documented and
+  pinned by a test. A catch-all segment is a `List<String>` `RouteParam` with `catchAll: true`, and
+  `AppManifest.of` finds the route for it (and for an optional catch-all's bare path).
 
 ### State restoration
 

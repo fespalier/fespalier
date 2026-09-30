@@ -6,9 +6,6 @@ maintainer steps (pub.dev, Homebrew tap, Scoop bucket, Marketplace) are in READM
 
 ## In progress
 
-- Root navigator per folder (`navigator.dart`, #1), non-inherited `present.dart` for sheets
-  and dialogs on the root navigator (#2), tab `container` builder and shell transitions (#3);
-  manifest `presentation` for them.
 - `AppRoutes.dataAt(uri)` / `match(uri)` and a `prefetch` handle (#8).
 
 ## Later

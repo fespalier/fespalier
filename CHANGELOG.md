@@ -37,6 +37,53 @@
   test restarts the app and finds the draft again (and shows what a router without the codec
   restores). `examples/features` has a layout and a guard that read a `Note?` extra.
 
+### Navigators and shells (#1, #2, #3)
+
+- **`navigator.dart`: render a folder on the root navigator without moving its URL (#1).**
+  `const navigator = RouteNavigator.root;` puts the folder's routes and every route below it
+  above the tab bar and any layout, while the URL stays where it is (a deep link builds the tab
+  page underneath, and back returns to it). Nearest declaration wins, like `transition.dart`; a
+  page-less `(group)` can hold one. `fsp gen` emits `parentNavigatorKey: rootNavigatorKey` on
+  the route and all its descendants, and marks them `(root)` in the route table. A `layout.dart`
+  below a root folder becomes a shell on the root navigator (`ShellRoute(parentNavigatorKey: …)`),
+  with the routes inside on its own navigator; `RouteNavigator.shell` is accepted there and is an
+  error directly below a root route (go_router doesn't allow it). A root route that is the first
+  route of a tab, or sits directly in a layout, is an error: go_router can only lift a route out of
+  a shell from below another route. New runtime export: `RouteNavigator`.
+- **The generated router owns the root navigator key.** `AppRoutes.rootNavigatorKey` is a
+  `GlobalKey<NavigatorState>`; `router(navigatorKey:)` can supply one and `mount(at:, navigatorKey:)`
+  takes the host `GoRouter`'s own key (stored like `at`). **Regenerate `app.g.dart`**: `router()`
+  now passes the key to `GoRouter`, and `mount()` and `router()` have a new optional parameter.
+- **`present.dart`: a `Page` of your own for one route (#2).** `Page<void> present(LocalKey key,
+  Widget child)`, bound like `transition.dart` (`key`, `child`, `state`), builds the route's page and
+  is used as it is (fespalier adds no scrim, handle or shape). It applies to its own folder only
+  (folders below keep the nearest `transition.dart`) and implies the root navigator for the route
+  and its descendants, so a sheet opens over a tab bar and a child of a sheet renders above it; a
+  `navigator.dart` beside it overrides that. The route table marks it `(present, root)`.
+  `examples/features` has an app-owned `SheetPage` and `/photos/share`.
+- **Manifest and `fsp routes --json`: `presentation` has two new values.** `RoutePresentation.root`
+  (`"root"`) for a page on the root navigator through `navigator.dart`, and `.custom` (`"custom"`) for
+  a page a `present.dart` builds; `redirect` and `page` are as before. The tags in the route table
+  and in `fsp routes --json` gain `present` and `root`.
+- **A tab layout can export `container` (#3).** `Widget container(BuildContext context,
+  StatefulNavigationShell shell, List<Widget> children)` makes the shell a `StatefulShellRoute(
+  navigatorContainerBuilder: container, …)` instead of `.indexedStack(…)`, to cross-fade or slide
+  between tabs. The parameters are positional with fixed types (a wrong type is an error at the
+  parameter); without it, the output is unchanged. `examples/tabs` cross-fades.
+- **Behaviour change: a layout's shell takes the nearest `transition.dart` as its page (#3).**
+  The `ShellRoute` of a `layout.dart` and a tab layout's `StatefulShellRoute` used to get
+  `layoutPage(...)`, a plain Material page. When a `transition.dart` is at or above the layout's folder,
+  they now get its page under `ValueKey<String>('layout:<folder>/')`: the same stable id as before
+  (restoration is unchanged), and a key that doesn't change while you switch routes inside the shell,
+  so only entering or leaving the shell animates it, and it moves under a route on the root
+  navigator like any page. `fsp init` writes a root `transition.dart`, so most apps' shells change:
+  regenerate, and check the layouts' animation. A `transition()` that takes a `bool shell` (or
+  `isShell`) is told whether it is building a shell (`true`) or a route (`false`). Without a
+  `transition.dart`, layouts keep `layoutPage(...)`.
+- `examples/tabs`: `/profile/edit` is full screen through `navigator.dart`, `/profile/security` is
+  the nested route that stays in the tab, the tab layout has a cross-fading `container`, and its
+  `transition.dart` is Cupertino (the shell moves aside under a root-level push).
+
 ### Typed catch-alls, and case per folder
 
 - **A catch-all can be typed.** A parameter named after a `$$rest` or `$$$rest` can be a

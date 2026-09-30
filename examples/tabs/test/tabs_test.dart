@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' as mui;
 import 'package:tabs/app.g.dart';
+import 'package:tabs/cross_fade.dart';
 
 late GoRouter router;
 
@@ -83,26 +84,106 @@ void main() {
     expect(find.text('Search count 2'), findsOneWidget);
   });
 
-  testWidgets('a tab keeps its own stack: /profile/edit stays open',
+  testWidgets('a tab keeps its own stack: /profile/security stays open',
       (tester) async {
     await boot(tester, '/profile');
-    await tester.tap(find.text('Edit profile'));
+    await tester.tap(find.text('Security'));
     await tester.pumpAndSettle();
-    expect(location, '/profile/edit');
+    expect(location, '/profile/security');
 
     await tapTab(tester, 'Home');
     expect(location, '/');
     await tapTab(tester, 'Profile');
-    expect(location, '/profile/edit');
-    expect(find.text('Edit profile'), findsOneWidget);
+    expect(location, '/profile/security');
+    expect(find.text('Security'), findsOneWidget);
   });
 
   testWidgets('a nested route shows the bar with its tab selected',
       (tester) async {
-    await boot(tester, '/profile/edit');
-    expect(find.text('Edit profile'), findsOneWidget);
+    await boot(tester, '/profile/security');
+    expect(find.text('Security'), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(selected(tester), 2);
+  });
+
+  group('navigator.dart: a route on the root navigator', () {
+    // /profile/edit is under /profile in the URL, and full screen.
+    testWidgets('renders above the tab bar, and back returns to the tab',
+        (tester) async {
+      await boot(tester, '/profile');
+      await tester.tap(find.text('Edit profile'));
+      await tester.pumpAndSettle();
+      expect(location, '/profile/edit');
+      expect(find.text('Editing your profile'), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+
+      // The root navigator holds the page, the tab layout's navigator does not.
+      final edit = tester.element(find.text('Editing your profile'));
+      expect(Navigator.of(edit), AppRoutes.rootNavigatorKey.currentState);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(location, '/profile');
+      expect(find.text('Editing your profile'), findsNothing);
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(selected(tester), 2);
+      expect(find.text('Profile'), findsWidgets);
+    });
+
+    testWidgets('a deep link builds the tab page underneath', (tester) async {
+      await boot(tester, '/profile/edit');
+      expect(find.text('Editing your profile'), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+      // The Profile tab is built below it, hidden by the page above.
+      expect(find.text('Profile', skipOffstage: false), findsWidgets);
+      expect(find.byType(NavigationBar, skipOffstage: false), findsOneWidget);
+
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(location, '/profile');
+      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(selected(tester), 2);
+    });
+
+    testWidgets('the app can read and supply the root navigator key',
+        (tester) async {
+      await boot(tester, '/');
+      expect(AppRoutes.rootNavigatorKey.currentState, isNotNull);
+      expect(router.configuration.navigatorKey, AppRoutes.rootNavigatorKey);
+
+      final key = GlobalKey<NavigatorState>();
+      final mine = AppRoutes.router(navigatorKey: key);
+      expect(AppRoutes.rootNavigatorKey, key);
+      expect(mine.configuration.navigatorKey, key);
+    });
+  });
+
+  group('container: a custom branch container', () {
+    testWidgets('cross-fades between tabs, each keeping its state',
+        (tester) async {
+      await boot(tester, '/search');
+      expect(find.byType(CrossFadeContainer), findsOneWidget);
+      await tester.tap(find.byTooltip('+'));
+      await tester.pump();
+      expect(find.text('Search count 1'), findsOneWidget);
+
+      // Half way through the fade both tabs are painted.
+      await tester.tap(find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Profile'),
+      ));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Search count 1'), findsOneWidget);
+      expect(find.text('Security'), findsOneWidget);
+
+      await tester.pumpAndSettle();
+      expect(find.text('Search count 1'), findsNothing);
+      expect(find.text('Security'), findsOneWidget);
+
+      await tapTab(tester, 'Search');
+      expect(find.text('Search count 1'), findsOneWidget);
+    });
   });
 
   testWidgets('a route outside the tabs is full screen', (tester) async {
@@ -211,6 +292,7 @@ void main() {
     expect(const SearchRoute().location, '/search');
     expect(const ProfileRoute().location, '/profile');
     expect(const EditProfileRoute().location, '/profile/edit');
+    expect(const SecurityRoute().location, '/profile/security');
     expect(const SettingsRoute().location, '/settings');
   });
 }

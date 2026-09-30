@@ -329,10 +329,16 @@ fn routes_json_pins_the_manifest_fields() {
     write("(tabs)/one/page.dart", &page("OnePage"));
     write("docs/$$rest/page.dart", "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest}); final List<String> rest; }");
     write("files/$$$path/page.dart", "class FilesPage extends StatelessWidget { const FilesPage({super.key, required this.path}); final List<String> path; }");
+    // A route on the root navigator (`navigator.dart`, inherited by the folder below it) and one
+    // whose page the app builds (`present.dart`, which implies the root navigator).
+    write("(tabs)/one/full/page.dart", &page("FullPage"));
+    write("(tabs)/one/full/navigator.dart", "const navigator = RouteNavigator.root;");
+    write("sheet/page.dart", &page("SheetPage"));
+    write("sheet/present.dart", "Page<void> present(LocalKey key, Widget child) => MySheet(key: key, child: child);");
     let (ok, out, err) = fsp_full(root, &["routes", "--json"], &[]);
     assert!(ok, "{err}");
     let rows: Vec<&str> = out.lines().collect();
-    assert_eq!(rows.len(), 6, "{out}");
+    assert_eq!(rows.len(), 8, "{out}");
     let row = |pattern: &str| {
         rows.iter().find(|r| serde_json::from_str::<serde_json::Value>(r).unwrap()["pattern"] == pattern).unwrap().to_string()
     };
@@ -348,6 +354,14 @@ fn routes_json_pins_the_manifest_fields() {
     assert_eq!(
         row("/one"),
         r#"{"pattern":"/one","route":"OneRoute","file":"lib/app/(tabs)/one/page.dart","tags":[],"params":[],"folder":"(tabs)/one","presentation":"page","groups":["(tabs)"],"layouts":["(tabs)"],"tabs":[{"layout":"(tabs)","index":0,"branch":"one"}],"data_keys":null,"meta":null,"catch_all":null}"#
+    );
+    assert_eq!(
+        row("/one/full"),
+        r#"{"pattern":"/one/full","route":"FullRoute","file":"lib/app/(tabs)/one/full/page.dart","tags":["root"],"params":[],"folder":"(tabs)/one/full","presentation":"root","groups":["(tabs)"],"layouts":["(tabs)"],"tabs":[{"layout":"(tabs)","index":0,"branch":"one"}],"data_keys":null,"meta":null,"catch_all":null}"#
+    );
+    assert_eq!(
+        row("/sheet"),
+        r#"{"pattern":"/sheet","route":"SheetRoute","file":"lib/app/sheet/page.dart","tags":["present","root"],"params":[],"folder":"sheet","presentation":"custom","groups":[],"layouts":[],"tabs":[],"data_keys":null,"meta":null,"catch_all":null}"#
     );
     // A catch-all is the last path parameter, a List<String>, and named in `catch_all`.
     assert_eq!(

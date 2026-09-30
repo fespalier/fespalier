@@ -19,6 +19,10 @@ class ProfilePage extends StatelessWidget {
               child: const Text('Edit profile'),
             ),
             TextButton(
+              onPressed: () => const SecurityRoute().go(context),
+              child: const Text('Security'),
+            ),
+            TextButton(
               onPressed: () => const SettingsRoute().go(context),
               child: const Text('Settings'),
             ),

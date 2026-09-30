@@ -19,6 +19,7 @@ export 'src/layout_page.dart';
 export 'src/location.dart';
 export 'src/not_found.dart';
 export 'src/route_info.dart';
+export 'src/route_navigator.dart';
 export 'src/route_data.dart';
 export 'src/segments.dart';
 export 'src/selected_data.dart';

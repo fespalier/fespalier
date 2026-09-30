@@ -103,6 +103,35 @@ fn a_function_layout_takes_the_extra_too() {
 }
 
 #[test]
+fn a_layout_on_the_root_navigator_or_with_a_shell_transition_still_gets_it() {
+    // A layout hosted on the root navigator (`navigator.dart` beside it).
+    let c = code(&[
+        ("page.dart", HOME),
+        ("shop/layout.dart", &layout("Product?")),
+        ("shop/navigator.dart", "const navigator = RouteNavigator.root;"),
+        ("shop/page.dart", &page("Shop", Some("Product?"))),
+    ]);
+    let l = imp(&c, "shop/layout.dart");
+    has(&c, &["ShellRoute(\n", "parentNavigatorKey: rootNavigatorKey,", &format!("{l}.ShopLayout(child: child, extra: extraOrNull(state))")]);
+    // A shell transition builds the layout's page: the layout is its `child`, still inside `state`'s builder.
+    let t = "Page<void> transition(LocalKey key, Widget child, {bool shell = false}) => MaterialPage(key: key, child: child);";
+    let c = code(&[("page.dart", HOME), ("transition.dart", t), ("shop/layout.dart", &layout("Product?")), ("shop/page.dart", &page("Shop", None))]);
+    let l = imp(&c, "shop/layout.dart");
+    let tr = imp(&c, "transition.dart");
+    has(&c, &[&format!("pageBuilder: (context, state, child) => {tr}.transition("), &format!("{l}.ShopLayout(child: child, extra: extraOrNull(state))")]);
+    // And a tab layout, on the root navigator with a transition, gets it beside its shell.
+    let tabs = "class TabsLayout extends StatelessWidget { const TabsLayout({super.key, required this.navigationShell, this.extra}); final StatefulNavigationShell navigationShell; final Object? extra; }";
+    let c = code(&[("page.dart", HOME), ("transition.dart", t), ("t/layout.dart", tabs), ("t/navigator.dart", "const navigator = RouteNavigator.root;"), ("t/a/page.dart", &page("A", None)), ("t/b/page.dart", &page("B", None))]);
+    has(&c, &["parentNavigatorKey: rootNavigatorKey,", "TabsLayout(navigationShell: navigationShell, extra: extraOrNull(state))"]);
+}
+
+#[test]
+fn router_passes_the_navigator_key_and_the_extra_codec() {
+    let c = code(&[("page.dart", HOME), ("extra_codec.dart", CODEC)]);
+    has(&c, &["final routes = mount(navigatorKey: navigatorKey);", "extraCodec: _i1.extraCodec,", "navigatorKey: rootNavigatorKey,"]);
+}
+
+#[test]
 fn a_tab_layout_and_a_section_layout_take_it_too() {
     let tabs = "class TabsLayout extends StatelessWidget { const TabsLayout({super.key, required this.navigationShell, this.extra}); final StatefulNavigationShell navigationShell; final Object? extra; }";
     let c = code(&[("layout.dart", tabs), ("a/page.dart", &page("A", None)), ("b/page.dart", &page("B", None))]);
@@ -319,7 +348,7 @@ const CODEC: &str = "import 'package:fespalier/fespalier.dart';\nfinal extraCode
 #[test]
 fn router_gets_the_extra_codec() {
     let c = code(&[("page.dart", HOME), ("extra_codec.dart", CODEC)]);
-    has(&c, &["import 'app/extra_codec.dart' as _i", "extraCodec: _i1.extraCodec,", "routes: mount(),"]);
+    has(&c, &["import 'app/extra_codec.dart' as _i", "extraCodec: _i1.extraCodec,", "routes: routes,"]);
     // Only the standalone router: `mount` embeds routes in a router that has its own.
     let router = &c[c.find("static GoRouter router(").unwrap()..c.find("static List<RouteBase> mount").unwrap()];
     assert!(router.contains("extraCodec: _i1.extraCodec"), "{router}");

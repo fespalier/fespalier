@@ -39,7 +39,9 @@ pub struct Info {
     pub folder: String,
     /// page.dart or redirect.dart, relative to the app folder.
     pub file: String,
-    pub redirect: bool,
+    /// How the route is served, when it isn't a plain page: `redirect` (a redirect.dart),
+    /// `custom` (a present.dart builds the page) or `root` (on the root navigator).
+    pub presentation: Option<&'static str>,
     /// `(buyer)`, outermost first.
     pub groups: Vec<String>,
     /// The folders of the layouts that wrap it, outermost first.
@@ -91,7 +93,12 @@ pub fn collect(app: &App) -> Vec<Info> {
                 path: resolve::pattern(&r.url),
                 folder: r.dir.clone(),
                 file: rel(r, kind),
-                redirect: r.page.is_none(),
+                presentation: match (r.page.is_some(), r.present.is_some(), r.root) {
+                    (false, ..) => Some("redirect"),
+                    (_, true, _) => Some("custom"),
+                    (_, _, true) => Some("root"),
+                    _ => None,
+                },
                 groups,
                 layouts,
                 segments: app.typed_segs(r),
@@ -173,7 +180,8 @@ struct RouteInfoCx {
     class: String,
     path: String,
     folder: String,
-    redirect: bool,
+    /// `redirect`, `root` or `custom`: a `RoutePresentation`; `None` for a plain page.
+    presentation: Option<&'static str>,
     groups: Option<String>,
     layouts: Option<String>,
     segments: Option<String>,
@@ -219,7 +227,7 @@ pub fn cx(app: &App, first_import: usize) -> (ManifestCx, Vec<String>) {
                 class: i.class,
                 path: dart_str(&i.path),
                 folder: dart_str(&i.folder),
-                redirect: i.redirect,
+                presentation: i.presentation,
                 groups: list(i.groups.iter().map(|g| dart_str(g)).collect()),
                 layouts: list(i.layouts.iter().map(|l| dart_str(l)).collect()),
                 segments: list(

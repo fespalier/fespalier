@@ -31,33 +31,49 @@ import 'app/products/\$id/error.dart' as _i15;
 /// The file tree under lib/app/, ready to mount.
 abstract final class AppRoutes {
   static String _base = '/';
+  static GlobalKey<NavigatorState> _rootNavigatorKey =
+      GlobalKey<NavigatorState>(debugLabel: 'root');
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
   static String get base => _base;
 
-  /// A standalone router for `MaterialApp.router(routerConfig: ...)`.
+  /// The root navigator's key: the one given to [router] or [mount], else one of
+  /// its own. Routes on the root navigator (`navigator.dart`, `present.dart`) name it
+  /// as their `parentNavigatorKey`; the app can use it to reach the root navigator.
+  static GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;
+
+  /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
+  /// is the root navigator's key, when the app has one to supply.
   static GoRouter router({
     String initialLocation = '/',
     List<NavigatorObserver>? observers,
     String? restorationScopeId,
-  }) =>
-      GoRouter(
-        initialLocation: initialLocation,
-        observers: observers,
-        restorationScopeId: restorationScopeId,
-        routes: mount(),
-        errorBuilder: (context, state) => notFound(state.uri),
-      );
+    GlobalKey<NavigatorState>? navigatorKey,
+  }) {
+    final routes = mount(navigatorKey: navigatorKey);
+    return GoRouter(
+      initialLocation: initialLocation,
+      observers: observers,
+      restorationScopeId: restorationScopeId,
+      navigatorKey: rootNavigatorKey,
+      routes: routes,
+      errorBuilder: (context, state) => notFound(state.uri),
+    );
+  }
 
-  /// The routes alone, to embed in an existing GoRouter under [at].
-  static List<RouteBase> mount({String at = '/'}) {
+  /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
+  /// GoRouter's own `navigatorKey` as [navigatorKey]: routes on the root navigator
+  /// name it as their `parentNavigatorKey`, which must be an ancestor navigator's.
+  static List<RouteBase> mount({
+    String at = '/',
+    GlobalKey<NavigatorState>? navigatorKey,
+  }) {
     _base = at;
+    if (navigatorKey != null) _rootNavigatorKey = navigatorKey;
     return [
       ShellRoute(
-        pageBuilder: (context, state, child) => layoutPage(
-          context,
-          state,
-          'layout:/',
+        pageBuilder: (context, state, child) => _i3.transition(
+          const ValueKey<String>('layout:/'),
           _i4.AppLayout(child: child),
         ),
         routes: [

@@ -22,12 +22,14 @@ pub enum Kind {
     NotFound,
     Meta,
     Route,
+    Navigator,
+    Present,
     /// The app folder's own `extra_codec.dart`: read at the root only.
     ExtraCodec,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 12] = [
+    pub const ALL: [Kind; 14] = [
         Kind::Page,
         Kind::Data,
         Kind::Loading,
@@ -39,6 +41,8 @@ impl Kind {
         Kind::NotFound,
         Kind::Meta,
         Kind::Route,
+        Kind::Navigator,
+        Kind::Present,
         Kind::ExtraCodec,
     ];
 
@@ -55,6 +59,8 @@ impl Kind {
             Kind::NotFound => "not_found.dart",
             Kind::Meta => "meta.dart",
             Kind::Route => "route.dart",
+            Kind::Navigator => "navigator.dart",
+            Kind::Present => "present.dart",
             Kind::ExtraCodec => "extra_codec.dart",
         }
     }

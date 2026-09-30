@@ -65,6 +65,21 @@ void main() {
         parsePubspecVersion('version: "1.2.3-dev.1" # note'),
         '1.2.3-dev.1',
       );
+      // release-please's annotation trails the version line
+      expect(
+        parsePubspecVersion(
+          'name: x\nversion: 0.3.1 # x-release-please'
+          '-version\nhomepage: y',
+        ),
+        '0.3.1',
+      );
+      expect(
+        parsePubspecVersion(
+          "version: '0.3.1'#x-release-please"
+          "-version",
+        ),
+        '0.3.1',
+      );
       expect(parsePubspecVersion('name: x\n  version: 9.9.9'), isNull);
       expect(parsePubspecVersion('name: x'), isNull);
     });
@@ -247,8 +262,9 @@ void main() {
     /// A `.tar.gz` holding a shell script called `fsp`, and a fetch that serves it.
     Future<Fetch> release({String? sum, String file = 'fsp'}) async {
       final src = Directory('${tmp.path}/src')..createSync();
-      File('${src.path}/$file')
-          .writeAsStringSync('#!/bin/sh\necho "fsp 0.1.1"\n');
+      File(
+        '${src.path}/$file',
+      ).writeAsStringSync('#!/bin/sh\necho "fsp 0.1.1"\n');
       await Process.run('chmod', ['+x', '${src.path}/$file']);
       final archive = File('${tmp.path}/fsp.tar.gz');
       final r = await Process.run('tar', [

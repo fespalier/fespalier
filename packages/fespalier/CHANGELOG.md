@@ -1,3 +1,9 @@
+# Changelog
+
+Releases after 0.3.0 are written by release-please into the [root CHANGELOG.md](../../CHANGELOG.md)
+(the package and the `fsp` CLI are versioned and released together). This file keeps the
+package-level notes up to 0.3.0 and is no longer updated.
+
 ## 0.3.0 - 2026-09-30
 
 - Localized paths (`const paths = {'fr': 'produits'};` in a folder's `route.dart`):

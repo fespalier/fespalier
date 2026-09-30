@@ -296,6 +296,7 @@ fn scaffold_then_generate() {
         error: true,
         layout: true,
         guard: true,
+        transition: false,
     };
     scaffold::new_route(dir.path(), &args("orders/[orderId]", true)).unwrap();
     let data = fs::read_to_string(dir.path().join("lib/app/orders/$orderId/data.dart")).unwrap();
@@ -446,4 +447,135 @@ fn routes_a_group_cannot_order_are_reported() {
             "✗ (app)/$id/page.dart  /:id is unreachable: $slug/page.dart (/:slug) comes first and matches it; move one of them into or out of its (group)",
         ]
     );
+}
+
+const FADE: &str = "Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);";
+
+fn page(name: &str) -> String {
+    format!("class {name}Page extends StatelessWidget {{ const {name}Page({{super.key}}); }}")
+}
+
+#[test]
+fn transition_applies_to_every_page_below_it() {
+    let c = code(&[
+        ("transition.dart", FADE),
+        ("page.dart", HOME),
+        ("about/page.dart", &page("About")),
+        ("$id/data.dart", "Future<int> data(Ref ref, {required int id}) async => id;"),
+        ("$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.data}); final int data; }"),
+    ]);
+    has(
+        &c,
+        &[
+            "//   /:id    ItemRoute   $id/page.dart  (data, transition)",
+            "//   /about  AboutRoute  about/page.dart  (transition)",
+            "import 'app/transition.dart' as _i1;",
+            // The page is exactly what `builder:` would have returned.
+            "pageBuilder: (context, state) => _i1.transition(\n          state.pageKey,\n          _i0.HomePage(),\n        ),",
+            "pageBuilder: (context, state) => _i1.transition(\n              state.pageKey,\n              buildWithParams(\n                () => _params1(state),\n                (v) => DataView(",
+            "data: (d) => _i3.ItemPage(data: d),",
+            "                () => notFound(state.uri),\n              ),\n            ),\n",
+        ],
+    );
+    assert!(!c.contains("builder: (context, state) =>"), "{c}");
+}
+
+/// The `transition.dart` import (`_iN`) a page's `pageBuilder` calls.
+fn transition_of(code: &str, class: &str) -> String {
+    let at = code.find(&format!(".{class}()")).unwrap_or_else(|| panic!("missing {class} in:\n{code}"));
+    let before = &code[..at];
+    let call = before.rfind(".transition(").unwrap();
+    let start = before[..call].rfind("_i").unwrap();
+    let ix = &before[start + 2..call];
+    let file = code.lines().find(|l| l.ends_with(&format!("as _i{ix};"))).unwrap();
+    file.trim_start_matches("import 'app/").split('\'').next().unwrap().to_string()
+}
+
+#[test]
+fn nearest_transition_wins() {
+    let c = code(&[
+        ("transition.dart", FADE),
+        ("page.dart", HOME),
+        ("admin/transition.dart", FADE),
+        ("admin/page.dart", &page("Admin")),
+        ("admin/users/page.dart", &page("Users")),
+        ("blog/page.dart", &page("Blog")),
+        ("(auth)/transition.dart", FADE),
+        ("(auth)/login/page.dart", &page("Login")),
+    ]);
+    for (class, from) in [
+        ("HomePage", "transition.dart"),
+        ("BlogPage", "transition.dart"),
+        // A folder's own transition covers its page and the routes below.
+        ("AdminPage", "admin/transition.dart"),
+        ("UsersPage", "admin/transition.dart"),
+        ("LoginPage", "(auth)/transition.dart"),
+    ] {
+        assert_eq!(transition_of(&c, class), from, "{class} in:\n{c}");
+    }
+}
+
+#[test]
+fn transition_in_a_group_leaves_other_routes_alone() {
+    let c = code(&[("page.dart", HOME), ("(auth)/transition.dart", FADE), ("(auth)/login/page.dart", &page("Login"))]);
+    has(&c, &["//   /       HomeRoute   page.dart\n", "(transition)", "builder: (context, state) => _i0.HomePage(),"]);
+    assert_eq!(c.matches("pageBuilder:").count(), 1, "{c}");
+    assert_eq!(transition_of(&c, "LoginPage"), "(auth)/transition.dart");
+}
+
+#[test]
+fn transition_params_are_filled_by_name_then_type() {
+    let c = code(&[
+        (
+            "transition.dart",
+            "CustomTransitionPage<void> transition(Widget page, LocalKey k, {GoRouterState? state, Duration? duration, bool slow = false}) => x;",
+        ),
+        ("page.dart", HOME),
+    ]);
+    has(&c, &["_i1.transition(\n          _i0.HomePage(),\n          state.pageKey,\n          state: state,\n        ),"]);
+    assert!(!c.contains("duration") && !c.contains("slow"), "{c}");
+
+    let c = code(&[
+        ("transition.dart", "Page<void> transition({required Widget child, required ValueKey<String> key}) => x;"),
+        ("page.dart", HOME),
+    ]);
+    has(&c, &["child: _i0.HomePage(),\n          key: state.pageKey,"]);
+}
+
+#[test]
+fn transition_errors() {
+    for (src, needle) in [
+        ("Widget transition(LocalKey key, Widget child) => child;", "transition.dart:1  transition() must return a Page, e.g. `Page<void>`"),
+        ("transition(LocalKey key, Widget child) => x;", "transition() must return a Page"),
+        ("Page<void> fade(LocalKey key, Widget child) => x;", "transition.dart  expected `Page<void> transition(LocalKey key, Widget child)`"),
+        (
+            "Page<void> transition(Widget child, Duration d) => x;",
+            "transition.dart:1  can't fill `d`: transition() gets `key`, `child` and `state`",
+        ),
+        ("Page<void> transition(LocalKey key) => x;", "transition.dart:1  transition() must take the page as `Widget child`"),
+    ] {
+        let e = diags(&[("transition.dart", src), ("page.dart", HOME)]).join("\n");
+        assert!(e.contains(needle), "missing `{needle}` in:\n{e}");
+    }
+}
+
+#[test]
+fn scaffold_writes_a_transition() {
+    let dir = project(&[("page.dart", HOME)]);
+    let args = scaffold::NewArgs {
+        route: "docs".into(),
+        name: None,
+        data: false,
+        loading: false,
+        error: false,
+        layout: false,
+        guard: false,
+        transition: true,
+    };
+    scaffold::new_route(dir.path(), &args).unwrap();
+    let t = fs::read_to_string(dir.path().join("lib/app/docs/transition.dart")).unwrap();
+    assert!(t.contains("Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);"), "{t}");
+    gen(dir.path(), true).expect("scaffolded transition should check cleanly");
+    let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    has(&code, &["(transition)", "pageBuilder: (context, state) => _i2.transition("]);
 }

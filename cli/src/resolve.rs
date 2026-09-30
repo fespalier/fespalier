@@ -6,7 +6,8 @@
 //! (`id` ← the `$id` segment, `child`, `error`, `retry`, `uri`, `data`), then by
 //! type (`Product product` ← what `data.dart` yields). Anything else that is
 //! nullable or a List of String/int/double/bool is a query parameter
-//! (`int? page` ← `?page=2`).
+//! (`int? page` ← `?page=2`). `transition()` is filled the same way: `key`,
+//! `child` and `state`.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -29,6 +30,10 @@ pub enum Bind {
     StackTrace,
     Retry,
     Uri,
+    /// A transition's page key: `state.pageKey`.
+    PageKey,
+    /// A transition's `GoRouterState`.
+    State,
 }
 
 #[derive(Debug, Clone)]
@@ -73,6 +78,14 @@ pub struct Data {
     pub record: bool,
 }
 
+/// A `transition()` function, applied to every page at or below its folder.
+#[derive(Debug, Clone)]
+pub struct Transition {
+    pub import: usize,
+    /// `Bind::Child` is the page as it would be built without a transition.
+    pub args: Vec<Arg>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Guard {
     pub import: usize,
@@ -96,6 +109,8 @@ pub struct Route {
     pub error: Option<Widget>,
     pub layout: Option<Widget>,
     pub guard: Option<Guard>,
+    /// The nearest transition.dart at or above this folder; only for pages.
+    pub transition: Option<Transition>,
     /// Query parameters any of this route's files ask for: (name, Dart type),
     /// the type being `T?` or `List<T>`.
     pub query: Vec<(String, String)>,
@@ -171,6 +186,7 @@ struct Inherited {
     url: Vec<Seg>,
     loading: Option<Fallback>,
     error: Option<Fallback>,
+    transition: Option<Transition>,
 }
 
 /// "Segment `$id` is `int`", as declared by one parameter somewhere.
@@ -256,6 +272,7 @@ impl Resolver<'_> {
             error: None,
             layout: None,
             guard: None,
+            transition: None,
             query: vec![],
             layout_query: vec![],
         });
@@ -315,7 +332,13 @@ impl Resolver<'_> {
         });
 
         // loading.dart / error.dart apply here and to every folder below.
-        let mut here = Inherited { segs: segs.clone(), url: url.clone(), loading: up.loading.clone(), error: up.error.clone() };
+        let mut here = Inherited {
+            segs: segs.clone(),
+            url: url.clone(),
+            loading: up.loading.clone(),
+            error: up.error.clone(),
+            transition: up.transition.clone(),
+        };
         for (kind, slot) in [(Kind::Loading, &mut here.loading), (Kind::Error, &mut here.error)] {
             if let Some(m) = modules.get(&kind) {
                 let file = node.rel(kind);
@@ -323,6 +346,10 @@ impl Resolver<'_> {
                     *slot = Some(Fallback { import: self.import(&file), class, file });
                 }
             }
+        }
+        // Likewise transition.dart, once for the whole subtree.
+        if let Some(m) = modules.get(&Kind::Transition) {
+            here.transition = self.transition(m, node).or(here.transition);
         }
         let (loading, error) = if data.is_some() {
             let covering = show_dir(&node.dir);
@@ -366,9 +393,10 @@ impl Resolver<'_> {
         }
 
         let has_page = page.is_some();
+        let transition = here.transition.clone().filter(|_| has_page);
         let r = &mut self.app.routes[id];
-        (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard) =
-            (segs, url, page, name, data, loading, error, layout, guard);
+        (r.segs, r.url, r.page, r.name, r.data, r.loading, r.error, r.layout, r.guard, r.transition) =
+            (segs, url, page, name, data, loading, error, layout, guard, transition);
 
         let mut children = vec![];
         let mut any_route = has_page;
@@ -653,6 +681,40 @@ impl Resolver<'_> {
         Some(Guard { import: self.import(&file), keys: in_path_order(keys, segs) })
     }
 
+    /// `Page<void> transition(LocalKey key, Widget child)`: parameters are
+    /// filled by name, then by type; other optional ones keep their default.
+    fn transition(&mut self, m: &Module, node: &Node) -> Option<Transition> {
+        let file = node.rel(Kind::Transition);
+        let Some(f) = m.functions.iter().find(|f| f.name == "transition") else {
+            self.diags.error(&file, None, "expected `Page<void> transition(LocalKey key, Widget child)`");
+            return None;
+        };
+        if !f.ret.as_ref().is_some_and(|r| r.generic().0.ends_with("Page")) {
+            self.diags.error(&file, Some(&f.span), "transition() must return a Page, e.g. `Page<void>`");
+            return None;
+        }
+        let mut args = vec![];
+        let mut positional_gap = false;
+        for p in &f.params {
+            let bind = if !p.named && positional_gap { None } else { transition_bind(p) };
+            let Some(bind) = bind else {
+                if p.required {
+                    let msg = format!("can't fill `{}`: transition() gets `key`, `child` and `state`", p.name);
+                    self.diags.error(&file, Some(&p.span), msg);
+                } else if !p.named {
+                    positional_gap = true;
+                }
+                continue;
+            };
+            args.push(Arg { name: p.name.clone(), named: p.named, bind });
+        }
+        if !args.iter().any(|a| a.bind == Bind::Child) {
+            self.diags.error(&file, Some(&f.span), "transition() must take the page as `Widget child`");
+            return None;
+        }
+        Some(Transition { import: self.import(&file), args })
+    }
+
     /// Every file that uses `$id` must agree on its type; nobody saying means String.
     fn settle_segment_types(&mut self) {
         let mut first: HashMap<usize, (String, String, usize)> = HashMap::new();
@@ -702,6 +764,22 @@ fn by_type(ty: &Ty, cx: &BindCx) -> Option<Bind> {
         (Role::NotFound, "Uri") => Some(Bind::Uri),
         _ => None,
     }
+}
+
+/// What a `transition()` parameter receives: `key`, `child` or `state`.
+fn transition_bind(p: &dart::Param) -> Option<Bind> {
+    let by_name = match p.name.as_str() {
+        "key" => Some(Bind::PageKey),
+        "child" => Some(Bind::Child),
+        "state" => Some(Bind::State),
+        _ => None,
+    };
+    by_name.or_else(|| match p.ty.as_ref()?.text.trim_end_matches('?') {
+        "LocalKey" | "ValueKey<String>" => Some(Bind::PageKey),
+        "Widget" => Some(Bind::Child),
+        "GoRouterState" => Some(Bind::State),
+        _ => None,
+    })
 }
 
 fn unfillable(name: &str, cx: &BindCx) -> String {

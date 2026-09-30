@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use serde::Serialize;
 
-use crate::resolve::{self, App, Bind, Data, Route};
+use crate::resolve::{self, App, Bind, Data, Route, Transition};
 use crate::diag::Diags;
 use crate::scan::{Kind, Seg};
 use crate::templates;
@@ -33,6 +33,7 @@ struct TreeCx {
     seg_fn: Option<String>,
     page: String,
     data: Option<ViewDataCx>,
+    transition: Option<TransitionCx>,
     routes: Vec<TreeCx>,
     /// Starts with a `:segment` (or, for a ShellRoute, holds a route that does).
     #[serde(skip)]
@@ -54,6 +55,33 @@ fn static_first(mut routes: Vec<TreeCx>) -> Vec<TreeCx> {
 struct CallCx {
     seg_fn: Option<String>,
     call: String,
+}
+
+/// `_i2.transition(...)`, with the page where `Bind::Child` goes.
+#[derive(Serialize)]
+struct TransitionCx {
+    call: String,
+    args: Vec<TransitionArgCx>,
+}
+
+#[derive(Serialize)]
+struct TransitionArgCx {
+    /// `child: ` for a named parameter.
+    prefix: String,
+    /// `None` for the page itself.
+    value: Option<String>,
+}
+
+fn transition_cx(t: &Transition) -> TransitionCx {
+    let args = t
+        .args
+        .iter()
+        .map(|a| TransitionArgCx {
+            prefix: if a.named { format!("{}: ", a.name) } else { String::new() },
+            value: (a.bind != Bind::Child).then(|| in_builder(&a.bind)),
+        })
+        .collect();
+    TransitionCx { call: format!("_i{}.transition", t.import), args }
 }
 
 #[derive(Serialize)]
@@ -152,6 +180,8 @@ fn in_builder(b: &Bind) -> String {
         Bind::StackTrace => "st".into(),
         Bind::Retry => "retry".into(),
         Bind::Uri => "uri".into(),
+        Bind::PageKey => "state.pageKey".into(),
+        Bind::State => "state".into(),
     }
 }
 
@@ -198,6 +228,7 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
                 seg_fn,
                 page: page.call(in_builder),
                 data,
+                transition: r.transition.as_ref().map(transition_cx),
                 routes,
                 dynamic: path.starts_with(':'),
                 serves: Some((r.url.clone(), rel(r, Kind::Page))),
@@ -222,6 +253,7 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, fns: &mut BTreeSet<P
             seg_fn: None,
             page: String::new(),
             data: None,
+            transition: None,
             dynamic: out.iter().any(|r| r.dynamic),
             serves: None,
             routes: out,
@@ -395,6 +427,9 @@ fn table(app: &App) -> Vec<String> {
             }
             if r.layout.is_some() {
                 tags.push("layout");
+            }
+            if r.transition.is_some() {
+                tags.push("transition");
             }
             let tags = if tags.is_empty() { String::new() } else { format!("  ({})", tags.join(", ")) };
             let name = format!("{}Route", r.name.as_deref().unwrap_or("?"));

@@ -31,6 +31,8 @@ pub struct NewArgs {
     pub layout: bool,
     #[arg(long)]
     pub guard: bool,
+    #[arg(long)]
+    pub transition: bool,
 }
 
 #[derive(Serialize)]
@@ -103,6 +105,7 @@ pub fn new_route(project: &Path, a: &NewArgs) -> Result<()> {
         ("error", a.error),
         ("layout", a.layout),
         ("guard", a.guard),
+        ("transition", a.transition),
     ];
     let dir = app_dir.join(&rel);
     fs::create_dir_all(&dir)?;

@@ -26,6 +26,13 @@ guardWithParams(
   (v) => {{ call }},
 )
 {%- endmacro %}
+{% macro with_transition(t, page) -%}
+{{ t.call }}(
+{% for a in t.args %}
+  {{ a.prefix }}{{ (a.value or page) | indent(2) }},
+{% endfor %}
+)
+{%- endmacro %}
 {% macro route(r) -%}
 {% if r.layout -%}
 ShellRoute(
@@ -42,7 +49,12 @@ GoRoute(
 {% if r.redirect %}
   redirect: (context, state) => {{ (guard_with_segments(r.redirect.seg_fn, r.redirect.call) if r.redirect.seg_fn else r.redirect.call) | indent(2) }},
 {% endif %}
-  builder: (context, state) => {{ (with_segments(r.seg_fn, view(r)) if r.seg_fn else view(r)) | indent(2) }},
+{% set page = with_segments(r.seg_fn, view(r)) if r.seg_fn else view(r) %}
+{% if r.transition %}
+  pageBuilder: (context, state) => {{ with_transition(r.transition, page) | indent(2) }},
+{% else %}
+  builder: (context, state) => {{ page | indent(2) }},
+{% endif %}
 {% if r.routes %}
   routes: [
 {% for c in r.routes %}

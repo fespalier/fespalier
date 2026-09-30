@@ -16,12 +16,21 @@ pub enum Kind {
     Error,
     Layout,
     Guard,
+    Transition,
     NotFound,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 7] =
-        [Kind::Page, Kind::Data, Kind::Loading, Kind::Error, Kind::Layout, Kind::Guard, Kind::NotFound];
+    pub const ALL: [Kind; 8] = [
+        Kind::Page,
+        Kind::Data,
+        Kind::Loading,
+        Kind::Error,
+        Kind::Layout,
+        Kind::Guard,
+        Kind::Transition,
+        Kind::NotFound,
+    ];
 
     pub fn file(self) -> &'static str {
         match self {
@@ -31,6 +40,7 @@ impl Kind {
             Kind::Error => "error.dart",
             Kind::Layout => "layout.dart",
             Kind::Guard => "guard.dart",
+            Kind::Transition => "transition.dart",
             Kind::NotFound => "not_found.dart",
         }
     }

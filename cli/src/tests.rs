@@ -82,11 +82,22 @@ fn example_app_generates_cleanly() {
 
 #[test]
 fn committed_output_is_up_to_date() {
-    for name in ["shop", "features", "tabs"] {
+    for name in ["shop", "features", "tabs", "minimal"] {
         // The examples' own pubspec.yaml: `output_manifest:` and `meta:` change what is written.
         let cfg = Config::load(&examples(name)).unwrap();
         let (code, diags, app) = crate::analyze(&examples(name).join("lib/app"), &cfg).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
+        // `format: true` (examples/minimal) commits the output as `dart format` leaves it. Without
+        // `dart` on PATH (the generator's CI job) there is nothing to compare it with: skip.
+        let code = if cfg.format {
+            let (formatted, warning) = crate::format::format_dart(&code, &examples(name).join(&cfg.output));
+            if warning.is_some() {
+                continue;
+            }
+            formatted
+        } else {
+            code
+        };
         let committed = fs::read_to_string(examples(name).join(&cfg.output)).unwrap_or_default();
         assert!(committed == code, "examples/{name}/{} is stale; run `fsp gen --project examples/{name}`", cfg.output);
         // A separate manifest library is checked in too.

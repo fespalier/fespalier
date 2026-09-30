@@ -2,9 +2,11 @@
 //
 // The SHA-256 of every `fsp` release archive of this package's version, pinned in the
 // package itself so `dart run fespalier` can tell a tampered release from a good one. The
-// release workflow fills this in and commits it; the release tag points at that commit.
-// Development builds (a version that has not been released yet) have no pins: `pinnedVersion`
-// is empty and the launcher falls back to the release's `.sha256` file.
+// `release-pins` workflow builds the binaries on the release-please PR, and commits this file
+// to that PR's branch; merging the PR tags that commit, so the tag carries its own pins.
+// A package whose version has no pins here (a development build, or a release PR before its
+// pin commit) falls back to the release's `.sha256` file: `pinnedVersion` is another version
+// or empty.
 
 /// The version [pinnedChecksums] belongs to, or `''` when nothing is pinned.
 const pinnedVersion = '0.3.0';

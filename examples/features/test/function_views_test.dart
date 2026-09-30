@@ -45,4 +45,9 @@ void main() {
     expect(const ProPlanRoute().location, '/pro');
     expect(const ProPlanRoute(coupon: 'SPRING').location, '/pro?coupon=SPRING');
   });
+
+  test('the manifest lists them under those names', () {
+    expect(AppManifest.byType[FreeRoute]?.path, '/free');
+    expect(AppManifest.byType[ProPlanRoute]?.path, '/pro');
+  });
 }

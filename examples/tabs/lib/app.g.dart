@@ -34,10 +34,12 @@ abstract final class AppRoutes {
   static GoRouter router({
     String initialLocation = '/',
     List<NavigatorObserver>? observers,
+    String? restorationScopeId,
   }) =>
       GoRouter(
         initialLocation: initialLocation,
         observers: observers,
+        restorationScopeId: restorationScopeId,
         routes: mount(),
         errorBuilder: (context, state) => notFound(state.uri),
       );
@@ -47,7 +49,12 @@ abstract final class AppRoutes {
     _base = at;
     return [
       StatefulShellRoute.indexedStack(
-        builder: (context, state, navigationShell) => _i1.TabsLayout(navigationShell: navigationShell),
+        pageBuilder: (context, state, navigationShell) => layoutPage(
+          context,
+          state,
+          'layout:(tabs)/',
+          _i1.TabsLayout(navigationShell: navigationShell),
+        ),
         branches: [
           StatefulShellBranch(
             routes: [
@@ -59,6 +66,7 @@ abstract final class AppRoutes {
                 ),
               ),
             ],
+            restorationScopeId: 'tab:(tabs)/(home)',
           ),
           StatefulShellBranch(
             preload: true,
@@ -71,6 +79,7 @@ abstract final class AppRoutes {
                 ),
               ),
             ],
+            restorationScopeId: 'tab:(tabs)/search',
           ),
           StatefulShellBranch(
             routes: [
@@ -91,12 +100,18 @@ abstract final class AppRoutes {
                 ],
               ),
             ],
+            restorationScopeId: 'tab:(tabs)/profile',
           ),
           StatefulShellBranch(
             initialLocation: joinLocation(at, '/library/authors'),
             routes: [
               StatefulShellRoute.indexedStack(
-                builder: (context, state, navigationShell) => _i3.LibraryLayout(navigationShell: navigationShell),
+                pageBuilder: (context, state, navigationShell) => layoutPage(
+                  context,
+                  state,
+                  'layout:(tabs)/library/',
+                  _i3.LibraryLayout(navigationShell: navigationShell),
+                ),
                 branches: [
                   StatefulShellBranch(
                     preload: true,
@@ -109,6 +124,7 @@ abstract final class AppRoutes {
                         ),
                       ),
                     ],
+                    restorationScopeId: 'tab:(tabs)/library/books',
                   ),
                   StatefulShellBranch(
                     routes: [
@@ -120,12 +136,16 @@ abstract final class AppRoutes {
                         ),
                       ),
                     ],
+                    restorationScopeId: 'tab:(tabs)/library/authors',
                   ),
                 ],
+                restorationScopeId: 'layout:(tabs)/library/',
               ),
             ],
+            restorationScopeId: 'tab:(tabs)/library',
           ),
         ],
+        restorationScopeId: 'layout:(tabs)/',
       ),
       GoRoute(
         path: joinLocation(at, '/settings'),

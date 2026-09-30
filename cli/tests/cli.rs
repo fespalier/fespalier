@@ -303,3 +303,95 @@ fn format_without_dart_warns_and_writes_unformatted() {
     assert!(err.contains("warning: not formatting") && err.contains("not on PATH"), "{err}");
     assert!(fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap().starts_with("// GENERATED"));
 }
+
+// --- route manifest ----------------------------------------------------------
+
+/// The shape of `fsp routes --json`, pinned: keys, their order and their values for
+/// a page in a group with a layout, a tab, a redirect and a meta.dart.
+#[test]
+fn routes_json_pins_the_manifest_fields() {
+    let dir = project();
+    let root = dir.path();
+    let write = |rel: &str, body: &str| {
+        let p = root.join("lib/app").join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, body).unwrap();
+    };
+    write("(buyer)/layout.dart", "class BuyerLayout extends StatelessWidget { const BuyerLayout({super.key, required this.child}); final Widget child; }");
+    write(
+        "(buyer)/products/$id/page.dart",
+        "class ProductPage extends StatelessWidget { const ProductPage({super.key, required this.id, this.tab, required this.data}); final int id; final String? tab; final Item data; }",
+    );
+    write("(buyer)/products/$id/data.dart", "Future<Item> data(Ref ref, {required int id}) async => x;");
+    write("(buyer)/products/$id/meta.dart", "const meta = PageMeta(code: 'B04');");
+    write("old/redirect.dart", "String redirect() => '/';");
+    write("(tabs)/layout.dart", "class TabsLayout extends StatelessWidget { const TabsLayout({super.key, required this.shell}); final StatefulNavigationShell shell; }");
+    write("(tabs)/one/page.dart", &page("OnePage"));
+    write("docs/$$rest/page.dart", "class DocsPage extends StatelessWidget { const DocsPage({super.key, required this.rest}); final List<String> rest; }");
+    write("files/$$$path/page.dart", "class FilesPage extends StatelessWidget { const FilesPage({super.key, required this.path}); final List<String> path; }");
+    let (ok, out, err) = fsp_full(root, &["routes", "--json"], &[]);
+    assert!(ok, "{err}");
+    let rows: Vec<&str> = out.lines().collect();
+    assert_eq!(rows.len(), 6, "{out}");
+    let row = |pattern: &str| {
+        rows.iter().find(|r| serde_json::from_str::<serde_json::Value>(r).unwrap()["pattern"] == pattern).unwrap().to_string()
+    };
+    // Key order is part of the shape (serde_json keeps it), so compare the text.
+    assert_eq!(
+        row("/products/:id"),
+        r#"{"pattern":"/products/:id","route":"ProductRoute","file":"lib/app/(buyer)/products/$id/page.dart","tags":["data"],"params":[{"name":"id","type":"int","in":"path"},{"name":"tab","type":"String?","in":"query"}],"folder":"(buyer)/products/$id","presentation":"page","groups":["(buyer)"],"layouts":["(buyer)"],"tabs":[],"data_keys":["id"],"meta":"lib/app/(buyer)/products/$id/meta.dart","catch_all":null}"#
+    );
+    assert_eq!(
+        row("/old"),
+        r#"{"pattern":"/old","route":"OldRoute","file":"lib/app/old/redirect.dart","tags":["redirect"],"params":[],"folder":"old","presentation":"redirect","groups":[],"layouts":[],"tabs":[],"data_keys":null,"meta":null,"catch_all":null}"#
+    );
+    assert_eq!(
+        row("/one"),
+        r#"{"pattern":"/one","route":"OneRoute","file":"lib/app/(tabs)/one/page.dart","tags":[],"params":[],"folder":"(tabs)/one","presentation":"page","groups":["(tabs)"],"layouts":["(tabs)"],"tabs":[{"layout":"(tabs)","index":0,"branch":"one"}],"data_keys":null,"meta":null,"catch_all":null}"#
+    );
+    // A catch-all is the last path parameter, a List<String>, and named in `catch_all`.
+    assert_eq!(
+        row("/docs/*rest"),
+        r#"{"pattern":"/docs/*rest","route":"DocsRoute","file":"lib/app/docs/$$rest/page.dart","tags":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"folder":"docs/$$rest","presentation":"page","groups":[],"layouts":[],"tabs":[],"data_keys":null,"meta":null,"catch_all":{"name":"rest","optional":false}}"#
+    );
+    let files: serde_json::Value = serde_json::from_str(&row("/files/*path?")).unwrap();
+    assert_eq!(files["catch_all"], serde_json::json!({"name": "path", "optional": true}));
+    // The app folder's own page has an empty folder.
+    let home: serde_json::Value = serde_json::from_str(&row("/")).unwrap();
+    assert_eq!(home["folder"], "");
+    assert_eq!(home["layouts"], serde_json::json!([]));
+}
+
+#[test]
+fn output_manifest_writes_a_second_library_that_check_knows_about() {
+    let dir = project();
+    let root = dir.path();
+    fs::write(root.join("pubspec.yaml"), "name: demo\nfespalier:\n  output_manifest: lib/app.routes.g.dart\n").unwrap();
+    assert_eq!(fsp(root, &["check"]), (true, "✓ 1 route, no errors\n".into()));
+    assert!(!root.join("lib/app.routes.g.dart").exists(), "check must not write");
+    assert_eq!(fsp(root, &["gen"]), (true, "✓ 1 route → lib/app.g.dart, lib/app.routes.g.dart\n".into()));
+    let manifest = fs::read_to_string(root.join("lib/app.routes.g.dart")).unwrap();
+    assert!(manifest.contains("abstract final class AppManifest {") && manifest.contains("import 'app.g.dart';"), "{manifest}");
+    assert!(!fs::read_to_string(root.join("lib/app.g.dart")).unwrap().contains("AppManifest"));
+    assert_eq!(fsp(root, &["gen"]), (true, "✓ 1 route, lib/app.g.dart, lib/app.routes.g.dart unchanged\n".into()));
+
+    // With `meta: required`, a route without a meta.dart is an error naming its folder.
+    fs::write(root.join("pubspec.yaml"), "name: demo\nfespalier:\n  meta: required\n").unwrap();
+    let (ok, err) = fsp(root, &["check"]);
+    assert!(!ok && err.contains("the app folder has no meta.dart") && err.contains("1 error(s)"), "{err}");
+    fs::write(root.join("lib/app/meta.dart"), "const meta = 'home';").unwrap();
+    assert_eq!(fsp(root, &["check"]), (true, "✓ 1 route, no errors\n".into()));
+}
+
+#[test]
+fn watch_ignores_a_manifest_file_inside_the_app_folder() {
+    let dir = project();
+    let root = dir.path();
+    fs::write(root.join("pubspec.yaml"), "name: demo\nfespalier:\n  output_manifest: lib/app/routes.g.dart\n").unwrap();
+    let w = Watch::start(root);
+    w.settle();
+    sleep(Duration::from_secs(1));
+    // Writing the manifest into the watched folder must not loop.
+    assert_eq!(w.lines(), 2, "{}", w.text());
+    assert!(root.join("lib/app/routes.g.dart").exists());
+}

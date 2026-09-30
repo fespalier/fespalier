@@ -26,6 +26,7 @@ lib/app/
       data.dart          Future<Product> data(Ref ref, {required int id})
       page.dart          ProductPage({required Product product})       → /products/:id
       error.dart         ProductError({required int id, required Object error, …})
+      meta.dart          const meta = PageMeta(code: 'B04', …)         (this route's facts, any const)
   checkout/
     guard.dart           GuardResult guard(ProviderContainer c)         (guards this and below)
     page.dart
@@ -229,6 +230,8 @@ fespalier:
   data_retry: inherit
   keep_previous: true
   file_style: snake
+  meta: optional            # `required`: every route needs a meta.dart
+  # output_manifest: lib/app.routes.g.dart   # no default: the manifest lives in `output`
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
@@ -236,6 +239,8 @@ fespalier:
 `data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
 [Retries and reloads](#retries-and-reloads). `file_style: kebab` makes `fsp init` and `fsp new`
 write `not-found.dart` instead of `not_found.dart` (see [File names](#file-names)).
+`meta: required` makes a route without a [`meta.dart`](#route-manifest-and-metadart) an error, and
+`output_manifest` writes the route manifest to a library of its own (same section).
 
 **Platform notes.**
 
@@ -271,7 +276,7 @@ that returns a widget. Function files export one top-level function.
 | File | Exports | Its constructor / signature can ask for |
 |---|---|---|
 | `page.dart` | a widget | segments; query; what `data.dart` yields; the navigation [`extra`](#typed-extra) |
-| `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data) | segments, query (named; a section's takes segments only) |
+| `data.dart` | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data) | segments, query (named; a section's takes segments only) |
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
 | `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside |
@@ -279,6 +284,7 @@ that returns a widget. Function files export one top-level function.
 | `redirect.dart` | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `ProviderContainer c` first | `uri`; segments; query (named) |
 | `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
 | `not_found.dart` | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
+| `meta.dart` | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart) | nothing: it is data |
 
 ### Function views
 
@@ -326,7 +332,8 @@ Named and positional parameters both work, and a binding error points at the par
   ```
 
   It must be an UpperCamelCase name (the route class is `<routeName>Route`), and it also
-  renames a class-form page's route. Two routes with the same name are an error that
+  renames a class-form page's route. The [route manifest](#route-manifest-and-metadart) lists the
+  route under this name, and `meta.dart` works beside a function page. Two routes with the same name are an error that
   suggests `routeName`.
 - **`export` isn't followed.** `page.dart` has to hold the function itself, so it stays the
   source of truth for the route.
@@ -424,7 +431,9 @@ requested location*, so an encoded slash (`/docs/a%2Fb/c` is `['a/b', 'c']`) sur
   keyed by the encoded path as one string (`restKey`) and `data()` gets the list back
   (`restParts`). `ref.watch(DocsRoute.data(restKey(rest)))` is what the route does; the
   typed `DocsRoute.watch(ref, rest: [...])` takes the list. A provider you write yourself
-  (`final data = FutureProvider.family<…>`) can't be keyed by a catch-all: use the function.
+  (`final data = FutureProvider.family<…>`) can't be keyed by a catch-all: use the function
+  or a [selector](#datadart-a-function-a-selector-or-a-provider), whose `data({required List<String> rest})`
+  gets the list back the same way.
 - `$$$rest` and a `page.dart` in the folder above would both serve `/docs`: an error. Use
   `$$rest` beside the page.
 
@@ -784,14 +793,59 @@ so the type must be reachable from `page.dart`'s own imports. The built-in `dart
 types need nothing. Only pages take an `extra`; go_router's `extra` isn't restored on web
 reloads unless you give the router an `extraCodec`.
 
-### `data.dart`: a function or a provider
+### `data.dart`: a function, a selector or a provider
 
-Write a function and fespalier wraps it in an autoDispose `FutureProvider` (or
-`StreamProvider` for a `Stream`). Or export a provider named `data` yourself:
+`data.dart` has three forms, told apart by what it exports:
+
+| You write | fespalier | Use it when |
+|---|---|---|
+| `Future<T> data(Ref ref, {…})` (or `Stream<T>`, or `T`) | wraps it in an autoDispose `FutureProvider` (`StreamProvider` for a `Stream`) | the data is fetched for this route only: the function is the fetch |
+| `ProviderListenable<AsyncValue<T>> data({…}) => productProvider(id)` | calls it and uses the provider it returns; nothing is wrapped | a provider for it already exists, above all a `riverpod_generator` one |
+| `final data = FutureProvider<T>(…)` (or `StreamProvider`, `AsyncNotifierProvider`, `StreamNotifierProvider`), type arguments spelled out | uses it as-is | you want to write the provider yourself (a notifier, `keepAlive`, `retry:`) and it belongs to this route |
+
+**Selecting a provider.** Don't write `Future<Product> data(Ref ref, …) => ref.watch(productProvider(id).future)`
+for a provider you have: that puts a second provider in front of the real one, and awaiting
+`.future` in it drops the error the real provider holds while it retries, so the route
+can't show `error.dart` during the retry window. Select the provider instead:
+
+```dart
+// lib/app/products/$productId/data.dart
+ProviderListenable<AsyncValue<ProductView>> data({required String productId}) =>
+    productProvider(productId);   // a generated family, a FutureProvider.family, ...
+```
+
+- **The return type is what says so.** `ProviderListenable<AsyncValue<T>>` with no `Ref`
+  parameter (the function returns the provider, it doesn't read one). `T` is what the
+  page's parameter is matched to by type, as with `Future<T>`. It's a syntax-only read of the
+  return type: a generated provider's own type, like `ProductFamily`, isn't resolved.
+  `ProviderListenable` comes from `package:fespalier/fespalier.dart`.
+- **Parameters are the function form's.** Named parameters are segments and query
+  parameters, keyed and typed exactly as in `data(Ref ref, {…})` below; any other parameter is
+  an error at that parameter. Positional parameters and a `Ref` are errors too.
+- **`XRoute.data` is the selected provider** (`ProductDetailRoute.data('x') ==
+  productProvider('x')`), and `watch`, `read`, `prefetch` and `refresh` all go to it. The
+  generated `DataView` watches it directly: no wrapper, no `.future` hop, one fetch per
+  navigation. `refresh` (and `error.dart`'s `retry`) invalidates the selected provider, and
+  `refresh` reads it again, so it runs once.
+- **The app's provider keeps its own `retry`, `keepAlive` and dependencies**, so
+  [`data_retry`](#retries-and-reloads) doesn't apply to it: it only configures the providers
+  fespalier creates. `keep_previous` does (it is about what the view shows). The app's
+  `ProviderScope(retry: …)` applies unless the provider sets its own.
+- **Refresh needs a provider, not just a listenable.** Watching only needs a
+  `ProviderListenable`, but invalidating needs the provider itself. The declared type stays
+  `ProviderListenable<AsyncValue<T>>`, the same for every kind of provider, and the runtime
+  checks what it gets (a `ProviderOrFamily` with a `.future`, which every
+  `FutureProvider`, `StreamProvider` and generated async provider is). Returning
+  something else, say `productProvider(id).select(…)`, builds and watches fine, but
+  `refresh` and `retry` throw a `StateError` that says to return the provider itself.
+- A section's `data.dart` can be a selector too (segments only).
+
+The other two: write a function and fespalier wraps it in an autoDispose
+`FutureProvider` (or `StreamProvider` for a `Stream`). Or export a provider named `data` yourself:
 `FutureProvider`, `StreamProvider`, `AsyncNotifierProvider` or `StreamNotifierProvider`,
 with its type arguments spelled out. It's used as-is.
 
-Either way, the route exposes it as `XRoute.data`, keyed by the segments and query
+In all three forms the route exposes it as `XRoute.data`, keyed by the segments and query
 parameters `data.dart` uses:
 
 | Parameters used | Provider | Watch it with |
@@ -937,6 +991,160 @@ class MembersPage extends StatelessWidget {
   `data.dart` beside a `page.dart` keeps feeding that page, so the folder that holds the
   section's layout mustn't have a page.
 
+### Route manifest and `meta.dart`
+
+The generator knows a lot about every route (its typed route, path, folder, groups and
+layouts, parameters), and only a person can write the rest (a stable review code, a page title,
+an analytics name). The manifest puts the first at runtime, next to the second.
+
+```dart
+final info = AppRoutes.byType[ProductRoute]!;   // or AppRoutes.byPath['/products/:id']
+info.path;      // '/products/:id'
+info.folder;    // r'(buyer)/products/$id'
+info.groups;    // ['(buyer)']
+info.meta;      // whatever lib/app/(buyer)/products/$id/meta.dart declares
+AppRoutes.all;  // every route, in the order of the table at the top of app.g.dart
+```
+
+`AppRoutes.all`, `byType` (typed-route class → info) and `byPath` (path template → info) are
+generated as `AppManifest`, a `const` list of `RouteInfo`s, and forwarded by `AppRoutes`.
+Each `RouteInfo<M>` has:
+
+| Field | |
+|---|---|
+| `type` | the typed-route class: `ProductRoute` |
+| `path` | the path template, without the mount point: `/products/:id`; a [catch-all](#catch-all-segments) is `/docs/*rest`, or `/files/*path?` when optional (as in `fsp routes`). Case-insensitive paths (`case_sensitive: false`) don't change it |
+| `folder` | the route's folder relative to the app folder: `(buyer)/products/$id` (empty for the app folder itself) |
+| `presentation` | `RoutePresentation.page`, or `.redirect` for a `redirect.dart` (`isRedirect`). Whether a page opens as a dialog or sheet is up to its `transition.dart` at runtime, so it isn't listed |
+| `groups` | the `(group)` folders above it, outermost first, parentheses included |
+| `layouts` | the folders of the layouts that wrap it, outermost first (`''` is the app folder's own layout) |
+| `segments`, `query` | `RouteParam(name, type)`: `('id', 'int')`, `('page', 'int?')`, `('tags', 'List<String>')`. A catch-all is the last segment, a `List<String>` with `catchAll: true` |
+| `tabs` | the tabs it sits in, outermost first: `RouteTab(layout, index, branch)`, where `branch` is the name `tabs` and `tabOptions` use (`.` for the layout's own page); empty outside tab layouts |
+| `dataKeys` | what its `data.dart` is keyed by; `null` without one |
+| `meta` | its `meta.dart`, as declared |
+
+**`meta.dart`.** Put `const meta = <any const expression>;` next to a `page.dart` (or
+`redirect.dart`), and the generator copies it into the manifest *by reference*
+(`meta: _i7.meta`), never re-spelling it. fespalier doesn't interpret it; use any type:
+
+```dart
+// lib/app/(buyer)/products/$id/meta.dart
+import 'package:my_app/page_meta.dart';
+
+const meta = PageMeta(code: 'B04', slug: 'product-detail', title: 'Product');
+```
+
+- **It is per route, not inherited.** A route gets its own folder's `meta.dart` or none, so
+  `photos/sort/` doesn't see `photos/meta.dart`. To share something (a role, say), keep it in
+  the group: `info.groups` already lists it.
+- **It must be `const`.** The manifest is a `const` list. A `meta` that is `final`, `var` or a
+  getter is an error at its declaration, and so is a `meta.dart` that declares no `meta`.
+  A `meta.dart` in a folder with no `page.dart` or `redirect.dart` is a warning: it describes no route.
+- **It can be required.** With `fespalier: { meta: required }` in `pubspec.yaml`, a route without a
+  `meta.dart` is an error that names its folder:
+  `` `products/$id/` has no meta.dart ``. fespalier never numbers, derives or defaults
+  anything in it: a review code is yours, and finding a duplicate is a few lines in a test over
+  `AppRoutes.all` and `metaAs`.
+- **Read it typed** with `info.metaAs<PageMeta>()` (null when the route has none, or it is
+  another type), or check `info.meta is PageMeta`. The list holds `RouteInfo<Object?>`.
+
+**A library of its own.** `meta.dart` files pull whatever they import into `app.g.dart`, and so into
+your app. To keep review-only metadata out of production code, write the manifest to a second
+file:
+
+```yaml
+fespalier:
+  output_manifest: lib/app.routes.g.dart
+```
+
+`app.g.dart` then has no manifest and no `meta.dart` import, and `lib/app.routes.g.dart` (which
+imports `app.g.dart` for the typed routes) holds `AppManifest` with the same `all`, `byType`
+and `byPath`. Import it only where you need it (tests, a review screen), and production code
+that imports `app.g.dart` alone never sees a `meta.dart`. `AppManifest` is the same name in both
+modes, so code that uses it doesn't change when you move the file; `AppRoutes.byType` exists
+only when the manifest is in `app.g.dart`. `fsp gen` writes both files, `fsp check` checks what
+either would say, `fsp watch` regenerates both, and both are committed like `app.g.dart` is
+(see `examples/tabs`).
+
+**Web tab titles.** A layout can read the route it is showing with
+`AppManifest.of(GoRouterState.of(context))` (null in a not-found view), and set the title of the
+browser tab with Flutter's `Title` widget. No meta schema is baked in: whatever your type
+calls it works.
+
+```dart
+// lib/app/layout.dart
+class AppLayout extends StatelessWidget {
+  const AppLayout({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final info = AppManifest.of(GoRouterState.of(context));
+    return Title(
+      title: info?.metaAs<PageMeta>()?.title ?? 'My app',
+      color: Theme.of(context).colorScheme.primary,
+      child: Scaffold(body: child),
+    );
+  }
+}
+```
+
+`AppManifest.of` looks the path up in `byPath` after taking `AppRoutes.base` off, so it also
+works under `AppRoutes.mount(at: '/shop')`, and for catch-all routes (go_router's `:rest(.+)` is
+matched to `*rest`, and an optional catch-all's bare path to its route). See `examples/features`, which does this and tests it.
+The same lookup gives analytics screen names (`info.path`, or a name in your meta) from a
+`NavigatorObserver`.
+
+**`fsp routes --json`** prints the same data, one object per route. Besides `pattern`, `route`,
+`file`, `tags` and `params` it has the manifest's fields, in this order (paths in `file` and `meta`
+are relative to the project root; `folder`, `layouts` and `tabs[].layout` to the app folder):
+
+```json
+{"pattern":"/products/:id","route":"ProductRoute","file":"lib/app/(buyer)/products/$id/page.dart","tags":["data"],"params":[{"name":"id","type":"int","in":"path"},{"name":"tab","type":"String?","in":"query"}],"folder":"(buyer)/products/$id","presentation":"page","groups":["(buyer)"],"layouts":["(buyer)"],"tabs":[],"data_keys":["id"],"meta":"lib/app/(buyer)/products/$id/meta.dart","catch_all":null}
+```
+
+`presentation` is `page` or `redirect`; `tabs` is `[{"layout":"(tabs)","index":0,"branch":"search"}]`
+for a route in a tab; `data_keys` and `meta` are `null` when the route has no `data.dart` or
+`meta.dart`. The meta itself is Dart, so JSON only says where it is. `catch_all` is
+`{"name":"rest","optional":false}` for a route that ends in a `$$rest` (or `$$$rest`, `"optional":true`)
+catch-all, else `null`; the catch-all is also in `params` as a `List<String>` path parameter.
+
+### State restoration
+
+Pass a scope id to the router, and give the app one too, and Flutter saves what the user was
+doing when the OS kills the app, and puts it back on the next launch:
+
+```dart
+MaterialApp.router(
+  restorationScopeId: 'app',
+  routerConfig: AppRoutes.router(restorationScopeId: 'router'),
+);
+```
+
+Without the ids nothing changes. With them, the location comes back (also for routes deep in
+a stack), and so does everything below:
+
+- **Tabs.** Each tab layout and each of its tabs gets a stable `restorationScopeId` from its
+  folder (`layout:(tabs)/`, `tab:(tabs)/search`; `.` is the layout's own page), so the selected
+  tab *and* the stack of every tab you visited are restored, nested tab layouts included.
+- **Layouts.** A plain layout's Navigator gets one too (`layout:(account)/`).
+- **Pages.** What a page keeps in a `RestorationMixin` (a `RestorableInt` for a form field or a
+  scroll offset) comes back if the page has a `restorationId`. go_router's own pages have
+  one; the ones `Transitions.*` build take it from the page key; a `Page` you build in a
+  `transition.dart` should pass `restorationId: key.value` too (or its state won't be restored).
+
+The reason layouts need generated pages: go_router keys the page of a `ShellRoute` or
+`StatefulShellRoute` by the route object's `hashCode` and uses it as the restoration id, which
+changes on every launch, so nothing under it can be found again. The generated router builds
+these pages with `layoutPage(...)`, with an id from the layout's folder instead. It's a
+Material page (a Cupertino one inside a `CupertinoApp`); a layout's page is not where a
+route transition happens, so this changes nothing you see.
+
+Ids come from folder names, so renaming a folder drops what was saved under the old one, once.
+`examples/tabs/test/restoration_test.dart` restores the selected tab, a background tab's stack
+and a page's `RestorableInt` with `tester.restartAndRestore()`. Build the router in a
+`State`, not a `final`, in such a test: a router remembers where it went.
+
 ## The generator
 
 `cli/` is a Rust binary, `fsp`. A full scan, check and emit of an example runs in a few
@@ -980,11 +1188,12 @@ route class, its `page.dart` and its tags (`data`, `guard`, `layout`, `transitio
 /products/:id  ProductRoute   products/$id/page.dart  (data, transition)
 ```
 
-With `--json` it prints one JSON object per line, for scripts and editors, and adds each
-route's parameters; `file` is relative to the project root:
+With `--json` it prints one JSON object per line, for scripts and editors, with each
+route's parameters and the [manifest](#route-manifest-and-metadart)'s fields; `file` is relative to
+the project root:
 
 ```json
-{"pattern":"/products/:id","route":"ProductRoute","file":"lib/app/products/$id/page.dart","tags":["data","transition"],"params":[{"name":"id","type":"int","in":"path"}]}
+{"pattern":"/products/:id","route":"ProductRoute","file":"lib/app/products/$id/page.dart","tags":["data","transition"],"params":[{"name":"id","type":"int","in":"path"}],"folder":"products/$id","presentation":"page","groups":[],"layouts":[],"tabs":[],"data_keys":["id"],"meta":null,"catch_all":null}
 ```
 
 **`--json` diagnostics.** `fsp gen --json` and `fsp check --json` print each diagnostic to
@@ -1018,7 +1227,7 @@ pubspec. `fsp check` writes and compares nothing, so it never runs `dart`.
 What the commands print:
 
 - `fsp gen`: `✓ 12 routes → lib/app.g.dart`, or `✓ 12 routes, lib/app.g.dart unchanged`
-  when the output didn't change.
+  when the output didn't change (with `output_manifest`, both files are named).
 - `fsp check`: `✓ 12 routes, no errors`.
 - `fsp watch`: the `gen` line once at startup, then a line each time a save changes
   `lib/app.g.dart`. An edit that doesn't (a widget's `build` method, say) prints nothing.
@@ -1094,7 +1303,14 @@ counter that survives switching tabs, `tabOptions`, and a full-screen route outs
 returns to where you were), a second guard below it that runs after the first, two
 `redirect.dart` routes (`/old-shops/:shop`, `/old-search`), and `/photos`, with a dialog
 route (`/photos/:id`), a bottom sheet (`/photos/sort`) and a full-screen dialog
-(`/photos/upload`) opening over it.
+(`/photos/upload`) opening over it. Some of its routes have a `meta.dart` (`PageMeta`), which
+its root layout reads through the route manifest to set the page title, and its tests join a
+review-code check on `AppRoutes.all`.
+
+`examples/tabs` also keeps its manifest in a library of its own (`output_manifest:
+lib/app.routes.g.dart`, with `Review` metas that `lib/main.dart` never imports), and its tests
+restore the selected tab, a background tab's stack and a page's state after a simulated
+restart.
 
 ## Development
 
@@ -1248,13 +1464,12 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 194 tests (177 unit, 13 CLI integration, 4 version checks) cover parsing, every binding rule and contract error, query
-  parameters, `(group)` folders and route order, tab layouts, transitions, both data
+- **Generator:** 263 tests (237 unit, 21 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+  parameters, `(group)` folders and route order, tab layouts, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects,
-  scaffolding, and that the committed outputs are up to date. Clippy is clean.
+  scaffolding, the route manifest, meta.dart and restoration ids, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 182 Flutter tests (the package 84, `shop` 23,
-  `features` 63, `tabs` 12); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 232 Flutter tests (the package 100, `shop` 23, `features` 92, `tabs` 17); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

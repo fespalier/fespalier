@@ -12,6 +12,7 @@ use crate::config::{Config, DataRetry};
 use crate::resolve::{self, App, Bind, Branch, Data, Guard, Route, Transition};
 use crate::dart::Span;
 use crate::diag::Diags;
+use crate::manifest::{self, ManifestCx};
 use crate::scan::{Kind, Seg};
 use crate::templates;
 
@@ -27,6 +28,8 @@ struct FileCx {
     routes: Vec<RouteCx>,
     params_fns: Vec<ParamsFnCx>,
     providers: Vec<ProviderCx>,
+    /// The route manifest, unless `output_manifest:` moves it to its own library.
+    manifest: Option<ManifestCx>,
     /// `import '...' show Product;` lines for the types of typed `extra`s.
     extra_imports: Vec<String>,
     /// Whether routes match paths by case.
@@ -78,10 +81,12 @@ struct BranchCx {
     /// A Dart expression: the app location joined to the mount point.
     initial_location: Option<String>,
     preload: bool,
+    /// A Dart string literal: the tab's Navigator scope, from its folder.
+    restoration_id: String,
 }
 
 /// `'it\'s'`: a Dart string literal for `s`.
-fn dart_str(s: &str) -> String {
+pub fn dart_str(s: &str) -> String {
     let mut out = String::from("'");
     for c in s.chars() {
         if matches!(c, '\'' | '\\' | '$') {
@@ -116,6 +121,8 @@ struct LayoutCx {
     page: String,
     data: Option<ViewDataCx>,
     not_found: String,
+    /// The Navigator's `restorationScopeId`, from the layout's folder.
+    restoration_id: String,
 }
 
 /// A not_found.dart below the root: its URL prefix (`['products', ':id']`) and widget.
@@ -155,6 +162,9 @@ fn transition_cx(t: &Transition) -> TransitionCx {
 #[derive(Serialize)]
 struct ViewDataCx {
     provider: String,
+    /// A statement that invalidates it: `ref.invalidate(p)`, or through the runtime
+    /// helper when `data.dart` selects a provider (see `invalidateSelected`).
+    invalidate: String,
     loading: String,
     error: String,
 }
@@ -187,6 +197,9 @@ struct TypedDataCx {
     keyed: String,
     expr: String,
     verb: &'static str,
+    /// `data.dart` selects a provider: the typed helpers go through the runtime's
+    /// `readSelected`, `prefetchSelected` and `refreshSelected`.
+    selector: bool,
     key: String,
     /// `, {required int id, int? page}`: the keys as named parameters of the static
     /// `watch` and `read`, whose types are inferred from the provider.
@@ -229,6 +242,9 @@ struct ProviderCx {
     call: String,
     /// `data_retry: none`: the provider opts out of Riverpod's retry.
     no_retry: bool,
+    /// `data.dart` selects a provider: `_dataN` returns it (or is it, with no keys),
+    /// and nothing is wrapped.
+    selector: bool,
 }
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
@@ -236,10 +252,19 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let tree = routes_of(app, 0, true, "", &[], &mut fns);
     check_order(&tree, diags);
     check_tab_starts(&tree, diags);
+    // With no `output_manifest:` the manifest lives here, and imports its meta.dart files here.
+    let (manifest, metas) = match cfg.output_manifest {
+        None => {
+            let (m, metas) = manifest::cx(app, app.imports.len());
+            (Some(m), metas)
+        }
+        Some(_) => (None, vec![]),
+    };
     let cx = FileCx {
         app_dir: cfg.app_dir.clone(),
         table: table(app),
-        imports: app.imports.iter().map(|rel| cfg.import_path(&rel.replace('$', "\\$"))).collect(),
+        imports: app.imports.iter().chain(&metas).map(|rel| cfg.import_path(&rel.replace('$', "\\$"))).collect(),
+        manifest,
         tree,
         not_found: match &app.not_found {
             Some(w) => w.call(|_| "uri".into()),
@@ -348,6 +373,19 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize],
     out
 }
 
+/// A folder as restoration ids spell it: `(tabs)/`, or `/` for the app folder.
+fn folder_id(dir: &str) -> String {
+    if dir.is_empty() { "/".into() } else { format!("{dir}/") }
+}
+
+/// A tab as `tabs` names it: its folder's name, or `.` for the layout's own page.
+fn branch_name(app: &App, b: Branch) -> String {
+    match b {
+        Branch::Own => ".".into(),
+        Branch::Folder(c) => app.routes[c].dir.rsplit('/').next().unwrap_or_default().to_string(),
+    }
+}
+
 /// The route for the path above an optional catch-all: it serves that URL, not the folder's.
 fn without_catch_all(mut t: TreeCx, r: &Route) -> TreeCx {
     if let (Some((_, file, span)), Some((_, parent))) = (t.serves.take(), r.url.split_last()) {
@@ -372,10 +410,12 @@ fn layout_cx(app: &App, id: usize, layout: &resolve::Widget, fns: &mut BTreeSet<
         ParamsFn::Layout(id).name()
     });
     LayoutCx {
+        restoration_id: dart_str(&format!("layout:{}", folder_id(&r.dir))),
         seg_fn,
         page: wrapped,
         data: section.map(|d| ViewDataCx {
             provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+            invalidate: invalidate_expr(app, id, r, d),
             loading: r.loading.as_ref().map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
             error: r.error.as_ref().map_or("DefaultError(error: e, retry: retry)".into(), |w| w.call(in_builder)),
         }),
@@ -494,6 +534,7 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
     let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
     let data = r.data.as_ref().map(|d| ViewDataCx {
         provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+        invalidate: invalidate_expr(app, id, r, d),
         loading: r.loading.as_ref().map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
         error: r.error.as_ref().map_or("DefaultError(error: e, retry: retry)".into(), |w| w.call(in_builder)),
     });
@@ -573,6 +614,7 @@ fn tab_routes(
                 .and_then(|o| o.initial_location.as_ref())
                 .map(|l| format!("joinLocation(at, {})", dart_str(l))),
             preload: options.get(i).is_some_and(|o| o.preload),
+            restoration_id: dart_str(&format!("tab:{}{}", folder_id(&app.routes[id].dir), branch_name(app, *b))),
         })
         .filter(|b| !b.routes.is_empty())
         .collect();
@@ -690,6 +732,13 @@ fn check_tab_starts(tree: &[TreeCx], diags: &mut Diags) {
     }
 }
 
+/// `ref.invalidate(<provider>)`. A selected provider is only known as a
+/// `ProviderListenable`, so the runtime checks that it is one.
+fn invalidate_expr(app: &App, id: usize, r: &Route, d: &Data) -> String {
+    let provider = format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v."));
+    format!("ref.{}({provider})", if d.selector { "invalidateSelected" } else { "invalidate" })
+}
+
 fn provider_expr(id: usize, d: &Data) -> String {
     if d.provider { format!("_i{}.data", d.import) } else { format!("_data{id}") }
 }
@@ -706,6 +755,8 @@ fn list_keys(app: &App, r: &Route, d: &Data) -> Vec<String> {
     if d.provider {
         return vec![];
     }
+    // A selector's function takes a plain `List` too; a `QueryList` is one, and it gives
+    // the app's family the value equality a list key needs.
     let rest = catch_alls(app, r);
     app.url_params(r)
         .into_iter()
@@ -754,6 +805,7 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
             keyed,
             expr: provider_expr(id, d),
             verb: if d.stream { "Restarts" } else { "Re-runs" },
+            selector: d.selector,
             key: key_expr(app, r, d, ""),
             args: keyed_params(app, r, d),
         }
@@ -874,10 +926,12 @@ fn key_arg(rest: &[String], name: &str, value: &str) -> String {
     if rest.iter().any(|q| q == name) { format!("restParts({value})") } else { value.into() }
 }
 
-/// The provider fespalier wraps around a `data()` function.
-fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx> {
-    let d = r.data.as_ref().filter(|d| !d.provider)?;
-    // A list key is a `QueryList` (see `list_keys`); `data()` still takes a `List`.
+/// The parameters a `data()` provider is keyed by, as its `create` function takes them
+/// (without the `Ref`), and the named arguments to hand on to `data()`.
+///
+/// A list key is a `QueryList` (see `list_keys`); `data()` still takes a `List`. A catch-all
+/// key is its path as one string (see `key_expr`), taken apart again for `data()`.
+fn key_params(app: &App, r: &Route, d: &Data) -> (String, Vec<String>) {
     let types: Vec<(String, String)> = app
         .url_params(r)
         .into_iter()
@@ -887,20 +941,31 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
             (n, t)
         })
         .collect();
-    // A catch-all key is its path as one string (see `key_expr`), taken apart again for `data()`.
     let rest = catch_alls(app, r);
-    let (params, args) = match (types.as_slice(), d.record) {
-        ([], _) => ("Ref ref".to_string(), vec![]),
-        ([(n, t)], false) => (format!("Ref ref, {} {n}", key_ty(&rest, n, t)), vec![format!("{n}: {}", key_arg(&rest, n, n))]),
+    match (types.as_slice(), d.record) {
+        ([], _) => (String::new(), vec![]),
+        ([(n, t)], false) => (format!("{} {n}", key_ty(&rest, n, t)), vec![format!("{n}: {}", key_arg(&rest, n, n))]),
         (many, _) => {
             let fields: Vec<String> = many.iter().map(|(n, t)| format!("{} {n}", key_ty(&rest, n, t))).collect();
             (
-                format!("Ref ref, ({{{}}}) k", fields.join(", ")),
+                format!("({{{}}}) k", fields.join(", ")),
                 many.iter().map(|(n, _)| format!("{n}: {}", key_arg(&rest, n, &format!("k.{n}")))).collect(),
             )
         }
+    }
+}
+
+/// The provider fespalier wraps around a `data()` function, or for a selector the
+/// function that picks the app's own provider (`_dataN(keys) => data(keys)`; just the
+/// provider with no keys). Nothing of ours sits between the route and that provider.
+fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx> {
+    let d = r.data.as_ref().filter(|d| !d.provider)?;
+    let (keys, args) = key_params(app, r, d);
+    let (params, mut call_args) = if d.selector {
+        (keys, vec![])
+    } else {
+        (if keys.is_empty() { "Ref ref".to_string() } else { format!("Ref ref, {keys}") }, vec!["ref".to_string()])
     };
-    let mut call_args = vec!["ref".to_string()];
     call_args.extend(args);
     Some(ProviderCx {
         id,
@@ -908,7 +973,8 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
         family: !d.keys.is_empty(),
         params,
         call: format!("_i{}.data({})", d.import, call_args.join(", ")),
-        no_retry: cfg.data_retry == DataRetry::None,
+        no_retry: !d.selector && cfg.data_retry == DataRetry::None,
+        selector: d.selector,
     })
 }
 

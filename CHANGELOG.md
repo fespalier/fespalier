@@ -70,6 +70,28 @@
   a shorter description and `example/README.md`). New `Publish to pub.dev` workflow: publishes
   through GitHub OIDC automated publishing when run from the `v<version>` tag.
 
+### `data.dart` can select a provider you already have
+
+- **New third `data.dart` form: a selector.**
+  `ProviderListenable<AsyncValue<ProductView>> data({required String productId}) => productProvider(productId);`
+  is recognised by its return type (and no `Ref` parameter). Its named parameters are segments
+  and query parameters exactly as in the function form (any other parameter is an error at
+  it), and `T` from `AsyncValue<T>` is what a page's parameter is bound to by type. Nothing is
+  wrapped: `XRoute.data` is the selected provider (`ProductDetailRoute.data('x') ==
+  productProvider('x')`), `DataView` watches it directly, and `watch`, `read`, `prefetch` and
+  `refresh` target it, so a `riverpod_generator` provider is fetched once per navigation, keeps
+  its own `retry`, `keepAlive` and dependencies, and keeps the error it holds while it retries.
+  `data_retry` doesn't apply to it. `refresh` and `error.dart`'s retry invalidate the selected
+  provider (`refresh` also reads it, so it runs once) through new runtime helpers,
+  `invalidateSelected`, `refreshSelected` and `readSelected` on `WidgetRef`, which check at
+  run time that the listenable is a provider and throw a `StateError` naming the fix if not.
+  Regenerate `app.g.dart` (the generated `DataView` calls `invalidateSelected` for selectors).
+- `package:fespalier/fespalier.dart` re-exports `ProviderListenable`; `prefetchData` takes any
+  `ProviderListenable<AsyncValue<…>>`.
+- A selector can be keyed by a catch-all segment like the function form: the key is the
+  encoded path (`restKey`) and the selector function gets the `List<String>` back (`restParts`).
+- README: `data.dart` has three forms now, with when to use each.
+
 ### Paths
 
 - **Catch-all segments.** A folder `$$rest` matches one or more remaining segments and
@@ -95,6 +117,7 @@
   the URL alone can't produce it, so a deep link or a reload gets `null`. The generated file
   imports the type by name (`show`) from `page.dart`'s imports, the one place it names one of
   your types. Runtime: `extraOf<T>(state)`. New reserved name: `extra` can't be a segment.
+
 ### `dart run fespalier`: pinned checksums, offline, "generate, don't commit"
 
 - **Checksums are pinned inside the package.** `lib/src/release_checksums.dart` holds the
@@ -117,6 +140,43 @@
 - README: a "Generate, don't commit" mode (gitignore `lib/app.g.dart`, run
   `dart run fespalier gen` before `flutter analyze` in CI; the generator follows
   `pubspec.lock`), next to the committed mode with `fsp check`, which still writes nothing.
+
+### Route manifest and metadata
+
+- A generated route manifest: `AppRoutes.all`, `byType` (typed-route class) and `byPath` (path
+  template), a `const` list of `RouteInfo`s (`AppManifest`) with each route's typed route,
+  path, folder, `(group)` chain, layout chain, `page` or `redirect` presentation, segment and
+  query parameters (name and Dart type), tab membership (`RouteTab`), `data.dart` keys and
+  `meta`. `AppManifest.of(GoRouterState.of(context))` gives the route a layout is showing,
+  e.g. for the web tab title with Flutter's `Title` (see the README; `examples/features`).
+- `meta.dart` per folder: `const meta = <any const expression>;` is copied into the manifest
+  by reference (`_iN.meta`), untyped. It belongs to its own route (not inherited), and a
+  `meta` that isn't `const`, a `meta.dart` without one, or one declared twice is an error at the
+  declaration. `fespalier: { meta: required }` makes a route without one an error naming its
+  folder.
+- `fespalier: { output_manifest: lib/app.routes.g.dart }` writes the manifest to a library
+  of its own, importing `app.g.dart` for the typed routes, so production code that imports
+  `app.g.dart` alone never imports a `meta.dart`. `gen`, `check` and `watch` handle both files,
+  and the success line names both; `examples/tabs` uses it.
+- `fsp routes --json` adds `folder`, `presentation`, `groups`, `layouts`, `tabs`, `data_keys` and
+  `meta` (the route's meta.dart, or null) and `catch_all` to each object; the shape is documented and
+  pinned by a test. A catch-all segment is a `List<String>` `RouteParam` with `catchAll: true`, and
+  `AppManifest.of` finds the route for it (and for an optional catch-all's bare path).
+
+### State restoration
+
+- `AppRoutes.router(restorationScopeId: ...)` passes the id to `GoRouter`. Tab layouts and
+  their branches (and plain layouts) get a stable `restorationScopeId` from their folder, and
+  a layout's page is built by the runtime's new `layoutPage`, with a restoration id from the
+  folder: go_router keys shell pages by the route's `hashCode`, which changes on every launch,
+  so the tabs and their stacks were never found again. The selected tab, each visited tab's
+  stack and a page's `RestorableProperty`s survive `tester.restartAndRestore()`
+  (`examples/tabs/test/restoration_test.dart`).
+- The pages `Transitions.*` build take their `restorationId` from the page key, so what a
+  page keeps in a `RestorationMixin` is restored too. A `Page` you write in a `transition.dart`
+  should pass `restorationId: key.value`.
+- Layouts are now built as `pageBuilder` pages (`layoutPage`: a Material page, or a Cupertino
+  one in a `CupertinoApp`) instead of `builder`. Regenerate `lib/app.g.dart`.
 
 ## 0.2.0 — 2026-09-30
 

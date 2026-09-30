@@ -2,7 +2,16 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+/// The restoration id of the page built for [key]: go_router's page keys are
+/// `ValueKey<String>`s, and its own pages use the key's value, so these do too.
+/// Without one, a page's state is not restored after the app is killed.
+String? _restorationId(LocalKey key) => key is ValueKey<String> ? key.value : null;
+
 /// Ready-made pages for `transition.dart`.
+///
+/// Every page gets a `restorationId` from its key, which is what lets what a
+/// page keeps in a `RestorationMixin` survive state restoration. A `Page` you
+/// build yourself should pass `restorationId: key.value` too.
 abstract final class Transitions {
   /// Cross-fades the page in and out.
   static Page<void> fade(
@@ -12,6 +21,7 @@ abstract final class Transitions {
   }) =>
       CustomTransitionPage<void>(
         key: key,
+        restorationId: _restorationId(key),
         child: child,
         transitionDuration: duration,
         reverseTransitionDuration: duration,
@@ -38,6 +48,7 @@ abstract final class Transitions {
     };
     return CustomTransitionPage<void>(
       key: key,
+      restorationId: _restorationId(key),
       child: child,
       transitionDuration: duration,
       reverseTransitionDuration: duration,
@@ -53,15 +64,15 @@ abstract final class Transitions {
 
   /// Swaps pages instantly, without any animation.
   static Page<void> none(LocalKey key, Widget child) =>
-      NoTransitionPage<void>(key: key, child: child);
+      NoTransitionPage<void>(key: key, restorationId: _restorationId(key), child: child);
 
   /// The platform-default Material page transition.
   static Page<void> material(LocalKey key, Widget child) =>
-      MaterialPage<void>(key: key, child: child);
+      MaterialPage<void>(key: key, restorationId: _restorationId(key), child: child);
 
   /// The iOS-style Cupertino page transition (slide plus edge-swipe back).
   static Page<void> cupertino(LocalKey key, Widget child) =>
-      CupertinoPage<void>(key: key, child: child);
+      CupertinoPage<void>(key: key, restorationId: _restorationId(key), child: child);
 
   /// A route that opens as a Material dialog over the previous page.
   ///
@@ -86,6 +97,7 @@ abstract final class Transitions {
     AnimationStyle? animationStyle,
   }) => _DialogPage(
     key: key,
+    restorationId: _restorationId(key),
     child: child,
     barrierDismissible: barrierDismissible,
     barrierColor: barrierColor,
@@ -115,6 +127,7 @@ abstract final class Transitions {
     AnimationStyle? animationStyle,
   }) => _SheetPage(
     key: key,
+    restorationId: _restorationId(key),
     child: child,
     isScrollControlled: isScrollControlled,
     showDragHandle: showDragHandle,
@@ -130,12 +143,18 @@ abstract final class Transitions {
   /// A full-screen page that slides up from the bottom, with a close button
   /// in its `AppBar` (a Material page with `fullscreenDialog: true`).
   static Page<void> fullscreenDialog(LocalKey key, Widget child) =>
-      MaterialPage<void>(key: key, child: child, fullscreenDialog: true);
+      MaterialPage<void>(
+        key: key,
+        restorationId: _restorationId(key),
+        child: child,
+        fullscreenDialog: true,
+      );
 }
 
 class _DialogPage extends Page<void> {
   const _DialogPage({
     super.key,
+    super.restorationId,
     required this.child,
     required this.barrierDismissible,
     required this.barrierColor,
@@ -175,6 +194,7 @@ class _DialogPage extends Page<void> {
 class _SheetPage extends Page<void> {
   const _SheetPage({
     super.key,
+    super.restorationId,
     required this.child,
     required this.isScrollControlled,
     required this.showDragHandle,

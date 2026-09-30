@@ -414,3 +414,30 @@ fn new_not_found_follows_file_style() {
     assert!(e.contains("nothing to create"), "{e}");
     assert!(!dir.path().join("lib/app/shop/not_found.dart").exists());
 }
+
+// --- with the manifest and meta.dart ---------------------------------------------------
+
+#[test]
+fn the_manifest_lists_function_routes_under_their_route_names() {
+    let dir = project(&[
+        ("page.dart", HOME),
+        ("(kyc)/shop/name/page.dart", "Widget page() => const Text('shop');"),
+        ("(kyc)/shop/name/meta.dart", "const meta = <String>['kyc'];"),
+        ("(kyc)/person/name/page.dart", "const routeName = 'KycPersonName';\nWidget page({String? back}) => Text('$back');"),
+        ("orders/$orderId/page.dart", "Widget page({required int orderId}) => Text('$orderId');"),
+    ]);
+    let cfg = Config::default();
+    let (code, diags, app) = crate::analyze(&dir.path().join("lib/app"), &cfg).unwrap();
+    assert!(diags.0.is_empty(), "{:?}", diags.0);
+    let manifest = crate::manifest::emit(&app, &cfg).unwrap_or(code);
+    has(
+        &manifest,
+        &[
+            // The default name (groups ignored) and the routeName override, as the typed routes are named.
+            "type: ShopNameRoute,\n      path: '/shop/name',\n      folder: '(kyc)/shop/name',\n      groups: ['(kyc)'],",
+            "type: KycPersonNameRoute,\n      path: '/person/name',\n      folder: '(kyc)/person/name',\n      groups: ['(kyc)'],\n      query: [RouteParam('back', 'String?')],",
+            "type: OrdersOrderIdRoute,\n      path: '/orders/:orderId',\n      folder: 'orders/\\$orderId',\n      segments: [RouteParam('orderId', 'int')],",
+            "meta: _i",
+        ],
+    );
+}

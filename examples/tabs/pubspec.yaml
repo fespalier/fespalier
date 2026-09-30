@@ -19,5 +19,10 @@ dev_dependencies:
   # flutter's; the tests nest both so they pass on either.
   material_ui: ^1.0.0
 
+# The route manifest and its meta.dart files go in a library of their own, so
+# lib/main.dart (which only needs the router) never imports them.
+fespalier:
+  output_manifest: lib/app.routes.g.dart
+
 flutter:
   uses-material-design: true

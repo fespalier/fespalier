@@ -76,6 +76,8 @@ pub struct Variable {
     /// Set when the initializer is a map from string literals to constructor
     /// calls, like `const tabOptions = {'search': TabOptions(preload: true)};`.
     pub objects: Option<Vec<ObjectEntry>>,
+    /// Declared with `const` (not `final`, `var` or `late`).
+    pub is_const: bool,
     pub span: Span,
 }
 
@@ -358,6 +360,7 @@ impl Reader<'_> {
 
     fn variables(&self, n: Node) -> Vec<Variable> {
         let mut out = vec![];
+        let is_const = n.children(&mut n.walk()).any(|k| k.kind() == "const");
         let mut cur = n.walk();
         for list in n.named_children(&mut cur) {
             let mut c2 = list.walk();
@@ -368,7 +371,7 @@ impl Reader<'_> {
                 let strings = value.and_then(|v| self.strings(v));
                 let objects = value.and_then(|v| self.objects(v));
                 let string = value.filter(|v| v.kind() == "string_literal").and_then(|v| string_value(self.text(v)));
-                out.push(Variable { name: self.text(name).to_string(), call, strings, string, objects, span: Span::of(name) });
+                out.push(Variable { name: self.text(name).to_string(), call, strings, string, objects, is_const, span: Span::of(name) });
             }
         }
         out
@@ -896,6 +899,18 @@ mod tests {
         assert_eq!(f.params[1].name, "id");
         let x = &m.classes[0].params[0];
         assert_eq!((x.name.as_str(), x.required, x.ty.as_ref().map(|t| t.text.as_str())), ("x", true, Some("int")));
+    }
+
+    #[test]
+    fn variables_know_whether_they_are_const() {
+        let m = parse(
+            "const a = 1;\nfinal b = 2;\nvar c = 3;\nlate final d = 4;\nconst E e = E();\nconst f = 1, g = 2;\nint get h => 5;",
+        );
+        let konst = |n: &str| m.variables.iter().find(|v| v.name == n).map(|v| v.is_const);
+        assert_eq!(
+            ["a", "b", "c", "d", "e", "f", "g", "h"].map(konst),
+            [Some(true), Some(false), Some(false), Some(false), Some(true), Some(true), Some(true), None]
+        );
     }
 
     #[test]

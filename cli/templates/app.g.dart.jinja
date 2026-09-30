@@ -1,10 +1,11 @@
 {#- lib/app.g.dart. Expressions (widget calls, paths) are worked out in emit.rs;
     this template owns the shape of the file. -#}
+{% from "manifest_body.dart" import body as manifest_body %}
 {% macro view(b) -%}
 {% if b.data -%}
 DataView(
   watch: (ref) => ref.watch({{ b.data.provider }}),
-  refresh: (ref) => ref.invalidate({{ b.data.provider }}),
+  refresh: (ref) => {{ b.data.invalidate }},
   data: (d) => {{ b.page | indent(2) }},
   loading: () => {{ b.data.loading }},
   error: (e, st, retry) => {{ b.data.error }},
@@ -40,10 +41,18 @@ guardWithParams(
 {% macro layout_call(l) -%}
 {{ (with_segments(l.seg_fn, view(l), l.not_found) if l.seg_fn else view(l)) | indent(2) }}
 {%- endmacro %}
+{% macro layout_page(l) -%}
+layoutPage(
+  context,
+  state,
+  {{ l.restoration_id }},
+  {{ (with_segments(l.seg_fn, view(l), l.not_found) if l.seg_fn else view(l)) | indent(2) }},
+)
+{%- endmacro %}
 {% macro route(r) -%}
 {% if r.branches -%}
 StatefulShellRoute.indexedStack(
-  builder: (context, state, navigationShell) => {{ layout_call(r.layout) }},
+  pageBuilder: (context, state, navigationShell) => {{ layout_page(r.layout) | indent(2) }},
   branches: [
 {% for b in r.branches %}
     StatefulShellBranch(
@@ -58,18 +67,21 @@ StatefulShellRoute.indexedStack(
         {{ route(c) | indent(8) }},
 {% endfor %}
       ],
+      restorationScopeId: {{ b.restoration_id }},
     ),
 {% endfor %}
   ],
+  restorationScopeId: {{ r.layout.restoration_id }},
 )
 {%- elif r.layout -%}
 ShellRoute(
-  builder: (context, state, child) => {{ layout_call(r.layout) }},
+  pageBuilder: (context, state, child) => {{ layout_page(r.layout) | indent(2) }},
   routes: [
 {% for c in r.routes %}
     {{ route(c) | indent(4) }},
 {% endfor %}
   ],
+  restorationScopeId: {{ r.layout.restoration_id }},
 )
 {%- else -%}
 GoRoute(
@@ -134,10 +146,12 @@ abstract final class AppRoutes {
   static GoRouter router({
     String initialLocation = '/',
     List<NavigatorObserver>? observers,
+    String? restorationScopeId,
   }) =>
       GoRouter(
         initialLocation: initialLocation,
         observers: observers,
+        restorationScopeId: restorationScopeId,
         routes: mount(),
         errorBuilder: (context, state) => notFound(state.uri),
       );
@@ -170,7 +184,22 @@ abstract final class AppRoutes {
 {% else %}
   static Widget notFound(Uri uri) => {{ not_found }};
 {% endif %}
+{% if manifest %}
+
+  /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
+  static List<RouteInfo<Object?>> get all => AppManifest.all;
+
+  /// Each route by its typed-route class: [AppManifest.byType].
+  static Map<Type, RouteInfo<Object?>> get byType => AppManifest.byType;
+
+  /// Each route by its path template: [AppManifest.byPath].
+  static Map<String, RouteInfo<Object?>> get byPath => AppManifest.byPath;
+{% endif %}
 }
+{% if manifest %}
+
+{{ manifest_body(manifest) }}
+{% endif %}
 {% for r in routes %}
 
 /// `{{ r.pattern }}` → {{ r.file }}
@@ -219,13 +248,17 @@ final class {{ r.name }}Route extends TypedLocation {
   static final watch = (WidgetRef ref{{ r.data.args }}) => ref.watch(data{{ r.data.key }});
 
   /// Reads {{ r.data.file }} once, keeping it alive until it completes.
-  static final read = (WidgetRef ref{{ r.data.args }}) => ref.readData(data{{ r.data.key }});
+  static final read = (WidgetRef ref{{ r.data.args }}) => ref.{{ "readSelected" if r.data.selector else "readData" }}(data{{ r.data.key }});
 
   /// Starts loading {{ r.data.file }} before navigating; kept for `keepFor` (default 30 s).
   void prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data{{ r.data.key }}, keepFor: keepFor);
 
   /// {{ r.data.verb }} {{ r.data.file }}; completes with the fresh value.
+{% if r.data.selector %}
+  Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data{{ r.data.key }});
+{% else %}
   Future<void> refresh(WidgetRef ref) => ref.refresh(data{{ r.data.key }}.future);
+{% endif %}
 {% endif %}
 }
 {% endfor %}
@@ -234,6 +267,15 @@ final class {{ r.name }}Route extends TypedLocation {
 {{ f.record }} {{ f.name }}(GoRouterState s) => {{ f.parse }};
 {% endfor %}
 {% for p in providers %}
+{% if p.selector and p.family %}
+
+/// data.dart selects the app's own provider: nothing wraps it (a closure, so its type is inferred).
+final _data{{ p.id }} = ({{ p.params }}) => {{ p.call }};
+{% elif p.selector %}
+
+/// data.dart selects the app's own provider: nothing wraps it.
+final _data{{ p.id }} = {{ p.call }};
+{% else %}
 
 final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
   ({{ p.params }}) => {{ p.call }},
@@ -242,4 +284,5 @@ final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
   retry: (retryCount, error) => null,
 {% endif %}
 );
+{% endif %}
 {% endfor %}

@@ -90,7 +90,7 @@ fn main() {
             Cmd::Init => init::run(&project),
             Cmd::New(cmd) => {
                 let created = scaffold::new_route_opts(&project, &cmd.args, cmd.no_page)?;
-                match gen(&project, true) {
+                match generate(&project, true) {
                     Ok(o) => {
                         eprintln!("{}", o.line());
                         Ok(())
@@ -150,7 +150,7 @@ pub fn plural(n: usize, noun: &str) -> String {
 }
 
 /// Scan, check, and (if `write`) emit. Errors are printed per file.
-pub fn gen(project: &Path, write: bool) -> Result<Outcome> {
+pub fn generate(project: &Path, write: bool) -> Result<Outcome> {
     gen_with(project, &Config::load(project)?, write)
 }
 

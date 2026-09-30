@@ -4,7 +4,7 @@
 use std::fs;
 
 use crate::config::Config;
-use crate::{analyze, gen, manifest};
+use crate::{analyze, generate, manifest};
 
 const HOME: &str = "class HomePage extends StatelessWidget { const HomePage({super.key}); }";
 const LAYOUT: &str = "class ShopLayout extends StatelessWidget { const ShopLayout({super.key, required this.child}); final Widget child; }";
@@ -223,7 +223,7 @@ fn meta_required_names_the_folder_without_a_meta_dart() {
 #[test]
 fn meta_required_stops_gen_without_touching_the_output() {
     let dir = project("fespalier:\n  meta: required\n", &[("page.dart", HOME)]);
-    let e = gen(dir.path(), true).unwrap_err().to_string();
+    let e = generate(dir.path(), true).unwrap_err().to_string();
     assert!(e.contains("1 error(s)") && e.contains("lib/app.g.dart left unchanged"), "{e}");
     assert!(!dir.path().join("lib/app.g.dart").exists());
 }
@@ -297,26 +297,26 @@ fn a_separate_manifest_finds_the_app_and_the_output_from_where_it_sits() {
 #[test]
 fn gen_writes_both_files_and_reports_both() {
     let dir = project("fespalier:\n  output_manifest: lib/app.routes.g.dart\n", &[("page.dart", HOME)]);
-    let o = gen(dir.path(), true).unwrap();
+    let o = generate(dir.path(), true).unwrap();
     assert_eq!(o.line(), "✓ 1 route → lib/app.g.dart, lib/app.routes.g.dart");
     assert!(dir.path().join("lib/app.g.dart").exists() && dir.path().join("lib/app.routes.g.dart").exists());
-    assert_eq!(gen(dir.path(), true).unwrap().line(), "✓ 1 route, lib/app.g.dart, lib/app.routes.g.dart unchanged");
+    assert_eq!(generate(dir.path(), true).unwrap().line(), "✓ 1 route, lib/app.g.dart, lib/app.routes.g.dart unchanged");
 
     // Either file being out of date is written again.
     fs::write(dir.path().join("lib/app.routes.g.dart"), "// stale").unwrap();
-    assert!(gen(dir.path(), true).unwrap().wrote);
+    assert!(generate(dir.path(), true).unwrap().wrote);
     assert!(fs::read_to_string(dir.path().join("lib/app.routes.g.dart")).unwrap().contains("AppManifest"));
 
     // `check` writes nothing.
     fs::remove_file(dir.path().join("lib/app.routes.g.dart")).unwrap();
-    assert!(!gen(dir.path(), false).unwrap().wrote);
+    assert!(!generate(dir.path(), false).unwrap().wrote);
     assert!(!dir.path().join("lib/app.routes.g.dart").exists());
 }
 
 #[test]
 fn errors_leave_both_files_untouched() {
     let dir = project("fespalier:\n  output_manifest: lib/app.routes.g.dart\n", &[("page.dart", HOME), ("meta.dart", "final meta = 1;")]);
-    let e = gen(dir.path(), true).unwrap_err().to_string();
+    let e = generate(dir.path(), true).unwrap_err().to_string();
     assert!(e.contains("lib/app.g.dart and lib/app.routes.g.dart left unchanged"), "{e}");
     assert!(!dir.path().join("lib/app.g.dart").exists() && !dir.path().join("lib/app.routes.g.dart").exists());
 }

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
-use crate::{build, gen, init, scaffold};
+use crate::{build, generate, init, scaffold};
 
 fn example() -> PathBuf {
     examples("shop")
@@ -465,7 +465,7 @@ fn an_empty_page_is_one_error() {
 #[test]
 fn errors_leave_output_untouched() {
     let dir = project(&[("page.dart", "class P extends StatelessWidget { const P({required this.x}); final int x; }")]);
-    assert!(gen(dir.path(), true).is_err());
+    assert!(generate(dir.path(), true).is_err());
     assert!(!dir.path().join("lib/app.g.dart").exists());
 }
 
@@ -487,7 +487,7 @@ fn scaffold_then_generate() {
     scaffold::new_route(dir.path(), &args("orders/[orderId]", true)).unwrap();
     let data = fs::read_to_string(dir.path().join("lib/app/orders/$orderId/data.dart")).unwrap();
     assert!(data.contains("Future<String> data(Ref ref, {required String orderId}) async =>\n    'Hello from /orders/$orderId';"), "{data}");
-    gen(dir.path(), true).expect("scaffolded route should check cleanly");
+    generate(dir.path(), true).expect("scaffolded route should check cleanly");
 
     // Under an existing `$id: int`, the scaffold keeps that type.
     let mut nested = args(":id/notes/:noteId", false);
@@ -496,7 +496,7 @@ fn scaffold_then_generate() {
     let page = fs::read_to_string(dir.path().join("lib/app/$id/notes/$noteId/page.dart")).unwrap();
     assert!(page.contains("const NotePage({super.key, required this.id, required this.noteId});"), "{page}");
     assert!(page.contains("final int id;\n  final String noteId;"), "{page}");
-    gen(dir.path(), true).expect("nested scaffold should check cleanly");
+    generate(dir.path(), true).expect("nested scaffold should check cleanly");
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
     assert!(code.contains("const NoteRoute({required this.id, required this.noteId});"), "{code}");
 }
@@ -762,7 +762,7 @@ fn scaffold_writes_a_transition() {
     scaffold::new_route(dir.path(), &args).unwrap();
     let t = fs::read_to_string(dir.path().join("lib/app/docs/transition.dart")).unwrap();
     assert!(t.contains("Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);"), "{t}");
-    gen(dir.path(), true).expect("scaffolded transition should check cleanly");
+    generate(dir.path(), true).expect("scaffolded transition should check cleanly");
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
     has(&code, &["(transition)", "pageBuilder: (context, state) => _i2.transition("]);
 }
@@ -1100,7 +1100,7 @@ fn custom_app_dir_and_output() {
         "lib/pages",
         &[("page.dart", HOME), ("$id/page.dart", "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.id}); final String id; }")],
     );
-    let o = gen(dir.path(), true).unwrap();
+    let o = generate(dir.path(), true).unwrap();
     assert_eq!(o.routes, 2);
     assert!(!dir.path().join("lib/app.g.dart").exists());
     let code = fs::read_to_string(dir.path().join("lib/router/routes.g.dart")).unwrap();
@@ -1115,16 +1115,16 @@ fn custom_app_dir_and_output() {
     );
     assert!(!code.contains("'app/"), "{code}");
     // A second run has nothing to write.
-    assert!(!gen(dir.path(), true).unwrap().wrote);
+    assert!(!generate(dir.path(), true).unwrap().wrote);
 }
 
 #[test]
 fn diagnostics_show_the_configured_folder() {
     let dir = configured("fespalier:\n  app_dir: lib/pages\n", "lib/pages", &[("page.dart", "class P extends StatelessWidget { const P({required this.x}); final int x; }")]);
-    let e = gen(dir.path(), true).unwrap_err().to_string();
+    let e = generate(dir.path(), true).unwrap_err().to_string();
     assert!(e.contains("lib/app.g.dart left unchanged"), "{e}");
     let missing = configured("fespalier:\n  app_dir: lib/pages\n", "lib/app", &[]);
-    let e = gen(missing.path(), true).unwrap_err().to_string();
+    let e = generate(missing.path(), true).unwrap_err().to_string();
     assert!(e.contains("lib/pages not found"), "{e}");
 }
 
@@ -1147,7 +1147,7 @@ fn scaffold_honours_app_dir() {
     assert!(dir.path().join("lib/pages/docs/$slug/page.dart").exists());
     assert!(dir.path().join("lib/pages/docs/$slug/layout.dart").exists());
     assert!(!dir.path().join("lib/app").exists());
-    gen(dir.path(), true).expect("scaffolded route should check cleanly");
+    generate(dir.path(), true).expect("scaffolded route should check cleanly");
     let code = fs::read_to_string(dir.path().join("lib/router.g.dart")).unwrap();
     has(&code, &["import 'pages/docs/\\$slug/page.dart'", "from lib/pages/."]);
 }
@@ -1176,7 +1176,7 @@ fn init_creates_starters_that_pass_gen() {
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
     has(&code, &["_i2.AppLayout(child: child)", "_i0.HomePage()", "_i3.NotFoundPage(uri: uri)", "_i1.transition("]);
     // And the result is stable under check.
-    assert!(!gen(dir.path(), false).unwrap().wrote);
+    assert!(!generate(dir.path(), false).unwrap().wrote);
 }
 
 #[test]

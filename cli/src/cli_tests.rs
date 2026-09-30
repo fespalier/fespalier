@@ -4,7 +4,7 @@
 use std::fs;
 
 use crate::scaffold::{self, NewArgs};
-use crate::{gen, plural};
+use crate::{generate, plural};
 
 const HOME: &str = "class HomePage extends StatelessWidget { const HomePage({super.key}); }";
 
@@ -34,9 +34,9 @@ fn args(route: &str, layout: bool) -> NewArgs {
 #[test]
 fn success_lines() {
     let dir = project();
-    let o = gen(dir.path(), true).unwrap();
+    let o = generate(dir.path(), true).unwrap();
     assert_eq!(o.line(), "✓ 1 route → lib/app.g.dart");
-    let o = gen(dir.path(), true).unwrap();
+    let o = generate(dir.path(), true).unwrap();
     assert_eq!(o.line(), "✓ 1 route, lib/app.g.dart unchanged");
     assert_eq!(plural(0, "route"), "0 routes");
     assert_eq!(plural(10, "route"), "10 routes");
@@ -49,7 +49,7 @@ fn group_scaffold_writes_no_page() {
     assert_eq!(created, vec!["lib/app/(account)/layout.dart".to_string()]);
     assert!(!dir.path().join("lib/app/(account)/page.dart").exists());
     // It must not collide with the root page.
-    gen(dir.path(), true).expect("a group layout should check cleanly");
+    generate(dir.path(), true).expect("a group layout should check cleanly");
 }
 
 #[test]

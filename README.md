@@ -27,8 +27,10 @@ lib/app/
       page.dart          ProductPage({required Product product})       → /products/:id
       error.dart         ProductError({required int id, required Object error, …})
   checkout/
-    guard.dart           GuardResult guard(ProviderContainer c)
+    guard.dart           GuardResult guard(ProviderContainer c)         (guards this and below)
     page.dart
+  old-products/$id/
+    redirect.dart        String redirect({required int id})            → /old-products/:id redirects
   greet/$name/page.dart  GreetPage({required String name})
   (account)/             a group: its layout wraps profile/ and settings/,
     layout.dart            but adds nothing to their URLs (/profile, /settings)
@@ -213,7 +215,8 @@ top-level function.
 | `loading.dart` | a widget, inherited by subfolders | segments; query |
 | `error.dart` | a widget, inherited by subfolders | segments; query; `error`, `stackTrace`, `retry` |
 | `layout.dart` | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs | `child` or `navigationShell`; segments at or above it; query |
-| `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through | segments, query (named) |
+| `guard.dart` | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder | `uri`; segments at or above its folder; query (named) |
+| `redirect.dart` | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `ProviderContainer c` first | `uri`; segments; query (named) |
 | `transition.dart` | `Page<…> transition(…)`; applies to this folder and below | `key`, `child`, `state` |
 | `not_found.dart` | a widget, root only, optional (without it, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
 
@@ -319,6 +322,78 @@ know: go_router opens a tab on its first route, which can't have a `:segment` in
 path, so a tab made only of dynamic routes, or a tab layout placed directly in a
 `$folder`, is an error (put the layout in a `(group)` below that folder instead); and `tabs` in a tab layout must be string literals, so name another list of destinations
 something else. See `examples/tabs`.
+
+### Guards
+
+`guard.dart` exports `GuardResult guard(ProviderContainer c, {…})`. It returns a location to
+redirect to, or `null` to let the navigation through, and may be async. It guards every
+route at and below its folder, and the folder needs no `page.dart`: put one in a `(group)` or
+at the root to cover a whole section of the app.
+
+```dart
+// lib/app/(members)/guard.dart: guards /inbox, /admin and everything else in the group
+GuardResult guard(ProviderContainer c, {required Uri uri}) =>
+    c.read(session) ? null : LoginRoute(from: uri.toString()).location;
+```
+
+- **Order.** Guards run outermost first, and the first one to return a location wins. A
+  folder with a page and its own guard keeps its guard for that page and everything nested
+  in it; guards above it run first.
+- **Parameters.** The `ProviderContainer` comes first, then named parameters: `uri` (the
+  requested location, a `Uri`), the segments of the guard's own folder and the ones above
+  it (`{required String shop}`), and query parameters (optional and nullable, `String? ref`).
+  A guard above `$id` can't ask for `id`: that's an error at the parameter. Segments are
+  typed like everywhere else. A guard's query parameters stay its own: they don't become
+  fields of the typed routes below it (unless the guard sits next to a `page.dart`, where
+  they are the page's, as before).
+- **What gets generated.** Each page's `GoRoute` gets a `redirect` that calls, in order, the
+  guards of the page-less folders above it and then its own. Nested pages go through their
+  parent's `redirect`, so no guard runs twice. There's no redirect on `ShellRoute` or
+  `StatefulShellRoute`: go_router runs a matched route's redirect for deep links and for
+  navigation inside a shell, tabs included, so the page routes are enough (and a page-less
+  folder has no route to put one on). When a path has a segment that doesn't parse
+  (`/products/abc`), guards are skipped and not-found is shown.
+- A `guard.dart` with no `page.dart` or `redirect.dart` at or below its folder is a warning.
+
+### `redirect.dart`
+
+A folder can hold `redirect.dart` instead of `page.dart`. It exports `String redirect({…})`
+(or `Future<String>`) returning the location to go to, and the route only redirects: no
+widget, no builder.
+
+```dart
+// lib/app/old-products/$id/redirect.dart: /old-products/3 → /products/3
+String redirect({required int id}) => ProductRoute(id: id).location;
+```
+
+It takes the same parameters as a guard, except that `ProviderContainer c` is optional (put
+it first if you need providers). Segments are typed like anywhere else, so `/old-products/abc`
+shows not-found. It gets a typed route, named after its path (`OldProductsIdRoute(id: 3)`),
+so links to the old URL stay typed; query parameters it asks for are its fields. It takes part in
+route order and unreachable checks like a page, inherits the guards above it, and can sit
+next to a `guard.dart`, which runs first. A folder has a `page.dart` or a `redirect.dart`,
+not both, and a tab layout's own folder can't hold a `redirect.dart`. Routes in subfolders
+sit beside a redirect route rather than inside it, since anything inside would redirect too.
+
+### Sending people back
+
+A guard that redirects to a login page can pass along where the user was going. Ask for
+`Uri uri` (the requested location, query included) and put it in the login route's query:
+
+```dart
+LoginRoute(from: uri.toString()).location   // /login?from=%2Finbox%3Ffolder%3Dsent
+```
+
+`login/page.dart` takes it as a query parameter (`this.from`, a `String?`), and when the
+user is done it calls `returnTo`:
+
+```dart
+context.go(returnTo(from));                  // from if it's a location in the app, else '/'
+```
+
+`returnTo(from, fallback: '/home')` only lets an absolute path through: `https://…`, `//host`
+and the like fall back, so a crafted `?from=` can't send people off your app. Both `uri` and
+the typed routes include the mount prefix when the tree is mounted with `at:`.
 
 ### Transitions
 
@@ -527,6 +602,10 @@ by two segments, query parameters (in a page, `data.dart` and a layout), a page 
 view bound by type, a layout and guard that take segments, a user-written
 `AsyncNotifierProvider`, and `Stream` data.
 
+`examples/features` also has a guard in a page-less `(members)` group (with a login page that
+returns to where you were), a second guard below it that runs after the first, and two
+`redirect.dart` routes (`/old-shops/:shop`, `/old-search`).
+
 `examples/tabs` is a bottom navigation bar built as a tab layout: three tabs (one with a
 nested page), a counter that survives switching tabs, and a full-screen route outside
 them.
@@ -599,12 +678,12 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 86 tests (79 unit, 7 CLI integration) cover parsing, every binding rule and contract error, query
+- **Generator:** 112 tests (105 unit, 7 CLI integration) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, transitions, both data
-  forms, scaffolding, and that the committed outputs are up to date. Clippy is clean.
+  forms, guards and redirects, scaffolding, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 44 Flutter tests (the package 8, `shop` 12,
-  `features` 17, `tabs` 7); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 66 Flutter tests (the package 18, `shop` 12,
+  `features` 29, `tabs` 7); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

@@ -195,7 +195,7 @@ fn gen_core(project: &Path, cfg: &Config, write: bool, show: impl FnOnce(&Path, 
 
 pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize)> {
     let (code, diags, app) = analyze(app_dir, cfg)?;
-    let routes = app.routes.iter().filter(|r| r.page.is_some()).count();
+    let routes = app.routes.iter().filter(|r| r.is_route()).count();
     Ok((code, diags, routes))
 }
 

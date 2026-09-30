@@ -1,4 +1,6 @@
 import 'package:fespalier/fespalier.dart';
 
 /// Return a location to redirect to, or null to let the navigation through.
+/// Guards every route at and below this folder. Add `{required Uri uri}` for the
+/// requested location, e.g. to send people back after logging in.
 GuardResult guard(ProviderContainer c) => null;

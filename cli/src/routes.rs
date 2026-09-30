@@ -13,7 +13,9 @@ use anyhow::{bail, Result};
 use serde_json::json;
 
 use crate::config::Config;
+use crate::emit;
 use crate::resolve::{self, App, Route};
+use crate::scan::Kind;
 use crate::{analyze, diag};
 
 pub fn run(project: &Path, json: bool) -> Result<()> {
@@ -34,9 +36,9 @@ pub fn run(project: &Path, json: bool) -> Result<()> {
     Ok(())
 }
 
-/// The routes that serve a page, in the order the generated file lists them.
+/// The routes (pages and redirects), in the order the generated file lists them.
 fn pages(app: &App) -> impl Iterator<Item = &Route> {
-    app.routes.iter().filter(|r| r.page.is_some())
+    app.routes.iter().filter(|r| r.is_route())
 }
 
 fn class(r: &Route) -> String {
@@ -44,12 +46,15 @@ fn class(r: &Route) -> String {
 }
 
 fn file(r: &Route) -> String {
-    if r.dir.is_empty() { "page.dart".into() } else { format!("{}/page.dart", r.dir) }
+    emit::rel(r, if r.page.is_some() { Kind::Page } else { Kind::Redirect })
 }
 
 /// What the route has besides its page; the same tags as the header of `app.g.dart`.
 fn tags(r: &Route) -> Vec<&'static str> {
     let mut tags = vec![];
+    if r.redirect.is_some() {
+        tags.push("redirect");
+    }
     if r.data.is_some() {
         tags.push("data");
     }
@@ -66,16 +71,7 @@ fn tags(r: &Route) -> Vec<&'static str> {
 }
 
 pub fn table(app: &App) -> Vec<String> {
-    let rows: Vec<(String, String, String)> = pages(app)
-        .map(|r| {
-            let tags = tags(r);
-            let tags = if tags.is_empty() { String::new() } else { format!("  ({})", tags.join(", ")) };
-            (resolve::pattern(&r.url), class(r), format!("{}{tags}", file(r)))
-        })
-        .collect();
-    let w0 = rows.iter().map(|r| r.0.len()).max().unwrap_or(0);
-    let w1 = rows.iter().map(|r| r.1.len()).max().unwrap_or(0);
-    rows.into_iter().map(|(p, n, f)| format!("{p:w0$}  {n:w1$}  {f}")).collect()
+    emit::table(app)
 }
 
 pub fn json_lines(app: &App, app_dir: &str) -> Vec<String> {

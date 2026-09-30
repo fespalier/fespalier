@@ -34,7 +34,7 @@ struct FileCx {
     extra_imports: Vec<String>,
     /// `_i9.extraCodec`, from the app folder's `extra_codec.dart`: `router()` hands it to GoRouter.
     extra_codec: Option<String>,
-    /// Whether routes match paths by case.
+    /// Whether the root matches paths by case: what the mount point is compared with.
     case_sensitive: bool,
     /// `keep_previous` from the config: the DataViews' `keepPrevious`.
     keep_previous: bool,
@@ -73,6 +73,8 @@ struct TreeCx {
     /// For a GoRoute: its own `path:` has a `:segment`.
     #[serde(skip)]
     has_params: bool,
+    /// For a GoRoute: whether its whole path matches by case (`caseSensitive: false` when not).
+    case_sensitive: bool,
 }
 
 type Serves = (Vec<Seg>, String, Option<Span>);
@@ -132,6 +134,8 @@ struct LayoutCx {
 struct NotFoundCx {
     prefix: String,
     call: String,
+    /// Whether the folder's own path matches by case.
+    case_sensitive: bool,
 }
 
 /// `_i2.transition(...)`, with the page where `Bind::Child` goes.
@@ -278,7 +282,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         providers: app.routes.iter().enumerate().filter_map(|(id, r)| provider(app, cfg, id, r)).collect(),
         extra_imports: extra_imports(app, cfg),
         extra_codec: app.extra_codec.as_ref().map(|c| format!("_i{}.extraCodec", c.import)),
-        case_sensitive: cfg.case_sensitive,
+        case_sensitive: app.routes[0].case_sensitive,
         keep_previous: cfg.keep_previous,
     };
     templates::render("app.g.dart", &cx)
@@ -380,6 +384,7 @@ fn routes_of(app: &App, id: usize, top: bool, prefix: &str, inherited: &[usize],
             catch_all: out.iter().any(|r| r.catch_all),
             serves: None,
             has_params: false,
+            case_sensitive: true,
             routes: out,
         }];
     }
@@ -484,7 +489,11 @@ fn not_founds(app: &App) -> Vec<NotFoundCx> {
                     Seg::Group(_) => None,
                 })
                 .collect();
-            NotFoundCx { prefix: format!("[{}]", parts.join(", ")), call: n.widget.call(|_| "uri".into()) }
+            NotFoundCx {
+                prefix: format!("[{}]", parts.join(", ")),
+                call: n.widget.call(|_| "uri".into()),
+                case_sensitive: n.case_sensitive,
+            }
         })
         .collect()
 }
@@ -567,6 +576,7 @@ fn page_route(app: &App, id: usize, top: bool, path: &str, nested: bool, inherit
         catch_all: path.contains("(.+)"),
         serves: Some((r.url.clone(), rel(r, Kind::Page), r.page_span.clone())),
         has_params: path.contains(':'),
+        case_sensitive: r.case_sensitive,
     }
 }
 
@@ -592,6 +602,7 @@ fn redirect_route(app: &App, id: usize, top: bool, path: &str, inherited: &[usiz
         catch_all: path.contains("(.+)"),
         serves: Some((r.url.clone(), rel(r, Kind::Redirect), r.page_span.clone())),
         has_params: path.contains(':'),
+        case_sensitive: r.case_sensitive,
     }
 }
 
@@ -649,6 +660,7 @@ fn tab_routes(
         transition: None,
         serves: None,
         has_params: false,
+        case_sensitive: true,
         routes: vec![],
     }]
 }
@@ -908,9 +920,12 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
         .iter()
         .map(|(n, t)| {
             // `int` → Segment.asInt, `int?` → Query.asInt, `List<int>` → Query.asIntList,
-            // a catch-all `List<String>` → Segment.asRest.
+            // a catch-all `List<String>` → Segment.asRest, `List<int>` → Segment.asIntRest.
             if catch_all(n) {
-                return format!("{n}: Segment.asRest(s, '{n}')");
+                return match resolve::list_item(t) {
+                    Some(item) if item != "String" => format!("{n}: Segment.as{}Rest(s, '{n}')", upper_first(item)),
+                    _ => format!("{n}: Segment.asRest(s, '{n}')"),
+                };
             }
             let (reader, base, list) = match (t.strip_suffix('?'), t.strip_prefix("List<").and_then(|l| l.strip_suffix('>'))) {
                 (_, Some(inner)) => ("Query", inner, "List"),
@@ -929,14 +944,31 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
     ParamsFnCx { name: f.name(), record: format!("({{{}}})", types.join(", ")), parse: format!("({})", values.join(", ")) }
 }
 
-/// The type a provider's family takes for a key: a catch-all as a `String`.
-fn key_ty(rest: &[String], name: &str, ty: &str) -> String {
-    if rest.iter().any(|q| q == name) { "String".into() } else { ty.into() }
+fn upper_first(s: &str) -> String {
+    let mut c = s.chars();
+    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }
 
-/// What `data()` is called with for a key: a catch-all's path parted again.
-fn key_arg(rest: &[String], name: &str, value: &str) -> String {
-    if rest.iter().any(|q| q == name) { format!("restParts({value})") } else { value.into() }
+/// The type a provider's family takes for a key: a catch-all as a `String`, a query list
+/// as a `QueryList`.
+fn key_ty(rest: &[String], name: &str, ty: &str) -> String {
+    if rest.iter().any(|q| q == name) {
+        "String".into()
+    } else {
+        ty.strip_prefix("List<").map_or(ty.into(), |inner| format!("QueryList<{inner}"))
+    }
+}
+
+/// What `data()` is called with for a key: a catch-all's path parted again, each part read
+/// as the list's type (`int.parse` for a `List<int>`: the path was built from parts that parsed).
+fn key_arg(rest: &[String], name: &str, ty: &str, value: &str) -> String {
+    if !rest.iter().any(|q| q == name) {
+        return value.into();
+    }
+    match resolve::list_item(ty) {
+        Some(item) if item != "String" => format!("restParts({value}).map({item}.parse).toList()"),
+        _ => format!("restParts({value})"),
+    }
 }
 
 /// The parameters a `data()` provider is keyed by, as its `create` function takes them
@@ -949,20 +981,16 @@ fn key_params(app: &App, r: &Route, d: &Data) -> (String, Vec<String>) {
         .url_params(r)
         .into_iter()
         .filter(|(n, _)| d.keys.contains(n))
-        .map(|(n, t)| {
-            let t = t.strip_prefix("List<").map_or(t.clone(), |inner| format!("QueryList<{inner}"));
-            (n, t)
-        })
         .collect();
     let rest = catch_alls(app, r);
     match (types.as_slice(), d.record) {
         ([], _) => (String::new(), vec![]),
-        ([(n, t)], false) => (format!("{} {n}", key_ty(&rest, n, t)), vec![format!("{n}: {}", key_arg(&rest, n, n))]),
+        ([(n, t)], false) => (format!("{} {n}", key_ty(&rest, n, t)), vec![format!("{n}: {}", key_arg(&rest, n, t, n))]),
         (many, _) => {
             let fields: Vec<String> = many.iter().map(|(n, t)| format!("{} {n}", key_ty(&rest, n, t))).collect();
             (
                 format!("({{{}}}) k", fields.join(", ")),
-                many.iter().map(|(n, _)| format!("{n}: {}", key_arg(&rest, n, &format!("k.{n}")))).collect(),
+                many.iter().map(|(n, t)| format!("{n}: {}", key_arg(&rest, n, t, &format!("k.{n}")))).collect(),
             )
         }
     }

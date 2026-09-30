@@ -18,6 +18,7 @@ lib/app/
   error.dart             RootError({required Object error, required VoidCallback retry})
   not_found.dart         NotFoundPage({required Uri uri})               (optional, in any folder)
   transition.dart        Page<void> transition(LocalKey key, Widget child)  (inherited)
+  route.dart             const caseSensitive = false;                   (inherited: this folder and below match in any case)
   products/
     data.dart            final data = FutureProvider<List<Product>>(…)
     page.dart            ProductsPage({required List<Product> products})  → /products
@@ -34,6 +35,7 @@ lib/app/
     redirect.dart        String redirect({required int id})            → /old-products/:id redirects
   greet/$name/page.dart  GreetPage({required String name})
   docs/$$rest/page.dart  DocsPage({required List<String> rest})       → /docs/a, /docs/a/b, …
+  compare/$$ids/page.dart  ComparePage({required List<int> ids})       → /compare/3/7 (each part an int)
   (account)/             a group: its layout wraps profile/ and settings/,
     layout.dart            but adds nothing to their URLs (/profile, /settings)
     profile/page.dart
@@ -235,7 +237,8 @@ fespalier:
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
-`case_sensitive: false` makes paths match in any case (see [Case and trailing slashes](#case-and-trailing-slashes)).
+`case_sensitive: false` makes paths match in any case, and a [`route.dart`](#case-and-trailing-slashes) sets that
+per folder (see [Case and trailing slashes](#case-and-trailing-slashes)).
 `data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
 [Retries and reloads](#retries-and-reloads). `file_style: kebab` makes `fsp init` and `fsp new`
 write `not-found.dart` instead of `not_found.dart` (see [File names](#file-names)).
@@ -288,6 +291,7 @@ that returns a widget. Function files export one top-level function.
 | `not_found.dart` | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments | `uri` |
 | `meta.dart` | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart) | nothing: it is data |
 | `extra_codec.dart` | at the root of the app folder only: a top-level `extraCodec`, the `Codec<Object?, Object?>` the router saves an [`extra`](#restoring-extra-on-the-web) with | nothing: it is data |
+| `route.dart` | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`. Read from the source, never imported | nothing: it is data |
 
 ### Function views
 
@@ -389,7 +393,8 @@ A segment's type comes from the parameters that ask for it: `{required int id}` 
 `products/$id/data.dart` makes `$id` an `int` everywhere. That covers the typed
 `ProductRoute(id: 42)`, the page, and parsing: `/products/abc` goes to `not_found.dart`.
 Every file that asks for `$id` must agree on its type. When nobody gives one, a segment
-is a `String`. Segments are `String`, `int`, `double` or `bool`.
+is a `String`. Segments are `String`, `int`, `double` or `bool`. (A [catch-all](#catch-all-segments)
+is a `List` of those, or of `num` or `DateTime`.)
 
 `fsp new` scaffolds every segment as a `String`: `fsp new 'products/[id]' --data` writes
 `data(Ref ref, {required String id})`. To make `$id` an `int`, change the parameter type
@@ -398,7 +403,8 @@ in each file that asks for it, then run `fsp gen` (or let `fsp watch` do it).
 ### Catch-all segments
 
 `$$rest` matches **one or more** remaining segments, and `$$$rest` (three `$`) **zero or
-more**. The page takes them as a `List<String>`, each part decoded on its own:
+more**. The page takes them as a `List<String>` (or a [typed list](#typed-catch-alls)), each part
+decoded on its own:
 
 ```
 docs/page.dart            /docs                      the index, beside the catch-all
@@ -410,7 +416,7 @@ files/$$$path/page.dart   /files, /files/a/b         path == [] or ['a', 'b']
 ```dart
 class DocsPage extends StatelessWidget {
   const DocsPage({super.key, required this.rest});
-  final List<String> rest;      // `rest` is the segment: a List<String>, nothing else
+  final List<String> rest;      // `rest` is the segment: a List, of Strings by default
   …
 }
 
@@ -441,12 +447,49 @@ requested location*, so an encoded slash (`/docs/a%2Fb/c` is `['a/b', 'c']`) sur
 - `$$$rest` and a `page.dart` in the folder above would both serve `/docs`: an error. Use
   `$$rest` beside the page.
 
-Limits: a catch-all is always the last segment and a `List<String>` (no `List<int>`); nothing
+Limits: a catch-all is always the last segment and a `List`; nothing
 can be below its folder, and it can't have a `not_found.dart` (it matches every URL under
 it). A catch-all as a tab's first route needs a `tabOptions` `initialLocation`, like any
 route with a parameter. A part of `.` or `..` is read as a dot segment by the URL parser, so
 `DocsRoute(rest: ['..'])` doesn't reach a `..` part. `fsp new 'docs/[...rest]'` and
 `'docs/[[...rest]]'` write the folders, so you don't have to quote `$`.
+
+#### Typed catch-alls
+
+Like a segment, a catch-all takes its type from the parameters that ask for it, and a
+`List<String>` is the default. Ask for a `List<int>`, `List<double>`, `List<num>`, `List<bool>`
+or `List<DateTime>` and every part is read like one segment of that type:
+
+```
+compare/$$ids/page.dart   /compare/3/7/12           ids == [3, 7, 12]
+                          /compare/3/x              not found: `x` isn't an int
+```
+
+```dart
+class ComparePage extends StatelessWidget {
+  const ComparePage({super.key, required this.ids});
+  final List<int> ids;
+}
+
+const CompareRoute(ids: [3, 7, 12]).go(context);   // → /compare/3/7/12
+```
+
+- **A part that doesn't parse** sends the whole route to `not_found.dart`, like a bad `int`
+  segment (`/products/abc`): the page is never built, and a guard is skipped. `bool` parts are
+  `true` and `false`; `num` reads `1` as an int and `2.5` as a double; a `DateTime` part is what
+  `DateTime.tryParse` reads, and the typed route writes it as ISO 8601 (`2024-12-31T10:30:00.000Z`,
+  colons encoded).
+- **`.location` joins the encoded parts**, each on its own (`restPath`), whatever their type.
+  `$$$rest` is an empty list when the path has no part, as with strings.
+- **The type must agree across files**, as for any segment: a `page.dart` with `List<int> ids`
+  and a `data.dart` with `List<String> ids` is an error with a code frame at the second, naming
+  the first (`` `$ids` is List<String> in data.dart:1 but List<int> here ``). Anything else
+  (`List<Object>`, `List<int?>`, `Set<int>`) is an error that lists what a catch-all can be.
+- **`data.dart`** takes the typed list too: the provider is keyed by the encoded path, and
+  `data()` gets the list back as a `List<int>`.
+- Enums aren't supported, for catch-alls or for ordinary segments.
+
+`examples/features` has one at `compare/$$ids` (with a `data.dart`), and a widget test.
 
 ### Case and trailing slashes
 
@@ -465,9 +508,41 @@ fespalier:
 ```
 
 Static parts then match in any case (`/PRODUCTS/Guide` finds `products/guide`), and the
-parts you take out of the URL (a `$segment`, a catch-all) keep the case they had. The
-nearest-`not_found.dart` lookup compares folder names the same way. Typed routes still write
-the paths as the folders spell them. The option is global; there is no per-folder setting.
+parts you take out of the URL (a `$segment`, a catch-all) keep the case they had.
+
+**Per folder.** A `route.dart` overrides that for its folder and everything below it, and the
+nearest one wins over the parent's and over the pubspec:
+
+```dart
+// lib/app/files/route.dart: /files/README.md isn't /files/readme.md, whatever the pubspec says
+const caseSensitive = true;
+```
+
+It works both ways: `false` in one folder of an otherwise exact app, or `true` in one folder
+of a `case_sensitive: false` one (`examples/features` does the second). Like `meta.dart` it is
+read from the source when the tree is generated, never imported or run, so it must be a `true`
+or `false` literal: anything else, a missing `caseSensitive`, or two of them is an error with a
+code frame. Unlike `meta.dart` it needs no page beside it, is inherited (`(group)` folders and
+folders without a page pass it on) and can sit at the root, where it replaces the pubspec's
+value for the whole app. A `route.dart` doesn't add or remove any route.
+(It's a file of its own because `meta.dart` describes one route and is never inherited,
+`transition.dart` is a function, and `layout.dart` only exists where a layout does.)
+
+go_router has one flag per route, and a folder's routes are the whole path down to its page, so
+a folder with no page above one that has (`docs/` above `docs/guide/page.dart`) is part of that
+route: the flag is the one in effect at the page's folder, for the whole path. The
+nearest-`not_found.dart` lookup compares each folder by that folder's own setting, and the mount
+point (`AppRoutes.mount(at: '/Shop')`) by the root's.
+
+**The requested case is kept.** go_router matches a case-insensitive route in any case and
+leaves the location as it was asked for. Navigating or deep-linking to `/Products/2` leaves
+`GoRouterState.uri` and the router's own location (`currentLocation(tester)` in a test) as
+`/Products/2`; nothing is lowercased or redirected, and a `$segment` or catch-all keeps what
+was typed. Only `state.matchedLocation` is spelled by the route (`/products/2`, with the
+parameters as typed). A typed route has no requested case: `ProductRoute(id: 2).location` always
+writes the folders' spelling, so `.location` is unchanged by the setting, and if you want the
+canonical spelling in the address bar you have to navigate to it yourself. (Checked against
+go_router 17.5 and 18.0, in `packages/fespalier/test/paths_test.dart` and `examples/features`.)
 
 ### `(group)` folders
 
@@ -1113,7 +1188,7 @@ Each `RouteInfo<M>` has:
 | `presentation` | `RoutePresentation.page`, or `.redirect` for a `redirect.dart` (`isRedirect`). Whether a page opens as a dialog or sheet is up to its `transition.dart` at runtime, so it isn't listed |
 | `groups` | the `(group)` folders above it, outermost first, parentheses included |
 | `layouts` | the folders of the layouts that wrap it, outermost first (`''` is the app folder's own layout) |
-| `segments`, `query` | `RouteParam(name, type)`: `('id', 'int')`, `('page', 'int?')`, `('tags', 'List<String>')`. A catch-all is the last segment, a `List<String>` with `catchAll: true` |
+| `segments`, `query` | `RouteParam(name, type)`: `('id', 'int')`, `('page', 'int?')`, `('tags', 'List<String>')`. A catch-all is the last segment, a `List<String>` (or the `List` type it is typed with) with `catchAll: true` |
 | `tabs` | the tabs it sits in, outermost first: `RouteTab(layout, index, branch)`, where `branch` is the name `tabs` and `tabOptions` use (`.` for the layout's own page); empty outside tab layouts |
 | `dataKeys` | what its `data.dart` is keyed by; `null` without one |
 | `meta` | its `meta.dart`, as declared |
@@ -1202,7 +1277,7 @@ are relative to the project root; `folder`, `layouts` and `tabs[].layout` to the
 for a route in a tab; `data_keys` and `meta` are `null` when the route has no `data.dart` or
 `meta.dart`. The meta itself is Dart, so JSON only says where it is. `catch_all` is
 `{"name":"rest","optional":false}` for a route that ends in a `$$rest` (or `$$$rest`, `"optional":true`)
-catch-all, else `null`; the catch-all is also in `params` as a `List<String>` path parameter.
+catch-all, else `null`; the catch-all is also in `params` as a path parameter of its `List` type.
 
 ### State restoration
 
@@ -1307,12 +1382,31 @@ there is nothing to report:
 `line` and `column` count from 1 (the column counts characters, not bytes) and are `null` for
 a diagnostic that isn't about a place in a file. `severity` is `error` or `warning`.
 
-**Editor support.** `editors/vscode/` is a VS Code extension that runs `fsp check --json` when
-you save a file under the app folder and puts the diagnostics in the Problems panel, with a
-`fespalier: generate` command and a status bar item. It is not on the Marketplace yet: build
-it with `npm install && npm test && npx @vscode/vsce package` in that folder and install the
-`.vsix` (see `editors/vscode/README.md`). It uses `fsp` from your `PATH`, or `dart run
-fespalier` when there is none (`fespalier.runner` chooses).
+**Editor support.** Two editor plugins sit on top of the JSON diagnostics. Neither is on a
+marketplace yet, so you build them from source. Both use `fsp` from your `PATH`, or `dart run
+fespalier` when there is none, and both check again when you save a file under the app folder
+(`fespalier: app_dir:` in `pubspec.yaml`, `lib/app` by default).
+
+- **VS Code:** `editors/vscode/` puts the diagnostics in the Problems panel, with a
+  `fespalier: generate` command and a status bar item. Build it with `npm install && npm test
+  && npx @vscode/vsce package` in that folder and install the `.vsix` (see
+  `editors/vscode/README.md`). `fespalier.runner` chooses the runner.
+- **IntelliJ IDEA and Android Studio:** `editors/intellij/` (Kotlin) underlines the problems
+  in the editor, with their severity, in the files under the app folder, and adds
+  *Tools | fespalier: Generate* and *fespalier: Check*; a notification says when `fsp` could
+  not run. Settings | Tools | fespalier chooses the runner (auto, `fsp`, or `dart run
+  fespalier`) and the path to `fsp`. It works on platform 252 (2025.2) and later; the
+  highlighting of route files needs the Dart plugin, which Android Studio includes. Build it
+  with JDK 21:
+
+  ```sh
+  cd editors/intellij
+  ./gradlew build buildPlugin      # tests, then build/distributions/fespalier-intellij-<version>.zip
+  ```
+
+  Then *Settings | Plugins | gear icon | Install Plugin from Disk...* and pick the zip.
+  `./gradlew runIde` starts a sandbox IDE with the plugin instead. See
+  `editors/intellij/README.md`.
 
 **Formatting.** The generated file is not formatted by default, so a committed
 `app.g.dart` doesn't depend on which Dart SDK ran `fsp`. `fsp gen --format`, or `format: true` in
@@ -1417,6 +1511,7 @@ restart.
 cli/                 the generator (Rust): scan → resolve/check → emit
 cli/templates/       minijinja templates for app.g.dart and `fsp new`
 editors/vscode/      the VS Code extension (TypeScript): fsp diagnostics in the Problems panel
+editors/intellij/    the IntelliJ / Android Studio plugin (Kotlin): fsp diagnostics in the editor
 scripts/             packaging.py renders the Homebrew formula and Scoop manifest for a release;
                      pin_checksums.py writes the release's checksums into the Dart package
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
@@ -1486,6 +1581,13 @@ Maintainers only. Bump the version everywhere (see the version checks above), up
 3. **Homebrew and Scoop.** Copy `fsp.rb` from the release into the `Formula/` folder of a tap
    repository and `fsp.json` into the `bucket/` folder of a bucket repository, or let the
    workflow do it (below).
+4. **JetBrains Marketplace (IntelliJ plugin).** Build the plugin from the tag with
+   `cd editors/intellij && ./gradlew buildPlugin` (JDK 21) and upload
+   `build/distributions/fespalier-intellij-<version>.zip` on the plugin's page in the
+   JetBrains Marketplace, or run `PUBLISH_TOKEN=<token> ./gradlew publishPlugin`. Bump
+   `version` in `editors/intellij/build.gradle.kts` first (the plugin is versioned on its
+   own, like the VS Code extension). The first upload needs a vendor account and a manual
+   review; later ones can use a permanent token from the Marketplace's *My Tokens* page.
 
 One-time setup:
 
@@ -1563,12 +1665,12 @@ pending". `examples/*/test/` has working tests for every file kind.
 
 This is an early version.
 
-- **Generator:** 287 tests (261 unit, 21 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 324 tests (293 unit, 26 CLI integration, 5 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
-  scaffolding, the route manifest, meta.dart and restoration ids, and that the committed outputs are up to date. Clippy is clean.
+  scaffolding, the route manifest, meta.dart and restoration ids, typed catch-alls, per-folder case, and that the committed outputs are up to date. Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 246 Flutter tests (the package 110, `shop` 23, `features` 94, `tabs` 19); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 265 Flutter tests (the package 122, `shop` 23, `features` 101, `tabs` 19); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

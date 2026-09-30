@@ -175,14 +175,17 @@ fn a_catch_all_takes_the_rest_of_the_path() {
 }
 
 #[test]
-fn a_catch_all_is_a_list_of_strings() {
-    for (ty, ok) in [("List<String>", true), ("List<int>", false), ("String", false), ("int", false)] {
+fn a_catch_all_is_a_list_of_simple_values() {
+    for ty in ["List<String>", "List<int>", "List<double>", "List<num>", "List<bool>", "List<DateTime>"] {
         let p = page_with("Docs", "required this.rest", &format!("final {ty} rest;"));
         let e = errors(&[("docs/$$rest/page.dart", &p)]);
-        assert_eq!(e.is_empty(), ok, "{ty}: {e:?}");
-        if !ok {
-            assert!(e.iter().any(|m| m.contains("a catch-all segment is the rest of the path, a `List<String>`")), "{e:?}");
-        }
+        assert!(e.is_empty(), "{ty}: {e:?}");
+    }
+    for ty in ["String", "int", "List<Object>", "List<int?>", "List<int>?", "Set<int>", "List<List<int>>"] {
+        let p = page_with("Docs", "required this.rest", &format!("final {ty} rest;"));
+        let e = errors(&[("docs/$$rest/page.dart", &p)]);
+        let want = "a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime";
+        assert!(e.iter().any(|m| m.contains(want)), "{ty}: {e:?}");
     }
     // Nobody asking for it is fine too: it is still the rest of the path.
     let c = code(&[("docs/$$rest/page.dart", &page("Docs"))]);

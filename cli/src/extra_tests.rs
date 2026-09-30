@@ -90,6 +90,19 @@ fn a_layout_takes_the_extra_of_the_location() {
 }
 
 #[test]
+fn a_function_layout_takes_the_extra_too() {
+    let f = "import '../../models.dart';\nWidget layout(Widget child, {Product? extra}) => Column(children: [child]);";
+    let c = code(&[("page.dart", HOME), ("shop/layout.dart", f), ("shop/page.dart", &page("Shop", Some("Product?")))]);
+    let l = imp(&c, "shop/layout.dart");
+    has(&c, &[&format!("{l}.layout(child, extra: extraOrNull(state))"), "{Product? extra}"]);
+    // The same rules: nullable, and the type of the routes below it.
+    let e = errors(&[("page.dart", HOME), ("shop/layout.dart", "Widget layout(Widget child, {Product extra}) => child;"), ("shop/page.dart", &page("Shop", None))]);
+    assert!(e.iter().any(|m| m.contains("declare it nullable")), "{e:?}");
+    let e = errors(&[("page.dart", HOME), ("shop/layout.dart", "Widget layout(Widget child, {Order? extra}) => child;"), ("shop/page.dart", &page("Shop", Some("Product?")))]);
+    assert!(e.iter().any(|m| m.starts_with("✗ shop/layout.dart:") && m.contains("`/shop`")), "{e:?}");
+}
+
+#[test]
 fn a_tab_layout_and_a_section_layout_take_it_too() {
     let tabs = "class TabsLayout extends StatelessWidget { const TabsLayout({super.key, required this.navigationShell, this.extra}); final StatefulNavigationShell navigationShell; final Object? extra; }";
     let c = code(&[("layout.dart", tabs), ("a/page.dart", &page("A", None)), ("b/page.dart", &page("B", None))]);

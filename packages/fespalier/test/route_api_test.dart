@@ -44,9 +44,9 @@ void main() {
           uri,
           base,
           [
-            (['a', ':id', 'deep'], (uri) => Text('deep ${uri.path}')),
-            (['a', ':id'], (uri) => Text('item ${uri.path}')),
-            (['a'], (uri) => Text('a ${uri.path}')),
+            (['a', ':id', 'deep'], (uri) => Text('deep ${uri.path}'), caseSensitive: true),
+            (['a', ':id'], (uri) => Text('item ${uri.path}'), caseSensitive: true),
+            (['a'], (uri) => Text('a ${uri.path}'), caseSensitive: true),
           ],
           (uri) => Text('root ${uri.path}'),
         );

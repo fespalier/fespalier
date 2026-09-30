@@ -117,7 +117,13 @@ def handler_for(fake: Fake):
             if m:
                 aid = int(m[1])
                 if method == "GET":
-                    return self.send(302, headers={"Location": f"/blob/{aid}"})
+                    # Like GitHub: only a request that accepts octet-stream, and not the JSON
+                    # media type as well, gets the file; anything else gets the metadata.
+                    accepts = ", ".join(self.headers.get_all("Accept") or [])
+                    if "application/octet-stream" in accepts and "json" not in accepts:
+                        return self.send(302, headers={"Location": f"/blob/{aid}"})
+                    asset = next(a for r in fake.releases for a in r["assets"] if a["id"] == aid)
+                    return self.send(200, asset)
                 if method == "DELETE":
                     for r in fake.releases:
                         r["assets"] = [a for a in r["assets"] if a["id"] != aid]

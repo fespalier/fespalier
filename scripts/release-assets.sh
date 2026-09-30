@@ -38,6 +38,15 @@ api() {
     -H "X-GitHub-Api-Version: 2022-11-28" "$@"
 }
 
+# An asset's bytes. Not api() plus a second Accept header: curl sends both, and GitHub then
+# answers with the asset's JSON metadata instead of the file.
+download() {
+  curl --fail-with-body --silent --show-error --location \
+    -H "Authorization: Bearer $GH_TOKEN" \
+    -H "Accept: application/octet-stream" \
+    -H "X-GitHub-Api-Version: 2022-11-28" "$@"
+}
+
 # Every release as one JSON array, newest first, drafts included when the token may see them.
 all_releases() {
   local tmp page=1 n
@@ -123,7 +132,7 @@ cmd_fetch() {
   id="$(head -n 1 <<< "$ids")"
   mkdir -p "$dir"
   api "$REPO_API/releases/$id" | jq -r '.assets[] | "\(.id) \(.name) \(.size)"' | while read -r aid name size; do
-    api -H "Accept: application/octet-stream" "$REPO_API/releases/assets/$aid" -o "$dir/$name"
+    download "$REPO_API/releases/assets/$aid" -o "$dir/$name"
     [[ "$(wc -c < "$dir/$name" | tr -d ' ')" == "$size" ]] || { echo "::error::$name downloaded with the wrong size" >&2; exit 1; }
     echo "fetched $name"
   done

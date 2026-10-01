@@ -51,7 +51,7 @@ fsp routes --graph dot | dot -Tsvg > routes.svg
 
 The tree as `app.g.dart` hands it to go_router, not the folders. A node is a route (its
 URL pattern, route class, each localized spelling, and the markers `redirect`, `data`,
-`guard`, `present`, `root`, `sibling`); an edge is nesting, so a `nest = false` route hangs
+`action`, `guard`, `present`, `root`, `sibling`); an edge is nesting, so a `nest = false` route hangs
 from the page above its parent, not from the page above it; a box is a navigator: the root
 navigator, a `layout.dart` shell (marked `data` for a section, `guard`) and each tab
 branch. The output is deterministic (no timestamps, a fixed order), so it can be

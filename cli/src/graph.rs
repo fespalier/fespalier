@@ -66,6 +66,9 @@ pub fn markers(r: &Route, root: bool, guarded: bool) -> Vec<&'static str> {
     if r.data.is_some() {
         out.push("data");
     }
+    if !r.actions.is_empty() {
+        out.push("action");
+    }
     if guarded {
         out.push("guard");
     }

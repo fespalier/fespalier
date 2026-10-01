@@ -55,7 +55,7 @@ digraph routes {
       }
       n34 [label="/old-shops/:shop\nOldShopsShopRoute\n(redirect)", style=dashed];
       n35 [label="/orders/:id\nOrderRoute"];
-      n36 [label="/orders/:id/refund\nRefundRoute\n(data, guard)"];
+      n36 [label="/orders/:id/refund\nRefundRoute\n(data, action, guard)"];
       n37 [label="/orders/:id/refund/receipt\nReceiptRoute"];
       n38 [label="/orders/:id/refund/confirm\nConfirmRefundRoute\n(guard, sibling)"];
       n39 [label="/shop/:category\nCategoryShopRoute\nfr /boutique/:category, de /laden/:category\n(data)"];

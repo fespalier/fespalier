@@ -2196,8 +2196,8 @@ GitHub renders in Markdown, and `--graph dot` a Graphviz `digraph` (`fsp routes 
 It draws what `app.g.dart` gives go_router, not the folders:
 
 - **Nodes** are routes: the URL pattern, the route class, each spelling of a
-  [localized path](#localized-paths) and the markers (`redirect`, `data`, `guard`, `present`,
-  `root`, `sibling`, as in the tags above). A `redirect.dart` route is dashed.
+  [localized path](#localized-paths) and the markers (`redirect`, `data`, `action`, `guard`,
+  `present`, `root`, `sibling`, as in the tags above). A `redirect.dart` route is dashed.
 - **Edges** are nesting: a page is the parent of the routes in the folders below it, and a route with
   [`nest = false`](#a-sibling-with-a-compound-path) hangs from the page above its parent instead.
   A shell's routes hang from the route above the shell.

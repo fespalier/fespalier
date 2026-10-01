@@ -67,6 +67,36 @@ fn gen_and_check_report_success() {
     );
 }
 
+/// `check` writes and compares nothing, so it passes while the committed output is stale; the
+/// README says so, and tells CI to run `gen` and then fail on a diff to catch that.
+#[test]
+fn check_passes_while_the_committed_output_is_stale() {
+    let dir = project();
+    assert!(fsp(dir.path(), &["gen"]).0);
+    let out = dir.path().join("lib/app.g.dart");
+    let committed = fs::read_to_string(&out).unwrap();
+
+    // A new route the committed file knows nothing about.
+    fs::create_dir_all(dir.path().join("lib/app/about")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/about/page.dart"),
+        page("AboutPage"),
+    )
+    .unwrap();
+    assert_eq!(
+        fsp(dir.path(), &["check"]),
+        (true, "✓ 2 routes, no errors\n".into())
+    );
+    assert_eq!(fs::read_to_string(&out).unwrap(), committed, "check wrote");
+
+    // `gen` is what brings it up to date, and shows up as a diff.
+    assert_eq!(
+        fsp(dir.path(), &["gen"]),
+        (true, "✓ 2 routes → lib/app.g.dart\n".into())
+    );
+    assert_ne!(fs::read_to_string(&out).unwrap(), committed);
+}
+
 #[test]
 fn check_failure_keeps_its_exit_code() {
     let dir = project();

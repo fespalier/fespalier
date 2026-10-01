@@ -307,6 +307,79 @@ fn user_providers_are_used_as_is() {
 }
 
 #[test]
+fn provider_family_record_cannot_carry_a_query_parameter() {
+    let e = diags(&[
+        (
+            "$id/data.dart",
+            "final data = FutureProvider.family<int, ({int id, int? page})>((ref, k) async => k.id);",
+        ),
+        (
+            "$id/page.dart",
+            "class ItemPage extends StatelessWidget { const ItemPage(this.n, {super.key}); final int n; }",
+        ),
+    ]);
+    let joined = e.join("\n");
+    assert!(
+        joined.contains("`page` isn't a segment of this path ($id); a provider you write can be keyed by segments only"),
+        "{joined}"
+    );
+    // The field is already nullable: the message must not tell the reader to make it so.
+    assert!(
+        !joined.contains("make it optional and nullable"),
+        "{joined}"
+    );
+    assert!(
+        joined.contains("Future<int> data(Ref ref, {int? page})"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn an_optional_parameter_of_a_non_query_type_is_not_told_to_be_optional() {
+    let e = diags(&[
+        (
+            "$id/data.dart",
+            "Future<int> data(Ref ref, {required int id, Object? page}) async => id;",
+        ),
+        (
+            "$id/page.dart",
+            "class ItemPage extends StatelessWidget { const ItemPage(this.n, {super.key}); final int n; }",
+        ),
+    ]);
+    let joined = e.join("\n");
+    assert!(joined.contains("its type `Object?` isn't one"), "{joined}");
+    assert!(
+        !joined.contains("make it optional and nullable"),
+        "{joined}"
+    );
+}
+
+#[test]
+fn uppercase_ascii_folder_names_are_accepted_and_the_messages_say_so() {
+    let c = code(&[
+        ("Products/page.dart", HOME),
+        (
+            "(Admin)/Users/page.dart",
+            "class UsersPage extends StatelessWidget { const UsersPage({super.key}); }",
+        ),
+    ]);
+    has(
+        &c,
+        &[
+            "joinLocation(at, '/Products')",
+            "joinLocation(at, '/Users')",
+        ],
+    );
+    let e = diags(&[("(bad name)/page.dart", HOME), ("Bad Name/page.dart", HOME)]);
+    let joined = e.join("\n");
+    assert!(
+        joined.contains("a group name uses a-z, A-Z, 0-9, - _ . ~"),
+        "{joined}"
+    );
+    assert!(joined.contains("(use a-z, A-Z, 0-9, - _ . ~;"), "{joined}");
+}
+
+#[test]
 fn provider_family_must_name_its_segments() {
     let e = diags(&[
         (
@@ -928,7 +1001,7 @@ fn groups_cannot_serve_the_same_url_twice() {
     for needle in [
         "(a)/page.dart:1  / is served by both page.dart and (a)/page.dart; (group) folders don't add to the URL, so move or rename one",
         "(b)/x/page.dart:1  /x is served by both (a)/x/page.dart and (b)/x/page.dart; (group) folders don't add to the URL, so move or rename one",
-        "`(bad name)`: a group name uses a-z, 0-9, - _ . ~",
+        "`(bad name)`: a group name uses a-z, A-Z, 0-9, - _ . ~",
     ] {
         assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
     }
@@ -2029,6 +2102,62 @@ fn a_guard_can_take_only_the_uri() {
         ],
     );
     assert!(!c.contains("_guard0"), "{c}");
+}
+
+#[test]
+fn a_view_file_may_hold_other_public_classes_if_one_is_a_widget() {
+    // The README says "one public widget class": a class that isn't a widget beside it is fine,
+    // and only an ambiguous file is an error.
+    let c = code(&[(
+        "a/page.dart",
+        "class Helper {}\nclass APage extends StatelessWidget { const APage({super.key}); }",
+    )]);
+    has(&c, &["_i0.APage("]);
+    let e = diags(&[(
+        "b/page.dart",
+        "class BPage extends StatelessWidget { const BPage({super.key}); }\nclass Other {}\nclass Third {}",
+    ), (
+        "c/page.dart",
+        "class One extends StatelessWidget {}\nclass Two extends StatelessWidget {}",
+    )])
+    .join("\n");
+    assert!(
+        e.contains("c/page.dart:2  expected one public widget class, found One, Two; make the others private (`_Name`)"),
+        "{e}"
+    );
+}
+
+#[test]
+fn only_a_guard_that_reads_params_is_skipped_for_an_unparsable_segment() {
+    // `$id` is an int, so `/items/abc` doesn't parse. A guard that asks for `id` goes through
+    // `guardWithParams`, which skips it; one that asks for neither segments nor query is called
+    // as it is, so it still runs.
+    let c = code(&[
+        (
+            "items/$id/guard.dart",
+            "GuardResult guard(ProviderContainer c, {required Uri uri}) => null;",
+        ),
+        (
+            "items/$id/page.dart",
+            "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.id}); final int id; }",
+        ),
+        (
+            "things/$id/guard.dart",
+            "GuardResult guard(ProviderContainer c, {required int id}) => null;",
+        ),
+        (
+            "things/$id/page.dart",
+            "class ThingPage extends StatelessWidget { const ThingPage({super.key, required this.id}); final int id; }",
+        ),
+    ]);
+    has(
+        &c,
+        &[
+            "redirect: (context, state) => _i1.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri),",
+            "(v) => _i3.guard(ProviderScope.containerOf(context, listen: false), id: v.id),",
+        ],
+    );
+    assert_eq!(c.matches("guardWithParams(").count(), 1, "{c}");
 }
 
 #[test]

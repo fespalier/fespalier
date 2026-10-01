@@ -1843,8 +1843,20 @@ impl Resolver<'_> {
                 Some(QueryTy::Broken) => return None,
                 _ => {
                     let hooks = what == "guard()" || what == "redirect()";
+                    // Already optional with a type, so "make it optional and nullable" would
+                    // send the reader round in a circle: it is the type that isn't a query type.
+                    let hint = match p.ty.as_ref().filter(|_| !p.required) {
+                        Some(t) => format!(
+                            "if `{}` is meant as a query parameter, its type `{}` isn't one: use a nullable String, int, double or bool, an enum, or a List of those",
+                            p.name, t.text
+                        ),
+                        None => format!(
+                            "for a query parameter make it optional and nullable, e.g. `String? {}`",
+                            p.name
+                        ),
+                    };
                     let msg = format!(
-                        "`{}` isn't a segment of this path ({}){}; for a query parameter make it optional and nullable, e.g. `String? {}`",
+                        "`{}` isn't a segment of this path ({}){}; {hint}",
                         p.name,
                         show_segs(segs),
                         if hooks {
@@ -1854,7 +1866,6 @@ impl Resolver<'_> {
                         } else {
                             String::new()
                         },
-                        p.name
                     );
                     self.diags.error(file, Some(&p.span), msg);
                     return None;
@@ -1983,6 +1994,22 @@ impl Resolver<'_> {
                 if let Some(fields) = &arg.record {
                     record = true;
                     for (name, fty) in fields {
+                        if !segs.iter().any(|(n, _)| n == name) {
+                            // A provider you write is keyed by what the path holds; the
+                            // generated one is the only one that can carry a query parameter.
+                            let msg = format!(
+                                "`{name}` isn't a segment of this path ({}); a provider you write can be keyed by segments only. \
+                                 To use a query parameter, write `Future<{ty}> data(Ref ref, {{{fty} {name}}})` instead, or select your provider from `data()`",
+                                show_segs(segs),
+                                fty = if fty.text.ends_with('?') {
+                                    fty.text.clone()
+                                } else {
+                                    format!("{}?", fty.text)
+                                },
+                            );
+                            self.diags.error(&file, Some(&v.span), msg);
+                            continue;
+                        }
                         let p = dart::Param {
                             name: name.clone(),
                             ty: Some(fty.clone()),

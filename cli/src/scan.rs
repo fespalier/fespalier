@@ -312,14 +312,14 @@ pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {
     if let Some(g) = name.strip_prefix('(').and_then(|n| n.strip_suffix(')')) {
         if !plain(g) {
             return Err(format!(
-                "`{name}`: a group name uses a-z, 0-9, - _ . ~, e.g. `(shop)`"
+                "`{name}`: a group name uses a-z, A-Z, 0-9, - _ . ~, e.g. `(shop)`"
             ));
         }
         return Ok(Seg::Group(g.to_string()));
     }
     if !plain(name) {
         return Err(format!(
-            "`{name}` is not a valid URL segment (use a-z, 0-9, - _ . ~; `$name` for params, `(name)` for groups, `_name` for private folders)"
+            "`{name}` is not a valid URL segment (use a-z, A-Z, 0-9, - _ . ~; `$name` for params, `(name)` for groups, `_name` for private folders)"
         ));
     }
     Ok(Seg::Static(name.to_string()))

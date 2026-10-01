@@ -82,6 +82,14 @@
         {
           "type": "generic",
           "path": "packages/fespalier/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "skills/fespalier/SKILL.md"
+        },
+        {
+          "type": "generic",
+          "path": "skills/fespalier-migration/references/go-router-adoption.md"
         }
       ]
     }

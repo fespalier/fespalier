@@ -1,0 +1,78 @@
+---
+name: fespalier-troubleshooting
+description: "Diagnosing fespalier failures where the message or the symptom does not name the cause — every fsp diagnostic grouped by area (folder names, view files, binding and types, data.dart, guards, tabs and navigators, config, meta, localized paths) with its cause and fix, plus the Flutter-side traps of this project: a stale app.g.dart that fsp check cannot see, parameters silently turned into query parameters, unreachable routes, case sensitivity, the ListTile ink assertion, a login page that shows not_found, and documentation claims that are false. Load when fsp prints an error or warning, flutter analyze fails inside app.g.dart, a URL shows not_found.dart or the wrong page, or a doc and the code disagree."
+---
+
+# fespalier-troubleshooting
+
+> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> These skills ship in the fespalier repository, and CI checks them against its code
+> on every change. Version-sensitive claims say the release they became true in; if
+> your app pins another fespalier, trust that release's code over this page. See
+> [Versions](https://github.com/vaam-apps/fespalier/blob/main/skills/README.md#versions).
+
+## Start here: symptom to cause
+
+| Symptom                                                                                    | Very likely cause                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `flutter analyze`: **`The function 'XRoute' isn't defined`**                               | `lib/app.g.dart` is stale. `fsp check` passes anyway (it compares nothing). Run `fsp gen`                                                                           |
+| `fsp gen` fails and `app.g.dart` does not change                                           | By design: errors leave the old file. Read the **first** error; fix `lib/app/`, never the generated file                                                            |
+| A URL shows **`Nothing at /path`** (or your `not_found.dart`)                              | No route matches: case (`/Products`), an unparsable segment, `$$rest` needs one part, or a guard loop                                                               |
+| The login page itself shows **`Nothing at /login`**                                        | The guard covers the login page: its `from=` redirect loops until go_router gives up. Move `login/` outside                                                         |
+| `X is unreachable: $a/page.dart (/:a) comes first ...`                                     | A `(group)` holding a dynamic route cannot be sorted around a dynamic sibling outside it                                                                            |
+| A deep link builds a page you did not open (`/orders/1/refund` under `.../refund/confirm`) | A page is the parent of the routes below it. To make one a sibling with a compound path: `const nest = false;` in its `route.dart` (0.4.0), see `fespalier-routing` |
+| `` `nest = false` takes ... `` / `` `nest = false` is about ... ``                         | `nest` with nothing to leave, or a layout it would escape: `references/diagnostics-config-and-meta.md`                                                              |
+| ``can't fill `x`: it isn't a segment of this path ...``                                    | A required parameter that is not a `$segment`, `data`, or an optional nullable query parameter                                                                      |
+| `` `$id` is String in a/data.dart:2 but int here ``                                        | Files disagree on one segment's type: change it in **every** file that asks for it                                                                                  |
+| A page gets `null` or defaults                                                             | An optional nullable parameter became a **query parameter**; check `fsp routes --json` `params`                                                                     |
+| `ListTile background color or ink splashes may be invisible`                               | Page under the layout's `Scaffold`: wrap it in `Material(type: MaterialType.transparency, ...)`                                                                     |
+| Routes do not animate on go_router 18                                                      | No root `transition.dart`; Flutter's `MaterialApp` is not the one go_router 18 looks for                                                                            |
+| Every layout shell animates after upgrading to 0.3.0                                       | A `transition.dart` at or above a layout animates its shell now (`fespalier-migration`)                                                                             |
+| `expected a public widget class` / `found the widget class X and the function`             | A view file needs one public widget class **or** one function, not both                                                                                             |
+| Deep link to a dialog opens a blank screen                                                 | The dialog route has no parent page above it                                                                                                                        |
+| A test hangs, or `A Timer is still pending`                                                | Awaiting `read`/`refresh` under a fake clock, or booting twice with delayed fakes (`fespalier-testing`)                                                             |
+| `currentLocation` is the old location after a `push`                                       | fespalier 0.3.0 or older: it followed `go` only. Upgrade (0.4.0 follows `push`), or read `currentConfiguration.last.matchedLocation`                                |
+| `invalid pubspec.yaml: fespalier: unknown field ...`                                       | A misspelled or unknown key in the `fespalier:` section                                                                                                             |
+| `fsp <version> isn't cached and the download failed (offline?)`                            | `dart run fespalier` with an empty cache and no network: run once online, or set `FSP_BINARY`                                                                       |
+
+## How `fsp` reports
+
+Diagnostics print with a code frame at the file and line of the **parameter or
+declaration** at fault, `error:` or `warning:`; with `--json` each is one JSON object
+(`file`, `line`, `column`, `severity`, `message`). Errors stop generation and leave
+`app.g.dart` as it was (`N error(s); lib/app.g.dart left unchanged`, exit 1); warnings do
+not. A file the parser cannot fully read is a **warning** (`couldn't fully parse this
+file; ...`): `fsp` worked with what it could, and the Dart compiler reports the exact
+error. `fsp routes` and `fsp check` print the same diagnostics.
+
+**Fix the first error first**: later ones can be consequences of it.
+
+## The catalogue
+
+Each page lists the message text, the cause and the fix, taken from the source and
+confirmed by running `fsp` on a tree that triggers it.
+
+| Area                                                                                                   | Reference                                                                                              |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Folder names, view files, duplicate URLs, route names, unreachable routes                              | [`references/diagnostics-tree.md`](references/diagnostics-tree.md)                                     |
+| Filling parameters, segment and query types, enums, `extra`                                            | [`references/diagnostics-binding.md`](references/diagnostics-binding.md)                               |
+| `data.dart` (three forms), `guard.dart`, `redirect.dart`, `transition.dart`, `present.dart`            | [`references/diagnostics-data-and-hooks.md`](references/diagnostics-data-and-hooks.md)                 |
+| Layouts, `tabs`, `tabOptions`, `container`, `navigator.dart`                                           | [`references/diagnostics-layouts-and-navigators.md`](references/diagnostics-layouts-and-navigators.md) |
+| Pubspec config, the CLI and launcher, `meta.dart`, `route.dart`, localized `paths`, `extra_codec.dart` | [`references/diagnostics-config-and-meta.md`](references/diagnostics-config-and-meta.md)               |
+| Stale `app.g.dart`, the ink assertion, silent query parameters, case, go_router 18, the web            | [`references/flutter-pitfalls.md`](references/flutter-pitfalls.md)                                     |
+| README claims that were false in 0.3.0 (and what to do instead)                                        | [`references/known-wrong-docs.md`](references/known-wrong-docs.md)                                     |
+
+## Three things to do before anything else
+
+1. `fsp gen`, then `flutter analyze`. Most "it does not work" is a stale
+   `app.g.dart` or an unread error line.
+2. `fsp routes` (or `--json`): it shows which file serves which URL, which parameters are
+   path and which are query, and every tag (`data`, `guard`, `layout`, `transition`,
+   `present`, `root`, `redirect`, and `sibling` for a `nest = false` route).
+3. Open the **`.rs` or `.dart`** before the README when they disagree:
+   `known-wrong-docs.md` lists the ones that have bitten, and the version that fixed them.
+
+**Grep narrows; read confirms.** A missing message does not mean a rule does not exist:
+several checks live in `emit.rs` (ordering, tab starts, root children) rather than
+`resolve.rs`, and a few behaviours (the guard-skipping rule, the silent query parameter)
+produce **no** message at all.

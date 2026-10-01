@@ -229,3 +229,26 @@ jobs:
         run: python3 scripts/test_verify_staged.py
       - name: Stage, fetch, attach and publish release assets (fake GitHub API)
         run: python3 scripts/test_release_assets.py
+
+  skills:
+    name: Skills match the code
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The gate asks git whether each skill's stamp descends from the baseline commit in
+          # skills/coverage.json, and when a file was added; a shallow clone has neither.
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      # Every README section, file kind, config key and fsp command claimed by a skill, and
+      # every claim still real; frontmatter, version stamps and links (skills/README.md).
+      - name: Coverage, both ways
+        run: node scripts/skills/verify-coverage.mjs
+      - name: Formatted (prettier)
+        run: npx --yes prettier@3.8.1 --check "skills/**/*.{md,json}"

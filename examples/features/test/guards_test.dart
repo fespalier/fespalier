@@ -60,6 +60,38 @@ void main() {
       expect(find.text('Log in to see /inbox?folder=x'), findsOneWidget);
     });
 
+    testWidgets('signing out moves to login, from the page you were on', (
+      tester,
+    ) async {
+      final c = await boot(tester, '/');
+      c.read(session.notifier).set(true);
+      const InboxRoute(folder: 'sent').go(tester.element(find.text('Home')));
+      await tester.pumpAndSettle();
+      expect(find.text('Inbox: sent'), findsOneWidget);
+
+      // The guard watches the session, so nothing else has to navigate.
+      await tester.tap(find.text('Sign out'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InboxPage), findsNothing);
+      expect(find.text('Log in to see /inbox?folder=sent'), findsOneWidget);
+
+      // And signing in again lets the same guard through.
+      await tester.tap(find.text('Sign in'));
+      await tester.pumpAndSettle();
+      expect(find.text('Inbox: sent'), findsOneWidget);
+    });
+
+    testWidgets('a guard that watches leaves other routes alone', (
+      tester,
+    ) async {
+      final c = await boot(tester, '/search');
+      c.read(session.notifier).set(true);
+      await tester.pumpAndSettle();
+      c.read(session.notifier).set(false);
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginPage), findsNothing);
+    });
+
     testWidgets('unrelated routes are not guarded', (tester) async {
       await boot(tester, '/search');
       expect(find.byType(LoginPage), findsNothing);

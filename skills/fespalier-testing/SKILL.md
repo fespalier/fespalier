@@ -45,6 +45,12 @@ testWidgets('shows a product', (tester) async {
   - **`retry` defaults to no retries**: a failing `data.dart` shows `error.dart` at once and
     leaves no timer. Pass `ProviderContainer.defaultRetry` (or your function) to test the
     app's policy.
+  - **It disposes the router when the test ends** (since 0.5.0; on 0.4.x and earlier
+    `LeakTesting` reported the `GoRouterDelegate` as not disposed). Don't `addTearDown(router.dispose)`
+    before the call as well: those run after `pumpRouter`'s, and a second `dispose` throws.
+    Build one router per test.
+  - **Guards: return synchronously when you can.** Any `Future`, even `Future.value(...)`,
+    costs a frame, so a cold deep link shows a blank first frame before the page.
 - **`currentLocation(tester)`** is where the router is, as a string
   (`/products/2?tab=info`). It follows `go`, `pop` and, since 0.4.0, **`push`** (the
   pushed location, the top of the stack). On 0.3.0 and earlier it did not follow a
@@ -59,18 +65,18 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 
 ## What to test, and how
 
-| You want to check                  | Do                                                                                                                 |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| A URL opens its page               | `pumpRouter(..., AppRoutes.router(initialLocation: '/products/2'))`, `find.byType(ProductPage)`                    |
-| Not found                          | `/nope` or an unparsable segment (`/products/abc`): the page is never built, guards that read segments are skipped |
-| Loading, then data                 | `settle: false`, `await tester.pump()`, `find.byType(ProductLoading)`, then `pump(delay)`                          |
-| An error view                      | a fake that throws: `error.dart` shows at once (no retries in `pumpRouter`)                                        |
-| A backend fake                     | override the provider your `data()` reads: `overrides: [apiProvider.overrideWithValue(FakeApi())]`                 |
-| Typed navigation                   | `ProductRoute(id: 1).go(tester.element(find.byType(ProductsPage)))`, then `pumpAndSettle`                          |
-| A guard                            | `c.read(session.notifier).signIn()` through the returned container, then navigate                                  |
-| Locations, matches, data providers | plain `test()`: `.location`, `locationFor`, `AppRoutes.dataAt(uri)`, `AppRoutes.match(uri)`                        |
-| A `WidgetRef` (prefetch, refresh)  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                     |
-| Restoration                        | your own app widget building the router in `State`, `restartAndRestore()`                                          |
+| You want to check                  | Do                                                                                                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A URL opens its page               | `pumpRouter(..., AppRoutes.router(initialLocation: '/products/2'))`, `find.byType(ProductPage)`                                                    |
+| Not found                          | `/nope` or an unparsable segment (`/products/abc`): the page is never built, guards that read segments are skipped                                 |
+| Loading, then data                 | `settle: false`, `await tester.pump()`, `find.byType(ProductLoading)`, then `pump(delay)`                                                          |
+| An error view                      | a fake that throws: `error.dart` shows at once (no retries in `pumpRouter`)                                                                        |
+| A backend fake                     | override the provider your `data()` reads: `overrides: [apiProvider.overrideWithValue(FakeApi())]`                                                 |
+| Typed navigation                   | `ProductRoute(id: 1).go(tester.element(find.byType(ProductsPage)))`, then `pumpAndSettle`                                                          |
+| A guard                            | `c.read(session.notifier).signIn()` through the returned container, then navigate (or `pumpAndSettle`: a `Ref` guard that watches moves by itself) |
+| Locations, matches, data providers | plain `test()`: `.location`, `locationFor`, `AppRoutes.dataAt(uri)`, `AppRoutes.match(uri)`                                                        |
+| A `WidgetRef` (prefetch, refresh)  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                     |
+| Restoration                        | your own app widget building the router in `State`, `restartAndRestore()`                                                                          |
 
 Full compiled tests for all of these are in
 [`references/recipes.md`](references/recipes.md); the traps, each of which cost a test

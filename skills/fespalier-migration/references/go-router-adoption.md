@@ -99,7 +99,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:my_app/app.g.dart';
 
 // uri includes the mount prefix, and so does the typed route's location.
-GuardResult guard(ProviderContainer c, {required Uri uri}) =>
+GuardResult guard(Ref ref, {required Uri uri}) =>
     LoginRoute(from: uri.toString()).location;
 ```
 
@@ -156,8 +156,10 @@ What `mount` changes:
 - **Unknown URLs** reach **your** `errorBuilder`. Forward them to
   `AppRoutes.notFound(state.uri)`, as above, or users see go_router's own error screen.
 - **Redirects**: fespalier's guards are `redirect`s on the mounted `GoRoute`s; your router's
-  top-level `redirect` and `refreshListenable` still apply around them. A host
-  `refreshListenable` is how guards re-run when a session changes (`fespalier-guards`).
+  top-level `redirect` and `refreshListenable` still apply around them. A guard that
+  takes a `Ref` and `ref.watch`es re-runs when what it watches changes (since 0.5.0), in your
+  router too, with no `refreshListenable` (`fespalier-guards`); a host `refreshListenable`
+  is only for a change that is not a provider (and for 0.4.1 and earlier).
 - `AppRoutes.router()` is what you **stop** calling: it is `mount()` inside a router of its
   own.
 
@@ -172,7 +174,7 @@ For each `GoRoute` you move:
 | `GoRoute(path: 'refund')` and `GoRoute(path: 'refund/confirm')` side by side | `refund/confirm/route.dart` with `const nest = false;` (0.4.0): it stays a sibling of `refund`, so a deep link does not build the `refund` page (`fespalier-routing`) |
 | `ShellRoute(builder: (c, s, child) => Shell(child))`                         | a `layout.dart` with `Widget child` in the folder that holds the routes (or a `(group)`)                                                                              |
 | `StatefulShellRoute.indexedStack(...)`                                       | a tab layout taking `StatefulNavigationShell` (`fespalier-layouts`)                                                                                                   |
-| `redirect: (context, state) => ...` on a route                               | `guard.dart` (a `ProviderContainer`, `uri`) or `redirect.dart` for a pure forward (`fespalier-guards`)                                                                |
+| `redirect: (context, state) => ...` on a route                               | `guard.dart` (a `Ref`, `uri`) or `redirect.dart` for a pure forward (`fespalier-guards`)                                                                              |
 | `pageBuilder` with a transition                                              | `transition.dart` (`Transitions.fade`, ...) (`fespalier-layouts`)                                                                                                     |
 | `state.extra` read in the builder                                            | a nullable `extra` parameter (`fespalier-routing`)                                                                                                                    |
 | A FutureBuilder or provider loaded in the page                               | `data.dart` (a selector for a provider you already have) (`fespalier-data`)                                                                                           |

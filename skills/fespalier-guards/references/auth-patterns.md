@@ -1,8 +1,9 @@
 # Auth patterns: sign-in, sign-out and refreshing on auth change
 
-As of v0.4.0. fespalier has **no auth feature**; it gives you guards that read a
-`ProviderContainer`, `returnTo`, and typed routes. Everything below is an app
-pattern on top of that, compiled and tested against v0.3.0.
+As of 0.5.0. fespalier has **no auth feature**; it gives you guards that take a
+`Ref` (and run again when what they watch changes), `returnTo`, and typed routes.
+Everything below is an app pattern on top of that. Guards took a `ProviderContainer` and
+ran only on navigation before 0.5.0: see "On 0.4.1 and earlier" below.
 
 ## The session provider
 
@@ -23,8 +24,8 @@ final session = NotifierProvider<Session, bool>(Session.new);
 ```
 
 A real app holds a token or a user here, loads it from storage, and exposes
-"signed in" as a value the guard can `read`. Guards take a `ProviderContainer`, so
-keep what they need in providers rather than in widgets.
+"signed in" as a value the guard can `watch`. Guards take a `Ref`, so keep what they
+need in providers rather than in widgets.
 
 ## The guarded group, the login page and the way back
 
@@ -34,8 +35,8 @@ import 'package:fespalier/fespalier.dart';
 import 'package:my_app/app.g.dart';
 import 'package:my_app/auth.dart';
 
-GuardResult guard(ProviderContainer c, {required Uri uri}) =>
-    c.read(session) ? null : LoginRoute(from: uri.toString()).location;
+GuardResult guard(Ref ref, {required Uri uri}) =>
+    ref.watch(session) ? null : LoginRoute(from: uri.toString()).location;
 ```
 
 ```dart
@@ -92,19 +93,60 @@ class LoginPage extends ConsumerWidget {
   absolute in-app paths.
 - `LoginRoute(from: ...)` is typed: renaming the login folder breaks the build, not
   the guard.
-- **Guards run on navigation.** A guard decides when a navigation reaches a route.
-  With `AppRoutes.router()`, **signing out while you sit on `/inbox` does not move
-  you**: the page stays until the next navigation, and the guard fires then. That
-  is fine when the sign-out button itself navigates (`context.go(const
-LoginRoute().location)`); it is not when the session can end elsewhere (a token
-  expiring, another tab). For that, refresh the router.
+- **Signing out moves you** (since 0.5.0). The guard `ref.watch`es the session, so when
+  it changes the guard runs again; if its answer is now a different one (`null` became
+  a location), the router runs the redirects again. Signing out on `/inbox` ends on
+  `/login?from=%2Finbox`, and signing in on the login page lets the same guard through.
+  That also covers a session that ends elsewhere (a token expiring, another tab). Nothing
+  is wired up by you: it works with `AppRoutes.router()` and with a router of your own
+  built from `AppRoutes.mount()`, with no `refreshListenable`.
+- **What to know.**
+  - A guard that `ref.read`s, or takes `ProviderContainer c`, runs only when you navigate.
+  - A guarded page **under a pushed page** waits: it reacts once you pop back to it.
+  - A sign-out runs the guard **twice** (Riverpod recomputes it, then the router asks
+    again); the providers it watches are not fetched twice.
+  - `ref.keepAlive()` in a guard keeps one provider alive per navigation: don't.
+  - Keep a guard sync (`GuardResult`, no `async`) unless it must await: a `Future`, even a
+    completed one, costs a frame and a blank first frame at boot.
 
-## Refresh on auth change
+A test for it (`pumpRouter` returns the container; nothing else navigates):
 
-`AppRoutes.router()` takes `initialLocation`, `observers`, `restorationScopeId`
-and `navigatorKey`, and **no `refreshListenable`**. To re-run the guards when the
-session changes, mount the tree in a `GoRouter` of your own and give it one.
-go_router then re-evaluates the redirects of the current location on every
+```dart
+// test/sign_out_test.dart
+import 'package:fespalier/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/auth.dart';
+
+void main() {
+  testWidgets('signing out on a member page moves to login', (tester) async {
+    final c = await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/inbox'),
+    );
+    expect(currentLocation(tester), '/login?from=%2Finbox');
+
+    c.read(session.notifier).signIn();
+    final context = tester.element(find.byType(Navigator));
+    const InboxRoute(folder: 'sent').go(context);
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/inbox?folder=sent');
+
+    c.read(session.notifier).signOut();
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/login?from=%2Finbox%3Ffolder%3Dsent');
+  });
+}
+```
+
+## Refreshing the router yourself (optional)
+
+You no longer need this for a guard that watches. Build your own `refreshListenable` only
+when something that is not a provider should re-run the guards, or on 0.4.1 and earlier,
+where `AppRoutes.router()` took `initialLocation`, `observers`, `restorationScopeId` and
+`navigatorKey` and **no `refreshListenable`**. Mount the tree in a `GoRouter` of your own and
+give it one; go_router then re-evaluates the redirects of the current location on every
 notification, which is where your guards live.
 
 ```dart
@@ -166,10 +208,21 @@ What you give up by building the router yourself: `AppRoutes.router()` also pass
 use them. The `errorBuilder` above is what `AppRoutes.router()` sets; keep it so
 unknown paths still show your `not_found.dart`.
 
+### On 0.4.1 and earlier
+
+A guard took `ProviderContainer c` (`c.read(session)`) and **ran only on navigation**:
+signing out while you sat on `/inbox` did not move you until the next navigation. The
+sign-out button had to navigate itself (`context.go(const LoginRoute().location)`), or the
+app had to build a router with a `refreshListenable` like the one above. The container
+form still works on 0.5.0 and later, with that behaviour.
+
 ## Waiting for the session to load
 
 A guard may be **async** (`FutureOr<String?>`): useful when the session is read from
-storage at startup.
+storage at startup. It watches through `.future`, and runs again when that provider
+changes, like a sync one. **Return synchronously when you can**: any `Future`, even
+`Future.value(...)`, costs the router a frame, and on a cold deep link the first frame is
+blank. Make a guard `async` only when it has something to `await`.
 
 ```dart
 // lib/app/(private)/guard.dart
@@ -179,8 +232,8 @@ import 'package:my_app/app.g.dart';
 final restored = FutureProvider<bool>((ref) async => true);
 
 // Waits for the stored session, then decides.
-GuardResult guard(ProviderContainer c) async =>
-    await c.read(restored.future) ? null : const LoginRoute().location;
+Future<String?> guard(Ref ref) async =>
+    await ref.watch(restored.future) ? null : const LoginRoute().location;
 ```
 
 ```dart

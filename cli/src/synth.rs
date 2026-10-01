@@ -112,7 +112,7 @@ impl Files {
             if s % 3 == 0 {
                 f.set(
                     &format!("{dir}/guard.dart"),
-                    "GuardResult guard(ProviderContainer c) => null;",
+                    "GuardResult guard(Ref ref) => null;",
                 );
             }
             if s % 7 == 0 {

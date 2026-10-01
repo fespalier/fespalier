@@ -86,6 +86,41 @@ fn example_app_generates_cleanly() {
     );
 }
 
+/// A view built with no arguments is `const`, so the framework skips rebuilding it while an
+/// ancestor rebuilds (a page under the top of the stack, on every navigation). Only a `const`
+/// constructor with nothing to pass qualifies.
+#[test]
+fn views_built_without_arguments_are_const_when_their_constructor_is() {
+    let c = code(&[
+        ("page.dart", HOME),
+        (
+            "plain/page.dart",
+            "class PlainPage extends StatelessWidget { PlainPage({super.key}); }",
+        ),
+        (
+            "item/$id/page.dart",
+            "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.id}); final int id; }",
+        ),
+        ("page_fn/page.dart", "Widget page() => const Placeholder();"),
+    ]);
+    // The call is `const` only for HomePage; the ones that can't be are plain.
+    let line = |name: &str| {
+        c.lines()
+            .find(|l| l.contains(name))
+            .unwrap_or_default()
+            .trim()
+    };
+    assert!(line(".HomePage(").contains("=> const _i"), "{c}");
+    assert!(line(".PlainPage(").ends_with(".PlainPage(),"), "{c}");
+    assert!(!line(".PlainPage(").contains("const"), "{c}");
+    assert!(line(".ItemPage(").contains(".ItemPage(id: v.id)"), "{c}");
+    assert!(!line(".ItemPage(").contains("const _i"), "{c}");
+    // A view function is a plain call.
+    assert!(!line(".page(").contains("const"), "{c}");
+    // The empty literals of a matcher are `const` too.
+    has(&c, &["const HomeRoute(), const {}, const [])"]);
+}
+
 #[test]
 fn committed_output_is_up_to_date() {
     for name in ["shop", "features", "tabs", "minimal"] {
@@ -562,7 +597,7 @@ fn syntax_errors_are_warned_about() {
     )]);
     let (code, diags, _) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
     assert!(!diags.has_errors(), "{:?}", diags.0);
-    assert!(code.contains("_i0.HomePage()"), "{code}");
+    assert!(code.contains("const _i0.HomePage()"), "{code}");
 }
 
 #[test]
@@ -581,7 +616,7 @@ fn valid_newer_syntax_and_primary_constructors_do_not_warn() {
             "class const BPage({super.key}) extends StatelessWidget {}",
         ),
     ]);
-    has(&c, &["_i1.APage(q: v.q)", "_i2.BPage()"]);
+    has(&c, &["_i1.APage(q: v.q)", "const _i2.BPage()"]);
 }
 
 fn reserved(role: &str, src: &str, files: &[(&str, &str)]) -> Vec<String> {
@@ -969,7 +1004,7 @@ fn group_folders_share_a_layout_without_adding_to_the_url() {
             // The one holding `/:id` goes last, so `/about` isn't read as an id.
             "      ShellRoute(\n        pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:(marketing)/',\n          _i5.MarketingLayout(child: child),",
             "      ShellRoute(\n        pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:(app)/',\n          _i1.AppShell(child: child),\n        ),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/:id'),",
-            "loading: () => _i0.AppLoading(),",
+            "loading: () => const _i0.AppLoading(),",
             "_i5.MarketingLayout(child: child),\n        ),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/'),",
             "GoRoute(\n                path: 'about',",
             "String get location => joinLocation(AppRoutes.base, '/about');",
@@ -1108,7 +1143,7 @@ fn transition_applies_to_every_page_below_it() {
             "//   /about  AboutRoute  about/page.dart  (transition)",
             "import 'app/transition.dart' as _i1;",
             // The page is exactly what `builder:` would have returned.
-            "pageBuilder: (context, state) => _i1.transition(\n          state.pageKey,\n          _i0.HomePage(),\n        ),",
+            "pageBuilder: (context, state) => _i1.transition(\n          state.pageKey,\n          const _i0.HomePage(),\n        ),",
             "pageBuilder: (context, state) => _i1.transition(\n              state.pageKey,\n              buildWithParams(\n                () => _params1(state),\n                (v) => DataView(",
             "data: (d) => _i3.ItemPage(data: d),",
             "                () => notFound(state.uri),\n              ),\n            ),\n",
@@ -1173,7 +1208,7 @@ fn transition_in_a_group_leaves_other_routes_alone() {
         &[
             "//   /       HomeRoute   page.dart\n",
             "(transition)",
-            "builder: (context, state) => _i0.HomePage(),",
+            "builder: (context, state) => const _i0.HomePage(),",
         ],
     );
     assert_eq!(c.matches("pageBuilder:").count(), 1, "{c}");
@@ -1192,7 +1227,7 @@ fn transition_params_are_filled_by_name_then_type() {
     has(
         &c,
         &[
-            "_i1.transition(\n          _i0.HomePage(),\n          state.pageKey,\n          state: state,\n        ),",
+            "_i1.transition(\n          const _i0.HomePage(),\n          state.pageKey,\n          state: state,\n        ),",
         ],
     );
     assert!(!c.contains("duration") && !c.contains("slow"), "{c}");
@@ -1206,7 +1241,7 @@ fn transition_params_are_filled_by_name_then_type() {
     ]);
     has(
         &c,
-        &["child: _i0.HomePage(),\n          key: state.pageKey,"],
+        &["child: const _i0.HomePage(),\n          key: state.pageKey,"],
     );
 }
 
@@ -1296,7 +1331,7 @@ fn tab_layout_makes_a_branch_of_each_folder() {
         &c,
         &[
             "StatefulShellRoute.indexedStack(\n        pageBuilder: (context, state, navigationShell) => layoutPage(\n          context,\n          state,\n          'layout:/',\n          _i1.TabsLayout(navigationShell: navigationShell),\n        ),\n        branches: [",
-            "StatefulShellBranch(\n            routes: [\n              GoRoute(\n                path: joinLocation(at, '/'),\n                builder: (context, state) => _i0.HomePage(),\n              ),\n            ],\n            restorationScopeId: 'tab:/.',\n          ),",
+            "StatefulShellBranch(\n            routes: [\n              GoRoute(\n                path: joinLocation(at, '/'),\n                builder: (context, state) => const _i0.HomePage(),\n              ),\n            ],\n            restorationScopeId: 'tab:/.',\n          ),",
             "path: joinLocation(at, '/search'),",
             // A group is a branch too, and adds nothing to the URL.
             "path: joinLocation(at, '/profile'),",
@@ -1503,7 +1538,7 @@ fn a_tab_holds_nested_routes_data_guards_and_transitions() {
             "path: ':id',",
             "data: (d) => _i9.ItemPage(data: d),",
             "data: (d) => _i6.ShopPage(d),",
-            "loading: () => _i7.Busy(),",
+            "loading: () => const _i7.Busy(),",
             "pageBuilder: (context, state) => _i0.transition(",
             // A plain layout inside a tab is still a ShellRoute, within the branch.
             "ShellRoute(\n                pageBuilder: (context, state, child) => _i0.transition(\n                  const ValueKey<String>('layout:(tabs)/help/'),\n                  _i4.HelpLayout(child: child),\n                ),",
@@ -1878,7 +1913,7 @@ fn init_creates_starters_that_pass_gen() {
         &code,
         &[
             "_i2.AppLayout(child: child)",
-            "_i0.HomePage()",
+            "const _i0.HomePage()",
             "_i3.NotFoundPage(uri: uri)",
             "_i1.transition(",
         ],
@@ -1935,6 +1970,7 @@ fn init_needs_a_pubspec_with_a_name() {
 // ---- guards and redirects ----
 
 const NOOP_GUARD: &str = "GuardResult guard(ProviderContainer c) => null;";
+const REF_GUARD: &str = "GuardResult guard(Ref ref) => null;";
 
 /// How many routes call a guard.
 fn guard_calls(code: &str) -> usize {
@@ -2105,6 +2141,193 @@ fn a_guard_can_take_only_the_uri() {
 }
 
 #[test]
+fn a_guard_that_takes_a_ref_runs_through_ref_guard() {
+    let c = code(&[
+        (
+            "guard.dart",
+            "GuardResult guard(Ref ref, {required Uri uri}) => null;",
+        ),
+        ("a/page.dart", &page("A")),
+    ]);
+    let g = imp(&c, "guard.dart");
+    // The site is a const string: the guard's route, then the route it runs on.
+    has(
+        &c,
+        &[&format!(
+            "redirect: (context, state) => refGuard(context, 'g0@1', (ref) => {g}.guard(ref, uri: state.uri)),"
+        )],
+    );
+    assert!(!c.contains("containerOf"), "{c}");
+    assert!(!c.contains("_guard0"), "{c}");
+}
+
+#[test]
+fn a_ref_guard_gets_its_segments_in_the_closure() {
+    let c = code(&[
+        (
+            "$shop/guard.dart",
+            "Future<String?> guard(Ref r, {required String shop, String? ref, Uri? uri}) async => null;",
+        ),
+        ("$shop/items/page.dart", &page("Items")),
+    ]);
+    // A query parameter may be called `ref`: it is a label, the closure's `ref` a variable.
+    has(
+        &c,
+        &[
+            "(v) => refGuard(context, 'g1@",
+            "(ref) => _i0.guard(ref, shop: v.shop, ref: v.ref, uri: state.uri)",
+        ],
+    );
+}
+
+#[test]
+fn ref_and_container_guards_chain_in_order_and_each_keeps_its_own_form() {
+    let c = code(&[
+        ("(members)/guard.dart", REF_GUARD),
+        ("(members)/team/guard.dart", NOOP_GUARD),
+        ("(members)/team/page.dart", &page("Team")),
+    ]);
+    let (outer, own) = (
+        imp(&c, "(members)/guard.dart"),
+        imp(&c, "(members)/team/guard.dart"),
+    );
+    has(
+        &c,
+        &[
+            "firstRedirect([",
+            &format!("() => refGuard(context, 'g1@2', (ref) => {outer}.guard(ref)),"),
+            &format!("() => {own}.guard(ProviderScope.containerOf(context, listen: false)),"),
+        ],
+    );
+    assert!(
+        at(&c, &format!("{outer}.guard(ref)")) < at(&c, &format!("{own}.guard(")),
+        "{c}"
+    );
+}
+
+#[test]
+fn two_routes_under_one_guard_each_get_a_site() {
+    let c = code(&[
+        ("(members)/guard.dart", REF_GUARD),
+        ("(members)/inbox/page.dart", &page("Inbox")),
+        ("(members)/admin/page.dart", &page("Admin")),
+    ]);
+    // One guard, two routes: two sites, so each keeps its own subscription.
+    let sites: Vec<&str> = c
+        .match_indices("refGuard(context, '")
+        .map(|(i, m)| c[i + m.len()..].split('\'').next().unwrap())
+        .collect();
+    assert_eq!(sites.len(), 2, "{c}");
+    assert_ne!(sites[0], sites[1], "{c}");
+    assert!(sites.iter().all(|s| s.starts_with("g1@")), "{sites:?}");
+}
+
+#[test]
+fn a_ref_guard_is_not_forced_into_a_future() {
+    // The return type is the author's: a sync guard stays a sync call.
+    for ret in [
+        "GuardResult",
+        "FutureOr<String?>",
+        "Future<String?>",
+        "String?",
+    ] {
+        let body = if ret == "Future<String?>" {
+            "async => null"
+        } else {
+            "=> null"
+        };
+        let c = code(&[
+            ("guard.dart", &format!("{ret} guard(Ref ref) {body};")),
+            ("a/page.dart", &page("A")),
+        ]);
+        assert!(c.contains("(ref) => _i0.guard(ref)"), "{ret}: {c}");
+        assert!(!c.contains("async"), "{ret}: {c}");
+        assert!(!c.contains("await"), "{ret}: {c}");
+    }
+}
+
+#[test]
+fn a_redirect_that_takes_a_ref_evaluates_once() {
+    let c = code(&[
+        ("a/redirect.dart", "String redirect(Ref ref) => '/b';"),
+        (
+            "b/redirect.dart",
+            "Future<String> redirect(Ref ref, {required Uri uri}) async => '/a';",
+        ),
+        (
+            "c/$id/redirect.dart",
+            "FutureOr<String> redirect(Ref ref, {required int id}) => '/a';",
+        ),
+    ]);
+    has(
+        &c,
+        &[
+            "redirect: (context, state) => refRedirect(context, (ref) => _i0.redirect(ref)),",
+            "redirect: (context, state) => refRedirect(context, (ref) => _i1.redirect(ref, uri: state.uri)),",
+            "(v) => refRedirect(context, (ref) => _i2.redirect(ref, id: v.id)),",
+        ],
+    );
+    // A redirect route never stays on screen, so it has no site to keep.
+    assert!(!c.contains("refGuard("), "{c}");
+}
+
+#[test]
+fn a_redirect_route_chains_a_ref_guard_above_it_and_its_own_ref() {
+    let c = code(&[
+        ("(members)/guard.dart", REF_GUARD),
+        (
+            "(members)/old/redirect.dart",
+            "String redirect(Ref ref) => '/inbox';",
+        ),
+        ("(members)/inbox/page.dart", &page("Inbox")),
+    ]);
+    let old = at(&c, "path: joinLocation(at, '/old')");
+    let chain = &c[old..old + c[old..].find("]),\n").unwrap()];
+    assert!(
+        chain.contains("firstRedirect([")
+            && chain.contains("refGuard(context, 'g1@")
+            && chain.contains("refRedirect(context, (ref) => "),
+        "{chain}"
+    );
+    assert!(chain.find("refGuard(").unwrap() < chain.find("refRedirect(").unwrap());
+}
+
+#[test]
+fn a_guard_and_a_redirect_in_one_folder_keep_their_forms() {
+    let c = code(&[
+        ("old/guard.dart", REF_GUARD),
+        ("old/redirect.dart", "String redirect() => '/new';"),
+        ("new/page.dart", &page("New")),
+    ]);
+    has(
+        &c,
+        &[
+            "refGuard(context, 'g2@2', (ref) => _i1.guard(ref))",
+            "_i2.redirect()",
+        ],
+    );
+}
+
+#[test]
+fn a_hook_that_takes_a_widget_ref_is_told_to_take_a_ref() {
+    let joined = diags(&[
+        ("a/guard.dart", "GuardResult guard(WidgetRef ref) => null;"),
+        ("a/page.dart", &page("A")),
+        ("b/redirect.dart", "String redirect(WidgetRef ref) => '/a';"),
+    ])
+    .join("\n");
+    for needle in [
+        "a guard runs outside the widget tree: take `Ref`",
+        "a redirect runs outside the widget tree: take `Ref`",
+    ] {
+        assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
+    }
+    // Only that message: the parameter is not also read as a segment.
+    assert!(!joined.contains("isn't a segment"), "{joined}");
+    assert!(!joined.contains("`ref`"), "{joined}");
+}
+
+#[test]
 fn a_view_file_may_hold_other_public_classes_if_one_is_a_widget() {
     // The README says "one public widget class": a class that isn't a widget beside it is fine,
     // and only an ambiguous file is an error.
@@ -2193,18 +2416,21 @@ fn inherited_guard_errors() {
             "GuardResult guard(ProviderContainer c, {required String uri}) => null;",
         ),
         ("b/page.dart", &page("B")),
-        // The container comes first, and the return type is a GuardResult.
+        // A `Ref` (or the older container) comes first, and the return type is a GuardResult.
         ("c/guard.dart", "String guard({int? x}) => 'x';"),
         ("c/page.dart", &page("C")),
         ("d/guard.dart", "void other() {}"),
         ("d/page.dart", &page("D")),
+        ("e/guard.dart", "GuardResult guard(WidgetRef ref) => null;"),
+        ("e/page.dart", &page("E")),
     ])
     .join("\n");
     for needle in [
         "`id` isn't a segment of this path (it has none) at or above its folder; guard() can also take `Uri uri`",
         "`uri` gets the requested Uri, but it's declared String",
-        "guard() must take `ProviderContainer c` first",
-        "expected `GuardResult guard(ProviderContainer c, {...segments})`",
+        "guard() must take `Ref ref` first (or `ProviderContainer c`, the older form)",
+        "expected `GuardResult guard(Ref ref, {...segments})`",
+        "a guard runs outside the widget tree: take `Ref`",
     ] {
         assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
     }

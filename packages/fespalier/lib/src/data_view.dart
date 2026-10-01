@@ -36,7 +36,8 @@ class DataView<T> extends ConsumerWidget {
   /// Builds the view while the data is loading.
   final Widget Function() loading;
 
-  /// Builds the view when loading failed; `retry` loads it again.
+  /// Builds the view when loading failed; `retry` loads it again (and does nothing once the
+  /// view is gone).
   final Widget Function(Object error, StackTrace stackTrace, VoidCallback retry)
   error;
 
@@ -49,8 +50,14 @@ class DataView<T> extends ConsumerWidget {
     skipLoadingOnRefresh: keepPrevious,
     data: data,
     loading: loading,
-    error: (e, st) => error(e, st, () => refresh(ref)),
+    error: (e, st) => error(e, st, () => _retry(ref)),
   );
+
+  /// A `retry` an app held on to (a debounced button, a timer, a future's callback) can run
+  /// after the view is gone; `ref` can't be used then, so there is nothing to load again.
+  void _retry(WidgetRef ref) {
+    if (ref.context.mounted) refresh(ref);
+  }
 }
 
 /// Fallback when no `loading.dart` exists anywhere up the tree.

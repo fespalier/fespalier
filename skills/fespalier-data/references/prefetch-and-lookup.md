@@ -140,10 +140,11 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
 - **A failed load is not kept**: the handle closes itself, so the page starts a
   fresh load instead of showing an error nobody asked for yet.
 - Closing twice is fine, and `handle.isClosed` tells. The subscription also ends
-  when the widget whose `ref` you pass is disposed.
-- `keepFor` holds a **timer**, so a widget test that uses it should `pump` past it,
-  or pass `Duration.zero`, which starts the load and keeps nothing (the handle
-  comes back closed).
+  when the widget whose `ref` you pass is disposed; since 0.5.0 that also closes the
+  handle and cancels its `keepFor` timer (before, the timer ran on after the widget).
+- `keepFor` holds a **timer** while the widget lives, so a widget test that uses it
+  should `pump` past it, or pass `Duration.zero`, which starts the load and keeps
+  nothing (the handle comes back closed).
 - Under the routes: `ref.prefetchData(provider, {keepFor})` for any
   `ProviderListenable<AsyncValue<...>>`, and `ref.prefetchAll(providers,
 {keepFor})` for several at once, closed together by one handle.

@@ -83,11 +83,12 @@ fn the_router_owns_a_root_navigator_key_that_mount_can_take() {
     has(
         &c,
         &[
-            "static GlobalKey<NavigatorState> _rootNavigatorKey =\n      GlobalKey<NavigatorState>(debugLabel: 'root');",
+            "static GlobalKey<NavigatorState> _rootNavigatorKey = _newRootNavigatorKey();",
+            "static GlobalKey<NavigatorState> _newRootNavigatorKey() =>\n      GlobalKey<NavigatorState>(debugLabel: 'root');",
             "static GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;",
             "    GlobalKey<NavigatorState>? navigatorKey,\n  }) {\n    final routes = mount(navigatorKey: navigatorKey);",
             "navigatorKey: rootNavigatorKey,\n      routes: routes,",
-            "static List<RouteBase> mount({\n    String at = '/',\n    GlobalKey<NavigatorState>? navigatorKey,\n  }) {\n    _base = at;\n    if (navigatorKey != null) _rootNavigatorKey = navigatorKey;",
+            "static List<RouteBase> mount({\n    String at = '/',\n    GlobalKey<NavigatorState>? navigatorKey,\n  }) {\n    _base = at;\n    _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();",
         ],
     );
     // Nothing declares a root route, so no route names the key.
@@ -449,7 +450,7 @@ fn present_is_bound_like_transition() {
     has(
         &c,
         &[
-            "_i2.present(\n          state,\n          _i1.SheetPage(),\n          state.pageKey,\n        )",
+            "_i2.present(\n          state,\n          const _i1.SheetPage(),\n          state.pageKey,\n        )",
         ],
     );
     let e = diags(&[
@@ -834,7 +835,7 @@ fn transition_can_tell_a_shell_from_a_route() {
         &c,
         &[
             "_i1.transition(\n          const ValueKey<String>('layout:/'),\n          _i2.BoxLayout(child: child),\n          shell: true,\n        )",
-            "_i1.transition(\n            state.pageKey,\n            _i0.HomePage(),\n            shell: false,\n          )",
+            "_i1.transition(\n            state.pageKey,\n            const _i0.HomePage(),\n            shell: false,\n          )",
         ],
     );
     let e = diags(&[

@@ -26,13 +26,17 @@ as `_i0`, `_i1`, ...; a `$` in a path is escaped (`items/\$id/page.dart`).
 | `router({initialLocation, observers, restorationScopeId, navigatorKey})` | A whole `GoRouter` for `MaterialApp.router(routerConfig:)`. Passes `extraCodec:` when `extra_codec.dart` exists, and `errorBuilder` shows `notFound(uri)`. **No `refreshListenable`** |
 | `mount({at = '/', navigatorKey})`                                        | The routes alone (`List<RouteBase>`), to put inside your own `GoRouter`                                                                                                               |
 | `base`                                                                   | Where the tree is mounted: `'/'`, or the `at` given to `mount`. Typed routes read it, so `.location` stays right under a prefix                                                       |
-| `rootNavigatorKey`                                                       | The root navigator's `GlobalKey<NavigatorState>`: the one you supplied, else its own                                                                                                  |
+| `rootNavigatorKey`                                                       | The root navigator's `GlobalKey<NavigatorState>`: the one you supplied to the last `router()` or `mount()`, else a fresh one that call made                                           |
 | `notFound(uri)`                                                          | The nearest `not_found.dart` to `uri` (what `errorBuilder` calls)                                                                                                                     |
 | `matchUrl(uri)` / `dataAt(uri)`                                          | A `UrlMatch?` / the data providers, outermost first. No guard runs, no widget is built. `null`: no route, or a segment did not parse                                                  |
 | `all`, `byType`, `byPath`, `match(uri)`                                  | Forwarded from `AppManifest` (see below)                                                                                                                                              |
 
 `mount` **stores** `at` and `navigatorKey` in static fields, so the last call
-wins. `router()` calls `mount()` itself.
+wins. `router()` calls `mount()` itself. **Since 0.5.0 a call without a
+`navigatorKey` makes a fresh key** instead of keeping the one an earlier call
+stored (on 0.4.x and earlier it kept it, so a test could see another test's key),
+and a bare `AppRoutes.mount()` therefore restores both defaults (`base` `'/'`, a
+new key): end a test that mounted under a prefix with `addTearDown(AppRoutes.mount)`.
 
 ## `AppManifest`
 
@@ -79,6 +83,11 @@ exports its own provider (`final data = ...`) or selects one is used as is.
 
 ## What the file does not do
 
+- A guard that takes a `Ref` is called as
+  `refGuard(context, 'g8@3', (ref) => _i8.guard(ref, uri: state.uri))` (and a redirect
+  that takes one as `refRedirect(context, (ref) => ...)`); one that takes a
+  `ProviderContainer` as `_i8.guard(ProviderScope.containerOf(context, listen: false), ...)`,
+  as before 0.5.0. The string is a constant naming that guard on that route.
 - No `redirect` on a `ShellRoute` or `StatefulShellRoute`; guards hang on each
   page's `GoRoute`, and go_router runs a matched route's redirect for deep links
   and navigation inside shells, tabs included.

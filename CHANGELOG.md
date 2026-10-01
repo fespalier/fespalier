@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.4.0](https://github.com/vaam-apps/fespalier/compare/v0.3.0...v0.4.0) (2026-10-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* the Dart package is publish_to: 'none'; depend on it by git tag.
+
+### Features
+
+* nest = false in route.dart makes a route a sibling of the page above it ([#19](https://github.com/vaam-apps/fespalier/issues/19)) ([d676fce](https://github.com/vaam-apps/fespalier/commit/d676fce5b568b8c6c3e9909cdf73d5529348f375)), closes [#12](https://github.com/vaam-apps/fespalier/issues/12)
+
+
+### Bug Fixes
+
+* **ci:** build fsp on Windows and accept older pins on the release PR ([#15](https://github.com/vaam-apps/fespalier/issues/15)) ([a998fbd](https://github.com/vaam-apps/fespalier/commit/a998fbd24631101dae47c7e8bdfca54a33a31050))
+* **ci:** download staged release assets as files, not their metadata ([#17](https://github.com/vaam-apps/fespalier/issues/17)) ([65288bb](https://github.com/vaam-apps/fespalier/commit/65288bbb32c9d467e4d37435fcce73a0327b5301))
+* correct README claims and error messages; currentLocation follows a push ([#18](https://github.com/vaam-apps/fespalier/issues/18)) ([28f86d7](https://github.com/vaam-apps/fespalier/commit/28f86d789c3cc639a24be040cf2ca5b62880eb59))
+
+
+### Documentation
+
+* **examples:** add a minimal starter example ([#11](https://github.com/vaam-apps/fespalier/issues/11)) ([8b63d46](https://github.com/vaam-apps/fespalier/commit/8b63d46829745ff2c9935ce787f3a3ed6bfdfefc))
+
+
+### Build System
+
+* adopt the vaam-apps CI, lint and repo conventions; stop publishing to pub.dev ([#16](https://github.com/vaam-apps/fespalier/issues/16)) ([862e819](https://github.com/vaam-apps/fespalier/commit/862e819a76724626dfa39d87378777fff0de0e7f))
+* release through release-please, with fsp checksums pinned in the release PR ([#13](https://github.com/vaam-apps/fespalier/issues/13)) ([f5ea764](https://github.com/vaam-apps/fespalier/commit/f5ea76490b724a87679dcf485c7eff9c7b86b058))
+
 ## 0.3.0 — 2026-09-30
 
 Function views, navigators and presented routes, localized paths, enum and typed catch-all

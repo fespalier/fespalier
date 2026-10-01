@@ -2890,7 +2890,7 @@ testWidgets('shows a product', (tester) async {
 });
 ```
 
-`pumpRouter(tester, router, {overrides, container, settle, retry})` wraps the router in a
+`pumpRouter(tester, router, {overrides, container, settle, retry, disposeRouter})` wraps the router in a
 `ProviderScope` and Flutter's `MaterialApp.router`, and returns the `ProviderContainer`
 (for `container.read(...)`). `settle` (on by default) pumps until nothing is scheduled: turn
 it off to look at a loading view, then `pump` the time you want. Pass your own `container`
@@ -2902,9 +2902,10 @@ leaves no timer behind. To test what the app's policy does, pass
 `retry: ProviderContainer.defaultRetry` (or your own function). A policy that keeps retrying
 leaves a timer pending when the test ends, so dispose the returned container first. Make a new
 router per test, since a router remembers where it went. `pumpRouter` disposes the router when
-the test ends (since 0.5.0), so `LeakTesting` finds nothing left behind: don't dispose it
-yourself with an `addTearDown` registered before the call (those run after `pumpRouter`'s, and a
-second `dispose` throws), and don't share one between tests. The generated `AppRoutes` remembers the last
+the test ends (since 0.5.0), so `LeakTesting` finds nothing left behind. A test that disposes it
+itself with an `addTearDown` registered before the call, as tests written for 0.4.x do, passes
+`disposeRouter: false` (since 0.6.0): those teardowns run after `pumpRouter`'s, and a second
+`dispose` throws. Don't share a router between tests. The generated `AppRoutes` remembers the last
 `router()` or `mount()` (its `base` and `rootNavigatorKey`), and a call without a `navigatorKey`
 makes a fresh one (since 0.5.0), so a test that mounts under a prefix restores the defaults with
 `addTearDown(AppRoutes.mount)`, and no test depends on the order they run in. Return

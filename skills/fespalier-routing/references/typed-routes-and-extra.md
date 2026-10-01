@@ -29,10 +29,120 @@ const SearchRoute(q: 'ap', page: 2).location; // '/search?q=ap&page=2'
   `route-dart.md`).
 - `go`, `push` and `replace` are `context.go`, `context.push<T>` and
   `context.replace` on `locationFor(locale)`.
-- `watch`, `read`, `prefetch`, `refresh`, `ref` and `keepFor` cannot be segment
-  or query names: the class has those members (`fespalier-data`).
+- `watch`, `read`, `prefetch`, `refresh`, `ref`, `keepFor` and (since 0.5.0) `of`,
+  `maybeOf` and `copyWith` cannot be segment or query names: the class has those
+  members (`fespalier-data`, and the next section).
 - Build typed links rather than string paths: the compiler then checks the
   arguments, and a renamed folder breaks the build instead of a link.
+
+## The URL as state: `of` and `copyWith`
+
+Since 0.5.0, every typed route reads itself from the current location and copies
+itself with a part changed, so a widget can keep UI state (a filter, a sort, a
+page) in the URL instead of in its `State`: shareable, deep-linkable, and back and
+forward move between the views.
+
+```dart
+final route = SearchRoute.of(context);        // the typed route at the current location
+final maybe = SearchRoute.maybeOf(context);   // null instead of throwing
+route.copyWith(page: (route.page ?? 1) + 1).go(context);   // a history entry
+route.copyWith(sort: Sort.name, page: null).go(context);    // null clears a query parameter
+SearchRoute(q: 'ap').copyWith(page: 2).location;            // '/search?q=ap&page=2'
+```
+
+```dart
+// lib/app/products/page.dart
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+enum Sort { name, price }
+
+class ProductsPage extends StatelessWidget {
+  const ProductsPage({super.key, this.sort, this.page});
+
+  final Sort? sort; // ?sort=name
+  final int? page; //  ?page=2
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Text('sorted by ${sort?.name ?? 'default'}, page ${page ?? 1}'),
+      const _Controls(),
+    ],
+  );
+}
+
+// Below the page, and not handed `sort` or `page`: it reads the route.
+class _Controls extends StatelessWidget {
+  const _Controls();
+
+  @override
+  Widget build(BuildContext context) {
+    final route = ProductsRoute.of(context);
+    return Row(
+      children: [
+        TextButton(
+          // page: null leaves ?page= out of the URL: page 1 is the plain URL.
+          onPressed: () =>
+              route.copyWith(sort: Sort.name, page: null).go(context),
+          child: const Text('By name'),
+        ),
+        TextButton(
+          onPressed: () => route.copyWith(page: (route.page ?? 1) + 1).go(context),
+          child: const Text('Next'),
+        ),
+      ],
+    );
+  }
+}
+```
+
+```dart
+// test/products_url_test.dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/app/products/page.dart' show Sort;
+
+void main() {
+  // The state is a value: no widget, no router.
+  test('copyWith leaves out what is not given and clears what is null', () {
+    const route = ProductsRoute(sort: Sort.name, page: 2);
+    expect(route.copyWith(page: 3).location, '/products?sort=name&page=3');
+    expect(route.copyWith(page: null).location, '/products?sort=name');
+    expect(route.copyWith().location, route.location);
+  });
+}
+```
+
+- **`of(context)`** parses the location the widget belongs to with the parsers
+  `AppRoutes.match` uses (`AppRoutes.matchUrl`): the mount prefix is taken off, a
+  localized spelling is the route it spells, and the case setting, enums, lists
+  and catch-alls read as they do for the page. It **throws** a `StateError`
+  naming the location when that is another route, and go_router's `GoError`
+  outside any route; `maybeOf` returns `null` in both cases.
+- **Which location:** `GoRouterState.of(context)`'s, so the route *around the
+  widget*, not the page on top. A page reads the part of the URL its own route
+  matched, with the URL's query; a page under a pushed one, and a tab that is
+  built but not shown (`preload`), read their own; a layout (shell, tab layout)
+  reads the whole location. The widget rebuilds when its route's state changes.
+- **`copyWith` takes every segment and query parameter**, typed like the field.
+  A parameter left out keeps its value; **`null` clears an optional query
+  parameter**, which is not the same as leaving it out. A segment or a `List`
+  isn't nullable (`copyWith(id: null)` doesn't compile): clear a list with an
+  empty one (`tags: const []`). `extra` and the locale are not parameters:
+  pass them to `go(context, extra:, locale:)`.
+- It works by a **getter of a function type** with a private `const` sentinel
+  behind it (see the README's Design notes): nothing is `dynamic`, constructors
+  stay `const`. In `app.g.dart` it looks like `SearchRoute Function({String? q,
+  int? page}) get copyWith => _copyWith;`; never edit it.
+- **Use `go` for state in the URL.** `replace` is go_router's: it swaps the top
+  page of the stack, but go_router does not put an imperative `replace` or `push`
+  in the address bar on the web (`GoRouter.optionURLReflectsImperativeAPIs`).
+- **Testing:** a browser's back or forward is the platform telling the app the
+  entry it moved to; `examples/shop/test/url_state_test.dart` simulates it with
+  a `pushRouteInformation` message and checks each `routeInformationUpdated`.
+  Build one router per test and do not `pumpAndSettle` a page with an endless
+  animation.
 
 ## Typed `extra`
 

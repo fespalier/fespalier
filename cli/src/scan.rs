@@ -237,7 +237,7 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
 
 /// Names a dynamic segment can't take: they are the parameters fespalier fills
 /// itself, or members of the generated route classes.
-pub const RESERVED: [&str; 22] = [
+pub const RESERVED: [&str; 25] = [
     "data",
     "child",
     "navigationShell",
@@ -260,12 +260,22 @@ pub const RESERVED: [&str; 22] = [
     "hashCode",
     "runtimeType",
     "extra",
+    "of",
+    "maybeOf",
+    "copyWith",
 ];
 
 /// Names a query parameter can't take either: the route class has a member of that name
 /// (or a member's parameter shadows the field). The parameters fespalier fills itself
 /// (`data`, `uri`, ...) are fine: those never reach the query.
-pub const ROUTE_MEMBERS: [&str; 11] = [
+pub const ROUTE_MEMBERS: [&str; 14] = [
+    "location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor",
+    "hashCode", "of", "maybeOf", "copyWith",
+];
+
+/// Names a key of a section's `data.dart` can't take: the section's typed handle
+/// (`AccountSection.watch(ref, ...)`) takes its keys as named parameters next to these.
+pub const SECTION_MEMBERS: [&str; 11] = [
     "location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor",
     "hashCode",
 ];

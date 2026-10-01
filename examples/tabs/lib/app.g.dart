@@ -223,6 +223,13 @@ final class HomeRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/');
+
+  /// The HomeRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static HomeRoute of(BuildContext context) => routeOf<HomeRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static HomeRoute? maybeOf(BuildContext context) => maybeRouteOf<HomeRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/library/authors` → (tabs)/library/authors/page.dart
@@ -231,6 +238,13 @@ final class AuthorsRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/library/authors');
+
+  /// The AuthorsRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static AuthorsRoute of(BuildContext context) => routeOf<AuthorsRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static AuthorsRoute? maybeOf(BuildContext context) => maybeRouteOf<AuthorsRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/library/books` → (tabs)/library/books/page.dart
@@ -239,6 +253,13 @@ final class BooksRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/library/books');
+
+  /// The BooksRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static BooksRoute of(BuildContext context) => routeOf<BooksRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static BooksRoute? maybeOf(BuildContext context) => maybeRouteOf<BooksRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/profile` → (tabs)/profile/page.dart
@@ -247,6 +268,13 @@ final class ProfileRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/profile');
+
+  /// The ProfileRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ProfileRoute of(BuildContext context) => routeOf<ProfileRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ProfileRoute? maybeOf(BuildContext context) => maybeRouteOf<ProfileRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/profile/edit` → (tabs)/profile/edit/page.dart
@@ -266,6 +294,13 @@ final class EditProfileRoute extends TypedLocation {
 
   @override
   void replace(BuildContext context, {ProfileDraft? extra, String? locale}) => context.replace(locationFor(locale), extra: extra);
+
+  /// The EditProfileRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static EditProfileRoute of(BuildContext context) => routeOf<EditProfileRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static EditProfileRoute? maybeOf(BuildContext context) => maybeRouteOf<EditProfileRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/profile/security` → (tabs)/profile/security/page.dart
@@ -274,6 +309,13 @@ final class SecurityRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/profile/security');
+
+  /// The SecurityRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static SecurityRoute of(BuildContext context) => routeOf<SecurityRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static SecurityRoute? maybeOf(BuildContext context) => maybeRouteOf<SecurityRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/search` → (tabs)/search/page.dart
@@ -289,6 +331,13 @@ final class SearchRoute extends TypedLocation {
   String locationFor(String? _locale) {
     return joinLocation(AppRoutes.base, '/${localizedSegment(_locale, 'search', {'fr': 'recherche'})}');
   }
+
+  /// The SearchRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static SearchRoute of(BuildContext context) => routeOf<SearchRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static SearchRoute? maybeOf(BuildContext context) => maybeRouteOf<SearchRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/settings` → settings/page.dart
@@ -297,4 +346,11 @@ final class SettingsRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/settings');
+
+  /// The SettingsRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static SettingsRoute of(BuildContext context) => routeOf<SettingsRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static SettingsRoute? maybeOf(BuildContext context) => maybeRouteOf<SettingsRoute>(context, AppRoutes.matchUrl);
 }

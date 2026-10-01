@@ -65,6 +65,7 @@ ProductRoute(id: 42).go(context);                    // or .push<T>(context), .r
 const SearchRoute(q: 'ap', page: 2).location;        // '/search?q=ap&page=2'
 ProductRoute(id: 42).go(context, locale: 'fr');      // localized path, if route.dart has one
 NoteRoute(id: 3).go(context, extra: note);           // typed extra
+SearchRoute.of(context).copyWith(page: 2).go(context);   // since 0.5.0: the URL as state
 ```
 
 The class is named after the page class (`ProductPage` becomes `ProductRoute`),
@@ -73,8 +74,9 @@ the folder path for a page **function** (`OrdersOrderIdCancelRoute`), or
 prefix and is always the canonical spelling. Prefer typed routes over string
 paths: a renamed folder then breaks the build, not a link. More in
 [`references/typed-routes-and-extra.md`](references/typed-routes-and-extra.md),
-which also covers `extra` (for pages, layouts, guards and redirects) and
-`extra_codec.dart`.
+which also covers `of` / `maybeOf` / `copyWith` (the URL as state: read the typed
+route at the current location, change one query parameter, `null` clears it),
+`extra` (for pages, layouts, guards and redirects) and `extra_codec.dart`.
 
 ## Not-found views
 

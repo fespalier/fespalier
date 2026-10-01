@@ -49,6 +49,9 @@ struct FileCx {
     case_sensitive: bool,
     /// `keep_previous` from the config: the `DataViews`' `keepPrevious`.
     keep_previous: bool,
+    /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
+    /// (`_keep`) that tells a parameter left out from one passed as `null`.
+    copy_with: bool,
 }
 
 /// A `GoRoute`; a `ShellRoute` when `layout` is set; a `StatefulShellRoute` when
@@ -353,6 +356,12 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         Some(_) => (None, vec![]),
     };
     let matchers = matchers(app, &mut fns);
+    let routes: Vec<RouteCx> = app
+        .routes
+        .iter()
+        .enumerate()
+        .filter_map(|(id, r)| typed_route(app, id, r))
+        .collect();
     let cx = FileCx {
         app_dir: cfg.app_dir.clone(),
         table: table(app),
@@ -369,12 +378,8 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
             None => "DefaultNotFound(uri)".into(),
         },
         not_founds: not_founds(app),
-        routes: app
-            .routes
-            .iter()
-            .enumerate()
-            .filter_map(|(id, r)| typed_route(app, id, r))
-            .collect(),
+        copy_with: routes.iter().any(|r| !r.fields.is_empty()),
+        routes,
         sections: sections(app, diags),
         matchers,
         params_fns: fns.into_iter().map(|f| params_fn(app, f)).collect(),

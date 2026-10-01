@@ -112,7 +112,7 @@ class SearchPage extends StatelessWidget {
   configuration. Keep such parameters on inner widgets.
 - A query parameter cannot be called a member of the route class (`location`,
   `go`, `push`, `replace`, `refresh`, `watch`, `read`, `prefetch`, `ref`,
-  `keepFor`, `hashCode`).
+  `keepFor`, `hashCode`, and since 0.5.0 `of`, `maybeOf`, `copyWith`).
 
 ## Enum segments, query parameters and catch-all parts
 

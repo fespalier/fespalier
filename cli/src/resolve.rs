@@ -25,7 +25,7 @@ use crate::diag::Diags;
 use crate::enums::{self, Libs, Lookup};
 use crate::extra::{self, ExtraType};
 use crate::locale::{self, Localized};
-use crate::scan::{Kind, Node, ROUTE_MEMBERS, Seg};
+use crate::scan::{Kind, Node, ROUTE_MEMBERS, SECTION_MEMBERS, Seg};
 
 /// What a segment can be, besides an enum.
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
@@ -715,7 +715,11 @@ impl Resolver<'_> {
         }
         if let (true, Some(d)) = (section, &data) {
             // The section's typed handle (`AccountSection.watch(ref, {...keys})`) takes them as named parameters.
-            if let Some(k) = d.keys.iter().find(|k| ROUTE_MEMBERS.contains(&k.as_str())) {
+            if let Some(k) = d
+                .keys
+                .iter()
+                .find(|k| SECTION_MEMBERS.contains(&k.as_str()))
+            {
                 let msg = format!(
                     "`{k}` can't be a key of a section's data.dart: the section's typed handle has a member called `{k}`; rename it"
                 );

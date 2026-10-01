@@ -88,16 +88,18 @@ is an error at the parameter (`Object` and `dynamic` always fit):
 
 ## Reserved names
 
-A dynamic or catch-all folder cannot be called any of these (22 names):
+A dynamic or catch-all folder cannot be called any of these (25 names; `of`, `maybeOf`
+and `copyWith` since 0.5.0):
 
 `data`, `child`, `navigationShell`, `shell`, `error`, `stackTrace`, `retry`,
 `uri`, `key`, `location`, `go`, `push`, `replace`, `refresh`, `watch`, `read`,
-`prefetch`, `ref`, `keepFor`, `hashCode`, `runtimeType`, `extra`.
+`prefetch`, `ref`, `keepFor`, `hashCode`, `runtimeType`, `extra`, `of`, `maybeOf`,
+`copyWith`.
 
 The error is `` `$data` is reserved (fespalier fills parameters called `data` itself); pick another name ``.
-A **query** parameter cannot be called any of the route class's members (11
+A **query** parameter cannot be called any of the route class's members (14
 names): `location`, `go`, `push`, `replace`, `refresh`, `watch`, `read`,
-`prefetch`, `ref`, `keepFor`, `hashCode` (`` `go` can't be a query parameter: the typed route class has a member called `go`; rename it ``).
+`prefetch`, `ref`, `keepFor`, `hashCode`, `of`, `maybeOf`, `copyWith` (`` `go` can't be a query parameter: the typed route class has a member called `go`; rename it ``).
 `data`, `uri` and `child` are fine as query names: those never reach the query.
 A section's typed handle has a member list of its own; see `fespalier-data`.
 

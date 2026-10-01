@@ -198,6 +198,15 @@ final class HomeRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/');
+
+  /// The HomeRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static HomeRoute of(BuildContext context) =>
+      routeOf<HomeRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static HomeRoute? maybeOf(BuildContext context) =>
+      maybeRouteOf<HomeRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/about` → about/page.dart
@@ -206,6 +215,15 @@ final class AboutRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/about');
+
+  /// The AboutRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static AboutRoute of(BuildContext context) =>
+      routeOf<AboutRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static AboutRoute? maybeOf(BuildContext context) =>
+      maybeRouteOf<AboutRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/items/:id` → items/$id/page.dart
@@ -222,6 +240,23 @@ final class ItemRoute extends TypedLocation {
   String get location =>
       withQuery(joinLocation(AppRoutes.base, '/items/$id'), {'qty': qty});
 
+  /// The ItemRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ItemRoute of(BuildContext context) =>
+      routeOf<ItemRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ItemRoute? maybeOf(BuildContext context) =>
+      maybeRouteOf<ItemRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  ItemRoute Function({int id, int? qty}) get copyWith => _copyWith;
+
+  ItemRoute _copyWith({Object? id = _keep, Object? qty = _keep}) =>
+      ItemRoute(id: _kept<int>(id, this.id), qty: _kept<int?>(qty, this.qty));
+
   /// Watches items/$id/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required int id}) =>
       ref.watch(data(id));
@@ -237,6 +272,17 @@ final class ItemRoute extends TypedLocation {
   /// Re-runs items/$id/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);
 }
+
+/// What a `copyWith` parameter is when it is left out: private, so no caller can pass it,
+/// and the route's own value is kept. Its public type is the field's, so `null` is a value.
+final class _Keep {
+  const _Keep();
+}
+
+const _keep = _Keep();
+
+T _kept<T>(Object? value, T current) =>
+    identical(value, _keep) ? current : value as T;
 
 ({int id, int? qty}) _params3(GoRouterState s) =>
     (id: Segment.asInt(s, 'id'), qty: Query.asInt(s, 'qty'));

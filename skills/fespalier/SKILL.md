@@ -76,7 +76,7 @@ matches the package your `pubspec.lock` resolved.
 | `navigator.dart`   | `const navigator = RouteNavigator.root;`: render above every layout       |
 | `not_found.dart`   | Unknown URLs and unparsable segments; nearest folder wins                 |
 | `meta.dart`        | `const meta = ...;` this route's own facts, into the manifest             |
-| `route.dart`       | `const caseSensitive = ...;` and/or `const paths = {...};`                |
+| `route.dart`       | `const caseSensitive = ...;`, `paths`, `nest`, `linkable`, `remount`      |
 | `extra_codec.dart` | At the app root only: `extraCodec`, to restore `extra` after a restart    |
 
 Folder names: `products` is a static segment; `$id` a dynamic one; `$$rest` one

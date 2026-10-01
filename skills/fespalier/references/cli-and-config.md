@@ -34,13 +34,14 @@ What they print, to stderr unless noted:
   diagnostic that is not about a place in a file; `severity` is `error` or
   `warning`). Stdout is empty when there is nothing to report.
 - `routes` prints `pattern  RouteClass  file  (tags)` per route. The tags are
-  `redirect`, `data`, `action` (since 0.5.0), `guard`, `layout`, `present` or `transition`, `root`, and
+  `redirect`, `data`, `action` (since 0.5.0), `guard`, `layout`, `present` or `transition`, `root`,
   `sibling` (a [`nest = false`](../../fespalier-routing/references/route-dart.md) route,
-  since 0.4.0), in that order. `routes --json` prints, per line, in
+  since 0.4.0) and `remount` (a page that starts again when its URL changes, since 0.6.0), in that order. `routes --json` prints, per line, in
   this order: `pattern`, `route`, `file`, `tags`, `params` (`{name, type, in}`
   with `in` of `path` or `query`), `folder`, `presentation` (`page`, `redirect`,
   `root`, `custom`), `groups`, `layouts`, `tabs`, `data_keys`, `meta`,
-  `catch_all`, and `paths` **only** for a route with localized segments.
+  `catch_all`, then `remount` (`on_segments` or `on_location`, since 0.6.0) **only** for a route
+  that remounts, and `paths` **only** for a route with localized segments.
 
 ### `fsp routes --graph` (since 0.5.0)
 
@@ -169,6 +170,7 @@ fespalier:
   output: lib/app.g.dart
   format: false
   case_sensitive: true
+  remount: never
   data_retry: inherit
   keep_previous: true
   file_style: snake
@@ -178,19 +180,20 @@ fespalier:
   # links: {domains: [shop.example.com]}   # see `fsp links` above
 ```
 
-| Key               | Values                      | Effect                                                                                                                    |
-| ----------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `app_dir`         | a path under `lib/`         | Where the tree is. Not under `lib/`: `` `fespalier.app_dir` must be a path under lib/ (it is imported as package code) `` |
-| `output`          | a `.dart` path under `lib/` | Where `app.g.dart` goes: `` `fespalier.output` must be a .dart file ``                                                    |
-| `format`          | `true` / `false`            | Run `dart format` on the output (needs `dart` on `PATH`; without it `fsp` warns and writes the unformatted code)          |
-| `case_sensitive`  | `true` / `false`            | `false` emits `caseSensitive: false` on every route; a `route.dart` overrides it per folder                               |
-| `data_retry`      | `inherit` / `none`          | `none` gives generated `data()` providers `retry: (retryCount, error) => null`. See `fespalier-data`                      |
-| `keep_previous`   | `true` / `false`            | `false` shows `loading.dart` on every reload. See `fespalier-data`                                                        |
-| `file_style`      | `snake` / `kebab`           | What `fsp init` and `fsp new` write: `not_found.dart` or `not-found.dart`. Reading accepts both                           |
-| `meta`            | `optional` / `required`     | `required`: a route without `meta.dart` is an error                                                                       |
-| `meta_unique`     | list of argument names      | No two routes may pass the same **literal** for that named argument of `meta`'s constructor call                          |
-| `output_manifest` | a `.dart` path under `lib/` | Writes `AppManifest` to a library of its own (it may not equal `output`)                                                  |
-| `links`           | a map (keys above)          | What `fsp links` writes; only that command checks the values (since 0.5.0)                                                |
+| Key               | Values                                  | Effect                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `app_dir`         | a path under `lib/`                     | Where the tree is. Not under `lib/`: `` `fespalier.app_dir` must be a path under lib/ (it is imported as package code) ``                                                                                                                                                                                                                                                      |
+| `output`          | a `.dart` path under `lib/`             | Where `app.g.dart` goes: `` `fespalier.output` must be a .dart file ``                                                                                                                                                                                                                                                                                                         |
+| `format`          | `true` / `false`                        | Run `dart format` on the output (needs `dart` on `PATH`; without it `fsp` warns and writes the unformatted code)                                                                                                                                                                                                                                                               |
+| `case_sensitive`  | `true` / `false`                        | `false` emits `caseSensitive: false` on every route; a `route.dart` overrides it per folder                                                                                                                                                                                                                                                                                    |
+| `remount`         | `never` / `on_segments` / `on_location` | When a page gets a fresh state because its URL changed (since 0.6.0): `on_segments` when a segment's value changes, `on_location` on any change, the query included; a `route.dart` overrides it per folder. See `fespalier-routing`. Another value: `` invalid pubspec.yaml: fespalier.remount: unknown variant `x`, expected one of `never`, `on_segments`, `on_location` `` |
+| `data_retry`      | `inherit` / `none`                      | `none` gives generated `data()` providers `retry: (retryCount, error) => null`. See `fespalier-data`                                                                                                                                                                                                                                                                           |
+| `keep_previous`   | `true` / `false`                        | `false` shows `loading.dart` on every reload. See `fespalier-data`                                                                                                                                                                                                                                                                                                             |
+| `file_style`      | `snake` / `kebab`                       | What `fsp init` and `fsp new` write: `not_found.dart` or `not-found.dart`. Reading accepts both                                                                                                                                                                                                                                                                                |
+| `meta`            | `optional` / `required`                 | `required`: a route without `meta.dart` is an error                                                                                                                                                                                                                                                                                                                            |
+| `meta_unique`     | list of argument names                  | No two routes may pass the same **literal** for that named argument of `meta`'s constructor call                                                                                                                                                                                                                                                                               |
+| `output_manifest` | a `.dart` path under `lib/`             | Writes `AppManifest` to a library of its own (it may not equal `output`)                                                                                                                                                                                                                                                                                                       |
+| `links`           | a map (keys above)                      | What `fsp links` writes; only that command checks the values (since 0.5.0)                                                                                                                                                                                                                                                                                                     |
 
 There is no key for `extraCodec`: `lib/app/extra_codec.dart` is found by name.
 

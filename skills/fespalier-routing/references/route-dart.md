@@ -1,20 +1,22 @@
-# `route.dart`: case, trailing slashes, localized paths, `nest` and `linkable`
+# `route.dart`: case, trailing slashes, localized paths, `nest`, `linkable` and `remount`
 
-As of v0.4.0 (`linkable` since 0.5.0). A `route.dart` holds up to four declarations, and
-`fsp` reads them **from the source**; it never imports or runs the file, so each must be a
-literal:
+As of v0.4.0 (`linkable` since 0.5.0, `remount` since 0.6.0). A `route.dart` holds up to five
+declarations, and `fsp` reads them **from the source**; it never imports or runs the file, so
+each must be a literal:
 
 ```dart
 const caseSensitive = false;                 // this folder and below
 const paths = {'fr': 'produits', 'de': 'produkte'};   // this folder's own segment
 const nest = false;                          // this folder's route only (0.4.0)
 const linkable = false;                      // this folder and below, for `fsp links` (0.5.0)
+const remount = Remount.onSegments;          // this folder and below: when a page starts again (0.6.0)
 ```
 
 A `route.dart` adds and removes no route, and may hold any one of them alone.
-`caseSensitive`, `paths` and `linkable` need no page beside it; `nest` does. One with none of the
-four is an error (since 0.5.0 its text names all four; on 0.4.0 it names the first two):
-``expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;` or `const linkable = false;` ``.
+`caseSensitive`, `paths`, `linkable` and `remount` need no page beside it; `nest` does. One with
+none of the five is an error (since 0.6.0 its text names all five; on 0.5.0 it names four and on
+0.4.0 the first two):
+``expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;` or `const remount = Remount.onSegments;` ``.
 
 ## Trailing slashes
 
@@ -185,7 +187,8 @@ pattern of its own: `':_l0(products|produits|produkte)/:id'`. So a deep link, a
 redirect and `go` take any spelling; nested routes, layout, guards and
 `not_found.dart` are the same route as without `paths`; `state.pageKey` is the
 same for every spelling (navigating between spellings updates the page instead
-of building another); restoration ids are unchanged.
+of building another); restoration ids are unchanged. (A page that `remount`s on
+`onLocation` is keyed by the matched path, so another spelling is another page.)
 
 - The parameter is named `_l<n>` after the segment's place in the URL
   (`_l0`). It shows in `GoRouterState.pathParameters` and `fullPath`; **do not
@@ -381,3 +384,94 @@ effect on routing, `fsp gen` or the manifest.
   too).
 - If nothing is linkable, `fsp links` fails with ``no route can be linked: the app has no page, or
 every folder says `const linkable = false;` ``.
+
+## `remount`: start a page again when its URL changes
+
+Since 0.6.0. A page keeps its widget state (a scroll position, a text field, a hook's
+`useState`) when only its URL parameters change: go_router keys a page by its path template, so
+`/gallery/1` to `/gallery/2` is the same page, built again with the new `id`. Whether that is
+what the app wants depends on the app, so it is a setting, with the enum `Remount` (exported by
+`package:fespalier/fespalier.dart`):
+
+| Value                 | The page starts again (a fresh state) when            | It keeps its state when     |
+| --------------------- | ----------------------------------------------------- | --------------------------- |
+| `never` (the default) | never                                                 | anything changes in the URL |
+| `onSegments`          | the value of a segment changes (`/gallery/1` to `/2`) | only the query changes      |
+| `onLocation`          | anything in the location changes, the query included  | the location is the same    |
+
+```dart
+// lib/app/gallery/route.dart
+import 'package:fespalier/fespalier.dart';
+
+const remount = Remount.onSegments;
+```
+
+```dart
+// lib/app/gallery/$id/page.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+class PhotoPage extends HookWidget {
+  const PhotoPage({super.key, required this.id, this.tab});
+
+  final int id;
+
+  /// A query parameter: it changes without starting the page again under `onSegments`.
+  final String? tab;
+
+  @override
+  Widget build(BuildContext context) {
+    final taps = useState(0); // lost when the page starts again
+    return TextButton(
+      onPressed: () => taps.value++,
+      child: Text('photo $id, ${tab ?? 'info'}, ${taps.value}'),
+    );
+  }
+}
+```
+
+For the whole app, set it in the pubspec; a folder's `route.dart` overrides it:
+
+```yaml
+fespalier:
+  remount: on_segments   # never (default) | on_segments | on_location
+```
+
+- **Same rules as `caseSensitive`.** The nearest `route.dart` wins, over the parent's and
+  over the pubspec; it covers the folder and everything below, is inherited by `(group)`
+  folders and folders without a page, may sit at the root, and needs no page beside it.
+  `const remount = Remount.never;` in a folder goes back to the default under a parent that
+  remounts. An import prefix (`fsp.Remount.onSegments`) is fine.
+- **`onSegments` is the one for [the URL as state](typed-routes-and-extra.md).** The page
+  keeps its state across `XRoute.of(context).copyWith(page: 2)` and starts again on another
+  `id`. Its key is the route template plus the values of the route's own path parameters
+  (the folders above it included), as the URL spells them. A route with no segment has
+  nothing to watch and is generated as if it were `never`.
+- **`onLocation`** keys the page by the path matched down to its own route plus the whole
+  query; the fragment is not part of it. A page below which another is pushed
+  (`/orders/1` under `/orders/1/refund`) keeps its state: the path is the route's own, not the
+  whole location.
+- **Pages only.** A layout (a shell, a tab layout) is not remounted, whatever its folder says:
+  its page is keyed by its folder, so it and its sections outlive a change of the URL. The pages
+  inside it follow their own `remount`.
+- **A new key is a new page** to go_router, which replaces the old page with the new one: the
+  page's transition may play. With a `transition.dart` or `present.dart` the key is the one
+  they get as their `LocalKey key` parameter (pass it to the `Page`, as `Transitions.*` do;
+  `Transitions.none` starts a page again without animating). One that takes no key leaves
+  `remount` nothing to act on, and `fsp` warns (below). Without a `transition.dart` the generated
+  code builds a Material page (a Cupertino one inside a `CupertinoApp`), `remountPage`, under
+  the key `remountKey`.
+- **Not data.** It restarts the page's widgets, not the data: a `data.dart` provider is keyed by
+  the segments and the query anyway. It changes no route and nothing `XRoute.of(context)` reads.
+- **Where it shows.** `fsp routes` tags the page `remount` (only where it acts), and
+  `fsp routes --json` has `"remount":"on_segments"` or `"on_location"` for a route that has one
+  (the other rows have no key). The manifest has no field for it.
+- **Errors**, each on the declaration (texts in `fespalier-troubleshooting`,
+  `references/diagnostics-config-and-meta.md`): not `const`, a value that is not one of the
+  three written out, two declarations, and a pubspec `remount:` that is not one of
+  `never`, `on_segments`, `on_location`. The warning is on the page, for a `transition()` or
+  `present()` that does not take the key.
+
+`examples/features` has all three under `remount/` (`never/` and `segments/` override the
+`onLocation` of `remount/route.dart`), with a widget test that presses a button, changes the URL
+and reads the count.

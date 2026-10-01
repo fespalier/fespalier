@@ -141,6 +141,12 @@ int? page}) get copyWith => _copyWith;`; never edit it.
 - **Use `go` for state in the URL.** `replace` is go_router's: it swaps the top
   page of the stack, but go_router does not put an imperative `replace` or `push`
   in the address bar on the web (`GoRouter.optionURLReflectsImperativeAPIs`).
+- **The page's own state** (a scroll position, a text field) stays across a `copyWith` that
+  only changes query parameters, as it does for any change of a parameter by default
+  (`Remount.never`) and under `Remount.onSegments`; `Remount.onLocation` starts the page again
+  on each one. To keep it across `page: 2` and still start fresh for another `id`, put
+  `const remount = Remount.onSegments;` in the folder's `route.dart` (since 0.6.0;
+  [`route-dart.md`](route-dart.md#remount-start-a-page-again-when-its-url-changes)).
 - **Testing:** a browser's back or forward is the platform telling the app the
   entry it moved to; `examples/shop/test/url_state_test.dart` simulates it with
   a `pushRouteInformation` message and checks each `routeInformationUpdated`.

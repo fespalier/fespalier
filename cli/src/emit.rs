@@ -19,7 +19,7 @@ use crate::diag::Diags;
 use crate::enums;
 use crate::locale::{self, Localized};
 use crate::manifest::{self, ManifestCx};
-use crate::resolve::{self, App, Bind, Branch, Data, Guard, Route, Transition};
+use crate::resolve::{self, App, Bind, Branch, Data, Guard, HookFirst, Route, Transition};
 use crate::scan::{Kind, Seg};
 use crate::templates;
 
@@ -839,31 +839,45 @@ fn redirects_of(
             fns.insert(ParamsFn::Guard(g));
             ParamsFn::Guard(g).name()
         });
-        out.push(hook_call(guard, "guard", seg_fn));
+        out.push(hook_call(guard, "guard", &format!("g{g}@{id}"), seg_fn));
     }
-    for (hook, name) in [(&r.guard, "guard"), (&r.redirect, "redirect")] {
+    for (hook, name, site) in [
+        (&r.guard, "guard", format!("g{id}@{id}")),
+        (&r.redirect, "redirect", String::new()),
+    ] {
         if let Some(h) = hook {
             let own = seg_fn.clone().filter(|_| !h.keys().is_empty());
-            out.push(hook_call(h, name, own));
+            out.push(hook_call(h, name, &site, own));
         }
     }
     out
 }
 
-/// `_i3.guard(container, id: v.id, uri: state.uri)`; `seg_fn` parses `v`.
-fn hook_call(h: &Guard, name: &str, seg_fn: Option<String>) -> CallCx {
+/// `_i3.guard(ProviderScope.containerOf(context, listen: false), id: v.id, uri: state.uri)`
+/// for a `ProviderContainer` first parameter; for a `Ref`, `refGuard(context, 'g3@5', (ref) =>
+/// _i3.guard(ref, id: v.id, uri: state.uri))` (the guard `g3` on the route `5`: a `const` name
+/// for the runtime to keep one subscription under) or, for a redirect, `refRedirect`.
+/// `seg_fn` parses `v`.
+fn hook_call(h: &Guard, name: &str, site: &str, seg_fn: Option<String>) -> CallCx {
     let mut args = vec![];
-    if h.container {
-        args.push("ProviderScope.containerOf(context, listen: false)".to_string());
+    match h.first {
+        HookFirst::Container => {
+            args.push("ProviderScope.containerOf(context, listen: false)".to_string());
+        }
+        HookFirst::Ref => args.push("ref".to_string()),
+        HookFirst::None => {}
     }
     args.extend(h.args.iter().map(|a| match a.bind {
         Bind::Uri => format!("{}: state.uri", a.name),
         _ => format!("{}: {}", a.name, in_hook(&a.bind)),
     }));
-    CallCx {
-        seg_fn,
-        call: format!("_i{}.{name}({})", h.import, args.join(", ")),
-    }
+    let call = format!("_i{}.{name}({})", h.import, args.join(", "));
+    let call = match (h.first, name) {
+        (HookFirst::Ref, "guard") => format!("refGuard(context, '{site}', (ref) => {call})"),
+        (HookFirst::Ref, _) => format!("refRedirect(context, (ref) => {call})"),
+        _ => call,
+    };
+    CallCx { seg_fn, call }
 }
 
 /// The parse function a route's own guard and redirect share, when it needs one.
@@ -1556,8 +1570,17 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
                 pattern: format!("[{}]", parts.join(", ")),
                 lines,
                 route,
-                params: format!("{{{}}}", map.join(", ")),
-                data: format!("[{}]", data.join(", ")),
+                // Empty literals are `const`: one shared instance, nothing allocated per match.
+                params: if map.is_empty() {
+                    "const {}".into()
+                } else {
+                    format!("{{{}}}", map.join(", "))
+                },
+                data: if data.is_empty() {
+                    "const []".into()
+                } else {
+                    format!("[{}]", data.join(", "))
+                },
                 case_sensitive: r.case_sensitive,
             },
         ));

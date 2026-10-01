@@ -21,15 +21,18 @@ import 'app/items/\$id/error.dart' as _i8;
 /// The file tree under lib/app/, ready to mount.
 abstract final class AppRoutes {
   static String _base = '/';
-  static GlobalKey<NavigatorState> _rootNavigatorKey =
+  static GlobalKey<NavigatorState> _rootNavigatorKey = _newRootNavigatorKey();
+
+  static GlobalKey<NavigatorState> _newRootNavigatorKey() =>
       GlobalKey<NavigatorState>(debugLabel: 'root');
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
   static String get base => _base;
 
-  /// The root navigator's key: the one given to [router] or [mount], else one of
-  /// its own. Routes on the root navigator (`navigator.dart`, `present.dart`) name it
-  /// as their `parentNavigatorKey`; the app can use it to reach the root navigator.
+  /// The root navigator's key: the one given to the last [router] or [mount] call, else a
+  /// fresh one made by it (a call without a key never keeps an earlier call's). Routes on
+  /// the root navigator (`navigator.dart`, `present.dart`) name it as their
+  /// `parentNavigatorKey`; the app can use it to reach the root navigator.
   static GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;
 
   /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
@@ -54,12 +57,15 @@ abstract final class AppRoutes {
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
   /// GoRouter's own `navigatorKey` as [navigatorKey]: routes on the root navigator
   /// name it as their `parentNavigatorKey`, which must be an ancestor navigator's.
+  ///
+  /// [at] and the key are remembered ([base], [rootNavigatorKey]) until the next call, so a
+  /// test restores the defaults with a bare `AppRoutes.mount()`.
   static List<RouteBase> mount({
     String at = '/',
     GlobalKey<NavigatorState>? navigatorKey,
   }) {
     _base = at;
-    if (navigatorKey != null) _rootNavigatorKey = navigatorKey;
+    _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
     return [
       ShellRoute(
         pageBuilder: (context, state, child) => _i1.transition(
@@ -70,7 +76,7 @@ abstract final class AppRoutes {
           GoRoute(
             path: joinLocation(at, '/'),
             pageBuilder: (context, state) =>
-                _i1.transition(state.pageKey, _i0.HomePage()),
+                _i1.transition(state.pageKey, const _i0.HomePage()),
             routes: [
               GoRoute(
                 path: 'about',
@@ -87,7 +93,7 @@ abstract final class AppRoutes {
                       watch: (ref) => ref.watch(_data3(v.id)),
                       refresh: (ref) => ref.invalidate(_data3(v.id)),
                       data: (d) => _i6.ItemPage(item: d, qty: v.qty),
-                      loading: () => _i7.ItemLoading(),
+                      loading: () => const _i7.ItemLoading(),
                       error: (e, st, retry) =>
                           _i8.ItemError(id: v.id, error: e, retry: retry),
                       keepPrevious: true,
@@ -108,8 +114,13 @@ abstract final class AppRoutes {
 
   /// Every route as [matchUrl] tries it, most specific first.
   static final List<RouteMatcher> _matchers = [
-    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), {}, [])),
-    RouteMatcher(['about'], (s) => UrlMatch(s.uri, const AboutRoute(), {}, [])),
+    RouteMatcher(
+      [],
+      (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const []),
+    ),
+    RouteMatcher([
+      'about',
+    ], (s) => UrlMatch(s.uri, const AboutRoute(), const {}, const [])),
     RouteMatcher(['items', ':id'], (s) {
       final p = _params3(s);
       return UrlMatch(

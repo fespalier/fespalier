@@ -196,7 +196,7 @@ void main() {
       await tester.pumpWidget(MaterialApp.router(routerConfig: router));
       expect(page, isA<MaterialPage<void>>());
       expect(page.restorationId, 'layout:/');
-      expect(page.key, const ValueKey('/'));
+      expect(page.key, const ValueKey('layout:/'));
     });
 
     testWidgets('layoutPage is a Cupertino page in a CupertinoApp', (

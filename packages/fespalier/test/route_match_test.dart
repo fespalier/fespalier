@@ -217,6 +217,42 @@ void main() {
       expect(container.exists(product(2)), isFalse);
     });
 
+    testWidgets('a keepFor timer does not outlive the widget that started it', (
+      tester,
+    ) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      late PrefetchHandle handle;
+      Widget app(Widget home) => UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: home),
+      );
+      await tester.pumpWidget(
+        app(
+          Consumer(
+            builder: (context, ref, _) {
+              handle = ref.prefetchData(
+                product(5),
+                keepFor: const Duration(minutes: 5),
+              );
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(container.exists(product(5)), isTrue);
+      expect(handle.isClosed, isFalse);
+
+      // The widget goes, and its subscription with it: the handle closes, and its timer
+      // is cancelled. A timer left running fails the test (it is still pending after the
+      // widget tree was disposed).
+      await tester.pumpWidget(app(const SizedBox()));
+      expect(handle.isClosed, isTrue);
+      await tester.pump();
+      expect(container.exists(product(5)), isFalse);
+    });
+
     testWidgets('a provider stays while any handle to it is open', (
       tester,
     ) async {

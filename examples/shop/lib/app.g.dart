@@ -31,15 +31,18 @@ import 'app/products/\$id/error.dart' as _i15;
 /// The file tree under lib/app/, ready to mount.
 abstract final class AppRoutes {
   static String _base = '/';
-  static GlobalKey<NavigatorState> _rootNavigatorKey =
+  static GlobalKey<NavigatorState> _rootNavigatorKey = _newRootNavigatorKey();
+
+  static GlobalKey<NavigatorState> _newRootNavigatorKey() =>
       GlobalKey<NavigatorState>(debugLabel: 'root');
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
   static String get base => _base;
 
-  /// The root navigator's key: the one given to [router] or [mount], else one of
-  /// its own. Routes on the root navigator (`navigator.dart`, `present.dart`) name it
-  /// as their `parentNavigatorKey`; the app can use it to reach the root navigator.
+  /// The root navigator's key: the one given to the last [router] or [mount] call, else a
+  /// fresh one made by it (a call without a key never keeps an earlier call's). Routes on
+  /// the root navigator (`navigator.dart`, `present.dart`) name it as their
+  /// `parentNavigatorKey`; the app can use it to reach the root navigator.
   static GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;
 
   /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
@@ -64,12 +67,15 @@ abstract final class AppRoutes {
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
   /// GoRouter's own `navigatorKey` as [navigatorKey]: routes on the root navigator
   /// name it as their `parentNavigatorKey`, which must be an ancestor navigator's.
+  ///
+  /// [at] and the key are remembered ([base], [rootNavigatorKey]) until the next call, so a
+  /// test restores the defaults with a bare `AppRoutes.mount()`.
   static List<RouteBase> mount({
     String at = '/',
     GlobalKey<NavigatorState>? navigatorKey,
   }) {
     _base = at;
-    if (navigatorKey != null) _rootNavigatorKey = navigatorKey;
+    _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
     return [
       ShellRoute(
         pageBuilder: (context, state, child) => _i3.transition(
@@ -81,14 +87,14 @@ abstract final class AppRoutes {
             path: joinLocation(at, '/'),
             pageBuilder: (context, state) => _i3.transition(
               state.pageKey,
-              _i0.HomePage(),
+              const _i0.HomePage(),
             ),
             routes: [
               GoRoute(
                 path: 'cart',
                 pageBuilder: (context, state) => _i3.transition(
                   state.pageKey,
-                  _i6.CartPage(),
+                  const _i6.CartPage(),
                 ),
               ),
               GoRoute(
@@ -96,7 +102,7 @@ abstract final class AppRoutes {
                 redirect: (context, state) => _i8.guard(ProviderScope.containerOf(context, listen: false)),
                 pageBuilder: (context, state) => _i3.transition(
                   state.pageKey,
-                  _i7.CheckoutPage(),
+                  const _i7.CheckoutPage(),
                 ),
               ),
               GoRoute(
@@ -109,7 +115,7 @@ abstract final class AppRoutes {
                       watch: (ref) => ref.watch(_i10.data),
                       refresh: (ref) => ref.invalidate(_i10.data),
                       data: (d) => _i11.ProductsPage(products: d, sort: v.sort, page: v.page),
-                      loading: () => _i12.ProductsLoading(),
+                      loading: () => const _i12.ProductsLoading(),
                       error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
                       keepPrevious: true,
                     ),
@@ -127,7 +133,7 @@ abstract final class AppRoutes {
                           watch: (ref) => ref.watch(_data6(v.id)),
                           refresh: (ref) => ref.invalidate(_data6(v.id)),
                           data: (d) => _i14.ProductPage(product: d),
-                          loading: () => _i12.ProductsLoading(),
+                          loading: () => const _i12.ProductsLoading(),
                           error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),
                           keepPrevious: true,
                         ),
@@ -160,16 +166,16 @@ abstract final class AppRoutes {
 
   /// Every route as [matchUrl] tries it, most specific first.
   static final List<RouteMatcher> _matchers = [
-    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), {}, [])),
-    RouteMatcher(['cart'], (s) => UrlMatch(s.uri, const CartRoute(), {}, [])),
-    RouteMatcher(['checkout'], (s) => UrlMatch(s.uri, const CheckoutRoute(), {}, [])),
+    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const [])),
+    RouteMatcher(['cart'], (s) => UrlMatch(s.uri, const CartRoute(), const {}, const [])),
+    RouteMatcher(['checkout'], (s) => UrlMatch(s.uri, const CheckoutRoute(), const {}, const [])),
     RouteMatcher(['products'], (s) {
       final p = _params5(s);
       return UrlMatch(s.uri, ProductsRoute(sort: p.sort, page: p.page), {'sort': p.sort, 'page': p.page}, [_i10.data]);
     }),
     RouteMatcher(['greet', ':name'], (s) {
       final p = _params4(s);
-      return UrlMatch(s.uri, GreetRoute(name: p.name), {'name': p.name}, []);
+      return UrlMatch(s.uri, GreetRoute(name: p.name), {'name': p.name}, const []);
     }),
     RouteMatcher(['products', ':id'], (s) {
       final p = _params6(s);

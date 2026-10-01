@@ -253,7 +253,7 @@ import 'package:my_app/app.g.dart';
 import 'package:my_app/models/note.dart';
 
 // A draft isn't shown yet.
-GuardResult guard(ProviderContainer c, {Note? extra}) =>
+GuardResult guard(Ref ref, {Note? extra}) =>
     extra?.title == 'draft' ? const HomeRoute().location : null;
 ```
 

@@ -159,15 +159,18 @@ import '{{ i }}' as _i{{ loop.index0 }};
 /// The file tree under {{ app_dir }}/, ready to mount.
 abstract final class AppRoutes {
   static String _base = '/';
-  static GlobalKey<NavigatorState> _rootNavigatorKey =
+  static GlobalKey<NavigatorState> _rootNavigatorKey = _newRootNavigatorKey();
+
+  static GlobalKey<NavigatorState> _newRootNavigatorKey() =>
       GlobalKey<NavigatorState>(debugLabel: 'root');
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
   static String get base => _base;
 
-  /// The root navigator's key: the one given to [router] or [mount], else one of
-  /// its own. Routes on the root navigator (`navigator.dart`, `present.dart`) name it
-  /// as their `parentNavigatorKey`; the app can use it to reach the root navigator.
+  /// The root navigator's key: the one given to the last [router] or [mount] call, else a
+  /// fresh one made by it (a call without a key never keeps an earlier call's). Routes on
+  /// the root navigator (`navigator.dart`, `present.dart`) name it as their
+  /// `parentNavigatorKey`; the app can use it to reach the root navigator.
   static GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;
 
   /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
@@ -196,12 +199,15 @@ abstract final class AppRoutes {
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
   /// GoRouter's own `navigatorKey` as [navigatorKey]: routes on the root navigator
   /// name it as their `parentNavigatorKey`, which must be an ancestor navigator's.
+  ///
+  /// [at] and the key are remembered ([base], [rootNavigatorKey]) until the next call, so a
+  /// test restores the defaults with a bare `AppRoutes.mount()`.
   static List<RouteBase> mount({
     String at = '/',
     GlobalKey<NavigatorState>? navigatorKey,
   }) {
     _base = at;
-    if (navigatorKey != null) _rootNavigatorKey = navigatorKey;
+    _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
     return [
 {% for r in tree %}
       {{ route(r) | indent(6) }},

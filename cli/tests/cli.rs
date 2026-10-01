@@ -267,8 +267,12 @@ fn watch_is_quiet_when_idle_and_reacts_once_per_change() {
     w.settle();
     assert_eq!(w.lines(), 3, "{}", w.text());
 
-    // Deleting a folder regenerates.
-    fs::remove_dir_all(root.join("lib/app/about")).unwrap();
+    // Deleting a folder regenerates. Moved out of the watched tree first, as an editor's
+    // delete does: one change. `remove_dir_all` in place is two (the file, then the folder),
+    // and a slow machine can let more than the debounce pass between them, which is a second
+    // regeneration, not the one this counts.
+    fs::rename(root.join("lib/app/about"), root.join("about.removed")).unwrap();
+    fs::remove_dir_all(root.join("about.removed")).unwrap();
     w.wait_for("✓ 1 route → lib/app.g.dart (");
     w.settle();
     assert_eq!(w.lines(), 4, "{}", w.text());

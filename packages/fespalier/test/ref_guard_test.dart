@@ -76,7 +76,6 @@ GoRouter router({
     initialLocation: initial,
     routes: routes(inbox: inbox, login: login),
   );
-  addTearDown(r.dispose);
   return r;
 }
 
@@ -332,7 +331,6 @@ void main() {
       tester,
     ) async {
       final host = GoRouter(initialLocation: '/inbox', routes: routes());
-      addTearDown(host.dispose);
       final c = await pumpRouter(tester, host);
       c.read(session.notifier).set(false);
       await tester.pumpAndSettle();
@@ -559,7 +557,6 @@ void main() {
           GoRoute(path: '/other', builder: (_, _) => const Text('OTHER')),
         ],
       );
-      addTearDown(r.dispose);
       final c = await pumpRouter(tester, r);
       expect(find.text('NEW'), findsOneWidget);
       expect(runs, 1);

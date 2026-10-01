@@ -127,7 +127,7 @@ fsp init                                   # starter layout/page/not_found/trans
 fsp gen                                    # check lib/app/, write lib/app.g.dart
 fsp watch                                  # regenerate on every change
 fsp check                                  # CI: non-zero on errors, writes nothing
-fsp routes [--json]                        # the route table
+fsp routes [--json | --graph [dot]]        # the route table, or the tree as Mermaid / DOT
 fsp new 'orders/[id]' --data --loading     # scaffold a route, then gen
 ```
 

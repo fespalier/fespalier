@@ -1,0 +1,10 @@
+flowchart TD
+  subgraph rootnav["root navigator"]
+    subgraph b0["layout layout.dart"]
+      n0["/<br/>HomeRoute"]
+      n1["/about<br/>AboutRoute"]
+      n2["/items/:id<br/>ItemRoute<br/>(data)"]
+    end
+  end
+  n0 --> n1
+  n0 --> n2

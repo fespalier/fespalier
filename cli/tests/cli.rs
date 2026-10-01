@@ -474,6 +474,39 @@ fn routes_prints_the_table_and_json_lines() {
 }
 
 #[test]
+fn routes_graph_prints_mermaid_by_default_and_dot_on_request() {
+    let dir = project();
+    fs::create_dir_all(dir.path().join("lib/app/cart")).unwrap();
+    fs::write(dir.path().join("lib/app/cart/page.dart"), page("CartPage")).unwrap();
+    let mermaid = "flowchart TD\n  subgraph rootnav[\"root navigator\"]\n    n0[\"/<br/>HomeRoute\"]\n    n1[\"/cart<br/>CartRoute\"]\n  end\n  n0 --> n1\n";
+    for args in [
+        &["routes", "--graph"][..],
+        &["routes", "--graph", "mermaid"],
+        &["routes", "--graph=mermaid"],
+    ] {
+        let (ok, out, err) = fsp_full(dir.path(), args, &[]);
+        assert!(ok, "{err}");
+        assert_eq!(out, mermaid, "{args:?}");
+    }
+    let (ok, out, err) = fsp_full(dir.path(), &["routes", "--graph", "dot"], &[]);
+    assert!(ok, "{err}");
+    assert!(out.starts_with("digraph routes {\n"), "{out}");
+    assert!(out.contains("n0 -> n1;"), "{out}");
+    // Flags after it are flags, not its value.
+    let (ok, out, err) = fsp_full(dir.path(), &["routes", "--graph", "--project", "."], &[]);
+    assert!(ok, "{err}");
+    assert_eq!(out, mermaid);
+
+    let (ok, _, err) = fsp_full(dir.path(), &["routes", "--graph", "svg"], &[]);
+    assert!(
+        !ok && err.contains("mermaid") && err.contains("dot"),
+        "{err}"
+    );
+    let (ok, _, err) = fsp_full(dir.path(), &["routes", "--graph", "--json"], &[]);
+    assert!(!ok && err.contains("--json"), "{err}");
+}
+
+#[test]
 fn routes_fails_on_errors() {
     let dir = project();
     fs::write(

@@ -65,6 +65,7 @@
         "cli/src/init.rs",
         "cli/src/scaffold.rs",
         "cli/src/routes.rs",
+        "cli/src/graph.rs",
         "cli/src/format.rs",
         "cli/src/session.rs",
         "cli/src/parse_cache.rs",

@@ -5,6 +5,7 @@ mod emit;
 mod enums;
 mod extra;
 mod format;
+mod graph;
 mod init;
 mod locale;
 mod manifest;
@@ -58,8 +59,11 @@ enum Cmd {
     /// Print the route table: pattern, route class, file, tags
     Routes {
         /// One JSON object per route, one per line
-        #[arg(long)]
+        #[arg(long, conflicts_with = "graph")]
         json: bool,
+        /// The route tree as a graph: `mermaid` (the default) or `dot`
+        #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "mermaid", value_name = "FORMAT")]
+        graph: Option<graph::Format>,
     },
     /// Regenerate on every change under the app folder
     Watch,
@@ -85,7 +89,7 @@ fn main() {
                 eprintln!("✓ {}, no errors", plural(o.routes, "route"));
                 Ok(())
             }
-            Cmd::Routes { json } => routes::run(&project, json),
+            Cmd::Routes { json, graph } => routes::run(&project, json, graph),
             Cmd::Watch => watch(&project),
             Cmd::Init => init::run(&project),
             Cmd::New(cmd) => {
@@ -411,6 +415,8 @@ mod cli_tests;
 mod enum_tests;
 #[cfg(test)]
 mod extra_tests;
+#[cfg(test)]
+mod graph_tests;
 #[cfg(test)]
 mod incremental_tests;
 #[cfg(test)]

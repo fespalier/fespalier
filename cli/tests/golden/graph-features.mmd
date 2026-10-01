@@ -1,0 +1,114 @@
+flowchart TD
+  subgraph rootnav["root navigator"]
+    subgraph b0["layout layout.dart"]
+      n0["/<br/>HomeRoute"]
+      subgraph b1["layout (account)/layout.dart"]
+        n1["/profile<br/>ProfileRoute"]
+        n2["/settings<br/>SettingsRoute"]
+      end
+      n3["/admin<br/>AdminRoute<br/>(guard)"]
+      n4["/inbox<br/>InboxRoute<br/>(guard)"]
+      n5["/free<br/>FreeRoute"]
+      n6["/pro<br/>ProPlanRoute"]
+      n7["/catalog<br/>CatalogRoute<br/>(data)"]
+      n8["/catalog/:productId<br/>ProductDetailRoute<br/>(data)"]
+      n9["/catalog/:productId/reviews<br/>ReviewsRoute<br/>(data)"]
+      n10["/counter<br/>CounterRoute<br/>(data)"]
+      n11["/docs<br/>DocsIndexRoute"]
+      n12["/docs/new<br/>NewDocRoute"]
+      n13["/docs/*rest<br/>DocsRoute"]
+      n14["/files<br/>FilesRoute"]
+      n15["/guide<br/>GuideRoute<br/>de /f#252;hrer, ru /#1088;#1091;#1082;#1086;#1074;#1086;#1076;#1089;#1090;#1074;#1086;"]
+      n16["/help<br/>HelpRoute<br/>fr /aide, de /hilfe"]
+      n17["/help/contact<br/>ContactRoute<br/>fr /aide/contact, de /hilfe/kontakt"]
+      n18["/help/:topic<br/>HelpTopicRoute<br/>fr /aide/:topic, de /hilfe/:topic"]
+      n19["/help/:topic/examples<br/>HelpExamplesRoute<br/>fr /aide/:topic/exemples, de /hilfe/:topic/beispiele"]
+      n20["/login<br/>LoginRoute"]
+      n21["/old-search<br/>OldSearchRoute<br/>(redirect)"]
+      n22["/photos<br/>PhotosRoute"]
+      n23["/photos/share<br/>ShareSheetRoute<br/>(present, root)"]
+      n24["/photos/share/terms<br/>TermsRoute<br/>(root)"]
+      n25["/photos/sort<br/>SortRoute"]
+      n26["/photos/upload<br/>UploadRoute"]
+      n27["/photos/:id<br/>PhotoRoute"]
+      subgraph b2["layout reports/layout.dart (data)"]
+        n28["/reports/monthly<br/>MonthlyReportRoute"]
+        n29["/reports/yearly<br/>YearlyReportRoute"]
+      end
+      n30["/search<br/>SearchRoute<br/>(data)"]
+      n31["/ticks<br/>TicksRoute<br/>(data)"]
+      n32["/:slug<br/>SlugRoute"]
+      subgraph b3["layout notes/layout.dart"]
+        n33["/notes/:id<br/>NoteRoute<br/>(guard)"]
+      end
+      n34["/old-shops/:shop<br/>OldShopsShopRoute<br/>(redirect)"]
+      n35["/orders/:id<br/>OrderRoute"]
+      n36["/orders/:id/refund<br/>RefundRoute<br/>(data, guard)"]
+      n37["/orders/:id/refund/receipt<br/>ReceiptRoute"]
+      n38["/orders/:id/refund/confirm<br/>ConfirmRefundRoute<br/>(guard, sibling)"]
+      n39["/shop/:category<br/>CategoryShopRoute<br/>fr /boutique/:category, de /laden/:category<br/>(data)"]
+      subgraph b4["layout shops/#36;shop/layout.dart (guard)"]
+        n40["/shops/:shop<br/>ShopRoute<br/>(guard)"]
+        n41["/shops/:shop/items/:id<br/>ItemRoute<br/>(data)"]
+      end
+      subgraph b5["layout teams/#36;teamId/layout.dart (data)"]
+        n42["/teams/:teamId/members<br/>MembersRoute"]
+        n43["/teams/:teamId/members/:member<br/>MemberRoute<br/>(data)"]
+        n44["/teams/:teamId/settings<br/>TeamSettingsRoute"]
+      end
+      n45["/browse/*categories<br/>BrowseRoute<br/>(data)"]
+      n46["/compare/*ids<br/>CompareRoute<br/>(data)"]
+      n47["/files/*path?<br/>FilesRoute"]
+      n48["/wiki/*article<br/>WikiRoute<br/>(data)"]
+    end
+  end
+  n0 --> n1
+  n0 --> n2
+  n0 --> n3
+  n0 --> n4
+  n0 --> n5
+  n0 --> n6
+  n0 --> n7
+  n0 --> n10
+  n0 --> n11
+  n0 --> n14
+  n0 --> n15
+  n0 --> n16
+  n0 --> n20
+  n0 --> n21
+  n0 --> n22
+  n0 --> n28
+  n0 --> n29
+  n0 --> n30
+  n0 --> n31
+  n0 --> n32
+  n0 --> n33
+  n0 --> n34
+  n0 --> n35
+  n0 --> n39
+  n0 --> n40
+  n0 --> n42
+  n0 --> n44
+  n0 --> n45
+  n0 --> n46
+  n0 --> n47
+  n0 --> n48
+  n7 --> n8
+  n8 --> n9
+  n11 --> n12
+  n11 --> n13
+  n16 --> n17
+  n16 --> n18
+  n18 --> n19
+  n22 --> n23
+  n22 --> n25
+  n22 --> n26
+  n22 --> n27
+  n23 --> n24
+  n35 --> n36
+  n35 --> n38
+  n36 --> n37
+  n40 --> n41
+  n42 --> n43
+  classDef redirect stroke-dasharray: 5 5
+  class n21,n34 redirect

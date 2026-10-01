@@ -1,0 +1,29 @@
+flowchart TD
+  subgraph rootnav["root navigator"]
+    subgraph b0["tabs (tabs)/layout.dart"]
+      subgraph b1["tab 0: (home)"]
+        n0["/<br/>HomeRoute"]
+      end
+      subgraph b2["tab 1: search"]
+        n1["/search<br/>SearchRoute<br/>fr /recherche"]
+      end
+      subgraph b3["tab 2: profile"]
+        n2["/profile<br/>ProfileRoute"]
+        n3["/profile/edit<br/>EditProfileRoute<br/>(root)"]
+        n4["/profile/security<br/>SecurityRoute"]
+      end
+      subgraph b4["tab 3: library"]
+        subgraph b5["tabs (tabs)/library/layout.dart"]
+          subgraph b6["tab 0: books"]
+            n5["/library/books<br/>BooksRoute"]
+          end
+          subgraph b7["tab 1: authors"]
+            n6["/library/authors<br/>AuthorsRoute"]
+          end
+        end
+      end
+    end
+    n7["/settings<br/>SettingsRoute"]
+  end
+  n2 --> n3
+  n2 --> n4

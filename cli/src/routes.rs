@@ -1,5 +1,6 @@
 //! `fsp routes`: the route table on stdout, as text (the same rows as the
-//! header of `app.g.dart`) or as JSON lines for tools.
+//! header of `app.g.dart`), as JSON lines for tools, or (`--graph`) as a Mermaid or Graphviz
+//! graph of the route tree (see `graph.rs`).
 //!
 //! Text: `/products/:id  ProductRoute  products/$id/page.dart  (data, transition)`.
 //!
@@ -27,11 +28,12 @@ use serde_json::json;
 
 use crate::config::Config;
 use crate::emit;
+use crate::graph;
 use crate::manifest;
 use crate::resolve::{App, Route};
 use crate::{analyze, diag};
 
-pub fn run(project: &Path, json: bool) -> Result<()> {
+pub fn run(project: &Path, json: bool, graph: Option<graph::Format>) -> Result<()> {
     let cfg = Config::load(project)?;
     let app_dir = project.join(&cfg.app_dir);
     if !app_dir.is_dir() {
@@ -44,6 +46,10 @@ pub fn run(project: &Path, json: bool) -> Result<()> {
     diag::render(&app_dir, &cfg.app_dir, &diags);
     if diags.has_errors() {
         bail!("{} error(s); no route table", diags.error_count());
+    }
+    if let Some(format) = graph {
+        print!("{}", graph::render(&app, format));
+        return Ok(());
     }
     let out = if json {
         json_lines(&app, &cfg.app_dir)

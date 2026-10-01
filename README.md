@@ -1937,6 +1937,7 @@ fsp init                # first-time setup: starter files, then gen
 fsp gen                 # check lib/app/, write lib/app.g.dart
 fsp gen --format        # ...and run `dart format` on it
 fsp routes              # print the route table (--json: one object per route)
+fsp routes --graph      # the route tree as a Mermaid graph (--graph dot: Graphviz)
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
@@ -1970,6 +1971,34 @@ route class, its `page.dart` and its tags (`redirect`, `data`, `guard`, `layout`
 ```
 
 A route with [localized paths](#localized-paths) lists each spelling under its row (`fr  /produits/:id`).
+
+**`--graph`** (since 0.5.0) prints the route _tree_ instead, to paste into a README, a pull request
+or an issue: `fsp routes --graph` (or `--graph mermaid`) writes a Mermaid `flowchart TD`, which
+GitHub renders in Markdown, and `--graph dot` a Graphviz `digraph` (`fsp routes --graph dot | dot -Tsvg`).
+It draws what `app.g.dart` gives go_router, not the folders:
+
+- **Nodes** are routes: the URL pattern, the route class, each spelling of a
+  [localized path](#localized-paths) and the markers (`redirect`, `data`, `guard`, `present`,
+  `root`, `sibling`, as in the tags above). A `redirect.dart` route is dashed.
+- **Edges** are nesting: a page is the parent of the routes in the folders below it, and a route with
+  [`nest = false`](#a-sibling-with-a-compound-path) hangs from the page above its parent instead.
+  A shell's routes hang from the route above the shell.
+- **Boxes** are navigators: the root navigator, a [layout](#file-kinds)'s shell (`layout.dart`, with
+  `data` for a [section](#section-data) and `guard` for its folder's guard) and each branch of a
+  [tab layout](#tab-layouts).
+
+The output has no timestamp and a fixed order, so a graph committed to a doc changes only when the
+routes do. `--graph` and `--json` cannot be combined.
+
+```text
+flowchart TD
+  subgraph rootnav["root navigator"]
+    subgraph b0["layout layout.dart"]
+      n0["/<br/>HomeRoute"]
+      n1["/cart<br/>CartRoute"]
+      n2["/checkout<br/>CheckoutRoute<br/>(guard)"]
+      ...
+```
 
 With `--json` it prints one JSON object per line, for scripts and editors, with each
 route's parameters and the [manifest](#route-manifest-and-metadart)'s fields; `file` is relative to

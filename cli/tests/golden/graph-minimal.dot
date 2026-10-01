@@ -1,0 +1,17 @@
+digraph routes {
+  rankdir=TB;
+  node [shape=box];
+  subgraph cluster_rootnav {
+    label="root navigator";
+    style=dashed;
+    subgraph cluster_b0 {
+      label="layout layout.dart";
+      style=rounded;
+      n0 [label="/\nHomeRoute"];
+      n1 [label="/about\nAboutRoute"];
+      n2 [label="/items/:id\nItemRoute\n(data)"];
+    }
+  }
+  n0 -> n1;
+  n0 -> n2;
+}

@@ -1,0 +1,50 @@
+digraph routes {
+  rankdir=TB;
+  node [shape=box];
+  subgraph cluster_rootnav {
+    label="root navigator";
+    style=dashed;
+    subgraph cluster_b0 {
+      label="tabs (tabs)/layout.dart";
+      style=rounded;
+      subgraph cluster_b1 {
+        label="tab 0: (home)";
+        style=rounded;
+        n0 [label="/\nHomeRoute"];
+      }
+      subgraph cluster_b2 {
+        label="tab 1: search";
+        style=rounded;
+        n1 [label="/search\nSearchRoute\nfr /recherche"];
+      }
+      subgraph cluster_b3 {
+        label="tab 2: profile";
+        style=rounded;
+        n2 [label="/profile\nProfileRoute"];
+        n3 [label="/profile/edit\nEditProfileRoute\n(root)"];
+        n4 [label="/profile/security\nSecurityRoute"];
+      }
+      subgraph cluster_b4 {
+        label="tab 3: library";
+        style=rounded;
+        subgraph cluster_b5 {
+          label="tabs (tabs)/library/layout.dart";
+          style=rounded;
+          subgraph cluster_b6 {
+            label="tab 0: books";
+            style=rounded;
+            n5 [label="/library/books\nBooksRoute"];
+          }
+          subgraph cluster_b7 {
+            label="tab 1: authors";
+            style=rounded;
+            n6 [label="/library/authors\nAuthorsRoute"];
+          }
+        }
+      }
+    }
+    n7 [label="/settings\nSettingsRoute"];
+  }
+  n2 -> n3;
+  n2 -> n4;
+}

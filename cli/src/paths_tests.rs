@@ -468,6 +468,7 @@ fn fsp_new_writes_catch_all_folders() {
             function: false,
             not_found: false,
             data,
+            action: false,
             loading: false,
             error: false,
             layout: false,

@@ -65,6 +65,7 @@ matches the package your `pubspec.lock` resolved.
 | ------------------ | ------------------------------------------------------------------------- |
 | `page.dart`        | A widget (or `Widget page()`): serves the folder's URL                    |
 | `data.dart`        | What the page (or a whole section) loads: function, selector, provider    |
+| `action.dart`      | A write: `action(Ref ref, {..., required Input input})` (since 0.5.0)     |
 | `loading.dart`     | Shown while `data.dart` first loads; inherited by folders below           |
 | `error.dart`       | Shown when `data.dart` fails, with `retry`; inherited                     |
 | `layout.dart`      | Wraps this folder and below (`child`), or holds tabs (`navigationShell`)  |

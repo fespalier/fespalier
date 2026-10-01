@@ -1,4 +1,4 @@
-//! `fsp new products/[id] --data --loading --error`
+//! `fsp new products/[id] --data --action --loading --error`
 
 use std::collections::HashMap;
 use std::fs;
@@ -29,6 +29,9 @@ pub struct NewArgs {
     pub function: bool,
     #[arg(long)]
     pub data: bool,
+    /// Write action.dart: a typed write beside the page (or a section's layout)
+    #[arg(long)]
+    pub action: bool,
     #[arg(long)]
     pub loading: bool,
     #[arg(long)]
@@ -62,6 +65,8 @@ struct Cx {
     name: Option<String>,
     segs: Vec<SegCx>,
     data: bool,
+    /// The named parameters of action.dart's function: the segments, then `input`.
+    action_params: Vec<String>,
     /// ` $orderId $itemId`, appended to the page's placeholder text.
     label: String,
     /// `/orders/$orderId`, interpolated in data.dart's placeholder.
@@ -189,6 +194,11 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         label: seg_cx.iter().map(|s| format!(" ${}", s.name)).collect(),
         path: format!("/{rel}"),
         stem,
+        action_params: seg_cx
+            .iter()
+            .map(|s| s.param.clone())
+            .chain(["required Object? input".to_string()])
+            .collect(),
         segs: seg_cx,
         data: a.data,
     };
@@ -204,6 +214,7 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
     let wanted = [
         ("page", !no_page && !is_group),
         ("data", a.data),
+        ("action", a.action),
         ("loading", a.loading),
         ("error", a.error),
         ("layout", a.layout),
@@ -218,7 +229,7 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
             "--no-page skips the page"
         };
         bail!(
-            "nothing to create: {why}; also pass --layout, --loading, --error, --not-found, --guard or --transition"
+            "nothing to create: {why}; also pass --action, --layout, --loading, --error, --not-found, --guard or --transition"
         );
     }
     let dir = app_dir.join(&rel);

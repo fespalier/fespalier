@@ -14,6 +14,7 @@ export 'package:hooks_riverpod/hooks_riverpod.dart';
 // What a `data.dart` that selects a provider names in its return type.
 export 'package:hooks_riverpod/misc.dart' show ProviderListenable;
 
+export 'src/action.dart';
 export 'src/data_view.dart';
 export 'src/extra_codec.dart';
 export 'src/guards.dart';

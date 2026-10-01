@@ -99,6 +99,10 @@ pub struct Variable {
     /// Set when the initializer is a list of plain string literals, like
     /// `const tabs = ['home', 'search'];`: each string with where it sits.
     pub strings: Option<Vec<(String, Span)>>,
+    /// Set when the initializer is a list literal of plain names, like
+    /// `const invalidates = [OrderRoute, OrdersRoute];` (or an empty one, `<Object>[]`):
+    /// each name with where it sits.
+    pub names: Option<Vec<(String, Span)>>,
     /// Set when the initializer is one plain string literal, like
     /// `const routeName = 'KycShopName';`.
     pub string: Option<String>,
@@ -523,6 +527,7 @@ impl Reader<'_> {
                 let value_node = d.child_by_field_name("value");
                 let call = value_node.and_then(|v| self.call(v));
                 let strings = value_node.and_then(|v| self.strings(v));
+                let names = value_node.and_then(|v| self.names(v));
                 let objects = value_node.and_then(|v| self.objects(v));
                 let pairs = value_node.and_then(|v| self.pairs(v));
                 let ctor_args = value_node.and_then(|v| self.ctor_args(v));
@@ -539,6 +544,7 @@ impl Reader<'_> {
                     name: self.text(name).to_string(),
                     call,
                     strings,
+                    names,
                     string,
                     boolean,
                     objects,
@@ -565,6 +571,26 @@ impl Reader<'_> {
             match e.kind() {
                 "type_arguments" | "comment" | "documentation_comment" => {}
                 "string_literal" => out.push((string_value(self.text(e))?, Span::of(e))),
+                _ => return None,
+            }
+        }
+        Some(out)
+    }
+
+    /// `[A, B]` (optionally `const` or `<Object>`) → its names. `None` for anything else,
+    /// including a list with an element that is not a plain name (a call, a string, a spread).
+    fn names(&self, v: Node) -> Option<Vec<(String, Span)>> {
+        if v.kind() != "list_literal" {
+            return None;
+        }
+        let mut out = vec![];
+        let mut cur = v.walk();
+        for e in v.named_children(&mut cur) {
+            match e.kind() {
+                "type_arguments" | "comment" | "documentation_comment" => {}
+                "identifier" | "type_identifier" => {
+                    out.push((self.text(e).to_string(), Span::of(e)));
+                }
                 _ => return None,
             }
         }
@@ -1284,6 +1310,27 @@ mod tests {
                 None
             ]
         );
+    }
+
+    #[test]
+    fn reads_lists_of_names() {
+        let m = parse(
+            "const a = [OrderRoute, OrdersRoute,];\nconst b = <Object>[];\nconst c = [];\nconst d = [OrderRoute.data];\nconst e = ['x'];\nfinal f = [A];\nconst g = [A, ...h];",
+        );
+        let names = |n: &str| {
+            m.variables
+                .iter()
+                .find(|v| v.name == n)
+                .and_then(|v| v.names.as_ref())
+                .map(|l| l.iter().map(|(s, _)| s.as_str()).collect::<Vec<_>>())
+        };
+        assert_eq!(names("a"), Some(vec!["OrderRoute", "OrdersRoute"]));
+        assert_eq!(names("b"), Some(vec![]));
+        assert_eq!(names("c"), Some(vec![]));
+        assert_eq!(names("d"), None);
+        assert_eq!(names("e"), None);
+        assert_eq!(names("f"), Some(vec!["A"]));
+        assert_eq!(names("g"), None);
     }
 
     #[test]

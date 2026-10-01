@@ -15,7 +15,7 @@ dependencies:
     git:
       url: https://github.com/vaam-apps/fespalier
       path: packages/fespalier
-      ref: v0.4.0
+      ref: v0.4.1
 ```
 
 <!-- x-release-please-end -->

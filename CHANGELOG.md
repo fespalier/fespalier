@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/vaam-apps/fespalier/compare/v0.4.0...v0.4.1) (2026-10-01)
+
+
+### Documentation
+
+* ship the agent skills in skills/, checked against the code in CI ([#20](https://github.com/vaam-apps/fespalier/issues/20)) ([218b5e2](https://github.com/vaam-apps/fespalier/commit/218b5e283de7e8dee6fdab44d9bbabfb2645d9af))
+
 ## [0.4.0](https://github.com/vaam-apps/fespalier/compare/v0.3.0...v0.4.0) (2026-10-01)
 
 

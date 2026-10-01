@@ -68,7 +68,18 @@ Future<ProviderContainer> pumpRouter(
 
 /// Where the router is now, as a string (`/products/2?tab=info`), for a router
 /// booted with [pumpRouter] or `MaterialApp.router`.
+///
+/// It follows `go`, `pop` and `push`: what a `push` shows is the top of the
+/// stack, so that is its location. (go_router keeps the pushed page out of the
+/// route information, which keeps showing the page underneath, so this reads the
+/// router's current configuration instead.)
 String currentLocation(WidgetTester tester) {
   final context = tester.element(find.byType(Navigator).first);
-  return GoRouter.of(context).routeInformationProvider.value.uri.toString();
+  final router = GoRouter.of(context);
+  final matches = router.routerDelegate.currentConfiguration;
+  if (matches.isNotEmpty) {
+    final top = matches.last;
+    if (top is ImperativeRouteMatch) return top.matches.uri.toString();
+  }
+  return router.routeInformationProvider.value.uri.toString();
 }

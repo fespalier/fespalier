@@ -78,7 +78,8 @@ ref.watch(ProductRoute.data(42));                     // the provider itself
   `ref.read(p.future)` does not for an `autoDispose` provider. **Do not call it
   from `build`.**
 - `watch`, `read`, `prefetch`, `preload`, `refresh`, `ref` and `keepFor` cannot be
-  segment or query names (`preload` since 0.5.0).
+  segment or query names (`preload` since 0.5.0; nor, since 0.5.0, `of`, `maybeOf`
+  and `copyWith`: see `fespalier-routing`).
 
 ## Prefetch
 

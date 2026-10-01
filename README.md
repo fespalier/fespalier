@@ -1383,6 +1383,9 @@ however many times the page builds a new list. Your `data()` still takes and rec
 Order counts: `[a, b]` and `[b, a]` are different keys. (A provider you write yourself can't
 be keyed by a query parameter, only by segments.)
 
+To change one query parameter of the current location from a widget, see
+[the URL as state](#the-url-as-state-of-and-copywith): `SearchRoute.of(context).copyWith(page: 2).go(context)`.
+
 ```dart
 // search/data.dart
 Future<List<Hit>> data(Ref ref, {String? q, int? page, List<String> tags = const []}) => …;
@@ -1396,6 +1399,68 @@ class SearchPage extends StatelessWidget {
   …
 }
 ```
+
+### The URL as state: `of` and `copyWith`
+
+_Since 0.5.0._ A filtered, sorted, paginated list that keeps its state in the query is a link
+someone can send, and back and forward move between its views. Every typed route has two ways in
+and one way to change a part of it:
+
+```dart
+final route = SearchRoute.of(context);          // the typed route at the current location
+final maybe = SearchRoute.maybeOf(context);     // null instead of throwing
+
+route.copyWith(page: (route.page ?? 1) + 1).go(context);          // a history entry
+route.copyWith(sort: Sort.name, page: null).go(context);           // null clears a query parameter
+SearchRoute(q: 'ap').copyWith(page: 2).location;                   // '/search?q=ap&page=2': a value, no widget
+```
+
+- **`XRoute.of(context)`** parses the location the widget belongs to, with the parsers
+  [`AppRoutes.match`](#from-a-location-to-its-data) uses (it calls `AppRoutes.matchUrl`): the
+  mount point is taken off, a [localized spelling](#localized-paths) is the route it spells, and the
+  [case setting](#case-and-trailing-slashes), [enums](#enum-segments), lists and
+  [catch-alls](#catch-all-segments) read as they do for the page. It throws a `StateError` that
+  names the location when it is another route; `XRoute.maybeOf(context)` returns `null`. Use `of`
+  in a widget below the page that wasn't handed the parameters; the page itself already has them
+  as constructor arguments and rebuilds when they change. (A `const` route stays `const`:
+  `of` and `copyWith` are members, not constructor parameters.)
+- **Which location.** It is `GoRouterState.of(context)`'s: the route around the widget, not
+  whichever page is on top. A page reads the part of the URL its own route matched, with the URL's
+  query, so `/products/42?ref=mail` leaves the page of `/products` below it reading
+  `ProductsRoute(ref: 'mail')`, and a page under a pushed one, a tab that is built but not shown
+  (`preload`) read their own. A layout (a shell, a tab layout) is above any
+  one page and reads the whole location. Outside any route (`MaterialApp(home: ...)`) `of`
+  throws go_router's `GoError`, `maybeOf` returns `null`. A widget that calls it depends on its
+  route's state and rebuilds when it changes, as with `GoRouterState.of`; call it in `build` or in
+  a handler of a mounted widget, not after it is disposed.
+- **`copyWith`** takes every segment and every query parameter of the route, by name and with the
+  field's own type. One left out keeps its value; **`null` clears an optional query parameter**
+  (`page: null` leaves `?page=` out of the location), which is not the same as leaving it out. A
+  segment, and a `List` (a repeated query parameter or a catch-all), is not nullable, so
+  `copyWith(id: null)` doesn't compile: clear a list with an empty one (`tags: const []`). It
+  returns the same route class, so `.go`, `.push`, `.replace` and `.location` follow. What isn't a
+  parameter isn't carried: an `extra` is given again to `go(context, extra: ...)`, and the
+  localized spelling is chosen where the route is used (`go(context, locale: 'de')`), not by the
+  copy.
+- **How null differs from omitted.** `copyWith` is a getter whose type is a function with the
+  fields' types (`SearchRoute Function({String? q, int? page, Sort? sort})`), and the function
+  behind it has the parameters as `Object?` with a private `const` sentinel as the default. The
+  caller sees the clean signature; the sentinel is only visible in `app.g.dart`, and nobody can
+  pass it. See [Design notes](#design-notes).
+- **`go`, `push`, `replace`.** `go` is the one that follows the URL: on the web it adds a history
+  entry, and back and forward restore each view. `replace` is go_router's: it swaps the top page of
+  the stack, but go_router doesn't put an imperative `replace` or `push` in the address bar on the web
+  (`GoRouter.optionURLReflectsImperativeAPIs`, off by default), so don't use it for state that
+  should be in the URL.
+- **Reserved names.** `of`, `maybeOf` and `copyWith` are members of the route class, so
+  they can't be segment or query names (see
+  [Typed helpers on the route](#typed-helpers-on-the-route)).
+- **Cost.** Both are synchronous and use no timer or microtask. `of` matches the location with the
+  generated matchers and builds one route; `copyWith` builds one (plus the small function it returns).
+
+`examples/shop` keeps the list's sort and page this way (`products/page.dart`, and
+`test/url_state_test.dart` with back and forward); `examples/features` has the enum, list,
+catch-all and localized cases and `examples/tabs` the tabs.
 
 ### Typed `extra`
 
@@ -1693,7 +1758,9 @@ page reads_: the data of each [section](#section-data) above it, then its own, t
 `AppRoutes.dataAt` gives for its location, behind one handle that closes them all
 (see [Links](#links-routelink)). A route with no data at all returns a closed handle.
 Because these are members of the route class, `watch`, `read`, `prefetch`, `preload`, `refresh`,
-`ref` and `keepFor` can't be segment or query names (`preload` is reserved since 0.5.0), and neither
+`ref` and `keepFor` can't be segment or query names (`preload` is reserved since 0.5.0), nor
+(since 0.5.0) can `of`, `maybeOf` and `copyWith` (see
+[the URL as state](#the-url-as-state-of-and-copywith)), and neither
 can the helpers of an [`action.dart`](#actiondart-typed-writes) (`submit`, `useAction`, or an
 action's own name).
 
@@ -2865,6 +2932,24 @@ by inference, which is why the helpers that return your data are static, and the
 don't (`prefetch`, `refresh`, `go`, `location`) are instance methods. If Dart macros, or naming a
 type through the import machinery that `extra` already uses, become an option, this can be
 reopened; today the trade is a `const` route and a type that is never `dynamic`.
+
+**Why `copyWith` is a getter of a function type.** `route.copyWith(page: null)` has to mean "clear
+the page" and `route.copyWith()` "keep it", so `null` can't be the default of an `int? page`
+parameter. The usual answers each cost something visible. A method with `Object? page = _keep`
+accepts anything (`copyWith(page: 'x')` compiles and fails at run time), and its signature in the
+IDE says `Object?`. A wrapper for the argument (`copyWith(page: Some(null))`) makes every call site noisier than
+the hand-written copy it replaces. Dart has no overload and no way to give an
+`int?` parameter a default that isn't an `int?`. What does work is to split what the caller sees
+from what runs: the public `copyWith` is a getter whose type is `SearchRoute Function({String? q, int?
+page, Sort? sort})`, the fields' own types, and what it returns is a private method that takes
+`Object?` with a private `const` sentinel (`_keep`) as each default. A caller passes a `String?` or
+nothing; calling the function through its type, an argument that is left out takes the private
+default and one that is `null` is `null`. Nothing is `dynamic`, a segment is not nullable
+(`copyWith(id: null)` doesn't compile), the route constructors stay `const`, and the sentinel
+is one `const` object. Costs: `copyWith` shows in the IDE as a getter whose value is a function (the analyzer
+still checks every named parameter and its type), and each call allocates the function (a
+tear-off of the private method). If Dart gets a way to tell an omitted optional parameter from a
+passed one, this reduces to an ordinary method.
 
 **Why an action's `submit` is static, and its input is typed.** `RefundRoute(id: 1).submit(ref,
 input: form)` has the problem `ProductRoute(id: 42).watch(ref)` has: an instance member has to say

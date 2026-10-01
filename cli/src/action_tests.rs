@@ -875,6 +875,22 @@ fn helper_names_may_not_collide_with_the_route_or_with_each_other() {
         e.contains("the helper of refresh() would be called `refresh`, which is already a member of the typed route; rename the function"),
         "{e}"
     );
+    // The URL-state members the route class has too (since 0.5.0).
+    for name in ["of", "maybeOf", "copyWith"] {
+        let source: &'static str = Box::leak(
+            format!(
+            "Future<void> {name}(Ref ref, {{required int id, required Object input}}) async {{}}"
+            )
+            .into_boxed_str(),
+        );
+        let e = errors(&order(&[("orders/$id/action.dart", source)]));
+        assert!(
+            e.contains(&format!(
+                "would be called `{name}`, which is already a member of the typed route"
+            )),
+            "{e}"
+        );
+    }
     // A segment (a field of the route class).
     let e = errors(&[
         ("page.dart", HOME),

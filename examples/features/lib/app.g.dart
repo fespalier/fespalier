@@ -1587,6 +1587,13 @@ final class HomeRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/');
+
+  /// The HomeRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static HomeRoute of(BuildContext context) => routeOf<HomeRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static HomeRoute? maybeOf(BuildContext context) => maybeRouteOf<HomeRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/:slug` → $slug/page.dart
@@ -1597,6 +1604,21 @@ final class SlugRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/${Uri.encodeComponent(slug)}');
+
+  /// The SlugRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static SlugRoute of(BuildContext context) => routeOf<SlugRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static SlugRoute? maybeOf(BuildContext context) => maybeRouteOf<SlugRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  SlugRoute Function({String slug}) get copyWith => _copyWith;
+
+  SlugRoute _copyWith({Object? slug = _keep}) =>
+      SlugRoute(slug: _kept<String>(slug, this.slug));
 }
 
 /// `/profile` → (account)/profile/page.dart
@@ -1605,6 +1627,13 @@ final class ProfileRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/profile');
+
+  /// The ProfileRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ProfileRoute of(BuildContext context) => routeOf<ProfileRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ProfileRoute? maybeOf(BuildContext context) => maybeRouteOf<ProfileRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/settings` → (account)/settings/page.dart
@@ -1613,6 +1642,13 @@ final class SettingsRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/settings');
+
+  /// The SettingsRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static SettingsRoute of(BuildContext context) => routeOf<SettingsRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static SettingsRoute? maybeOf(BuildContext context) => maybeRouteOf<SettingsRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/admin` → (members)/admin/page.dart
@@ -1621,6 +1657,13 @@ final class AdminRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/admin');
+
+  /// The AdminRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static AdminRoute of(BuildContext context) => routeOf<AdminRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static AdminRoute? maybeOf(BuildContext context) => maybeRouteOf<AdminRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/inbox` → (members)/inbox/page.dart
@@ -1631,6 +1674,21 @@ final class InboxRoute extends TypedLocation {
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/inbox'), {'folder': folder});
+
+  /// The InboxRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static InboxRoute of(BuildContext context) => routeOf<InboxRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static InboxRoute? maybeOf(BuildContext context) => maybeRouteOf<InboxRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  InboxRoute Function({String? folder}) get copyWith => _copyWith;
+
+  InboxRoute _copyWith({Object? folder = _keep}) =>
+      InboxRoute(folder: _kept<String?>(folder, this.folder));
 }
 
 /// `/free` → (plans)/free/page.dart
@@ -1639,6 +1697,13 @@ final class FreeRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/free');
+
+  /// The FreeRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static FreeRoute of(BuildContext context) => routeOf<FreeRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static FreeRoute? maybeOf(BuildContext context) => maybeRouteOf<FreeRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/pro` → (plans)/pro/page.dart
@@ -1649,6 +1714,21 @@ final class ProPlanRoute extends TypedLocation {
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/pro'), {'coupon': coupon});
+
+  /// The ProPlanRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ProPlanRoute of(BuildContext context) => routeOf<ProPlanRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ProPlanRoute? maybeOf(BuildContext context) => maybeRouteOf<ProPlanRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  ProPlanRoute Function({String? coupon}) get copyWith => _copyWith;
+
+  ProPlanRoute _copyWith({Object? coupon = _keep}) =>
+      ProPlanRoute(coupon: _kept<String?>(coupon, this.coupon));
 }
 
 /// `/browse/*categories` → browse/$$categories/page.dart
@@ -1665,6 +1745,21 @@ final class BrowseRoute extends TypedLocation {
     assert(categories.isNotEmpty, 'BrowseRoute needs at least one part in `categories`; the path without it isn\'t this route');
     return joinLocation(AppRoutes.base, '/browse${restPath(categories)}');
   }
+
+  /// The BrowseRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static BrowseRoute of(BuildContext context) => routeOf<BrowseRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static BrowseRoute? maybeOf(BuildContext context) => maybeRouteOf<BrowseRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  BrowseRoute Function({List<Category> categories}) get copyWith => _copyWith;
+
+  BrowseRoute _copyWith({Object? categories = _keep}) =>
+      BrowseRoute(categories: _kept<List<Category>>(categories, this.categories));
 
   /// Watches browse/$$categories/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required List<Category> categories}) => ref.watch(data(restKey(categories)));
@@ -1692,6 +1787,13 @@ final class CatalogRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/catalog');
+
+  /// The CatalogRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static CatalogRoute of(BuildContext context) => routeOf<CatalogRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static CatalogRoute? maybeOf(BuildContext context) => maybeRouteOf<CatalogRoute>(context, AppRoutes.matchUrl);
 
   /// Watches catalog/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref) => ref.watch(data);
@@ -1722,6 +1824,21 @@ final class ProductDetailRoute extends TypedLocation {
   @override
   String get location => joinLocation(AppRoutes.base, '/catalog/${Uri.encodeComponent(productId)}');
 
+  /// The ProductDetailRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ProductDetailRoute of(BuildContext context) => routeOf<ProductDetailRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ProductDetailRoute? maybeOf(BuildContext context) => maybeRouteOf<ProductDetailRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  ProductDetailRoute Function({String productId}) get copyWith => _copyWith;
+
+  ProductDetailRoute _copyWith({Object? productId = _keep}) =>
+      ProductDetailRoute(productId: _kept<String>(productId, this.productId));
+
   /// Watches catalog/$productId/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required String productId}) => ref.watch(data(productId));
 
@@ -1751,6 +1868,21 @@ final class ReviewsRoute extends TypedLocation {
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/catalog/${Uri.encodeComponent(productId)}/reviews'), {'page': page});
+
+  /// The ReviewsRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ReviewsRoute of(BuildContext context) => routeOf<ReviewsRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ReviewsRoute? maybeOf(BuildContext context) => maybeRouteOf<ReviewsRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  ReviewsRoute Function({String productId, int? page}) get copyWith => _copyWith;
+
+  ReviewsRoute _copyWith({Object? productId = _keep, Object? page = _keep}) =>
+      ReviewsRoute(productId: _kept<String>(productId, this.productId), page: _kept<int?>(page, this.page));
 
   /// Watches catalog/$productId/reviews/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required String productId, int? page}) => ref.watch(data((productId: productId, page: page)));
@@ -1784,6 +1916,21 @@ final class CompareRoute extends TypedLocation {
     return joinLocation(AppRoutes.base, '/compare${restPath(ids)}');
   }
 
+  /// The CompareRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static CompareRoute of(BuildContext context) => routeOf<CompareRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static CompareRoute? maybeOf(BuildContext context) => maybeRouteOf<CompareRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  CompareRoute Function({List<int> ids}) get copyWith => _copyWith;
+
+  CompareRoute _copyWith({Object? ids = _keep}) =>
+      CompareRoute(ids: _kept<List<int>>(ids, this.ids));
+
   /// Watches compare/$$ids/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required List<int> ids}) => ref.watch(data(restKey(ids)));
 
@@ -1811,6 +1958,13 @@ final class CounterRoute extends TypedLocation {
   @override
   String get location => joinLocation(AppRoutes.base, '/counter');
 
+  /// The CounterRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static CounterRoute of(BuildContext context) => routeOf<CounterRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static CounterRoute? maybeOf(BuildContext context) => maybeRouteOf<CounterRoute>(context, AppRoutes.matchUrl);
+
   /// Watches counter/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref) => ref.watch(data);
 
@@ -1834,6 +1988,13 @@ final class DocsIndexRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/docs');
+
+  /// The DocsIndexRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static DocsIndexRoute of(BuildContext context) => routeOf<DocsIndexRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static DocsIndexRoute? maybeOf(BuildContext context) => maybeRouteOf<DocsIndexRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/docs/*rest` → docs/$$rest/page.dart
@@ -1847,6 +2008,21 @@ final class DocsRoute extends TypedLocation {
     assert(rest.isNotEmpty, 'DocsRoute needs at least one part in `rest`; the path without it isn\'t this route');
     return joinLocation(AppRoutes.base, '/docs${restPath(rest)}');
   }
+
+  /// The DocsRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static DocsRoute of(BuildContext context) => routeOf<DocsRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static DocsRoute? maybeOf(BuildContext context) => maybeRouteOf<DocsRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  DocsRoute Function({List<String> rest}) get copyWith => _copyWith;
+
+  DocsRoute _copyWith({Object? rest = _keep}) =>
+      DocsRoute(rest: _kept<List<String>>(rest, this.rest));
 }
 
 /// `/docs/new` → docs/new/page.dart
@@ -1855,6 +2031,13 @@ final class NewDocRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/docs/new');
+
+  /// The NewDocRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static NewDocRoute of(BuildContext context) => routeOf<NewDocRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static NewDocRoute? maybeOf(BuildContext context) => maybeRouteOf<NewDocRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/files/*path?` → files/$$$path/page.dart
@@ -1865,6 +2048,21 @@ final class FilesRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/files${restPath(path)}');
+
+  /// The FilesRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static FilesRoute of(BuildContext context) => routeOf<FilesRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static FilesRoute? maybeOf(BuildContext context) => maybeRouteOf<FilesRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  FilesRoute Function({List<String> path}) get copyWith => _copyWith;
+
+  FilesRoute _copyWith({Object? path = _keep}) =>
+      FilesRoute(path: _kept<List<String>>(path, this.path));
 }
 
 /// `/guide` → guide/page.dart
@@ -1880,6 +2078,13 @@ final class GuideRoute extends TypedLocation {
   String locationFor(String? _locale) {
     return joinLocation(AppRoutes.base, '/${localizedSegment(_locale, 'guide', {'de': 'führer', 'ru': 'руководство'})}');
   }
+
+  /// The GuideRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static GuideRoute of(BuildContext context) => routeOf<GuideRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static GuideRoute? maybeOf(BuildContext context) => maybeRouteOf<GuideRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/help` → help/page.dart
@@ -1895,6 +2100,13 @@ final class HelpRoute extends TypedLocation {
   String locationFor(String? _locale) {
     return joinLocation(AppRoutes.base, '/${localizedSegment(_locale, 'help', {'fr': 'aide', 'de': 'hilfe'})}');
   }
+
+  /// The HelpRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static HelpRoute of(BuildContext context) => routeOf<HelpRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static HelpRoute? maybeOf(BuildContext context) => maybeRouteOf<HelpRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/help/:topic` → help/$topic/page.dart
@@ -1912,6 +2124,21 @@ final class HelpTopicRoute extends TypedLocation {
   String locationFor(String? _locale) {
     return joinLocation(AppRoutes.base, '/${localizedSegment(_locale, 'help', {'fr': 'aide', 'de': 'hilfe'})}/${Uri.encodeComponent(topic)}');
   }
+
+  /// The HelpTopicRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static HelpTopicRoute of(BuildContext context) => routeOf<HelpTopicRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static HelpTopicRoute? maybeOf(BuildContext context) => maybeRouteOf<HelpTopicRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  HelpTopicRoute Function({String topic}) get copyWith => _copyWith;
+
+  HelpTopicRoute _copyWith({Object? topic = _keep}) =>
+      HelpTopicRoute(topic: _kept<String>(topic, this.topic));
 }
 
 /// `/help/:topic/examples` → help/$topic/examples/page.dart
@@ -1929,6 +2156,21 @@ final class HelpExamplesRoute extends TypedLocation {
   String locationFor(String? _locale) {
     return joinLocation(AppRoutes.base, '/${localizedSegment(_locale, 'help', {'fr': 'aide', 'de': 'hilfe'})}/${Uri.encodeComponent(topic)}/${localizedSegment(_locale, 'examples', {'fr': 'exemples', 'de': 'beispiele'})}');
   }
+
+  /// The HelpExamplesRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static HelpExamplesRoute of(BuildContext context) => routeOf<HelpExamplesRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static HelpExamplesRoute? maybeOf(BuildContext context) => maybeRouteOf<HelpExamplesRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  HelpExamplesRoute Function({String topic}) get copyWith => _copyWith;
+
+  HelpExamplesRoute _copyWith({Object? topic = _keep}) =>
+      HelpExamplesRoute(topic: _kept<String>(topic, this.topic));
 }
 
 /// `/help/contact` → help/contact/page.dart
@@ -1944,6 +2186,13 @@ final class ContactRoute extends TypedLocation {
   String locationFor(String? _locale) {
     return joinLocation(AppRoutes.base, '/${localizedSegment(_locale, 'help', {'fr': 'aide', 'de': 'hilfe'})}/${localizedSegment(_locale, 'contact', {'de': 'kontakt'})}');
   }
+
+  /// The ContactRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ContactRoute of(BuildContext context) => routeOf<ContactRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ContactRoute? maybeOf(BuildContext context) => maybeRouteOf<ContactRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/login` → login/page.dart
@@ -1954,6 +2203,21 @@ final class LoginRoute extends TypedLocation {
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/login'), {'from': from});
+
+  /// The LoginRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static LoginRoute of(BuildContext context) => routeOf<LoginRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static LoginRoute? maybeOf(BuildContext context) => maybeRouteOf<LoginRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  LoginRoute Function({String? from}) get copyWith => _copyWith;
+
+  LoginRoute _copyWith({Object? from = _keep}) =>
+      LoginRoute(from: _kept<String?>(from, this.from));
 }
 
 /// `/notes/:id` → notes/$id/page.dart
@@ -1975,6 +2239,21 @@ final class NoteRoute extends TypedLocation {
 
   @override
   void replace(BuildContext context, {Note? extra, String? locale}) => context.replace(locationFor(locale), extra: extra);
+
+  /// The NoteRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static NoteRoute of(BuildContext context) => routeOf<NoteRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static NoteRoute? maybeOf(BuildContext context) => maybeRouteOf<NoteRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  NoteRoute Function({int id}) get copyWith => _copyWith;
+
+  NoteRoute _copyWith({Object? id = _keep}) =>
+      NoteRoute(id: _kept<int>(id, this.id));
 }
 
 /// `/old-search` → old-search/redirect.dart
@@ -1985,6 +2264,21 @@ final class OldSearchRoute extends TypedLocation {
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/old-search'), {'q': q});
+
+  /// The OldSearchRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static OldSearchRoute of(BuildContext context) => routeOf<OldSearchRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static OldSearchRoute? maybeOf(BuildContext context) => maybeRouteOf<OldSearchRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  OldSearchRoute Function({String? q}) get copyWith => _copyWith;
+
+  OldSearchRoute _copyWith({Object? q = _keep}) =>
+      OldSearchRoute(q: _kept<String?>(q, this.q));
 }
 
 /// `/old-shops/:shop` → old-shops/$shop/redirect.dart
@@ -1995,6 +2289,21 @@ final class OldShopsShopRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/old-shops/${Uri.encodeComponent(shop)}');
+
+  /// The OldShopsShopRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static OldShopsShopRoute of(BuildContext context) => routeOf<OldShopsShopRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static OldShopsShopRoute? maybeOf(BuildContext context) => maybeRouteOf<OldShopsShopRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  OldShopsShopRoute Function({String shop}) get copyWith => _copyWith;
+
+  OldShopsShopRoute _copyWith({Object? shop = _keep}) =>
+      OldShopsShopRoute(shop: _kept<String>(shop, this.shop));
 }
 
 /// `/orders/:id` → orders/$id/page.dart
@@ -2005,6 +2314,21 @@ final class OrderRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/orders/$id');
+
+  /// The OrderRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static OrderRoute of(BuildContext context) => routeOf<OrderRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static OrderRoute? maybeOf(BuildContext context) => maybeRouteOf<OrderRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  OrderRoute Function({int id}) get copyWith => _copyWith;
+
+  OrderRoute _copyWith({Object? id = _keep}) =>
+      OrderRoute(id: _kept<int>(id, this.id));
 }
 
 /// `/orders/:id/refund` → orders/$id/refund/page.dart
@@ -2018,6 +2342,21 @@ final class RefundRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/orders/$id/refund');
+
+  /// The RefundRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static RefundRoute of(BuildContext context) => routeOf<RefundRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static RefundRoute? maybeOf(BuildContext context) => maybeRouteOf<RefundRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  RefundRoute Function({int id}) get copyWith => _copyWith;
+
+  RefundRoute _copyWith({Object? id = _keep}) =>
+      RefundRoute(id: _kept<int>(id, this.id));
 
   /// Watches orders/$id/refund/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required int id}) => ref.watch(data(id));
@@ -2053,6 +2392,21 @@ final class ConfirmRefundRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/orders/$id/refund/confirm');
+
+  /// The ConfirmRefundRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ConfirmRefundRoute of(BuildContext context) => routeOf<ConfirmRefundRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ConfirmRefundRoute? maybeOf(BuildContext context) => maybeRouteOf<ConfirmRefundRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  ConfirmRefundRoute Function({int id}) get copyWith => _copyWith;
+
+  ConfirmRefundRoute _copyWith({Object? id = _keep}) =>
+      ConfirmRefundRoute(id: _kept<int>(id, this.id));
 }
 
 /// `/orders/:id/refund/receipt` → orders/$id/refund/receipt/page.dart
@@ -2063,6 +2417,21 @@ final class ReceiptRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/orders/$id/refund/receipt');
+
+  /// The ReceiptRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ReceiptRoute of(BuildContext context) => routeOf<ReceiptRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ReceiptRoute? maybeOf(BuildContext context) => maybeRouteOf<ReceiptRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  ReceiptRoute Function({int id}) get copyWith => _copyWith;
+
+  ReceiptRoute _copyWith({Object? id = _keep}) =>
+      ReceiptRoute(id: _kept<int>(id, this.id));
 }
 
 /// `/photos` → photos/page.dart
@@ -2071,6 +2440,13 @@ final class PhotosRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/photos');
+
+  /// The PhotosRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static PhotosRoute of(BuildContext context) => routeOf<PhotosRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static PhotosRoute? maybeOf(BuildContext context) => maybeRouteOf<PhotosRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/photos/:id` → photos/$id/page.dart
@@ -2081,6 +2457,21 @@ final class PhotoRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/photos/$id');
+
+  /// The PhotoRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static PhotoRoute of(BuildContext context) => routeOf<PhotoRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static PhotoRoute? maybeOf(BuildContext context) => maybeRouteOf<PhotoRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  PhotoRoute Function({int id}) get copyWith => _copyWith;
+
+  PhotoRoute _copyWith({Object? id = _keep}) =>
+      PhotoRoute(id: _kept<int>(id, this.id));
 }
 
 /// `/photos/share` → photos/share/page.dart
@@ -2089,6 +2480,13 @@ final class ShareSheetRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/photos/share');
+
+  /// The ShareSheetRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ShareSheetRoute of(BuildContext context) => routeOf<ShareSheetRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ShareSheetRoute? maybeOf(BuildContext context) => maybeRouteOf<ShareSheetRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/photos/share/terms` → photos/share/terms/page.dart
@@ -2097,6 +2495,13 @@ final class TermsRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/photos/share/terms');
+
+  /// The TermsRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static TermsRoute of(BuildContext context) => routeOf<TermsRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static TermsRoute? maybeOf(BuildContext context) => maybeRouteOf<TermsRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/photos/sort` → photos/sort/page.dart
@@ -2105,6 +2510,13 @@ final class SortRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/photos/sort');
+
+  /// The SortRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static SortRoute of(BuildContext context) => routeOf<SortRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static SortRoute? maybeOf(BuildContext context) => maybeRouteOf<SortRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/photos/upload` → photos/upload/page.dart
@@ -2113,6 +2525,13 @@ final class UploadRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/photos/upload');
+
+  /// The UploadRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static UploadRoute of(BuildContext context) => routeOf<UploadRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static UploadRoute? maybeOf(BuildContext context) => maybeRouteOf<UploadRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/reports/monthly` → reports/monthly/page.dart
@@ -2123,6 +2542,21 @@ final class MonthlyReportRoute extends TypedLocation {
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/reports/monthly'), {'period': period});
+
+  /// The MonthlyReportRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static MonthlyReportRoute of(BuildContext context) => routeOf<MonthlyReportRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static MonthlyReportRoute? maybeOf(BuildContext context) => maybeRouteOf<MonthlyReportRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  MonthlyReportRoute Function({String? period}) get copyWith => _copyWith;
+
+  MonthlyReportRoute _copyWith({Object? period = _keep}) =>
+      MonthlyReportRoute(period: _kept<String?>(period, this.period));
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
@@ -2137,6 +2571,21 @@ final class YearlyReportRoute extends TypedLocation {
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/reports/yearly'), {'period': period});
+
+  /// The YearlyReportRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static YearlyReportRoute of(BuildContext context) => routeOf<YearlyReportRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static YearlyReportRoute? maybeOf(BuildContext context) => maybeRouteOf<YearlyReportRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  YearlyReportRoute Function({String? period}) get copyWith => _copyWith;
+
+  YearlyReportRoute _copyWith({Object? period = _keep}) =>
+      YearlyReportRoute(period: _kept<String?>(period, this.period));
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
@@ -2156,6 +2605,21 @@ final class SearchRoute extends TypedLocation {
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/search'), {'q': q, 'page': page, 'tags': tags});
+
+  /// The SearchRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static SearchRoute of(BuildContext context) => routeOf<SearchRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static SearchRoute? maybeOf(BuildContext context) => maybeRouteOf<SearchRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  SearchRoute Function({String? q, int? page, List<String> tags}) get copyWith => _copyWith;
+
+  SearchRoute _copyWith({Object? q = _keep, Object? page = _keep, Object? tags = _keep}) =>
+      SearchRoute(q: _kept<String?>(q, this.q), page: _kept<int?>(page, this.page), tags: _kept<List<String>>(tags, this.tags));
 
   /// Watches search/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {String? q, int? page, List<String> tags = const []}) => ref.watch(data((q: q, page: page, tags: QueryList(tags))));
@@ -2194,6 +2658,21 @@ final class CategoryShopRoute extends TypedLocation {
     return withQuery(joinLocation(AppRoutes.base, '/${localizedSegment(_locale, 'shop', {'fr': 'boutique', 'de': 'laden'})}/${category.name}'), {'sort': sort});
   }
 
+  /// The CategoryShopRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static CategoryShopRoute of(BuildContext context) => routeOf<CategoryShopRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static CategoryShopRoute? maybeOf(BuildContext context) => maybeRouteOf<CategoryShopRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  CategoryShopRoute Function({Category category, _i68.Sort? sort}) get copyWith => _copyWith;
+
+  CategoryShopRoute _copyWith({Object? category = _keep, Object? sort = _keep}) =>
+      CategoryShopRoute(category: _kept<Category>(category, this.category), sort: _kept<_i68.Sort?>(sort, this.sort));
+
   /// Watches shop/$category/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required Category category}) => ref.watch(data(category));
 
@@ -2219,6 +2698,21 @@ final class ShopRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/shops/${Uri.encodeComponent(shop)}');
+
+  /// The ShopRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ShopRoute of(BuildContext context) => routeOf<ShopRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ShopRoute? maybeOf(BuildContext context) => maybeRouteOf<ShopRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  ShopRoute Function({String shop}) get copyWith => _copyWith;
+
+  ShopRoute _copyWith({Object? shop = _keep}) =>
+      ShopRoute(shop: _kept<String>(shop, this.shop));
 }
 
 /// `/shops/:shop/items/:id` → shops/$shop/items/$id/page.dart
@@ -2233,6 +2727,21 @@ final class ItemRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/shops/${Uri.encodeComponent(shop)}/items/$id');
+
+  /// The ItemRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ItemRoute of(BuildContext context) => routeOf<ItemRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ItemRoute? maybeOf(BuildContext context) => maybeRouteOf<ItemRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  ItemRoute Function({String shop, int id}) get copyWith => _copyWith;
+
+  ItemRoute _copyWith({Object? shop = _keep, Object? id = _keep}) =>
+      ItemRoute(shop: _kept<String>(shop, this.shop), id: _kept<int>(id, this.id));
 
   /// Watches shops/$shop/items/$id/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required String shop, required int id}) => ref.watch(data((shop: shop, id: id)));
@@ -2260,6 +2769,21 @@ final class MembersRoute extends TypedLocation {
   @override
   String get location => joinLocation(AppRoutes.base, '/teams/${Uri.encodeComponent(teamId)}/members');
 
+  /// The MembersRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static MembersRoute of(BuildContext context) => routeOf<MembersRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static MembersRoute? maybeOf(BuildContext context) => maybeRouteOf<MembersRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  MembersRoute Function({String teamId}) get copyWith => _copyWith;
+
+  MembersRoute _copyWith({Object? teamId = _keep}) =>
+      MembersRoute(teamId: _kept<String>(teamId, this.teamId));
+
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
   PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data57(teamId)], keepFor: keepFor);
@@ -2277,6 +2801,21 @@ final class MemberRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/teams/${Uri.encodeComponent(teamId)}/members/$member');
+
+  /// The MemberRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static MemberRoute of(BuildContext context) => routeOf<MemberRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static MemberRoute? maybeOf(BuildContext context) => maybeRouteOf<MemberRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  MemberRoute Function({String teamId, int member}) get copyWith => _copyWith;
+
+  MemberRoute _copyWith({Object? teamId = _keep, Object? member = _keep}) =>
+      MemberRoute(teamId: _kept<String>(teamId, this.teamId), member: _kept<int>(member, this.member));
 
   /// Watches teams/$teamId/members/$member/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required int member}) => ref.watch(data(member));
@@ -2304,6 +2843,21 @@ final class TeamSettingsRoute extends TypedLocation {
   @override
   String get location => joinLocation(AppRoutes.base, '/teams/${Uri.encodeComponent(teamId)}/settings');
 
+  /// The TeamSettingsRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static TeamSettingsRoute of(BuildContext context) => routeOf<TeamSettingsRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static TeamSettingsRoute? maybeOf(BuildContext context) => maybeRouteOf<TeamSettingsRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  TeamSettingsRoute Function({String teamId}) get copyWith => _copyWith;
+
+  TeamSettingsRoute _copyWith({Object? teamId = _keep}) =>
+      TeamSettingsRoute(teamId: _kept<String>(teamId, this.teamId));
+
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
   PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data57(teamId)], keepFor: keepFor);
@@ -2318,6 +2872,13 @@ final class TicksRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/ticks');
+
+  /// The TicksRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static TicksRoute of(BuildContext context) => routeOf<TicksRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static TicksRoute? maybeOf(BuildContext context) => maybeRouteOf<TicksRoute>(context, AppRoutes.matchUrl);
 
   /// Watches ticks/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref) => ref.watch(data);
@@ -2351,6 +2912,21 @@ final class WikiRoute extends TypedLocation {
     return joinLocation(AppRoutes.base, '/wiki${restPath(article)}');
   }
 
+  /// The WikiRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static WikiRoute of(BuildContext context) => routeOf<WikiRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static WikiRoute? maybeOf(BuildContext context) => maybeRouteOf<WikiRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  WikiRoute Function({List<String> article}) get copyWith => _copyWith;
+
+  WikiRoute _copyWith({Object? article = _keep}) =>
+      WikiRoute(article: _kept<List<String>>(article, this.article));
+
   /// Watches wiki/$$article/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required List<String> article}) => ref.watch(data(restKey(article)));
 
@@ -2367,6 +2943,16 @@ final class WikiRoute extends TypedLocation {
   @override
   PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data63(restKey(article))], keepFor: keepFor);
 }
+
+/// What a `copyWith` parameter is when it is left out: private, so no caller can pass it,
+/// and the route's own value is kept. Its public type is the field's, so `null` is a value.
+final class _Keep {
+  const _Keep();
+}
+
+const _keep = _Keep();
+
+T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : value as T;
 
 ({String slug}) _params1(GoRouterState s) => (slug: Segment.asString(s, 'slug'));
 

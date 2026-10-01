@@ -109,13 +109,17 @@ abstract final class AppRoutes {
                 path: 'products',
                 pageBuilder: (context, state) => _i3.transition(
                   state.pageKey,
-                  DataView(
-                    watch: (ref) => ref.watch(_i10.data),
-                    refresh: (ref) => ref.invalidate(_i10.data),
-                    data: (d) => _i11.ProductsPage(products: d),
-                    loading: () => const _i12.ProductsLoading(),
-                    error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
-                    keepPrevious: true,
+                  buildWithParams(
+                    () => _params5(state),
+                    (v) => DataView(
+                      watch: (ref) => ref.watch(_i10.data),
+                      refresh: (ref) => ref.invalidate(_i10.data),
+                      data: (d) => _i11.ProductsPage(products: d, sort: v.sort, page: v.page),
+                      loading: () => const _i12.ProductsLoading(),
+                      error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
+                      keepPrevious: true,
+                    ),
+                    () => notFound(state.uri),
                   ),
                 ),
                 routes: [
@@ -165,7 +169,10 @@ abstract final class AppRoutes {
     RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const [])),
     RouteMatcher(['cart'], (s) => UrlMatch(s.uri, const CartRoute(), const {}, const [])),
     RouteMatcher(['checkout'], (s) => UrlMatch(s.uri, const CheckoutRoute(), const {}, const [])),
-    RouteMatcher(['products'], (s) => UrlMatch(s.uri, const ProductsRoute(), const {}, [_i10.data])),
+    RouteMatcher(['products'], (s) {
+      final p = _params5(s);
+      return UrlMatch(s.uri, ProductsRoute(sort: p.sort, page: p.page), {'sort': p.sort, 'page': p.page}, [_i10.data]);
+    }),
     RouteMatcher(['greet', ':name'], (s) {
       final p = _params4(s);
       return UrlMatch(s.uri, GreetRoute(name: p.name), {'name': p.name}, const []);
@@ -244,6 +251,7 @@ abstract final class AppManifest {
       path: '/products',
       folder: 'products',
       layouts: [''],
+      query: [RouteParam('sort', 'Sort?'), RouteParam('page', 'int?')],
       dataKeys: [],
     ),
     RouteInfo(
@@ -287,6 +295,13 @@ final class HomeRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/');
+
+  /// The HomeRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static HomeRoute of(BuildContext context) => routeOf<HomeRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static HomeRoute? maybeOf(BuildContext context) => maybeRouteOf<HomeRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/cart` → cart/page.dart
@@ -295,6 +310,13 @@ final class CartRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/cart');
+
+  /// The CartRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static CartRoute of(BuildContext context) => routeOf<CartRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static CartRoute? maybeOf(BuildContext context) => maybeRouteOf<CartRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/checkout` → checkout/page.dart
@@ -303,6 +325,13 @@ final class CheckoutRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/checkout');
+
+  /// The CheckoutRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static CheckoutRoute of(BuildContext context) => routeOf<CheckoutRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static CheckoutRoute? maybeOf(BuildContext context) => maybeRouteOf<CheckoutRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/greet/:name` → greet/$name/page.dart
@@ -313,17 +342,50 @@ final class GreetRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/greet/${Uri.encodeComponent(name)}');
+
+  /// The GreetRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static GreetRoute of(BuildContext context) => routeOf<GreetRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static GreetRoute? maybeOf(BuildContext context) => maybeRouteOf<GreetRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  GreetRoute Function({String name}) get copyWith => _copyWith;
+
+  GreetRoute _copyWith({Object? name = _keep}) =>
+      GreetRoute(name: _kept<String>(name, this.name));
 }
 
 /// `/products` → products/page.dart
 final class ProductsRoute extends TypedLocation {
-  const ProductsRoute();
+  const ProductsRoute({this.sort, this.page});
+
+  final _i11.Sort? sort;
+  final int? page;
 
   /// products/data.dart as a Riverpod provider.
   static final data = _i10.data;
 
   @override
-  String get location => joinLocation(AppRoutes.base, '/products');
+  String get location => withQuery(joinLocation(AppRoutes.base, '/products'), {'sort': sort, 'page': page});
+
+  /// The ProductsRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ProductsRoute of(BuildContext context) => routeOf<ProductsRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ProductsRoute? maybeOf(BuildContext context) => maybeRouteOf<ProductsRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  ProductsRoute Function({_i11.Sort? sort, int? page}) get copyWith => _copyWith;
+
+  ProductsRoute _copyWith({Object? sort = _keep, Object? page = _keep}) =>
+      ProductsRoute(sort: _kept<_i11.Sort?>(sort, this.sort), page: _kept<int?>(page, this.page));
 
   /// Watches products/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref) => ref.watch(data);
@@ -354,6 +416,21 @@ final class ProductRoute extends TypedLocation {
   @override
   String get location => joinLocation(AppRoutes.base, '/products/$id');
 
+  /// The ProductRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static ProductRoute of(BuildContext context) => routeOf<ProductRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static ProductRoute? maybeOf(BuildContext context) => maybeRouteOf<ProductRoute>(context, AppRoutes.matchUrl);
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  ProductRoute Function({int id}) get copyWith => _copyWith;
+
+  ProductRoute _copyWith({Object? id = _keep}) =>
+      ProductRoute(id: _kept<int>(id, this.id));
+
   /// Watches products/$id/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required int id}) => ref.watch(data(id));
 
@@ -371,7 +448,19 @@ final class ProductRoute extends TypedLocation {
   PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data6(id)], keepFor: keepFor);
 }
 
+/// What a `copyWith` parameter is when it is left out: private, so no caller can pass it,
+/// and the route's own value is kept. Its public type is the field's, so `null` is a value.
+final class _Keep {
+  const _Keep();
+}
+
+const _keep = _Keep();
+
+T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : value as T;
+
 ({String name}) _params4(GoRouterState s) => (name: Segment.asString(s, 'name'));
+
+({_i11.Sort? sort, int? page}) _params5(GoRouterState s) => (sort: Query.asEnum(s, 'sort', _i11.Sort.values), page: Query.asInt(s, 'page'));
 
 ({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 

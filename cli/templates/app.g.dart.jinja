@@ -390,6 +390,23 @@ final class {{ r.name }}Route extends TypedLocation {
   @override
   void replace(BuildContext context, { {{- r.extra }} extra, String? locale}) => context.replace(locationFor(locale), extra: extra);
 {% endif %}
+
+  /// The {{ r.name }}Route the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static {{ r.name }}Route of(BuildContext context) => routeOf<{{ r.name }}Route>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static {{ r.name }}Route? maybeOf(BuildContext context) => maybeRouteOf<{{ r.name }}Route>(context, AppRoutes.matchUrl);
+{% if r.fields %}
+
+  /// A copy with the given segments and query parameters changed; one left out keeps its value, and
+  /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
+  /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
+  {{ r.name }}Route Function({ {%- for f in r.fields %}{{ f.ty }} {{ f.name }}{{ ", " if not loop.last }}{% endfor -%} }) get copyWith => _copyWith;
+
+  {{ r.name }}Route _copyWith({ {%- for f in r.fields %}Object? {{ f.name }} = _keep{{ ", " if not loop.last }}{% endfor -%} }) =>
+      {{ r.name }}Route({% for f in r.fields %}{{ f.name }}: _kept<{{ f.ty }}>({{ f.name }}, this.{{ f.name }}){{ ", " if not loop.last }}{% endfor %});
+{% endif %}
 {% if r.data %}
 
   /// Watches {{ r.data.file }}: an `AsyncValue`, typed by inference (static, so it can name the keys).
@@ -420,6 +437,18 @@ final class {{ r.name }}Route extends TypedLocation {
 {% endfor %}
 }
 {% endfor %}
+{% if copy_with %}
+
+/// What a `copyWith` parameter is when it is left out: private, so no caller can pass it,
+/// and the route's own value is kept. Its public type is the field's, so `null` is a value.
+final class _Keep {
+  const _Keep();
+}
+
+const _keep = _Keep();
+
+T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : value as T;
+{% endif %}
 {% for f in params_fns %}
 
 {{ f.record }} {{ f.name }}(GoRouterState s) => {{ f.parse }};

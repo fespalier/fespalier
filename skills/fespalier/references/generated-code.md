@@ -79,6 +79,11 @@ exports its own provider (`final data = ...`) or selects one is used as is.
 
 ## What the file does not do
 
+- A guard that takes a `Ref` is called as
+  `refGuard(context, 'g8@3', (ref) => _i8.guard(ref, uri: state.uri))` (and a redirect
+  that takes one as `refRedirect(context, (ref) => ...)`); one that takes a
+  `ProviderContainer` as `_i8.guard(ProviderScope.containerOf(context, listen: false), ...)`,
+  as before 0.5.0. The string is a constant naming that guard on that route.
 - No `redirect` on a `ShellRoute` or `StatefulShellRoute`; guards hang on each
   page's `GoRoute`, and go_router runs a matched route's redirect for deep links
   and navigation inside shells, tabs included.

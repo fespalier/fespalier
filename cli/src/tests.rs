@@ -1935,6 +1935,7 @@ fn init_needs_a_pubspec_with_a_name() {
 // ---- guards and redirects ----
 
 const NOOP_GUARD: &str = "GuardResult guard(ProviderContainer c) => null;";
+const REF_GUARD: &str = "GuardResult guard(Ref ref) => null;";
 
 /// How many routes call a guard.
 fn guard_calls(code: &str) -> usize {
@@ -2105,6 +2106,193 @@ fn a_guard_can_take_only_the_uri() {
 }
 
 #[test]
+fn a_guard_that_takes_a_ref_runs_through_ref_guard() {
+    let c = code(&[
+        (
+            "guard.dart",
+            "GuardResult guard(Ref ref, {required Uri uri}) => null;",
+        ),
+        ("a/page.dart", &page("A")),
+    ]);
+    let g = imp(&c, "guard.dart");
+    // The site is a const string: the guard's route, then the route it runs on.
+    has(
+        &c,
+        &[&format!(
+            "redirect: (context, state) => refGuard(context, 'g0@1', (ref) => {g}.guard(ref, uri: state.uri)),"
+        )],
+    );
+    assert!(!c.contains("containerOf"), "{c}");
+    assert!(!c.contains("_guard0"), "{c}");
+}
+
+#[test]
+fn a_ref_guard_gets_its_segments_in_the_closure() {
+    let c = code(&[
+        (
+            "$shop/guard.dart",
+            "Future<String?> guard(Ref r, {required String shop, String? ref, Uri? uri}) async => null;",
+        ),
+        ("$shop/items/page.dart", &page("Items")),
+    ]);
+    // A query parameter may be called `ref`: it is a label, the closure's `ref` a variable.
+    has(
+        &c,
+        &[
+            "(v) => refGuard(context, 'g1@",
+            "(ref) => _i0.guard(ref, shop: v.shop, ref: v.ref, uri: state.uri)",
+        ],
+    );
+}
+
+#[test]
+fn ref_and_container_guards_chain_in_order_and_each_keeps_its_own_form() {
+    let c = code(&[
+        ("(members)/guard.dart", REF_GUARD),
+        ("(members)/team/guard.dart", NOOP_GUARD),
+        ("(members)/team/page.dart", &page("Team")),
+    ]);
+    let (outer, own) = (
+        imp(&c, "(members)/guard.dart"),
+        imp(&c, "(members)/team/guard.dart"),
+    );
+    has(
+        &c,
+        &[
+            "firstRedirect([",
+            &format!("() => refGuard(context, 'g1@2', (ref) => {outer}.guard(ref)),"),
+            &format!("() => {own}.guard(ProviderScope.containerOf(context, listen: false)),"),
+        ],
+    );
+    assert!(
+        at(&c, &format!("{outer}.guard(ref)")) < at(&c, &format!("{own}.guard(")),
+        "{c}"
+    );
+}
+
+#[test]
+fn two_routes_under_one_guard_each_get_a_site() {
+    let c = code(&[
+        ("(members)/guard.dart", REF_GUARD),
+        ("(members)/inbox/page.dart", &page("Inbox")),
+        ("(members)/admin/page.dart", &page("Admin")),
+    ]);
+    // One guard, two routes: two sites, so each keeps its own subscription.
+    let sites: Vec<&str> = c
+        .match_indices("refGuard(context, '")
+        .map(|(i, m)| c[i + m.len()..].split('\'').next().unwrap())
+        .collect();
+    assert_eq!(sites.len(), 2, "{c}");
+    assert_ne!(sites[0], sites[1], "{c}");
+    assert!(sites.iter().all(|s| s.starts_with("g1@")), "{sites:?}");
+}
+
+#[test]
+fn a_ref_guard_is_not_forced_into_a_future() {
+    // The return type is the author's: a sync guard stays a sync call.
+    for ret in [
+        "GuardResult",
+        "FutureOr<String?>",
+        "Future<String?>",
+        "String?",
+    ] {
+        let body = if ret == "Future<String?>" {
+            "async => null"
+        } else {
+            "=> null"
+        };
+        let c = code(&[
+            ("guard.dart", &format!("{ret} guard(Ref ref) {body};")),
+            ("a/page.dart", &page("A")),
+        ]);
+        assert!(c.contains("(ref) => _i0.guard(ref)"), "{ret}: {c}");
+        assert!(!c.contains("async"), "{ret}: {c}");
+        assert!(!c.contains("await"), "{ret}: {c}");
+    }
+}
+
+#[test]
+fn a_redirect_that_takes_a_ref_evaluates_once() {
+    let c = code(&[
+        ("a/redirect.dart", "String redirect(Ref ref) => '/b';"),
+        (
+            "b/redirect.dart",
+            "Future<String> redirect(Ref ref, {required Uri uri}) async => '/a';",
+        ),
+        (
+            "c/$id/redirect.dart",
+            "FutureOr<String> redirect(Ref ref, {required int id}) => '/a';",
+        ),
+    ]);
+    has(
+        &c,
+        &[
+            "redirect: (context, state) => refRedirect(context, (ref) => _i0.redirect(ref)),",
+            "redirect: (context, state) => refRedirect(context, (ref) => _i1.redirect(ref, uri: state.uri)),",
+            "(v) => refRedirect(context, (ref) => _i2.redirect(ref, id: v.id)),",
+        ],
+    );
+    // A redirect route never stays on screen, so it has no site to keep.
+    assert!(!c.contains("refGuard("), "{c}");
+}
+
+#[test]
+fn a_redirect_route_chains_a_ref_guard_above_it_and_its_own_ref() {
+    let c = code(&[
+        ("(members)/guard.dart", REF_GUARD),
+        (
+            "(members)/old/redirect.dart",
+            "String redirect(Ref ref) => '/inbox';",
+        ),
+        ("(members)/inbox/page.dart", &page("Inbox")),
+    ]);
+    let old = at(&c, "path: joinLocation(at, '/old')");
+    let chain = &c[old..old + c[old..].find("]),\n").unwrap()];
+    assert!(
+        chain.contains("firstRedirect([")
+            && chain.contains("refGuard(context, 'g1@")
+            && chain.contains("refRedirect(context, (ref) => "),
+        "{chain}"
+    );
+    assert!(chain.find("refGuard(").unwrap() < chain.find("refRedirect(").unwrap());
+}
+
+#[test]
+fn a_guard_and_a_redirect_in_one_folder_keep_their_forms() {
+    let c = code(&[
+        ("old/guard.dart", REF_GUARD),
+        ("old/redirect.dart", "String redirect() => '/new';"),
+        ("new/page.dart", &page("New")),
+    ]);
+    has(
+        &c,
+        &[
+            "refGuard(context, 'g2@2', (ref) => _i1.guard(ref))",
+            "_i2.redirect()",
+        ],
+    );
+}
+
+#[test]
+fn a_hook_that_takes_a_widget_ref_is_told_to_take_a_ref() {
+    let joined = diags(&[
+        ("a/guard.dart", "GuardResult guard(WidgetRef ref) => null;"),
+        ("a/page.dart", &page("A")),
+        ("b/redirect.dart", "String redirect(WidgetRef ref) => '/a';"),
+    ])
+    .join("\n");
+    for needle in [
+        "a guard runs outside the widget tree: take `Ref`",
+        "a redirect runs outside the widget tree: take `Ref`",
+    ] {
+        assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
+    }
+    // Only that message: the parameter is not also read as a segment.
+    assert!(!joined.contains("isn't a segment"), "{joined}");
+    assert!(!joined.contains("`ref`"), "{joined}");
+}
+
+#[test]
 fn a_view_file_may_hold_other_public_classes_if_one_is_a_widget() {
     // The README says "one public widget class": a class that isn't a widget beside it is fine,
     // and only an ambiguous file is an error.
@@ -2193,18 +2381,21 @@ fn inherited_guard_errors() {
             "GuardResult guard(ProviderContainer c, {required String uri}) => null;",
         ),
         ("b/page.dart", &page("B")),
-        // The container comes first, and the return type is a GuardResult.
+        // A `Ref` (or the older container) comes first, and the return type is a GuardResult.
         ("c/guard.dart", "String guard({int? x}) => 'x';"),
         ("c/page.dart", &page("C")),
         ("d/guard.dart", "void other() {}"),
         ("d/page.dart", &page("D")),
+        ("e/guard.dart", "GuardResult guard(WidgetRef ref) => null;"),
+        ("e/page.dart", &page("E")),
     ])
     .join("\n");
     for needle in [
         "`id` isn't a segment of this path (it has none) at or above its folder; guard() can also take `Uri uri`",
         "`uri` gets the requested Uri, but it's declared String",
-        "guard() must take `ProviderContainer c` first",
-        "expected `GuardResult guard(ProviderContainer c, {...segments})`",
+        "guard() must take `Ref ref` first (or `ProviderContainer c`, the older form)",
+        "expected `GuardResult guard(Ref ref, {...segments})`",
+        "a guard runs outside the widget tree: take `Ref`",
     ] {
         assert!(joined.contains(needle), "missing `{needle}` in:\n{joined}");
     }

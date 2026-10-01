@@ -88,6 +88,8 @@ fn view(params: &str) -> String {
 const NEST_OFF: &str = "const nest = false;";
 const GUARD: &str = "GuardResult guard(ProviderContainer c) => null;";
 const GUARD_ID: &str = "GuardResult guard(ProviderContainer c, {required String id}) => null;";
+const GUARD_REF: &str = "GuardResult guard(Ref ref) => null;";
+const GUARD_ID_REF: &str = "GuardResult guard(Ref ref, {required String id}) => null;";
 const FADE: &str =
     "Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child);";
 const LAYOUT: &str = "class BoxLayout extends StatelessWidget { const BoxLayout({super.key, required this.child}); final Widget child; }";
@@ -389,6 +391,49 @@ fn a_guard_of_the_page_it_leaves_runs_for_the_route() {
     // The page's own route keeps just its guard.
     let page = route_of(&c, "'refund',");
     assert!(!page.contains(&format!("{flow}.guard(")), "{page}");
+}
+
+#[test]
+fn a_sibling_route_keeps_the_ref_guards_of_the_page_it_left_in_order() {
+    let mut f = orders();
+    f.retain(|(p, _)| *p != "orders/$id/refund/confirm/page.dart");
+    f.push((
+        "orders/$id/refund/(flow)/confirm/page.dart",
+        view("required String id"),
+    ));
+    let c = code(&files(
+        &f,
+        &[
+            ("orders/$id/guard.dart", GUARD_ID_REF),
+            ("orders/$id/refund/guard.dart", GUARD_ID_REF),
+            ("orders/$id/refund/(flow)/guard.dart", GUARD_REF),
+            ("orders/$id/refund/(flow)/confirm/guard.dart", GUARD_REF),
+            ("orders/$id/refund/(flow)/confirm/route.dart", NEST_OFF),
+        ],
+    ));
+    let route = route_of(&c, "'refund/confirm'");
+    let calls: Vec<usize> = route
+        .match_indices("refGuard(context, '")
+        .map(|(i, _)| i)
+        .collect();
+    // The page's guard (with its `id`), the page-less folder's, then the route's own.
+    assert_eq!(calls.len(), 3, "{route}");
+    let refund = alias(&c, "app/orders/\\$id/refund/guard.dart");
+    has(route, &[&format!("(ref) => {refund}.guard(ref, id: v.id)")]);
+    // Each is its own site on this route: the same guard on another route has another.
+    let sites: Vec<&str> = route
+        .match_indices("refGuard(context, '")
+        .map(|(i, m)| route[i + m.len()..].split('\'').next().unwrap())
+        .collect();
+    assert_eq!(
+        sites
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        3,
+        "{sites:?}"
+    );
+    assert!(!route.contains("containerOf"), "{route}");
 }
 
 #[test]

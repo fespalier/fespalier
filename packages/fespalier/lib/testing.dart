@@ -46,9 +46,10 @@ void _dispose(GoRouter router) {
 ///
 /// The router comes from `AppRoutes.router(initialLocation: ...)`. Build one per test:
 /// a router remembers where it navigated. The test owns it, but `pumpRouter` disposes it
-/// when the test ends (since 0.5.0), so `LeakTesting` finds nothing left behind. Don't
-/// dispose it yourself with an `addTearDown` registered before this call (those run after
-/// this one's: a second `dispose` throws); disposing it in the test body is fine. A
+/// when the test ends (since 0.5.0), so `LeakTesting` finds nothing left behind. Disposing
+/// it in the test body is fine. To keep disposing it yourself, as tests written for 0.4.x do
+/// with an `addTearDown(router.dispose)` registered before this call (those run after this
+/// one's, and a second `dispose` throws), pass `disposeRouter: false` (since 0.6.0). A
 /// disposed router is gone, so don't share one between tests.
 ///
 /// This app is Flutter's `MaterialApp`. With go_router 18, which looks for
@@ -61,6 +62,7 @@ Future<ProviderContainer> pumpRouter(
   ProviderContainer? container,
   bool settle = true,
   Duration? Function(int retryCount, Object error)? retry = _noRetry,
+  bool disposeRouter = true,
 }) async {
   assert(
     container == null || overrides.isEmpty,
@@ -69,7 +71,7 @@ Future<ProviderContainer> pumpRouter(
   final used =
       container ?? ProviderContainer(overrides: overrides, retry: retry);
   if (container == null) addTearDown(used.dispose);
-  addTearDown(() => _dispose(router));
+  if (disposeRouter) addTearDown(() => _dispose(router));
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: used,

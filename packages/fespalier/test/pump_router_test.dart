@@ -33,4 +33,16 @@ void main() {
       mine.dispose();
     },
   );
+
+  testWidgets(
+    'disposeRouter: false leaves the router to a teardown registered before the call',
+    experimentalLeakTesting: LeakTesting.settings.withTrackedAll(),
+    (tester) async {
+      final mine = router();
+      // As a test written for 0.4.x does: this teardown runs after pumpRouter's own.
+      addTearDown(mine.dispose);
+      await pumpRouter(tester, mine, disposeRouter: false);
+      expect(find.text('home'), findsOneWidget);
+    },
+  );
 }

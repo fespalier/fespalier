@@ -25,8 +25,9 @@ String currentLocation(WidgetTester tester)
   router was never disposed, and a test with `LeakTesting.enable()` failed with a
   `notDisposed` `GoRouterDelegate`; there, add `addTearDown(router.dispose)` yourself,
   and remove it when you move to 0.5.0 (a teardown registered before `pumpRouter` runs
-  after its own, and a second `dispose` throws). A router you disposed in the test body is
-  fine. Don't share a router between tests.
+  after its own, and a second `dispose` throws: _A GoRouteInformationProvider was used after
+  being disposed_). Since 0.6.0 you can keep it and pass `disposeRouter: false` instead. A
+  router you disposed in the test body is fine. Don't share a router between tests.
 - **A guard that returns a `Future` costs a frame**, even `Future.value(...)`: the router
   waits for it, so the test (and a cold deep link) sees a blank first frame before the
   page. Return the `GuardResult` directly when nothing needs an `await`.

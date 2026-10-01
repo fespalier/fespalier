@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -29,6 +29,25 @@ flutter analyze && flutter test
 `fsp --version` must print the package's version (`ref: vX.Y.Z` needs `fsp X.Y.Z`); an `fsp` of another
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
+
+## 0.4 to 0.5: what to check
+
+Bump to `v0.5.0`, regenerate, and look at these:
+
+1. **`pumpRouter` disposes the router when the test ends.** A test that registered
+   `addTearDown(router.dispose)` before calling it now fails with _A
+   GoRouteInformationProvider was used after being disposed_, because that teardown runs
+   after `pumpRouter`'s. Delete the line, or, since 0.6.0, keep it and pass
+   `disposeRouter: false`.
+2. **New reserved names.** Every typed route gains `preload`, `of`, `maybeOf` and
+   `copyWith`, so a segment or query parameter with one of those names is refused by
+   `fsp`; rename it. An `action.dart` function can't use them either.
+3. **`AppRoutes.router()` without a `navigatorKey` makes a fresh one**, so tests no longer
+   share a navigator through the generated class. A test that mounts under a prefix
+   restores the defaults with `addTearDown(AppRoutes.mount)`.
+4. **New, and nothing changes unless you use it:** `action.dart`, `RouteLink` with
+   `preload` (it brings in `url_launcher`), `XRoute.of(context)` and `copyWith`, guards
+   and redirects that take a `Ref`, and `fsp links` / `fsp routes --graph`.
 
 ## 0.3 to 0.4: what to check
 

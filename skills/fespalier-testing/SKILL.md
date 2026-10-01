@@ -35,7 +35,7 @@ testWidgets('shows a product', (tester) async {
 });
 ```
 
-- **`pumpRouter(tester, router, {overrides, container, settle, retry})`** wraps the router
+- **`pumpRouter(tester, router, {overrides, container, settle, retry, disposeRouter})`** wraps the router
   in a `ProviderScope` and Flutter's `MaterialApp.router`, pumps, and returns the
   `ProviderContainer` (for `container.read(...)`).
   - `settle` (default **on**) pumps until nothing is scheduled; turn it off to look at a
@@ -46,8 +46,9 @@ testWidgets('shows a product', (tester) async {
     leaves no timer. Pass `ProviderContainer.defaultRetry` (or your function) to test the
     app's policy.
   - **It disposes the router when the test ends** (since 0.5.0; on 0.4.x and earlier
-    `LeakTesting` reported the `GoRouterDelegate` as not disposed). Don't `addTearDown(router.dispose)`
-    before the call as well: those run after `pumpRouter`'s, and a second `dispose` throws.
+    `LeakTesting` reported the `GoRouterDelegate` as not disposed). A test that keeps its own
+    `addTearDown(router.dispose)` before the call passes `disposeRouter: false` (since 0.6.0):
+    those teardowns run after `pumpRouter`'s, and a second `dispose` throws.
     Build one router per test.
   - **Guards: return synchronously when you can.** Any `Future`, even `Future.value(...)`,
     costs a frame, so a cold deep link shows a blank first frame before the page.

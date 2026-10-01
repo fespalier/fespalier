@@ -1,0 +1,129 @@
+digraph routes {
+  rankdir=TB;
+  node [shape=box];
+  subgraph cluster_rootnav {
+    label="root navigator";
+    style=dashed;
+    subgraph cluster_b0 {
+      label="layout layout.dart";
+      style=rounded;
+      n0 [label="/\nHomeRoute"];
+      subgraph cluster_b1 {
+        label="layout (account)/layout.dart";
+        style=rounded;
+        n1 [label="/profile\nProfileRoute"];
+        n2 [label="/settings\nSettingsRoute"];
+      }
+      n3 [label="/admin\nAdminRoute\n(guard)"];
+      n4 [label="/inbox\nInboxRoute\n(guard)"];
+      n5 [label="/free\nFreeRoute"];
+      n6 [label="/pro\nProPlanRoute"];
+      n7 [label="/catalog\nCatalogRoute\n(data)"];
+      n8 [label="/catalog/:productId\nProductDetailRoute\n(data)"];
+      n9 [label="/catalog/:productId/reviews\nReviewsRoute\n(data)"];
+      n10 [label="/counter\nCounterRoute\n(data)"];
+      n11 [label="/docs\nDocsIndexRoute"];
+      n12 [label="/docs/new\nNewDocRoute"];
+      n13 [label="/docs/*rest\nDocsRoute"];
+      n14 [label="/files\nFilesRoute"];
+      n15 [label="/guide\nGuideRoute\nde /f&#252;hrer, ru /&#1088;&#1091;&#1082;&#1086;&#1074;&#1086;&#1076;&#1089;&#1090;&#1074;&#1086;"];
+      n16 [label="/help\nHelpRoute\nfr /aide, de /hilfe"];
+      n17 [label="/help/contact\nContactRoute\nfr /aide/contact, de /hilfe/kontakt"];
+      n18 [label="/help/:topic\nHelpTopicRoute\nfr /aide/:topic, de /hilfe/:topic"];
+      n19 [label="/help/:topic/examples\nHelpExamplesRoute\nfr /aide/:topic/exemples, de /hilfe/:topic/beispiele"];
+      n20 [label="/login\nLoginRoute"];
+      n21 [label="/old-search\nOldSearchRoute\n(redirect)", style=dashed];
+      n22 [label="/photos\nPhotosRoute"];
+      n23 [label="/photos/share\nShareSheetRoute\n(present, root)"];
+      n24 [label="/photos/share/terms\nTermsRoute\n(root)"];
+      n25 [label="/photos/sort\nSortRoute"];
+      n26 [label="/photos/upload\nUploadRoute"];
+      n27 [label="/photos/:id\nPhotoRoute"];
+      subgraph cluster_b2 {
+        label="layout reports/layout.dart (data)";
+        style=rounded;
+        n28 [label="/reports/monthly\nMonthlyReportRoute"];
+        n29 [label="/reports/yearly\nYearlyReportRoute"];
+      }
+      n30 [label="/search\nSearchRoute\n(data)"];
+      n31 [label="/ticks\nTicksRoute\n(data)"];
+      n32 [label="/:slug\nSlugRoute"];
+      subgraph cluster_b3 {
+        label="layout notes/layout.dart";
+        style=rounded;
+        n33 [label="/notes/:id\nNoteRoute\n(guard)"];
+      }
+      n34 [label="/old-shops/:shop\nOldShopsShopRoute\n(redirect)", style=dashed];
+      n35 [label="/orders/:id\nOrderRoute"];
+      n36 [label="/orders/:id/refund\nRefundRoute\n(data, action, guard)"];
+      n37 [label="/orders/:id/refund/receipt\nReceiptRoute"];
+      n38 [label="/orders/:id/refund/confirm\nConfirmRefundRoute\n(guard, sibling)"];
+      n39 [label="/shop/:category\nCategoryShopRoute\nfr /boutique/:category, de /laden/:category\n(data)"];
+      subgraph cluster_b4 {
+        label="layout shops/$shop/layout.dart (guard)";
+        style=rounded;
+        n40 [label="/shops/:shop\nShopRoute\n(guard)"];
+        n41 [label="/shops/:shop/items/:id\nItemRoute\n(data)"];
+      }
+      subgraph cluster_b5 {
+        label="layout teams/$teamId/layout.dart (data)";
+        style=rounded;
+        n42 [label="/teams/:teamId/members\nMembersRoute"];
+        n43 [label="/teams/:teamId/members/:member\nMemberRoute\n(data)"];
+        n44 [label="/teams/:teamId/settings\nTeamSettingsRoute"];
+      }
+      n45 [label="/browse/*categories\nBrowseRoute\n(data)"];
+      n46 [label="/compare/*ids\nCompareRoute\n(data)"];
+      n47 [label="/files/*path?\nFilesRoute"];
+      n48 [label="/wiki/*article\nWikiRoute\n(data)"];
+    }
+  }
+  n0 -> n1;
+  n0 -> n2;
+  n0 -> n3;
+  n0 -> n4;
+  n0 -> n5;
+  n0 -> n6;
+  n0 -> n7;
+  n0 -> n10;
+  n0 -> n11;
+  n0 -> n14;
+  n0 -> n15;
+  n0 -> n16;
+  n0 -> n20;
+  n0 -> n21;
+  n0 -> n22;
+  n0 -> n28;
+  n0 -> n29;
+  n0 -> n30;
+  n0 -> n31;
+  n0 -> n32;
+  n0 -> n33;
+  n0 -> n34;
+  n0 -> n35;
+  n0 -> n39;
+  n0 -> n40;
+  n0 -> n42;
+  n0 -> n44;
+  n0 -> n45;
+  n0 -> n46;
+  n0 -> n47;
+  n0 -> n48;
+  n7 -> n8;
+  n8 -> n9;
+  n11 -> n12;
+  n11 -> n13;
+  n16 -> n17;
+  n16 -> n18;
+  n18 -> n19;
+  n22 -> n23;
+  n22 -> n25;
+  n22 -> n26;
+  n22 -> n27;
+  n23 -> n24;
+  n35 -> n36;
+  n35 -> n38;
+  n36 -> n37;
+  n40 -> n41;
+  n42 -> n43;
+}

@@ -104,6 +104,12 @@ struct TreeCx {
     /// For a `GoRoute`: `nest = false` put it beside the page above it, not inside.
     #[serde(skip)]
     sibling: bool,
+    /// The folder (route id) this entry is for: the route of a `GoRoute`, the layout of a shell.
+    #[serde(skip)]
+    id: usize,
+    /// For a `GoRoute`: a guard of its own, or of a page-less folder above, is in its redirects.
+    #[serde(skip)]
+    guarded: bool,
 }
 
 /// A `GoRoute`'s URL, page file and page class, and the localized segments of the URL.
@@ -117,6 +123,9 @@ struct BranchCx {
     preload: bool,
     /// A Dart string literal: the tab's Navigator scope, from its folder.
     restoration_id: String,
+    /// The tab as `tabs` names it: its folder, or `.` for the layout's own page.
+    #[serde(skip)]
+    name: String,
 }
 
 /// A route's path as it goes between the quotes of a Dart string literal: the `\.` that
@@ -448,6 +457,69 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     templates::render("app.g.dart", &cx)
 }
 
+/// One entry of the `RouteBase` tree that `app.g.dart` hands to `go_router`, as data: what
+/// `fsp routes --graph` draws.
+#[derive(Debug)]
+pub enum Frame {
+    /// A `GoRoute` for the route of folder `id` (a page or a `redirect.dart`), matching `url`.
+    /// An optional catch-all is two of them, one without its catch-all.
+    Route {
+        id: usize,
+        url: Vec<Seg>,
+        /// `parentNavigatorKey: rootNavigatorKey`: it renders on the root navigator.
+        root: bool,
+        /// A guard of its own, or of a page-less folder above, runs before it.
+        guarded: bool,
+        children: Vec<Frame>,
+    },
+    /// The `ShellRoute` of the layout in folder `id`.
+    Shell {
+        id: usize,
+        root: bool,
+        children: Vec<Frame>,
+    },
+    /// The `StatefulShellRoute` of the tab layout in folder `id`: each branch as `tabs` names it.
+    Tabs {
+        id: usize,
+        root: bool,
+        branches: Vec<(String, Vec<Frame>)>,
+    },
+}
+
+/// The route tree as [`emit`] lays it out: the same nesting, order and navigators.
+pub fn frames(app: &App) -> Vec<Frame> {
+    fn frame(t: TreeCx) -> Frame {
+        let children = |routes: Vec<TreeCx>| routes.into_iter().map(frame).collect();
+        match (t.layout.is_some(), t.serves) {
+            (true, _) if !t.branches.is_empty() => Frame::Tabs {
+                id: t.id,
+                root: t.root,
+                branches: t
+                    .branches
+                    .into_iter()
+                    .map(|b| (b.name, children(b.routes)))
+                    .collect(),
+            },
+            (true, _) | (false, None) => Frame::Shell {
+                id: t.id,
+                root: t.root,
+                children: children(t.routes),
+            },
+            (false, Some((url, ..))) => Frame::Route {
+                id: t.id,
+                url,
+                root: t.root,
+                guarded: t.guarded,
+                children: children(t.routes),
+            },
+        }
+    }
+    routes_of(app, 0, true, "", &[], false, &mut BTreeSet::new())
+        .into_iter()
+        .map(frame)
+        .collect()
+}
+
 /// How builder code spells each binding. `v` holds the parsed segments.
 fn in_builder(b: &Bind) -> String {
     match b {
@@ -598,6 +670,8 @@ fn routes_of(
             case_sensitive: true,
             localized: false,
             sibling: false,
+            id,
+            guarded: false,
             routes: out,
         }];
     }
@@ -1014,6 +1088,8 @@ fn page_route(
         case_sensitive: r.case_sensitive,
         localized: locale::is_localized(path),
         sibling: r.sibling,
+        id,
+        guarded: !inherited.is_empty() || r.guard.is_some(),
     }
 }
 
@@ -1064,6 +1140,8 @@ fn redirect_route(
         case_sensitive: r.case_sensitive,
         localized: locale::is_localized(path),
         sibling: r.sibling,
+        id,
+        guarded: !inherited.is_empty() || r.guard.is_some(),
     }
 }
 
@@ -1122,6 +1200,7 @@ fn tab_routes(
                     folder_id(&app.routes[id].dir),
                     branch_name(app, *b)
                 )),
+                name: branch_name(app, *b),
             }
         })
         .filter(|b| !b.routes.is_empty())
@@ -1154,6 +1233,8 @@ fn tab_routes(
         case_sensitive: true,
         localized: false,
         sibling: false,
+        id,
+        guarded: false,
         routes: vec![],
     }]
 }

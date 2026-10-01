@@ -12,6 +12,13 @@
 //!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
 //!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
+//!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
+//!     domains: [shop.example.com]
+//!     scheme: myshop
+//!     android_package: com.example.shop
+//!     android_sha256: ["AB:CD:..."]
+//!     ios_app_id: TEAMID.com.example.shop
+//!     out: links            # default
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -28,6 +35,8 @@ use crate::scan::FileStyle;
 
 pub const DEFAULT_APP_DIR: &str = "lib/app";
 pub const DEFAULT_OUTPUT: &str = "lib/app.g.dart";
+/// Where `fsp links` writes, relative to the project root.
+pub const DEFAULT_LINKS_OUT: &str = "links";
 
 /// What the providers fespalier generates for `data()` functions do when they fail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -64,6 +73,9 @@ pub struct Config {
     pub keep_previous: bool,
     /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
     pub file_style: FileStyle,
+    /// The `links:` section, as written. Only `fsp links` reads it, and it checks the values
+    /// then ([`LinksConfig::validate`]), so a mistake in it never stops `fsp gen`.
+    pub links: Option<LinksConfig>,
 }
 
 impl Default for Config {
@@ -79,6 +91,7 @@ impl Default for Config {
             data_retry: DataRetry::Inherit,
             keep_previous: true,
             file_style: FileStyle::Snake,
+            links: None,
         }
     }
 }
@@ -112,6 +125,215 @@ struct RawConfig {
     data_retry: Option<DataRetry>,
     keep_previous: Option<bool>,
     file_style: Option<FileStyle>,
+    links: Option<LinksConfig>,
+}
+
+/// The `links:` section of the `fespalier:` config, as the pubspec has it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LinksConfig {
+    domains: Option<Vec<String>>,
+    scheme: Option<String>,
+    android_package: Option<String>,
+    android_sha256: Option<Vec<String>>,
+    ios_app_id: Option<String>,
+    out: Option<String>,
+}
+
+/// The Android half of the `links:` section.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AndroidLinks {
+    /// The application id: `com.example.shop`.
+    pub package: String,
+    /// The signing certificates' SHA-256 fingerprints, upper-case, each once.
+    pub sha256: Vec<String>,
+}
+
+/// The `links:` section, checked: what `fsp links` writes files for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Links {
+    /// Lower-case host names, each once; the first is the one the sitemap is on.
+    pub domains: Vec<String>,
+    /// A custom URL scheme, besides `https`.
+    pub scheme: Option<String>,
+    /// Set with `android_package`: the Android files are written.
+    pub android: Option<AndroidLinks>,
+    /// Set with `ios_app_id` (`TEAMID.com.example.shop`): the iOS files are written.
+    pub ios_app_id: Option<String>,
+    /// Normalized, `/`-separated, no trailing slash, relative to the project root; empty for
+    /// the root itself.
+    pub out: String,
+}
+
+impl LinksConfig {
+    /// Checks the values, naming the key at fault.
+    pub fn validate(&self) -> Result<Links> {
+        let mut domains: Vec<String> = vec![];
+        for raw in self.domains.as_deref().unwrap_or_default() {
+            let Some(host) = host_name(raw) else {
+                bail!(
+                    "`fespalier.links.domains`: `{raw}` is not a host name; write it as `shop.example.com`, with no scheme, port or path (an international name in punycode)"
+                );
+            };
+            if !domains.contains(&host) {
+                domains.push(host);
+            }
+        }
+        let Some(first) = domains.first() else {
+            bail!(
+                "`fespalier.links.domains` is required: list the host names the app opens, e.g. `domains: [shop.example.com]`"
+            );
+        };
+        if first.starts_with("*.") {
+            bail!(
+                "`fespalier.links.domains`: the sitemap's URLs are on the first domain, so it can't be the wildcard `{first}`; list a host name first"
+            );
+        }
+
+        let sha: Vec<String> = {
+            let mut out: Vec<String> = vec![];
+            for raw in self.android_sha256.as_deref().unwrap_or_default() {
+                let f = raw.trim().to_ascii_uppercase();
+                if !is_fingerprint(&f) {
+                    bail!(
+                        "`fespalier.links.android_sha256`: `{raw}` is not a SHA-256 fingerprint; write 32 hex pairs separated by `:`, as `keytool -list -v` prints them (`AB:CD:...`)"
+                    );
+                }
+                if !out.contains(&f) {
+                    out.push(f);
+                }
+            }
+            out
+        };
+        let android = match (&self.android_package, sha.is_empty()) {
+            (Some(package), false) => {
+                if !is_application_id(package) {
+                    bail!(
+                        "`fespalier.links.android_package` must be an Android application id like `com.example.shop` (two or more parts separated by dots, each starting with a letter, with letters, digits and `_`), got `{package}`"
+                    );
+                }
+                Some(AndroidLinks {
+                    package: package.clone(),
+                    sha256: sha,
+                })
+            }
+            (Some(_), true) => bail!(
+                "`fespalier.links.android_package` needs `android_sha256`: assetlinks.json lists the fingerprints of the certificates the app is signed with (`keytool -list -v -keystore <keystore>`; with Play App Signing, the one in the Play Console)"
+            ),
+            (None, false) => bail!(
+                "`fespalier.links.android_sha256` needs `android_package`: the application id assetlinks.json is for"
+            ),
+            (None, true) => None,
+        };
+
+        if let Some(id) = &self.ios_app_id
+            && !is_app_id(id)
+        {
+            bail!(
+                "`fespalier.links.ios_app_id` must be the Team ID, a dot and the bundle id, like `ABCDE12345.com.example.shop` (the Team ID is 10 upper-case letters and digits), got `{id}`"
+            );
+        }
+        if let Some(scheme) = &self.scheme {
+            if !is_scheme(scheme) {
+                bail!(
+                    "`fespalier.links.scheme` must be a custom URL scheme in lower case, like `myshop` (letters, digits, `+`, `-` and `.`, starting with a letter), not `http` or `https`, got `{scheme}`"
+                );
+            }
+            if android.is_none() && self.ios_app_id.is_none() {
+                bail!(
+                    "`fespalier.links.scheme` is written into the Android and iOS files: set `android_package` (with `android_sha256`) or `ios_app_id` too"
+                );
+            }
+        }
+        let out = match &self.out {
+            None => DEFAULT_LINKS_OUT.to_string(),
+            Some(raw) => links_out(raw)?,
+        };
+        Ok(Links {
+            domains,
+            scheme: self.scheme.clone(),
+            android,
+            ios_app_id: self.ios_app_id.clone(),
+            out,
+        })
+    }
+}
+
+/// A host name, lower-cased, optionally with a `*.` wildcard in front: two or more labels of
+/// ASCII letters, digits and inner hyphens.
+fn host_name(raw: &str) -> Option<String> {
+    let host = raw.trim().to_ascii_lowercase();
+    let labels: Vec<&str> = host
+        .strip_prefix("*.")
+        .unwrap_or(&host)
+        .split('.')
+        .collect();
+    let label = |l: &&str| {
+        (1..=63).contains(&l.len())
+            && !l.starts_with('-')
+            && !l.ends_with('-')
+            && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    };
+    (labels.len() >= 2 && labels.iter().all(label)).then_some(host)
+}
+
+/// `com.example.shop`: Android's rule for an application id.
+fn is_application_id(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('.').collect();
+    parts.len() >= 2
+        && parts.iter().all(|p| {
+            p.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
+}
+
+/// 32 upper-case hex pairs separated by `:`.
+fn is_fingerprint(s: &str) -> bool {
+    let pairs: Vec<&str> = s.split(':').collect();
+    pairs.len() == 32
+        && pairs
+            .iter()
+            .all(|p| p.len() == 2 && p.chars().all(|c| matches!(c, '0'..='9' | 'A'..='F')))
+}
+
+/// `ABCDE12345.com.example.shop`: an Apple Team ID, then the bundle id.
+fn is_app_id(s: &str) -> bool {
+    let Some((team, bundle)) = s.split_once('.') else {
+        return false;
+    };
+    team.len() == 10
+        && team
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        && !bundle.is_empty()
+        && bundle
+            .split('.')
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+}
+
+fn is_scheme(s: &str) -> bool {
+    s.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '+' | '-' | '.'))
+        && !matches!(s, "http" | "https")
+}
+
+/// A folder inside the project, `/`-separated; `.` is the project root itself (`""`).
+fn links_out(raw: &str) -> Result<String> {
+    let parts: Vec<&str> = raw
+        .split(['/', '\\'])
+        .filter(|p| !p.is_empty() && *p != ".")
+        .collect();
+    if raw.trim().is_empty()
+        || raw.starts_with(['/', '\\'])
+        || raw.contains(':')
+        || parts.contains(&"..")
+    {
+        bail!(
+            "`fespalier.links.out` must be a folder inside the project (relative, no `..`), got `{raw}`"
+        );
+    }
+    Ok(parts.join("/"))
 }
 
 impl Config {
@@ -212,6 +434,7 @@ impl Pubspec {
             config.data_retry = c.data_retry.unwrap_or(config.data_retry);
             config.keep_previous = c.keep_previous.unwrap_or(config.keep_previous);
             config.file_style = c.file_style.unwrap_or(config.file_style);
+            config.links = c.links;
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }

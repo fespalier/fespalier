@@ -357,7 +357,7 @@ fn a_route_dart_without_the_constant_is_an_error() {
     assert_eq!(
         e,
         [
-            "✗ shop/route.dart  expected `const caseSensitive = false;` (or `true`), or `const paths = {'fr': 'produits'};`"
+            "✗ shop/route.dart  expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;` or `const linkable = false;`"
         ]
     );
     // A getter isn't a constant: the generator can't read its value.

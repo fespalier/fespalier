@@ -1,0 +1,12 @@
+<!-- Written by `fsp links`: add this to the top-level <dict> of ios/Runner/Info.plist. -->
+<key>CFBundleURLTypes</key>
+<array>
+	<dict>
+		<key>CFBundleURLName</key>
+		<string>com.example.shop</string>
+		<key>CFBundleURLSchemes</key>
+		<array>
+			<string>myshop</string>
+		</array>
+	</dict>
+</array>

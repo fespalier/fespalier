@@ -478,6 +478,214 @@ fn routes_prints_the_table_and_json_lines() {
 }
 
 #[test]
+fn routes_graph_prints_mermaid_by_default_and_dot_on_request() {
+    let dir = project();
+    fs::create_dir_all(dir.path().join("lib/app/cart")).unwrap();
+    fs::write(dir.path().join("lib/app/cart/page.dart"), page("CartPage")).unwrap();
+    let mermaid = "flowchart TD\n  subgraph rootnav[\"root navigator\"]\n    n0[\"/<br/>HomeRoute\"]\n    n1[\"/cart<br/>CartRoute\"]\n  end\n  n0 --> n1\n";
+    for args in [
+        &["routes", "--graph"][..],
+        &["routes", "--graph", "mermaid"],
+        &["routes", "--graph=mermaid"],
+    ] {
+        let (ok, out, err) = fsp_full(dir.path(), args, &[]);
+        assert!(ok, "{err}");
+        assert_eq!(out, mermaid, "{args:?}");
+    }
+    let (ok, out, err) = fsp_full(dir.path(), &["routes", "--graph", "dot"], &[]);
+    assert!(ok, "{err}");
+    assert!(out.starts_with("digraph routes {\n"), "{out}");
+    assert!(out.contains("n0 -> n1;"), "{out}");
+    // Flags after it are flags, not its value.
+    let (ok, out, err) = fsp_full(dir.path(), &["routes", "--graph", "--project", "."], &[]);
+    assert!(ok, "{err}");
+    assert_eq!(out, mermaid);
+
+    let (ok, _, err) = fsp_full(dir.path(), &["routes", "--graph", "svg"], &[]);
+    assert!(
+        !ok && err.contains("mermaid") && err.contains("dot"),
+        "{err}"
+    );
+    let (ok, _, err) = fsp_full(dir.path(), &["routes", "--graph", "--json"], &[]);
+    assert!(!ok && err.contains("--json"), "{err}");
+}
+
+const LINKS: &str = "fespalier:\n  links:\n    domains: [shop.example.com]\n    android_package: com.example.shop\n    android_sha256: [\"14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5\"]\n    ios_app_id: ABCDE12345.com.example.shop\n";
+
+#[test]
+fn links_writes_the_files_and_check_follows_them() {
+    let dir = project();
+    fs::create_dir_all(dir.path().join("lib/app/products/$id")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/products/$id/page.dart"),
+        "class ProductPage extends StatelessWidget { const ProductPage({super.key, required this.id}); final int id; }",
+    )
+    .unwrap();
+    let pubspec = dir.path().join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+
+    // Without a `links:` section it says what to add, and writes nothing.
+    let (ok, _, err) = fsp_full(dir.path(), &["links"], &[]);
+    assert!(
+        !ok && err.contains("no `links:` in the `fespalier:` section"),
+        "{err}"
+    );
+    assert!(!dir.path().join("links").exists());
+
+    fs::write(&pubspec, format!("{base}{LINKS}")).unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["links", "--check"], &[]);
+    assert!(!ok, "{err}");
+    assert!(err.contains("links/web/sitemap.xml is missing"), "{err}");
+    assert!(
+        err.contains("5 file(s) out of date; run `fsp links`"),
+        "{err}"
+    );
+    assert!(!dir.path().join("links").exists(), "--check writes nothing");
+
+    let (ok, out, err) = fsp_full(dir.path(), &["links"], &[]);
+    assert!(ok && out.is_empty(), "{err}");
+    assert!(
+        err.contains("wrote links/android/intent-filters.xml"),
+        "{err}"
+    );
+    assert!(
+        err.contains("✓ links: 5 files in links (5 written, 0 unchanged)"),
+        "{err}"
+    );
+    let sitemap = fs::read_to_string(dir.path().join("links/web/sitemap.xml")).unwrap();
+    assert!(
+        sitemap.contains("<loc>https://shop.example.com/</loc>"),
+        "{sitemap}"
+    );
+    let filters = fs::read_to_string(dir.path().join("links/android/intent-filters.xml")).unwrap();
+    assert!(
+        filters.contains("<data android:pathPattern=\"/products/..*\" />"),
+        "{filters}"
+    );
+    let aasa = fs::read_to_string(
+        dir.path()
+            .join("links/web/.well-known/apple-app-site-association"),
+    )
+    .unwrap();
+    assert!(aasa.contains("\"/products/?*\""), "{aasa}");
+
+    // Again: nothing to write, and check passes.
+    let (ok, _, err) = fsp_full(dir.path(), &["links"], &[]);
+    assert!(
+        ok && err.contains("(0 written, 5 unchanged)") && !err.contains("wrote"),
+        "{err}"
+    );
+    let (ok, _, err) = fsp_full(dir.path(), &["links", "--check"], &[]);
+    assert!(
+        ok && err.contains("✓ links: 5 files in links are up to date"),
+        "{err}"
+    );
+
+    // A new route makes the files stale, and `fsp links` brings them back.
+    fs::create_dir_all(dir.path().join("lib/app/about")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/about/page.dart"),
+        page("AboutPage"),
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["links", "--check"], &[]);
+    assert!(
+        !ok && err.contains("links/web/sitemap.xml is out of date"),
+        "{err}"
+    );
+    assert!(fsp_full(dir.path(), &["links"], &[]).0);
+    assert!(fsp_full(dir.path(), &["links", "--check"], &[]).0);
+
+    // `linkable = false` takes the route out again.
+    fs::write(
+        dir.path().join("lib/app/about/route.dart"),
+        "const linkable = false;",
+    )
+    .unwrap();
+    assert!(!fsp_full(dir.path(), &["links", "--check"], &[]).0);
+    assert!(fsp_full(dir.path(), &["links"], &[]).0);
+    let sitemap = fs::read_to_string(dir.path().join("links/web/sitemap.xml")).unwrap();
+    assert!(!sitemap.contains("/about"), "{sitemap}");
+
+    // Dropping a platform from the config leaves its files stale: `--check` says so, `fsp links` removes them.
+    let android_only = LINKS.replace("    ios_app_id: ABCDE12345.com.example.shop\n", "");
+    fs::write(&pubspec, format!("{base}{android_only}")).unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["links", "--check"], &[]);
+    assert!(
+        !ok && err.contains(
+            "links/web/.well-known/apple-app-site-association is not wanted by this config"
+        ),
+        "{err}"
+    );
+    let (ok, _, err) = fsp_full(dir.path(), &["links"], &[]);
+    assert!(
+        ok && err.contains("removed links/ios/associated-domains.entitlements"),
+        "{err}"
+    );
+    assert!(
+        !dir.path()
+            .join("links/web/.well-known/apple-app-site-association")
+            .exists()
+    );
+    assert!(
+        dir.path()
+            .join("links/web/.well-known/assetlinks.json")
+            .exists()
+    );
+    assert!(fsp_full(dir.path(), &["links", "--check"], &[]).0);
+
+    // `out:` moves everything.
+    fs::write(
+        &pubspec,
+        format!("{base}{android_only}    out: deeplinks/x\n"),
+    )
+    .unwrap();
+    assert!(fsp_full(dir.path(), &["links"], &[]).0);
+    assert!(dir.path().join("deeplinks/x/web/sitemap.xml").exists());
+}
+
+#[test]
+fn links_reports_config_and_route_errors_with_a_failing_exit() {
+    let dir = project();
+    let pubspec = dir.path().join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    fs::write(
+        &pubspec,
+        format!("{base}fespalier:\n  links:\n    scheme: myshop\n"),
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["links"], &[]);
+    assert!(
+        !ok && err.contains("`fespalier.links.domains` is required"),
+        "{err}"
+    );
+    // The routing commands don't read the values.
+    let (ok, _, err) = fsp_full(dir.path(), &["check"], &[]);
+    assert!(ok, "{err}");
+
+    fs::write(&pubspec, format!("{base}{LINKS}")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/route.dart"),
+        "const linkable = false;",
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["links"], &[]);
+    assert!(!ok && err.contains("no route can be linked"), "{err}");
+    fs::write(
+        dir.path().join("lib/app/route.dart"),
+        "const linkable = nope;",
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["links"], &[]);
+    assert!(
+        !ok && err.contains("`linkable` must be a `true` or `false` literal"),
+        "{err}"
+    );
+    assert!(err.contains("1 error(s); no links"), "{err}");
+    assert!(!dir.path().join("links").exists());
+}
+
+#[test]
 fn routes_fails_on_errors() {
     let dir = project();
     fs::write(

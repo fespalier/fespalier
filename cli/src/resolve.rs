@@ -378,6 +378,9 @@ pub struct Route {
     /// of the page above it but a sibling of that page, with the folders between joined into
     /// its path (`refund/confirm`). Its own children still nest under it.
     pub sibling: bool,
+    /// Whether `fsp links` lists this route: the nearest `route.dart`'s `const linkable`
+    /// at or above it, else `true`.
+    pub linkable: bool,
 }
 
 impl Route {
@@ -601,6 +604,8 @@ struct Inherited {
     localized: Vec<Localized>,
     /// The nearest page above, which a `nest = false` below leaves; `None` without one.
     above: Option<PageAbove>,
+    /// The nearest route.dart's `linkable`, else `true`.
+    linkable: bool,
 }
 
 /// What a `nest = false` takes a route out of: the page above it, and the folders between.
@@ -667,6 +672,7 @@ pub fn resolve(root: &Node, case_sensitive: bool, libs: &Libs, diags: &mut Diags
         root,
         &Inherited {
             case_sensitive,
+            linkable: true,
             ..Inherited::default()
         },
     );
@@ -769,6 +775,7 @@ impl Resolver<'_> {
             case_sensitive: up.case_sensitive,
             localized: up.localized.clone(),
             sibling: false,
+            linkable: up.linkable,
         });
 
         let mut segs = up.segs.clone();
@@ -916,6 +923,7 @@ impl Resolver<'_> {
         // are this folder's own segment's other spellings, and every route below has them in its URL.
         let mut localized = up.localized.clone();
         let mut case_sensitive = up.case_sensitive;
+        let mut linkable = up.linkable;
         if let Some(m) = modules.get(&Kind::Route) {
             let file = node.rel(Kind::Route);
             let spelled = locale::read(
@@ -928,8 +936,10 @@ impl Resolver<'_> {
             localized.extend(spelled.filter(|l| !l.spellings.is_empty()));
             case_sensitive = self.route_config(m, &file).unwrap_or(up.case_sensitive);
             self.app.routes[id].sibling = self.nest(m, node, up.above.as_ref());
+            linkable = self.linkable(m, &file).unwrap_or(up.linkable);
         }
         self.app.routes[id].case_sensitive = case_sensitive;
+        self.app.routes[id].linkable = linkable;
         self.app.routes[id].localized = localized.clone();
 
         // loading.dart / error.dart apply here and to every folder below.
@@ -945,6 +955,7 @@ impl Resolver<'_> {
             case_sensitive,
             localized: localized.clone(),
             above: up.above.clone(),
+            linkable,
         };
         // A page is what a route below can leave; so is the layout of a folder between.
         let layout_file = node
@@ -1647,13 +1658,13 @@ impl Resolver<'_> {
     fn route_config(&mut self, m: &Module, file: &str) -> Option<bool> {
         let mut found = m.variables.iter().filter(|v| v.name == "caseSensitive");
         let Some(v) = found.next() else {
-            // A route.dart may hold only `paths`, or only `nest`.
+            // A route.dart may hold only `paths`, `nest` or `linkable`.
             if !m
                 .variables
                 .iter()
-                .any(|v| v.name == "paths" || v.name == "nest")
+                .any(|v| matches!(v.name.as_str(), "paths" | "nest" | "linkable"))
             {
-                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), or `const paths = {'fr': 'produits'};`");
+                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;` or `const linkable = false;`");
             }
             return None;
         };
@@ -1663,6 +1674,23 @@ impl Resolver<'_> {
         }
         if v.boolean.is_none() {
             let msg = "`caseSensitive` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it";
+            self.diags.error(file, Some(&v.span), msg);
+        }
+        v.boolean
+    }
+
+    /// `const linkable = false;` in a folder's route.dart: `fsp links` leaves this folder's
+    /// routes and those below it out of the files it writes. Like `caseSensitive`, the nearest
+    /// one wins, and it is read from the source, so it must be a `true` or `false` literal.
+    fn linkable(&mut self, m: &Module, file: &str) -> Option<bool> {
+        let mut found = m.variables.iter().filter(|v| v.name == "linkable");
+        let v = found.next()?;
+        if let Some(again) = found.next() {
+            self.diags
+                .error(file, Some(&again.span), "`linkable` is declared twice");
+        }
+        if v.boolean.is_none() {
+            let msg = "`linkable` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it";
             self.diags.error(file, Some(&v.span), msg);
         }
         v.boolean

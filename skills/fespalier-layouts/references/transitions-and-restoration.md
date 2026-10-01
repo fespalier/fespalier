@@ -55,7 +55,10 @@ root), made from the layout's folder: the same on every launch (its restoration
 id) and **while you switch routes inside the shell**, so **only entering or
 leaving the shell animates it**, not going from one page of the layout to another.
 A layout with no `transition.dart` above it keeps `layoutPage(...)`, a Material
-page (Cupertino inside a `CupertinoApp`) with the restoration id.
+page (Cupertino inside a `CupertinoApp`) with the restoration id. **Since 0.5.0 its
+key is that same `ValueKey<String>('layout:<folder>/')`**; on 0.4.x and earlier it was
+go_router's (the route object's `hashCode`), so a router built again (a hot reload, a
+test) replaced the shell and lost the state of the layout and of every page in it.
 
 **Behaviour change in 0.3.0:** since `fsp init` writes a root `transition.dart`,
 most apps' layouts now get a `pageBuilder` of their transition's making. Regenerate

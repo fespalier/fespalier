@@ -1,5 +1,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'route_data.dart';
 
 /// Base of every generated route class (`ProductRoute(id: 42)`).
 abstract class TypedLocation {
@@ -35,6 +38,18 @@ abstract class TypedLocation {
   /// The optional [locale] picks one of the route's localized spellings.
   void replace(BuildContext context, {String? locale}) =>
       context.replace(locationFor(locale));
+
+  /// Starts loading every `data.dart` the page at this location reads (the
+  /// data of each section above it, then its own: what `AppRoutes.dataAt`
+  /// answers for [location]) and keeps them alive until the returned handle is
+  /// closed, so the page shows at once when it is reached. `keepFor` closes it
+  /// after that long, as for `prefetch`.
+  ///
+  /// It never navigates and never runs a guard or a redirect. A route without
+  /// data, like this base, returns a closed handle: there is nothing to warm.
+  /// `RouteLink` calls it to preload.
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) =>
+      ref.prefetchAll(const [], keepFor: keepFor);
 }
 
 /// Joins a mount prefix (`/shop`) and a route path (`/products/42`).

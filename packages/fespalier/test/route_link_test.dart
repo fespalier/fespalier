@@ -1,0 +1,720 @@
+import 'dart:async';
+import 'dart:ui' show SemanticsAction;
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:url_launcher/link.dart' as url;
+
+/// How often a provider's body ran; autoDispose, like the generated ones.
+var loads = 0;
+final item = FutureProvider.autoDispose.family<String, int>((ref, n) async {
+  loads++;
+  if (n < 0) throw StateError('negative');
+  return 'value $n';
+});
+
+/// What a generated route with data looks like: it preloads its provider.
+final class ItemRoute extends TypedLocation {
+  const ItemRoute(this.id);
+  final int id;
+
+  @override
+  String get location => '/items/$id';
+
+  @override
+  String locationFor(String? locale) =>
+      locale == 'fr' ? '/articles/$id' : location;
+
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) =>
+      ref.prefetchAll([item(id)], keepFor: keepFor);
+}
+
+/// A route without data: it inherits the no-op.
+final class AboutRoute extends TypedLocation {
+  const AboutRoute();
+
+  @override
+  String get location => '/about';
+}
+
+/// A route mounted below a prefix, as `AppRoutes.mount(at: '/shop')` writes it.
+final class ShopItemRoute extends TypedLocation {
+  const ShopItemRoute(this.id);
+  final int id;
+
+  @override
+  String get location => '/shop/items/$id';
+}
+
+late int redirects;
+
+GoRouter buildRouter(Widget home) => GoRouter(
+  redirect: (context, state) {
+    redirects++;
+    return null;
+  },
+  routes: [
+    GoRoute(
+      path: '/',
+      builder: (context, state) => Material(
+        child: Align(alignment: Alignment.topLeft, child: home),
+      ),
+    ),
+    GoRoute(
+      path: '/items/:id',
+      builder: (context, state) => Text('item ${state.pathParameters['id']}'),
+    ),
+    GoRoute(path: '/about', builder: (context, state) => const Text('about')),
+    GoRoute(
+      path: '/shop/items/:id',
+      builder: (context, state) => Text('shop ${state.pathParameters['id']}'),
+    ),
+  ],
+);
+
+Widget linkTile(
+  TypedLocation to,
+  String label, {
+  Preload? preload,
+  LinkMethod method = LinkMethod.go,
+}) => RouteLink(
+  to: to,
+  preload: preload,
+  method: method,
+  builder: (context, follow) => ListTile(title: Text(label), onTap: follow),
+);
+
+Future<(GoRouter, ProviderContainer)> boot(
+  WidgetTester tester,
+  Widget home, {
+  Widget Function(Widget child)? scope,
+}) async {
+  final container = ProviderContainer();
+  addTearDown(container.dispose);
+  final router = buildRouter(home);
+  addTearDown(router.dispose);
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp.router(
+        routerConfig: router,
+        builder: scope == null ? null : (context, child) => scope(child!),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return (router, container);
+}
+
+Future<TestGesture> mouse(WidgetTester tester) async {
+  final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+  await gesture.addPointer(location: const Offset(790, 590));
+  addTearDown(gesture.removePointer);
+  return gesture;
+}
+
+/// Moves the pointer off the screen's corner and onto [target]: a fresh enter.
+Future<void> hover(
+  WidgetTester tester,
+  TestGesture pointer,
+  Finder target,
+) async {
+  await pointer.moveTo(const Offset(790, 590));
+  await tester.pump();
+  await pointer.moveTo(tester.getCenter(target));
+  await tester.pump();
+}
+
+void main() {
+  setUp(() {
+    loads = 0;
+    redirects = 0;
+  });
+
+  group('following', () {
+    testWidgets('a click goes to the route', (tester) async {
+      await boot(tester, linkTile(const ItemRoute(2), 'Two'));
+      await tester.tap(find.text('Two'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/items/2');
+      expect(find.text('item 2'), findsOneWidget);
+    });
+
+    testWidgets('go replaces the whole stack', (tester) async {
+      final (router, _) = await boot(
+        tester,
+        linkTile(const ItemRoute(2), 'Two'),
+      );
+      await tester.tap(find.text('Two'));
+      await tester.pumpAndSettle();
+      expect(router.canPop(), isFalse);
+    });
+
+    testWidgets('push puts the page on top and back returns', (tester) async {
+      final (router, _) = await boot(
+        tester,
+        linkTile(const ItemRoute(2), 'Two', method: LinkMethod.push),
+      );
+      await tester.tap(find.text('Two'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/items/2');
+      expect(router.canPop(), isTrue);
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/');
+      expect(find.text('Two'), findsOneWidget);
+    });
+
+    testWidgets('replace takes the place of the page', (tester) async {
+      final (router, _) = await boot(
+        tester,
+        linkTile(const ItemRoute(2), 'Two', method: LinkMethod.replace),
+      );
+      await tester.tap(find.text('Two'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/items/2');
+      expect(router.canPop(), isFalse);
+    });
+
+    testWidgets('a uri: link follows its location, query included', (
+      tester,
+    ) async {
+      await boot(
+        tester,
+        RouteLink(
+          uri: Uri.parse('/items/3?tab=a'),
+          builder: (context, follow) =>
+              ListTile(title: const Text('Three'), onTap: follow),
+        ),
+      );
+      await tester.tap(find.text('Three'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/items/3?tab=a');
+    });
+
+    testWidgets('follow works from a button too (a keyboard activation)', (
+      tester,
+    ) async {
+      await boot(
+        tester,
+        RouteLink(
+          to: const AboutRoute(),
+          builder: (context, follow) =>
+              TextButton(onPressed: follow, child: const Text('About')),
+        ),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('about'), findsOneWidget);
+    });
+  });
+
+  group('the link itself', () {
+    testWidgets('href is the location, mount prefix included', (tester) async {
+      await boot(tester, linkTile(const ShopItemRoute(4), 'Four'));
+      final link = tester.widget<url.Link>(find.byType(url.Link));
+      expect(link.uri, Uri.parse('/shop/items/4'));
+      await tester.tap(find.text('Four'));
+      await tester.pumpAndSettle();
+      expect(find.text('shop 4'), findsOneWidget);
+    });
+
+    testWidgets('a locale picks the localized spelling', (tester) async {
+      await boot(
+        tester,
+        RouteLink(
+          to: const ItemRoute(2),
+          locale: 'fr',
+          builder: (context, follow) => ListTile(onTap: follow),
+        ),
+      );
+      expect(
+        tester.widget<url.Link>(find.byType(url.Link)).uri,
+        Uri.parse('/articles/2'),
+      );
+    });
+
+    testWidgets('href follows the route it is given', (tester) async {
+      final notifier = ValueNotifier<int>(1);
+      addTearDown(notifier.dispose);
+      await boot(
+        tester,
+        ValueListenableBuilder<int>(
+          valueListenable: notifier,
+          builder: (context, id, _) => linkTile(ItemRoute(id), 'Item'),
+        ),
+      );
+      expect(
+        tester.widget<url.Link>(find.byType(url.Link)).uri!.path,
+        '/items/1',
+      );
+      notifier.value = 5;
+      await tester.pump();
+      expect(
+        tester.widget<url.Link>(find.byType(url.Link)).uri!.path,
+        '/items/5',
+      );
+      await tester.tap(find.text('Item'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/items/5');
+    });
+
+    testWidgets('is a link with its URL for accessibility', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await boot(tester, linkTile(const ItemRoute(2), 'Two'));
+      final node = tester.getSemantics(find.text('Two'));
+      final data = node.getSemanticsData();
+      expect(data.flagsCollection.isLink, isTrue);
+      expect(data.linkUrl, Uri.parse('/items/2'));
+      expect(data.label, 'Two');
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
+      semantics.dispose();
+    });
+
+    test('takes a route or a uri, not both nor neither', () {
+      expect(
+        () => RouteLink(
+          to: const AboutRoute(),
+          uri: Uri.parse('/about'),
+          builder: (context, follow) => const SizedBox(),
+        ),
+        throwsAssertionError,
+      );
+      expect(
+        () => RouteLink(builder: (context, follow) => const SizedBox()),
+        throwsAssertionError,
+      );
+    });
+  });
+
+  group('uri: in debug', () {
+    testWidgets('a location no route matches asserts, saying why', (
+      tester,
+    ) async {
+      await boot(
+        tester,
+        RouteLink(
+          uri: Uri.parse('/nope'),
+          builder: (context, follow) => ListTile(onTap: follow),
+        ),
+      );
+      final error = tester.takeException() as FlutterError;
+      expect(error.toString(), contains('RouteLink(uri: /nope)'));
+      expect(error.toString(), contains('no route of the GoRouter'));
+    });
+
+    testWidgets('a route of the router is fine', (tester) async {
+      await boot(
+        tester,
+        RouteLink(
+          uri: Uri.parse('/items/9'),
+          builder: (context, follow) => ListTile(onTap: follow),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an injected matcher decides instead, bad segments included', (
+      tester,
+    ) async {
+      await boot(
+        tester,
+        RouteLink(
+          uri: Uri.parse('/items/abc'),
+          builder: (context, follow) => ListTile(onTap: follow),
+        ),
+        scope: (child) => RouteLinkScope(
+          match: (uri) => uri.path == '/items/2'
+              ? UrlMatch(uri, const ItemRoute(2), const {}, [item(2)])
+              : null,
+          child: child,
+        ),
+      );
+      final error = tester.takeException() as FlutterError;
+      expect(error.toString(), contains('RouteLinkScope.match found no route'));
+    });
+
+    testWidgets('an external URL asserts: it is not a location of the app', (
+      tester,
+    ) async {
+      await boot(
+        tester,
+        RouteLink(
+          uri: Uri.parse('https://example.com/a'),
+          builder: (context, follow) => ListTile(onTap: follow),
+        ),
+      );
+      final error = tester.takeException() as FlutterError;
+      expect(error.toString(), contains('is not a location in this app'));
+    });
+  });
+
+  group('preload: intent', () {
+    testWidgets('hover starts the data once, however often it comes back', (
+      tester,
+    ) async {
+      final (_, container) = await boot(
+        tester,
+        linkTile(const ItemRoute(2), 'Two', preload: Preload.intent),
+      );
+      expect(loads, 0);
+      final pointer = await mouse(tester);
+      await pointer.moveTo(tester.getCenter(find.text('Two')));
+      await tester.pump();
+      expect(loads, 1);
+      expect(container.exists(item(2)), isTrue);
+
+      for (var i = 0; i < 3; i++) {
+        await hover(tester, pointer, find.text('Two'));
+      }
+      await tester.pump();
+      expect(loads, 1);
+      // Moving away doesn't drop it: the click is about to follow.
+      expect(container.exists(item(2)), isTrue);
+    });
+
+    testWidgets('the page finds the value warm when it is reached', (
+      tester,
+    ) async {
+      final (_, container) = await boot(
+        tester,
+        linkTile(const ItemRoute(2), 'Two', preload: Preload.intent),
+      );
+      final pointer = await mouse(tester);
+      await pointer.moveTo(tester.getCenter(find.text('Two')));
+      await tester.pump();
+      expect(container.read(item(2)).value, 'value 2');
+      await tester.tap(find.text('Two'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/items/2');
+      expect(loads, 1);
+    });
+
+    testWidgets('a touch going down starts it, before the finger lifts', (
+      tester,
+    ) async {
+      final (_, container) = await boot(
+        tester,
+        linkTile(const ItemRoute(2), 'Two', preload: Preload.intent),
+      );
+      final touch = await tester.startGesture(
+        tester.getCenter(find.text('Two')),
+      );
+      expect(loads, 1);
+      expect(container.exists(item(2)), isTrue);
+      await touch.up();
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/items/2');
+      expect(loads, 1);
+    });
+
+    testWidgets('focus starts it', (tester) async {
+      await boot(
+        tester,
+        RouteLink(
+          to: const ItemRoute(2),
+          preload: Preload.intent,
+          builder: (context, follow) =>
+              TextButton(onPressed: follow, child: const Text('Two')),
+        ),
+      );
+      expect(loads, 0);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      expect(loads, 1);
+    });
+
+    testWidgets('nothing loads without intent', (tester) async {
+      await boot(
+        tester,
+        linkTile(const ItemRoute(2), 'Two', preload: Preload.intent),
+      );
+      await tester.pump(const Duration(seconds: 5));
+      expect(loads, 0);
+    });
+
+    testWidgets('disposing the link closes the handle', (tester) async {
+      final (router, container) = await boot(
+        tester,
+        linkTile(const ItemRoute(2), 'Two', preload: Preload.intent),
+      );
+      final pointer = await mouse(tester);
+      await pointer.moveTo(tester.getCenter(find.text('Two')));
+      await tester.pump();
+      expect(container.exists(item(2)), isTrue);
+
+      // go: the page with the link is gone.
+      router.go('/about');
+      await tester.pumpAndSettle();
+      expect(find.text('Two'), findsNothing);
+      expect(container.exists(item(2)), isFalse);
+    });
+
+    testWidgets('a failed preload is not kept, and the next hover retries', (
+      tester,
+    ) async {
+      final (_, container) = await boot(
+        tester,
+        linkTile(const ItemRoute(-1), 'Bad', preload: Preload.intent),
+      );
+      final pointer = await mouse(tester);
+      await pointer.moveTo(tester.getCenter(find.text('Bad')));
+      await tester.pump();
+      await tester.pump();
+      expect(loads, 1);
+      expect(container.exists(item(-1)), isFalse);
+
+      await hover(tester, pointer, find.text('Bad'));
+      await tester.pump();
+      expect(loads, 2);
+    });
+
+    testWidgets('a route without data preloads nothing, harmlessly', (
+      tester,
+    ) async {
+      await boot(
+        tester,
+        linkTile(const AboutRoute(), 'About', preload: Preload.intent),
+      );
+      final pointer = await mouse(tester);
+      await pointer.moveTo(tester.getCenter(find.text('About')));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(
+        const AboutRoute()
+            .preload(tester.element(find.byType(RouteLink)) as WidgetRef)
+            .isClosed,
+        isTrue,
+      );
+    });
+
+    testWidgets('preloading runs no guard and goes nowhere', (tester) async {
+      await boot(
+        tester,
+        linkTile(const ItemRoute(2), 'Two', preload: Preload.intent),
+      );
+      final before = redirects;
+      final pointer = await mouse(tester);
+      await pointer.moveTo(tester.getCenter(find.text('Two')));
+      await tester.pump();
+      expect(loads, 1);
+      expect(redirects, before);
+      expect(currentLocation(tester), '/');
+    });
+
+    testWidgets('a changed route drops what was preloaded for the old one', (
+      tester,
+    ) async {
+      final notifier = ValueNotifier<int>(1);
+      addTearDown(notifier.dispose);
+      final (_, container) = await boot(
+        tester,
+        ValueListenableBuilder<int>(
+          valueListenable: notifier,
+          builder: (context, id, _) =>
+              linkTile(ItemRoute(id), 'Item', preload: Preload.intent),
+        ),
+      );
+      final pointer = await mouse(tester);
+      await pointer.moveTo(tester.getCenter(find.text('Item')));
+      await tester.pump();
+      expect(container.exists(item(1)), isTrue);
+      notifier.value = 2;
+      await tester.pump();
+      await tester.pump();
+      expect(container.exists(item(1)), isFalse);
+      expect(container.exists(item(2)), isFalse);
+      await hover(tester, pointer, find.text('Item'));
+      await tester.pump();
+      expect(container.exists(item(2)), isTrue);
+    });
+  });
+
+  group('preload: visible', () {
+    Widget list({Preload preload = Preload.visible}) => ListView.builder(
+      itemExtent: 100,
+      itemCount: 40,
+      itemBuilder: (context, i) =>
+          linkTile(ItemRoute(i), 'Item $i', preload: preload),
+    );
+
+    testWidgets('what is on screen loads, and only that', (tester) async {
+      final (_, container) = await boot(tester, list());
+      // 600 high: items 0 to 5.
+      for (var i = 0; i < 6; i++) {
+        expect(container.exists(item(i)), isTrue, reason: 'item $i');
+      }
+      expect(container.exists(item(6)), isFalse);
+      expect(loads, 6);
+    });
+
+    testWidgets('scrolling releases what left and loads what came', (
+      tester,
+    ) async {
+      final (_, container) = await boot(tester, list());
+      await tester.drag(find.byType(ListView), const Offset(0, -2000));
+      await tester.pump();
+      await tester.pump();
+      expect(container.exists(item(0)), isFalse);
+      expect(container.exists(item(20)), isTrue);
+      expect(container.exists(item(25)), isTrue);
+      // Back: it loads again, once per visit.
+      final before = loads;
+      await tester.drag(find.byType(ListView), const Offset(0, 2000));
+      await tester.pump();
+      await tester.pump();
+      expect(container.exists(item(0)), isTrue);
+      expect(loads, greaterThan(before));
+    });
+
+    testWidgets('rebuilds and scroll ticks do not load twice', (tester) async {
+      await boot(tester, list());
+      expect(loads, 6);
+      final gesture = await tester.startGesture(const Offset(400, 300));
+      for (var i = 0; i < 5; i++) {
+        await gesture.moveBy(const Offset(0, -10));
+        await tester.pump();
+      }
+      await gesture.moveBy(const Offset(0, 50));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+      // Items 0 to 5 stayed on screen throughout; at most item 6 came in.
+      expect(loads, lessThanOrEqualTo(7));
+    });
+
+    testWidgets('a link under another route is released, and back again', (
+      tester,
+    ) async {
+      final (router, container) = await boot(
+        tester,
+        linkTile(const ItemRoute(2), 'Two', preload: Preload.visible),
+      );
+      expect(container.exists(item(2)), isTrue);
+      unawaited(router.push<Object?>('/about'));
+      await tester.pumpAndSettle();
+      expect(container.exists(item(2)), isFalse);
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(container.exists(item(2)), isTrue);
+    });
+
+    testWidgets('a failed load is not tried again while it stays on screen', (
+      tester,
+    ) async {
+      await boot(
+        tester,
+        ListView(
+          children: [
+            linkTile(const ItemRoute(-1), 'Bad', preload: Preload.visible),
+            const SizedBox(height: 2000),
+          ],
+        ),
+      );
+      expect(loads, 1);
+      for (var i = 0; i < 3; i++) {
+        await tester.drag(find.byType(ListView), const Offset(0, -10));
+        await tester.pump();
+      }
+      expect(find.text('Bad'), findsOneWidget);
+      expect(loads, 1);
+    });
+
+    testWidgets('disposing closes every handle', (tester) async {
+      final (router, container) = await boot(tester, list());
+      expect(container.exists(item(0)), isTrue);
+      router.go('/about');
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 6; i++) {
+        expect(container.exists(item(i)), isFalse, reason: 'item $i');
+      }
+    });
+
+    testWidgets('none preloads nothing, however long it is on screen', (
+      tester,
+    ) async {
+      await boot(tester, list(preload: Preload.none));
+      await tester.pump();
+      expect(loads, 0);
+    });
+  });
+
+  group('RouteLinkScope', () {
+    testWidgets('sets the default, and a link can override it', (tester) async {
+      final (_, container) = await boot(
+        tester,
+        Column(
+          children: [
+            linkTile(const ItemRoute(1), 'One'),
+            linkTile(const ItemRoute(2), 'Two', preload: Preload.none),
+          ],
+        ),
+        scope: (child) =>
+            RouteLinkScope(preload: Preload.visible, child: child),
+      );
+      expect(container.exists(item(1)), isTrue);
+      expect(container.exists(item(2)), isFalse);
+    });
+
+    testWidgets('changing the default releases what it started', (
+      tester,
+    ) async {
+      final mode = ValueNotifier<Preload>(Preload.visible);
+      addTearDown(mode.dispose);
+      final (_, container) = await boot(
+        tester,
+        linkTile(const ItemRoute(1), 'One'),
+        scope: (child) => ValueListenableBuilder<Preload>(
+          valueListenable: mode,
+          builder: (context, preload, _) =>
+              RouteLinkScope(preload: preload, child: child),
+        ),
+      );
+      expect(container.exists(item(1)), isTrue);
+      mode.value = Preload.none;
+      await tester.pump();
+      await tester.pump();
+      expect(container.exists(item(1)), isFalse);
+      mode.value = Preload.visible;
+      await tester.pump();
+      await tester.pump();
+      expect(container.exists(item(1)), isTrue);
+    });
+
+    testWidgets('match lets a uri: link preload', (tester) async {
+      final (_, container) = await boot(
+        tester,
+        RouteLink(
+          uri: Uri.parse('/items/2'),
+          preload: Preload.visible,
+          builder: (context, follow) => ListTile(onTap: follow),
+        ),
+        scope: (child) => RouteLinkScope(
+          match: (uri) =>
+              UrlMatch(uri, const ItemRoute(2), const {}, [item(2)]),
+          child: child,
+        ),
+      );
+      expect(container.exists(item(2)), isTrue);
+    });
+
+    testWidgets('without match a uri: link preloads nothing', (tester) async {
+      final (_, container) = await boot(
+        tester,
+        RouteLink(
+          uri: Uri.parse('/items/2'),
+          preload: Preload.visible,
+          builder: (context, follow) => ListTile(onTap: follow),
+        ),
+      );
+      expect(container.exists(item(2)), isFalse);
+      expect(loads, 0);
+    });
+  });
+}

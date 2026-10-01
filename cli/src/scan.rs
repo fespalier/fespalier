@@ -241,7 +241,7 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
 
 /// Names a dynamic segment can't take: they are the parameters fespalier fills
 /// itself, or members of the generated route classes.
-pub const RESERVED: [&str; 25] = [
+pub const RESERVED: [&str; 26] = [
     "data",
     "child",
     "navigationShell",
@@ -259,6 +259,7 @@ pub const RESERVED: [&str; 25] = [
     "watch",
     "read",
     "prefetch",
+    "preload",
     "ref",
     "keepFor",
     "hashCode",
@@ -272,21 +273,21 @@ pub const RESERVED: [&str; 25] = [
 /// Names a query parameter can't take either: the route class has a member of that name
 /// (or a member's parameter shadows the field). The parameters fespalier fills itself
 /// (`data`, `uri`, ...) are fine: those never reach the query.
-pub const ROUTE_MEMBERS: [&str; 14] = [
-    "location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor",
-    "hashCode", "of", "maybeOf", "copyWith",
+pub const ROUTE_MEMBERS: [&str; 15] = [
+    "location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "preload", "ref",
+    "keepFor", "hashCode", "of", "maybeOf", "copyWith",
 ];
 
 /// Names a key of a section's `data.dart` can't take: the section's typed handle
 /// (`AccountSection.watch(ref, ...)`) takes its keys as named parameters next to these.
-pub const SECTION_MEMBERS: [&str; 11] = [
-    "location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "ref", "keepFor",
-    "hashCode",
+pub const SECTION_MEMBERS: [&str; 12] = [
+    "location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "preload", "ref",
+    "keepFor", "hashCode",
 ];
 
 /// Names the helpers of an `action.dart` can't take: what a typed route or a section handle
 /// has already (members, the data helpers, what every object has).
-pub const ACTION_RESERVED: [&str; 21] = [
+pub const ACTION_RESERVED: [&str; 22] = [
     "location",
     "locationFor",
     "go",
@@ -296,6 +297,7 @@ pub const ACTION_RESERVED: [&str; 21] = [
     "watch",
     "read",
     "prefetch",
+    "preload",
     "data",
     "ref",
     "keepFor",

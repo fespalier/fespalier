@@ -29,9 +29,12 @@ const SearchRoute(q: 'ap', page: 2).location; // '/search?q=ap&page=2'
   `route-dart.md`).
 - `go`, `push` and `replace` are `context.go`, `context.push<T>` and
   `context.replace` on `locationFor(locale)`.
-- `watch`, `read`, `prefetch`, `refresh`, `ref`, `keepFor` and (since 0.5.0) `of`,
-  `maybeOf` and `copyWith` cannot be segment or query names: the class has those
-  members (`fespalier-data`, and the next section).
+- `watch`, `read`, `prefetch`, `preload`, `refresh`, `ref`, `keepFor` and (since 0.5.0)
+  `of`, `maybeOf` and `copyWith` cannot be segment or query names: the class has those
+  members (`fespalier-data`, and the next section; `preload` is reserved since 0.5.0).
+- To **link** to a route from a widget, `RouteLink(to: route, builder: ...)` does
+  what `route.go(context)` does and adds an `href` on the web and preloading (see
+  [`links.md`](links.md)).
 - Build typed links rather than string paths: the compiler then checks the
   arguments, and a renamed folder breaks the build instead of a link.
 

@@ -78,6 +78,7 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 | A `WidgetRef` (prefetch, refresh)  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                     |
 | An action (a write, since 0.5.0)   | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                      |
 | Restoration                        | your own app widget building the router in `State`, `restartAndRestore()`                                                                          |
+| A `RouteLink` hover (0.5.0)        | a mouse `createGesture`, `moveTo`, `pump`; `container.exists(XRoute.data(...))` (`pitfalls.md`)                                                    |
 
 Full compiled tests for all of these are in
 [`references/recipes.md`](references/recipes.md); the traps, each of which cost a test

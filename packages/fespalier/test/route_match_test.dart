@@ -298,6 +298,18 @@ void main() {
       expect(ref.prefetchAll(const []).isClosed, isTrue);
     });
 
+    testWidgets('prefetchAll closes everything when one provider fails', (
+      tester,
+    ) async {
+      final (ref, container) = await boot(tester);
+      final handle = ref.prefetchAll([product(5), product(-1)]);
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump();
+      expect(handle.isClosed, isTrue);
+      expect(container.exists(product(5)), isFalse);
+      expect(container.exists(product(-1)), isFalse);
+    });
+
     testWidgets('warms what a match found: the page then finds it loaded', (
       tester,
     ) async {

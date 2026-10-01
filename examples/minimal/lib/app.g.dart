@@ -146,6 +146,13 @@ abstract final class AppRoutes {
   static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) =>
       matchUrl(uri)?.data;
 
+  /// Starts loading everything the page at [uri] reads, `ref.prefetchAll(dataAt(uri) ?? [])`: one
+  /// handle keeps it all alive until it is closed (or `keepFor` passes). A location that matches no
+  /// route, or a route without data, has nothing to warm and gets a closed handle. It never
+  /// navigates and runs no guard.
+  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) =>
+      ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);
+
   /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
   static List<RouteInfo<Object?>> get all => AppManifest.all;
 
@@ -282,6 +289,11 @@ final class ItemRoute extends TypedLocation {
 
   /// Re-runs items/$id/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) =>
+      ref.prefetchAll([_data3(id)], keepFor: keepFor);
 }
 
 /// What a `copyWith` parameter is when it is left out: private, so no caller can pass it,

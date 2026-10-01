@@ -1696,12 +1696,14 @@ With `keep_previous: false` a retry shows `loading.dart` again.
 
 ### Typed helpers on the route
 
-A route with a `data.dart` has three more helpers next to `.data` and `.refresh`:
+A route with a `data.dart` has three more helpers next to `.data` and `.refresh` (and every
+route below a [section](#section-data) with data has `preload`, below):
 
 ```dart
 final product = ProductRoute.watch(ref, id: 42);   // AsyncValue<Product>, for build()
 final p = await ProductRoute.read(ref, id: 42);    // Future<Product>, for callbacks
 final warm = ProductRoute(id: 42).prefetch(ref);   // a PrefetchHandle, before navigating
+final all = ProductRoute(id: 42).preload(ref);     // the same, for everything the page reads
 ```
 
 `watch` and `read` are _static_, and take the keys the provider uses as named arguments
@@ -1739,9 +1741,14 @@ widget is alive `keepFor` holds a timer, so a widget test that uses it should `p
 pass `Duration.zero`, which starts the load and keeps nothing); and _the default changed_: a prefetch used to lapse after 30 seconds without a
 `keepFor`, and now lasts until closed (a `prefetch(ref)` whose handle is dropped lasts as
 long as the widget behind `ref`). `prefetchKeepAlive` is gone.
-Because these are members of the route class, `watch`, `read`, `prefetch`, `refresh`, `ref`,
-`keepFor` and (since 0.5.0) `of`, `maybeOf` and `copyWith` (see
-[the URL as state](#the-url-as-state-of-and-copywith)) can't be segment or query names, and neither
+`prefetch` warms the route's _own_ `data.dart`. `preload(ref)` (since 0.5.0) warms _everything the
+page reads_: the data of each [section](#section-data) above it, then its own, the list
+`AppRoutes.dataAt` gives for its location, behind one handle that closes them all
+(see [Links](#links-routelink)). A route with no data at all returns a closed handle.
+Because these are members of the route class, `watch`, `read`, `prefetch`, `preload`, `refresh`,
+`ref` and `keepFor` can't be segment or query names (`preload` is reserved since 0.5.0), nor
+(since 0.5.0) can `of`, `maybeOf` and `copyWith` (see
+[the URL as state](#the-url-as-state-of-and-copywith)), and neither
 can the helpers of an [`action.dart`](#actiondart-typed-writes) (`submit`, `useAction`, or an
 action's own name).
 
@@ -1777,6 +1784,10 @@ is `null`, and each route matches its path by its own case setting (`case_sensit
 `guard.dart`, no `redirect.dart`, no widget. (A guard may well send the user somewhere else
 when they arrive; prefetching what they asked for is your queue's call, and never
 triggers it.)
+
+`AppRoutes.preload(ref, uri)` (since 0.5.0) is `ref.prefetchAll(dataAt(uri) ?? const [])`: one
+handle for everything the page at `uri` reads, a closed one when nothing fits or there is nothing
+to warm. It never navigates and runs no guard.
 
 `AppRoutes.match(uri)` is what `dataAt` is a shortcut for (`match(uri)?.data`, over the same
 matching, so it isn't written twice). It returns a `RouteMatch`, or `null` under the same rules:
@@ -2004,6 +2015,89 @@ input to replace with your own type. `fsp routes` tags the route `action` (also 
   route nor a section handle or has no `data.dart`, and a key of the data it invalidates that the
   action doesn't take;
 - helper names that collide.
+
+### Links: `RouteLink`
+
+`RouteLink` (since 0.5.0) is a link to a route: a real `<a href>` on the web, a plain widget
+everywhere else, and a click that goes through go_router either way.
+
+```dart
+RouteLink(
+  to: ProductRoute(id: p.id),     // any typed route; or `uri: Uri.parse('/products/2')`
+  preload: Preload.intent,        // none (default) | intent | visible
+  method: LinkMethod.go,          // go (default) | push | replace
+  builder: (context, follow) => ListTile(title: Text(p.name), onTap: follow),
+)
+```
+
+`builder` gets `follow`, which navigates; give it to the child's `onTap` or `onPressed`. The child
+is exposed to accessibility services as a link with its URL, and `const RouteLink(...)` works when
+the route and the builder are constant.
+
+- **On the web** it is built on `url_launcher`'s `Link`, which lays an invisible anchor over the
+  child. The browser shows the URL in its status bar, the context menu offers "open in a new
+  tab", and a middle click, or a click with Ctrl, Cmd, Shift or Alt, opens it in a new tab or
+  window. A plain click or a keyboard activation never reaches the anchor: `follow` calls
+  `GoRouter.go`, `push` or `replace` (the `method`), the page doesn't reload, and the anchor's own
+  navigation is cancelled. With `method: LinkMethod.push` a plain click pushes and a Ctrl-click
+  opens a tab. The `href` is the route's `location`, so it carries the mount prefix
+  (`AppRoutes.mount(at: '/shop')` gives `/shop/products/2`) and, with `locale: 'fr'`, the
+  localized spelling `locationFor('fr')` writes. Under a hash URL strategy the browser prefixes
+  it with `#`, as for any link.
+- **Elsewhere** there is no anchor; `follow` navigates the same way.
+- **`uri:`** is for a location you only have as a string (a notification payload, a CMS
+  field). It is a path of this app with the mount prefix, not an external URL. In a debug build a
+  `uri:` that no route matches throws when the link builds, saying so: it asks the router above
+  it (`GoRouter.configuration.findMatch`), or `RouteLinkScope.match` below. It can't see a segment
+  that doesn't parse (`/products/abc`), which only the generated matcher does.
+- **No `extra`.** An `extra` is not part of the URL, so a link has none. For a route that takes
+  one, call `route.go(context, extra: ...)` from the child's own `onTap`.
+
+`RouteLinkScope` sets the defaults for every link below it, once, and needs no generated code:
+
+```dart
+MaterialApp.router(
+  routerConfig: router,
+  builder: (context, child) => RouteLinkScope(
+    preload: Preload.intent,       // for links that don't say
+    match: AppRoutes.matchUrl,     // lets a `uri:` link preload, and checks it exactly
+    child: child!,
+  ),
+)
+```
+
+#### Preloading the data behind a link
+
+A link's `preload` starts the data of the page it points at before it is followed, so the page
+shows at once instead of `loading.dart`. It starts **every** provider the page reads, the
+data of each [section](#section-data) above it and its own, through `route.preload(ref)` (or
+`AppRoutes.preload(ref, uri)` for a `uri:` link, given the scope's `match`), and the link owns the
+`PrefetchHandle` it gets back.
+
+- `Preload.none` (the default): nothing; the page loads when it is reached.
+- `Preload.intent`: when the pointer enters the link, the link or something inside it takes
+  focus, or a pointer goes down on it (a touch, before the finger lifts). Held until the link is
+  disposed, so coming back to the list is still warm.
+- `Preload.visible`: when the link is on screen: inside the view and the viewport of every
+  scrollable around it, on a route or tab that is showing. Released when it scrolls out or a page
+  covers it, started again when it comes back, and closed when the link is disposed. It is
+  checked after a frame in which the link was built, its scrollable moved or its route went
+  under another, so a long list costs one comparison per scroll frame for the links it has
+  built, and no timer.
+
+What it never does: navigate, run `guard.dart` or `redirect.dart` (a guard runs when the link
+is followed; preloading is only the load), keep a failure (a provider that throws closes the
+handle, and no page is left with an error nobody asked for), or load twice for repeated
+hovering (a link holds one handle, and a provider that several links start is loaded once). A link
+that failed to preload tries again on its next intent, but not on every scroll tick of a visible
+one. Changing the link's route or `preload` releases what it held.
+
+The same call is there without a widget, for your own queue: `ProductRoute(id: 2).preload(ref)`
+and `AppRoutes.preload(ref, uri)` return one `PrefetchHandle`; close it when the lease ends.
+
+`RouteLink` needs the app's `ProviderScope` above it, like every fespalier page, even when it
+preloads nothing. It depends on `package:url_launcher` (only its `Link`; nothing is launched,
+though pub resolves url_launcher's platform packages).
 
 ### Route manifest and `meta.dart`
 

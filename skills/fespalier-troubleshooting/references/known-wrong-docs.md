@@ -29,7 +29,8 @@ widget test, and corrected in 0.4.0 (PR #18). On 0.3.0, trust the right-hand sid
 5. **`pumpRouter(tester, router, {overrides, container, settle})`.** It also has
    `retry:`, which **defaults to no retries**, unlike a real app. Pass
    `retry: ProviderContainer.defaultRetry` to test the app's policy.
-6. **`fsp routes` tags.** They include `redirect` (and, since 0.4.0, `sibling`).
+6. **`fsp routes` tags.** They include `redirect` (and, since 0.4.0, `sibling`, and since
+   0.5.0, `action`).
 7. **"Each view file exports one public widget class."** Other public classes may sit
    in the file when **exactly one extends a `*Widget`** class; `fsp` errors only when it
    can't choose (_expected one public widget class, found BPage, Other_). Make helpers

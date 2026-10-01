@@ -453,6 +453,7 @@ fn args(route: &str) -> NewArgs {
         function: true,
         not_found: false,
         data: false,
+        action: false,
         loading: false,
         error: false,
         layout: false,

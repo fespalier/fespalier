@@ -637,6 +637,7 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
         function: false,
         not_found: false,
         data,
+        action: false,
         loading: false,
         error: false,
         layout,

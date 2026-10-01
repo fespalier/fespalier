@@ -402,6 +402,8 @@ fn watch(project: &Path) -> Result<()> {
 }
 
 #[cfg(test)]
+mod action_tests;
+#[cfg(test)]
 mod bench;
 #[cfg(test)]
 mod case_tests;

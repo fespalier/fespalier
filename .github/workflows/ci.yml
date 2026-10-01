@@ -91,6 +91,13 @@ jobs:
           -print0 | xargs -0 dart format --output=none --set-exit-if-changed
       - run: flutter analyze
       - run: flutter test
+      # The generated files hide lints with `ignore_for_file`; the const ones are checked here,
+      # on a copy without it (a page built without `const` rebuilds on every navigation).
+      - name: Generated code is const-clean
+        if: startsWith(matrix.dir, 'examples/')
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: '"$WORKSPACE/scripts/check-const-lints.sh" .'
 
   scaffold:
     name: Scaffolded files compile

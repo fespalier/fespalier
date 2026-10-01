@@ -26,7 +26,7 @@ Page<void> layoutPage(
   };
   if (context.findAncestorWidgetOfExactType<CupertinoApp>() != null) {
     return CupertinoPage<void>(
-      key: state.pageKey,
+      key: ValueKey<String>(restorationId),
       name: name,
       arguments: arguments,
       restorationId: restorationId,
@@ -34,7 +34,7 @@ Page<void> layoutPage(
     );
   }
   return MaterialPage<void>(
-    key: state.pageKey,
+    key: ValueKey<String>(restorationId),
     name: name,
     arguments: arguments,
     restorationId: restorationId,

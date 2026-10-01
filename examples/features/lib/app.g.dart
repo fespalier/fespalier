@@ -173,15 +173,18 @@ import 'package:flutter/material.dart' show Note;
 /// The file tree under lib/app/, ready to mount.
 abstract final class AppRoutes {
   static String _base = '/';
-  static GlobalKey<NavigatorState> _rootNavigatorKey =
+  static GlobalKey<NavigatorState> _rootNavigatorKey = _newRootNavigatorKey();
+
+  static GlobalKey<NavigatorState> _newRootNavigatorKey() =>
       GlobalKey<NavigatorState>(debugLabel: 'root');
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
   static String get base => _base;
 
-  /// The root navigator's key: the one given to [router] or [mount], else one of
-  /// its own. Routes on the root navigator (`navigator.dart`, `present.dart`) name it
-  /// as their `parentNavigatorKey`; the app can use it to reach the root navigator.
+  /// The root navigator's key: the one given to the last [router] or [mount] call, else a
+  /// fresh one made by it (a call without a key never keeps an earlier call's). Routes on
+  /// the root navigator (`navigator.dart`, `present.dart`) name it as their
+  /// `parentNavigatorKey`; the app can use it to reach the root navigator.
   static GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;
 
   /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
@@ -206,12 +209,15 @@ abstract final class AppRoutes {
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
   /// GoRouter's own `navigatorKey` as [navigatorKey]: routes on the root navigator
   /// name it as their `parentNavigatorKey`, which must be an ancestor navigator's.
+  ///
+  /// [at] and the key are remembered ([base], [rootNavigatorKey]) until the next call, so a
+  /// test restores the defaults with a bare `AppRoutes.mount()`.
   static List<RouteBase> mount({
     String at = '/',
     GlobalKey<NavigatorState>? navigatorKey,
   }) {
     _base = at;
-    if (navigatorKey != null) _rootNavigatorKey = navigatorKey;
+    _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
     return [
       ShellRoute(
         pageBuilder: (context, state, child) => _i1.transition(
@@ -228,7 +234,7 @@ abstract final class AppRoutes {
             caseSensitive: false,
             pageBuilder: (context, state) => _i1.transition(
               state.pageKey,
-              _i0.HomePage(),
+              const _i0.HomePage(),
             ),
             routes: [
               ShellRoute(
@@ -242,7 +248,7 @@ abstract final class AppRoutes {
                     caseSensitive: false,
                     pageBuilder: (context, state) => _i4.transition(
                       state.pageKey,
-                      _i6.ProfilePage(),
+                      const _i6.ProfilePage(),
                     ),
                   ),
                   GoRoute(
@@ -250,7 +256,7 @@ abstract final class AppRoutes {
                     caseSensitive: false,
                     pageBuilder: (context, state) => _i4.transition(
                       state.pageKey,
-                      _i7.SettingsPage(),
+                      const _i7.SettingsPage(),
                     ),
                   ),
                 ],
@@ -260,18 +266,18 @@ abstract final class AppRoutes {
                 path: 'admin',
                 caseSensitive: false,
                 redirect: (context, state) => firstRedirect([
-                  () => _i8.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri),
+                  () => refGuard(context, 'g5@6', (ref) => _i8.guard(ref, uri: state.uri)),
                   () => _i10.guard(ProviderScope.containerOf(context, listen: false)),
                 ]),
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
-                  _i9.AdminPage(),
+                  const _i9.AdminPage(),
                 ),
               ),
               GoRoute(
                 path: 'inbox',
                 caseSensitive: false,
-                redirect: (context, state) => _i8.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri),
+                redirect: (context, state) => refGuard(context, 'g5@7', (ref) => _i8.guard(ref, uri: state.uri)),
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
                   buildWithParams(
@@ -327,7 +333,7 @@ abstract final class AppRoutes {
                           watch: (ref) => ref.watch(_data14(v.productId)),
                           refresh: (ref) => ref.invalidateSelected(_data14(v.productId)),
                           data: (d) => _i19.ProductDetailPage(product: d),
-                          loading: () => _i20.ProductLoading(),
+                          loading: () => const _i20.ProductLoading(),
                           error: (e, st, retry) => _i21.ProductError(error: e, retry: retry),
                           keepPrevious: true,
                         ),
@@ -346,7 +352,7 @@ abstract final class AppRoutes {
                               watch: (ref) => ref.watch(_data15((productId: v.productId, page: v.page))),
                               refresh: (ref) => ref.invalidateSelected(_data15((productId: v.productId, page: v.page))),
                               data: (d) => _i23.ReviewsPage(reviews: d),
-                              loading: () => _i20.ProductLoading(),
+                              loading: () => const _i20.ProductLoading(),
                               error: (e, st, retry) => _i21.ProductError(error: e, retry: retry),
                               keepPrevious: true,
                             ),
@@ -378,7 +384,7 @@ abstract final class AppRoutes {
                 caseSensitive: false,
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
-                  _i28.DocsIndexPage(),
+                  const _i28.DocsIndexPage(),
                 ),
                 routes: [
                   GoRoute(
@@ -386,7 +392,7 @@ abstract final class AppRoutes {
                     caseSensitive: false,
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
-                      _i30.NewDocPage(),
+                      const _i30.NewDocPage(),
                     ),
                   ),
                   GoRoute(
@@ -419,7 +425,7 @@ abstract final class AppRoutes {
                 caseSensitive: false,
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
-                  _i32.GuidePage(),
+                  const _i32.GuidePage(),
                 ),
               ),
               GoRoute(
@@ -427,7 +433,7 @@ abstract final class AppRoutes {
                 caseSensitive: false,
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
-                  _i33.HelpPage(),
+                  const _i33.HelpPage(),
                 ),
                 routes: [
                   GoRoute(
@@ -435,7 +441,7 @@ abstract final class AppRoutes {
                     caseSensitive: false,
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
-                      _i37.ContactPage(),
+                      const _i37.ContactPage(),
                     ),
                   ),
                   GoRoute(
@@ -491,7 +497,7 @@ abstract final class AppRoutes {
                 caseSensitive: false,
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
-                  _i51.PhotosPage(),
+                  const _i51.PhotosPage(),
                 ),
                 routes: [
                   GoRoute(
@@ -500,7 +506,7 @@ abstract final class AppRoutes {
                     caseSensitive: false,
                     pageBuilder: (context, state) => _i55.present(
                       state.pageKey,
-                      _i54.ShareSheet(),
+                      const _i54.ShareSheet(),
                     ),
                     routes: [
                       GoRoute(
@@ -509,7 +515,7 @@ abstract final class AppRoutes {
                         caseSensitive: false,
                         pageBuilder: (context, state) => _i1.transition(
                           state.pageKey,
-                          _i56.TermsPage(),
+                          const _i56.TermsPage(),
                         ),
                       ),
                     ],
@@ -519,7 +525,7 @@ abstract final class AppRoutes {
                     caseSensitive: false,
                     pageBuilder: (context, state) => _i58.transition(
                       state.pageKey,
-                      _i57.SortPage(),
+                      const _i57.SortPage(),
                     ),
                   ),
                   GoRoute(
@@ -527,7 +533,7 @@ abstract final class AppRoutes {
                     caseSensitive: false,
                     pageBuilder: (context, state) => _i60.transition(
                       state.pageKey,
-                      _i59.UploadPage(),
+                      const _i59.UploadPage(),
                     ),
                   ),
                   GoRoute(
@@ -583,7 +589,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       buildWithParams(
                         () => _params48(state),
-                        (v) => _i64.YearlyReportPage(),
+                        (v) => const _i64.YearlyReportPage(),
                         () => notFound(state.uri),
                       ),
                     ),
@@ -812,7 +818,7 @@ abstract final class AppRoutes {
                         watch: (ref) => ref.watch(_data57(v.teamId)),
                         refresh: (ref) => ref.invalidate(_data57(v.teamId)),
                         data: (d) => _i79.TeamLayout(team: d, child: child),
-                        loading: () => _i77.TeamLoading(),
+                        loading: () => const _i77.TeamLoading(),
                         error: (e, st, retry) => _i78.TeamError(error: e, retry: retry),
                         keepPrevious: true,
                       ),
@@ -849,7 +855,7 @@ abstract final class AppRoutes {
                                 watch: (ref) => ref.watch(_data57(v.teamId)),
                                 data: (s57) => _i84.MemberPage(label: d, team: s57),
                               ),
-                              loading: () => _i77.TeamLoading(),
+                              loading: () => const _i77.TeamLoading(),
                               error: (e, st, retry) => _i78.TeamError(error: e, retry: retry),
                               keepPrevious: true,
                             ),
@@ -968,43 +974,43 @@ abstract final class AppRoutes {
 
   /// Every route as [matchUrl] tries it, most specific first.
   static final List<RouteMatcher> _matchers = [
-    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), {}, []), caseSensitive: false),
-    RouteMatcher(['profile'], (s) => UrlMatch(s.uri, const ProfileRoute(), {}, []), caseSensitive: false),
-    RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), {}, []), caseSensitive: false),
-    RouteMatcher(['admin'], (s) => UrlMatch(s.uri, const AdminRoute(), {}, []), caseSensitive: false),
+    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const []), caseSensitive: false),
+    RouteMatcher(['profile'], (s) => UrlMatch(s.uri, const ProfileRoute(), const {}, const []), caseSensitive: false),
+    RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), const {}, const []), caseSensitive: false),
+    RouteMatcher(['admin'], (s) => UrlMatch(s.uri, const AdminRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['inbox'], (s) {
       final p = _params7(s);
-      return UrlMatch(s.uri, InboxRoute(folder: p.folder), {'folder': p.folder}, []);
+      return UrlMatch(s.uri, InboxRoute(folder: p.folder), {'folder': p.folder}, const []);
     }, caseSensitive: false),
-    RouteMatcher(['free'], (s) => UrlMatch(s.uri, const FreeRoute(), {}, []), caseSensitive: false),
+    RouteMatcher(['free'], (s) => UrlMatch(s.uri, const FreeRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['pro'], (s) {
       final p = _params10(s);
-      return UrlMatch(s.uri, ProPlanRoute(coupon: p.coupon), {'coupon': p.coupon}, []);
+      return UrlMatch(s.uri, ProPlanRoute(coupon: p.coupon), {'coupon': p.coupon}, const []);
     }, caseSensitive: false),
-    RouteMatcher(['catalog'], (s) => UrlMatch(s.uri, const CatalogRoute(), {}, [_data13]), caseSensitive: false),
-    RouteMatcher(['counter'], (s) => UrlMatch(s.uri, const CounterRoute(), {}, [_i26.data]), caseSensitive: false),
-    RouteMatcher(['docs'], (s) => UrlMatch(s.uri, const DocsIndexRoute(), {}, []), caseSensitive: false),
-    RouteMatcher(['guide|führer|руководство'], (s) => UrlMatch(s.uri, const GuideRoute(), {}, []), caseSensitive: false),
-    RouteMatcher(['help|aide|hilfe'], (s) => UrlMatch(s.uri, const HelpRoute(), {}, []), caseSensitive: false),
+    RouteMatcher(['catalog'], (s) => UrlMatch(s.uri, const CatalogRoute(), const {}, [_data13]), caseSensitive: false),
+    RouteMatcher(['counter'], (s) => UrlMatch(s.uri, const CounterRoute(), const {}, [_i26.data]), caseSensitive: false),
+    RouteMatcher(['docs'], (s) => UrlMatch(s.uri, const DocsIndexRoute(), const {}, const []), caseSensitive: false),
+    RouteMatcher(['guide|führer|руководство'], (s) => UrlMatch(s.uri, const GuideRoute(), const {}, const []), caseSensitive: false),
+    RouteMatcher(['help|aide|hilfe'], (s) => UrlMatch(s.uri, const HelpRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['login'], (s) {
       final p = _params29(s);
-      return UrlMatch(s.uri, LoginRoute(from: p.from), {'from': p.from}, []);
+      return UrlMatch(s.uri, LoginRoute(from: p.from), {'from': p.from}, const []);
     }, caseSensitive: false),
     RouteMatcher(['old-search'], (s) {
       final p = _params32(s);
-      return UrlMatch(s.uri, OldSearchRoute(q: p.q), {'q': p.q}, []);
+      return UrlMatch(s.uri, OldSearchRoute(q: p.q), {'q': p.q}, const []);
     }, caseSensitive: false),
-    RouteMatcher(['photos'], (s) => UrlMatch(s.uri, const PhotosRoute(), {}, []), caseSensitive: false),
+    RouteMatcher(['photos'], (s) => UrlMatch(s.uri, const PhotosRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['search'], (s) {
       final p = _params49(s);
       return UrlMatch(s.uri, SearchRoute(q: p.q, page: p.page, tags: p.tags), {'q': p.q, 'page': p.page, 'tags': p.tags}, [_data49((q: p.q, page: p.page, tags: QueryList(p.tags)))]);
     }, caseSensitive: false),
-    RouteMatcher(['ticks'], (s) => UrlMatch(s.uri, const TicksRoute(), {}, [_data61]), caseSensitive: false),
-    RouteMatcher(['docs', 'new'], (s) => UrlMatch(s.uri, const NewDocRoute(), {}, []), caseSensitive: false),
-    RouteMatcher(['help|aide|hilfe', 'contact|kontakt'], (s) => UrlMatch(s.uri, const ContactRoute(), {}, []), caseSensitive: false),
-    RouteMatcher(['photos', 'share'], (s) => UrlMatch(s.uri, const ShareSheetRoute(), {}, []), caseSensitive: false),
-    RouteMatcher(['photos', 'sort'], (s) => UrlMatch(s.uri, const SortRoute(), {}, []), caseSensitive: false),
-    RouteMatcher(['photos', 'upload'], (s) => UrlMatch(s.uri, const UploadRoute(), {}, []), caseSensitive: false),
+    RouteMatcher(['ticks'], (s) => UrlMatch(s.uri, const TicksRoute(), const {}, [_data61]), caseSensitive: false),
+    RouteMatcher(['docs', 'new'], (s) => UrlMatch(s.uri, const NewDocRoute(), const {}, const []), caseSensitive: false),
+    RouteMatcher(['help|aide|hilfe', 'contact|kontakt'], (s) => UrlMatch(s.uri, const ContactRoute(), const {}, const []), caseSensitive: false),
+    RouteMatcher(['photos', 'share'], (s) => UrlMatch(s.uri, const ShareSheetRoute(), const {}, const []), caseSensitive: false),
+    RouteMatcher(['photos', 'sort'], (s) => UrlMatch(s.uri, const SortRoute(), const {}, const []), caseSensitive: false),
+    RouteMatcher(['photos', 'upload'], (s) => UrlMatch(s.uri, const UploadRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['reports', 'monthly'], (s) {
       final p = _params47(s);
       return UrlMatch(s.uri, MonthlyReportRoute(period: p.period), {'period': p.period}, [_data46(p.period)]);
@@ -1013,30 +1019,30 @@ abstract final class AppRoutes {
       final p = _params48(s);
       return UrlMatch(s.uri, YearlyReportRoute(period: p.period), {'period': p.period}, [_data46(p.period)]);
     }, caseSensitive: false),
-    RouteMatcher(['photos', 'share', 'terms'], (s) => UrlMatch(s.uri, const TermsRoute(), {}, []), caseSensitive: false),
+    RouteMatcher(['photos', 'share', 'terms'], (s) => UrlMatch(s.uri, const TermsRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['catalog', ':productId'], (s) {
       final p = _params14(s);
       return UrlMatch(s.uri, ProductDetailRoute(productId: p.productId), {'productId': p.productId}, [_data14(p.productId)]);
     }, caseSensitive: false),
     RouteMatcher(['help|aide|hilfe', ':topic'], (s) {
       final p = _params26(s);
-      return UrlMatch(s.uri, HelpTopicRoute(topic: p.topic), {'topic': p.topic}, []);
+      return UrlMatch(s.uri, HelpTopicRoute(topic: p.topic), {'topic': p.topic}, const []);
     }, caseSensitive: false),
     RouteMatcher(['notes', ':id'], (s) {
       final p = _params31(s);
-      return UrlMatch(s.uri, NoteRoute(id: p.id), {'id': p.id}, []);
+      return UrlMatch(s.uri, NoteRoute(id: p.id), {'id': p.id}, const []);
     }, caseSensitive: false),
     RouteMatcher(['old-shops', ':shop'], (s) {
       final p = _params34(s);
-      return UrlMatch(s.uri, OldShopsShopRoute(shop: p.shop), {'shop': p.shop}, []);
+      return UrlMatch(s.uri, OldShopsShopRoute(shop: p.shop), {'shop': p.shop}, const []);
     }, caseSensitive: false),
     RouteMatcher(['orders', ':id'], (s) {
       final p = _params36(s);
-      return UrlMatch(s.uri, OrderRoute(id: p.id), {'id': p.id}, []);
+      return UrlMatch(s.uri, OrderRoute(id: p.id), {'id': p.id}, const []);
     }, caseSensitive: false),
     RouteMatcher(['photos', ':id'], (s) {
       final p = _params41(s);
-      return UrlMatch(s.uri, PhotoRoute(id: p.id), {'id': p.id}, []);
+      return UrlMatch(s.uri, PhotoRoute(id: p.id), {'id': p.id}, const []);
     }, caseSensitive: false),
     RouteMatcher(['shop|boutique|laden', ':category'], (s) {
       final p = _params51(s);
@@ -1044,7 +1050,7 @@ abstract final class AppRoutes {
     }, caseSensitive: false),
     RouteMatcher(['shops', ':shop'], (s) {
       final p = _params53(s);
-      return UrlMatch(s.uri, ShopRoute(shop: p.shop), {'shop': p.shop}, []);
+      return UrlMatch(s.uri, ShopRoute(shop: p.shop), {'shop': p.shop}, const []);
     }, caseSensitive: false),
     RouteMatcher(['catalog', ':productId', 'reviews'], (s) {
       final p = _params15(s);
@@ -1052,7 +1058,7 @@ abstract final class AppRoutes {
     }, caseSensitive: false),
     RouteMatcher(['help|aide|hilfe', ':topic', 'examples|exemples|beispiele'], (s) {
       final p = _params27(s);
-      return UrlMatch(s.uri, HelpExamplesRoute(topic: p.topic), {'topic': p.topic}, []);
+      return UrlMatch(s.uri, HelpExamplesRoute(topic: p.topic), {'topic': p.topic}, const []);
     }, caseSensitive: false),
     RouteMatcher(['orders', ':id', 'refund'], (s) {
       final p = _params37(s);
@@ -1068,11 +1074,11 @@ abstract final class AppRoutes {
     }, caseSensitive: false),
     RouteMatcher(['orders', ':id', 'refund', 'confirm'], (s) {
       final p = _params38(s);
-      return UrlMatch(s.uri, ConfirmRefundRoute(id: p.id), {'id': p.id}, []);
+      return UrlMatch(s.uri, ConfirmRefundRoute(id: p.id), {'id': p.id}, const []);
     }, caseSensitive: false),
     RouteMatcher(['orders', ':id', 'refund', 'receipt'], (s) {
       final p = _params39(s);
-      return UrlMatch(s.uri, ReceiptRoute(id: p.id), {'id': p.id}, []);
+      return UrlMatch(s.uri, ReceiptRoute(id: p.id), {'id': p.id}, const []);
     }, caseSensitive: false),
     RouteMatcher(['shops', ':shop', 'items', ':id'], (s) {
       final p = _params55(s);
@@ -1092,11 +1098,11 @@ abstract final class AppRoutes {
     }, caseSensitive: false),
     RouteMatcher(['docs', '*rest'], (s) {
       final p = _params20(s);
-      return UrlMatch(s.uri, DocsRoute(rest: p.rest), {'rest': p.rest}, []);
+      return UrlMatch(s.uri, DocsRoute(rest: p.rest), {'rest': p.rest}, const []);
     }, caseSensitive: false),
     RouteMatcher(['files', '*path?'], (s) {
       final p = _params23(s);
-      return UrlMatch(s.uri, FilesRoute(path: p.path), {'path': p.path}, []);
+      return UrlMatch(s.uri, FilesRoute(path: p.path), {'path': p.path}, const []);
     }),
     RouteMatcher(['wiki', '*article'], (s) {
       final p = _params63(s);
@@ -1104,7 +1110,7 @@ abstract final class AppRoutes {
     }, caseSensitive: false),
     RouteMatcher([':slug'], (s) {
       final p = _params1(s);
-      return UrlMatch(s.uri, SlugRoute(slug: p.slug), {'slug': p.slug}, []);
+      return UrlMatch(s.uri, SlugRoute(slug: p.slug), {'slug': p.slug}, const []);
     }, caseSensitive: false),
   ];
 

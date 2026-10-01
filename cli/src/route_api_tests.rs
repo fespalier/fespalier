@@ -218,7 +218,7 @@ fn a_layouts_data_dart_is_the_data_of_its_section() {
     );
     // A page that doesn't ask for it isn't wrapped, and the section has no route class of its own
     // (its typed handle is `ShopSection`, see section_tests.rs).
-    has(&c, &["_i3.PlainPage()"]);
+    has(&c, &["const _i3.PlainPage()"]);
     assert_eq!(c.matches("SectionView(").count(), 1, "{c}");
     lacks(&c, &["class ShopRoute"]);
 }
@@ -368,7 +368,7 @@ fn section_loading_and_error_views_apply() {
     has(
         &c,
         &[
-            "loading: () => _i1.ShopLoading(),",
+            "loading: () => const _i1.ShopLoading(),",
             "error: (e, st, retry) => _i2.ShopError(error: e, retry: retry),",
         ],
     );

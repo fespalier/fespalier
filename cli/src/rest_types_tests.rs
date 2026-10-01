@@ -316,6 +316,48 @@ fn a_guard_takes_the_typed_list_too() {
 }
 
 #[test]
+fn a_ref_guard_takes_the_typed_list_too() {
+    let guard = "GuardResult guard(Ref ref, {required List<int> rest}) => null;";
+    let c = code(&[
+        ("docs/$$rest/page.dart", &page("List<int>")),
+        ("docs/$$rest/guard.dart", guard),
+    ]);
+    has(
+        &c,
+        &[
+            "guardWithParams(",
+            "(rest: Segment.asIntRest(s, 'rest'))",
+            "(v) => refGuard(context, 'g2@2', (ref) => _i1.guard(ref, rest: v.rest))",
+        ],
+    );
+    // The same rules as the older form: a guard above the catch-all can't ask for it.
+    let above = "GuardResult guard(Ref ref, {required List<int> rest}) => null;";
+    let e = errors(&[
+        ("docs/guard.dart", above),
+        ("docs/$$rest/page.dart", &page("List<int>")),
+    ]);
+    assert!(
+        e.iter()
+            .any(|d| d.contains("`rest` isn't a segment of this path")),
+        "{e:?}"
+    );
+}
+
+#[test]
+fn a_ref_redirect_takes_the_typed_list_too() {
+    let r = "String redirect(Ref ref, {required List<int> rest}) => '/';";
+    let c = code(&[("old/$$rest/redirect.dart", r)]);
+    has(
+        &c,
+        &[
+            "(rest: Segment.asIntRest(s, 'rest'))",
+            "(v) => refRedirect(context, (ref) => _i0.redirect(ref, rest: v.rest))",
+            "builder: (context, state) => notFound(state.uri),",
+        ],
+    );
+}
+
+#[test]
 fn a_redirect_shows_not_found_for_a_part_that_does_not_parse() {
     let r = "String redirect({required List<int> rest}) => '/';";
     let c = code(&[("old/$$rest/redirect.dart", r)]);

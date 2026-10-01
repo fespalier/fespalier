@@ -29,7 +29,7 @@ before changing how it behaves.
 | `just test` | The generator's tests in `cli/` (unit, CLI, version checks) |
 | `just deny` | `cargo deny check` (licences, advisories, sources; `cli/deny.toml`) |
 | `just check-examples` | `fsp check` on every example |
-| `just flutter` | In the package and every example: `flutter pub get`, `dart format --set-exit-if-changed`, `flutter analyze`, `flutter test` |
+| `just flutter` | In the package and every example: `flutter pub get`, `dart format --set-exit-if-changed`, `flutter analyze`, `flutter test`; in each example also `scripts/check-const-lints.sh` (the const lints on a copy of the generated files, which `ignore_for_file` hides) |
 | `just packaging` | The Python tests for Homebrew/Scoop rendering, checksum pinning and release staging |
 | `just skills` | The skills' coverage gate: every README section, file kind, config key and `fsp` command is claimed by a skill, every claim still exists, and frontmatter, stamps and links are valid |
 | `just skill-samples [file.md ...]` | Builds the skills' code samples in a scratch app with this checkout's `fsp` (`gen`, `analyze`, `test`). Slow; not in `just ci` or CI, so run it when you touch a sample |

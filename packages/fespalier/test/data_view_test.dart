@@ -180,6 +180,43 @@ void main() {
       },
     );
 
+    testWidgets('a retry called after the view is gone does nothing', (
+      tester,
+    ) async {
+      final flaky = Flaky(100);
+      final p = FutureProvider.autoDispose(
+        (ref) => flaky(),
+        retry: (_, _) => null,
+      );
+      late VoidCallback retry;
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: DataView<int>(
+              watch: (ref) => ref.watch(p),
+              refresh: (ref) => ref.invalidate(p),
+              data: (d) => Text('data $d'),
+              loading: () => const Text('loading'),
+              error: (e, st, r) {
+                retry = r;
+                return Text('error $e');
+              },
+            ),
+          ),
+        ),
+      );
+      await ms(tester, 20);
+      expect(find.text('error Exception: boom 1'), findsOneWidget);
+      retry(); // while it is shown: loads again
+      await ms(tester, 20);
+      expect(flaky.runs, 2);
+
+      await tester.pumpWidget(const SizedBox());
+      retry(); // after: must not throw (a disposed ref can't be used)
+      await ms(tester, 20);
+      expect(flaky.runs, 2);
+    });
+
     testWidgets('a provider with no retries shows error at once and stays', (
       tester,
     ) async {

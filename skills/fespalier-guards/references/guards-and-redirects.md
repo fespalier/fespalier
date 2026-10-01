@@ -1,6 +1,7 @@
 # `guard.dart`, `redirect.dart` and `returnTo`
 
-As of v0.4.0. The samples use a tiny session flag; `auth-patterns.md` builds the
+As of 0.5.0 (a guard that takes a `Ref` since then; 0.4.1 and earlier take a
+`ProviderContainer`). The samples use a tiny session flag; `auth-patterns.md` builds the
 real flow on it.
 
 ```dart
@@ -23,9 +24,10 @@ final isAdmin = NotifierProvider<Flag, bool>(Flag.new);
 
 ## `guard.dart`
 
-`guard.dart` exports `GuardResult guard(ProviderContainer c, {...})`. It returns a
+`guard.dart` exports `GuardResult guard(Ref ref, {...})`. It returns a
 **location to redirect to**, or `null` to let the navigation through, and may be
-async. It guards **every route at and below its folder**, and the folder needs no
+async (but return synchronously when you can: any `Future`, even `Future.value(...)`,
+costs a frame and a blank first frame on a cold deep link). It guards **every route at and below its folder**, and the folder needs no
 `page.dart`: put one in a `(group)` or at the root to cover a whole section of
 the app.
 
@@ -36,8 +38,8 @@ import 'package:my_app/app.g.dart';
 import 'package:my_app/auth.dart';
 
 // Guards /inbox, /admin and everything else in the group.
-GuardResult guard(ProviderContainer c, {required Uri uri}) =>
-    c.read(session) ? null : LoginRoute(from: uri.toString()).location;
+GuardResult guard(Ref ref, {required Uri uri}) =>
+    ref.watch(session) ? null : LoginRoute(from: uri.toString()).location;
 ```
 
 ```dart
@@ -62,8 +64,8 @@ import 'package:my_app/auth.dart';
 
 // A folder's own guard runs after the ones above it: only signed-in
 // members get this far.
-GuardResult guard(ProviderContainer c) =>
-    c.read(isAdmin) ? null : const InboxRoute().location;
+GuardResult guard(Ref ref) =>
+    ref.watch(isAdmin) ? null : const InboxRoute().location;
 ```
 
 ```dart
@@ -102,8 +104,9 @@ class LoginPage extends ConsumerWidget {
 }
 ```
 
-- **The signature.** The first parameter is the `ProviderContainer` (positional),
-  then **named** parameters: `uri` (the requested location, a `Uri`, query
+- **The signature.** The first parameter is the `Ref ref` (positional; `ProviderContainer c`,
+  the form before 0.5.0, is still accepted and generates the code it always did), then
+  **named** parameters: `uri` (the requested location, a `Uri`, query
   included), `extra` (see `fespalier-routing`), the **segments** of the guard's own
   folder and the ones above it (`{required String shop}`), and **query
   parameters** (optional and nullable, `String? ref`). A guard above `$id` cannot
@@ -111,8 +114,28 @@ class LoginPage extends ConsumerWidget {
   everywhere else. The return type may be `GuardResult` (`FutureOr<String?>`),
   `FutureOr<String?>`, `Future<String?>` or `String?`; anything else is
   `guard() must return GuardResult (a location to redirect to, or null)`.
-- **A guard reads a `ProviderContainer`, not a `WidgetRef`**: `c.read(provider)`.
-  There is no `ref.watch`; a guard runs when a navigation reaches its routes.
+- **A guard takes a `Ref`, not a `WidgetRef`.** A `WidgetRef` is
+  ``a guard runs outside the widget tree: take `Ref` ``. It runs when a navigation
+  reaches its routes, **and again when what it `ref.watch`es changes and its answer
+  is now a different one** (since 0.5.0; the `ProviderContainer` form never does).
+  The router is asked to run the redirects again, so a guard that watches the session
+  moves you to login on sign-out, and back on sign-in, on any page it covers. Rules:
+  - **Each navigation evaluates the guard anew**, in a fresh `autoDispose` provider:
+    `ref.read` is never stale, and `extra`, lists and `Uri`s need no key. What the guard
+    watches is shared with the rest of the app, so a data provider is fetched once.
+  - **A guard that answers synchronously stays synchronous** (no frame, no blank first
+    frame at boot); a `Future`, even a completed one, takes a frame. An async guard
+    watches through `.future`: `await ref.watch(currentUser.future) == null`.
+  - **One subscription per guard and route**, kept while the committed location runs
+    it, dropped when a navigation commits without it, and closed with the app. A guarded
+    page **under a pushed page** does not react until you pop back to it (the push
+    dropped its subscription; popping runs the guard again).
+  - **A change that does not change the answer does nothing.** A **sign-out runs the
+    guard twice**: Riverpod recomputes it, then the router asks again.
+  - **Don't `ref.keepAlive()`** in a guard: it keeps one provider alive per navigation.
+  - **A guard that throws never refreshes the router**: on a navigation the error reaches
+    go_router as any redirect's does; when a later run throws, the page you are on stays
+    until the next navigation. The guard's provider does not retry.
 - **Order.** Guards run **outermost first, and the first to return a location
   wins.** A folder with a page and its own guard keeps its guard for that page and
   everything nested in it; guards above it run first. A guard that returns a
@@ -120,7 +143,9 @@ class LoginPage extends ConsumerWidget {
 - **What gets generated.** Each page's `GoRoute` gets a `redirect` that calls, in
   order, the guards of the page-less folders above it and then its own (chained
   with `firstRedirect`, which stays synchronous until a guard returns a
-  `Future`). Nested pages go through their parent's `redirect`, so **no guard runs
+  `Future`). A `Ref` guard is called as
+  `refGuard(context, 'g8@3', (ref) => _i8.guard(ref, uri: state.uri))`: the string is a
+  constant naming that guard on that route. Nested pages go through their parent's `redirect`, so **no guard runs
   twice**. There is **no `redirect` on a `ShellRoute` or `StatefulShellRoute`**:
   go_router runs a matched route's redirect for deep links and for navigation
   inside a shell, tabs included, so the page routes are enough.
@@ -163,9 +188,11 @@ import 'package:my_app/app.g.dart';
 String redirect({String? folder}) => InboxRoute(folder: folder).location;
 ```
 
-- It takes the same parameters as a guard, except that **`ProviderContainer c` is
-  optional** (put it first if you need providers). Segments are typed like
-  anywhere else, so `/old-products/abc` shows not-found.
+- It takes the same parameters as a guard, except that **the first one is optional**:
+  `Ref ref` (since 0.5.0) or the older `ProviderContainer c`, if you need providers. It
+  runs once per navigation and does not watch: a redirect route never stays on screen.
+  A `WidgetRef` is ``a redirect runs outside the widget tree: take `Ref` ``. Segments
+  are typed like anywhere else, so `/old-products/abc` shows not-found.
 - It gets a **typed route named after its path** (`OldInboxRoute()`,
   `OldProductsIdRoute(id: 3)`), so links to the old URL stay typed; query
   parameters it asks for are its fields.

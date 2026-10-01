@@ -129,10 +129,10 @@ fn every_route_gets_a_matcher_most_specific_first() {
         &[
             "static UrlMatch? matchUrl(Uri uri) => matchRoutes(uri, base, _matchers);",
             "static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;",
-            "RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), {}, [])),",
+            "RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const [])),",
             "final p = _params",
-            "ItemRoute(id: p.id), {'id': p.id}, [])",
-            "DocsRoute(rest: p.rest), {'rest': p.rest}, [])",
+            "ItemRoute(id: p.id), {'id': p.id}, const [])",
+            "DocsRoute(rest: p.rest), {'rest': p.rest}, const [])",
             "static RouteMatch? match(Uri uri) => AppManifest.match(uri);",
             "static RouteMatch? match(Uri uri) {\n    final m = AppRoutes.matchUrl(uri);\n    return m == null ? null : RouteMatch(byType[m.type]!, m);\n  }",
         ],
@@ -169,7 +169,7 @@ fn a_matcher_lists_the_data_the_route_watches() {
             // A list is the QueryList the provider is keyed by, as in the page.
             "[_data3(QueryList(p.tags))])",
             // No data: an empty list, which is not null.
-            "RouteMatcher(['plain'], (s) => UrlMatch(s.uri, const PlainRoute(), {}, [])),",
+            "RouteMatcher(['plain'], (s) => UrlMatch(s.uri, const PlainRoute(), const {}, const [])),",
         ],
     );
 }
@@ -199,7 +199,7 @@ fn data_that_selects_a_provider_and_provider_files_are_listed_as_they_are() {
         &c,
         &[
             "[_data3(p.productId)])",
-            "const CounterRoute(), {}, [_i0.data])",
+            "const CounterRoute(), const {}, [_i0.data])",
         ],
     );
 }
@@ -268,9 +268,9 @@ fn each_matcher_carries_its_own_case_flag() {
     has(
         &c,
         &[
-            "RouteMatcher(['exact'], (s) => UrlMatch(s.uri, const ExactRoute(), {}, [])),",
-            "RouteMatcher(['exact', 'deep'], (s) => UrlMatch(s.uri, const DeepRoute(), {}, [])),",
-            "RouteMatcher(['loose'], (s) => UrlMatch(s.uri, const LooseRoute(), {}, []), caseSensitive: false),",
+            "RouteMatcher(['exact'], (s) => UrlMatch(s.uri, const ExactRoute(), const {}, const [])),",
+            "RouteMatcher(['exact', 'deep'], (s) => UrlMatch(s.uri, const DeepRoute(), const {}, const [])),",
+            "RouteMatcher(['loose'], (s) => UrlMatch(s.uri, const LooseRoute(), const {}, const []), caseSensitive: false),",
             // The root folder's setting is the mount point's.
             "matchRoutes(uri, base, _matchers, caseSensitive: false);",
         ],
@@ -287,7 +287,7 @@ fn each_matcher_carries_its_own_case_flag() {
     has(
         &c,
         &[
-            "RouteMatcher(['ci'], (s) => UrlMatch(s.uri, const CiRoute(), {}, []), caseSensitive: false),",
+            "RouteMatcher(['ci'], (s) => UrlMatch(s.uri, const CiRoute(), const {}, const []), caseSensitive: false),",
             "matchRoutes(uri, base, _matchers);",
         ],
     );

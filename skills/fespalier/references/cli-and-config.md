@@ -15,7 +15,7 @@ above; pass --project`).
 | `fsp check [--json]`          | The same checks; **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                             |
 | `fsp watch`                   | `gen` once, then again on every relevant change; keep it next to `flutter run`                                                                                               |
 | `fsp routes [--json]`         | Prints the route table (errors: `N error(s); no route table`)                                                                                                                |
-| `fsp links [--check]`         | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)         |
+| `fsp links [--check]`         | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)      |
 | `fsp routes --graph [FORMAT]` | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default) or a Graphviz `digraph` (`dot`), since 0.5.0                                                      |
 | `fsp new <path> [flags]`      | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                   |
 

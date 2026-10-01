@@ -380,5 +380,4 @@ effect on routing, `fsp gen` or the manifest.
   no way to exclude a path, so use a more specific tree (or `linkable = false` on the `$slug` folder
   too).
 - If nothing is linkable, `fsp links` fails with ``no route can be linked: the app has no page, or
-  every folder says `const linkable = false;` ``.
-
+every folder says `const linkable = false;` ``.

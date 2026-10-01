@@ -120,8 +120,8 @@ void main() {
   and catch-alls read as they do for the page. It **throws** a `StateError`
   naming the location when that is another route, and go_router's `GoError`
   outside any route; `maybeOf` returns `null` in both cases.
-- **Which location:** `GoRouterState.of(context)`'s, so the route *around the
-  widget*, not the page on top. A page reads the part of the URL its own route
+- **Which location:** `GoRouterState.of(context)`'s, so the route _around the
+  widget_, not the page on top. A page reads the part of the URL its own route
   matched, with the URL's query; a page under a pushed one, and a tab that is
   built but not shown (`preload`), read their own; a layout (shell, tab layout)
   reads the whole location. The widget rebuilds when its route's state changes.
@@ -134,7 +134,7 @@ void main() {
 - It works by a **getter of a function type** with a private `const` sentinel
   behind it (see the README's Design notes): nothing is `dynamic`, constructors
   stay `const`. In `app.g.dart` it looks like `SearchRoute Function({String? q,
-  int? page}) get copyWith => _copyWith;`; never edit it.
+int? page}) get copyWith => _copyWith;`; never edit it.
 - **Use `go` for state in the URL.** `replace` is go_router's: it swaps the top
   page of the stack, but go_router does not put an imperative `replace` or `push`
   in the address bar on the web (`GoRouter.optionURLReflectsImperativeAPIs`).

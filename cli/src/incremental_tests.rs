@@ -397,6 +397,57 @@ fn route_dart_extra_codec_and_extra_on_layouts_follow() {
     );
 }
 
+#[test]
+fn a_route_that_leaves_the_page_above_follows() {
+    let mut sim = Sim::new(&app(30), NO_CONFIG, 12);
+    sim.same("the first run");
+    let out = |r: &Report| r.outputs[0].clone().unwrap_or_default();
+    sim.write("orders/page.dart", &page("OrdersPage", ""));
+    sim.write("orders/refund/page.dart", &page("RefundPage", ""));
+    let nested = sim.same("two pages, one below the other");
+    assert!(
+        nested.ok && !out(&nested).contains("(sibling)"),
+        "{nested:?}"
+    );
+    // Beside `orders` instead of in it, and nested again when the setting goes.
+    sim.write("orders/refund/route.dart", "const nest = false;");
+    let r = sim.same("a nest = false");
+    assert!(r.ok && r.wrote && out(&r).contains("(sibling)"), "{r:?}");
+    sim.write("orders/refund/route.dart", "const nest = true;");
+    let r = sim.same("a nest = true");
+    assert!(r.ok && !out(&r).contains("(sibling)"), "{r:?}");
+    sim.write("orders/refund/route.dart", "const nest = maybe;");
+    assert!(!sim.same("a nest that isn't a literal").ok);
+    // What a leaving route would escape: the layout of the page it leaves.
+    sim.write("orders/refund/route.dart", "const nest = false;");
+    assert!(sim.same("a nest = false again").ok);
+    sim.write("orders/layout.dart", &layout("OrdersLayout", ""));
+    let r = sim.same("a layout in the page's folder");
+    assert!(
+        !r.ok
+            && r.diags
+                .iter()
+                .any(|d| d.contains("escape that layout's shell")),
+        "{r:?}"
+    );
+    sim.remove("orders/layout.dart");
+    assert!(sim.same("taking it away").ok);
+    // A guard of the page it leaves goes with the route.
+    sim.write(
+        "orders/guard.dart",
+        "GuardResult guard(ProviderContainer c) => null;",
+    );
+    let r = sim.same("a guard on the page");
+    assert!(r.ok && out(&r).contains("orders/guard.dart"), "{r:?}");
+    // A page that is no longer there is nothing to leave.
+    sim.remove("orders/page.dart");
+    sim.remove("orders/guard.dart");
+    let r = sim.same("removing the page above");
+    assert!(!r.ok, "{r:?}");
+    sim.remove("orders/refund/route.dart");
+    assert!(sim.same("removing the route.dart").ok);
+}
+
 const CATEGORY: &str = "enum Category { shoes, hats }\n";
 
 /// Two routes with an enum segment: one imports the enum's file, one a file that exports it.
@@ -740,6 +791,32 @@ impl Sim {
             }
             13 => {
                 // A folder's `route.dart`: add one (either way) or take it away.
+                // `nest = false` takes a route out of the page above it: it works for a folder
+                // with a page below another that has one (unless a layout is in between), and is
+                // an error anywhere else, so it is aimed at the folders that have a page above.
+                let has_page = |dir: &str| {
+                    files.contains_key(&if dir.is_empty() {
+                        "page.dart".to_string()
+                    } else {
+                        format!("{dir}/page.dart")
+                    })
+                };
+                let below_a_page = |d: &str| {
+                    let mut up = d;
+                    let mut above = has_page("");
+                    while let Some((p, _)) = up.rsplit_once('/') {
+                        up = p;
+                        above |= has_page(up);
+                    }
+                    has_page(d) && above
+                };
+                let leavers: Vec<&String> = dirs.iter().filter(|d| below_a_page(d)).collect();
+                if !leavers.is_empty() && self.rng.below(3) == 0 {
+                    let d = (*self.rng.pick(&leavers)).clone();
+                    let nest = self.rng.below(5) == 0;
+                    self.write(&format!("{d}/route.dart"), &format!("const nest = {nest};"));
+                    return format!("adding {d}/route.dart (nest = {nest})");
+                }
                 let d = self.rng.pick(&dirs).clone();
                 let f = format!("{d}/route.dart");
                 if files.contains_key(&f) {

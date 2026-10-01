@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://shop.example.com/</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/profile</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/settings</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/admin</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/inbox</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/free</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/pro</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/catalog</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/counter</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/docs</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/docs/new</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/guide</loc>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://shop.example.com/guide" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/f%C3%BChrer" />
+    <xhtml:link rel="alternate" hreflang="ru" href="https://shop.example.com/%D1%80%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE" />
+  </url>
+  <url>
+    <loc>https://shop.example.com/f%C3%BChrer</loc>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://shop.example.com/guide" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/f%C3%BChrer" />
+    <xhtml:link rel="alternate" hreflang="ru" href="https://shop.example.com/%D1%80%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE" />
+  </url>
+  <url>
+    <loc>https://shop.example.com/%D1%80%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE</loc>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://shop.example.com/guide" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/f%C3%BChrer" />
+    <xhtml:link rel="alternate" hreflang="ru" href="https://shop.example.com/%D1%80%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE" />
+  </url>
+  <url>
+    <loc>https://shop.example.com/help</loc>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://shop.example.com/help" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://shop.example.com/aide" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/hilfe" />
+  </url>
+  <url>
+    <loc>https://shop.example.com/aide</loc>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://shop.example.com/help" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://shop.example.com/aide" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/hilfe" />
+  </url>
+  <url>
+    <loc>https://shop.example.com/hilfe</loc>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://shop.example.com/help" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://shop.example.com/aide" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/hilfe" />
+  </url>
+  <url>
+    <loc>https://shop.example.com/help/contact</loc>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://shop.example.com/help/contact" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://shop.example.com/aide/contact" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/hilfe/kontakt" />
+  </url>
+  <url>
+    <loc>https://shop.example.com/aide/contact</loc>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://shop.example.com/help/contact" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://shop.example.com/aide/contact" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/hilfe/kontakt" />
+  </url>
+  <url>
+    <loc>https://shop.example.com/hilfe/kontakt</loc>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://shop.example.com/help/contact" />
+    <xhtml:link rel="alternate" hreflang="fr" href="https://shop.example.com/aide/contact" />
+    <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/hilfe/kontakt" />
+  </url>
+  <url>
+    <loc>https://shop.example.com/login</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/photos</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/photos/share</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/photos/share/terms</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/photos/sort</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/photos/upload</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/reports/monthly</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/reports/yearly</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/search</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/ticks</loc>
+  </url>
+</urlset>

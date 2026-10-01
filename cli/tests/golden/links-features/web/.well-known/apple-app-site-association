@@ -1,0 +1,255 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "ABCDE12345.com.example.shop"
+        ],
+        "components": [
+          {
+            "/": "/",
+            "caseSensitive": false
+          },
+          {
+            "/": "/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/profile",
+            "caseSensitive": false
+          },
+          {
+            "/": "/settings",
+            "caseSensitive": false
+          },
+          {
+            "/": "/admin",
+            "caseSensitive": false
+          },
+          {
+            "/": "/inbox",
+            "caseSensitive": false
+          },
+          {
+            "/": "/free",
+            "caseSensitive": false
+          },
+          {
+            "/": "/pro",
+            "caseSensitive": false
+          },
+          {
+            "/": "/browse/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/catalog",
+            "caseSensitive": false
+          },
+          {
+            "/": "/catalog/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/catalog/?*/reviews",
+            "caseSensitive": false
+          },
+          {
+            "/": "/compare/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/counter",
+            "caseSensitive": false
+          },
+          {
+            "/": "/docs",
+            "caseSensitive": false
+          },
+          {
+            "/": "/docs/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/docs/new",
+            "caseSensitive": false
+          },
+          {
+            "/": "/files"
+          },
+          {
+            "/": "/files/*"
+          },
+          {
+            "/": "/guide",
+            "caseSensitive": false
+          },
+          {
+            "/": "/f%C3%BChrer",
+            "caseSensitive": false
+          },
+          {
+            "/": "/%D1%80%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE",
+            "caseSensitive": false
+          },
+          {
+            "/": "/help",
+            "caseSensitive": false
+          },
+          {
+            "/": "/aide",
+            "caseSensitive": false
+          },
+          {
+            "/": "/hilfe",
+            "caseSensitive": false
+          },
+          {
+            "/": "/help/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/aide/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/hilfe/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/help/?*/examples",
+            "caseSensitive": false
+          },
+          {
+            "/": "/aide/?*/exemples",
+            "caseSensitive": false
+          },
+          {
+            "/": "/hilfe/?*/beispiele",
+            "caseSensitive": false
+          },
+          {
+            "/": "/help/contact",
+            "caseSensitive": false
+          },
+          {
+            "/": "/aide/contact",
+            "caseSensitive": false
+          },
+          {
+            "/": "/hilfe/kontakt",
+            "caseSensitive": false
+          },
+          {
+            "/": "/login",
+            "caseSensitive": false
+          },
+          {
+            "/": "/notes/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/old-search",
+            "caseSensitive": false
+          },
+          {
+            "/": "/old-shops/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/orders/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/orders/?*/refund",
+            "caseSensitive": false
+          },
+          {
+            "/": "/orders/?*/refund/confirm",
+            "caseSensitive": false
+          },
+          {
+            "/": "/orders/?*/refund/receipt",
+            "caseSensitive": false
+          },
+          {
+            "/": "/photos",
+            "caseSensitive": false
+          },
+          {
+            "/": "/photos/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/photos/share",
+            "caseSensitive": false
+          },
+          {
+            "/": "/photos/share/terms",
+            "caseSensitive": false
+          },
+          {
+            "/": "/photos/sort",
+            "caseSensitive": false
+          },
+          {
+            "/": "/photos/upload",
+            "caseSensitive": false
+          },
+          {
+            "/": "/reports/monthly",
+            "caseSensitive": false
+          },
+          {
+            "/": "/reports/yearly",
+            "caseSensitive": false
+          },
+          {
+            "/": "/search",
+            "caseSensitive": false
+          },
+          {
+            "/": "/shop/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/boutique/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/laden/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/shops/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/shops/?*/items/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/teams/?*/members",
+            "caseSensitive": false
+          },
+          {
+            "/": "/teams/?*/members/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/teams/?*/settings",
+            "caseSensitive": false
+          },
+          {
+            "/": "/ticks",
+            "caseSensitive": false
+          },
+          {
+            "/": "/wiki/?*",
+            "caseSensitive": false
+          }
+        ]
+      }
+    ]
+  }
+}

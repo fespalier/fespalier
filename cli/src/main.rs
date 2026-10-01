@@ -7,6 +7,7 @@ mod extra;
 mod format;
 mod graph;
 mod init;
+mod links;
 mod locale;
 mod manifest;
 mod parse_cache;
@@ -65,6 +66,12 @@ enum Cmd {
         #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "mermaid", value_name = "FORMAT")]
         graph: Option<graph::Format>,
     },
+    /// Write App Links, Universal Links and a sitemap from the routes (`links:` in pubspec.yaml)
+    Links {
+        /// Write nothing; exit non-zero when the files on disk are not what `fsp links` would write
+        #[arg(long)]
+        check: bool,
+    },
     /// Regenerate on every change under the app folder
     Watch,
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
@@ -90,6 +97,7 @@ fn main() {
                 Ok(())
             }
             Cmd::Routes { json, graph } => routes::run(&project, json, graph),
+            Cmd::Links { check } => links::run(&project, check),
             Cmd::Watch => watch(&project),
             Cmd::Init => init::run(&project),
             Cmd::New(cmd) => {
@@ -419,6 +427,8 @@ mod extra_tests;
 mod graph_tests;
 #[cfg(test)]
 mod incremental_tests;
+#[cfg(test)]
+mod links_tests;
 #[cfg(test)]
 mod locale_tests;
 #[cfg(test)]

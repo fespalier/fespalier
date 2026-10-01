@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Written by `fsp links`: add these entries to ios/Runner/Runner.entitlements. -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:shop.example.com</string>
+		<string>applinks:www.shop.example.com</string>
+	</array>
+</dict>
+</plist>

@@ -1,19 +1,20 @@
-# `route.dart`: case, trailing slashes, localized paths and `nest`
+# `route.dart`: case, trailing slashes, localized paths, `nest` and `linkable`
 
-As of v0.4.0. A `route.dart` holds up to three declarations, and `fsp` reads them
-**from the source**; it never imports or runs the file, so each must be a
+As of v0.4.0 (`linkable` since 0.5.0). A `route.dart` holds up to four declarations, and
+`fsp` reads them **from the source**; it never imports or runs the file, so each must be a
 literal:
 
 ```dart
 const caseSensitive = false;                 // this folder and below
 const paths = {'fr': 'produits', 'de': 'produkte'};   // this folder's own segment
 const nest = false;                          // this folder's route only (0.4.0)
+const linkable = false;                      // this folder and below, for `fsp links` (0.5.0)
 ```
 
 A `route.dart` adds and removes no route, and may hold any one of them alone.
-`caseSensitive` and `paths` need no page beside it; `nest` does. One with none of the
-three is an error (its text predates `nest` and names the other two):
-``expected `const caseSensitive = false;` (or `true`), or `const paths = {'fr': 'produits'};` ``.
+`caseSensitive`, `paths` and `linkable` need no page beside it; `nest` does. One with none of the
+four is an error (since 0.5.0 its text names all four; on 0.4.0 it names the first two):
+``expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;` or `const linkable = false;` ``.
 
 ## Trailing slashes
 
@@ -354,3 +355,30 @@ lib/app/orders/$id/
 That writes the same two sibling `GoRoute`s. It works because of how groups fold away
 (the README documents it and a test holds it), but a group with no layout, guard or
 transition looks like it does nothing; prefer `nest = false`, which says it outright.
+
+## `linkable = false`: keep a folder out of `fsp links`
+
+Since 0.5.0. `fsp links` writes the Android intent filters, the iOS association file and the
+sitemap from the route tree (`fespalier`, `references/cli-and-config.md`). A folder whose
+`route.dart` says
+
+```dart
+// admin/route.dart: nothing in admin/ or below is an App Link, a Universal Link or in the sitemap
+const linkable = false;
+```
+
+is left out, with everything below it. It works like `caseSensitive`: **the nearest `route.dart`
+wins** (`const linkable = true;` below turns it on again), it is inherited by `(group)` folders
+and by folders without a page, it may sit at the root, and it needs no page beside it. It has no
+effect on routing, `fsp gen` or the manifest.
+
+- It must be a `true` or `false` literal, declared once; otherwise the error is
+  `` `linkable` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it `` or
+  `` `linkable` is declared twice ``.
+- It removes the route's **own** entries only. A `$slug` route at the root still lets every
+  one-segment path through the wildcard Android and iOS get for it, `/admin` included; Android has
+  no way to exclude a path, so use a more specific tree (or `linkable = false` on the `$slug` folder
+  too).
+- If nothing is linkable, `fsp links` fails with ``no route can be linked: the app has no page, or
+  every folder says `const linkable = false;` ``.
+

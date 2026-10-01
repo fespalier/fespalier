@@ -15,6 +15,7 @@ above; pass --project`).
 | `fsp check [--json]`          | The same checks; **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                             |
 | `fsp watch`                   | `gen` once, then again on every relevant change; keep it next to `flutter run`                                                                                               |
 | `fsp routes [--json]`         | Prints the route table (errors: `N error(s); no route table`)                                                                                                                |
+| `fsp links [--check]`         | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)         |
 | `fsp routes --graph [FORMAT]` | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default) or a Graphviz `digraph` (`dot`), since 0.5.0                                                      |
 | `fsp new <path> [flags]`      | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                   |
 
@@ -56,6 +57,48 @@ navigator, a `layout.dart` shell (marked `data` for a section, `guard`) and each
 branch. The output is deterministic (no timestamps, a fixed order), so it can be
 committed. `--graph` cannot be combined with `--json`, and a value other than `mermaid`
 or `dot` is a usage error that lists both.
+
+### `fsp links` (since 0.5.0)
+
+```yaml
+# pubspec.yaml
+fespalier:
+  links:
+    domains: [shop.example.com]            # required; the first one is the sitemap's
+    scheme: myshop                         # optional custom scheme (needs a platform below)
+    android_package: com.example.shop      # with android_sha256: the Android files
+    android_sha256: ["AB:CD:...:EF"]       # 32 hex pairs each; the signing certificates
+    ios_app_id: ABCDE12345.com.example.shop  # Team ID, a dot, the bundle id: the iOS files
+    out: links                             # default; relative to the project, no `..`
+```
+
+It writes, below `out` (commit it, like `app.g.dart`): `android/intent-filters.xml` (one
+`<intent-filter android:autoVerify="true">` per domain, one more for `scheme`),
+`web/.well-known/assetlinks.json` (Android, when `android_package` is set);
+`ios/associated-domains.entitlements`, `web/.well-known/apple-app-site-association`
+and, with `scheme`, `ios/info-url-types.xml` (iOS, when `ios_app_id` is set); and always
+`web/sitemap.xml`.
+
+- **It never edits** `AndroidManifest.xml`, `Runner.entitlements` or `Info.plist`: paste the
+  intent filters into the `<activity>` that has the `MAIN`/`LAUNCHER` filter, add the
+  `applinks:` lines to `Runner.entitlements`, and copy `web/` into the Flutter project's
+  `web/` (or serve it from the domain). Android verifies only an `assetlinks.json` served
+  over HTTPS at `/.well-known/assetlinks.json` with no redirect.
+- **What is listed.** Every route in a folder not marked `const linkable = false;` (a
+  `route.dart`, nearest wins, inherited like `caseSensitive`; see
+  [`route-dart.md`](../../fespalier-routing/references/route-dart.md)), one entry per
+  localized spelling. `$id` is a wildcard that cannot be empty (Android `/products/..*`,
+  iOS `/products/?*`) and also lets longer paths through; a catch-all is a prefix
+  (`pathPrefix="/docs/"`, `/docs/?*`; an optional one also the bare path). `linkable = false`
+  cannot carve a hole out of a dynamic sibling's wildcard.
+- **The sitemap** has only static routes (no `$id`, no catch-all, no redirect), as
+  absolute `https://<first domain>/...` URLs, with `hreflang` alternates (and `x-default`,
+  the canonical path) from `route.dart` `paths`. Guards are not looked at.
+- **`--check`** exits 1 and names each file that is missing, out of date, or not wanted by
+  the config any more (`fsp links` deletes those); it is byte-exact because the output has a fixed
+  order and no dates. Run it in CI.
+- The config values are checked only by `fsp links` (a mistake there never stops `gen`);
+  the messages are in `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`.
 
 ### `fsp new`
 
@@ -132,6 +175,7 @@ fespalier:
   meta: optional
   # meta_unique: [code]
   # output_manifest: lib/app.routes.g.dart
+  # links: {domains: [shop.example.com]}   # see `fsp links` above
 ```
 
 | Key               | Values                      | Effect                                                                                                                    |
@@ -146,6 +190,7 @@ fespalier:
 | `meta`            | `optional` / `required`     | `required`: a route without `meta.dart` is an error                                                                       |
 | `meta_unique`     | list of argument names      | No two routes may pass the same **literal** for that named argument of `meta`'s constructor call                          |
 | `output_manifest` | a `.dart` path under `lib/` | Writes `AppManifest` to a library of its own (it may not equal `output`)                                                  |
+| `links`           | a map (keys above)          | What `fsp links` writes; only that command checks the values (since 0.5.0)                                                |
 
 There is no key for `extraCodec`: `lib/app/extra_codec.dart` is found by name.
 

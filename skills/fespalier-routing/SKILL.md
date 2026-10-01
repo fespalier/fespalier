@@ -1,6 +1,6 @@
 ---
 name: fespalier-routing
-description: "How a fespalier folder tree becomes URLs and typed routes — static, dynamic ($id), catch-all ($$rest, $$$rest) and (group) folders, _private folders, typed and enum segments, query parameters, sibling order and unreachable routes, not_found.dart, route.dart (caseSensitive, localized paths, and nest = false for a sibling with a compound path), navigator.dart and present.dart for the root navigator, the generated typed routes (.go, .push, .location, locationFor), typed extra with extra_codec.dart, and the route manifest with meta.dart. Load before adding or renaming a route folder, changing a segment's type, writing a link between pages, or when a URL shows not_found.dart instead of its page."
+description: "How a fespalier folder tree becomes URLs and typed routes — static, dynamic ($id), catch-all ($$rest, $$$rest) and (group) folders, _private folders, typed and enum segments, query parameters, sibling order and unreachable routes, not_found.dart, route.dart (caseSensitive, localized paths, nest = false for a sibling with a compound path, and linkable = false to keep a folder out of fsp links), navigator.dart and present.dart for the root navigator, the generated typed routes (.go, .push, .location, locationFor), typed extra with extra_codec.dart, and the route manifest with meta.dart. Load before adding or renaming a route folder, changing a segment's type, writing a link between pages, or when a URL shows not_found.dart instead of its page."
 ---
 
 # fespalier-routing

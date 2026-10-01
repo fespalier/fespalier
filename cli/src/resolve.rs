@@ -262,6 +262,10 @@ pub struct Route {
     /// The localized segments of this route's URL, outermost first: the `paths` of the
     /// `route.dart` of each folder at or above it that has one (see `locale.rs`).
     pub localized: Vec<Localized>,
+    /// `const nest = false;` in this folder's route.dart, and valid: the route is not a child
+    /// of the page above it but a sibling of that page, with the folders between joined into
+    /// its path (`refund/confirm`). Its own children still nest under it.
+    pub sibling: bool,
 }
 
 impl Route {
@@ -459,6 +463,18 @@ struct Inherited {
     case_sensitive: bool,
     /// The `paths` of the route.dart files above, outermost first.
     localized: Vec<Localized>,
+    /// The nearest page above, which a `nest = false` below leaves; `None` without one.
+    above: Option<PageAbove>,
+}
+
+/// What a `nest = false` takes a route out of: the page above it, and the folders between.
+#[derive(Clone)]
+struct PageAbove {
+    /// That page.dart, relative to the app folder.
+    page: String,
+    /// The first layout.dart in a folder from that page's down to the one above this: a
+    /// route that leaves the page would leave the layout too.
+    layout: Option<String>,
 }
 
 /// A section's data.dart, as the files below its layout can receive it.
@@ -610,6 +626,7 @@ impl Resolver<'_> {
             sections: up.sections.iter().map(|s| s.id).collect(),
             case_sensitive: up.case_sensitive,
             localized: up.localized.clone(),
+            sibling: false,
         });
 
         let mut segs = up.segs.clone();
@@ -759,6 +776,7 @@ impl Resolver<'_> {
             );
             localized.extend(spelled.filter(|l| !l.spellings.is_empty()));
             case_sensitive = self.route_config(m, &file).unwrap_or(up.case_sensitive);
+            self.app.routes[id].sibling = self.nest(m, node, up.above.as_ref());
         }
         self.app.routes[id].case_sensitive = case_sensitive;
         self.app.routes[id].localized = localized.clone();
@@ -775,7 +793,21 @@ impl Resolver<'_> {
             not_found: up.not_found.clone(),
             case_sensitive,
             localized: localized.clone(),
+            above: up.above.clone(),
         };
+        // A page is what a route below can leave; so is the layout of a folder between.
+        let layout_file = node
+            .files
+            .contains_key(&Kind::Layout)
+            .then(|| node.rel(Kind::Layout));
+        if node.files.contains_key(&Kind::Page) {
+            here.above = Some(PageAbove {
+                page: page_file.clone(),
+                layout: layout_file,
+            });
+        } else if let Some(above) = &mut here.above {
+            above.layout = above.layout.take().or(layout_file);
+        }
         if let (true, Some(d)) = (section, &data) {
             here.sections.push(SectionRef {
                 id,
@@ -1464,8 +1496,12 @@ impl Resolver<'_> {
     fn route_config(&mut self, m: &Module, file: &str) -> Option<bool> {
         let mut found = m.variables.iter().filter(|v| v.name == "caseSensitive");
         let Some(v) = found.next() else {
-            // A route.dart may hold only `paths`.
-            if !m.variables.iter().any(|v| v.name == "paths") {
+            // A route.dart may hold only `paths`, or only `nest`.
+            if !m
+                .variables
+                .iter()
+                .any(|v| v.name == "paths" || v.name == "nest")
+            {
                 self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), or `const paths = {'fr': 'produits'};`");
             }
             return None;
@@ -1479,6 +1515,61 @@ impl Resolver<'_> {
             self.diags.error(file, Some(&v.span), msg);
         }
         v.boolean
+    }
+
+    /// `const nest = false;` in a folder's route.dart: its route is not a child of the page
+    /// above but a sibling of it, with a compound path. Returns whether it is, and reports a
+    /// declaration that can't be honoured: it is read from the source, so it must be a `true`
+    /// or `false` literal, and `true` (the default) says nothing.
+    fn nest(&mut self, m: &Module, node: &Node, above: Option<&PageAbove>) -> bool {
+        let file = node.rel(Kind::Route);
+        let mut found = m.variables.iter().filter(|v| v.name == "nest");
+        let Some(v) = found.next() else {
+            return false;
+        };
+        if let Some(again) = found.next() {
+            self.diags
+                .error(&file, Some(&again.span), "`nest` is declared twice");
+        }
+        match v.boolean {
+            None => {
+                let msg = "`nest` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it";
+                self.diags.error(&file, Some(&v.span), msg);
+                return false;
+            }
+            Some(true) => return false,
+            Some(false) => {}
+        }
+        let error = |r: &mut Self, msg: String| r.diags.error(&file, Some(&v.span), msg);
+        if node.dir.is_empty() {
+            let msg = "`nest = false` takes a route out of the page above it, and the app folder has nothing above it; drop it".to_string();
+            error(self, msg);
+            return false;
+        }
+        if matches!(node.seg, Some(Seg::Group(_))) {
+            let msg = "`nest = false` is about a folder's own route, and a `(group)` has none: it adds nothing to the URL, so what is in it nests under the page above the group and not under a page beside it. To make a sibling with a compound path without this file, repeat the segment under a group: `(group)/refund/confirm/page.dart`".to_string();
+            error(self, msg);
+            return false;
+        }
+        if !node.files.contains_key(&Kind::Page) && !node.files.contains_key(&Kind::Redirect) {
+            let msg = "`nest = false` is about this folder's own route, and it has no page.dart or redirect.dart; put it in the route.dart of each folder whose route should not nest".to_string();
+            error(self, msg);
+            return false;
+        }
+        let Some(above) = above else {
+            let msg = "`nest = false` takes this route out of the page above it, and there is no page.dart above this folder: it is not nested under anything, so drop it".to_string();
+            error(self, msg);
+            return false;
+        };
+        if let Some(layout) = &above.layout {
+            let msg = format!(
+                "`nest = false` takes this route out of `{}`, and `{layout}` sits in the folders it leaves, so the route would escape that layout's shell. Move the layout above that page's folder, or drop `nest = false`",
+                above.page
+            );
+            error(self, msg);
+            return false;
+        }
+        true
     }
 
     /// The one public widget class a view file exports, or the top-level function named

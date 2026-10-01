@@ -89,6 +89,7 @@ packaging:
 # The agent skills in skills/ match the code: coverage, frontmatter, stamps, links (needs Node)
 skills:
     node scripts/skills/verify-coverage.mjs
+    npx --yes prettier@3.8.1 --check "skills/**/*.{md,json}"
 
 # Build the skills' code samples, all or the given .md files (needs Flutter; slow, not in `just ci`)
 skill-samples *files:

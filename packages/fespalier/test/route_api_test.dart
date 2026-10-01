@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
@@ -198,6 +200,89 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('next'), findsOneWidget);
       expect(currentLocation(tester), '/next?x=1');
+    });
+
+    group('pumpRouter retry', () {
+      var runs = 0;
+      final flaky = FutureProvider<String>((ref) async {
+        runs++;
+        throw Exception('offline'); // not an Error: defaultRetry skips those
+      });
+      GoRouter flakyRouter() => GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => Consumer(
+              builder: (context, ref, _) =>
+                  Text(ref.watch(flaky).hasError ? 'failed' : 'loading'),
+            ),
+          ),
+        ],
+      );
+      setUp(() => runs = 0);
+
+      testWidgets('defaults to no retries', (tester) async {
+        await pumpRouter(tester, flakyRouter());
+        await tester.pump(const Duration(seconds: 30));
+        expect(find.text('failed'), findsOneWidget);
+        expect(runs, 1);
+      });
+
+      testWidgets('takes a policy, to test what the app does', (tester) async {
+        await pumpRouter(
+          tester,
+          flakyRouter(),
+          retry: (count, error) =>
+              count < 2 ? const Duration(milliseconds: 10) : null,
+        );
+        await tester.pump(const Duration(seconds: 1));
+        expect(runs, 3); // the first run and two retries
+        expect(find.text('failed'), findsOneWidget);
+      });
+
+      testWidgets('ProviderContainer.defaultRetry is the app default', (
+        tester,
+      ) async {
+        final container = await pumpRouter(
+          tester,
+          flakyRouter(),
+          retry: ProviderContainer.defaultRetry,
+        );
+        await tester.pump(const Duration(seconds: 1));
+        expect(runs, greaterThan(1));
+        // The policy keeps retrying behind the scenes: stop it, or its timer
+        // is still pending when the test ends.
+        container.dispose();
+      });
+    });
+
+    testWidgets('currentLocation follows go, a push, and going back', (
+      tester,
+    ) async {
+      await pumpRouter(tester, router());
+      final context = tester.element(find.byType(TextButton));
+      final r = GoRouter.of(context);
+      // go_router leaves a push out of the route information, so a location
+      // read from there would still say `/` here.
+      unawaited(r.push('/next?x=1'));
+      await tester.pumpAndSettle();
+      expect(find.text('next'), findsOneWidget);
+      expect(currentLocation(tester), '/next?x=1');
+
+      unawaited(r.push('/next?x=2'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/next?x=2');
+
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/next?x=1');
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/');
+
+      r.go('/next?x=3');
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/next?x=3');
     });
 
     testWidgets('pumpRouter can use your own container', (tester) async {

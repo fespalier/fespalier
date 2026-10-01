@@ -63,6 +63,11 @@ const SearchRoute(q: 'ap', page: 2).location;   // /search?q=ap&page=2
   and empty lists are left out of the query.
 - `locationFor(locale)`, and `locale:` on `go`, `push<T>` and `replace`:
   localized spellings (see `fespalier-routing`).
+- `static of(context)` and `static maybeOf(context)` (since 0.5.0): the route at
+  the location the widget belongs to, parsed by `AppRoutes.matchUrl`; and, for a
+  route with segments or query parameters, `copyWith`, a getter whose type is a
+  function with the fields' types (a private `_keep` sentinel behind it tells
+  null from omitted). See `fespalier-routing`.
 - A route with a typed `extra` has `go`, `push` and `replace` overrides taking
   `extra:`.
 - A route with a `data.dart` also has: `static data` (the provider; a family

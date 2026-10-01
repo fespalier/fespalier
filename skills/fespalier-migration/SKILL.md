@@ -68,7 +68,7 @@ each, is in [`references/upgrading-0-2-to-0-3.md`](references/upgrading-0-2-to-0
 6. **`router()` and `mount()` gained `navigatorKey`**, and layouts are built as
    `pageBuilder` pages. Regenerate; nothing to write.
 
-Plus new reserved names (`extra` as a segment) and `pumpRouter`'s default of **no
+Plus new reserved names (`extra` as a segment; later, `of`, `maybeOf` and `copyWith`, since 0.5.0) and `pumpRouter`'s default of **no
 retries**. Everything else in 0.3.0 is additive.
 
 ## Adopting fespalier in a go_router app

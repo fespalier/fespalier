@@ -5,22 +5,22 @@ file by its **name**; nothing else marks a route. Each view file exports one
 public widget class, **or** one top-level function named after the file, never
 both.
 
-| File               | Applies to                                                  | Can ask for                                                                      |
-| ------------------ | ----------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `page.dart`        | its own folder's URL                                        | segments; query; `data`; `extra`                                                 |
-| `data.dart`        | the page beside it, or a section                            | segments; query (a section's: segments and query too since 0.3.0)                |
-| `loading.dart`     | its folder and below (inherited, nearest wins)              | segments; query                                                                  |
-| `error.dart`       | its folder and below (inherited, nearest wins)              | segments; query; `error`, `stackTrace`, `retry`                                  |
-| `layout.dart`      | its folder and below                                        | `child` or `navigationShell`; segments at or above; query; section data; `extra` |
-| `guard.dart`       | every route at and below its folder                         | `uri`; segments at or above; query; `extra`                                      |
-| `redirect.dart`    | its own folder's URL, in place of `page.dart`               | `uri`; segments; query; `extra`; optional `ProviderContainer c` first            |
-| `transition.dart`  | its folder and below; layout shells too                     | `key`, `child`, `state`, `shell` (a `bool`)                                      |
-| `present.dart`     | its own folder only                                         | `key`, `child`, `state`                                                          |
-| `navigator.dart`   | its folder and below (nearest wins)                         | nothing: it is data                                                              |
-| `not_found.dart`   | unknown URLs under its folder; bad segments                 | `uri`; its own path's segments, as `String`s                                     |
-| `meta.dart`        | its own route only (not inherited)                          | nothing: it is data                                                              |
-| `route.dart`       | `caseSensitive`: folder and below; `paths`: its own segment | nothing: it is data                                                              |
-| `extra_codec.dart` | the app root only                                           | nothing: it is data                                                              |
+| File               | Applies to                                                  | Can ask for                                                                          |
+| ------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `page.dart`        | its own folder's URL                                        | segments; query; `data`; `extra`                                                     |
+| `data.dart`        | the page beside it, or a section                            | segments; query (a section's: segments and query too since 0.3.0)                    |
+| `loading.dart`     | its folder and below (inherited, nearest wins)              | segments; query                                                                      |
+| `error.dart`       | its folder and below (inherited, nearest wins)              | segments; query; `error`, `stackTrace`, `retry`                                      |
+| `layout.dart`      | its folder and below                                        | `child` or `navigationShell`; segments at or above; query; section data; `extra`     |
+| `guard.dart`       | every route at and below its folder                         | `uri`; segments at or above; query; `extra`                                          |
+| `redirect.dart`    | its own folder's URL, in place of `page.dart`               | `uri`; segments; query; `extra`; optional `Ref ref` first (or `ProviderContainer c`) |
+| `transition.dart`  | its folder and below; layout shells too                     | `key`, `child`, `state`, `shell` (a `bool`)                                          |
+| `present.dart`     | its own folder only                                         | `key`, `child`, `state`                                                              |
+| `navigator.dart`   | its folder and below (nearest wins)                         | nothing: it is data                                                                  |
+| `not_found.dart`   | unknown URLs under its folder; bad segments                 | `uri`; its own path's segments, as `String`s                                         |
+| `meta.dart`        | its own route only (not inherited)                          | nothing: it is data                                                                  |
+| `route.dart`       | `caseSensitive`: folder and below; `paths`: its own segment | nothing: it is data                                                                  |
+| `extra_codec.dart` | the app root only                                           | nothing: it is data                                                                  |
 
 `not_found.dart` also reads as `not-found.dart` (kebab), whatever `file_style`
 says; `file_style` only picks what `fsp init` and `fsp new` write.
@@ -69,14 +69,15 @@ spinner) and `DefaultError` (the error text and a Retry button) are used.
 `StatefulNavigationShell` (tabs). Asking for both is an error. Covered by
 `fespalier-layouts`.
 
-**`guard.dart`** is `GuardResult guard(ProviderContainer c, {...})`;
-`GuardResult` is `FutureOr<String?>`. The return type may also be written
-`FutureOr<String?>`, `Future<String?>` or `String?`. Covered by
-`fespalier-guards`.
+**`guard.dart`** is `GuardResult guard(Ref ref, {...})`; `GuardResult` is
+`FutureOr<String?>`. The return type may also be written `FutureOr<String?>`,
+`Future<String?>` or `String?`, and a sync guard stays sync. It runs again when what it
+`ref.watch`es changes (since 0.5.0); `ProviderContainer c` first is the older form, read
+once per navigation. Covered by `fespalier-guards`.
 
-**`redirect.dart`** is `String redirect({...})` (or `Future<String>`), and
-gets a typed route named after its path (`OldProductsIdRoute`). A tab layout's
-own folder cannot hold one.
+**`redirect.dart`** is `String redirect({...})` (or `Future<String>`), with an optional
+first `Ref ref` (since 0.5.0) or `ProviderContainer c`, and gets a typed route named after
+its path (`OldProductsIdRoute`). A tab layout's own folder cannot hold one.
 
 **`transition.dart`** and **`present.dart`** return a `Page`. See
 `fespalier-layouts` (transitions) and `fespalier-routing` (`present.dart`).

@@ -151,12 +151,43 @@ pub enum Navigator {
     Shell,
 }
 
+/// What a `guard()` or `redirect()` takes before its named parameters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookFirst {
+    /// Nothing (only a `redirect()` may).
+    None,
+    /// `ProviderContainer c`, the older form: read once, per call.
+    Container,
+    /// `Ref ref`: a guard that watches runs again when what it watches changes.
+    Ref,
+}
+
+impl HookFirst {
+    /// The first parameter of `f`, when it is positional and one of the kinds a hook takes.
+    fn of(f: &dart::Function) -> Self {
+        match f.params.first() {
+            Some(p) if !p.named => match p.ty.as_ref() {
+                Some(t) if t.is("Ref") => Self::Ref,
+                Some(t) if t.is("ProviderContainer") => Self::Container,
+                _ => Self::None,
+            },
+            _ => Self::None,
+        }
+    }
+
+    /// How many leading parameters it takes off the list.
+    fn skip(self) -> usize {
+        usize::from(self != Self::None)
+    }
+}
+
 /// A `guard()` or `redirect()` function and the arguments to call it with.
 #[derive(Debug, Clone)]
 pub struct Guard {
     pub import: usize,
-    /// Takes a leading `ProviderContainer` (always for `guard()`, optionally for `redirect()`).
-    pub container: bool,
+    /// The leading `Ref` or `ProviderContainer` (always one for `guard()`, optional for
+    /// `redirect()`).
+    pub first: HookFirst,
     /// The named arguments: segments, then query parameters (each in path or
     /// declaration order), then `uri` and `extra`.
     pub args: Vec<Arg>,
@@ -2223,7 +2254,7 @@ impl Resolver<'_> {
             self.diags.error(
                 &file,
                 None,
-                "expected `GuardResult guard(ProviderContainer c, {...segments})`",
+                "expected `GuardResult guard(Ref ref, {...segments})`",
             );
             return None;
         };
@@ -2243,13 +2274,14 @@ impl Resolver<'_> {
                 "guard() must return GuardResult (a location to redirect to, or null)",
             );
         }
-        match f.params.first() {
-            Some(p) if !p.named && p.ty.as_ref().is_some_and(|t| t.is("ProviderContainer")) => {}
-            _ => self.diags.error(
-                &file,
-                Some(&f.span),
-                "guard() must take `ProviderContainer c` first",
-            ),
+        let first = HookFirst::of(f);
+        if first == HookFirst::None {
+            let msg = if takes_widget_ref(f) {
+                "a guard runs outside the widget tree: take `Ref`"
+            } else {
+                "guard() must take `Ref ref` first (or `ProviderContainer c`, the older form)"
+            };
+            self.diags.error(&file, Some(&f.span), msg);
         }
         // Its query parameters belong to the folder's own route when it has one
         // (they show up on the typed route); otherwise to the guard alone.
@@ -2260,7 +2292,13 @@ impl Resolver<'_> {
         } else {
             Scope::Guard(route)
         };
-        let args = self.hook_args(&file, f.params.iter().skip(1), segs, scope, "guard()");
+        let args = self.hook_args(
+            &file,
+            f.params.iter().skip(first.skip().max(1)),
+            segs,
+            scope,
+            "guard()",
+        );
         let import = self.import(&file);
         let extra = extra_of(
             &f.params,
@@ -2272,7 +2310,7 @@ impl Resolver<'_> {
         );
         Some(Guard {
             import,
-            container: true,
+            first,
             args,
             extra,
         })
@@ -2302,13 +2340,16 @@ impl Resolver<'_> {
                 "redirect() must return the location to go to: a String (or Future<String>)",
             );
         }
-        let container = f
-            .params
-            .first()
-            .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("ProviderContainer")));
+        let first = HookFirst::of(f);
+        if first == HookFirst::None && takes_widget_ref(f) {
+            let msg = "a redirect runs outside the widget tree: take `Ref`";
+            self.diags.error(&file, Some(&f.span), msg);
+        }
         let args = self.hook_args(
             &file,
-            f.params.iter().skip(usize::from(container)),
+            f.params
+                .iter()
+                .skip(first.skip().max(usize::from(takes_widget_ref(f)))),
             segs,
             Scope::Route(route),
             "redirect()",
@@ -2325,7 +2366,7 @@ impl Resolver<'_> {
         Some((
             Guard {
                 import,
-                container,
+                first,
                 args,
                 extra,
             },
@@ -2690,6 +2731,13 @@ fn extra_of(
         span: p.span.clone(),
         file: file.to_string(),
     })
+}
+
+/// Whether the first parameter is a `WidgetRef`, which only a widget can have.
+fn takes_widget_ref(f: &dart::Function) -> bool {
+    f.params
+        .first()
+        .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("WidgetRef")))
 }
 
 /// What a parameter called `name` receives in this role, going by its name.

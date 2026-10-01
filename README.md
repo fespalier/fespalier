@@ -30,7 +30,7 @@ lib/app/
       error.dart         ProductError({required int id, required Object error, …})
       meta.dart          const meta = PageMeta(code: 'B04', …)         (this route's facts, any const)
   checkout/
-    guard.dart           GuardResult guard(ProviderContainer c)         (guards this and below)
+    guard.dart           GuardResult guard(Ref ref)                     (guards this and below)
     page.dart
   old-products/$id/
     redirect.dart        String redirect({required int id})            → /old-products/:id redirects
@@ -323,8 +323,8 @@ widget class" and lists them. Make helpers private (`_Name`) rather than lean on
 | `loading.dart`     | a widget, inherited by subfolders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | segments; query                                                                                                                                               |
 | `error.dart`       | a widget, inherited by subfolders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | segments; query; `error`, `stackTrace`, `retry`                                                                                                               |
 | `layout.dart`      | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs. A tab layout can also export a [`container`](#tab-layouts) function                                                                                                                                                                                                                                                                                                                                                                         | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside; the navigation [`extra`](#typed-extra) |
-| `guard.dart`       | `GuardResult guard(ProviderContainer c, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder                                                                                                                                                                                                                                                                                                                              | `uri`; segments at or above its folder; query (named); `extra`                                                                                                |
-| `redirect.dart`    | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `ProviderContainer c` first                                                                                                                                                                                                                                                                                                                                                                                                                | `uri`; segments; query (named); `extra`                                                                                                                       |
+| `guard.dart`       | `GuardResult guard(Ref ref, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder, and runs again when what it `ref.watch`es changes (since 0.5.0; `ProviderContainer c` first is the older form, read once)                                                                                                                                                                                                               | `uri`; segments at or above its folder; query (named); `extra`                                                                                                |
+| `redirect.dart`    | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `Ref ref` first (since 0.5.0), or `ProviderContainer c`                                                                                                                                                                                                                                                                                                                                                                                    | `uri`; segments; query (named); `extra`                                                                                                                       |
 | `transition.dart`  | `Page<…> transition(…)`; applies to this folder and below, layouts' shells included                                                                                                                                                                                                                                                                                                                                                                                                                                              | `key`, `child`, `state`, `shell` (a `bool`)                                                                                                                   |
 | `present.dart`     | `Page<…> present(…)`: the app builds this route's own page (a sheet, say), on the [root navigator](#presentdart-a-page-of-your-own); this folder only                                                                                                                                                                                                                                                                                                                                                                            | `key`, `child`, `state`                                                                                                                                       |
 | `navigator.dart`   | `const navigator = RouteNavigator.root;`: this folder and below [render on the root navigator](#the-root-navigator-navigatordart)                                                                                                                                                                                                                                                                                                                                                                                                | nothing: it is data                                                                                                                                           |
@@ -1047,26 +1047,64 @@ cross-fades, and its tests check that a tab's state survives.
 
 ### Guards
 
-`guard.dart` exports `GuardResult guard(ProviderContainer c, {…})`. It returns a location to
+`guard.dart` exports `GuardResult guard(Ref ref, {…})`. It returns a location to
 redirect to, or `null` to let the navigation through, and may be async. It guards every
 route at and below its folder, and the folder needs no `page.dart`: put one in a `(group)` or
 at the root to cover a whole section of the app.
 
 ```dart
 // lib/app/(members)/guard.dart: guards /inbox, /admin and everything else in the group
-GuardResult guard(ProviderContainer c, {required Uri uri}) =>
-    c.read(session) ? null : LoginRoute(from: uri.toString()).location;
+GuardResult guard(Ref ref, {required Uri uri}) =>
+    ref.watch(session) ? null : LoginRoute(from: uri.toString()).location;
 ```
 
-- **Return synchronously when you can.** A guard that needs no `await` should not be
-  `async`, and not return `Future.value(...)` either: any `Future`, even an already completed
-  one, costs the router a frame, and on a cold deep link the first frame is blank. A guard
-  that returns its `GuardResult` directly runs in the same frame as the navigation.
+- **It runs again when what it watches changes** (since 0.5.0). `ref.watch` a provider in
+  the guard and, when that provider changes and the guard's answer is now a different one,
+  the router runs the redirects again: signing out moves you to the login page from whatever
+  member page you were on, with no refresh code of your own (before 0.5.0 a guard read once,
+  when you navigated, so nothing happened until you did). The login page is not under that
+  guard, so signing in is the login page's to navigate (`returnTo`), unless it has a guard of
+  its own that watches the session.
+  Nothing is wired up: it works for `AppRoutes.router()` and for a router of your own built
+  from `AppRoutes.mount()`, with no `refreshListenable`. An async guard watches the same way,
+  through a provider's `.future`:
+
+  ```dart
+  Future<String?> guard(Ref ref, {required Uri uri}) async =>
+      await ref.watch(currentUser.future) == null
+          ? LoginRoute(from: uri.toString()).location
+          : null;
+  ```
+
+  `ref.read` is for what must be the current value when you navigate and never changes the
+  answer later. A guard that returns the same answer after a change does nothing.
+- **What it costs.** Return synchronously when you can. A guard that needs no `await` should
+  not be `async`, and not return `Future.value(...)` either: it then answers synchronously, in
+  the same frame as the navigation, and the first frame at boot (a cold deep link too) already
+  shows the page. Any `Future`, even a completed one, costs the router a frame, and the first
+  frame is blank. Each navigation runs the guard in a fresh `autoDispose` provider, so
+  what it `ref.watch`es is shared with the rest of the app and fetched once; the guard itself
+  runs again after a change and again when the router asks, so keep it cheap. A guard
+  signing out therefore runs twice (Riverpod recomputes it, then the router asks), and the
+  data providers it watches are not fetched twice.
+- **When it stops watching.** The guard of the location the router shows keeps watching.
+  It is dropped when a navigation ends on a location that does not run it, and when the
+  router or the app goes. A guarded page _under a pushed page_ does not react until you pop
+  back to it (the push dropped its subscription; popping runs the guard again). Don't call
+  `ref.keepAlive()` in a guard: it keeps one provider alive per navigation.
+- **If it throws.** A guard that throws, or whose later run throws, never moves the
+  router: an error on a navigation reaches go_router like any redirect's, and an error on a
+  later run keeps the page you are on until the next navigation. The guard's provider does not
+  retry.
+- **The older form.** A guard may still take `ProviderContainer c` first
+  (`c.read(session)`): it is read once per navigation, as before 0.5.0, and never runs again by
+  itself. Taking a `WidgetRef` is an error ("a guard runs outside the widget tree: take
+  `Ref`"), since a guard has no widget.
 - **Order.** Guards run outermost first, and the first one to return a location wins. A
   folder with a page and its own guard keeps its guard for that page and everything nested
   in it; guards above it run first. A route with [`nest = false`](#a-sibling-with-a-compound-path)
   is not nested in the page above it, and still gets that page's guard, after the ones above it.
-- **Parameters.** The `ProviderContainer` comes first, then named parameters: `uri` (the
+- **Parameters.** The `Ref` comes first, then named parameters: `uri` (the
   requested location, a `Uri`), `extra` (see [Typed `extra`](#typed-extra)), the segments of the guard's own folder and the ones above
   it (`{required String shop}`), and query parameters (optional and nullable, `String? ref`).
   A guard above `$id` can't ask for `id`: that's an error at the parameter. Segments are
@@ -1074,7 +1112,9 @@ GuardResult guard(ProviderContainer c, {required Uri uri}) =>
   fields of the typed routes below it (unless the guard sits next to a `page.dart`, where
   they are the page's, as before).
 - **What gets generated.** Each page's `GoRoute` gets a `redirect` that calls, in order, the
-  guards of the page-less folders above it and then its own. Nested pages go through their
+  guards of the page-less folders above it and then its own. A `Ref` guard is called as
+  `refGuard(context, 'g8@3', (ref) => _i8.guard(ref, uri: state.uri))` (the string names the
+  guard on that route, and is constant). Nested pages go through their
   parent's `redirect`, so no guard runs twice. (A route that leaves the page above with `nest = false`
   has that page's guard and the ones of the folders between in its own `redirect`, the way a page-less
   folder's guard is, since the page is not its parent.) There's no redirect on `ShellRoute` or
@@ -1095,10 +1135,16 @@ widget, no builder.
 ```dart
 // lib/app/old-products/$id/redirect.dart: /old-products/3 → /products/3
 String redirect({required int id}) => ProductRoute(id: id).location;
+
+// ...or, reading a provider (a redirect's `ref.watch` runs once, it does not re-run)
+String redirect(Ref ref, {required int id}) =>
+    ref.read(catalog).contains(id) ? ProductRoute(id: id).location : const HomeRoute().location;
 ```
 
-It takes the same parameters as a guard, except that `ProviderContainer c` is optional (put
-it first if you need providers). Segments are typed like anywhere else, so `/old-products/abc`
+It takes the same parameters as a guard, except that the first one is optional: put `Ref ref`
+first if you need providers (since 0.5.0; `ProviderContainer c` is the older form). A redirect
+runs once per navigation and does not watch: a redirect route never stays on screen, so there is
+nothing to run again. Segments are typed like anywhere else, so `/old-products/abc`
 shows not-found. It gets a typed route, named after its path (`OldProductsIdRoute(id: 3)`),
 so links to the old URL stay typed; query parameters it asks for are its fields. It takes part in
 route order and unreachable checks like a page, inherits the guards above it, and can sit
@@ -1381,7 +1427,7 @@ class NotesLayout extends StatelessWidget {
 }
 
 // notes/$id/guard.dart: a draft isn't shown yet
-GuardResult guard(ProviderContainer c, {Note? extra}) =>
+GuardResult guard(Ref ref, {Note? extra}) =>
     extra?.title == 'draft' ? const HomeRoute().location : null;
 ```
 

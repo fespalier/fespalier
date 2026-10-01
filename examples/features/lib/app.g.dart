@@ -263,7 +263,7 @@ abstract final class AppRoutes {
                 path: 'admin',
                 caseSensitive: false,
                 redirect: (context, state) => firstRedirect([
-                  () => _i8.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri),
+                  () => refGuard(context, 'g5@6', (ref) => _i8.guard(ref, uri: state.uri)),
                   () => _i10.guard(ProviderScope.containerOf(context, listen: false)),
                 ]),
                 pageBuilder: (context, state) => _i1.transition(
@@ -274,7 +274,7 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'inbox',
                 caseSensitive: false,
-                redirect: (context, state) => _i8.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri),
+                redirect: (context, state) => refGuard(context, 'g5@7', (ref) => _i8.guard(ref, uri: state.uri)),
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
                   buildWithParams(

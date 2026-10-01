@@ -1,6 +1,6 @@
 ---
 name: fespalier-guards
-description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a ProviderContainer that returns a location or null, for a folder and everything below it, in page-less groups too), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and refreshing the router when the session changes. Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
+description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
 ---
 
 # fespalier-guards
@@ -19,8 +19,8 @@ import 'package:fespalier/fespalier.dart';
 import 'package:my_app/app.g.dart';
 import 'package:my_app/auth.dart';
 
-GuardResult guard(ProviderContainer c, {required Uri uri}) =>
-    c.read(session) ? null : LoginRoute(from: uri.toString()).location;
+GuardResult guard(Ref ref, {required Uri uri}) =>
+    ref.watch(session) ? null : LoginRoute(from: uri.toString()).location;
 ```
 
 `GuardResult` is `FutureOr<String?>`: **a location to redirect to, or `null` to
@@ -30,7 +30,8 @@ cold deep link). A guard covers **every route at and
 below its folder**, and the folder needs no `page.dart`: put the guard in a
 `(group)` (or at the root) to cover a whole section.
 
-- **Parameters.** First the `ProviderContainer c` (positional), then **named**:
+- **Parameters.** First the `Ref ref` (positional; the older `ProviderContainer c` is
+  still accepted), then **named**:
   `uri` (the requested location, query included), `extra`, the segments of its own
   folder and above (`{required String shop}`), and optional nullable query
   parameters. A guard **above** `$id` cannot ask for `id`.
@@ -41,9 +42,14 @@ below its folder**, and the folder needs no `page.dart`: put the guard in a
 - **No double runs.** Each page's `GoRoute` gets the `redirect`; nested pages go
   through their parent's, and shells get none (go_router runs a matched route's
   redirect for deep links and for navigation inside shells, tabs included).
-- **It reads a container, not a `WidgetRef`**: `c.read(provider)`. It runs when a
-  navigation reaches its routes, **not** when a provider changes (see the refresh
-  section below).
+- **It takes a `Ref`, not a `WidgetRef`** (a guard has no widget:
+  ``a guard runs outside the widget tree: take `Ref` ``). **`ref.watch` a provider
+  and the guard runs again when it changes** (since 0.5.0): if the new answer differs
+  from the one the navigation used, the router runs the redirects again. Signing out
+  on `/inbox` moves you to login by itself. See "Signing out moves you" below.
+- **Stay sync when you can.** A guard that answers synchronously adds no frame and
+  boots with no blank first frame; **any** `Future`, even a completed one, costs a
+  frame. Return a `Future` only when you await something.
 - A `guard.dart` with no route at or below its folder is a **warning**.
 - **A guard is not access control**: the server must still authorise the data.
 
@@ -79,9 +85,11 @@ String redirect({String? folder}) => InboxRoute(folder: folder).location;
 ```
 
 A folder has a `redirect.dart` **instead of** a `page.dart`. It takes a guard's
-parameters (the `ProviderContainer` is optional), inherits the guards above it, gets
-a typed route named after its path (`OldInboxRoute`), and its target's guards run in
-turn. A tab layout's own folder cannot hold one.
+parameters (the first one, `Ref ref`, is optional since 0.5.0, as is the older
+`ProviderContainer c`), inherits the guards above it, gets a typed route named after its
+path (`OldInboxRoute`), and its target's guards run in turn. A tab layout's own folder
+cannot hold one. It runs once per navigation and does not watch: a redirect route
+never stays on screen.
 
 ## Two behaviours that surprise
 
@@ -90,19 +98,23 @@ turn. A tab layout's own folder cannot hold one.
   and shows not-found, but a guard that asks for neither (for instance the
   `(members)` one above, which takes only `uri`) **still runs**, so `/items/abc`
   under it redirects to login first. (The 0.3.0 README said all guards are skipped.)
-- **Signing out does not move you.** With `AppRoutes.router()` a guard only runs on
-  navigation, and the router has **no `refreshListenable`**. To re-run guards when a
-  provider changes, mount the tree in your own `GoRouter`
-  (`AppRoutes.mount(navigatorKey: rootKey)`) and give it a `refreshListenable` that
-  listens to the session. That router loses `extraCodec` and `restorationScopeId`
-  unless you pass them yourself. A compiled sample is in
-  [`references/auth-patterns.md`](references/auth-patterns.md).
+- **Signing out moves you, if the guard watches (since 0.5.0).** A guard that
+  `ref.watch`es the session runs again when it changes, with `AppRoutes.router()` and
+  with a router of your own built from `AppRoutes.mount()`, with no
+  `refreshListenable`. Three limits: a guard **under a pushed page** does not react
+  until you pop back to it (the push dropped its subscription, popping runs the guard
+  again); a guard that takes `ProviderContainer c` (or only `ref.read`s) never runs
+  again by itself, as on 0.4.1 and earlier, where **no** guard did; and a sign-out runs
+  the guard **twice** (Riverpod recomputes it, then the router asks), without
+  fetching the providers it watches twice. **Don't `ref.keepAlive()` in a guard**: it
+  leaks a provider per navigation. A guard that throws never moves the router.
+  Details and a compiled sample: [`references/auth-patterns.md`](references/auth-patterns.md).
 
 ## Where to read more
 
 | Need                                                                | Reference                                                                  |
 | ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | Every guard and redirect rule, compiled samples, `returnTo` details | [`references/guards-and-redirects.md`](references/guards-and-redirects.md) |
-| Session provider, sign-in/out, refresh on auth change, async guards | [`references/auth-patterns.md`](references/auth-patterns.md)               |
+| Session provider, sign-in/out, guards that re-run, async guards     | [`references/auth-patterns.md`](references/auth-patterns.md)               |
 | Testing a guarded route                                             | `fespalier-testing`                                                        |
 | An `fsp` error on a guard or redirect                               | `fespalier-troubleshooting`                                                |

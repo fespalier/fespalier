@@ -132,6 +132,11 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
 
 ## Behaviours worth knowing before you debug
 
+- **`replace` and `push` on the web** (since 0.6.0): `ProductRoute(id: 1).replace(context)` puts
+  its location in the address bar and replaces the history entry (over a page that was pushed it
+  keeps the stack instead). A `push` stays out of the address bar unless the pubspec has
+  `push_updates_url: true` (a reload then builds that URL's own stack). On 0.5.0 use `go` for URL
+  state. See `references/typed-routes-and-extra.md`.
 - **Trailing slashes** are dropped by go_router: `/products/` reaches
   `/products`. Nothing to configure.
 - **Case** is sensitive by default. `case_sensitive: false` in the pubspec, or a

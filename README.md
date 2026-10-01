@@ -270,6 +270,7 @@ fespalier:
   remount: never # `on_segments` | `on_location`
   data_retry: inherit
   keep_previous: true
+  push_updates_url: false # `true` (since 0.6.0): a `push`ed route's URL is in the address bar
   file_style: snake
   meta: optional # `required`: every route needs a meta.dart
   # meta_unique: [code]       # no two routes may pass the same literal `code:` to `meta`
@@ -293,6 +294,15 @@ because its URL changed; a `route.dart` sets it per folder (see
 `data_retry` and `keep_previous` are about `data.dart` failures and reloads; see
 [Retries and reloads](#retries-and-reloads). `file_style: kebab` makes `fsp init` and `fsp new`
 write `not-found.dart` instead of `not_found.dart` (see [File names](#file-names)).
+`push_updates_url: true` (since 0.6.0) makes the generated `AppRoutes.router()` set go_router's
+`GoRouter.optionURLReflectsImperativeAPIs`, so on the web a typed route's `push` puts its URL in the
+address bar (and in the browser's history) as `go` does, and back pops it. The generated code
+assigns the flag on every `router()` call, `true` or `false` (the default, go_router's own), so it
+is the same in every app and every test, wherever the router is built. go_router warns about the
+cost: that URL is all the browser keeps, so a reload or a deep link of it builds that route's
+_own_ stack, not the stack it was pushed onto. In fespalier every route is a typed path, so the URL
+is always a valid page. Without the key, `push` leaves the address bar on the page below; use
+[`go` or `replace`](#the-url-as-state-of-and-copywith) for state that belongs in the URL.
 `meta: required` makes a route without a [`meta.dart`](#route-manifest-and-metadart) an error,
 `meta_unique` makes a duplicate value in it one, and
 `output_manifest` writes the route manifest to a library of its own (same section).
@@ -1456,11 +1466,17 @@ SearchRoute(q: 'ap').copyWith(page: 2).location;                   // '/search?q
   behind it has the parameters as `Object?` with a private `const` sentinel as the default. The
   caller sees the clean signature; the sentinel is only visible in `app.g.dart`, and nobody can
   pass it. See [Design notes](#design-notes).
-- **`go`, `push`, `replace`.** `go` is the one that follows the URL: on the web it adds a history
-  entry, and back and forward restore each view. `replace` is go_router's: it swaps the top page of
-  the stack, but go_router doesn't put an imperative `replace` or `push` in the address bar on the web
-  (`GoRouter.optionURLReflectsImperativeAPIs`, off by default), so don't use it for state that
-  should be in the URL.
+- **`go`, `push`, `replace`.** `go` follows the URL: on the web it adds a history entry, and back
+  and forward restore each view. `replace` (since 0.6.0) shows its location in the address bar too
+  and replaces the history entry instead of adding one, so it is the one for a change that
+  shouldn't pile up in the back stack (typing in a search box). When the page on top is part of the
+  declarative stack it is `go` inside Flutter's `Router.neglect`, on every platform: the stack
+  becomes the one the new location has by itself, and a page with the same path template keeps its
+  state. When the top was `push`ed, `replace` is go_router's own, which swaps that page and keeps the
+  stack below it. `push` stays out of the address bar and the history unless `push_updates_url: true`
+  is set in [the pubspec](#getting-started) (since 0.6.0). On 0.5.0 `replace` was go_router's in
+  every case: the address bar followed it only when no page was below it (as a new history entry),
+  and showed the page below's URL otherwise, so use `go` for URL state there.
 - **Reserved names.** `of`, `maybeOf` and `copyWith` are members of the route class, so
   they can't be segment or query names (see
   [Typed helpers on the route](#typed-helpers-on-the-route)).

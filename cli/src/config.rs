@@ -12,6 +12,7 @@
 //!   remount: never          # default; on_segments or on_location give a page a fresh state when its URL changes (a route.dart sets it per folder)
 //!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
 //!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
+//!   push_updates_url: false # default; true puts a `push`ed route's URL in the browser's address bar
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
 //!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
 //!     domains: [shop.example.com]
@@ -129,6 +130,9 @@ pub struct Config {
     pub data_retry: DataRetry,
     /// Keep rendering the old value or error while `data.dart` reloads.
     pub keep_previous: bool,
+    /// `GoRouter.optionURLReflectsImperativeAPIs`, which `AppRoutes.router()` assigns: a
+    /// `push`ed route shows its URL in the browser's address bar.
+    pub push_updates_url: bool,
     /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
     pub file_style: FileStyle,
     /// The `links:` section, as written. Only `fsp links` reads it, and it checks the values
@@ -149,6 +153,7 @@ impl Default for Config {
             remount: Remount::Never,
             data_retry: DataRetry::Inherit,
             keep_previous: true,
+            push_updates_url: false,
             file_style: FileStyle::Snake,
             links: None,
         }
@@ -184,6 +189,7 @@ struct RawConfig {
     remount: Option<Remount>,
     data_retry: Option<DataRetry>,
     keep_previous: Option<bool>,
+    push_updates_url: Option<bool>,
     file_style: Option<FileStyle>,
     links: Option<LinksConfig>,
 }
@@ -494,6 +500,7 @@ impl Pubspec {
             config.remount = c.remount.unwrap_or(config.remount);
             config.data_retry = c.data_retry.unwrap_or(config.data_retry);
             config.keep_previous = c.keep_previous.unwrap_or(config.keep_previous);
+            config.push_updates_url = c.push_updates_url.unwrap_or(config.push_updates_url);
             config.file_style = c.file_style.unwrap_or(config.file_style);
             config.links = c.links;
             if let Some(d) = c.app_dir {

@@ -51,6 +51,9 @@ struct FileCx {
     case_sensitive: bool,
     /// `keep_previous` from the config: the `DataViews`' `keepPrevious`.
     keep_previous: bool,
+    /// `push_updates_url` from the config: what `router()` assigns to
+    /// `GoRouter.optionURLReflectsImperativeAPIs`.
+    push_updates_url: bool,
     /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
     /// (`_keep`) that tells a parameter left out from one passed as `null`.
     copy_with: bool,
@@ -466,6 +469,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
             .map(|c| format!("_i{}.extraCodec", c.import)),
         case_sensitive: app.routes[0].case_sensitive,
         keep_previous: cfg.keep_previous,
+        push_updates_url: cfg.push_updates_url,
     };
     templates::render("app.g.dart", &cx)
 }

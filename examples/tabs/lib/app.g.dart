@@ -55,6 +55,8 @@ abstract final class AppRoutes {
     GlobalKey<NavigatorState>? navigatorKey,
   }) {
     final routes = mount(navigatorKey: navigatorKey);
+    // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
+    GoRouter.optionURLReflectsImperativeAPIs = false;
     return GoRouter(
       initialLocation: initialLocation,
       observers: observers,
@@ -305,7 +307,7 @@ final class EditProfileRoute extends TypedLocation {
       context.push<T>(locationFor(locale), extra: extra);
 
   @override
-  void replace(BuildContext context, {ProfileDraft? extra, String? locale}) => context.replace(locationFor(locale), extra: extra);
+  void replace(BuildContext context, {ProfileDraft? extra, String? locale}) => replaceLocation(context, locationFor(locale), extra: extra);
 
   /// The EditProfileRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.

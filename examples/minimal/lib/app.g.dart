@@ -44,6 +44,8 @@ abstract final class AppRoutes {
     GlobalKey<NavigatorState>? navigatorKey,
   }) {
     final routes = mount(navigatorKey: navigatorKey);
+    // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
+    GoRouter.optionURLReflectsImperativeAPIs = false;
     return GoRouter(
       initialLocation: initialLocation,
       observers: observers,

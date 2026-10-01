@@ -246,13 +246,25 @@ void main() {
     testWidgets('replace shows the copy, and of reads it', (
       tester,
     ) async {
-      await boot(tester, '/products', []);
+      final history = <HistoryUpdate>[];
+      await boot(tester, '/products', history);
+      history.clear();
       ProductsRoute.of(tester.element(find.byType(ListView)))
           .copyWith(sort: Sort.name)
           .replace(tester.element(find.byType(ListView)));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(currentLocation(tester), '/products?sort=name');
+      // The address bar shows it, and the history entry is replaced, not added.
+      expect(
+        GoRouter.of(tester.element(find.byType(ListView)))
+            .routeInformationProvider
+            .value
+            .uri
+            .toString(),
+        '/products?sort=name',
+      );
+      expect(history, [(uri: '/products?sort=name', replace: true)]);
       expect(names(tester).first, 'Ceramic mug');
       expect(
         ProductsRoute.of(tester.element(find.byType(ListView))).sort,
@@ -267,6 +279,12 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(currentLocation(tester), '/products?sort=name');
+      // The default: a push leaves the address bar on the page below
+      // (`push_updates_url` in the pubspec turns that on).
+      expect(
+        GoRouter.of(context).routeInformationProvider.value.uri.toString(),
+        '/products',
+      );
 
       GoRouter.of(tester.element(find.byType(ListView).last)).pop();
       await tester.pump();

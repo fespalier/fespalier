@@ -47,6 +47,8 @@ fn config(yaml: &str) -> anyhow::Result<Config> {
 const PAGE: &str =
     "class APage extends StatelessWidget { const APage(this.n, {super.key}); final int n; }";
 
+const HOME: &str = "class APage extends StatelessWidget { const APage({super.key}); }";
+
 #[test]
 fn config_keys_default_to_inherit_and_keep() {
     let c = Config::default();
@@ -82,6 +84,91 @@ fn config_rejects_unknown_values() {
         e.contains("invalid type") || e.contains("expected a boolean"),
         "{e}"
     );
+}
+
+#[test]
+fn push_updates_url_parses_and_defaults_to_off() {
+    assert!(!Config::default().push_updates_url);
+    assert!(!config("name: demo\n").unwrap().push_updates_url);
+    assert!(
+        !config("fespalier:\n  format: true\n")
+            .unwrap()
+            .push_updates_url
+    );
+    let c = config("fespalier:\n  push_updates_url: true\n").unwrap();
+    assert!(c.push_updates_url);
+    let c = config("fespalier:\n  push_updates_url: false\n").unwrap();
+    assert_eq!(c, Config::default());
+}
+
+#[test]
+fn push_updates_url_rejects_other_values() {
+    let e = format!(
+        "{:#}",
+        config("fespalier:\n  push_updates_url: sometimes\n").unwrap_err()
+    );
+    assert!(
+        e.contains("invalid type") || e.contains("expected a boolean"),
+        "{e}"
+    );
+    // The unknown-key message lists it, so a misspelling points at the right name.
+    let e = format!(
+        "{:#}",
+        config("fespalier:\n  push_update_url: true\n").unwrap_err()
+    );
+    assert!(
+        e.contains("unknown field `push_update_url`") && e.contains("`push_updates_url`"),
+        "{e}"
+    );
+}
+
+#[test]
+fn router_assigns_the_url_reflection_explicitly() {
+    let files = [("a/page.dart", HOME)];
+    let assign = "GoRouter.optionURLReflectsImperativeAPIs = ";
+    let c = code(&files);
+    has(&c, &[&format!("{assign}false;")]);
+    lacks(&c, &[&format!("{assign}true;")]);
+
+    let cfg = Config {
+        push_updates_url: true,
+        ..Config::default()
+    };
+    let c = code_with(&cfg, &files);
+    has(&c, &[&format!("{assign}true;")]);
+    lacks(&c, &[&format!("{assign}false;")]);
+    // The assignment comes before the router is built, in `router()` only.
+    assert_eq!(c.matches(assign).count(), 1, "{c}");
+    assert!(c.find(assign) < c.find("return GoRouter("), "{c}");
+}
+
+#[test]
+fn replace_goes_through_the_runtime_helper() {
+    let c = code(&[
+        ("a/page.dart", HOME),
+        (
+            "n/$id/page.dart",
+            "class NPage extends StatelessWidget { const NPage({super.key, required this.id, this.extra}); final int id; final String? extra; }",
+        ),
+    ]);
+    has(
+        &c,
+        &["replaceLocation(context, locationFor(locale), extra: extra)"],
+    );
+    lacks(&c, &["context.replace("]);
+}
+
+#[test]
+fn the_pubspec_push_updates_url_reaches_the_generated_file() {
+    let dir = project(&[("a/page.dart", HOME)]);
+    fs::write(
+        dir.path().join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  push_updates_url: true\n",
+    )
+    .unwrap();
+    crate::gen_with(dir.path(), &Config::load(dir.path()).unwrap(), true).unwrap();
+    let c = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    has(&c, &["GoRouter.optionURLReflectsImperativeAPIs = true;"]);
 }
 
 #[test]

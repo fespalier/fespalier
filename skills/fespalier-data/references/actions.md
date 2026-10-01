@@ -148,11 +148,11 @@ class RefundPage extends HookConsumerWidget {
 On `RefundRoute` (a `package:my_app/app.g.dart` member each; **static**, because an
 instance member would have to name `Refund`, which the generated file can't):
 
-| Member                       | What it is                                                                     |
-| ---------------------------- | ------------------------------------------------------------------------------ |
-| `RefundRoute.action(1)`      | The provider (a `NotifierProvider` family), keyed by the keys. State: `AsyncValue<Refund?>` |
-| `RefundRoute.submit(ref, id: 1, input: x)` | Runs it once: the `Future<Refund>`, **throws** what the action threw |
-| `RefundRoute.useAction(ref, id: 1)`        | For `build`: a handle with `state`, `isPending`, `hasError`, `reset()` and `call(input)` |
+| Member                                     | What it is                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `RefundRoute.action(1)`                    | The provider (a `NotifierProvider` family), keyed by the keys. State: `AsyncValue<Refund?>` |
+| `RefundRoute.submit(ref, id: 1, input: x)` | Runs it once: the `Future<Refund>`, **throws** what the action threw                        |
+| `RefundRoute.useAction(ref, id: 1)`        | For `build`: a handle with `state`, `isPending`, `hasError`, `reset()` and `call(input)`    |
 
 A function not called `action` names its members after itself: `approve` gives
 `approveAction(keys)`, `approve(ref, ...)` and `useApprove(ref, ...)`. A section's

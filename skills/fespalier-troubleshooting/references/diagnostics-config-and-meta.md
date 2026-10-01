@@ -20,19 +20,19 @@ message, and exits 1.
 
 ## The command line
 
-| Message                                                                                                                         | Cause and fix                                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `no pubspec.yaml here or above; pass --project`                                                                                 | Run inside the project, or `--project <dir>`                                  |
-| ``<project>/lib/app not found (set `fespalier: app_dir:` in pubspec.yaml, or run `fsp init`)``                                  | No app folder yet                                                             |
-| ``no pubspec.yaml in <dir>; run `fsp init` inside a Flutter project or pass --project``                                         | `fsp init` needs a `pubspec.yaml`                                             |
-| `` pubspec.yaml has no `name:` ``                                                                                               | `fsp init` needs the package name for the `main.dart` it prints               |
-| `N error(s); lib/app.g.dart left unchanged`                                                                                     | The summary line after the diagnostics above: the **old** file is still there |
-| `N error(s); no route table`                                                                                                    | `fsp routes` refuses to print while there are errors                          |
+| Message                                                                                                                                   | Cause and fix                                                                 |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `no pubspec.yaml here or above; pass --project`                                                                                           | Run inside the project, or `--project <dir>`                                  |
+| ``<project>/lib/app not found (set `fespalier: app_dir:` in pubspec.yaml, or run `fsp init`)``                                            | No app folder yet                                                             |
+| ``no pubspec.yaml in <dir>; run `fsp init` inside a Flutter project or pass --project``                                                   | `fsp init` needs a `pubspec.yaml`                                             |
+| `` pubspec.yaml has no `name:` ``                                                                                                         | `fsp init` needs the package name for the `main.dart` it prints               |
+| `N error(s); lib/app.g.dart left unchanged`                                                                                               | The summary line after the diagnostics above: the **old** file is still there |
+| `N error(s); no route table`                                                                                                              | `fsp routes` refuses to print while there are errors                          |
 | `nothing to create: a (group) folder has no page; also pass --action, --layout, --loading, --error, --not-found, --guard or --transition` | `fsp new '(group)'` with no flag (or `--no-page` alone)                       |
-| ``--name `x` names the route class `xRoute`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName` ``         | `fsp new --function --name`                                                   |
-| `a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown`                             | `fsp new 'docs/[...rest]' --not-found`                                        |
-| `nothing to create`                                                                                                             | Every file `fsp new` would write already exists (`skip  ... (exists)`)        |
-| `` `fsp new` created: ... Fix or delete them, then run `fsp gen`. ``                                                            | The scaffold was written but `gen` then failed: read the errors above it      |
+| ``--name `x` names the route class `xRoute`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName` ``                   | `fsp new --function --name`                                                   |
+| `a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown`                                       | `fsp new 'docs/[...rest]' --not-found`                                        |
+| `nothing to create`                                                                                                                       | Every file `fsp new` would write already exists (`skip  ... (exists)`)        |
+| `` `fsp new` created: ... Fix or delete them, then run `fsp gen`. ``                                                                      | The scaffold was written but `gen` then failed: read the errors above it      |
 
 `fsp init` and `fsp new` **never overwrite**: they print `skip  lib/app/page.dart (exists)`.
 `format: true` without `dart` on `PATH` is a **warning** (``warning: not formatting ...: `dart` is not

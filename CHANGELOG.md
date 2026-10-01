@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/vaam-apps/fespalier/compare/v0.4.1...v0.5.0) (2026-10-01)
+
+
+### Features
+
+* action.dart for typed writes with pending and error state ([#22](https://github.com/vaam-apps/fespalier/issues/22)) ([#33](https://github.com/vaam-apps/fespalier/issues/33)) ([1adf977](https://github.com/vaam-apps/fespalier/commit/1adf9778734bbe7e28098946d0338dabaaea4a33))
+* fsp links writes App Links, Universal Links and a sitemap from the route tree ([#26](https://github.com/vaam-apps/fespalier/issues/26)) ([#36](https://github.com/vaam-apps/fespalier/issues/36)) ([81098b2](https://github.com/vaam-apps/fespalier/commit/81098b223c007e036bb68caf0465e1c40f4b4708))
+* guards and redirects take a Ref, and a guard re-runs when what it watches changes ([#32](https://github.com/vaam-apps/fespalier/issues/32)) ([77d967b](https://github.com/vaam-apps/fespalier/commit/77d967b1bad1185898c46a38113fff8a851c9b19))
+* RouteLink, a typed link that preloads its route's data ([#23](https://github.com/vaam-apps/fespalier/issues/23), [#24](https://github.com/vaam-apps/fespalier/issues/24)) ([#34](https://github.com/vaam-apps/fespalier/issues/34)) ([5520707](https://github.com/vaam-apps/fespalier/commit/552070713052d3037a4b7898228cc6dba9323a9a))
+* XRoute.of(context) and copyWith, the URL as typed state ([#25](https://github.com/vaam-apps/fespalier/issues/25)) ([#35](https://github.com/vaam-apps/fespalier/issues/35)) ([c4418a8](https://github.com/vaam-apps/fespalier/commit/c4418a8fa7e25a95d4cdea36c883163127347125))
+
+
+### Bug Fixes
+
+* fespalier no longer causes rebuilds, leaks or order-dependent tests ([#31](https://github.com/vaam-apps/fespalier/issues/31)) ([818b21c](https://github.com/vaam-apps/fespalier/commit/818b21c1ffd60a805e7c03dec5ff66bdd47e5546))
+
 ## [0.4.1](https://github.com/vaam-apps/fespalier/compare/v0.4.0...v0.4.1) (2026-10-01)
 
 

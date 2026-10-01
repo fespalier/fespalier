@@ -1,6 +1,6 @@
 # The file kinds
 
-Fourteen kinds, as of v0.4.0 (`Kind::ALL` in `cli/src/scan.rs`). `fsp` reads a
+Fifteen kinds, as of 0.5.0 (`Kind::ALL` in `cli/src/scan.rs`; `action.dart` is new in it). `fsp` reads a
 file by its **name**; nothing else marks a route. Each view file exports one
 public widget class, **or** one top-level function named after the file, never
 both.
@@ -9,6 +9,7 @@ both.
 | ------------------ | ----------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | `page.dart`        | its own folder's URL                                        | segments; query; `data`; `extra`                                                 |
 | `data.dart`        | the page beside it, or a section                            | segments; query (a section's: segments and query too since 0.3.0)                |
+| `action.dart`      | the page beside it, or a section (since 0.5.0)              | segments; query; the one `input`                                                 |
 | `loading.dart`     | its folder and below (inherited, nearest wins)              | segments; query                                                                  |
 | `error.dart`       | its folder and below (inherited, nearest wins)              | segments; query; `error`, `stackTrace`, `retry`                                  |
 | `layout.dart`      | its folder and below                                        | `child` or `navigationShell`; segments at or above; query; section data; `extra` |
@@ -59,6 +60,14 @@ public widget class**, or a top-level function named after the file returning a
 by `fespalier-data`. Beside a `page.dart` it feeds the page. In a folder with a
 `layout.dart` and **no** page it is the data of the whole section. With neither,
 it is an error.
+
+**`action.dart`** (since 0.5.0) is the write side of a route: every public top-level
+function with a `Ref` first, `Future<T> action(Ref ref, {...segments, required Input
+input})`, is an action, and a file may hold several. Beside a `page.dart` it belongs to
+that route (`XRoute.submit`, `XRoute.useAction`); in a folder with a `layout.dart` and no
+page, to the section (`XSection`). After a success the route's own `data.dart` and the
+sections' above it are invalidated, or what `const invalidates = [...]` lists. Covered by
+`fespalier-data` (`references/actions.md`). With no page or layout beside it, it is an error.
 
 **`loading.dart`** and **`error.dart`** show while `data.dart` first loads and
 when it fails. They are inherited by every folder below, bound separately for

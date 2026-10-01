@@ -70,6 +70,7 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 | A guard                            | `c.read(session.notifier).signIn()` through the returned container, then navigate                                  |
 | Locations, matches, data providers | plain `test()`: `.location`, `locationFor`, `AppRoutes.dataAt(uri)`, `AppRoutes.match(uri)`                        |
 | A `WidgetRef` (prefetch, refresh)  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                     |
+| An action (a write, since 0.5.0)   | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                      |
 | Restoration                        | your own app widget building the router in `State`, `restartAndRestore()`                                          |
 
 Full compiled tests for all of these are in

@@ -32,7 +32,7 @@ What they print, to stderr unless noted:
   diagnostic that is not about a place in a file; `severity` is `error` or
   `warning`). Stdout is empty when there is nothing to report.
 - `routes` prints `pattern  RouteClass  file  (tags)` per route. The tags are
-  `redirect`, `data`, `guard`, `layout`, `present` or `transition`, `root`, and
+  `redirect`, `data`, `action` (since 0.5.0), `guard`, `layout`, `present` or `transition`, `root`, and
   `sibling` (a [`nest = false`](../../fespalier-routing/references/route-dart.md) route,
   since 0.4.0), in that order. `routes --json` prints, per line, in
   this order: `pattern`, `route`, `file`, `tags`, `params` (`{name, type, in}`
@@ -43,15 +43,15 @@ What they print, to stderr unless noted:
 ### `fsp new`
 
 ```sh
-fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
+fsp new 'products/[id]' --name Product --data --action --loading --error --layout --guard --transition
 fsp new '(account)' --layout        # a group: no page.dart
 fsp new 'kyc/shop/name' --function --name KycShopName
 fsp new 'shop' --not-found
 fsp new 'docs/[...rest]'            # $$rest; 'docs/[[...rest]]' is $$$rest
 ```
 
-Flags: `--name`, `--function`, `--data`, `--loading`, `--error`, `--layout`,
-`--not-found`, `--guard`, `--transition`, `--no-page`. A `(group)` target gets no
+Flags: `--name`, `--function`, `--data`, `--action` (`action.dart`, since 0.5.0),
+`--loading`, `--error`, `--layout`, `--not-found`, `--guard`, `--transition`, `--no-page`. A `(group)` target gets no
 `page.dart`, and with nothing left to write it fails with `nothing to create`.
 `--name` is the class-name stem (default: from the path, `ProductsId`), and with
 `--function` the `routeName` (UpperCamelCase). **Every new segment is a

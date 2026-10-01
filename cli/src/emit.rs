@@ -19,7 +19,9 @@ use crate::diag::Diags;
 use crate::enums;
 use crate::locale::{self, Localized};
 use crate::manifest::{self, ManifestCx};
-use crate::resolve::{self, App, Bind, Branch, Data, Guard, Route, Transition};
+use crate::resolve::{
+    self, Action, ActionNames, App, Bind, Branch, Data, Flow, Guard, Route, Transition,
+};
 use crate::scan::{Kind, Seg};
 use crate::templates;
 
@@ -238,6 +240,46 @@ struct RouteCx {
     location_for: Option<String>,
     /// The type of the page's `extra`, when it takes one.
     extra: Option<String>,
+    /// The functions of its `action.dart`.
+    actions: Vec<ActionCx>,
+}
+
+/// One function of an `action.dart`, as the typed route (or section handle) exposes it.
+#[derive(Serialize)]
+struct ActionCx {
+    /// The function's name.
+    name: String,
+    file: String,
+    /// The members: the provider (`action`), the one-shot helper (`submit`) and the hook.
+    provider: String,
+    run: String,
+    hook: String,
+    /// The private provider the member `provider` is: `_action3_0`.
+    top: String,
+    /// `actionProvider` for an action with no keys, else `actionFamily`.
+    factory: &'static str,
+    /// The parameters of the function the provider runs: `Ref ref, int id, _i5.Input input`.
+    run_params: String,
+    /// `_i5.action(ref, id: id, input: input)`.
+    call: String,
+    /// The parameters of what the provider invalidates after a success: `int id`, or nothing.
+    key_param: String,
+    /// The providers a success invalidates.
+    invalidates: String,
+    /// `{required int id, required _i5.Input input}`: the named parameters of the one-shot helper.
+    params: String,
+    /// `, {required int id}` or nothing: the keys, for the hook.
+    hook_params: String,
+    /// `(id)`, `((a: a, b: b))` or nothing: the key the provider is called with.
+    key: String,
+    /// `runAction`, `runActionSync` or `runActionOr`: what the one-shot helper calls.
+    run_with: &'static str,
+    /// `watchAction`, `watchActionSync` or `watchActionOr`.
+    watch_with: &'static str,
+    /// What the one-shot helper completes with, as the doc says it.
+    returns: &'static str,
+    /// The "keyed by" clause of the doc comment, or nothing.
+    keyed: String,
 }
 
 #[derive(Serialize)]
@@ -295,6 +337,9 @@ struct SectionCx {
     /// `{required int id}` (or nothing) and, for `prefetch`, with `keepFor`.
     args: String,
     prefetch_args: String,
+    /// Whether the section has a data.dart: its members are only there for one.
+    has_data: bool,
+    actions: Vec<ActionCx>,
 }
 
 /// Parses what a route (or layout) reads from the URL into a record.
@@ -1433,17 +1478,17 @@ fn sections(app: &App, diags: &mut Diags) -> Vec<SectionCx> {
         .routes
         .iter()
         .enumerate()
-        .filter(|(_, r)| r.is_section())
+        .filter(|(_, r)| r.has_section_handle())
     {
-        let d = r.data.as_ref().expect("a section has data");
-        let stem = resolve::pascal(&r.dir);
-        let stem = match stem.chars().next() {
-            None => "Root".to_string(),
-            Some(c) if c.is_ascii_digit() => format!("Path{stem}"),
-            _ => stem,
-        };
-        let name = format!("{stem}Section");
-        let file = rel(r, Kind::Data);
+        let name = resolve::section_name(&r.dir);
+        let file = rel(
+            r,
+            if r.data.is_some() {
+                Kind::Data
+            } else {
+                Kind::Action
+            },
+        );
         if let Some((_, first)) = taken.iter().find(|(n, _)| *n == name) {
             let msg = format!(
                 "the section's typed handle `{name}` is already taken by {first}; (group) folders don't add to the name, so rename a folder"
@@ -1452,26 +1497,144 @@ fn sections(app: &App, diags: &mut Diags) -> Vec<SectionCx> {
             continue;
         }
         taken.push((name.clone(), file.clone()));
-        let mut prefetch = keyed_param_list(app, r, d);
-        prefetch.push("Duration? keepFor".to_string());
-        out.push(SectionCx {
-            name,
-            folder: if r.dir.is_empty() {
-                "the app folder".into()
-            } else {
-                format!("`{}/`", r.dir)
+        let folder = if r.dir.is_empty() {
+            "the app folder".into()
+        } else {
+            format!("`{}/`", r.dir)
+        };
+        let actions = actions_of(app, id, r);
+        let cx = match r.data.as_ref().filter(|_| r.is_section()) {
+            Some(d) => {
+                let mut prefetch = keyed_param_list(app, r, d);
+                prefetch.push("Duration? keepFor".to_string());
+                SectionCx {
+                    name,
+                    folder,
+                    file,
+                    keyed: keyed_label(d),
+                    expr: provider_expr(id, d),
+                    verb: if d.stream { "Restarts" } else { "Re-runs" },
+                    selector: d.selector,
+                    key: key_expr(app, r, d, ""),
+                    args: keyed_params(app, r, d),
+                    prefetch_args: format!(", {{{}}}", prefetch.join(", ")),
+                    has_data: true,
+                    actions,
+                }
+            }
+            None => SectionCx {
+                name,
+                folder,
+                file,
+                keyed: String::new(),
+                expr: String::new(),
+                verb: "",
+                selector: false,
+                key: String::new(),
+                args: String::new(),
+                prefetch_args: String::new(),
+                has_data: false,
+                actions,
             },
-            file,
-            keyed: keyed_label(d),
-            expr: provider_expr(id, d),
-            verb: if d.stream { "Restarts" } else { "Re-runs" },
-            selector: d.selector,
-            key: key_expr(app, r, d, ""),
-            args: keyed_params(app, r, d),
-            prefetch_args: format!(", {{{}}}", prefetch.join(", ")),
-        });
+        };
+        out.push(cx);
     }
     out
+}
+
+/// What the keys of an action look like as a `Data`, so the helpers that key a `data()` provider
+/// (`key_params`, `key_expr`, `keyed_param_list`) key an action's provider the same way.
+fn action_keys(a: &Action) -> Data {
+    Data {
+        import: a.import,
+        provider: false,
+        selector: false,
+        stream: false,
+        ty: String::new(),
+        keys: a.keys.clone(),
+        record: a.keys.len() > 1,
+    }
+}
+
+/// The typed members of each function of a route's (or section's) `action.dart`.
+fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
+    r.actions
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let d = action_keys(a);
+            let names = ActionNames::of(&a.name);
+            let (key_ty, call_keys) = key_params(app, r, &d);
+            let keyed = !a.keys.is_empty();
+            let input = format!("{} input", a.input.ty);
+            let mut call_args = vec!["ref".to_string()];
+            call_args.extend(call_keys);
+            call_args.push("input: input".into());
+            // The key as the provider's closures see it: a bare value, or a record `k`.
+            let at = |name: &str| {
+                if a.keys.len() == 1 {
+                    name.to_string()
+                } else {
+                    format!("k.{name}")
+                }
+            };
+            let mut params = keyed_param_list(app, r, &d);
+            params.push(format!("required {input}"));
+            let hook_keys = keyed_params(app, r, &d);
+            let invalidates: Vec<String> = a
+                .invalidates
+                .iter()
+                .map(|&t| {
+                    let target = &app.routes[t];
+                    let td = target.data.as_ref().expect("an invalidated route has data");
+                    let key = match (td.keys.as_slice(), td.record) {
+                        ([], _) => String::new(),
+                        ([k], false) => format!("({})", at(k)),
+                        (keys, _) => {
+                            let fields: Vec<String> =
+                                keys.iter().map(|k| format!("{k}: {}", at(k))).collect();
+                            format!("(({}))", fields.join(", "))
+                        }
+                    };
+                    format!("{}{key}", provider_expr(t, td))
+                })
+                .collect();
+            let list = "ProviderListenable<AsyncValue<Object?>>";
+            let (run_with, watch_with, returns) = match a.flow {
+                Flow::Future => ("runAction", "watchAction", "Completes with its result, or throws what the action threw"),
+                Flow::FutureOr => ("runActionOr", "watchActionOr", "Returns its result as the action does (a value when the action gave one, else a `Future`), or throws what the action threw"),
+                Flow::Sync => ("runActionSync", "watchActionSync", "Returns its result at once, or throws what the action threw"),
+            };
+            ActionCx {
+                name: a.name.clone(),
+                file: rel(r, Kind::Action),
+                provider: names.provider,
+                run: names.run,
+                hook: names.hook,
+                top: format!("_action{id}_{i}"),
+                factory: if keyed { "actionFamily" } else { "actionProvider" },
+                run_params: if keyed {
+                    format!("Ref ref, {key_ty}, {input}")
+                } else {
+                    format!("Ref ref, {input}")
+                },
+                call: format!("_i{}.{}({})", a.import, a.name, call_args.join(", ")),
+                key_param: key_ty,
+                invalidates: if invalidates.is_empty() {
+                    format!("const <{list}>[]")
+                } else {
+                    format!("<{list}>[{}]", invalidates.join(", "))
+                },
+                params: format!("{{{}}}", params.join(", ")),
+                hook_params: hook_keys,
+                key: key_expr(app, r, &d, ""),
+                run_with,
+                watch_with,
+                returns,
+                keyed: keyed_label(&d),
+            }
+        })
+        .collect()
 }
 
 /// How `AppRoutes.matchUrl` reads each route: its path, then what it builds from the
@@ -1628,13 +1791,14 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
             _ => None,
         },
         extra: r.extra.as_ref().map(|e| e.ty.clone()),
+        actions: actions_of(app, id, r),
     })
 }
 
 /// What a route's `data.dart` can be keyed by: its segments and query parameters; for a
 /// section, the segments above it and the query parameters its layout reads.
 fn data_params(app: &App, r: &Route) -> Vec<(String, String)> {
-    if r.is_section() {
+    if r.layout_folder() {
         let mut out = app.typed_segs(r);
         out.extend(r.layout_query.iter().cloned());
         out
@@ -1645,7 +1809,7 @@ fn data_params(app: &App, r: &Route) -> Vec<(String, String)> {
 
 /// The query parameters among [`data_params`].
 fn data_query(r: &Route) -> &[(String, String)] {
-    if r.is_section() {
+    if r.layout_folder() {
         &r.layout_query
     } else {
         &r.query
@@ -1884,10 +2048,15 @@ fn extra_imports(app: &App, cfg: &Config) -> Vec<String> {
     };
     let mut shown: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut aliased = BTreeSet::new();
+    let inputs = app
+        .routes
+        .iter()
+        .flat_map(|r| r.actions.iter().map(|a| &a.input));
     for e in app
         .routes
         .iter()
         .filter_map(|r| r.extra.as_ref())
+        .chain(inputs)
         .chain(&app.enum_types)
     {
         for (_, uri, alias) in &e.aliased {
@@ -1924,6 +2093,9 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     }
     if r.data.is_some() {
         tags.push("data");
+    }
+    if !r.actions.is_empty() {
+        tags.push("action");
     }
     if r.guard.is_some() {
         tags.push("guard");

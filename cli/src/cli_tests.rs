@@ -23,6 +23,7 @@ fn args(route: &str, layout: bool) -> NewArgs {
         function: false,
         not_found: false,
         data: false,
+        action: false,
         loading: false,
         error: false,
         layout,
@@ -85,6 +86,7 @@ fn everything(route: &str, function: bool) -> NewArgs {
         function,
         not_found: true,
         data: true,
+        action: true,
         loading: true,
         error: true,
         layout: true,
@@ -149,4 +151,43 @@ fn scaffolded_files_are_dart_format_clean() {
         }
     }
     assert!(checked > 40, "{checked}");
+}
+
+/// `fsp new --action` writes an action.dart that the generator reads without a complaint: the
+/// segments of the path, then `input`, and a helper on the typed route.
+#[test]
+fn new_action_scaffolds_a_working_action_dart() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("pubspec.yaml"), "name: demo\n").unwrap();
+    crate::init::run(dir.path()).unwrap();
+    let mut a = args("orders/[orderId]/refund", false);
+    a.action = true;
+    let created = scaffold::new_route(dir.path(), &a).unwrap();
+    assert!(
+        created.contains(&"lib/app/orders/$orderId/refund/action.dart".to_string()),
+        "{created:?}"
+    );
+    let action = fs::read_to_string(
+        dir.path()
+            .join("lib/app/orders/$orderId/refund/action.dart"),
+    )
+    .unwrap();
+    assert!(
+        action.contains("Future<Object?> action(Ref ref, {required String orderId, required Object? input}) async =>\n    input;")
+            || action.contains("Future<Object?> action(\n"),
+        "{action}"
+    );
+    let (code, diags, _) = crate::build(
+        &dir.path().join("lib/app"),
+        &crate::config::Config::default(),
+    )
+    .unwrap();
+    assert!(
+        diags.0.iter().all(|d| !d.to_string().starts_with('✗')),
+        "{:?}",
+        diags.0
+    );
+    assert!(code.contains("static final submit = (WidgetRef ref, {required String orderId, required Object? input})"), "{code}");
+    // It is not written over: the file is yours once it exists.
+    assert!(scaffold::new_route(dir.path(), &a).is_err());
 }

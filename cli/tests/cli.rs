@@ -847,3 +847,56 @@ fn watch_ignores_a_manifest_file_inside_the_app_folder() {
     assert_eq!(w.lines(), 2, "{}", w.text());
     assert!(root.join("lib/app/routes.g.dart").exists());
 }
+
+/// `action.dart` through the binary: the route table and `--json` tag the route `action`
+/// (the editors read `tags`, which only gains a value), and a misplaced one fails `check` with
+/// a code frame.
+#[test]
+fn routes_tags_a_route_with_an_action_and_check_frames_a_bad_one() {
+    let dir = project();
+    let root = dir.path();
+    let write = |rel: &str, body: &str| {
+        let p = root.join("lib/app").join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, body).unwrap();
+    };
+    write(
+        "orders/$id/page.dart",
+        "class OrderPage extends StatelessWidget { const OrderPage({super.key, required this.id}); final int id; }",
+    );
+    write(
+        "orders/$id/action.dart",
+        "Future<void> action(Ref ref, {required int id, required Object input}) async {}",
+    );
+    let (ok, out, err) = fsp_full(root, &["routes"], &[]);
+    assert!(ok, "{err}");
+    assert!(
+        out.contains("OrderRoute  orders/$id/page.dart  (action)"),
+        "{out}"
+    );
+    let (ok, out, err) = fsp_full(root, &["routes", "--json"], &[]);
+    assert!(ok, "{err}");
+    let row = out
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|r| r["pattern"] == "/orders/:id")
+        .unwrap();
+    assert_eq!(row["tags"], serde_json::json!(["action"]));
+
+    // Without `input`: the error points at the function.
+    write(
+        "orders/$id/action.dart",
+        "Future<void> action(Ref ref, {required int id}) async {}",
+    );
+    let (ok, _, err) = fsp_full(root, &["check"], &[]);
+    assert!(!ok);
+    assert!(err.contains("action() needs an `input` parameter"), "{err}");
+    assert!(
+        err.contains("┌─ lib/app/orders/$id/action.dart:1:"),
+        "{err}"
+    );
+    assert!(
+        err.contains("Future<void> action(Ref ref, {required int id}) async {}"),
+        "{err}"
+    );
+}

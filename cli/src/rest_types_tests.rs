@@ -367,6 +367,7 @@ fn fsp_new_keeps_the_type_an_existing_catch_all_has() {
         function: false,
         not_found: false,
         data: true,
+        action: false,
         loading: false,
         error: false,
         layout: false,

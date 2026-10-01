@@ -1,0 +1,7 @@
+{% from "new/_macros.dart" import func %}
+import 'package:fespalier/fespalier.dart';
+
+/// A write: run with `submit` or `useAction` on the typed route. It returns what the caller
+/// gets back; the route's data refreshes after it succeeds, and a failure is in the state.
+/// `input` is the value to write: give it your own type.
+{{ func("Future<Object?> action", ["Ref ref"], action_params, " async", "input") }}

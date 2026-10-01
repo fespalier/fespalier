@@ -56,7 +56,7 @@ confirmed by running `fsp` on a tree that triggers it.
 | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | Folder names, view files, duplicate URLs, route names, unreachable routes                              | [`references/diagnostics-tree.md`](references/diagnostics-tree.md)                                     |
 | Filling parameters, segment and query types, enums, `extra`                                            | [`references/diagnostics-binding.md`](references/diagnostics-binding.md)                               |
-| `data.dart` (three forms), `guard.dart`, `redirect.dart`, `transition.dart`, `present.dart`            | [`references/diagnostics-data-and-hooks.md`](references/diagnostics-data-and-hooks.md)                 |
+| `data.dart` (three forms), `action.dart`, `guard.dart`, `redirect.dart`, `transition.dart`, `present.dart` | [`references/diagnostics-data-and-hooks.md`](references/diagnostics-data-and-hooks.md)                 |
 | Layouts, `tabs`, `tabOptions`, `container`, `navigator.dart`                                           | [`references/diagnostics-layouts-and-navigators.md`](references/diagnostics-layouts-and-navigators.md) |
 | Pubspec config, the CLI and launcher, `meta.dart`, `route.dart`, localized `paths`, `extra_codec.dart` | [`references/diagnostics-config-and-meta.md`](references/diagnostics-config-and-meta.md)               |
 | Stale `app.g.dart`, the ink assertion, silent query parameters, case, go_router 18, the web            | [`references/flutter-pitfalls.md`](references/flutter-pitfalls.md)                                     |
@@ -67,7 +67,7 @@ confirmed by running `fsp` on a tree that triggers it.
 1. `fsp gen`, then `flutter analyze`. Most "it does not work" is a stale
    `app.g.dart` or an unread error line.
 2. `fsp routes` (or `--json`): it shows which file serves which URL, which parameters are
-   path and which are query, and every tag (`data`, `guard`, `layout`, `transition`,
+   path and which are query, and every tag (`data`, `action`, `guard`, `layout`, `transition`,
    `present`, `root`, `redirect`, and `sibling` for a `nest = false` route).
 3. Open the **`.rs` or `.dart`** before the README when they disagree:
    `known-wrong-docs.md` lists the ones that have bitten, and the version that fixed them.

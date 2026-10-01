@@ -28,7 +28,7 @@ message, and exits 1.
 | `` pubspec.yaml has no `name:` ``                                                                                               | `fsp init` needs the package name for the `main.dart` it prints               |
 | `N error(s); lib/app.g.dart left unchanged`                                                                                     | The summary line after the diagnostics above: the **old** file is still there |
 | `N error(s); no route table`                                                                                                    | `fsp routes` refuses to print while there are errors                          |
-| `nothing to create: a (group) folder has no page; also pass --layout, --loading, --error, --not-found, --guard or --transition` | `fsp new '(group)'` with no flag (or `--no-page` alone)                       |
+| `nothing to create: a (group) folder has no page; also pass --action, --layout, --loading, --error, --not-found, --guard or --transition` | `fsp new '(group)'` with no flag (or `--no-page` alone)                       |
 | ``--name `x` names the route class `xRoute`, so it must be UpperCamelCase (letters, digits, `_`), e.g. `KycShopName` ``         | `fsp new --function --name`                                                   |
 | `a catch-all folder can't have a not_found.dart: it matches every URL below it, so none is unknown`                             | `fsp new 'docs/[...rest]' --not-found`                                        |
 | `nothing to create`                                                                                                             | Every file `fsp new` would write already exists (`skip  ... (exists)`)        |

@@ -238,13 +238,13 @@ fn tab_options_become_branch_arguments() {
     // No options, nothing extra.
     let plain = option_code("");
     assert!(
-        !plain.contains("preload") && !plain.contains("initialLocation: joinLocation"),
+        !plain.contains("preload: ") && !plain.contains("initialLocation: joinLocation"),
         "{plain}"
     );
     // `preload: false` is the default and is left out.
     assert!(
         !option_code("const tabOptions = {'home': TabOptions(preload: false)};")
-            .contains("preload")
+            .contains("preload: ")
     );
 }
 

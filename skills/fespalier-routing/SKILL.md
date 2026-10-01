@@ -1,6 +1,6 @@
 ---
 name: fespalier-routing
-description: "How a fespalier folder tree becomes URLs and typed routes — static, dynamic ($id), catch-all ($$rest, $$$rest) and (group) folders, _private folders, typed and enum segments, query parameters, sibling order and unreachable routes, not_found.dart, route.dart (caseSensitive, localized paths, nest = false for a sibling with a compound path, and linkable = false to keep a folder out of fsp links), navigator.dart and present.dart for the root navigator, the generated typed routes (.go, .push, .location, locationFor), typed extra with extra_codec.dart, and the route manifest with meta.dart. Load before adding or renaming a route folder, changing a segment's type, writing a link between pages, or when a URL shows not_found.dart instead of its page."
+description: "How a fespalier folder tree becomes URLs and typed routes — static, dynamic ($id), catch-all ($$rest, $$$rest) and (group) folders, _private folders, typed and enum segments, query parameters, sibling order and unreachable routes, not_found.dart, route.dart (caseSensitive, localized paths, nest = false for a sibling with a compound path, and linkable = false to keep a folder out of fsp links), navigator.dart and present.dart for the root navigator, the generated typed routes (.go, .push, .location, locationFor), RouteLink (a typed link that is a real anchor on the web and can preload its page's data), typed extra with extra_codec.dart, and the route manifest with meta.dart. Load before adding or renaming a route folder, changing a segment's type, writing a link between pages (RouteLink), or when a URL shows not_found.dart instead of its page."
 ---
 
 # fespalier-routing
@@ -76,6 +76,26 @@ paths: a renamed folder then breaks the build, not a link. More in
 which also covers `extra` (for pages, layouts, guards and redirects) and
 `extra_codec.dart`.
 
+## Links between pages
+
+```dart
+RouteLink(
+  to: ProductRoute(id: 42),          // or uri: Uri.parse('/products/42')
+  preload: Preload.intent,           // none (default) | intent | visible
+  method: LinkMethod.go,             // go (default) | push | replace
+  builder: (context, follow) => ListTile(title: Text(p.name), onTap: follow),
+)
+```
+
+`RouteLink` (0.5.0) is a link a browser understands: a real `<a href>` on the web
+(status bar, middle click and Ctrl-click open a tab, the `href` carries the mount
+prefix and `locale:` spelling), a plain widget elsewhere, and a plain click that goes
+through go_router with `method`. **Give `follow` to the child**, or the link shows a
+URL and does nothing. It carries no `extra`. `preload:` starts the data of the page it
+points at (`fespalier-data`); `RouteLinkScope` sets the default for the app. In debug a
+`uri:` that matches no route throws. Detail, the web click path and tests:
+[`references/links.md`](references/links.md).
+
 ## Not-found views
 
 A `not_found.dart` at the root is the app-wide one (without it users see a plain
@@ -105,6 +125,7 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
 | A sheet or dialog page class of your own, with a URL                         | `present.dart`: same reference                                                                      |
 | A route that only forwards (`/old-products/3` to `/products/3`)              | `redirect.dart` (`fespalier-guards`)                                                                |
 | Every route's path, groups, layouts, params and your own metadata at runtime | `meta.dart` and `AppManifest`: [`references/manifest-and-meta.md`](references/manifest-and-meta.md) |
+| A link that shows its URL, opens in a tab, and preloads the page's data      | `RouteLink`, `RouteLinkScope` (0.5.0): [`references/links.md`](references/links.md)                 |
 
 ## Behaviours worth knowing before you debug
 

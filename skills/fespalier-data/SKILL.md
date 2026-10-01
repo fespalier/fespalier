@@ -1,6 +1,6 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles, the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
@@ -77,6 +77,8 @@ See [`references/sections.md`](references/sections.md).
 ProductRoute.watch(ref, id: 42);             // static: AsyncValue<Product>, in build()
 await ProductRoute.read(ref, id: 42);        // static: Future<Product>, in callbacks
 final warm = ProductRoute(id: 42).prefetch(ref);   // PrefetchHandle: kept until close()
+final all = ProductRoute(id: 42).preload(ref);     // 0.5.0: the page's whole data, sections included
+final byUri = AppRoutes.preload(ref, Uri.parse('/products/42'));   // 0.5.0: the same from a location
 await ProductRoute(id: 42).refresh(ref);
 AppRoutes.dataAt(Uri.parse('/products/42')); // [ProductRoute.data(42)]; null if no route fits
 AppRoutes.match(Uri.parse('/products/42'));  // RouteMatch: info, parsed params, typed route, data
@@ -85,6 +87,12 @@ AppRoutes.match(Uri.parse('/products/42'));  // RouteMatch: info, parsed params,
 - **`prefetch` holds until you `close()` the handle** (0.3.0 changed this from a
   30 s lapse; `prefetchKeepAlive` is gone). `keepFor:` auto-closes; `Duration.zero`
   keeps nothing; a failed load closes its own handle.
+- **`preload` (0.5.0) is `prefetch` for everything the page reads**: the data of each
+  section above it, then its own, behind one handle, never navigating and never
+  running a guard. `RouteLink(preload: ...)` calls it for you
+  ([`fespalier-routing`](../fespalier-routing/), its links page); a link whose
+  page still shows `loading.dart` after a hover usually has `Preload.none` (the
+  default) or a `uri:` without `RouteLinkScope(match: AppRoutes.matchUrl)`.
 - **`dataAt` is outermost first** (sections, then the route) and is `null` for an
   unknown location **or an unparsable segment**; no guard runs and no widget is
   built.

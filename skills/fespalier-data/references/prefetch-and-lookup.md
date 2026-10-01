@@ -1,6 +1,6 @@
 # Typed helpers, prefetch handles, `dataAt` and `match`
 
-As of v0.4.0. Every route with a `data.dart` has helpers next to `.data` and
+As of v0.5.0. Every route with a `data.dart` has helpers next to `.data` and
 `.refresh`; two generated functions on `AppRoutes` go from a **location** to its
 data; and Riverpod stays in charge throughout.
 
@@ -77,8 +77,8 @@ ref.watch(ProductRoute.data(42));                     // the provider itself
 - **`read` keeps the provider alive until it completes**, which a plain
   `ref.read(p.future)` does not for an `autoDispose` provider. **Do not call it
   from `build`.**
-- `watch`, `read`, `prefetch`, `refresh`, `ref` and `keepFor` cannot be segment or
-  query names.
+- `watch`, `read`, `prefetch`, `preload`, `refresh`, `ref` and `keepFor` cannot be
+  segment or query names (`preload` since 0.5.0).
 
 ## Prefetch
 
@@ -147,7 +147,42 @@ class _ProductsPageState extends ConsumerState<ProductsPage> {
   nothing (the handle comes back closed).
 - Under the routes: `ref.prefetchData(provider, {keepFor})` for any
   `ProviderListenable<AsyncValue<...>>`, and `ref.prefetchAll(providers,
-{keepFor})` for several at once, closed together by one handle.
+{keepFor})` for several at once, closed together by one handle (and, since 0.5.0,
+  all closed when one of them fails).
+
+## Preloading the data behind a link
+
+`prefetch` warms a route's **own** `data.dart`. A page usually reads more: the
+data of each [section](sections.md) above it. **`preload`** (since 0.5.0) starts
+all of it, the list `dataAt` gives for the route's location, and returns **one**
+`PrefetchHandle` that closes every provider:
+
+```dart
+final warm = ProductRoute(id: 42).preload(ref);        // on every route that has data
+final byUri = AppRoutes.preload(ref, Uri.parse('/products/42'));   // from a location
+// ... when the lease ends:
+warm.close();
+byUri.close();
+```
+
+- It is `ref.prefetchAll(<the page's providers>)` underneath, so the rules of a
+  `PrefetchHandle` hold: kept until `close()` (or `keepFor:`), closing twice is
+  fine, and **a failed load is not kept**. With several providers, one failure
+  closes the whole handle (since 0.5.0), so a retry starts them all fresh.
+- A route with **no data at all, and none above it**, has no generated `preload`;
+  it inherits one that returns a closed handle. `AppRoutes.preload` does the same
+  for a location no route fits, or a segment that does not parse (the
+  `not_found.dart` rule), without throwing.
+- **It never navigates and runs no `guard.dart` or `redirect.dart`.** A guard runs
+  when the user arrives; preloading is only the load, so a link to a guarded page
+  can be preloaded for a user who will be redirected: that costs a request, not
+  access.
+- Two preloads of one provider (two links to the same product) load it **once**.
+- `RouteLink` calls it for you: `RouteLink(to: ..., preload: Preload.intent)`
+  starts it on hover, focus or touch, `Preload.visible` when the link is on screen,
+  and closes the handle when the link is disposed or leaves the screen (see
+  [`fespalier-routing`](../../fespalier-routing/references/links.md)). Use `preload`
+  directly for a queue of your own (the next page of a list, a swipe target).
 
 ## From a location to its data
 

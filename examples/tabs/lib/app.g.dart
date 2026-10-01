@@ -32,15 +32,18 @@ import 'package:tabs/profile_draft.dart' show ProfileDraft;
 /// The file tree under lib/app/, ready to mount.
 abstract final class AppRoutes {
   static String _base = '/';
-  static GlobalKey<NavigatorState> _rootNavigatorKey =
+  static GlobalKey<NavigatorState> _rootNavigatorKey = _newRootNavigatorKey();
+
+  static GlobalKey<NavigatorState> _newRootNavigatorKey() =>
       GlobalKey<NavigatorState>(debugLabel: 'root');
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
   static String get base => _base;
 
-  /// The root navigator's key: the one given to [router] or [mount], else one of
-  /// its own. Routes on the root navigator (`navigator.dart`, `present.dart`) name it
-  /// as their `parentNavigatorKey`; the app can use it to reach the root navigator.
+  /// The root navigator's key: the one given to the last [router] or [mount] call, else a
+  /// fresh one made by it (a call without a key never keeps an earlier call's). Routes on
+  /// the root navigator (`navigator.dart`, `present.dart`) name it as their
+  /// `parentNavigatorKey`; the app can use it to reach the root navigator.
   static GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;
 
   /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
@@ -67,12 +70,15 @@ abstract final class AppRoutes {
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
   /// GoRouter's own `navigatorKey` as [navigatorKey]: routes on the root navigator
   /// name it as their `parentNavigatorKey`, which must be an ancestor navigator's.
+  ///
+  /// [at] and the key are remembered ([base], [rootNavigatorKey]) until the next call, so a
+  /// test restores the defaults with a bare `AppRoutes.mount()`.
   static List<RouteBase> mount({
     String at = '/',
     GlobalKey<NavigatorState>? navigatorKey,
   }) {
     _base = at;
-    if (navigatorKey != null) _rootNavigatorKey = navigatorKey;
+    _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
     return [
       StatefulShellRoute(
         navigatorContainerBuilder: _i1.container,
@@ -87,7 +93,7 @@ abstract final class AppRoutes {
                 path: joinLocation(at, '/'),
                 pageBuilder: (context, state) => _i0.transition(
                   state.pageKey,
-                  _i2.HomePage(),
+                  const _i2.HomePage(),
                 ),
               ),
             ],
@@ -101,7 +107,7 @@ abstract final class AppRoutes {
                 path: joinLocation(at, '/:_l0(search|recherche)'),
                 pageBuilder: (context, state) => _i0.transition(
                   state.pageKey,
-                  _i9.SearchPage(),
+                  const _i9.SearchPage(),
                 ),
               ),
             ],
@@ -113,7 +119,7 @@ abstract final class AppRoutes {
                 path: joinLocation(at, '/profile'),
                 pageBuilder: (context, state) => _i0.transition(
                   state.pageKey,
-                  _i6.ProfilePage(),
+                  const _i6.ProfilePage(),
                 ),
                 routes: [
                   GoRoute(
@@ -128,7 +134,7 @@ abstract final class AppRoutes {
                     path: 'security',
                     pageBuilder: (context, state) => _i0.transition(
                       state.pageKey,
-                      _i8.SecurityPage(),
+                      const _i8.SecurityPage(),
                     ),
                   ),
                 ],
@@ -152,7 +158,7 @@ abstract final class AppRoutes {
                         path: joinLocation(at, '/library/books'),
                         pageBuilder: (context, state) => _i0.transition(
                           state.pageKey,
-                          _i5.BooksPage(),
+                          const _i5.BooksPage(),
                         ),
                       ),
                     ],
@@ -164,7 +170,7 @@ abstract final class AppRoutes {
                         path: joinLocation(at, '/library/authors'),
                         pageBuilder: (context, state) => _i0.transition(
                           state.pageKey,
-                          _i4.AuthorsPage(),
+                          const _i4.AuthorsPage(),
                         ),
                       ),
                     ],
@@ -183,7 +189,7 @@ abstract final class AppRoutes {
         path: joinLocation(at, '/settings'),
         pageBuilder: (context, state) => _i0.transition(
           state.pageKey,
-          _i10.SettingsPage(),
+          const _i10.SettingsPage(),
         ),
       ),
     ];
@@ -193,14 +199,14 @@ abstract final class AppRoutes {
 
   /// Every route as [matchUrl] tries it, most specific first.
   static final List<RouteMatcher> _matchers = [
-    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), {}, [])),
-    RouteMatcher(['profile'], (s) => UrlMatch(s.uri, const ProfileRoute(), {}, [])),
-    RouteMatcher(['search|recherche'], (s) => UrlMatch(s.uri, const SearchRoute(), {}, [])),
-    RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), {}, [])),
-    RouteMatcher(['library', 'authors'], (s) => UrlMatch(s.uri, const AuthorsRoute(), {}, [])),
-    RouteMatcher(['library', 'books'], (s) => UrlMatch(s.uri, const BooksRoute(), {}, [])),
-    RouteMatcher(['profile', 'edit'], (s) => UrlMatch(s.uri, const EditProfileRoute(), {}, [])),
-    RouteMatcher(['profile', 'security'], (s) => UrlMatch(s.uri, const SecurityRoute(), {}, [])),
+    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const [])),
+    RouteMatcher(['profile'], (s) => UrlMatch(s.uri, const ProfileRoute(), const {}, const [])),
+    RouteMatcher(['search|recherche'], (s) => UrlMatch(s.uri, const SearchRoute(), const {}, const [])),
+    RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), const {}, const [])),
+    RouteMatcher(['library', 'authors'], (s) => UrlMatch(s.uri, const AuthorsRoute(), const {}, const [])),
+    RouteMatcher(['library', 'books'], (s) => UrlMatch(s.uri, const BooksRoute(), const {}, const [])),
+    RouteMatcher(['profile', 'edit'], (s) => UrlMatch(s.uri, const EditProfileRoute(), const {}, const [])),
+    RouteMatcher(['profile', 'security'], (s) => UrlMatch(s.uri, const SecurityRoute(), const {}, const [])),
   ];
 
   /// [uri] matched to its route: the typed route, the parameters parsed from the URL and

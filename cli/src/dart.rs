@@ -40,6 +40,8 @@ pub struct Class {
     pub superclass: Option<String>,
     /// Parameters of the unnamed constructor; empty when there is none.
     pub params: Vec<Param>,
+    /// The unnamed constructor is `const`, so a call with no arguments can be too.
+    pub is_const: bool,
     pub span: Span,
     /// Not a class: a view function (`Widget page(...)`) read as if it were the
     /// widget's constructor. `name` is the function's.
@@ -68,6 +70,7 @@ impl Function {
             name: self.name.clone(),
             superclass: None,
             params: self.params.clone(),
+            is_const: false,
             span: self.span.clone(),
             function: true,
         }
@@ -340,8 +343,9 @@ fn first_error(root: Node, src: &str) -> Option<Span> {
 
 struct Reader<'a> {
     src: &'a str,
-    /// Primary-constructor parameters, by the byte offset of the class name.
-    primary: HashMap<usize, Vec<Param>>,
+    /// Primary-constructor parameters and whether it is `const`, by the byte offset of the
+    /// class name.
+    primary: HashMap<usize, (Vec<Param>, bool)>,
 }
 
 impl Reader<'_> {
@@ -358,7 +362,7 @@ impl Reader<'_> {
         let body = n.child_by_field_name("body")?;
 
         let mut fields: HashMap<String, Ty> = HashMap::new();
-        let mut ctor: Option<Node> = None;
+        let mut ctor: Option<(Node, bool)> = None;
         for member in members(body) {
             let mut cur = member.walk();
             for part in member.named_children(&mut cur) {
@@ -392,7 +396,10 @@ impl Reader<'_> {
                     if k.kind().ends_with("constructor_signature")
                         && matches!(self.ctor_name(*k).as_deref(), Some(c) if c == name || c == "this")
                     {
-                        ctor = Some(*k);
+                        let konst = k.kind().starts_with("constant_")
+                            || part.children(&mut part.walk()).any(|c| c.kind() == "const")
+                            || k.children(&mut k.walk()).any(|c| c.kind() == "const");
+                        ctor = Some((*k, konst));
                     }
                 }
             }
@@ -401,8 +408,10 @@ impl Reader<'_> {
             fields.entry(f.clone()).or_insert_with(|| ty.clone());
         }
 
-        let params = match ctor.and_then(|c| first_named(c, "formal_parameter_list")) {
-            Some(list) => self.params(list, &fields),
+        let (params, is_const) = match ctor
+            .and_then(|(c, konst)| Some((first_named(c, "formal_parameter_list")?, konst)))
+        {
+            Some((list, konst)) => (self.params(list, &fields), konst),
             None => self
                 .primary
                 .get(&name_node.start_byte())
@@ -413,6 +422,7 @@ impl Reader<'_> {
             name,
             superclass,
             params,
+            is_const,
             span: Span::of(name_node),
             function: false,
         })
@@ -1081,7 +1091,7 @@ fn split_primary(
     parser: &mut Parser,
     src: &str,
     headers: &[Primary],
-) -> (String, HashMap<usize, Vec<Param>>) {
+) -> (String, HashMap<usize, (Vec<Param>, bool)>) {
     let blank = |b: &mut [u8], r: Range<usize>| {
         b[r].iter_mut()
             .filter(|c| **c != b'\n')
@@ -1123,7 +1133,10 @@ fn split_primary(
             .filter(|f| f.kind() == "function_declaration")
         {
             if let Some(f) = r.function(f) {
-                out.insert(f.span.bytes.start, f.params);
+                let konst = headers
+                    .iter()
+                    .any(|h| h.name.start == f.span.bytes.start && h.konst.is_some());
+                out.insert(f.span.bytes.start, (f.params, konst));
             }
         }
     }
@@ -1973,6 +1986,44 @@ mod tests {
             &["{super.key}", "{!id:int}", "{tag:String?}"],
         );
         assert_class(&m, "Z", "StatelessWidget", &["q:int"]);
+    }
+
+    #[test]
+    fn classes_know_whether_their_constructor_is_const() {
+        let m = parse(
+            r"
+            class A extends StatelessWidget { const A({super.key}); }
+            class B extends StatelessWidget { B({super.key}); }
+            class C extends StatelessWidget { const C.named(); C(); }
+            class D extends StatelessWidget { D.named(); const D(); }
+            class E extends StatelessWidget {}
+            class F extends StatelessWidget { const factory F() = _F; }
+            class G extends StatelessWidget { factory G() => _G(); }
+            class H extends StatelessWidget { final int a; const H(this.a); static const x = 1; }
+            class I extends StatelessWidget { final int a = 1; I(); static const x = 1; }
+            ",
+        );
+        let konst = |n: &str| m.classes.iter().find(|c| c.name == n).unwrap().is_const;
+        let got: Vec<bool> = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
+            .map(konst)
+            .into();
+        assert_eq!(
+            got,
+            [true, false, false, true, false, true, false, true, false]
+        );
+    }
+
+    #[test]
+    fn primary_constructors_know_whether_they_are_const() {
+        let m = parse(
+            r"
+            class A(final int id, {super.key}) extends StatelessWidget {}
+            class const B({super.key}) extends StatelessWidget {}
+            ",
+        );
+        let konst = |n: &str| m.classes.iter().find(|c| c.name == n).unwrap().is_const;
+        assert!(!konst("A"));
+        assert!(konst("B"));
     }
 
     #[test]

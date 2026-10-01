@@ -21,6 +21,15 @@ String currentLocation(WidgetTester tester)
 - It wraps the router in a `ProviderScope` (an `UncontrolledProviderScope` over a
   container it creates, and disposes with `addTearDown`) and Flutter's
   `MaterialApp.router`, and returns the container.
+- **It disposes the router when the test ends** (since 0.5.0). On 0.4.x and earlier the
+  router was never disposed, and a test with `LeakTesting.enable()` failed with a
+  `notDisposed` `GoRouterDelegate`; there, add `addTearDown(router.dispose)` yourself,
+  and remove it when you move to 0.5.0 (a teardown registered before `pumpRouter` runs
+  after its own, and a second `dispose` throws). A router you disposed in the test body is
+  fine. Don't share a router between tests.
+- **A guard that returns a `Future` costs a frame**, even `Future.value(...)`: the router
+  waits for it, so the test (and a cold deep link) sees a blank first frame before the
+  page. Return the `GuardResult` directly when nothing needs an `await`.
 - **`overrides` and `container` are exclusive**: passing both trips an assertion
   (`pass overrides to your own ProviderContainer, or leave the container out`).
   A container you pass is **yours to dispose**.
@@ -73,7 +82,8 @@ router.routerDelegate.currentConfiguration.last.matchedLocation   // '/products/
   Start the future, `await tester.pump(duration)` past the fake's delay, then
   await it.
 - `prefetch(ref, keepFor: duration)` holds a timer: `pump` past it, or pass
-  `Duration.zero` (starts the load and keeps nothing).
+  `Duration.zero` (starts the load and keeps nothing). Since 0.5.0 the timer is
+  cancelled when the widget behind `ref` is disposed; before, it stayed pending.
 - A static `XRoute.watch(ref, ...)` is for `build`; calling it in a test body opens a
   subscription that leaves a timer pending. Read the provider through the container
   (`c.read(ProductRoute.data(1).future)`) instead.

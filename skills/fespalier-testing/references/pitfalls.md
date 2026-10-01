@@ -91,6 +91,31 @@ router.routerDelegate.currentConfiguration.last.matchedLocation   // '/products/
   runs `/products`' `data.dart` underneath. If your fakes delay, pump long enough
   for both, or `pumpAndSettle`.
 
+## Hovering a `RouteLink`
+
+A `RouteLink` with `preload: Preload.intent` starts loading on a **mouse** hover, a
+focus, or a pointer going down (0.5.0). A tap alone is a touch, which has no hover, so
+to test the hover make a mouse pointer; to enter a link a second time, **leave it and
+`pump` first**, or no second enter is dispatched:
+
+```dart
+final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+await mouse.addPointer(location: Offset.zero);
+addTearDown(mouse.removePointer);
+await mouse.moveTo(tester.getCenter(find.text('Product 2')));
+await tester.pump();
+expect(container.exists(ProductRoute.data(2)), isTrue);
+```
+
+- A link that is `tester.getCenter`-ed under another widget that fills the screen (a
+  `Material` with tight constraints around a `ListTile`) covers the whole screen, so
+  there is no outside to move to: align or size it.
+- `Preload.visible` runs after a frame: `pump` once after the page shows or after a
+  scroll. A provider released by a closed handle is gone one `pump` later.
+- Read a link's `href` with `tester.widget<Link>(find.byType(Link)).uri`
+  (`package:url_launcher/link.dart`). Details: `fespalier-routing`,
+  [`links.md`](../../fespalier-routing/references/links.md).
+
 ## Getting a `WidgetRef` or a `BuildContext`
 
 - A `BuildContext` under the router: `tester.element(find.byType(ProductPage))`, then

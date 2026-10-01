@@ -19,10 +19,18 @@ class ProductsPage extends ConsumerWidget {
           child: ListView(
             children: [
               for (final p in products)
-                ListTile(
-                  title: Text(p.name),
-                  trailing: Text('€${p.price.toStringAsFixed(2)}'),
-                  onTap: () => ProductRoute(id: p.id).go(context),
+                // A real <a href="/products/2"> on the web (middle click, status
+                // bar); a plain click goes through the router. Hovering, focusing
+                // or touching a row starts loading the product, so its page is
+                // there when the row is followed.
+                RouteLink(
+                  to: ProductRoute(id: p.id),
+                  preload: Preload.intent,
+                  builder: (context, follow) => ListTile(
+                    title: Text(p.name),
+                    trailing: Text('€${p.price.toStringAsFixed(2)}'),
+                    onTap: follow,
+                  ),
                 ),
             ],
           ),

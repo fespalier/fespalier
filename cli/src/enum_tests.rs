@@ -772,6 +772,7 @@ fn fsp_new_below_an_enum_segment_uses_its_name() {
         function: false,
         not_found: false,
         data: true,
+        action: false,
         loading: false,
         error: false,
         layout: false,

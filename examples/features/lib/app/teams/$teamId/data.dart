@@ -1,3 +1,4 @@
+import 'package:features/refunds.dart';
 import 'package:fespalier/fespalier.dart';
 
 class Team {
@@ -12,10 +13,11 @@ int teamFetches = 0;
 
 /// This folder has a layout.dart and no page.dart, so this is the data of the
 /// whole section below it: the layout and the pages under it can take a [Team].
-/// The section shows loading.dart or error.dart until it has loaded.
+/// The section shows loading.dart or error.dart until it has loaded. `action.dart` beside
+/// it adds members, and the section reloads after each one.
 Future<Team> data(Ref ref, {required String teamId}) async {
   teamFetches++;
   await Future<void>.delayed(const Duration(milliseconds: 10));
   if (teamId == 'ghost') throw Exception('no team $teamId');
-  return Team(teamId.toUpperCase(), const ['ann', 'bob']);
+  return Team(teamId.toUpperCase(), ref.read(rosterProvider).of(teamId));
 }

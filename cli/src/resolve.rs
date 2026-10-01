@@ -25,7 +25,7 @@ use crate::diag::Diags;
 use crate::enums::{self, Libs, Lookup};
 use crate::extra::{self, ExtraType};
 use crate::locale::{self, Localized};
-use crate::scan::{Kind, Node, ROUTE_MEMBERS, Seg};
+use crate::scan::{ACTION_RESERVED, Kind, Node, ROUTE_MEMBERS, Seg};
 
 /// What a segment can be, besides an enum.
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
@@ -132,6 +132,72 @@ pub struct Data {
     pub keys: Vec<String>,
     /// Keyed by a named record `(a: .., b: ..)` rather than a bare value.
     pub record: bool,
+}
+
+/// A name listed in `const invalidates = [...]`, with where it sits.
+type Named = (String, Span);
+
+/// What an `action.dart` function returns, which is what its helpers return: a `Future<T>`
+/// stays a `Future`, a `T` stays a `T` (a sync action never gets an async gap), and a
+/// `FutureOr<T>` stays one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flow {
+    Future,
+    FutureOr,
+    Sync,
+}
+
+/// One function of an `action.dart`: `Future<Refund> action(Ref ref, {required int id, required
+/// RefundInput input})`.
+#[derive(Debug, Clone)]
+pub struct Action {
+    /// The function's name; `action` is the plain one (`submit`, `useAction`).
+    pub name: String,
+    pub import: usize,
+    pub flow: Flow,
+    /// The segments and query parameters it takes, in path order: what keys its provider.
+    pub keys: Vec<String>,
+    /// The type of `input`, as the generated file spells it.
+    pub input: ExtraType,
+    /// The routes (or sections) whose `data.dart` a success invalidates, outermost first.
+    pub invalidates: Vec<usize>,
+    /// The function, for diagnostics.
+    pub span: Span,
+}
+
+/// The members the generated typed route (or section handle) gets for an action.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionNames {
+    /// The provider: `action`, or `approveAction`.
+    pub provider: String,
+    /// Runs it once: `submit`, or the function's own name (`approve`).
+    pub run: String,
+    /// The hook: `useAction`, or `useApprove`.
+    pub hook: String,
+}
+
+impl ActionNames {
+    /// A function called `action` gets the plain names; any other, its own.
+    pub fn of(function: &str) -> ActionNames {
+        let mut chars = function.chars();
+        let upper: String = chars
+            .next()
+            .map(|c| c.to_uppercase().chain(chars).collect())
+            .unwrap_or_default();
+        if function == "action" {
+            ActionNames {
+                provider: "action".into(),
+                run: "submit".into(),
+                hook: "useAction".into(),
+            }
+        } else {
+            ActionNames {
+                provider: format!("{function}Action"),
+                run: function.into(),
+                hook: format!("use{upper}"),
+            }
+        }
+    }
 }
 
 /// A `transition()` function, applied to every page at or below its folder.
@@ -251,6 +317,8 @@ pub struct Route {
     /// `redirect.dart` route is named after its path (`OldProductsId`).
     pub name: Option<String>,
     pub data: Option<Data>,
+    /// The functions of this folder's `action.dart`, in the order the file declares them.
+    pub actions: Vec<Action>,
     pub loading: Option<Widget>,
     pub error: Option<Widget>,
     pub layout: Option<Widget>,
@@ -316,8 +384,32 @@ impl Route {
     /// A page-less folder whose layout wraps a section, and whose data.dart
     /// feeds the layout and the pages below it.
     pub fn is_section(&self) -> bool {
-        self.page.is_none() && self.layout.is_some() && self.data.is_some()
+        self.layout_folder() && self.data.is_some()
     }
+
+    /// A folder with a layout and no page: what a section is, with or without data. Its
+    /// `action.dart` writes to the section, and its query parameters are the layout's.
+    pub fn layout_folder(&self) -> bool {
+        self.page.is_none() && self.layout.is_some()
+    }
+
+    /// Whether the folder has typed members of its own for the section's data or actions: a
+    /// section's handle (`TeamsTeamIdSection`) is generated for it.
+    pub fn has_section_handle(&self) -> bool {
+        self.is_section() || (self.layout_folder() && !self.actions.is_empty())
+    }
+}
+
+/// The name of the typed handle of a section: `teams/$teamId` is `TeamsTeamIdSection`, `(shop)`
+/// is `ShopSection`, the app folder `RootSection`.
+pub fn section_name(dir: &str) -> String {
+    let stem = pascal(dir);
+    let stem = match stem.chars().next() {
+        None => "Root".to_string(),
+        Some(c) if c.is_ascii_digit() => format!("Path{stem}"),
+        _ => stem,
+    };
+    format!("{stem}Section")
 }
 
 /// A `not_found.dart` below the root, chosen for unknown URLs under `url`.
@@ -568,6 +660,7 @@ pub fn resolve(root: &Node, case_sensitive: bool, libs: &Libs, diags: &mut Diags
         constraints: vec![],
         queries: HashMap::new(),
         query_order: vec![],
+        listed: vec![],
         diags,
     };
     r.node(
@@ -589,6 +682,7 @@ pub fn resolve(root: &Node, case_sensitive: bool, libs: &Libs, diags: &mut Diags
             Scope::Guard(id) => r.app.routes[id].guard_query.push((name, ty)),
         }
     }
+    r.settle_actions();
     r.app
 }
 
@@ -619,6 +713,9 @@ struct Resolver<'a> {
     /// Query parameter types as first declared: (type, file, line).
     queries: HashMap<(Scope, String), (Typed, String, usize)>,
     query_order: Vec<(Scope, String)>,
+    /// What each `action.dart` says to invalidate (`const invalidates = [...]`), by route id:
+    /// the names it lists, resolved once every route is known. `None` is the default set.
+    listed: Vec<(usize, Option<Vec<Named>>)>,
     diags: &'a mut Diags,
 }
 
@@ -646,6 +743,7 @@ impl Resolver<'_> {
             page_span: None,
             name: None,
             data: None,
+            actions: vec![],
             loading: None,
             error: None,
             layout: None,
@@ -765,6 +863,11 @@ impl Resolver<'_> {
                 );
                 self.diags.error(&node.rel(Kind::Data), None, msg);
             }
+        }
+
+        if let Some(m) = modules.get(&Kind::Action) {
+            let actions = self.actions(m, node, &segs, data_scope, id, section_folder);
+            self.app.routes[id].actions = actions;
         }
 
         let extra_ty = page_class.as_ref().and_then(|c| {
@@ -2240,6 +2343,324 @@ impl Resolver<'_> {
         })
     }
 
+    /// `Future<T> action(Ref ref, {...segments, required Input input})`: every public
+    /// top-level function of an action.dart that takes a `Ref` first is an action (one called
+    /// `action` is always one, so a missing `Ref` is reported on it).
+    fn actions(
+        &mut self,
+        m: &Module,
+        node: &Node,
+        segs: &[(String, usize)],
+        scope: Scope,
+        id: usize,
+        section_folder: bool,
+    ) -> Vec<Action> {
+        let file = node.rel(Kind::Action);
+        if !node.files.contains_key(&Kind::Page) && !section_folder {
+            let msg = "action.dart has nothing to write to: put it beside a page.dart (the route it belongs to) or, in a folder without a page, beside the layout.dart of a section";
+            self.diags.error(&file, None, msg);
+            return vec![];
+        }
+        let takes_ref = |f: &Function| {
+            f.params
+                .first()
+                .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("Ref")))
+        };
+        let functions: Vec<&Function> = m
+            .functions
+            .iter()
+            .filter(|f| !f.name.starts_with('_') && (f.name == "action" || takes_ref(f)))
+            .collect();
+        if functions.is_empty() {
+            let msg = "expected `Future<T> action(Ref ref, {...segments, required Input input})`; any public function that takes a `Ref` first is an action";
+            self.diags.error(&file, None, msg);
+            return vec![];
+        }
+        let listed = self.invalidates(m, &file);
+        self.listed.push((id, listed));
+        let src = node.files[&Kind::Action].as_str();
+        let mut out = vec![];
+        for f in functions {
+            let what = format!("{}()", f.name);
+            let has_ref = takes_ref(f);
+            if !has_ref {
+                let msg = format!("{what} must take `Ref ref` first");
+                self.diags.error(&file, Some(&f.span), msg);
+            }
+            let mut keys = vec![];
+            let mut input = None;
+            for p in f.params.iter().skip(usize::from(has_ref)) {
+                if p.name != "input" {
+                    keys.extend(self.url_param(&file, p, segs, scope, &what));
+                    continue;
+                }
+                let msg = if !p.named {
+                    Some(format!(
+                        "{what} takes `input` as a named parameter, e.g. `{{required Input input}}`"
+                    ))
+                } else if !p.required {
+                    Some(format!(
+                        "`input` of {what} must be `required`: there is nothing to run without it"
+                    ))
+                } else if p.ty.is_none() {
+                    Some("give `input` a type: it is what the action is called with".to_string())
+                } else {
+                    None
+                };
+                match (msg, &p.ty) {
+                    (Some(msg), _) => self.diags.error(&file, Some(&p.span), msg),
+                    (None, ty) => input = ty.clone(),
+                }
+            }
+            let input = match input {
+                Some(ty) => Some(ty),
+                None if f.params.iter().any(|p| p.name == "input") => None,
+                None => {
+                    let msg = format!(
+                        "{what} needs an `input` parameter, the value it writes: `{{required Input input}}`; segments and query parameters are its other named parameters"
+                    );
+                    self.diags.error(&file, Some(&f.span), msg);
+                    None
+                }
+            };
+            if matches!(scope, Scope::Layout(_))
+                && let Some(k) = keys.iter().find(|k| ROUTE_MEMBERS.contains(&k.as_str()))
+            {
+                let msg = format!(
+                    "`{k}` can't be a key of a section's action: the section's typed handle has a member called `{k}`; rename it"
+                );
+                self.diags.error(&file, Some(&f.span), msg);
+            }
+            let flow = self.action_flow(f, &file);
+            let (Some(input), Some(flow)) = (input, flow) else {
+                continue;
+            };
+            let import = self.import(&file);
+            out.push(Action {
+                name: f.name.clone(),
+                import,
+                flow,
+                keys: in_path_order(keys, segs),
+                input: extra::extra_type(
+                    &input.text,
+                    src,
+                    &file,
+                    import,
+                    &format!("a{id}_{}", f.name),
+                ),
+                invalidates: vec![],
+                span: f.span.clone(),
+            });
+        }
+        out
+    }
+
+    /// What an action returns: `Future<T>`, `FutureOr<T>` or a plain `T`.
+    fn action_flow(&mut self, f: &Function, file: &str) -> Option<Flow> {
+        let Some(ret) = &f.ret else {
+            let msg = format!(
+                "{}() needs an explicit return type (Future<T>, FutureOr<T> or T)",
+                f.name
+            );
+            self.diags.error(file, Some(&f.span), msg);
+            return None;
+        };
+        let (head, args) = ret.generic();
+        match (head, args.len()) {
+            ("Future", 1) => Some(Flow::Future),
+            ("FutureOr", 1) => Some(Flow::FutureOr),
+            ("Future" | "FutureOr", _) => {
+                let msg = format!(
+                    "give the {head} of {}() its type argument, e.g. `{head}<Refund>`",
+                    f.name
+                );
+                self.diags.error(file, Some(&f.span), msg);
+                None
+            }
+            ("Stream", _) => {
+                let msg = format!(
+                    "{}() returns a Stream, but an action is one write with one result: return a Future<T>, FutureOr<T> or T",
+                    f.name
+                );
+                self.diags.error(file, Some(&f.span), msg);
+                None
+            }
+            _ => Some(Flow::Sync),
+        }
+    }
+
+    /// `const invalidates = [OrderRoute, TeamsTeamIdSection];`: the names it lists, `None` when
+    /// the file has none (the default set) and the empty list for `<Object>[]`.
+    fn invalidates(&mut self, m: &Module, file: &str) -> Option<Vec<Named>> {
+        let v = m.variables.iter().find(|v| v.name == "invalidates")?;
+        if let (Some(names), true) = (&v.names, v.is_const) {
+            return Some(names.clone());
+        }
+        let msg = "`invalidates` must be a const list literal of typed routes and sections: `const invalidates = [OrderRoute, TeamsTeamIdSection];`, or `const invalidates = <Object>[];` for none";
+        self.diags.error(file, Some(&v.span), msg);
+        // Without a usable list the default stays: the actions still work.
+        None
+    }
+
+    /// Settles what each action invalidates, and what its helpers are called, once every route,
+    /// section and query parameter is known.
+    fn settle_actions(&mut self) {
+        let listed = std::mem::take(&mut self.listed);
+        // The names `invalidates` can use: a route's class and a section's handle.
+        let mut targets: HashMap<String, usize> = HashMap::new();
+        for (id, r) in self.app.routes.iter().enumerate() {
+            if let (true, Some(name)) = (r.is_route(), &r.name) {
+                targets.entry(format!("{name}Route")).or_insert(id);
+            }
+            if r.has_section_handle() {
+                targets.entry(section_name(&r.dir)).or_insert(id);
+            }
+        }
+        for (rid, names) in listed {
+            let file = format!("{}action.dart", folder_prefix(&self.app.routes[rid].dir));
+            let own = self.app.routes[rid].data.is_some().then_some(rid);
+            let (ids, explicit) = match names {
+                None => (
+                    self.app.routes[rid]
+                        .sections
+                        .iter()
+                        .copied()
+                        .chain(own)
+                        .collect::<Vec<_>>(),
+                    false,
+                ),
+                Some(names) => {
+                    let mut ids = vec![];
+                    for (n, span) in names {
+                        let Some(&t) = targets.get(&n) else {
+                            let msg = format!(
+                                "`invalidates` names `{n}`, which is neither a typed route nor a section handle; list classes like `OrderRoute` or `TeamsTeamIdSection`"
+                            );
+                            self.diags.error(&file, Some(&span), msg);
+                            continue;
+                        };
+                        if self.app.routes[t].data.is_none() {
+                            let msg = format!(
+                                "`invalidates` names `{n}`, which has no data.dart: there is nothing to invalidate"
+                            );
+                            self.diags.error(&file, Some(&span), msg);
+                        } else if !ids.contains(&t) {
+                            ids.push(t);
+                        }
+                    }
+                    (ids, true)
+                }
+            };
+            for i in 0..self.app.routes[rid].actions.len() {
+                let ok = self.action_keys(rid, i, &ids, explicit, &file);
+                let a = &mut self.app.routes[rid].actions[i];
+                a.invalidates = if ok { ids.clone() } else { vec![] };
+            }
+        }
+        self.action_names();
+    }
+
+    /// Whether the action takes every key of the `data.dart` it must invalidate, with the type
+    /// that data has for it: a family is invalidated for the key the action was called with.
+    fn action_keys(
+        &mut self,
+        rid: usize,
+        i: usize,
+        ids: &[usize],
+        explicit: bool,
+        file: &str,
+    ) -> bool {
+        let a = self.app.routes[rid].actions[i].clone();
+        let mine = self.key_types(&self.app.routes[rid]);
+        let mut ok = true;
+        for &t in ids {
+            let target = &self.app.routes[t];
+            let Some(d) = &target.data else { continue };
+            let theirs = self.key_types(target);
+            let data_file = format!("{}data.dart", folder_prefix(&target.dir));
+            for k in &d.keys {
+                let want = theirs.iter().find(|(n, _)| n == k).map(|(_, ty)| ty);
+                let have = mine.iter().find(|(n, _)| n == k).map(|(_, ty)| ty);
+                let fix = if explicit {
+                    "or leave that route out of `invalidates`"
+                } else {
+                    "or list what to invalidate with `const invalidates = [...]`"
+                };
+                let msg = match (have.filter(|_| a.keys.contains(k)), want) {
+                    (Some(have), Some(want)) if have != want => Some(format!(
+                        "{}() takes `{k}` as {have}, but {data_file} is keyed by it as {want}",
+                        a.name,
+                    )),
+                    (None, want) => Some(format!(
+                        "{data_file} is keyed by `{k}`, which {}() doesn't take, so it can't tell which one to invalidate after a success: take it ({}), {fix}",
+                        a.name,
+                        want.map_or(format!("`{k}`"), |t| format!("`{t} {k}`")),
+                    )),
+                    _ => None,
+                };
+                if let Some(msg) = msg {
+                    self.diags.error(file, Some(&a.span), msg);
+                    ok = false;
+                }
+            }
+        }
+        ok
+    }
+
+    /// The segments and query parameters a route's (or a section's) `data.dart` can be keyed by.
+    fn key_types(&self, r: &Route) -> Vec<(String, String)> {
+        if r.layout_folder() {
+            let mut out = self.app.typed_segs(r);
+            out.extend(r.layout_query.iter().cloned());
+            out
+        } else {
+            self.app.url_params(r)
+        }
+    }
+
+    /// Reports the helpers of an action that share a name with something else on the typed
+    /// route or section handle: its members, its fields, or another action's helpers.
+    fn action_names(&mut self) {
+        for rid in 0..self.app.routes.len() {
+            let r = &self.app.routes[rid];
+            if r.actions.is_empty() {
+                continue;
+            }
+            let file = format!("{}action.dart", folder_prefix(&r.dir));
+            let mut taken: Vec<(String, String)> = ACTION_RESERVED
+                .iter()
+                .map(|n| ((*n).to_string(), "a member of the typed route".to_string()))
+                .collect();
+            taken.extend(self.key_types(r).into_iter().map(|(n, _)| {
+                let what = format!("`{n}`, a segment or query parameter of the route");
+                (n, what)
+            }));
+            let mut errors = vec![];
+            for a in &r.actions {
+                let n = ActionNames::of(&a.name);
+                for (name, role) in [
+                    (&n.provider, "provider"),
+                    (&n.run, "helper"),
+                    (&n.hook, "hook"),
+                ] {
+                    match taken.iter().find(|(t, _)| t == name) {
+                        Some((_, owner)) => errors.push((
+                            a.span.clone(),
+                            format!(
+                                "the {role} of {}() would be called `{name}`, which is already {owner}; rename the function",
+                                a.name
+                            ),
+                        )),
+                        None => taken.push((name.clone(), format!("the {role} of {}()", a.name))),
+                    }
+                }
+            }
+            for (span, msg) in errors {
+                self.diags.error(&file, Some(&span), msg);
+            }
+        }
+    }
+
     /// `GuardResult guard(ProviderContainer c, {...})`: runs before every route at
     /// and below its folder.
     fn guard(
@@ -3013,6 +3434,16 @@ pub fn valid_route_name(name: &str) -> bool {
 }
 
 /// `products/$id` → `ProductsId`.
+/// `orders/$id/` for the folder `orders/$id`; nothing for the app folder: where a folder's
+/// files are, relative to the app folder.
+fn folder_prefix(dir: &str) -> String {
+    if dir.is_empty() {
+        String::new()
+    } else {
+        format!("{dir}/")
+    }
+}
+
 pub fn pascal(dir: &str) -> String {
     dir.replace(['/', '$'], "_").to_upper_camel_case()
 }

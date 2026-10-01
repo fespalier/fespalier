@@ -850,6 +850,7 @@ fn new_args(route: &str, not_found: bool) -> NewArgs {
         route: route.into(),
         name: None,
         data: false,
+        action: false,
         loading: false,
         error: false,
         layout: false,

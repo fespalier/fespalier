@@ -23,6 +23,7 @@
         "README.md#Status",
         "kind:page.dart",
         "kind:data.dart",
+        "kind:action.dart",
         "kind:loading.dart",
         "kind:error.dart",
         "kind:layout.dart",
@@ -77,7 +78,8 @@
         "examples/features",
         "examples/tabs",
         "editors/vscode",
-        "editors/intellij"
+        "editors/intellij",
+        "cli/templates/new/action.dart.jinja"
       ]
     },
     "fespalier-routing": {
@@ -135,8 +137,10 @@
         "README.md#From a location to its data",
         "README.md#Section data",
         "README.md#Preloading the data behind a link",
+        "README.md#`action.dart`: typed writes",
         "README.md#Design notes",
         "kind:data.dart",
+        "kind:action.dart",
         "kind:loading.dart",
         "kind:error.dart",
         "config:data_retry",
@@ -144,7 +148,8 @@
         "packages/fespalier/lib/src/data_view.dart",
         "packages/fespalier/lib/src/route_data.dart",
         "packages/fespalier/lib/src/route_match.dart",
-        "packages/fespalier/lib/src/selected_data.dart"
+        "packages/fespalier/lib/src/selected_data.dart",
+        "packages/fespalier/lib/src/action.dart"
       ]
     },
     "fespalier-layouts": {

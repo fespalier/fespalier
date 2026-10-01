@@ -14,6 +14,8 @@ use crate::diag::Diags;
 pub enum Kind {
     Page,
     Data,
+    /// `action.dart`: typed writes next to a page (or a section's layout).
+    Action,
     Loading,
     Error,
     Layout,
@@ -30,9 +32,10 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 14] = [
+    pub const ALL: [Kind; 15] = [
         Kind::Page,
         Kind::Data,
+        Kind::Action,
         Kind::Loading,
         Kind::Error,
         Kind::Layout,
@@ -51,6 +54,7 @@ impl Kind {
         match self {
             Kind::Page => "page.dart",
             Kind::Data => "data.dart",
+            Kind::Action => "action.dart",
             Kind::Loading => "loading.dart",
             Kind::Error => "error.dart",
             Kind::Layout => "layout.dart",
@@ -269,6 +273,30 @@ pub const RESERVED: [&str; 23] = [
 pub const ROUTE_MEMBERS: [&str; 12] = [
     "location", "go", "push", "replace", "refresh", "watch", "read", "prefetch", "preload", "ref",
     "keepFor", "hashCode",
+];
+
+/// Names the helpers of an `action.dart` can't take: what a typed route or a section handle
+/// has already (members, the data helpers, what every object has).
+pub const ACTION_RESERVED: [&str; 19] = [
+    "location",
+    "locationFor",
+    "go",
+    "push",
+    "replace",
+    "refresh",
+    "watch",
+    "read",
+    "prefetch",
+    "preload",
+    "data",
+    "ref",
+    "keepFor",
+    "input",
+    "hashCode",
+    "runtimeType",
+    "toString",
+    "noSuchMethod",
+    "extra",
 ];
 
 pub fn parse_segment(name: &str) -> std::result::Result<Seg, String> {

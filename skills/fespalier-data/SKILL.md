@@ -1,6 +1,6 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles, the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3. Load before writing or changing a data.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart or shows a stale value."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles, the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
@@ -95,6 +95,34 @@ AppRoutes.match(Uri.parse('/products/42'));  // RouteMatch: info, parsed params,
 these, `prefetchAll`, `RouteMatch` (fespalier hides go_router's own
 `RouteMatch`) and Riverpod overrides.
 
+## Writes: `action.dart` (since 0.5.0)
+
+`action.dart` is the write side of a route: `Future<Refund> action(Ref ref, {required
+int id, required RefundInput input})`, beside the `page.dart` (or, in a page-less
+folder, beside the `layout.dart` of a section). Segments and query parameters bind as in
+`data.dart`; the one other parameter is a **named, required `input`**, of any type.
+
+```dart
+final refund = RefundRoute.useAction(ref, id: id);   // build(): state, isPending, hasError, call(input)
+await RefundRoute.submit(ref, id: 1, input: input);  // a callback or a test: the result, or it throws
+```
+
+- **State is a generated Notifier family** (`RefundRoute.action(1)`): `AsyncValue<T?>`,
+  `AsyncData(null)` when idle. It works without a widget, in a `ProviderContainer`.
+- **A failed write shows in `state`, not `error.dart`, and is never retried.** The handle's
+  `call` never throws; `submit` does.
+- **After a success** the route's own `data.dart` and the sections' above it are
+  invalidated, or what `const invalidates = [OrderRoute, ...]` lists (typed route and
+  section names, not providers; it replaces the default set; `<Object>[]` for none). The
+  action has to take the keys of what it invalidates.
+- **Any number of actions per file**, each a public function with a `Ref` first; a
+  function not called `action` names its helpers after itself (`approve`,
+  `useApprove`). A sync action stays sync.
+- **Navigation after success is the caller's**; check `context.mounted` after the `await`.
+
+[`references/actions.md`](references/actions.md) has the rules, the generated members,
+what is invalidated and a test that compiles.
+
 ## Common symptoms
 
 | Symptom                                            | Look at                                                                                    |
@@ -105,4 +133,5 @@ these, `prefetchAll`, `RouteMatch` (fespalier hides go_router's own
 | `refresh`/`retry` throws a `StateError`            | A selector that returns `.select(...)` of a provider: return the provider itself           |
 | A prefetched page still loads                      | The handle was closed, or the id/query differs from the key the page uses                  |
 | `dataAt` is `null` for a URL that works in the app | The segment fails to parse, or the URL is outside the mount prefix                         |
-| An fsp error on `data.dart`                        | `fespalier-troubleshooting`                                                                |
+| A page doesn't refresh after a write               | The data is another route's: list it in `invalidates` (`references/actions.md`)            |
+| An fsp error on `data.dart` or `action.dart`       | `fespalier-troubleshooting`                                                                |

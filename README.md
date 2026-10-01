@@ -27,6 +27,7 @@ lib/app/
     $id/
       data.dart          Future<Product> data(Ref ref, {required int id})
       page.dart          ProductPage({required Product product})       → /products/:id
+      action.dart        Future<void> action(Ref ref, {required int id, required Refund input})   (a write)
       error.dart         ProductError({required int id, required Object error, …})
       meta.dart          const meta = PageMeta(code: 'B04', …)         (this route's facts, any const)
   checkout/
@@ -67,6 +68,10 @@ ProductRoute.watch(ref, id: 42);             // the same, typed: AsyncValue<Prod
 await ProductRoute.read(ref, id: 42);        // Future<Product>
 final warm = ProductRoute(id: 42).prefetch(ref);   // start loading before navigating; warm.close() lets go
 await const ProductsRoute().refresh(ref);
+
+// each route's action.dart: a write with pending and error state, then the data it made stale reloads
+await ProductRoute.submit(ref, id: 42, input: refund);             // Future<Refund>, throws what it threw
+final refund = ProductRoute.useAction(ref, id: 42);               // for build(): .state is AsyncValue<Refund?>
 
 // from a location to what it reads (an app's own prefetch queue, tests): no guard runs, no widget is built
 AppRoutes.dataAt(Uri.parse('/products/42'));    // [ProductRoute.data(42)]; null when no route fits
@@ -196,6 +201,7 @@ which go_router requires to be an ancestor navigator's. (`AppRoutes.router()` ta
 ```sh
 fsp watch                                 # next to `flutter run`: regenerates when the routing changes
 fsp new 'orders/[id]' --data --loading    # scaffold a route, then regenerate app.g.dart
+fsp new 'orders/[id]/refund' --action     # a write beside the page (action.dart)
 ```
 
 `fsp new` runs `gen` right away, so the new route is usable as soon as it returns. See
@@ -328,6 +334,7 @@ widget class" and lists them. Make helpers private (`_Name`) rather than lean on
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `page.dart`        | a widget                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | segments; query; what `data.dart` yields; the navigation [`extra`](#typed-extra)                                                                              |
 | `data.dart`        | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data)                                                                                                                                                                                                                                                                                                                                                                                                                              | segments, query (named)                                                                                                                                       |
+| `action.dart`      | `action(Ref ref, {…, required Input input})` (any number of functions of that shape) returning `Future<T>`, `FutureOr<T>` or `T`, and optionally `const invalidates = [...]`. Beside a `page.dart` it is that route's [write](#actiondart-typed-writes); in a page-less folder with a `layout.dart`, the [section's](#actiondart-typed-writes)                                                                                                                                                                                                                                                                                                                                                                                                 | segments, query (named), and the one `input`                                                                                                                  |
 | `loading.dart`     | a widget, inherited by subfolders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | segments; query                                                                                                                                               |
 | `error.dart`       | a widget, inherited by subfolders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | segments; query; `error`, `stackTrace`, `retry`                                                                                                               |
 | `layout.dart`      | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs. A tab layout can also export a [`container`](#tab-layouts) function                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside; the navigation [`extra`](#typed-extra) |
@@ -1680,7 +1687,8 @@ pass `Duration.zero`, which starts the load and keeps nothing); and _the default
 `keepFor`, and now lasts until closed (a `prefetch(ref)` whose handle is dropped lasts as
 long as the widget behind `ref`). `prefetchKeepAlive` is gone.
 Because these are members of the route class, `watch`, `read`, `prefetch`, `refresh`, `ref`
-and `keepFor` can't be segment or query names.
+and `keepFor` can't be segment or query names, and neither can the helpers of an
+[`action.dart`](#actiondart-typed-writes) (`submit`, `useAction`, or an action's own name).
 
 ### From a location to its data
 
@@ -1799,6 +1807,148 @@ class MembersPage extends StatelessWidget {
 - **Where it applies.** A layout of any kind can be a section's, tab layouts included. A
   `data.dart` beside a `page.dart` keeps feeding that page, so the folder that holds the
   section's layout mustn't have a page.
+
+### `action.dart`: typed writes
+
+`data.dart` is the read side of a route. `action.dart` is the write side: a submit, a save, a
+delete, a "mark as paid". It sits beside a `page.dart`, and it takes the same segments and query
+parameters, plus the value being written, `input`:
+
+```dart
+// lib/app/orders/$id/refund/action.dart
+Future<Refund> action(Ref ref, {required int id, required RefundInput input}) =>
+    ref.read(apiProvider).refund(id, input);
+```
+
+fespalier turns it into a provider with pending and error state, and into helpers on the typed
+route. After a success it invalidates the data the write made stale, so the page shows what the
+server says now: no `isSubmitting` field, no `try`/`catch`, and no `ref.invalidate` to forget.
+
+```dart
+// in a HookConsumerWidget (or any ConsumerWidget): the state of the write, and a way to run it
+final refund = RefundRoute.useAction(ref, id: id);
+FilledButton(
+  onPressed: refund.isPending ? null : () => refund.call(RefundInput(amount: 10)),
+  child: Text(refund.isPending ? 'Refunding...' : 'Refund'),
+),
+if (refund.hasError) Text('${refund.state.error}'),            // the page stays; error.dart is not used
+if (refund.state.value case final done?) Text('Refunded ${done.amount}'),
+
+// in a callback or a test: run it once, get the result, or the exception it threw
+final Refund done = await RefundRoute.submit(ref, id: 1, input: input);
+```
+
+- **Parameters.** Segments and query parameters bind exactly as in
+  [`data.dart`](#datadart-a-function-a-selector-or-a-provider): the same names, the same types
+  and the same errors. The one other parameter is `input`: **named, `required`**, of any type
+  (`RefundInput`, `String`, a record, a `List`, `Object?`). Its type is read from the source like
+  a typed [`extra`](#typed-extra)'s, imports and a type declared in the file included, so the
+  generated `submit` is typed. A `Ref ref` comes first, positional.
+- **Return type.** `Future<T>`, `FutureOr<T>` or a plain `T` (`Future<void>` is fine). It is
+  spelled out. **The helpers keep what the function is**: a sync action's `submit` returns its
+  value at once, with no `Future` and no extra frame, a `FutureOr<T>` one's returns what the
+  function returned, and a `Future<T>` one's returns a `Future<T>`. A `Stream` is an error: a
+  write has one result.
+- **Several actions per file.** Every public top-level function that takes a `Ref` first is an
+  action, and its name is the name of its helpers. A function called `action` gets the plain ones:
+
+  | Function  | Provider (`XRoute.…`) | Runs it once                  | Hook for `build`         |
+  | --------- | --------------------- | ----------------------------- | ------------------------ |
+  | `action`  | `action(keys)`        | `submit(ref, keys…, input:)`  | `useAction(ref, keys…)`  |
+  | `approve` | `approveAction(keys)` | `approve(ref, keys…, input:)` | `useApprove(ref, keys…)` |
+
+  A helper can't be named like a member of the route (`go`, `refresh`, `watch`, `data`, …), a
+  segment or query parameter of it, or another action's helper (a function called `submit` next to
+  `action`): the generator says which.
+- **The provider** is a generated `Notifier` family, `XRoute.action(id)` (`XRoute.action` when
+  there are no keys), whose state is `AsyncValue<T?>`: `AsyncData(null)` while idle, then
+  `AsyncLoading`, then `AsyncError` or `AsyncData` of the result. It works without a widget:
+  `container.read(RefundRoute.action(1).notifier).call(input)`, which is what a test can do. Each
+  key has a state of its own, and an `autoDispose` provider is dropped when nothing watches it,
+  except while a write is in flight.
+- **`useAction`** takes the keys and returns a handle: `state` (the same `AsyncValue<T?>`),
+  `isPending`, `hasError`, `reset()`, and `call(input)`. `call` runs the action and completes with
+  the result, or with `null` when it failed, because the error is in `state`: an `onPressed:
+  () => refund.call(input)` can't leave an unhandled error behind. `submit` is the other way: it
+  throws what the action threw, for code that wants to handle it (and the error is in `state` too).
+  Neither navigates, and neither is for `build`'s own body: call them from an event handler.
+  (`useAction` is a hook by name only: it needs a `WidgetRef`, not hooks, and works in any
+  `ConsumerWidget`.)
+- **`submit`, `useAction` and the provider are static**, like [`watch` and `read`](#typed-helpers-on-the-route):
+  `RefundRoute(id: 1).submit(...)` would have to name `Refund`, which the generated file can't (see
+  [Design notes](#design-notes)). The types are inferred from the provider, never `dynamic`. The
+  input is the one type that is spelled out, and it is read from your file.
+
+**After a success.** The data the write made stale is invalidated, and loads again (with
+[`keep_previous`](#retries-and-reloads), what the page shows stays until the new value is there):
+
+- by default the route's own `data.dart` and the [section data](#section-data) above it: the set
+  [`AppRoutes.dataAt`](#from-a-location-to-its-data) lists for the route, for the keys the action
+  was called with;
+- or what `const invalidates = [...]` lists, which **replaces** that set. Name typed routes and
+  section handles (`RefundRoute`, `OrderRoute`, `TeamsTeamIdSection`): providers aren't `const`,
+  and the generator knows which provider each one is. `const invalidates = <Object>[];`
+  invalidates nothing. Anything else the write touches, a provider of your own, can be
+  invalidated by the action itself, which has a `ref`.
+
+```dart
+// lib/app/orders/$id/refund/action.dart
+import 'package:my_app/app.g.dart';
+
+/// The quote on this page, and the order page above it, are stale after a refund.
+const invalidates = [RefundRoute, OrderRoute];
+
+Future<Refund> action(Ref ref, {required int id, required RefundInput input}) => …;
+```
+
+A listed route's `data.dart` is keyed by something, and the action has to take it, with that type,
+to say which one to invalidate (`OrderRoute`'s `data.dart` takes `int id`, so the action takes
+`id`; a `String? q` of a search page's data is one the action takes too). When it can't tell,
+that's an error that says so.
+
+**Errors.** A failed write is `AsyncError` in the state, and it is **not** the page's: the nearest
+[`error.dart`](#datadart-a-function-a-selector-or-a-provider) is not used, because a failed refund
+shouldn't replace the form that started it. **A write is never retried**: the generated provider
+doesn't use Riverpod's [retry](#retries-and-reloads), whatever `ProviderScope(retry:)` says, and
+nothing else runs it again. A failed write invalidates nothing. Trying again is the user's call:
+the next `call` or `submit` replaces the error, and `reset()` clears it.
+
+**Concurrent runs, and a page that goes away.** Nothing stops a second `call` while one is pending:
+both run, each invalidates after its own success, and the state follows the last one started (a
+late result of the first doesn't replace it). Disable the button while `isPending` when a double
+write is wrong. The provider is kept alive until the write completes, even if its page is popped
+meanwhile, so the write still finishes and still refreshes the data; the state is only written
+while the provider is alive, so a submission that finishes after the page, or the whole container,
+is gone doesn't throw. After an `await` in a callback, check `context.mounted` before navigating.
+
+**Navigation is the caller's.** An action returns what it wrote, and doesn't navigate:
+
+```dart
+final done = await RefundRoute.submit(ref, id: id, input: input);
+if (context.mounted) ReceiptRoute(id: id).go(context);
+```
+
+**In a section's folder.** An `action.dart` in a folder with a `layout.dart` and no `page.dart`
+writes to the section. Its helpers are on the section's handle (`TeamsTeamIdSection.addMember(ref,
+teamId: 'acme', input: 'carol')`), and what it invalidates by default is the section's own data and
+the sections above it. A section with no `data.dart` gets a handle for its actions alone
+(`ShopSection`), named like [any section's](#section-data).
+
+Not in this version: optimistic updates. `state` plus `invalidates` cover most pages. Since 0.5.0.
+
+`fsp new 'orders/[id]/refund' --action` scaffolds one, with the path's segments and an `Object?`
+input to replace with your own type. `fsp routes` tags the route `action` (also in the `tags` of
+`--json`, which only gains the value). The generator reports, with a code frame:
+
+- an `action.dart` with no `page.dart`, and no `layout.dart` of a page-less folder, beside it, or
+  with no function in it that takes a `Ref` first;
+- a missing `input`, or one that is positional, not `required` or untyped;
+- a parameter that is neither a segment, a query parameter nor `input`, a missing return type, a
+  `Stream`, a `Future` with no type argument;
+- an `invalidates` that is not a `const` list literal of names, a name that is neither a typed
+  route nor a section handle or has no `data.dart`, and a key of the data it invalidates that the
+  action doesn't take;
+- helper names that collide.
 
 ### Route manifest and `meta.dart`
 
@@ -2008,7 +2158,7 @@ fsp links               # App Links, Universal Links, assetlinks.json and a site
 fsp links --check       # CI: non-zero exit when those files are stale
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
-fsp new 'products/[id]' --name Product --data --loading --error --layout --guard --transition
+fsp new 'products/[id]' --name Product --data --action --loading --error --layout --guard --transition
                         # [id] or :id both mean $id, so no shell quoting of $
 fsp new '(account)' --layout    # a (group) folder: layout only, no page.dart
 fsp new 'kyc/shop/name' --function --name KycShopName
@@ -2031,7 +2181,7 @@ result line; if that fails, it lists the files it created. After `fsp new '(acco
 until you add a route inside the group. That's expected.
 
 `fsp routes` prints what the header of `lib/app.g.dart` lists: each route's URL pattern, its typed
-route class, its `page.dart` and its tags (`redirect`, `data`, `guard`, `layout`, `transition`,
+route class, its `page.dart` and its tags (`redirect`, `data`, `action`, `guard`, `layout`, `transition`,
 `present`, `root`, and `sibling` for a route with [`nest = false`](#a-sibling-with-a-compound-path)).
 
 ```text
@@ -2370,6 +2520,12 @@ query parameter, enum segments, query parameters and catch-alls (`shop/$category
 page instead of a child of it (`nest = false`; `refund/receipt` next to it nests), with a guard on
 `refund/` that still guards it and widget tests for the stack a deep link builds.
 
+`examples/features` also has writes: `orders/$id/refund/action.dart` is a refund form (the page
+is a `HookConsumerWidget` on `RefundRoute.useAction`: a pending state, the error of a declined
+refund, and the quote beside it, `data.dart`, loads again after a success), and
+`teams/$teamId/action.dart` adds a member to the section, whose data reloads for the layout and the
+page. `test/action_test.dart` holds a refund pending on a `Completer`, so nothing waits for time.
+
 `examples/features` also has localized paths: `help/` answers `/aide` and `/hilfe` too, with a dynamic
 child, a nested child that is localized itself, and a `not_found.dart` that covers every spelling; `guide/`, with
 spellings beyond ASCII (`/führer`, `/руководство`); and `shop/`, a page-less folder spelled `boutique` and
@@ -2615,6 +2771,16 @@ by inference, which is why the helpers that return your data are static, and the
 don't (`prefetch`, `refresh`, `go`, `location`) are instance methods. If Dart macros, or naming a
 type through the import machinery that `extra` already uses, become an option, this can be
 reopened; today the trade is a `const` route and a type that is never `dynamic`.
+
+**Why an action's `submit` is static, and its input is typed.** `RefundRoute(id: 1).submit(ref,
+input: form)` has the problem `ProductRoute(id: 42).watch(ref)` has: an instance member has to say
+what it returns, so the generated file would have to name `Refund`. A static function value takes
+its result type from the provider by inference, so it is never `dynamic`. The `input` is the one
+type that has to be written out (a function value's parameters can't be inferred), and that one
+`fespalier` can name: it reads it from `action.dart` the way it reads the type of an `extra`, which
+is how the file's own imports reach `app.g.dart`. A write is also kept apart from the read it
+changes on purpose: it has its own provider, with its own state, instead of being a mode of
+`data.dart`'s, so a failed write can never put `error.dart` where the form was.
 
 **Why a localized path is one route with an alternation.** `products/` answering `/produits` could be
 done three ways in go_router, and only one keeps the URL and the route one thing.

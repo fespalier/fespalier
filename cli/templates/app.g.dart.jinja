@@ -1,6 +1,16 @@
 {#- lib/app.g.dart. Expressions (widget calls, paths) are worked out in emit.rs;
     this template owns the shape of the file. -#}
 {% from "manifest_body.dart" import body as manifest_body %}
+{% macro action_members(a) %}
+  /// The state of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}: `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
+  static final {{ a.provider }} = {{ a.top }};
+
+  /// Runs `{{ a.name }}()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. {{ a.returns }}; the error is in the state as well.
+  static final {{ a.run }} = (WidgetRef ref, {{ a.params }}) => ref.{{ a.run_with }}({{ a.provider }}{{ a.key }}, input);
+
+  /// Watches the state of `{{ a.name }}()` and gives `call(input)` to run it, for `build`. A failed run is in `state`, not thrown.
+  static final {{ a.hook }} = (WidgetRef ref{{ a.hook_params }}) => ref.{{ a.watch_with }}({{ a.provider }}{{ a.key }});
+{%- endmacro %}
 {% macro view(b) -%}
 {% if b.data -%}
 DataView(
@@ -284,8 +294,13 @@ abstract final class AppRoutes {
 {% endif %}
 {% for r in sections %}
 
+{% if r.has_data %}
 /// Typed access to the data.dart of the section {{ r.folder }} wraps ({{ r.file }}){{ r.keyed }}: the layout and the pages below it read it.
+{% else %}
+/// Typed access to the action.dart of the section {{ r.folder }} wraps ({{ r.file }}).
+{% endif %}
 abstract final class {{ r.name }} {
+{% if r.has_data %}
   /// {{ r.file }} as a Riverpod provider{{ r.keyed }}.
   static final data = {{ r.expr }};
 
@@ -304,6 +319,11 @@ abstract final class {{ r.name }} {
 {% else %}
   static Future<void> refresh(WidgetRef ref{{ r.args }}) => ref.refresh(data{{ r.key }}.future);
 {% endif %}
+{% endif %}
+{% for a in r.actions %}
+
+{{ action_members(a) }}
+{% endfor %}
 }
 {% endfor %}
 {% for r in routes %}
@@ -382,6 +402,10 @@ final class {{ r.name }}Route extends TypedLocation {
   Future<void> refresh(WidgetRef ref) => ref.refresh(data{{ r.data.key }}.future);
 {% endif %}
 {% endif %}
+{% for a in r.actions %}
+
+{{ action_members(a) }}
+{% endfor %}
 }
 {% endfor %}
 {% for f in params_fns %}
@@ -407,4 +431,32 @@ final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
 {% endif %}
 );
 {% endif %}
+{% endfor %}
+{% for r in routes %}
+{% for a in r.actions %}
+
+/// `{{ a.name }}()` of {{ a.file }}: its state, and what it invalidates after a success.
+final {{ a.top }} = {{ a.factory }}(
+  ({{ a.run_params }}) => {{ a.call }},
+{% if a.key_param %}
+  invalidates: ({{ a.key_param }}) => {{ a.invalidates }},
+{% else %}
+  invalidates: () => {{ a.invalidates }},
+{% endif %}
+);
+{% endfor %}
+{% endfor %}
+{% for r in sections %}
+{% for a in r.actions %}
+
+/// `{{ a.name }}()` of {{ a.file }}: its state, and what it invalidates after a success.
+final {{ a.top }} = {{ a.factory }}(
+  ({{ a.run_params }}) => {{ a.call }},
+{% if a.key_param %}
+  invalidates: ({{ a.key_param }}) => {{ a.invalidates }},
+{% else %}
+  invalidates: () => {{ a.invalidates }},
+{% endif %}
+);
+{% endfor %}
 {% endfor %}

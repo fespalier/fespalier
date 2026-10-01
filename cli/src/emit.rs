@@ -238,6 +238,9 @@ struct RouteCx {
     location_for: Option<String>,
     /// The type of the page's `extra`, when it takes one.
     extra: Option<String>,
+    /// `preload`: the providers it starts (`_data1(shop), _data3(id)`); None for a route
+    /// without data of its own or above it, which inherits the no-op.
+    preload: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1515,26 +1518,7 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
             fns.insert(ParamsFn::Route(id));
             lines.push(format!("final p = {}(s);", ParamsFn::Route(id).name()));
         }
-        // The data of each section above, outermost first, then the route's own: the very
-        // providers the page and its layouts watch.
-        let mut data = vec![];
-        for &sid in &r.sections {
-            let sec = &app.routes[sid];
-            let d = sec.data.as_ref().expect("a section has data");
-            // The route takes the section's segments, and the query parameters it is keyed by.
-            data.push(format!(
-                "{}{}",
-                provider_expr(sid, d),
-                key_expr(app, sec, d, "p.")
-            ));
-        }
-        if let Some(d) = &r.data {
-            data.push(format!(
-                "{}{}",
-                provider_expr(id, d),
-                key_expr(app, r, d, "p.")
-            ));
-        }
+        let data = route_providers(app, id, r, "p.");
         let route = if params.is_empty() {
             format!("const {name}Route()")
         } else {
@@ -1559,6 +1543,31 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
     }
     all.sort_by(|a, b| a.0.cmp(&b.0));
     all.into_iter().map(|(_, m)| m).collect()
+}
+
+/// The providers of a route's data, outermost first: the `data.dart` of each section above
+/// it, then its own; the very providers the page and its layouts watch. [`prefix`] reads
+/// the keys (`p.` in a matcher, nothing inside the route class).
+fn route_providers(app: &App, id: usize, r: &Route, prefix: &str) -> Vec<String> {
+    let mut data = vec![];
+    for &sid in &r.sections {
+        let sec = &app.routes[sid];
+        let d = sec.data.as_ref().expect("a section has data");
+        // The route takes the section's segments, and the query parameters it is keyed by.
+        data.push(format!(
+            "{}{}",
+            provider_expr(sid, d),
+            key_expr(app, sec, d, prefix)
+        ));
+    }
+    if let Some(d) = &r.data {
+        data.push(format!(
+            "{}{}",
+            provider_expr(id, d),
+            key_expr(app, r, d, prefix)
+        ));
+    }
+    data
 }
 
 fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
@@ -1628,6 +1637,9 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
             _ => None,
         },
         extra: r.extra.as_ref().map(|e| e.ty.clone()),
+        preload: Some(route_providers(app, id, r, ""))
+            .filter(|p| !p.is_empty())
+            .map(|p| p.join(", ")),
     })
 }
 

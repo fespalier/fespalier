@@ -1118,6 +1118,12 @@ abstract final class AppRoutes {
   /// without data; null when no route fits or a segment doesn't parse.
   static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
 
+  /// Starts loading everything the page at [uri] reads, `ref.prefetchAll(dataAt(uri) ?? [])`: one
+  /// handle keeps it all alive until it is closed (or `keepFor` passes). A location that matches no
+  /// route, or a route without data, has nothing to warm and gets a closed handle. It never
+  /// navigates and runs no guard.
+  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);
+
   /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
   static List<RouteInfo<Object?>> get all => AppManifest.all;
 
@@ -1653,6 +1659,10 @@ final class BrowseRoute extends TypedLocation {
 
   /// Re-runs browse/$$categories/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(restKey(categories)).future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data12(restKey(categories))], keepFor: keepFor);
 }
 
 /// `/catalog` → catalog/page.dart
@@ -1676,6 +1686,10 @@ final class CatalogRoute extends TypedLocation {
 
   /// Re-runs catalog/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data13], keepFor: keepFor);
 }
 
 /// `/catalog/:productId` → catalog/$productId/page.dart
@@ -1701,6 +1715,10 @@ final class ProductDetailRoute extends TypedLocation {
 
   /// Re-runs catalog/$productId/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data(productId));
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data14(productId)], keepFor: keepFor);
 }
 
 /// `/catalog/:productId/reviews` → catalog/$productId/reviews/page.dart
@@ -1727,6 +1745,10 @@ final class ReviewsRoute extends TypedLocation {
 
   /// Re-runs catalog/$productId/reviews/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data((productId: productId, page: page)));
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data15((productId: productId, page: page))], keepFor: keepFor);
 }
 
 /// `/compare/*ids` → compare/$$ids/page.dart
@@ -1755,6 +1777,10 @@ final class CompareRoute extends TypedLocation {
 
   /// Re-runs compare/$$ids/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(restKey(ids)).future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data17(restKey(ids))], keepFor: keepFor);
 }
 
 /// `/counter` → counter/page.dart
@@ -1778,6 +1804,10 @@ final class CounterRoute extends TypedLocation {
 
   /// Re-runs counter/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_i26.data], keepFor: keepFor);
 }
 
 /// `/docs` → docs/page.dart
@@ -1982,6 +2012,10 @@ final class RefundRoute extends TypedLocation {
 
   /// Re-runs orders/$id/refund/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data37(id)], keepFor: keepFor);
 }
 
 /// `/orders/:id/refund/confirm` → orders/$id/refund/confirm/page.dart
@@ -2062,6 +2096,10 @@ final class MonthlyReportRoute extends TypedLocation {
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/reports/monthly'), {'period': period});
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data46(period)], keepFor: keepFor);
 }
 
 /// `/reports/yearly` → reports/yearly/page.dart
@@ -2072,6 +2110,10 @@ final class YearlyReportRoute extends TypedLocation {
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/reports/yearly'), {'period': period});
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data46(period)], keepFor: keepFor);
 }
 
 /// `/search` → search/page.dart
@@ -2099,6 +2141,10 @@ final class SearchRoute extends TypedLocation {
 
   /// Re-runs search/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data((q: q, page: page, tags: QueryList(tags))).future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data49((q: q, page: page, tags: QueryList(tags)))], keepFor: keepFor);
 }
 
 /// `/shop/:category` → shop/$category/page.dart
@@ -2132,6 +2178,10 @@ final class CategoryShopRoute extends TypedLocation {
 
   /// Re-runs shop/$category/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(category).future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data51(category)], keepFor: keepFor);
 }
 
 /// `/shops/:shop` → shops/$shop/page.dart
@@ -2168,6 +2218,10 @@ final class ItemRoute extends TypedLocation {
 
   /// Re-runs shops/$shop/items/$id/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data((shop: shop, id: id)).future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data55((shop: shop, id: id))], keepFor: keepFor);
 }
 
 /// `/teams/:teamId/members` → teams/$teamId/members/page.dart
@@ -2178,6 +2232,10 @@ final class MembersRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/teams/${Uri.encodeComponent(teamId)}/members');
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data57(teamId)], keepFor: keepFor);
 }
 
 /// `/teams/:teamId/members/:member` → teams/$teamId/members/$member/page.dart
@@ -2204,6 +2262,10 @@ final class MemberRoute extends TypedLocation {
 
   /// Re-runs teams/$teamId/members/$member/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(member).future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data57(teamId), _data59(member)], keepFor: keepFor);
 }
 
 /// `/teams/:teamId/settings` → teams/$teamId/settings/page.dart
@@ -2214,6 +2276,10 @@ final class TeamSettingsRoute extends TypedLocation {
 
   @override
   String get location => joinLocation(AppRoutes.base, '/teams/${Uri.encodeComponent(teamId)}/settings');
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data57(teamId)], keepFor: keepFor);
 }
 
 /// `/ticks` → ticks/page.dart
@@ -2237,6 +2303,10 @@ final class TicksRoute extends TypedLocation {
 
   /// Restarts ticks/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data61], keepFor: keepFor);
 }
 
 /// `/wiki/*article` → wiki/$$article/page.dart
@@ -2265,6 +2335,10 @@ final class WikiRoute extends TypedLocation {
 
   /// Re-runs wiki/$$article/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(restKey(article)).future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data63(restKey(article))], keepFor: keepFor);
 }
 
 ({String slug}) _params1(GoRouterState s) => (slug: Segment.asString(s, 'slug'));

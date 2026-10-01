@@ -215,6 +215,12 @@ abstract final class AppRoutes {
   /// `ref.prefetchAll(AppRoutes.dataAt(uri) ?? [])`, warms the page. Empty for a route
   /// without data; null when no route fits or a segment doesn't parse.
   static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
+
+  /// Starts loading everything the page at [uri] reads, `ref.prefetchAll(dataAt(uri) ?? [])`: one
+  /// handle keeps it all alive until it is closed (or `keepFor` passes). A location that matches no
+  /// route, or a route without data, has nothing to warm and gets a closed handle. It never
+  /// navigates and runs no guard.
+  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);
 }
 
 /// `/` → (tabs)/(home)/page.dart

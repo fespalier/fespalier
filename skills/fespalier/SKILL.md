@@ -149,15 +149,15 @@ and the reserved names.
 
 ## Which skill to load
 
-| The work                                                                                  | Load                        |
-| ----------------------------------------------------------------------------------------- | --------------------------- |
-| Folders, segments, catch-alls, enums, typed routes, `route.dart`, `extra`, `present.dart` | `fespalier-routing`         |
-| `data.dart`, loading and error views, retries, prefetch, sections, `dataAt`               | `fespalier-data`            |
-| `layout.dart`, tabs, `container`, shell transitions, restoration                          | `fespalier-layouts`         |
-| `guard.dart`, `redirect.dart`, `returnTo`, sign-in flows                                  | `fespalier-guards`          |
-| Widget tests: `pumpRouter`, `currentLocation`, deep links, data states                    | `fespalier-testing`         |
-| An `fsp` error, a stale `app.g.dart`, a route that does not show                          | `fespalier-troubleshooting` |
-| Upgrading 0.2 to 0.3, or adopting fespalier in a go_router app                            | `fespalier-migration`       |
+| The work                                                                                               | Load                        |
+| ------------------------------------------------------------------------------------------------------ | --------------------------- |
+| Folders, segments, catch-alls, enums, typed routes, `RouteLink`, `route.dart`, `extra`, `present.dart` | `fespalier-routing`         |
+| `data.dart`, loading and error views, retries, prefetch, sections, `dataAt`                            | `fespalier-data`            |
+| `layout.dart`, tabs, `container`, shell transitions, restoration                                       | `fespalier-layouts`         |
+| `guard.dart`, `redirect.dart`, `returnTo`, sign-in flows                                               | `fespalier-guards`          |
+| Widget tests: `pumpRouter`, `currentLocation`, deep links, data states                                 | `fespalier-testing`         |
+| An `fsp` error, a stale `app.g.dart`, a route that does not show                                       | `fespalier-troubleshooting` |
+| Upgrading 0.2 to 0.3, or adopting fespalier in a go_router app                                         | `fespalier-migration`       |
 
 ## Where the truth is
 

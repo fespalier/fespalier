@@ -66,6 +66,11 @@ const SearchRoute(q: 'ap', page: 2).location;   // /search?q=ap&page=2
   an **instance** `prefetch(ref, {keepFor})` and an **instance**
   `refresh(ref)`. `watch` and `read` are static on purpose (see
   `fespalier-data`).
+- A route with its own data **or a section's above it** also has an instance
+  `preload(ref, {keepFor})` (0.5.0): every provider the page reads behind one
+  `PrefetchHandle` (`fespalier-data`). A route with none inherits the base's, which
+  returns a closed handle. `AppRoutes.preload(ref, uri, {keepFor})` does it from a
+  location, and `RouteLink` (runtime, not generated; `fespalier-routing`) calls it.
 - A section's `data.dart` gets `<Folder>Section` with the same five members, all
   static (`fespalier-data`).
 

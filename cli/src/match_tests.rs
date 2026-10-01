@@ -490,6 +490,69 @@ fn a_section_can_be_keyed_by_query_parameters() {
 }
 
 #[test]
+fn a_route_preloads_its_own_data_and_its_sections() {
+    let c = code(&[
+        ("page.dart", HOME),
+        (
+            "teams/$teamId/data.dart",
+            "Future<String> data(Ref ref, {required String teamId}) async => '';",
+        ),
+        (
+            "teams/$teamId/layout.dart",
+            &widget(
+                "TeamLayout",
+                "final Widget child; final String data;",
+                ", required this.child, required this.data",
+            ),
+        ),
+        ("teams/$teamId/members/page.dart", &page("Members")),
+        (
+            "teams/$teamId/stats/data.dart",
+            "Future<int> data(Ref ref, {required String teamId, int? week}) async => 1;",
+        ),
+        (
+            "teams/$teamId/stats/page.dart",
+            &widget("StatsPage", "final int n;", ", required this.n"),
+        ),
+    ]);
+    has(
+        &c,
+        &[
+            // The section's provider, then the route's own: what `dataAt` lists.
+            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data2(teamId), _data4((teamId: teamId, week: week))], keepFor: keepFor);",
+            // A route that only has the section's data still starts it.
+            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data2(teamId)], keepFor: keepFor);",
+            // By location.
+            "static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);",
+        ],
+    );
+    // The matcher and `preload` list the same providers.
+    has(
+        &c,
+        &["[_data2(p.teamId), _data4((teamId: p.teamId, week: p.week))])"],
+    );
+    // HomeRoute has no data: it inherits the base's no-op.
+    assert_eq!(
+        c.matches("@override\n  PrefetchHandle preload(").count(),
+        2,
+        "{c}"
+    );
+}
+
+#[test]
+fn preload_is_a_member_of_the_route_class_so_it_is_reserved() {
+    let e = errors(
+        "",
+        &[(
+            "$preload/page.dart",
+            &widget("PPage", "final String preload;", ", required this.preload"),
+        )],
+    )
+    .join("\n");
+    assert!(e.contains("`$preload` is reserved"), "{e}");
+}
+
+#[test]
 fn a_section_selector_can_take_query_parameters_too() {
     let files = [
         (

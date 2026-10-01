@@ -15,7 +15,8 @@ import 'package:hooks_riverpod/misc.dart'
 ///
 /// A load that fails closes its handle: the error isn't kept, so the page that
 /// watches the provider next starts a fresh load instead of showing an error nobody
-/// asked for yet.
+/// asked for yet. A handle that holds several providers (`prefetchAll`) closes all
+/// of them when one fails.
 final class PrefetchHandle {
   PrefetchHandle._(this._release);
 
@@ -25,6 +26,9 @@ final class PrefetchHandle {
 
   void Function()? _release;
   Timer? _timer;
+
+  /// The handle that holds this one together with others, when there is one.
+  PrefetchHandle? _group;
 
   /// Whether this handle no longer keeps anything alive.
   bool get isClosed => _release == null;
@@ -38,18 +42,29 @@ final class PrefetchHandle {
     release?.call();
   }
 
-  /// One handle that closes [handles] together.
-  static PrefetchHandle _group(List<PrefetchHandle> handles) {
+  /// The load failed: nothing is kept, not even what the others it was
+  /// started with are holding.
+  void _fail() {
+    close();
+    _group?.close();
+  }
+
+  /// One handle that closes [handles] together, and closes when one fails.
+  static PrefetchHandle _join(List<PrefetchHandle> handles) {
     final open = [
       for (final h in handles)
         if (!h.isClosed) h,
     ];
     if (open.isEmpty) return PrefetchHandle._closed();
-    return PrefetchHandle._(() {
+    final group = PrefetchHandle._(() {
       for (final h in open) {
         h.close();
       }
     });
+    for (final h in open) {
+      h._group = group;
+    }
+    return group;
   }
 }
 
@@ -89,7 +104,7 @@ extension DataRef on WidgetRef {
   }) {
     late final PrefetchHandle handle;
     final sub = listenManual<AsyncValue<Object?>>(provider, (previous, next) {
-      if (next.hasError) handle.close();
+      if (next.hasError) handle._fail();
     });
     handle = PrefetchHandle._(sub.close);
     if (keepFor != null) {
@@ -107,7 +122,7 @@ extension DataRef on WidgetRef {
   PrefetchHandle prefetchAll(
     Iterable<ProviderListenable<AsyncValue<Object?>>> providers, {
     Duration? keepFor,
-  }) => PrefetchHandle._group([
+  }) => PrefetchHandle._join([
     for (final p in providers) prefetchData(p, keepFor: keepFor),
   ]);
 }

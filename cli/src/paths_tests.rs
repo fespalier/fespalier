@@ -573,7 +573,7 @@ fn a_page_can_ask_for_the_extra_object() {
             "void go(BuildContext context, {Product? extra, String? locale}) => context.go(locationFor(locale), extra: extra);",
             "Future<T?> push<T extends Object?>(BuildContext context, {Product? extra, String? locale}) =>",
             "context.push<T>(locationFor(locale), extra: extra);",
-            "void replace(BuildContext context, {Product? extra, String? locale}) => context.replace(locationFor(locale), extra: extra);",
+            "void replace(BuildContext context, {Product? extra, String? locale}) => replaceLocation(context, locationFor(locale), extra: extra);",
             "unused_element, undefined_shown_name",
         ],
     );

@@ -37,7 +37,8 @@ enum LinkMethod {
   /// `GoRouter.push`: the page goes on top of the current one, and back returns.
   push,
 
-  /// `GoRouter.replace`: the page takes the place of the current one.
+  /// `TypedLocation.replace`: the page takes the place of the current one, and on the
+  /// web its location replaces the history entry (see `replaceLocation`).
   replace,
 }
 
@@ -328,7 +329,7 @@ class _RouteLinkState extends ConsumerState<RouteLink> {
       case LinkMethod.push:
         unawaited(router.push<Object?>(_location));
       case LinkMethod.replace:
-        unawaited(router.replace<Object?>(_location));
+        replaceLocation(context, _location);
     }
   }
 

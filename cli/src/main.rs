@@ -305,7 +305,7 @@ fn analyze_tree(
     diags: &mut diag::Diags,
 ) -> (String, resolve::App) {
     let _warm = parse_cache::prewarm(tree);
-    let app = resolve::resolve(tree, cfg.case_sensitive, libs, diags);
+    let app = resolve::resolve(tree, cfg.case_sensitive, cfg.remount, libs, diags);
     manifest::check(&app, cfg, diags);
     let code = emit::emit(&app, cfg, diags);
     (code, app)
@@ -447,6 +447,8 @@ mod nest_tests;
 mod paths_tests;
 #[cfg(test)]
 mod refresh_tests;
+#[cfg(test)]
+mod remount_tests;
 #[cfg(test)]
 mod rest_types_tests;
 #[cfg(test)]

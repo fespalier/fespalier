@@ -146,7 +146,13 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
     // Segments that already exist keep the type the tree gives them.
     let mut diags = Diags::default();
     let libs = crate::enums::Libs::for_app(&app_dir, &cfg);
-    let app = resolve::resolve(&scan::scan(&app_dir, &mut diags)?, true, &libs, &mut diags);
+    let app = resolve::resolve(
+        &scan::scan(&app_dir, &mut diags)?,
+        true,
+        crate::config::Remount::Never,
+        &libs,
+        &mut diags,
+    );
     let known: HashMap<&str, String> = app
         .routes
         .iter()

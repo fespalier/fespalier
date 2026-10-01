@@ -9,6 +9,7 @@
 //!   meta: optional          # default; `required` makes a route without meta.dart an error
 //!   meta_unique: [code]     # default: none; no two routes may pass the same literal `code:` to `meta`
 //!   case_sensitive: true    # default; false matches `/Products` too (a route.dart sets it per folder)
+//!   remount: never          # default; on_segments or on_location give a page a fresh state when its URL changes (a route.dart sets it per folder)
 //!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
 //!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
@@ -49,6 +50,60 @@ pub enum DataRetry {
     None,
 }
 
+/// When a page gets a fresh state because its URL changed: the runtime's `Remount`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Remount {
+    /// Never: `/c/1` to `/c/2` keeps the page and its state (`go_router` keys a page by its path
+    /// template).
+    #[default]
+    Never,
+    /// When a segment's value changes; a different query keeps the state.
+    OnSegments,
+    /// On any change of the location, query included.
+    OnLocation,
+}
+
+impl Remount {
+    /// How the Dart enum spells it: `Remount.onSegments`.
+    pub fn dart(self) -> &'static str {
+        match self {
+            Remount::Never => "never",
+            Remount::OnSegments => "onSegments",
+            Remount::OnLocation => "onLocation",
+        }
+    }
+
+    /// How the config, `fsp routes --json` and the diagnostics spell it: `on_segments`.
+    pub fn config_name(self) -> &'static str {
+        match self {
+            Remount::Never => "never",
+            Remount::OnSegments => "on_segments",
+            Remount::OnLocation => "on_location",
+        }
+    }
+
+    /// The value a `route.dart` writes, `Remount.onSegments` (an import prefix is fine:
+    /// `fsp.Remount.onSegments`), read back from the source text. `None` for anything else.
+    pub fn from_source(value: &str) -> Option<Remount> {
+        let ident = |p: &str| {
+            p.chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+                && p.chars().all(|c| c.is_alphanumeric() || c == '_')
+        };
+        let parts: Vec<&str> = value.split('.').collect();
+        let which = match parts.as_slice() {
+            ["Remount", which] => which,
+            [prefix, "Remount", which] if ident(prefix) => which,
+            _ => return None,
+        };
+        [Remount::Never, Remount::OnSegments, Remount::OnLocation]
+            .into_iter()
+            .find(|r| r.dart() == *which)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// Normalized, `/`-separated, no trailing slash: `lib/app`.
@@ -68,6 +123,9 @@ pub struct Config {
     /// Whether routes match paths by case; `false` emits `caseSensitive: false` on each. The
     /// default for folders with no `route.dart` at or above them.
     pub case_sensitive: bool,
+    /// When a page gets a fresh state because its URL changed; the default for folders with
+    /// no `route.dart` at or above them that says `const remount`.
+    pub remount: Remount,
     pub data_retry: DataRetry,
     /// Keep rendering the old value or error while `data.dart` reloads.
     pub keep_previous: bool,
@@ -88,6 +146,7 @@ impl Default for Config {
             meta_required: false,
             meta_unique: vec![],
             case_sensitive: true,
+            remount: Remount::Never,
             data_retry: DataRetry::Inherit,
             keep_previous: true,
             file_style: FileStyle::Snake,
@@ -122,6 +181,7 @@ struct RawConfig {
     meta: Option<String>,
     meta_unique: Option<Vec<String>>,
     case_sensitive: Option<bool>,
+    remount: Option<Remount>,
     data_retry: Option<DataRetry>,
     keep_previous: Option<bool>,
     file_style: Option<FileStyle>,
@@ -431,6 +491,7 @@ impl Pubspec {
         if let Some(c) = raw.fespalier {
             config.format = c.format.unwrap_or(false);
             config.case_sensitive = c.case_sensitive.unwrap_or(true);
+            config.remount = c.remount.unwrap_or(config.remount);
             config.data_retry = c.data_retry.unwrap_or(config.data_retry);
             config.keep_previous = c.keep_previous.unwrap_or(config.keep_previous);
             config.file_style = c.file_style.unwrap_or(config.file_style);

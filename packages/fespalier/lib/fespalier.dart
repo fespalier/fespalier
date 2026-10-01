@@ -21,6 +21,7 @@ export 'src/guards.dart';
 export 'src/layout_page.dart';
 export 'src/location.dart';
 export 'src/not_found.dart';
+export 'src/remount.dart';
 export 'src/route_info.dart';
 export 'src/route_link.dart';
 export 'src/route_match.dart';

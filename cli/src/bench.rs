@@ -52,6 +52,7 @@ fn bench_stages() {
         resolve::resolve(
             &tree,
             cfg.case_sensitive,
+            cfg.remount,
             &crate::enums::Libs::default(),
             &mut Diags::default(),
         );
@@ -60,6 +61,7 @@ fn bench_stages() {
             resolve::resolve(
                 &tree,
                 cfg.case_sensitive,
+                cfg.remount,
                 &crate::enums::Libs::default(),
                 &mut Diags::default(),
             )

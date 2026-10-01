@@ -133,6 +133,13 @@ GoRoute(
 {% set page = with_segments(r.seg_fn, view(r), r.not_found) if r.seg_fn else view(r) %}
 {% if r.transition %}
   pageBuilder: (context, state) => {{ with_transition(r.transition, page) | indent(2) }},
+{% elif r.remount %}
+  pageBuilder: (context, state) => remountPage(
+    context,
+    state,
+    remountKey(state, {{ r.remount }}),
+    {{ page | indent(4) }},
+  ),
 {% else %}
   builder: (context, state) => {{ page | indent(2) }},
 {% endif %}

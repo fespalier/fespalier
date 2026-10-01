@@ -25,7 +25,8 @@ final isAdmin = NotifierProvider<Flag, bool>(Flag.new);
 
 `guard.dart` exports `GuardResult guard(ProviderContainer c, {...})`. It returns a
 **location to redirect to**, or `null` to let the navigation through, and may be
-async. It guards **every route at and below its folder**, and the folder needs no
+async (but return synchronously when you can: any `Future`, even `Future.value(...)`,
+costs a frame and a blank first frame on a cold deep link). It guards **every route at and below its folder**, and the folder needs no
 `page.dart`: put one in a `(group)` or at the root to cover a whole section of
 the app.
 

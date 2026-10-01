@@ -24,7 +24,9 @@ GuardResult guard(ProviderContainer c, {required Uri uri}) =>
 ```
 
 `GuardResult` is `FutureOr<String?>`: **a location to redirect to, or `null` to
-let the navigation through**; it may be async. A guard covers **every route at and
+let the navigation through**; it may be async, but return synchronously when you
+can (any `Future`, even `Future.value(...)`, costs a frame and a blank first frame on a
+cold deep link). A guard covers **every route at and
 below its folder**, and the folder needs no `page.dart`: put the guard in a
 `(group)` (or at the root) to cover a whole section.
 

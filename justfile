@@ -62,7 +62,8 @@ gen-examples:
         cargo run --quiet -- gen --project "../examples/$e"
     done
 
-# The package and every example: pub get, dart format (generated *.g.dart left out), analyze, test
+# The package and every example: pub get, dart format (generated *.g.dart left out), analyze, test,
+# and the const lints on each example's generated code (scripts/check-const-lints.sh)
 flutter:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -74,6 +75,8 @@ flutter:
                 | xargs -0 dart format --output=none --set-exit-if-changed \
             && flutter analyze \
             && flutter test)
+        # The generated code is clean under the const lints its `ignore_for_file` hides.
+        case "$d" in examples/*) scripts/check-const-lints.sh "$d" ;; esac
     done
 
 # The Homebrew/Scoop rendering, checksum pinning and release staging tests

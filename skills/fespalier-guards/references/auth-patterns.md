@@ -169,7 +169,9 @@ unknown paths still show your `not_found.dart`.
 ## Waiting for the session to load
 
 A guard may be **async** (`FutureOr<String?>`): useful when the session is read from
-storage at startup.
+storage at startup. **Return synchronously when you can**: any `Future`, even
+`Future.value(...)`, costs the router a frame, and on a cold deep link the first frame is
+blank. Make a guard `async` only when it has something to `await`.
 
 ```dart
 // lib/app/(private)/guard.dart

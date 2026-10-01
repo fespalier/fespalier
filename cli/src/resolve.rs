@@ -83,6 +83,9 @@ pub struct Widget {
     pub import: usize,
     pub class: String,
     pub args: Vec<Arg>,
+    /// The constructor is `const`: with no arguments, the call is `const` too, so the
+    /// framework can skip rebuilding it.
+    pub is_const: bool,
 }
 
 impl Widget {
@@ -99,7 +102,17 @@ impl Widget {
                 }
             })
             .collect();
-        format!("_i{}.{}({})", self.import, self.class, args.join(", "))
+        let konst = if self.is_const && args.is_empty() {
+            "const "
+        } else {
+            ""
+        };
+        format!(
+            "{konst}_i{}.{}({})",
+            self.import,
+            self.class,
+            args.join(", ")
+        )
     }
 }
 
@@ -1739,6 +1752,7 @@ impl Resolver<'_> {
             import,
             class: class.name.clone(),
             args,
+            is_const: class.is_const,
         }
     }
 

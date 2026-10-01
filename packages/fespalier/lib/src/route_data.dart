@@ -6,7 +6,8 @@ import 'package:hooks_riverpod/misc.dart'
     show AsyncProviderListenable, ProviderListenable;
 
 /// A prefetched provider, kept alive until [close] (or until the `keepFor` you gave
-/// it passes, or the widget whose `ref` started it is disposed).
+/// it passes, or the widget whose `ref` started it is disposed: since 0.5.0 that also
+/// cancels the `keepFor` timer and closes the handle).
 ///
 /// The providers `data.dart` becomes are `autoDispose`: with nothing listening, one
 /// is dropped at the end of the frame, and the warm value with it. A handle is that
@@ -91,14 +92,24 @@ extension DataRef on WidgetRef {
     final sub = listenManual<AsyncValue<Object?>>(provider, (previous, next) {
       if (next.hasError) handle.close();
     });
-    handle = PrefetchHandle._(sub.close);
-    if (keepFor != null) {
-      if (keepFor <= Duration.zero) {
-        handle.close();
-      } else {
-        handle._timer = Timer(keepFor, handle.close);
-      }
+    if (keepFor == null || keepFor <= Duration.zero) {
+      handle = PrefetchHandle._(sub.close);
+      if (keepFor != null) handle.close();
+      return handle;
     }
+    // A provider that only this call listens to: it hears when the listeners go, which
+    // is the handle closing, or the widget being disposed (that closes the subscriptions
+    // it made), and ends the handle, with its timer: one that outlives the widget is
+    // pending in a widget test, and holds the provider's `ref` for nothing.
+    final ended = Provider.autoDispose<void>(
+      (ref) => ref.onRemoveListener(() => handle.close()),
+    );
+    final endedSub = listenManual<void>(ended, (previous, next) {});
+    handle = PrefetchHandle._(() {
+      sub.close();
+      endedSub.close();
+    });
+    handle._timer = Timer(keepFor, handle.close);
     return handle;
   }
 

@@ -15,36 +15,36 @@ pattern="${rules// /|}"
 status=0
 
 for dir in "$@"; do
-    (
-        cd "$dir"
-        options="$(mktemp)"
-        cp analysis_options.yaml "$options"
-        copies=()
-        # shellcheck disable=SC2329 # invoked by the EXIT trap below
-        cleanup() {
-            cp "$options" analysis_options.yaml
-            rm -f "$options" "${copies[@]}"
-        }
-        trap cleanup EXIT
+  (
+    cd "$dir"
+    options="$(mktemp)"
+    cp analysis_options.yaml "$options"
+    copies=()
+    # shellcheck disable=SC2329 # invoked by the EXIT trap below
+    cleanup() {
+      cp "$options" analysis_options.yaml
+      rm -f "$options" "${copies[@]}"
+    }
+    trap cleanup EXIT
 
-        {
-            printf '\nlinter:\n  rules:\n'
-            for r in $rules; do printf '    - %s\n' "$r"; done
-        } >> analysis_options.yaml
-        for f in lib/*.g.dart; do
-            copy="lib/const_lint_copy_$(basename "$f" .g.dart).dart"
-            sed -e 's#ignore_for_file: type=lint, #ignore_for_file: #' -- "$f" > "$copy"
-            copies+=("$copy")
-        done
+    {
+      printf '\nlinter:\n  rules:\n'
+      for r in $rules; do printf '    - %s\n' "$r"; done
+    } >> analysis_options.yaml
+    for f in lib/*.g.dart; do
+      copy="lib/const_lint_copy_$(basename "$f" .g.dart).dart"
+      sed -e 's#ignore_for_file: type=lint, #ignore_for_file: #' -- "$f" > "$copy"
+      copies+=("$copy")
+    done
 
-        out="$(dart analyze --no-fatal-warnings "${copies[@]}" 2>&1 || true)"
-        hits="$(grep -E "$pattern" <<<"$out" || true)"
-        if [ -n "$hits" ]; then
-            echo "$dir: the generated code is missing a const:" >&2
-            echo "$hits" >&2
-            exit 1
-        fi
-        echo "$dir: const lints clean (${#copies[@]} generated file(s))"
-    ) || status=1
+    out="$(dart analyze --no-fatal-warnings "${copies[@]}" 2>&1 || true)"
+    hits="$(grep -E "$pattern" <<< "$out" || true)"
+    if [ -n "$hits" ]; then
+      echo "$dir: the generated code is missing a const:" >&2
+      echo "$hits" >&2
+      exit 1
+    fi
+    echo "$dir: const lints clean (${#copies[@]} generated file(s))"
+  ) || status=1
 done
 exit "$status"

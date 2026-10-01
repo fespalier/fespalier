@@ -1565,8 +1565,17 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
                 pattern: format!("[{}]", parts.join(", ")),
                 lines,
                 route,
-                params: format!("{{{}}}", map.join(", ")),
-                data: format!("[{}]", data.join(", ")),
+                // Empty literals are `const`: one shared instance, nothing allocated per match.
+                params: if map.is_empty() {
+                    "const {}".into()
+                } else {
+                    format!("{{{}}}", map.join(", "))
+                },
+                data: if data.is_empty() {
+                    "const []".into()
+                } else {
+                    format!("[{}]", data.join(", "))
+                },
                 case_sensitive: r.case_sensitive,
             },
         ));

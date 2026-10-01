@@ -45,6 +45,12 @@ testWidgets('shows a product', (tester) async {
   - **`retry` defaults to no retries**: a failing `data.dart` shows `error.dart` at once and
     leaves no timer. Pass `ProviderContainer.defaultRetry` (or your function) to test the
     app's policy.
+  - **It disposes the router when the test ends** (since 0.5.0; on 0.4.x and earlier
+    `LeakTesting` reported the `GoRouterDelegate` as not disposed). Don't `addTearDown(router.dispose)`
+    before the call as well: those run after `pumpRouter`'s, and a second `dispose` throws.
+    Build one router per test.
+  - **Guards: return synchronously when you can.** Any `Future`, even `Future.value(...)`,
+    costs a frame, so a cold deep link shows a blank first frame before the page.
 - **`currentLocation(tester)`** is where the router is, as a string
   (`/products/2?tab=info`). It follows `go`, `pop` and, since 0.4.0, **`push`** (the
   pushed location, the top of the stack). On 0.3.0 and earlier it did not follow a

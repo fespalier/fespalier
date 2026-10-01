@@ -1078,10 +1078,11 @@ GuardResult guard(Ref ref, {required Uri uri}) =>
 
   `ref.read` is for what must be the current value when you navigate and never changes the
   answer later. A guard that returns the same answer after a change does nothing.
-- **What it costs.** A guard that answers synchronously stays synchronous: it adds no frame,
-  and the first frame at boot already shows the page. Return a `Future` only when you await
-  something, since any `Future`, even a completed one, takes a frame (and a blank first
-  frame at boot). Each navigation runs the guard in a fresh `autoDispose` provider, so
+- **What it costs.** Return synchronously when you can. A guard that needs no `await` should
+  not be `async`, and not return `Future.value(...)` either: it then answers synchronously, in
+  the same frame as the navigation, and the first frame at boot (a cold deep link too) already
+  shows the page. Any `Future`, even a completed one, costs the router a frame, and the first
+  frame is blank. Each navigation runs the guard in a fresh `autoDispose` provider, so
   what it `ref.watch`es is shared with the rest of the app and fetched once; the guard itself
   runs again after a change and again when the router asks, so keep it cheap. A guard
   signing out therefore runs twice (Riverpod recomputes it, then the router asks), and the
@@ -1291,7 +1292,8 @@ route on its enclosing shell's navigator unless it says otherwise, so a child pu
 would land _under_ it), and the route table marks them `(root)`.
 
 The generated file owns the key: `AppRoutes.rootNavigatorKey` is a `GlobalKey<NavigatorState>` the
-app can read; `AppRoutes.router(navigatorKey: …)` uses one you supply; and
+app can read (the last `router()` or `mount()` call's: a call that is given no key makes a fresh one
+rather than keeping an earlier call's, since 0.5.0); `AppRoutes.router(navigatorKey: …)` uses one you supply; and
 `AppRoutes.mount(at:, navigatorKey: …)` takes the **host** `GoRouter`'s own key, since a
 `parentNavigatorKey` must name an ancestor navigator.
 
@@ -1659,9 +1661,10 @@ MouseRegion(
 ```
 
 A few things to know: closing twice is fine, and `handle.isClosed` tells; the subscription
-also ends when the widget whose `ref` you pass is disposed; `keepFor` holds a timer, so a widget
-test that uses it should `pump` past it (or pass `Duration.zero`, which starts the load and keeps
-nothing); and _the default changed_: a prefetch used to lapse after 30 seconds without a
+also ends when the widget whose `ref` you pass is disposed, and since 0.5.0 that closes the
+handle and cancels its `keepFor` timer with it, so no timer outlives the widget; while the
+widget is alive `keepFor` holds a timer, so a widget test that uses it should `pump` past it (or
+pass `Duration.zero`, which starts the load and keeps nothing); and _the default changed_: a prefetch used to lapse after 30 seconds without a
 `keepFor`, and now lasts until closed (a `prefetch(ref)` whose handle is dropped lasts as
 long as the widget behind `ref`). `prefetchKeepAlive` is gone.
 Because these are members of the route class, `watch`, `read`, `prefetch`, `refresh`, `ref`
@@ -1962,7 +1965,9 @@ changes on every launch, so nothing under it can be found again. The generated r
 these pages with an id from the layout's folder instead: with a [`transition.dart`](#transitions)
 above the layout, its `Page` under a `ValueKey` made of that id (the `Transitions.*` pages take
 their restoration id from the key); otherwise `layoutPage(...)`, a Material page (a Cupertino one
-inside a `CupertinoApp`) with the id.
+inside a `CupertinoApp`) with the id, under the same `ValueKey` (since 0.5.0; it used to use
+go_router's key, the route object's hash code, so a router built again by a hot reload or a test
+replaced the layout and lost its state).
 
 - **`extra`.** An object passed with `context.go(…, extra: …)` is saved with the location if the
   router has an [`extraCodec`](#restoring-extra-on-the-web) that knows its type (the same one
@@ -2437,7 +2442,17 @@ unlike a real app, whose generated providers keep Riverpod's automatic retry unl
 `data_retry: none` says otherwise: a failing `data.dart` shows its `error.dart` at once and
 leaves no timer behind. To test what the app's policy does, pass
 `retry: ProviderContainer.defaultRetry` (or your own function). A policy that keeps retrying
-leaves a timer pending when the test ends, so dispose the returned container first. Make a new router per test, since a router remembers where it went. If a widget
+leaves a timer pending when the test ends, so dispose the returned container first. Make a new
+router per test, since a router remembers where it went. `pumpRouter` disposes the router when
+the test ends (since 0.5.0), so `LeakTesting` finds nothing left behind: don't dispose it
+yourself with an `addTearDown` registered before the call (those run after `pumpRouter`'s, and a
+second `dispose` throws), and don't share one between tests. The generated `AppRoutes` remembers the last
+`router()` or `mount()` (its `base` and `rootNavigatorKey`), and a call without a `navigatorKey`
+makes a fresh one (since 0.5.0), so a test that mounts under a prefix restores the defaults with
+`addTearDown(AppRoutes.mount)`, and no test depends on the order they run in. Return
+synchronously from a guard when you can (see [Guards](#guards)): any `Future`, even
+`Future.value(...)`, costs a frame, so a test sees a blank first frame before the page, where a
+synchronous guard shows the page at once. If a widget
 hangs on to its own `WidgetRef` (to call `prefetch` from a test, say), take it from an
 element: `tester.element(find.byType(AppLayout)) as WidgetRef`.
 

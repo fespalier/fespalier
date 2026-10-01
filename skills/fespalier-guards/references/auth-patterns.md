@@ -220,7 +220,9 @@ form still works on 0.5.0 and later, with that behaviour.
 
 A guard may be **async** (`FutureOr<String?>`): useful when the session is read from
 storage at startup. It watches through `.future`, and runs again when that provider
-changes, like a sync one.
+changes, like a sync one. **Return synchronously when you can**: any `Future`, even
+`Future.value(...)`, costs the router a frame, and on a cold deep link the first frame is
+blank. Make a guard `async` only when it has something to `await`.
 
 ```dart
 // lib/app/(private)/guard.dart

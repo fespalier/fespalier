@@ -96,6 +96,9 @@ struct TreeCx {
     /// For a `GoRoute`: its own `path:` has a localized segment (`:_l0(products|produits)`).
     #[serde(skip)]
     localized: bool,
+    /// For a `GoRoute`: `nest = false` put it beside the page above it, not inside.
+    #[serde(skip)]
+    sibling: bool,
 }
 
 /// A `GoRoute`'s URL, page file and page class, and the localized segments of the URL.
@@ -337,7 +340,7 @@ struct ProviderCx {
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let mut fns = BTreeSet::new();
-    let tree = routes_of(app, 0, true, "", &[], &mut fns);
+    let tree = routes_of(app, 0, true, "", &[], false, &mut fns);
     check_order(&tree, diags);
     check_tab_starts(&tree, diags);
     check_root_children(&tree, diags);
@@ -424,20 +427,9 @@ fn in_hook(b: &Bind) -> String {
     }
 }
 
-/// `RouteBase` entries for a folder. Page-less folders fold their segment into
-/// their children's paths; `layout.dart` wraps the result in a `ShellRoute`.
-/// `inherited` holds the guards (route ids) of the folders above that have no
-/// route of their own to nest under: every route here starts with them.
-fn routes_of(
-    app: &App,
-    id: usize,
-    top: bool,
-    prefix: &str,
-    inherited: &[usize],
-    fns: &mut BTreeSet<ParamsFn>,
-) -> Vec<TreeCx> {
-    let r = &app.routes[id];
-    let own = match &r.seg {
+/// A folder's own part of its route's `path:`.
+fn own_part(r: &Route) -> String {
+    match &r.seg {
         None | Some(Seg::Group(_)) => String::new(),
         // A localized segment is a parameter that matches every spelling (see `locale.rs`).
         Some(Seg::Static(s)) => match locale::at(&r.localized, r.url.len().saturating_sub(1)) {
@@ -447,7 +439,31 @@ fn routes_of(
         Some(Seg::Dynamic(n)) => format!(":{n}"),
         // A catch-all is a parameter with its own pattern: one or more segments.
         Some(Seg::CatchAll(n, _)) => format!(":{n}(.+)"),
-    };
+    }
+}
+
+/// `RouteBase` entries for a folder. Page-less folders fold their segment into
+/// their children's paths; `layout.dart` wraps the result in a `ShellRoute`.
+/// `inherited` holds the guards (route ids) of the folders above that have no
+/// route of their own to nest under: every route here starts with them.
+///
+/// `under_page` is set for the routes that nest in the page above (a page's subfolders, and
+/// what page-less folders below them hold): one with `nest = false` is left out, because the
+/// page writes it beside itself (see [`leavers`]).
+fn routes_of(
+    app: &App,
+    id: usize,
+    top: bool,
+    prefix: &str,
+    inherited: &[usize],
+    under_page: bool,
+    fns: &mut BTreeSet<ParamsFn>,
+) -> Vec<TreeCx> {
+    let r = &app.routes[id];
+    if under_page && r.sibling {
+        return vec![];
+    }
+    let own = own_part(r);
     let path = match (prefix.is_empty(), own.is_empty()) {
         (_, true) => prefix.trim_end_matches('/').to_string(),
         (true, false) => own,
@@ -469,6 +485,8 @@ fn routes_of(
     // An optional catch-all is two routes: one for the path without it, one with.
     let parent = matches!(&r.seg, Some(Seg::CatchAll(_, true)))
         .then(|| prefix.trim_end_matches('/').to_string());
+    // The routes that leave this page, tried before the page's routes and after them.
+    let (mut before, mut after) = (vec![], vec![]);
     let mut out = match (&r.page, &r.redirect) {
         (Some(_), _) => {
             let mut out: Vec<TreeCx> = parent
@@ -476,6 +494,11 @@ fn routes_of(
                 .map(|p| without_catch_all(page_route(app, id, top, p, false, inherited, fns), r))
                 .collect();
             out.push(page_route(app, id, top, &path, true, inherited, fns));
+            // What leaves the page goes beside it, below its guard too: the routes are the
+            // page's siblings, with the folders in between in their paths.
+            let mut leaving = vec![];
+            leavers(app, id, top, &next, &below, fns, &mut leaving);
+            (before, after) = in_front_of(&out, leaving);
             out
         }
         // A redirect route always redirects, so what is below it can't nest inside it.
@@ -488,14 +511,14 @@ fn routes_of(
             out.extend(
                 r.children
                     .iter()
-                    .flat_map(|&c| routes_of(app, c, top, &next, &below, fns)),
+                    .flat_map(|&c| routes_of(app, c, top, &next, &below, under_page, fns)),
             );
             static_first(out)
         }
         (None, None) => static_first(
             r.children
                 .iter()
-                .flat_map(|&c| routes_of(app, c, top, &next, &below, fns))
+                .flat_map(|&c| routes_of(app, c, top, &next, &below, under_page, fns))
                 .collect(),
         ),
     };
@@ -521,10 +544,86 @@ fn routes_of(
             has_params: false,
             case_sensitive: true,
             localized: false,
+            sibling: false,
             routes: out,
         }];
     }
+    // A layout wraps the page and not what leaves it: `nest = false` is refused there.
+    if !before.is_empty() || !after.is_empty() {
+        before.extend(out);
+        before.extend(after);
+        // Siblings now, so static before dynamic before catch-all (stable, so `before` stays first).
+        return static_first(before);
+    }
     out
+}
+
+/// The routes below the page of folder `id` that leave it (`nest = false`), as siblings of
+/// that page. `prefix` is the page's own path in the frame it sits in, with a trailing `/`:
+/// the folders between the page and a leaving route join it, so the route's path is
+/// compound (`refund/confirm`, or `refund/:step`), and `inherited` is the guards of the page
+/// and of the page-less folders between, which a route nested in the page would have had from
+/// its parents. A route that leaves keeps its own children nested under it.
+fn leavers(
+    app: &App,
+    id: usize,
+    top: bool,
+    prefix: &str,
+    inherited: &[usize],
+    fns: &mut BTreeSet<ParamsFn>,
+    out: &mut Vec<TreeCx>,
+) {
+    for &c in &app.routes[id].children {
+        let r = &app.routes[c];
+        if r.sibling {
+            out.extend(routes_of(app, c, top, prefix, inherited, false, fns));
+        } else if r.page.is_none() {
+            // Page-less (or a redirect, which has nothing nested in it either): what is below
+            // it nests in the same page, so its folder is part of the path of what leaves.
+            let own = own_part(r);
+            let next = if own.is_empty() {
+                prefix.to_string()
+            } else {
+                format!("{prefix}{own}/")
+            };
+            let mut below = inherited.to_vec();
+            below.extend(r.guard.as_ref().map(|_| c));
+            leavers(app, c, top, &next, &below, fns, out);
+        }
+    }
+}
+
+/// Splits the routes that leave a page into those `go_router` must try before the page's
+/// and those it can try after. It takes the first route that matches in order, and a leaving
+/// `refund/confirm` is a sibling of `refund`, whose subfolders may have a `:step` or a catch-all
+/// that matches `confirm` too: nested, the static one would win, so it goes first. Otherwise
+/// the page's routes come first, which is also what keeps a tab opening on its page.
+fn in_front_of(page: &[TreeCx], leaving: Vec<TreeCx>) -> (Vec<TreeCx>, Vec<TreeCx>) {
+    fn serves<'t>(t: &'t [TreeCx], out: &mut Vec<&'t Serves>) {
+        for r in t {
+            out.extend(r.serves.as_ref());
+            serves(&r.routes, out);
+            for b in &r.branches {
+                serves(&b.routes, out);
+            }
+        }
+    }
+    if leaving.is_empty() {
+        return (vec![], vec![]);
+    }
+    let mut below = vec![];
+    serves(page, &mut below);
+    leaving.into_iter().partition(|l| {
+        let mut mine = vec![];
+        serves(std::slice::from_ref(l), &mut mine);
+        mine.iter().any(|(url, _, _, localized)| {
+            let b: Shape = (url.as_slice(), localized.as_slice());
+            below.iter().any(|(u, _, _, lz)| {
+                let a: Shape = (u.as_slice(), lz.as_slice());
+                !same(a, b) && catches(a, b)
+            })
+        })
+    })
 }
 
 /// A folder as restoration ids spell it: `(tabs)/`, or `/` for the app folder.
@@ -787,7 +886,7 @@ fn page_route(
         static_first(
             r.children
                 .iter()
-                .flat_map(|&c| routes_of(app, c, false, "", &[], fns))
+                .flat_map(|&c| routes_of(app, c, false, "", &[], true, fns))
                 .collect(),
         )
     } else {
@@ -847,6 +946,7 @@ fn page_route(
         has_params: locale::has_params(path),
         case_sensitive: r.case_sensitive,
         localized: locale::is_localized(path),
+        sibling: r.sibling,
     }
 }
 
@@ -896,6 +996,7 @@ fn redirect_route(
         has_params: locale::has_params(path),
         case_sensitive: r.case_sensitive,
         localized: locale::is_localized(path),
+        sibling: r.sibling,
     }
 }
 
@@ -928,7 +1029,9 @@ fn tab_routes(
         .map(|(i, b)| {
             let routes = match *b {
                 Branch::Own => vec![page_route(app, id, top, path, false, inherited, fns)],
-                Branch::Folder(c) => static_first(routes_of(app, c, top, &next, &below, fns)),
+                Branch::Folder(c) => {
+                    static_first(routes_of(app, c, top, &next, &below, false, fns))
+                }
             };
             // go_router opens a tab at its first route, and can't do that for a route with a
             // path parameter, which a localized segment is: say where, in its canonical spelling.
@@ -983,6 +1086,7 @@ fn tab_routes(
         has_params: false,
         case_sensitive: true,
         localized: false,
+        sibling: false,
         routes: vec![],
     }]
 }
@@ -1206,8 +1310,13 @@ fn check_root_children(tree: &[TreeCx], diags: &mut Diags) {
     fn direct(routes: &[TreeCx], holder: &str, diags: &mut Diags) {
         for r in routes {
             if let Some((file, span)) = r.root_at.as_ref().filter(|_| r.root) {
+                let nest = if r.sibling {
+                    " (`nest = false` made it a sibling of its page, so it is a direct child there too: drop `nest = false`, or the navigator.dart or present.dart that puts it on the root navigator)"
+                } else {
+                    ""
+                };
                 let msg = format!(
-                    "this route is on the root navigator, but it sits directly in {holder}, and go_router can't lift a direct child out of a shell (it is the first route of a tab, or one beside the others). Put it below a page.dart that stays in the layout, or move its folder out of the layout's folder"
+                    "this route is on the root navigator, but it sits directly in {holder}, and go_router can't lift a direct child out of a shell (it is the first route of a tab, or one beside the others). Put it below a page.dart that stays in the layout, or move its folder out of the layout's folder{nest}"
                 );
                 diags.error(file, span.as_ref(), msg);
             }
@@ -1829,6 +1938,9 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     }
     if r.root && r.page.is_some() {
         tags.push("root");
+    }
+    if r.sibling {
+        tags.push("sibling");
     }
     tags
 }

@@ -490,6 +490,37 @@ fn a_section_can_be_keyed_by_query_parameters() {
 }
 
 #[test]
+fn a_section_selector_can_take_query_parameters_too() {
+    let files = [
+        (
+            "teams/$teamId/data.dart",
+            "ProviderListenable<AsyncValue<Team>> data({required String teamId, String? tab}) => teamProvider(teamId, tab);",
+        ),
+        (
+            "teams/$teamId/layout.dart",
+            &widget(
+                "TeamLayout",
+                "final Widget child; final Team team;",
+                ", required this.child, required this.team",
+            ),
+        ),
+        ("teams/$teamId/members/page.dart", &page("Members")),
+    ];
+    let e = errors("", &files);
+    assert!(e.is_empty(), "{e:?}");
+    let c = code(&files);
+    has(
+        &c,
+        &[
+            // The query parameter is a field of every route below the section.
+            "const MembersRoute({required this.teamId, this.tab});",
+            "ref.readSelected(data((teamId: teamId, tab: tab)))",
+            "{required String teamId, String? tab}) => ref.refreshSelected(data((teamId: teamId, tab: tab)))",
+        ],
+    );
+}
+
+#[test]
 fn a_query_key_of_a_section_must_agree_with_a_pages_own() {
     let mut files = report_files();
     files[2].1 = widget(

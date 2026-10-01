@@ -205,7 +205,9 @@ fsp new 'orders/[id]' --data --loading    # scaffold a route, then regenerate ap
 
 _Commit it_ (the default). `lib/app.g.dart` is plain code, meant to be read, and the app
 builds without `fsp` installed. In CI, run `fsp check`. It writes nothing (it never touches
-`app.g.dart`) and exits non-zero on routing errors:
+`app.g.dart`) and exits non-zero on routing errors. It does **not** compare the committed file
+with what the tree would generate, so it passes when `lib/app.g.dart` is stale; the end of this
+section has a check that fails then.
 
 ```yaml
 - run: curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
@@ -240,6 +242,14 @@ keep `~/.cache/fespalier` (`FSP_CACHE_DIR`) between CI runs with `actions/cache`
 `pubspec.lock`, to skip that. Set `FSP_BINARY` to use a binary you built. Locally,
 `dart run fespalier watch` keeps the file current. `fsp check` still works in this mode
 (it checks the routing and writes nothing), and doesn't need the generated file to exist.
+
+_To fail CI on a stale committed file_, regenerate it and fail on any difference. `fsp gen`
+follows `format:` in the pubspec, so the result is what you would commit:
+
+```yaml
+- run: fsp gen
+- run: git diff --exit-code lib/app.g.dart
+```
 
 **Config.** `fsp` needs no configuration. To move things, add this optional section to
 `pubspec.yaml`. Both paths are relative to the project root and must be under `lib/`, and
@@ -299,14 +309,17 @@ found by its name, like the other files.
 
 ## File kinds
 
-Each view file exports one public widget class, of any kind: `StatelessWidget`,
+Each view file exports one widget class, of any kind: `StatelessWidget`,
 `ConsumerWidget`, `HookConsumerWidget` and so on, or a [top-level function](#function-views)
-that returns a widget. Function files export one top-level function.
+that returns a widget. Function files export one top-level function. Other public classes may sit
+in the file as long as exactly one of them extends a `…Widget` class (a `class Helper {}` beside a
+`StatelessWidget` is fine); when `fsp` can't tell which is the view it says "expected one public
+widget class" and lists them. Make helpers private (`_Name`) rather than lean on that.
 
 | File               | Exports                                                                                                                                                                                                                                                                                                                                                          | Its constructor / signature can ask for                                                                                                                       |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `page.dart`        | a widget                                                                                                                                                                                                                                                                                                                                                         | segments; query; what `data.dart` yields; the navigation [`extra`](#typed-extra)                                                                              |
-| `data.dart`        | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data)                                                | segments, query (named; a section's takes segments only)                                                                                                      |
+| `data.dart`        | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data)                                                | segments, query (named)                                                                                                                                       |
 | `loading.dart`     | a widget, inherited by subfolders                                                                                                                                                                                                                                                                                                                                | segments; query                                                                                                                                               |
 | `error.dart`       | a widget, inherited by subfolders                                                                                                                                                                                                                                                                                                                                | segments; query; `error`, `stackTrace`, `retry`                                                                                                               |
 | `layout.dart`      | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs. A tab layout can also export a [`container`](#tab-layouts) function                                                                                                                                                                                                         | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside; the navigation [`extra`](#typed-extra) |
@@ -453,7 +466,8 @@ const ShopRoute(category: Category.hats, sort: Sort.price).go(context);   // →
 
 - **Read by name.** A value is the one whose `name` the text spells (`Category.values.byName`).
   A segment or catch-all part that names no value sends the route to `not_found.dart`, like a
-  bad `int` (`BadSegment`): the page is never built and a guard is skipped. A query parameter
+  bad `int` (`BadSegment`): the page is never built (and a guard that reads segments or query
+  parameters is skipped, see [Guards](#guards)). A query parameter
   that names none is `null`, or left out of a list, like any query parameter that doesn't parse.
 - **Case follows the route.** Names match exactly by default. Where the route's paths match in
   any case ([`case_sensitive: false`, or a `route.dart`](#case-and-trailing-slashes)) `/shop/SHOES`
@@ -491,9 +505,9 @@ read another spelling may come later). A parameter that is `Sort sort = Sort.pri
 nullable) isn't a query parameter, as for `int`, and an _optional_ nullable parameter of a type
 that `fsp` finds no enum for is still left to its default rather than being an error, since it may
 be plain widget configuration (`Color? color`): it is when a `data.dart`, `guard.dart` or
-`redirect.dart` asks for it that the error comes. `fsp watch` watches the app folder, so after
-adding an enum elsewhere run `fsp gen`. `fsp new` below an enum segment writes its type name into
-the new files, and you add the import.
+`redirect.dart` asks for it that the error comes. `fsp watch` also watches the rest of `lib/`, so
+adding or editing an enum anywhere under it regenerates (for one outside `lib/`, run `fsp gen`).
+`fsp new` below an enum segment writes its type name into the new files, and you add the import.
 
 `examples/features` has `shop/$category` (an enum from `lib/models/`, a `Sort?` query parameter whose enum is
 declared in the page's file, and `data.dart` keyed by the category) and `browse/$$categories` (a
@@ -523,11 +537,11 @@ const DocsRoute(rest: ['guide', 'a b']).go(context);   // → /docs/guide/a%20b,
 const FilesRoute().location;                            // '/files'
 ```
 
-How it works: go_router matches a path pattern with a regular expression, and a `:name`
+How it works: `go_router` matches a path pattern with a regular expression, and a `:name`
 parameter can carry its own (`:rest(.+)`, which may span `/`). A catch-all folder becomes a
-route with that pattern, `docs/:rest(.+)`, so deep links, redirects and `go` all use go_router's
+route with that pattern, `docs/:rest(.+)`, so deep links, redirects and `go` all use `go_router`'s
 normal matching. `$$$rest` is two routes with one builder: the folder's path (`/files`) and
-the same with `:path(.+)`. Reading the parts takes go_router's decoded string apart _by the
+the same with `:path(.+)`. Reading the parts takes `go_router`'s decoded string apart _by the
 requested location_, so an encoded slash (`/docs/a%2Fb/c` is `['a/b', 'c']`) survives.
 
 - Siblings are tried in this order: static, then dynamic (`docs/$id`), then the catch-all,
@@ -574,7 +588,8 @@ const CompareRoute(ids: [3, 7, 12]).go(context);   // → /compare/3/7/12
 ```
 
 - **A part that doesn't parse** sends the whole route to `not_found.dart`, like a bad `int`
-  segment (`/products/abc`): the page is never built, and a guard is skipped. `bool` parts are
+  segment (`/products/abc`): the page is never built (and a guard that reads segments or query
+  parameters is skipped, see [Guards](#guards)). `bool` parts are
   `true` and `false`; `num` reads `1` as an int and `2.5` as a double; a `DateTime` part is what
   `DateTime.tryParse` reads, and the typed route writes it as ISO 8601 (`2024-12-31T10:30:00.000Z`,
   colons encoded).
@@ -959,7 +974,9 @@ GuardResult guard(ProviderContainer c, {required Uri uri}) =>
   `StatefulShellRoute`: go_router runs a matched route's redirect for deep links and for
   navigation inside a shell, tabs included, so the page routes are enough (and a page-less
   folder has no route to put one on). When a path has a segment that doesn't parse
-  (`/products/abc`), guards are skipped and not-found is shown.
+  (`/products/abc`), not-found is shown, and a guard that asks for segments or query parameters
+  is skipped, since it has nothing to read. A guard that asks for neither (only `uri`,
+  `extra`, or nothing) still runs, so it can redirect `/products/abc` to login.
 - A `guard.dart` with no `page.dart` or `redirect.dart` at or below its folder is a warning.
 
 ### `redirect.dart`
@@ -1115,7 +1132,7 @@ const navigator = RouteNavigator.root;
 returns to it, with its state), and the page covers the whole screen. The declaration applies to
 its folder's routes and to **every folder below it**, and the nearest one wins, like
 `transition.dart`; a page-less `(group)` folder can hold it too, for the routes inside. `fsp gen`
-emits `parentNavigatorKey: rootNavigatorKey` on the route and on all its descendants (go_router puts a
+emits `parentNavigatorKey: rootNavigatorKey` on the route and on all its descendants (`go_router` puts a
 route on its enclosing shell's navigator unless it says otherwise, so a child pushed from the page
 would land _under_ it), and the route table marks them `(root)`.
 
@@ -1377,7 +1394,8 @@ productProvider('x')`), and `watch`, `read`, `prefetch` and `refresh` all go to 
   `FutureProvider`, `StreamProvider` and generated async provider is). Returning
   something else, say `productProvider(id).select(…)`, builds and watches fine, but
   `refresh` and `retry` throw a `StateError` that says to return the provider itself.
-- A section's `data.dart` can be a selector too (segments only).
+- A section's `data.dart` can be a selector too, and takes segments and query parameters
+  like a page's.
 
 The other two: write a function and fespalier wraps it in an autoDispose
 `FutureProvider` (or `StreamProvider` for a `Stream`). Or export a provider named `data` yourself:
@@ -1393,9 +1411,11 @@ parameters `data.dart` uses:
 | one             | `.family<T, int>`                     | `ref.watch(ProductRoute.data(42))`              |
 | several         | `.family<T, ({String shop, int id})>` | `ref.watch(ItemRoute.data((shop: 'a', id: 1)))` |
 
-A family provider you write yourself follows the same rule. With several parameters, or
-with query parameters, its argument is a record naming the ones it uses, e.g.
-`({int id, int? page})`.
+A family provider you write yourself follows the same rule, for segments: with several
+of them, its argument is a record naming the ones it uses, e.g. `({String shop, int id})`.
+It can't be keyed by a query parameter (a record field that isn't a segment is an error).
+To key by one, write the function form (`Future<T> data(Ref ref, {int? page})`) or select your
+provider with a `data()` that takes it (see above).
 
 To see a scaffolded `error.dart` and its retry, throw from `data.dart`, e.g.
 `throw Exception('offline')`.
@@ -1837,8 +1857,8 @@ result line; if that fails, it lists the files it created. After `fsp new '(acco
 until you add a route inside the group. That's expected.
 
 `fsp routes` prints what the header of `lib/app.g.dart` lists: each route's URL pattern, its typed
-route class, its `page.dart` and its tags (`data`, `guard`, `layout`, `transition`, `present`,
-`root`).
+route class, its `page.dart` and its tags (`redirect`, `data`,
+`guard`, `layout`, `transition`, `present`, `root`).
 
 ```text
 /products/:id  ProductRoute   products/$id/page.dart  (data, transition)
@@ -2224,7 +2244,8 @@ manifest's `checkver` and `autoupdate` let Scoop's own tooling keep it current t
 ### Testing
 
 `package:fespalier/testing.dart` has two helpers for widget tests. Boot the app at a
-location with `pumpRouter`, and read where it is with `currentLocation`:
+location with `pumpRouter`, and read where it is with `currentLocation` (it follows `go`, `pop` and
+`push`: after a push it is the pushed location, the top of the stack):
 
 ```dart
 import 'package:fespalier/testing.dart';
@@ -2244,12 +2265,17 @@ testWidgets('shows a product', (tester) async {
 });
 ```
 
-`pumpRouter(tester, router, {overrides, container, settle})` wraps the router in a
+`pumpRouter(tester, router, {overrides, container, settle, retry})` wraps the router in a
 `ProviderScope` and Flutter's `MaterialApp.router`, and returns the `ProviderContainer`
 (for `container.read(...)`). `settle` (on by default) pumps until nothing is scheduled: turn
 it off to look at a loading view, then `pump` the time you want. Pass your own `container`
 instead of `overrides` to share one with code outside the widget tree; it's yours to
-dispose. Make a new router per test, since a router remembers where it went. If a widget
+dispose. `retry` is the container's Riverpod retry policy, and it defaults to **no retries**,
+unlike a real app, whose generated providers keep Riverpod's automatic retry unless
+`data_retry: none` says otherwise: a failing `data.dart` shows its `error.dart` at once and
+leaves no timer behind. To test what the app's policy does, pass
+`retry: ProviderContainer.defaultRetry` (or your own function). A policy that keeps retrying
+leaves a timer pending when the test ends, so dispose the returned container first. Make a new router per test, since a router remembers where it went. If a widget
 hangs on to its own `WidgetRef` (to call `prefetch` from a test, say), take it from an
 element: `tester.element(find.byType(AppLayout)) as WidgetRef`.
 

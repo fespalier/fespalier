@@ -77,7 +77,8 @@ test/app_test.dart              widget tests
 6. **Generate.** `fsp gen` reads the tree and writes [`lib/app.g.dart`](lib/app.g.dart),
    which has `HomeRoute`, `AboutRoute` and `ItemRoute(id:, qty:)`. It is committed, so the
    app builds without `fsp`. Leave `fsp watch` running next to `flutter run` and it regenerates
-   on every save; `fsp check` only checks, and is what CI runs.
+   on every save; `fsp check` only checks the routing (it does not notice a stale
+   `app.g.dart`), and is what CI runs.
 
    ```sh
    fsp gen

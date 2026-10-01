@@ -261,6 +261,23 @@ void main() {
       expect(find.text('Home'), findsOneWidget);
     });
 
+    testWidgets('a guard that reads no segment still runs for a bad one', (
+      tester,
+    ) async {
+      // `/notes/abc` doesn't parse (`$id` is an int), so the page is never built, but
+      // the guard asks only for `extra`: it is not skipped, and sends a draft home.
+      await boot(tester, '/');
+      GoRouter.of(tester.element(find.text('Home')))
+          .go('/notes/abc', extra: const Note('draft'));
+      await tester.pumpAndSettle();
+      expect(find.text('Home'), findsOneWidget);
+
+      // Without the draft the guard has nothing to say; the page shows not-found.
+      await boot(tester, '/notes/abc');
+      expect(find.text('Home'), findsNothing);
+      expect(find.textContaining('Note '), findsNothing); // no NotePage
+    });
+
     testWidgets('an object of another type is an error in debug builds', (
       tester,
     ) async {

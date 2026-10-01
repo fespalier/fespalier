@@ -2232,11 +2232,13 @@ examples/minimal/    the smallest app: `flutter create` + `fsp init` + three pag
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
 examples/features/   every binding rule, section data and nested not_found.dart, with widget tests
 examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
+skills/              agent skills: how to write lib/app/ and read fsp's errors (skills/README.md);
+                     scripts/skills/ checks them against the code
 ```
 
 ```sh
-just ci          # everything CI runs on the code, locally (needs Flutter, just, cargo-deny)
-just --list      # the individual steps: fmt, lint, test, deny, examples, flutter, packaging
+just ci          # everything CI runs on the code, locally (needs Flutter, Node, just, cargo-deny)
+just --list      # the individual steps: fmt, lint, test, deny, examples, flutter, packaging, skills
 ```
 
 [AGENTS.md](AGENTS.md) is the contributor and agent guide: the layout, the gate commands,
@@ -2252,10 +2254,12 @@ freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebre
 rendering, checksum pinning and release staging (`python3 scripts/test_packaging.py`,
 `python3 scripts/test_pin_checksums.py`, `python3 scripts/test_verify_staged.py`,
 `python3 scripts/test_release_assets.py`),
+checks that the agent skills in `skills/` cover every README section, file kind, config key and
+`fsp` command (`node scripts/skills/verify-coverage.mjs`; see [skills/README.md](skills/README.md)),
 and checks that the version agrees everywhere it is spelled out
 (`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`,
-`.release-please-manifest.json`, the `ref:` that `fsp init` prints, and the READMEs' `ref:`,
-`--tag` and `FSP_VERSION`; that each of them is annotated for release-please and listed in
+`.release-please-manifest.json`, the `ref:` that `fsp init` prints, and the READMEs' and the
+skills' `ref:`, `--tag` and `FSP_VERSION`; that each of them is annotated for release-please and listed in
 `release-please-config.json`; that the release workflows' own version readers,
 `scripts/read-version.sh`, still find each one; and that `release_checksums.dart` pins nothing
 or a version no newer than the package's). You do not bump any of them: release-please does

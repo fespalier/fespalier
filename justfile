@@ -1,7 +1,7 @@
 # fespalier — task runner. `just ci` is the gate: it runs locally what .github/workflows/ci.yml
 # runs, and nothing is "verified" until it exits 0 on the final head. It needs Rust (the
 # toolchain in cli/rust-toolchain.toml installs itself), Flutter (see FLUTTER_VERSION in
-# ci.yml), python3, `just` and `cargo-deny`.
+# ci.yml), python3, Node, `just` and `cargo-deny`.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
@@ -83,6 +83,17 @@ packaging:
     python3 scripts/test_verify_staged.py
     python3 scripts/test_release_assets.py
 
+# The agent skills in skills/ match the code: coverage, frontmatter, stamps, links (needs Node)
+skills:
+    node scripts/skills/verify-coverage.mjs
+
+# Build the skills' code samples, all or the given .md files (needs Flutter; slow, not in `just ci`)
+skill-samples *files:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    (cd cli && cargo build --quiet)
+    FSP="$PWD/cli/target/debug/fsp" node scripts/skills/verify-samples.mjs {{ files }}
+
 # The VS Code extension: compile, unit-test, package (needs Node; not part of `just ci`)
 [working-directory: 'editors/vscode']
 vscode:
@@ -99,5 +110,5 @@ intellij:
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
 # are `just vscode` and `just intellij`.
 #
-# The gate: CI's Rust, Flutter and packaging jobs
-ci: lint test deny check-examples flutter packaging
+# The gate: CI's Rust, Flutter, packaging and skills jobs
+ci: lint test deny check-examples flutter packaging skills

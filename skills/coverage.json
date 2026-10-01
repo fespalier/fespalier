@@ -1,0 +1,210 @@
+{
+  "//": "The docs<->skills parity map. Checked in BOTH directions by scripts/skills/verify-coverage.mjs: a fespalier feature that no skill claims fails the gate — a README section (README.md#<heading>), a file kind (kind:<file>), a pubspec config key (config:<key>), an fsp command (command:<name>), a runtime library file, a generator source file, a scaffold template, an example or editor directory, or a root document — and so does an id claimed here that no longer exists in fespalier. The kind, config and command ids are the load-bearing half: a fifteenth file kind, an eleventh config key or a seventh command fails the gate by name until some skill covers it. See skills/README.md.",
+  "baseline": {
+    "//": "A skill is true of *a* fespalier, not of fespalier. The project tags releases (v0.4.0), but a skill describes the tree, and the tree moves between tags — so the honest version identity is a commit and a date, with the release named beside it. Every SKILL.md is stamped with this ref (or a descendant of it) and the gate refuses one stamped otherwise. See \"Versions\" in skills/README.md.",
+    "fespalierRef": "122cb07fef6745935b922db1a3c547dcd2bf15cb",
+    "fespalierRefShort": "122cb07f",
+    "fespalierCommitDate": "2026-10-01",
+    "verifiedAt": "2026-10-01",
+    "release": "v0.4.0"
+  },
+  "skills": {
+    "fespalier": {
+      "covers": [
+        "README.md#Getting started",
+        "README.md#File kinds",
+        "README.md#Function views",
+        "README.md#File names",
+        "README.md#How parameters are filled",
+        "README.md#The generator",
+        "README.md#Performance",
+        "README.md#Run the examples",
+        "README.md#Development",
+        "README.md#Status",
+        "kind:page.dart",
+        "kind:data.dart",
+        "kind:loading.dart",
+        "kind:error.dart",
+        "kind:layout.dart",
+        "kind:guard.dart",
+        "kind:redirect.dart",
+        "kind:transition.dart",
+        "kind:not_found.dart",
+        "kind:meta.dart",
+        "kind:route.dart",
+        "kind:navigator.dart",
+        "kind:present.dart",
+        "kind:extra_codec.dart",
+        "config:app_dir",
+        "config:output",
+        "config:format",
+        "config:output_manifest",
+        "config:meta",
+        "config:meta_unique",
+        "config:case_sensitive",
+        "config:data_retry",
+        "config:keep_previous",
+        "config:file_style",
+        "command:gen",
+        "command:check",
+        "command:routes",
+        "command:watch",
+        "command:init",
+        "command:new",
+        "README.md",
+        "ROADMAP.md",
+        "install.sh",
+        "install.ps1",
+        "packages/fespalier/README.md",
+        "packages/fespalier/lib/fespalier.dart",
+        "packages/fespalier/bin/fespalier.dart",
+        "packages/fespalier/lib/src/launcher.dart",
+        "packages/fespalier/lib/src/release_checksums.dart",
+        "cli/src/main.rs",
+        "cli/src/config.rs",
+        "cli/src/init.rs",
+        "cli/src/scaffold.rs",
+        "cli/src/routes.rs",
+        "cli/src/format.rs",
+        "cli/src/session.rs",
+        "cli/src/parse_cache.rs",
+        "cli/src/templates.rs",
+        "cli/templates/app.g.dart.jinja",
+        "cli/templates/init",
+        "cli/templates/new",
+        "examples/minimal",
+        "examples/shop",
+        "examples/features",
+        "examples/tabs",
+        "editors/vscode",
+        "editors/intellij"
+      ]
+    },
+    "fespalier-routing": {
+      "covers": [
+        "README.md#Segment types",
+        "README.md#Enum segments",
+        "README.md#Catch-all segments",
+        "README.md#Typed catch-alls",
+        "README.md#Case and trailing slashes",
+        "README.md#Localized paths",
+        "README.md#Non-ASCII spellings",
+        "README.md#`(group)` folders",
+        "README.md#Not-found views",
+        "README.md#The root navigator (`navigator.dart`)",
+        "README.md#`present.dart`: a page of your own",
+        "README.md#Query parameters",
+        "README.md#Typed `extra`",
+        "README.md#Restoring `extra` on the web",
+        "README.md#Route manifest and `meta.dart`",
+        "README.md#Design notes",
+        "kind:page.dart",
+        "kind:redirect.dart",
+        "kind:not_found.dart",
+        "kind:meta.dart",
+        "kind:route.dart",
+        "kind:navigator.dart",
+        "kind:present.dart",
+        "kind:extra_codec.dart",
+        "config:case_sensitive",
+        "config:meta",
+        "config:meta_unique",
+        "config:output_manifest",
+        "packages/fespalier/lib/src/segments.dart",
+        "packages/fespalier/lib/src/location.dart",
+        "packages/fespalier/lib/src/not_found.dart",
+        "packages/fespalier/lib/src/route_info.dart",
+        "packages/fespalier/lib/src/route_navigator.dart",
+        "packages/fespalier/lib/src/extra_codec.dart",
+        "cli/src/locale.rs",
+        "cli/src/enums.rs",
+        "cli/src/extra.rs",
+        "cli/src/manifest.rs",
+        "cli/templates/manifest.dart.jinja",
+        "cli/templates/manifest_body.dart.jinja",
+        "README.md#A sibling with a compound path"
+      ]
+    },
+    "fespalier-data": {
+      "covers": [
+        "README.md#`data.dart`: a function, a selector or a provider",
+        "README.md#Retries and reloads",
+        "README.md#Typed helpers on the route",
+        "README.md#From a location to its data",
+        "README.md#Section data",
+        "README.md#Design notes",
+        "kind:data.dart",
+        "kind:loading.dart",
+        "kind:error.dart",
+        "config:data_retry",
+        "config:keep_previous",
+        "packages/fespalier/lib/src/data_view.dart",
+        "packages/fespalier/lib/src/route_data.dart",
+        "packages/fespalier/lib/src/route_match.dart",
+        "packages/fespalier/lib/src/selected_data.dart"
+      ]
+    },
+    "fespalier-layouts": {
+      "covers": [
+        "README.md#Tab layouts",
+        "README.md#Transitions",
+        "README.md#State restoration",
+        "kind:layout.dart",
+        "kind:transition.dart",
+        "packages/fespalier/lib/src/layout_page.dart",
+        "packages/fespalier/lib/src/tab_options.dart",
+        "packages/fespalier/lib/src/transitions.dart"
+      ]
+    },
+    "fespalier-guards": {
+      "covers": [
+        "README.md#Guards",
+        "README.md#`redirect.dart`",
+        "README.md#Sending people back",
+        "kind:guard.dart",
+        "kind:redirect.dart",
+        "packages/fespalier/lib/src/guards.dart"
+      ]
+    },
+    "fespalier-testing": {
+      "covers": ["README.md#Testing", "packages/fespalier/lib/testing.dart"]
+    },
+    "fespalier-troubleshooting": {
+      "covers": [
+        "README.md#Status",
+        "README.md#How parameters are filled",
+        "cli/src/scan.rs",
+        "cli/src/resolve.rs",
+        "cli/src/emit.rs",
+        "cli/src/locale.rs",
+        "cli/src/manifest.rs",
+        "cli/src/enums.rs",
+        "cli/src/extra.rs",
+        "cli/src/diag.rs",
+        "cli/src/dart.rs",
+        "cli/src/config.rs",
+        "cli/src/init.rs",
+        "cli/src/scaffold.rs",
+        "cli/src/main.rs"
+      ]
+    },
+    "fespalier-migration": {
+      "covers": [
+        "CHANGELOG.md",
+        "packages/fespalier/CHANGELOG.md",
+        "README.md#Getting started",
+        "command:init"
+      ]
+    }
+  },
+  "exempt": [
+    "README.md#Releasing",
+    "README.md#License",
+    "cli/templates/new/_macros.dart.jinja"
+  ],
+  "exemptReasons": {
+    "README.md#Releasing": "Maintainer-only release procedure (Homebrew, Scoop, the JetBrains Marketplace, checksum pinning). An app author's agent never acts on it: release-please cuts the releases, and a skill would only go stale.",
+    "README.md#License": "Added to the README after the baseline commit. It states a licence, not a behaviour a skill could get wrong.",
+    "cli/templates/new/_macros.dart.jinja": "A Jinja formatting helper for the `fsp new` templates, added after the baseline. It changes how a scaffold is laid out, not what any file kind means."
+  }
+}

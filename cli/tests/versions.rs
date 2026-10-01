@@ -238,6 +238,9 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         "cli/src/init.rs",
         "README.md",
         "packages/fespalier/README.md",
+        // the agent skills' install pins (skills/README.md, "Versions")
+        "skills/fespalier/SKILL.md",
+        "skills/fespalier-migration/references/go-router-adoption.md",
     ] {
         let text = read(file);
         let annotated = annotated_lines(&text);

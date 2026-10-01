@@ -15,7 +15,8 @@ before changing how it behaves.
 | `packages/fespalier/` | The Dart runtime (`DataView`, segment parsing, `TypedLocation`, `testing.dart`) and `bin/fespalier.dart`, the `dart run fespalier` launcher that downloads the matching `fsp`. Not published to a registry: apps use it as a git dependency at a release tag. |
 | `examples/{minimal,shop,features,tabs}/` | Runnable apps with widget tests. Each commits its `lib/app.g.dart` (`tabs` also a manifest library); a test fails when one is stale. |
 | `editors/vscode/`, `editors/intellij/` | Editor plugins (TypeScript, Kotlin) that show `fsp --json` diagnostics. |
-| `scripts/` | Python and shell helpers for releases (Homebrew/Scoop rendering, checksum pinning, staged-asset verification) and their tests. |
+| `skills/` | Agent skills for **apps that use fespalier** (one directory per skill, `SKILL.md` plus `references/`), with `skills/coverage.json`, the map from README sections, file kinds, config keys and commands to the skill that covers each. `skills/README.md` is their guide. Not published. |
+| `scripts/` | Python and shell helpers for releases (Homebrew/Scoop rendering, checksum pinning, staged-asset verification) and their tests; `scripts/skills/` holds the skills' coverage gate and sample builder (Node). |
 | `ci/commit-message-parse/` | The squash-message parser the `pr-title` workflow runs; a standalone npm project pinned to release-please's grammar. |
 | `.github/workflows/` | `ci.yml` (the gate), `quality.yml` (org lint and trivy), `pr-title.yml`, `issue-governance.yml`, and the release workflows. |
 
@@ -30,13 +31,15 @@ before changing how it behaves.
 | `just check-examples` | `fsp check` on every example |
 | `just flutter` | In the package and every example: `flutter pub get`, `dart format --set-exit-if-changed`, `flutter analyze`, `flutter test` |
 | `just packaging` | The Python tests for Homebrew/Scoop rendering, checksum pinning and release staging |
+| `just skills` | The skills' coverage gate: every README section, file kind, config key and `fsp` command is claimed by a skill, every claim still exists, and frontmatter, stamps and links are valid |
+| `just skill-samples [file.md ...]` | Builds the skills' code samples in a scratch app with this checkout's `fsp` (`gen`, `analyze`, `test`). Slow; not in `just ci` or CI, so run it when you touch a sample |
 | `just gen-examples` | Regenerate every example's committed `lib/app.g.dart` |
 | `just fmt` | `cargo fmt` and `dart format` over everything |
 | `just vscode`, `just intellij` | The editor plugins (need Node / JDK 21; CI runs them, `just ci` does not) |
 
 The toolchains are pinned: Rust in `cli/rust-toolchain.toml` (CI reads the channel from that file,
 and `rust-version` in `cli/Cargo.toml` moves with it), Flutter in `env.FLUTTER_VERSION` of
-`.github/workflows/ci.yml`. `just ci` also needs `just`, `cargo-deny` and `python3` on `PATH`.
+`.github/workflows/ci.yml`. `just ci` also needs `just`, `cargo-deny`, `python3` and `node` on `PATH`.
 CI additionally scaffolds every file kind with `fsp new` and `fsp init` and checks the result
 with `flutter analyze` and `dart format`; that job has no `just` recipe because it writes into
 the examples.
@@ -101,5 +104,11 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
 - Adding a file kind or a binding rule touches the resolver, the emitter, the README section,
   the examples and usually `manifest.rs` (the `fsp routes --json` fields); the editors read that
   JSON, so keep it additive.
+- **The skills move with the code.** A new README heading, file kind, `fespalier:` config key or
+  `fsp` command fails `just skills` until a skill covers it (prose in the owning skill, its
+  diagnostics in `fespalier-troubleshooting`, the id in `skills/coverage.json`). A changed
+  message, behaviour or README claim needs the skill pages that quote it updated too: grep
+  `skills/` for the old text. Say the release a change lands in ("since 0.5.0"), since apps
+  pin older ones; `skills/README.md` has the rules.
 - Every place that spells out the release version is annotated for release-please and checked by
   `cli/tests/versions.rs`; if that test fails after your change, you moved or removed an annotation.

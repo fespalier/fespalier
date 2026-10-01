@@ -20,6 +20,7 @@ for dir in "$@"; do
         options="$(mktemp)"
         cp analysis_options.yaml "$options"
         copies=()
+        # shellcheck disable=SC2329 # invoked by the EXIT trap below
         cleanup() {
             cp "$options" analysis_options.yaml
             rm -f "$options" "${copies[@]}"

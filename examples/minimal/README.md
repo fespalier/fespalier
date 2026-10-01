@@ -4,7 +4,7 @@ The smallest real fespalier app. It is what you get from `flutter create` and `f
 a few pages. Read this one first; [`shop`](../shop), [`features`](../features) and
 [`tabs`](../tabs) go further.
 
-```
+```text
 lib/
   main.dart                     runApp(… AppRoutes.router() …)
   items.dart                    a pretend backend (not fespalier)
@@ -61,18 +61,18 @@ test/app_test.dart              widget tests
 5. **Write the pages.** Each file below says what it is by its name, and what it needs by its
    constructor. Open them: the comments explain each one.
 
-   | File | What it does |
-   |---|---|
-   | [`app/layout.dart`](lib/app/layout.dart) | Wraps every page in a `Scaffold` with an `AppBar`. It asks for `child`, so it is a layout. |
-   | [`app/page.dart`](lib/app/page.dart) | The page at `/`: a **class** page. It links to the others with typed routes. |
-   | [`app/about/page.dart`](lib/app/about/page.dart) | The page at `/about`: a **function** page, `Widget page()`. The folder is the URL. |
-   | [`app/items/$id/page.dart`](lib/app/items/$id/page.dart) | The page at `/items/<id>`. `$id` makes a segment; `item` is filled with what `data.dart` returns; `qty` (optional) is the query parameter `?qty=`. |
-   | [`app/items/$id/data.dart`](lib/app/items/$id/data.dart) | Loads the item. `required int id` makes `$id` an `int` everywhere, so `/items/abc` is not found. |
-   | [`app/items/$id/loading.dart`](lib/app/items/$id/loading.dart) | Shown while `data.dart` runs. |
-   | [`app/items/$id/error.dart`](lib/app/items/$id/error.dart) | Shown when `data.dart` throws, with a **Retry** button (`retry`). |
-   | [`app/not_found.dart`](lib/app/not_found.dart) | Shown for a URL nothing matches. It is optional; without it you get a plain "Nothing at /path". |
-   | [`app/transition.dart`](lib/app/transition.dart) | `fsp init` wrote it: every route animates with Material's transition (see [the note](../../README.md#getting-started) on go_router 18). |
-   | [`pubspec.yaml`](pubspec.yaml) | The `fespalier:` section is optional config for `fsp`. Here: `format: true` and `data_retry: none`. |
+   | File                                                           | What it does                                                                                                                                       |
+   | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | [`app/layout.dart`](lib/app/layout.dart)                       | Wraps every page in a `Scaffold` with an `AppBar`. It asks for `child`, so it is a layout.                                                         |
+   | [`app/page.dart`](lib/app/page.dart)                           | The page at `/`: a **class** page. It links to the others with typed routes.                                                                       |
+   | [`app/about/page.dart`](lib/app/about/page.dart)               | The page at `/about`: a **function** page, `Widget page()`. The folder is the URL.                                                                 |
+   | [`app/items/$id/page.dart`](lib/app/items/$id/page.dart)       | The page at `/items/<id>`. `$id` makes a segment; `item` is filled with what `data.dart` returns; `qty` (optional) is the query parameter `?qty=`. |
+   | [`app/items/$id/data.dart`](lib/app/items/$id/data.dart)       | Loads the item. `required int id` makes `$id` an `int` everywhere, so `/items/abc` is not found.                                                   |
+   | [`app/items/$id/loading.dart`](lib/app/items/$id/loading.dart) | Shown while `data.dart` runs.                                                                                                                      |
+   | [`app/items/$id/error.dart`](lib/app/items/$id/error.dart)     | Shown when `data.dart` throws, with a **Retry** button (`retry`).                                                                                  |
+   | [`app/not_found.dart`](lib/app/not_found.dart)                 | Shown for a URL nothing matches. It is optional; without it you get a plain "Nothing at /path".                                                    |
+   | [`app/transition.dart`](lib/app/transition.dart)               | `fsp init` wrote it: every route animates with Material's transition (see [the note](../../README.md#getting-started) on go_router 18).            |
+   | [`pubspec.yaml`](pubspec.yaml)                                 | The `fespalier:` section is optional config for `fsp`. Here: `format: true` and `data_retry: none`.                                                |
 
 6. **Generate.** `fsp gen` reads the tree and writes [`lib/app.g.dart`](lib/app.g.dart),
    which has `HomeRoute`, `AboutRoute` and `ItemRoute(id:, qty:)`. It is committed, so the

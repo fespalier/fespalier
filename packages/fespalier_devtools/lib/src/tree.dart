@@ -240,8 +240,8 @@ final class Site {
   /// The action's function name.
   final String? name;
 
-  /// For a `data.dart`: whether its provider is the one fespalier makes, which is what a later
-  /// protocol can follow; false when the file returns or selects a provider of its own.
+  /// For a `data.dart`: whether its provider is the one fespalier makes, which is the one the Data
+  /// tab follows; false when the file returns or selects a provider of its own.
   final bool traced;
 }
 

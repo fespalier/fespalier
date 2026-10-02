@@ -67,9 +67,12 @@ testWidgets('shows a product', (tester) async {
   pushed location, the top of the stack). On 0.3.0 and earlier it did not follow a
   `push`: there, read `router.routerDelegate.currentConfiguration.last.matchedLocation`.
 - **The DevTools hooks run in widget tests** (a test is a debug build; since 0.7.0): `AppRoutes.router()` attaches
-  its router to the extension's support, which adds one listener and a short history. It starts no timer, schedules
-  no frame and reads no provider, so it cannot leave a timer pending or change a `pumpAndSettle`; run the tests with
-  `--dart-define=fespalier.devtools=false` to compile it out.
+  its router to the extension's support, which adds one listener and a short history, and the generated guards,
+  `data.dart` providers and actions report to it (`traceGuard`, `traceData`, an action's `site`). They return
+  what they are given, so a sync guard stays sync and a `Future` is the same `Future`; the only additions are an
+  `onDispose` callback per provider build and a side `then` that records how a `Future` ended. It starts no
+  timer, schedules no frame, reads no provider and listens to no stream, so it cannot leave a timer pending or
+  change a `pumpAndSettle`; run the tests with `--dart-define=fespalier.devtools=false` to compile it out.
 - **One router per test**: a router remembers where it went. Build it in the test
   (`AppRoutes.router(initialLocation: ...)`), not in a shared `final`.
 - **Boot once per test** when fakes use `Future.delayed`: a second boot leaves the first

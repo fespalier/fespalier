@@ -23,6 +23,10 @@ Future<void> settle(WidgetTester tester) async {
 
 /// Opens the tab called [name].
 Future<void> openTab(WidgetTester tester, String name) async {
-  await tester.tap(find.widgetWithText(Tab, name));
+  final tab = find.widgetWithText(Tab, name);
+  // The tab bar scrolls: in a narrow panel the tab may be off to the side.
+  await tester.ensureVisible(tab);
+  await tester.pumpAndSettle();
+  await tester.tap(tab);
   await tester.pumpAndSettle();
 }

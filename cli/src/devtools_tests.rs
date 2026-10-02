@@ -513,3 +513,160 @@ fn the_generated_file_registers_and_attaches_only_under_the_const() {
         );
     }
 }
+
+/// The strings `code` passes as the site to `opener` (`traceGuard(state, '`, `traceData(ref, '`,
+/// `site: '`), in the order they appear.
+fn sites_after<'a>(code: &'a str, opener: &str) -> Vec<&'a str> {
+    code.split(opener)
+        .skip(1)
+        .map(|rest| rest.split('\'').next().unwrap())
+        .collect()
+}
+
+#[test]
+fn every_site_the_generated_code_traces_is_in_the_tree_and_every_traced_site_is_used() {
+    for name in ["minimal", "shop", "features", "tabs"] {
+        let (cfg, app, code) = analyzed(&examples(name));
+        let tree = devtools::tree(&app, &cfg);
+        let kind = |site: &str| tree["sites"][site]["kind"].as_str().map(str::to_string);
+        let guards = sites_after(&code, "traceGuard(state, '");
+        let data = sites_after(&code, "traceData(ref, '");
+        let actions = sites_after(&code, "  site: '");
+        for site in &guards {
+            let k = kind(site);
+            assert!(
+                matches!(k.as_deref(), Some("guard" | "redirect")),
+                "{name}: guard site {site} is {k:?}"
+            );
+        }
+        for site in &data {
+            assert_eq!(kind(site).as_deref(), Some("data"), "{name}: {site}");
+            assert_eq!(tree["sites"][*site]["traced"], true, "{name}: {site}");
+        }
+        for site in &actions {
+            assert_eq!(kind(site).as_deref(), Some("action"), "{name}: {site}");
+        }
+        // The other way round: each redirect, traced data.dart and action of the tree is
+        // wrapped; a guard once for each route it runs on (its own `g5@6` names both).
+        for (id, site) in sites(&tree) {
+            let (found, what) = match site["kind"].as_str().unwrap() {
+                "guard" | "redirect" => (&guards, "traceGuard"),
+                "data" if site["traced"] == true => (&data, "traceData"),
+                "data" => {
+                    assert!(!data.contains(&id.as_str()), "{name}: {id} is not traced");
+                    continue;
+                }
+                "action" => (&actions, "site:"),
+                other => panic!("{other}"),
+            };
+            assert_eq!(
+                found.iter().filter(|s| **s == id.as_str()).count(),
+                1,
+                "{name}: {id} should be in exactly one {what}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_guard_that_is_a_site_of_two_routes_is_traced_under_each() {
+    // A guard of a page-less folder is inherited by the routes below it: one site for each.
+    let dir = files_project(&[
+        (
+            "(members)/guard.dart",
+            "GuardResult guard(Ref ref) => null;",
+        ),
+        ("(members)/inbox/page.dart", &page("Inbox")),
+        ("(members)/admin/page.dart", &page("Admin")),
+    ]);
+    let (cfg, app, code) = analyzed(dir.path());
+    let tree = devtools::tree(&app, &cfg);
+    let traced = sites_after(&code, "traceGuard(state, '");
+    assert_eq!(traced.len(), 2, "{code}");
+    assert_ne!(traced[0], traced[1]);
+    for site in traced {
+        assert_eq!(tree["sites"][site]["kind"], "guard");
+        assert_eq!(tree["sites"][site]["file"], "(members)/guard.dart");
+    }
+}
+
+#[test]
+fn the_wrappers_pass_their_argument_through_and_change_nothing_else() {
+    let dir = files_project(&[
+        ("page.dart", &page("Home")),
+        ("account/page.dart", &page("Account")),
+        ("account/guard.dart", "GuardResult guard(Ref ref) => null;"),
+        (
+            "old/$q/redirect.dart",
+            "String redirect({required String q}) => '/';",
+        ),
+        (
+            "orders/$id/page.dart",
+            "class OrderPage extends StatelessWidget { const OrderPage({super.key, required this.id, required this.data}); final int id; final String data; }",
+        ),
+        (
+            "orders/$id/data.dart",
+            "String data(Ref ref, {required int id}) => '';",
+        ),
+        (
+            "orders/$id/action.dart",
+            "String action(Ref ref, {required int id, required String input}) => '';",
+        ),
+    ]);
+    let (_, _, code) = analyzed(dir.path());
+    // A `Ref` guard: the call is the wrapper's last argument, `refGuard` and all.
+    assert!(
+        code.contains("traceGuard(state, 'g1@1', refGuard(context, 'g1@1', (ref) => _i"),
+        "{code}"
+    );
+    // A redirect.dart that reads a segment: the whole `guardWithParams` is wrapped, so a bad
+    // segment is told apart from a pass.
+    assert!(
+        code.contains("traceGuard(state, 'r3', guardWithParams(\n"),
+        "{code}"
+    );
+    // The data provider's body: the same call, as `traceData`'s last argument, with the key.
+    assert!(
+        code.contains("(Ref ref, int id) => traceData(ref, 'd5', id, _i"),
+        "{code}"
+    );
+    // The action: the site is the only thing added to the factory's arguments.
+    assert!(
+        code.contains(">[_data5(id)],\n  site: 'a5_0',\n);"),
+        "{code}"
+    );
+    // Nothing is wrapped twice.
+    assert_eq!(code.matches("traceGuard(").count(), 2, "{code}");
+    assert_eq!(code.matches("traceData(").count(), 1, "{code}");
+}
+
+#[test]
+fn a_data_dart_with_no_keys_or_a_record_of_keys_tells_trace_data_so() {
+    let dir = files_project(&[
+        ("page.dart", &page("Home")),
+        (
+            "plain/page.dart",
+            "class PlainPage extends StatelessWidget { const PlainPage({super.key, required this.data}); final String data; }",
+        ),
+        (
+            "plain/data.dart",
+            "Future<String> data(Ref ref) async => '';",
+        ),
+        (
+            "shops/$shop/items/$id/page.dart",
+            "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.data}); final String data; }",
+        ),
+        (
+            "shops/$shop/items/$id/data.dart",
+            "Future<String> data(Ref ref, {required String shop, required int id}) async => '';",
+        ),
+    ]);
+    let (_, _, code) = analyzed(dir.path());
+    assert!(code.contains("(Ref ref) => traceData(ref, 'd"), "{code}");
+    assert!(code.contains("', null, _i"), "{code}");
+    assert!(
+        code.contains("({String shop, int id}) k) => traceData(ref, 'd"),
+        "{code}"
+    );
+    assert!(code.contains("', k, _i"), "{code}");
+}

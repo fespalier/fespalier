@@ -130,6 +130,12 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   `kFespalierDevTools` (a `const`, false in release), so a release build has none of it (CI greps a
   release build for `ext.fespalier`); in debug it starts no timer, schedules no frame, reads no
   provider and wraps every path in a `try`. `app.g.dart` calls `devToolsRegister` and `devToolsAttach`:
-  never remove them by hand, and keep new calls under `if (kFespalierDevTools)`.
+  never remove them by hand, and keep new calls under `if (kFespalierDevTools)`. The calls that follow
+  the guards, the data and the actions (`traceGuard`, `traceData`, an action's `site:`) are not under an
+  `if`: they are **pass-through wrappers** that return their last argument, the very object, so a sync
+  guard or `data()` stays sync (no `Future`, no microtask) and a `Future` is never replaced; `devtools_trace_test.dart`
+  checks it, and in release they are the identity and dart2js inlines them away (the scaffold CI job
+  greps a release build with a guard, a `data.dart` and an action in it). Keep them that way: no provider
+  read, no listener on a provider or a stream, no timer.
 - Every place that spells out the release version is annotated for release-please and checked by
   `cli/tests/versions.rs`; if that test fails after your change, you moved or removed an annotation.

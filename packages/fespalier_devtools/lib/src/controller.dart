@@ -1,5 +1,8 @@
 /// What the extension knows about the app: fetched when DevTools connects and when the app says
 /// something changed. It starts no timer: everything it does is an answer to a call or an event.
+///
+/// A guard, data or action event carries its record, so it is merged into the snapshot without a
+/// call, as long as no event was missed; a gap in the event numbers fetches the snapshot again.
 library;
 
 import 'dart:async';
@@ -9,6 +12,15 @@ import 'package:flutter/foundation.dart';
 import 'client.dart';
 import 'protocol.dart';
 import 'tree.dart';
+
+/// How many guard decisions the app keeps, and so how many the extension holds.
+const int guardLimit = 200;
+
+/// How many action runs the app keeps.
+const int actionLimit = 100;
+
+/// How many records of disposed providers the app keeps (the live ones always are).
+const int disposedLimit = 50;
 
 /// Where the extension stands with the app.
 enum FespalierStatus {
@@ -37,8 +49,11 @@ enum FespalierStatus {
 
 /// The state of the extension, and what its UI does to the app.
 class FespalierController extends ChangeNotifier {
-  /// Follows [client], and loads what the app has as soon as there is something to load.
-  FespalierController(this.client) {
+  /// Follows [client], and loads what the app has as soon as there is something to load. [clock]
+  /// tells the time the "age" of a record is counted to; it is `DateTime.now` unless a test says
+  /// otherwise.
+  FespalierController(this.client, {DateTime Function() clock = DateTime.now})
+    : _clock = clock {
     client.connected.addListener(_stateChanged);
     client.hasFespalier.addListener(_stateChanged);
     client.restarts.addListener(_restarted);
@@ -48,6 +63,8 @@ class FespalierController extends ChangeNotifier {
 
   /// The app.
   final FespalierClient client;
+
+  final DateTime Function() _clock;
 
   StreamSubscription<FespalierEvent>? _events;
   var _disposed = false;
@@ -63,6 +80,7 @@ class FespalierController extends ChangeNotifier {
   String? _actionError;
   MatchRecord? _match;
   String? _matchedLocation;
+  DateTime? _refreshedAt;
 
   /// Where the extension stands.
   FespalierStatus get status => _status;
@@ -88,6 +106,14 @@ class FespalierController extends ChangeNotifier {
 
   /// The location the last `match` was for.
   String? get matchedLocation => _matchedLocation;
+
+  /// Whether the app lists [feature] (a [DevToolsFeatures] name) in its `hello`: an app of the
+  /// first release does not know the guards, data and actions, and has nothing for their tabs.
+  bool supports(String feature) => _hello?.features.contains(feature) ?? false;
+
+  /// When the state was last fetched or changed by an event: what the age of a record is
+  /// counted to.
+  DateTime? get refreshedAt => _refreshedAt;
 
   /// The route the router is at, found in the tree by the class the app's matcher gave the
   /// location, else by the route's path template. Null when there is none.
@@ -136,6 +162,7 @@ class FespalierController extends ChangeNotifier {
     _match = null;
     _matchedLocation = null;
     _actionError = null;
+    _refreshedAt = null;
     _treeStale = true;
     notifyListeners();
   }
@@ -152,7 +179,117 @@ class FespalierController extends ChangeNotifier {
         // A snapshot that is newer than the event has the event in it.
         if (number is int && seen != null && number <= seen) return;
         unawaited(_refreshSnapshot());
+      case DevToolsEvents.guard || DevToolsEvents.data || DevToolsEvents.action:
+        _merge(event);
     }
+  }
+
+  /// Puts the record of a guard, data or action event into the snapshot. An event the snapshot
+  /// has already, or one that is not the next in line, is not merged: the first is in it, and
+  /// the second means something was missed, so the snapshot is fetched again.
+  void _merge(FespalierEvent event) {
+    final snapshot = _snapshot;
+    if (snapshot == null) return;
+    final number = event.payload[DevToolsEventPayload.event];
+    final record = event.payload[DevToolsEventPayload.record];
+    if (number is! int || record is! Map<String, Object?>) {
+      unawaited(_refreshSnapshot());
+      return;
+    }
+    if (number <= snapshot.event) return;
+    if (number != snapshot.event + 1) {
+      unawaited(_refreshSnapshot());
+      return;
+    }
+    try {
+      switch (event.kind) {
+        case DevToolsEvents.guard:
+          _snapshot = _with(
+            snapshot,
+            number,
+            guards: _put(
+              snapshot.guards,
+              GuardRecord.fromJson(record),
+              (g) => g.seq,
+              guardLimit,
+            ),
+          );
+        case DevToolsEvents.data:
+          _snapshot = _with(
+            snapshot,
+            number,
+            data: _putData(snapshot.data, DataRecord.fromJson(record)),
+          );
+        case DevToolsEvents.action:
+          _snapshot = _with(
+            snapshot,
+            number,
+            actions: _put(
+              snapshot.actions,
+              ActionRecord.fromJson(record),
+              (a) => a.seq,
+              actionLimit,
+            ),
+          );
+      }
+    } on Object {
+      unawaited(_refreshSnapshot());
+      return;
+    }
+    _refreshedAt = _clock();
+    notifyListeners();
+  }
+
+  /// [snapshot] as of event [number], with the lists given instead of its own.
+  SnapshotRecord _with(
+    SnapshotRecord snapshot,
+    int number, {
+    List<GuardRecord>? guards,
+    List<DataRecord>? data,
+    List<ActionRecord>? actions,
+  }) => SnapshotRecord(
+    protocol: snapshot.protocol,
+    event: number,
+    registered: snapshot.registered,
+    attached: snapshot.attached,
+    location: snapshot.location,
+    stack: snapshot.stack,
+    history: snapshot.history,
+    guards: guards ?? snapshot.guards,
+    data: data ?? snapshot.data,
+    actions: actions ?? snapshot.actions,
+  );
+
+  /// [list] with [record] in place of the one with the same key, or at the end; the oldest go
+  /// when there are more than [limit].
+  List<T> _put<T>(List<T> list, T record, int Function(T) keyOf, int limit) {
+    final out = List.of(list);
+    final index = out.indexWhere((r) => keyOf(r) == keyOf(record));
+    if (index >= 0) {
+      out[index] = record;
+    } else {
+      out.add(record);
+    }
+    return out.length > limit ? out.sublist(out.length - limit) : out;
+  }
+
+  /// The data records with [record] in place of its own: the live ones stay, the disposed ones
+  /// are the latest [disposedLimit], as the app keeps them.
+  List<DataRecord> _putData(List<DataRecord> list, DataRecord record) {
+    final out = _put(list, record, (d) => d.id, 1 << 30);
+    final disposed = [
+      for (final d in out)
+        if (d.state == DataState.disposed) d,
+    ];
+    if (disposed.length <= disposedLimit) return out;
+    final drop = {
+      for (final d in disposed.sublist(0, disposed.length - disposedLimit))
+        d.id,
+    };
+    return [
+      for (final d in out)
+        if (!drop.contains(d.id)) d,
+    ];
   }
 
   /// One load at a time: a request that comes in meanwhile asks for another one when this
@@ -205,6 +342,7 @@ class FespalierController extends ChangeNotifier {
         _treeStale = false;
       }
       _snapshot = SnapshotRecord.fromJson(answers.last);
+      _refreshedAt = _clock();
       _status = _snapshot!.attached
           ? FespalierStatus.ready
           : FespalierStatus.noRouter;
@@ -234,6 +372,24 @@ class FespalierController extends ChangeNotifier {
     );
     _match = answer;
     _matchedLocation = location;
+  });
+
+  /// Asks the provider behind the data record [id] to build again. The app says no when the
+  /// provider is gone; that is in [actionError].
+  Future<void> invalidate(int id) => _act(() async {
+    final answer = await client.call(DevToolsMethods.invalidate, {'id': '$id'});
+    if (answer['ok'] != true) {
+      throw const FespalierError(
+        'that provider is not alive any more, so there is nothing to invalidate',
+      );
+    }
+  });
+
+  /// Asks the IDE, through the app, to open [file] (relative to the app folder, as the tree's
+  /// files are). Whether anything opens depends on the IDE listening for it; a failure of the
+  /// call is in [actionError].
+  Future<void> open(String file) => _act(() async {
+    await client.call(DevToolsMethods.open, {'file': file});
   });
 
   /// Empties what the app keeps ([what] is a [ClearWhat]), then fetches the state again.

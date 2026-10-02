@@ -237,7 +237,7 @@ fn a_typed_catch_all_keys_data_by_its_path() {
             // The key is one string; the list is parsed out of it again for data().
             "restKey(v.rest)",
             "final _data2 = FutureProvider.autoDispose.family(",
-            "(Ref ref, String rest) => _i0.data(ref, rest: restParts(rest).map(int.parse).toList()),",
+            "(Ref ref, String rest) => traceData(ref, 'd2', rest, _i0.data(ref, rest: restParts(rest).map(int.parse).toList())),",
             // The typed helpers take the list itself.
             "static final watch = (WidgetRef ref, {required List<int> rest}) => ref.watch(data(restKey(rest)));",
         ],

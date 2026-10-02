@@ -196,6 +196,9 @@ fn static_first(mut routes: Vec<TreeCx>) -> Vec<TreeCx> {
 struct CallCx {
     seg_fn: Option<String>,
     call: String,
+    /// The guard's or redirect's key in the DevTools tree (`g5@6`, `r32`): what `traceGuard`
+    /// is told, so the extension can say which file answered.
+    site: String,
     /// For a guard: the folder it is in. `None` for a `redirect.dart`.
     #[serde(skip)]
     guard: Option<usize>,
@@ -329,6 +332,8 @@ struct ActionCx {
     run_params: String,
     /// `_i5.action(ref, id: id, input: input)`.
     call: String,
+    /// The function's key in the DevTools tree (`a37_0`), for the provider's `site:`.
+    site: String,
     /// The parameters of what the provider invalidates after a success: `int id`, or nothing.
     key_param: String,
     /// The providers a success invalidates.
@@ -448,6 +453,11 @@ struct ProviderCx {
     /// `data.dart` selects a provider: `_dataN` returns it (or is it, with no keys),
     /// and nothing is wrapped.
     selector: bool,
+    /// The file's key in the DevTools tree (`d37`), for `traceData`.
+    site: String,
+    /// What the family is keyed by, as `traceData` is told: the key's parameter, `k` for a
+    /// record of keys, or `null` with no keys.
+    key_expr: String,
 }
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
@@ -1176,7 +1186,7 @@ fn redirects_of(
     }
     for (hook, name, site, guard) in [
         (&r.guard, "guard", devtools::site_guard(id, id), Some(id)),
-        (&r.redirect, "redirect", String::new(), None),
+        (&r.redirect, "redirect", devtools::site_redirect(id), None),
     ] {
         if let Some(h) = hook {
             let own = seg_fn.clone().filter(|_| !h.keys().is_empty());
@@ -1219,6 +1229,7 @@ fn hook_call(
     CallCx {
         seg_fn,
         call,
+        site: site.to_string(),
         guard,
     }
 }
@@ -1993,6 +2004,7 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
                 run: names.run,
                 hook: names.hook,
                 top: format!("_action{id}_{i}"),
+                site: devtools::site_action(id, i),
                 factory: if keyed { "actionFamily" } else { "actionProvider" },
                 run_params: if keyed {
                     format!("Ref ref, {key_ty}, {input}")
@@ -2434,7 +2446,24 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
         call: format!("_i{}.data({})", d.import, call_args.join(", ")),
         no_retry: !d.selector && cfg.data_retry == DataRetry::None,
         selector: d.selector,
+        site: devtools::site_data(id),
+        key_expr: key_value(app, r, d),
     })
+}
+
+/// The Dart expression that is a `data()` provider's key inside its `create` function, as
+/// `key_params` names it: the one key's parameter, `k` for several, `null` for none.
+fn key_value(app: &App, r: &Route, d: &Data) -> String {
+    let names: Vec<String> = data_params(app, r)
+        .into_iter()
+        .filter(|(n, _)| d.keys.contains(n))
+        .map(|(n, _)| n)
+        .collect();
+    match (names.as_slice(), d.record) {
+        ([], _) => "null".into(),
+        ([n], false) => n.clone(),
+        _ => "k".into(),
+    }
 }
 
 /// The imports that let the generated file name the types of typed `extra`s and of enum

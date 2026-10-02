@@ -53,6 +53,16 @@ abstract final class DevToolsMethods {
   /// Parameter `what` ([ClearWhat]). Answers `{"protocol": 1, "ok": true}`: the buffers named
   /// are emptied, and the event counter keeps counting.
   static const String clear = 'ext.fespalier.clear';
+
+  /// Parameter `id` (a [DataRecord]'s). Answers `{"protocol": 1, "ok": bool}`: `ok` is true when
+  /// the provider that built the record was still alive and was invalidated, so it builds again
+  /// when something reads it. Listed in `hello`'s features as [DevToolsFeatures.data].
+  static const String invalidate = 'ext.fespalier.invalidate';
+
+  /// Parameter `file`, relative to the app folder as the tree's `file`s are. Answers
+  /// `{"protocol": 1, "ok": true}` once the IDE was asked to open it: a `navigate` event on the
+  /// `ToolEvent` stream with a `package:` URI. Listed as [DevToolsFeatures.open].
+  static const String open = 'ext.fespalier.open';
 }
 
 /// The kinds of the events an app posts (`dart:developer`'s `postEvent`, on the `Extension`
@@ -64,6 +74,17 @@ abstract final class DevToolsEvents {
   /// The router committed a location. The payload's `record` is a [NavigationRecord]; the
   /// snapshot has the location and the stack.
   static const String navigation = 'fespalier:navigation';
+
+  /// A guard or a `redirect.dart` answered, or an asynchronous one settled (the same `seq`
+  /// again). The payload's `record` is a [GuardRecord].
+  static const String guard = 'fespalier:guard';
+
+  /// A `data.dart` provider was built, settled, failed, rebuilt or disposed. The payload's
+  /// `record` is a [DataRecord].
+  static const String data = 'fespalier:data';
+
+  /// An action started or ended. The payload's `record` is an [ActionRecord].
+  static const String action = 'fespalier:action';
 
   /// Whether a stream event of this kind is fespalier's.
   static bool isFespalier(String kind) => kind.startsWith('fespalier:');
@@ -79,6 +100,20 @@ abstract final class DevToolsFeatures {
 
   /// The `navigate` method.
   static const String navigate = 'navigate';
+
+  /// The guard decisions: `guards` in the snapshot, the `guard` event, and the `guards` of a
+  /// [NavigationRecord].
+  static const String guards = 'guards';
+
+  /// The state of the `data.dart` providers: `data` in the snapshot, the `data` event, and
+  /// the `invalidate` method.
+  static const String data = 'data';
+
+  /// The runs of the actions: `actions` in the snapshot and the `action` event.
+  static const String actions = 'actions';
+
+  /// The `open` method.
+  static const String open = 'open';
 }
 
 /// The values of `navigate`'s `mode`.
@@ -104,7 +139,14 @@ abstract final class ClearWhat {
   /// The navigation history.
   static const String history = 'history';
 
-  /// Everything there is to clear.
+  /// The guard decisions.
+  static const String guards = 'guards';
+
+  /// The action runs.
+  static const String actions = 'actions';
+
+  /// Everything there is to clear: the history, the guards, the actions and the records of
+  /// disposed providers (the live ones stay).
   static const String all = 'all';
 }
 
@@ -130,6 +172,55 @@ abstract final class NavigationKind {
   /// The same location again, as the router was refreshed or `go` repeated it with another
   /// `extra`.
   static const String refresh = 'refresh';
+}
+
+/// The values of a [GuardRecord]'s `result`.
+abstract final class GuardOutcome {
+  /// The guard let the navigation through (it returned `null`).
+  static const String pass = 'pass';
+
+  /// The guard sent the navigation elsewhere: the record's `location`.
+  static const String redirect = 'redirect';
+
+  /// An asynchronous guard has not answered yet.
+  static const String pending = 'pending';
+
+  /// The guard threw, or its `Future` failed: go_router gets the error as before.
+  static const String error = 'error';
+
+  /// The route's segments did not parse, so the guard did not run and the page shows not found.
+  static const String skipped = 'skipped';
+}
+
+/// The values of a [DataRecord]'s `state`.
+abstract final class DataState {
+  /// The provider's `Future` is pending.
+  static const String loading = 'loading';
+
+  /// The provider has a value.
+  static const String data = 'data';
+
+  /// The provider's `Future` failed.
+  static const String error = 'error';
+
+  /// The provider returned a `Stream`. It is not listened to, so there is no value to show.
+  static const String stream = 'stream';
+
+  /// The provider was disposed (nothing watched it any more, or it was invalidated and has not
+  /// been read since).
+  static const String disposed = 'disposed';
+}
+
+/// The values of an [ActionRecord]'s `state`.
+abstract final class ActionState {
+  /// The action's `Future` is pending.
+  static const String running = 'running';
+
+  /// The action succeeded.
+  static const String done = 'done';
+
+  /// The action threw, or its `Future` failed.
+  static const String error = 'error';
 }
 
 /// The values of a [FrameRecord]'s `type`.
@@ -392,6 +483,7 @@ final class NavigationRecord {
     required this.uri,
     required this.fullPath,
     required this.depth,
+    this.guards = const [],
     this.error,
   });
 
@@ -404,6 +496,7 @@ final class NavigationRecord {
         uri: _string(json, 'uri'),
         fullPath: _string(json, 'fullPath'),
         depth: _int(json, 'depth'),
+        guards: [for (final g in _list(json, 'guards')) g! as int],
         error: _stringOrNull(json, 'error'),
       );
 
@@ -425,6 +518,11 @@ final class NavigationRecord {
   /// How many pushed pages are in the stack.
   final int depth;
 
+  /// The `seq`s of the [GuardRecord]s that answered since the previous commit: the decisions
+  /// behind this navigation, a redirect chain (`/admin` to `/login`) included. Empty when the
+  /// app lists no [DevToolsFeatures.guards] or no guard ran.
+  final List<int> guards;
+
   /// What go_router says when nothing matched.
   final String? error;
 
@@ -436,6 +534,7 @@ final class NavigationRecord {
     'uri': uri,
     'fullPath': fullPath,
     'depth': depth,
+    'guards': guards,
     'error': error,
   };
 
@@ -458,6 +557,9 @@ final class SnapshotRecord {
     this.location,
     this.stack = const [],
     this.history = const [],
+    this.guards = const [],
+    this.data = const [],
+    this.actions = const [],
   });
 
   /// Reads what [toJson] wrote.
@@ -476,6 +578,18 @@ final class SnapshotRecord {
     history: [
       for (final h in _list(json, 'history'))
         NavigationRecord.fromJson(h! as Map<String, Object?>),
+    ],
+    guards: [
+      for (final g in _list(json, 'guards'))
+        GuardRecord.fromJson(g! as Map<String, Object?>),
+    ],
+    data: [
+      for (final d in _list(json, 'data'))
+        DataRecord.fromJson(d! as Map<String, Object?>),
+    ],
+    actions: [
+      for (final a in _list(json, 'actions'))
+        ActionRecord.fromJson(a! as Map<String, Object?>),
     ],
   );
 
@@ -501,6 +615,16 @@ final class SnapshotRecord {
   /// The committed locations, oldest first.
   final List<NavigationRecord> history;
 
+  /// The guard decisions, oldest first. Empty without [DevToolsFeatures.guards].
+  final List<GuardRecord> guards;
+
+  /// The `data.dart` providers, in the order they were first built: the live ones, then the
+  /// latest disposed. Empty without [DevToolsFeatures.data].
+  final List<DataRecord> data;
+
+  /// The action runs, oldest first. Empty without [DevToolsFeatures.actions].
+  final List<ActionRecord> actions;
+
   /// The response of `snapshot`.
   Map<String, Object?> toJson() => {
     'protocol': protocol,
@@ -510,11 +634,261 @@ final class SnapshotRecord {
     'location': location?.toJson(),
     'stack': [for (final f in stack) f.toJson()],
     'history': [for (final h in history) h.toJson()],
+    'guards': [for (final g in guards) g.toJson()],
+    'data': [for (final d in data) d.toJson()],
+    'actions': [for (final a in actions) a.toJson()],
   };
 
   @override
   bool operator ==(Object other) =>
       other is SnapshotRecord && _same(toJson(), other.toJson());
+
+  @override
+  int get hashCode => _hash(toJson());
+}
+
+/// One answer of a guard or a `redirect.dart`, as the generated `redirect:` got it.
+///
+/// An asynchronous guard is first `pending`, then the same record (same `seq`) is sent again
+/// with its result and `ms`.
+final class GuardRecord {
+  /// A guard decision.
+  const GuardRecord({
+    required this.seq,
+    required this.at,
+    required this.site,
+    required this.uri,
+    required this.fullPath,
+    required this.result,
+    this.location,
+    this.isAsync = false,
+    this.ms = 0,
+    this.error,
+  });
+
+  /// Reads what [toJson] wrote.
+  factory GuardRecord.fromJson(Map<String, Object?> json) => GuardRecord(
+    seq: _int(json, 'seq'),
+    at: _int(json, 'at'),
+    site: _string(json, 'site'),
+    uri: _string(json, 'uri'),
+    fullPath: _string(json, 'fullPath'),
+    result: _string(json, 'result'),
+    location: _stringOrNull(json, 'location'),
+    isAsync: json['async'] == true,
+    ms: (json['ms'] as int?) ?? 0,
+    error: _stringOrNull(json, 'error'),
+  );
+
+  /// A number for the record, from the same counter as [NavigationRecord.seq].
+  final int seq;
+
+  /// When the guard answered (or, for a `pending` one, was called), in milliseconds since the
+  /// epoch.
+  final int at;
+
+  /// Which guard: a key of the tree's `sites` (`g5@6`, or `r32` for a `redirect.dart`).
+  final String site;
+
+  /// The location the navigation was going to.
+  final String uri;
+
+  /// The route path template of that location, as far as go_router knows it at that point.
+  final String fullPath;
+
+  /// A [GuardOutcome].
+  final String result;
+
+  /// Where the guard sent the navigation, for a `redirect`.
+  final String? location;
+
+  /// Whether the guard returned a `Future`. (`async` is the JSON key.)
+  final bool isAsync;
+
+  /// How long an asynchronous guard took to answer, in milliseconds. 0 for one that answered
+  /// at once.
+  final int ms;
+
+  /// What the guard threw, for an `error`.
+  final String? error;
+
+  /// A part of a [SnapshotRecord] and of the `guard` event.
+  Map<String, Object?> toJson() => {
+    'seq': seq,
+    'at': at,
+    'site': site,
+    'uri': uri,
+    'fullPath': fullPath,
+    'result': result,
+    'location': location,
+    'async': isAsync,
+    'ms': ms,
+    'error': error,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is GuardRecord && _same(toJson(), other.toJson());
+
+  @override
+  int get hashCode => _hash(toJson());
+}
+
+/// One provider built from a `data.dart`: the state of what a route loads. There is one record
+/// for each container, site and key.
+final class DataRecord {
+  /// A data record.
+  const DataRecord({
+    required this.id,
+    required this.site,
+    this.key,
+    required this.container,
+    required this.state,
+    required this.builds,
+    required this.created,
+    required this.updated,
+    this.value,
+    this.error,
+  });
+
+  /// Reads what [toJson] wrote.
+  factory DataRecord.fromJson(Map<String, Object?> json) => DataRecord(
+    id: _int(json, 'id'),
+    site: _string(json, 'site'),
+    key: _shownOrNull(json, 'key'),
+    container: _int(json, 'container'),
+    state: _string(json, 'state'),
+    builds: _int(json, 'builds'),
+    created: _int(json, 'created'),
+    updated: _int(json, 'updated'),
+    value: _shownOrNull(json, 'value'),
+    error: _stringOrNull(json, 'error'),
+  );
+
+  /// A number for the record, one counter per isolate; what `invalidate` takes.
+  final int id;
+
+  /// Which `data.dart`: a key of the tree's `sites` (`d37`).
+  final String site;
+
+  /// What the family is keyed by (a route's segments and query), or null for a provider with
+  /// no keys.
+  final Shown? key;
+
+  /// Which `ProviderContainer` it lives in, by a number the app gave it (the first one is 1).
+  final int container;
+
+  /// A [DataState].
+  final String state;
+
+  /// How many times the provider's body ran.
+  final int builds;
+
+  /// When it was first built, in milliseconds since the epoch.
+  final int created;
+
+  /// When its state last changed.
+  final int updated;
+
+  /// The value, for `data`.
+  final Shown? value;
+
+  /// What the `Future` failed with, for `error`.
+  final String? error;
+
+  /// A part of a [SnapshotRecord] and of the `data` event.
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'site': site,
+    'key': key?.toJson(),
+    'container': container,
+    'state': state,
+    'builds': builds,
+    'created': created,
+    'updated': updated,
+    'value': value?.toJson(),
+    'error': error,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is DataRecord && _same(toJson(), other.toJson());
+
+  @override
+  int get hashCode => _hash(toJson());
+}
+
+/// One run of an action: sent when it starts and again when it ends, with the same `seq`.
+final class ActionRecord {
+  /// An action run.
+  const ActionRecord({
+    required this.seq,
+    required this.site,
+    this.key,
+    required this.input,
+    required this.state,
+    required this.started,
+    this.ms,
+    this.result,
+    this.error,
+  });
+
+  /// Reads what [toJson] wrote.
+  factory ActionRecord.fromJson(Map<String, Object?> json) => ActionRecord(
+    seq: _int(json, 'seq'),
+    site: _string(json, 'site'),
+    key: _shownOrNull(json, 'key'),
+    input: Shown.fromJson(json['input']! as Map<String, Object?>),
+    state: _string(json, 'state'),
+    started: _int(json, 'started'),
+    ms: json['ms'] as int?,
+    result: _shownOrNull(json, 'result'),
+    error: _stringOrNull(json, 'error'),
+  );
+
+  /// A number for the record, from the same counter as [NavigationRecord.seq].
+  final int seq;
+
+  /// Which action: a key of the tree's `sites` (`a37_0`).
+  final String site;
+
+  /// What the action's family is keyed by, or null for an action with no keys.
+  final Shown? key;
+
+  /// What the action was called with.
+  final Shown input;
+
+  /// An [ActionState].
+  final String state;
+
+  /// When the run started, in milliseconds since the epoch.
+  final int started;
+
+  /// How long it took, once it ended.
+  final int? ms;
+
+  /// What it returned, for `done`.
+  final Shown? result;
+
+  /// What it threw, for `error`.
+  final String? error;
+
+  /// A part of a [SnapshotRecord] and of the `action` event.
+  Map<String, Object?> toJson() => {
+    'seq': seq,
+    'site': site,
+    'key': key?.toJson(),
+    'input': input.toJson(),
+    'state': state,
+    'started': started,
+    'ms': ms,
+    'result': result?.toJson(),
+    'error': error,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ActionRecord && _same(toJson(), other.toJson());
 
   @override
   int get hashCode => _hash(toJson());

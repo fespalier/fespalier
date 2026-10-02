@@ -107,7 +107,7 @@ abstract final class AppRoutes {
               ),
               GoRoute(
                 path: 'checkout',
-                redirect: (context, state) => _i8.guard(ProviderScope.containerOf(context, listen: false)),
+                redirect: (context, state) => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false))),
                 pageBuilder: (context, state) => _i3.transition(
                   state.pageKey,
                   DeferredView(
@@ -507,7 +507,7 @@ final _lib2 = DeferredLibrary(_i7.loadLibrary, 'checkout/page.dart');
 final _lib6 = DeferredLibrary(_i14.loadLibrary, 'products/\$id/page.dart');
 
 final _data6 = FutureProvider.autoDispose.family(
-  (Ref ref, int id) => _i13.data(ref, id: id),
+  (Ref ref, int id) => traceData(ref, 'd6', id, _i13.data(ref, id: id)),
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
 );

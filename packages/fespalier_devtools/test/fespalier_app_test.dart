@@ -123,13 +123,21 @@ void main() {
   });
 
   group('tabs', () {
-    testWidgets('are Location, Stack and Routes', (tester) async {
+    testWidgets('are Location, Stack, Routes, Guards, Data and Actions', (
+      tester,
+    ) async {
       await pumpApp(tester, FakeFespalierClient());
-      expect(find.widgetWithText(Tab, 'Location'), findsOneWidget);
-      expect(find.widgetWithText(Tab, 'Stack'), findsOneWidget);
-      expect(find.widgetWithText(Tab, 'Routes'), findsOneWidget);
-      // Nothing for guards, data or actions: this protocol has no events for them yet.
-      expect(find.byType(Tab), findsNWidgets(3));
+      for (final name in [
+        'Location',
+        'Stack',
+        'Routes',
+        'Guards',
+        'Data',
+        'Actions',
+      ]) {
+        expect(find.widgetWithText(Tab, name), findsOneWidget, reason: name);
+      }
+      expect(find.byType(Tab), findsNWidgets(6));
     });
 
     testWidgets('switch between the panels', (tester) async {

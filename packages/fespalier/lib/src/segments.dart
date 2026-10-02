@@ -4,6 +4,8 @@ import 'dart:collection';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
+import 'devtools/devtools.dart' show debugMarkGuardSkipped, kFespalierDevTools;
+
 /// What `guard.dart` returns: `null` lets navigation through, a location
 /// redirects (typed routes give you `.location`).
 typedef GuardResult = FutureOr<String?>;
@@ -346,6 +348,8 @@ FutureOr<String?> guardWithParams<V>(
   try {
     params = parse();
   } on BadSegment {
+    // The guard did not run: DevTools shows that, rather than a pass.
+    if (kFespalierDevTools) debugMarkGuardSkipped();
     return null;
   }
   return guard(params);

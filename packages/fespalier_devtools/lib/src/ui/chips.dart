@@ -134,3 +134,34 @@ String formatClock(int millisecondsSinceEpoch) {
   return '${two(t.hour)}:${two(t.minute)}:${two(t.second)}.'
       '${t.millisecond.toString().padLeft(3, '0')}';
 }
+
+/// How long ago something was, for a record's age: `under 1 s`, `42 s`, `3 min 05 s`.
+String formatAge(Duration age) {
+  if (age.isNegative || age.inSeconds < 1) return 'under 1 s';
+  if (age.inSeconds < 60) return '${age.inSeconds} s';
+  final seconds = (age.inSeconds % 60).toString().padLeft(2, '0');
+  return '${age.inMinutes} min $seconds s';
+}
+
+/// What a panel says when the app does not list its feature in `hello`: a fespalier from before
+/// the panel's records.
+class NotReported extends StatelessWidget {
+  /// A panel for [what] (`guards`) that the app has nothing to show for.
+  const NotReported(this.what, {super.key});
+
+  /// What the app does not report.
+  final String what;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Text(
+        'This app does not report its $what: it uses a fespalier from before '
+        'this panel.',
+        key: const Key('not-reported'),
+        textAlign: TextAlign.center,
+      ),
+    ),
+  );
+}

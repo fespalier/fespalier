@@ -160,6 +160,149 @@ void main() {
       expect(MatchRecord.fromJson(wire(none.toJson())), none);
     });
 
+    test('GuardRecord, pending and settled', () {
+      const pending = GuardRecord(
+        seq: 40,
+        at: 1696230000123,
+        site: 'g5@6',
+        uri: '/admin',
+        fullPath: '/admin',
+        result: GuardOutcome.pending,
+        isAsync: true,
+      );
+      const redirect = GuardRecord(
+        seq: 40,
+        at: 1696230000123,
+        site: 'g5@6',
+        uri: '/admin',
+        fullPath: '/admin',
+        result: GuardOutcome.redirect,
+        location: '/login?from=%2Fadmin',
+        isAsync: true,
+        ms: 12,
+      );
+      for (final g in [pending, redirect]) {
+        expect(GuardRecord.fromJson(wire(g.toJson())), g);
+        expect(GuardRecord.fromJson(wire(g.toJson())).hashCode, g.hashCode);
+      }
+      expect(redirect.toJson()['async'], isTrue);
+      expect(pending, isNot(equals(redirect)));
+      const failed = GuardRecord(
+        seq: 41,
+        at: 1,
+        site: 'r32',
+        uri: '/x',
+        fullPath: '',
+        result: GuardOutcome.error,
+        error: 'Bad state: no',
+      );
+      expect(GuardRecord.fromJson(wire(failed.toJson())), failed);
+    });
+
+    test('DataRecord, with a key and a value, and without', () {
+      const keyed = DataRecord(
+        id: 3,
+        site: 'd37',
+        key: Shown('int', '2'),
+        container: 1,
+        state: DataState.data,
+        builds: 2,
+        created: 1696230000000,
+        updated: 1696230000500,
+        value: Shown('Product', 'Product(2)'),
+      );
+      expect(DataRecord.fromJson(wire(keyed.toJson())), keyed);
+      const bare = DataRecord(
+        id: 4,
+        site: 'd13',
+        container: 2,
+        state: DataState.error,
+        builds: 1,
+        created: 1,
+        updated: 2,
+        error: 'boom',
+      );
+      expect(DataRecord.fromJson(wire(bare.toJson())), bare);
+      expect(bare.toJson()['key'], isNull);
+    });
+
+    test('ActionRecord, running and done', () {
+      const running = ActionRecord(
+        seq: 9,
+        site: 'a37_0',
+        key: Shown('int', '2'),
+        input: Shown('Refund', 'Refund(5)'),
+        state: ActionState.running,
+        started: 1696230000000,
+      );
+      expect(ActionRecord.fromJson(wire(running.toJson())), running);
+      const done = ActionRecord(
+        seq: 9,
+        site: 'a37_0',
+        input: Shown('Refund', 'Refund(5)'),
+        state: ActionState.done,
+        started: 1696230000000,
+        ms: 120,
+        result: Shown('bool', 'true'),
+      );
+      expect(ActionRecord.fromJson(wire(done.toJson())), done);
+      expect(done.toJson()['ms'], 120);
+    });
+
+    test('a snapshot carries the guards, data and actions', () {
+      const snapshot = SnapshotRecord(
+        event: 9,
+        registered: true,
+        attached: true,
+        guards: [
+          GuardRecord(
+            seq: 1,
+            at: 1,
+            site: 'g1@2',
+            uri: '/',
+            fullPath: '/',
+            result: GuardOutcome.pass,
+          ),
+        ],
+        data: [
+          DataRecord(
+            id: 1,
+            site: 'd1',
+            container: 1,
+            state: DataState.loading,
+            builds: 1,
+            created: 1,
+            updated: 1,
+          ),
+        ],
+        actions: [
+          ActionRecord(
+            seq: 2,
+            site: 'a1_0',
+            input: Shown('int', '1'),
+            state: ActionState.running,
+            started: 1,
+          ),
+        ],
+      );
+      expect(SnapshotRecord.fromJson(wire(snapshot.toJson())), snapshot);
+    });
+
+    test('a navigation names the guards behind it', () {
+      const nav = NavigationRecord(
+        seq: 12,
+        at: 1,
+        kind: NavigationKind.go,
+        uri: '/login',
+        fullPath: '/login',
+        depth: 0,
+        guards: [40, 41],
+      );
+      final back = NavigationRecord.fromJson(wire(nav.toJson()));
+      expect(back, nav);
+      expect(back.guards, [40, 41]);
+    });
+
     test('unequal records are unequal', () {
       expect(
         navigation,
@@ -191,6 +334,49 @@ void main() {
       expect(record.kind, 'go');
     });
 
+    test('a record from a runtime before the guards had none of their keys', () {
+      // What the first release's runtime sends: no `guards`, `data` or `actions`.
+      final snapshot = SnapshotRecord.fromJson({
+        'protocol': 1,
+        'event': 3,
+        'registered': true,
+        'attached': true,
+        'location': null,
+        'stack': <Object?>[],
+        'history': [
+          {
+            'seq': 1,
+            'at': 1,
+            'kind': 'initial',
+            'uri': '/',
+            'fullPath': '/',
+            'depth': 0,
+            'error': null,
+          },
+        ],
+      });
+      expect(snapshot.guards, isEmpty);
+      expect(snapshot.data, isEmpty);
+      expect(snapshot.actions, isEmpty);
+      expect(snapshot.history.single.guards, isEmpty);
+    });
+
+    test('a guard, data or action record keeps its unknown keys out', () {
+      final guard = GuardRecord.fromJson({
+        ...const GuardRecord(
+          seq: 1,
+          at: 1,
+          site: 'g1@2',
+          uri: '/',
+          fullPath: '/',
+          result: 'teleported',
+        ).toJson(),
+        'somethingNew': 1,
+      });
+      // An outcome it does not know is kept, like a navigation kind.
+      expect(guard.result, 'teleported');
+    });
+
     test('a snapshot with lists a later protocol added is read', () {
       final json = {
         ...const SnapshotRecord(
@@ -198,11 +384,9 @@ void main() {
           registered: true,
           attached: true,
         ).toJson(),
-        'guards': <Object?>[
+        'timeline': <Object?>[
           {'seq': 40},
         ],
-        'data': <Object?>[],
-        'actions': <Object?>[],
       };
       final snapshot = SnapshotRecord.fromJson(wire(json));
       expect(snapshot.event, 3);
@@ -242,11 +426,16 @@ void main() {
         DevToolsMethods.match,
         DevToolsMethods.navigate,
         DevToolsMethods.clear,
+        DevToolsMethods.invalidate,
+        DevToolsMethods.open,
       ]) {
         expect(method, startsWith('ext.fespalier.'));
       }
       expect(DevToolsEvents.isFespalier(DevToolsEvents.registered), isTrue);
       expect(DevToolsEvents.isFespalier(DevToolsEvents.navigation), isTrue);
+      expect(DevToolsEvents.isFespalier(DevToolsEvents.guard), isTrue);
+      expect(DevToolsEvents.isFespalier(DevToolsEvents.data), isTrue);
+      expect(DevToolsEvents.isFespalier(DevToolsEvents.action), isTrue);
       expect(DevToolsEvents.isFespalier('riverpod:something'), isFalse);
     },
   );

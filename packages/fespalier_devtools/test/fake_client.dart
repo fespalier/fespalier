@@ -24,6 +24,22 @@ Map<String, Object?> fixture(String name) =>
     jsonDecode(File('test/fixtures/$name.json').readAsStringSync())
         as Map<String, Object?>;
 
+/// What an app of the first release lists in `hello`: no guards, data, actions or open.
+const firstFeatures = [
+  DevToolsFeatures.navigation,
+  DevToolsFeatures.match,
+  DevToolsFeatures.navigate,
+];
+
+/// What the app lists now.
+const allFeatures = [
+  ...firstFeatures,
+  DevToolsFeatures.guards,
+  DevToolsFeatures.data,
+  DevToolsFeatures.actions,
+  DevToolsFeatures.open,
+];
+
 typedef Handler =
     FutureOr<Map<String, Object?>> Function(Map<String, String> params);
 
@@ -36,6 +52,7 @@ class FakeFespalierClient implements FespalierClient {
     bool registered = true,
     bool attached = true,
     int protocol = devToolsProtocol,
+    List<String> features = allFeatures,
     Map<String, Handler> handlers = const {},
   }) : _snapshot = snapshot ?? fixture('snapshot_catalog') {
     this.handlers = {
@@ -43,11 +60,7 @@ class FakeFespalierClient implements FespalierClient {
         protocol: protocol,
         registered: registered,
         attached: attached,
-        features: const [
-          DevToolsFeatures.navigation,
-          DevToolsFeatures.match,
-          DevToolsFeatures.navigate,
-        ],
+        features: features,
       ).toJson(),
       DevToolsMethods.tree: (_) => {
         'protocol': protocol,
@@ -56,6 +69,8 @@ class FakeFespalierClient implements FespalierClient {
       DevToolsMethods.snapshot: (_) => _snapshot,
       DevToolsMethods.navigate: (_) => {'protocol': protocol, 'ok': true},
       DevToolsMethods.clear: (_) => {'protocol': protocol, 'ok': true},
+      DevToolsMethods.invalidate: (_) => {'protocol': protocol, 'ok': true},
+      DevToolsMethods.open: (_) => {'protocol': protocol, 'ok': true},
       DevToolsMethods.match: (params) =>
           MatchRecord(location: params['location']!).toJson(),
       ...handlers,

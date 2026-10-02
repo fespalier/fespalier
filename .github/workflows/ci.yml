@@ -185,12 +185,22 @@ jobs:
             xargs -0 dart format --output=none --set-exit-if-changed
           flutter analyze
       # A release build has none of fespalier's DevTools code: `kFespalierDevTools` is false there,
-      # so the service extensions, the route tree and the hooks are compiled away. A profile build
-      # has it, which is what gives the grep for it a meaning. (`fsp init` leaves main.dart alone,
-      # so the app is given one that uses the generated router.)
+      # so the service extensions, the route tree, the hooks and the `traceGuard` / `traceData`
+      # wrappers around the guards and the data are compiled away. A profile build has all of
+      # it, which is what gives the greps for it a meaning. The app has a guarded route with a
+      # data.dart and an action.dart, so the generated file carries every wrapper, and a button
+      # that runs the action, so the build has to keep the code that traces it. (`fsp init`
+      # leaves main.dart alone, so the app is given one that uses the generated router.)
       - name: A release build carries no DevTools code
+        env:
+          FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
         run: |
           cd "$RUNNER_TEMP/fresh_app"
+          "$FSP_BIN" new 'orders/[id]' --data --action --guard
+          "$FSP_BIN" gen
+          grep -q 'traceGuard(' lib/app.g.dart
+          grep -q 'traceData(' lib/app.g.dart
+          grep -q "site: 'a" lib/app.g.dart
           cat > lib/main.dart <<'DART'
           import 'package:fespalier/fespalier.dart';
           import 'package:flutter/material.dart';
@@ -200,21 +210,34 @@ jobs:
           void main() {
             runApp(
               ProviderScope(
-                child: MaterialApp.router(routerConfig: AppRoutes.router()),
+                child: MaterialApp.router(
+                  routerConfig: AppRoutes.router(),
+                  builder: (context, child) => Consumer(
+                    builder: (context, ref, _) => TextButton(
+                      onPressed: () => OrdersIdRoute.submit(ref, id: '1', input: 'x'),
+                      child: child ?? const SizedBox(),
+                    ),
+                  ),
+                ),
               ),
             );
           }
           DART
+          flutter analyze
           flutter build web --profile --no-wasm-dry-run
-          grep -q 'ext\.fespalier\.snapshot' build/web/main.dart.js || {
-            echo "::error::the profile build has no DevTools code, so the release check below proves nothing"
-            exit 1
-          }
+          for needle in 'ext\.fespalier\.snapshot' 'ext\.fespalier\.invalidate' 'ext\.fespalier\.open' 'fespalier:guard' 'fespalier:data' 'fespalier:action' 'ToolEvent'; do
+            grep -q "$needle" build/web/main.dart.js || {
+              echo "::error::the profile build has no $needle, so the release check below proves nothing"
+              exit 1
+            }
+          done
           flutter build web --release --no-wasm-dry-run
-          if grep -q 'ext\.fespalier' build/web/main.dart.js; then
-            echo "::error::the release build contains fespalier's DevTools code"
-            exit 1
-          fi
+          for needle in 'ext\.fespalier' 'fespalier:' 'ToolEvent'; do
+            if grep -q "$needle" build/web/main.dart.js; then
+              echo "::error::the release build contains fespalier's DevTools code ($needle)"
+              exit 1
+            fi
+          done
       - name: dart run fespalier runs the given fsp
         working-directory: examples/shop
         run: |

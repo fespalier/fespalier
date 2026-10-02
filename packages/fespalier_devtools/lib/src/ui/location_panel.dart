@@ -8,6 +8,7 @@ import '../controller.dart';
 import '../protocol.dart';
 import '../tree.dart';
 import 'chips.dart';
+import 'guards_panel.dart' show GuardRow;
 
 /// The first tab.
 class LocationPanel extends StatelessWidget {
@@ -63,7 +64,8 @@ class LocationPanel extends StatelessWidget {
             ),
           const SectionTitle('History'),
           if (history.isEmpty) const Text('Nothing committed yet.'),
-          for (final h in history) _HistoryRow(h),
+          for (final h in history)
+            _HistoryRow(record: h, controller: controller),
         ],
       );
     },
@@ -130,10 +132,22 @@ class LocationPanel extends StatelessWidget {
   }
 }
 
-class _HistoryRow extends StatelessWidget {
-  const _HistoryRow(this.record);
+/// One committed location. With guards behind it, a badge opens what each of them answered.
+class _HistoryRow extends StatefulWidget {
+  const _HistoryRow({required this.record, required this.controller});
 
   final NavigationRecord record;
+  final FespalierController controller;
+
+  @override
+  State<_HistoryRow> createState() => _HistoryRowState();
+}
+
+class _HistoryRowState extends State<_HistoryRow> {
+  var _open = false;
+
+  NavigationRecord get record => widget.record;
+  FespalierController get controller => widget.controller;
 
   @override
   Widget build(BuildContext context) {
@@ -142,30 +156,66 @@ class _HistoryRow extends StatelessWidget {
       NavigationKind.initial => ChipTone.accent,
       _ => ChipTone.neutral,
     };
+    final guards = [
+      for (final seq in record.guards)
+        controller.snapshot?.guards.where((g) => g.seq == seq).firstOrNull,
+    ];
     return Padding(
       key: Key('history-${record.seq}'),
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 2,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            formatClock(record.at),
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 2,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                formatClock(record.at),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+              ),
+              SizedBox(
+                width: 72,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: KindChip(record.kind, tone: tone),
+                ),
+              ),
+              Mono(record.uri),
+              if (record.guards.isNotEmpty)
+                InkWell(
+                  key: Key('history-guards-${record.seq}'),
+                  onTap: () => setState(() => _open = !_open),
+                  child: KindChip(
+                    '${record.guards.length} '
+                    '${record.guards.length == 1 ? 'guard' : 'guards'}'
+                    '${_open ? ' ▾' : ' ▸'}',
+                  ),
+                ),
+              if (record.error != null)
+                const KindChip('not found', tone: ChipTone.error),
+            ],
           ),
-          SizedBox(
-            width: 72,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: KindChip(record.kind, tone: tone),
+          if (_open)
+            Padding(
+              key: Key('history-guards-list-${record.seq}'),
+              padding: const EdgeInsets.only(left: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < guards.length; i++)
+                    guards[i] == null
+                        ? Text('guard #${record.guards[i]} is no longer kept')
+                        : GuardRow(
+                            record: guards[i]!,
+                            site: controller.tree?.sites[guards[i]!.site],
+                          ),
+                ],
+              ),
             ),
-          ),
-          Mono(record.uri),
-          if (record.error != null)
-            const KindChip('not found', tone: ChipTone.error),
         ],
       ),
     );

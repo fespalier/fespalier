@@ -14,6 +14,7 @@
 //!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
 //!   push_updates_url: false # default; true puts a `push`ed route's URL in the browser's address bar
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
+//!   semantics_ids: false    # default; true gives each page `Semantics(identifier: 'route:/...')`, for Maestro
 //!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
 //!     domains: [shop.example.com]
 //!     scheme: myshop
@@ -133,6 +134,10 @@ pub struct Config {
     /// `GoRouter.optionURLReflectsImperativeAPIs`, which `AppRoutes.router()` assigns: a
     /// `push`ed route shows its URL in the browser's address bar.
     pub push_updates_url: bool,
+    /// `semantics_ids`: each page wears `Semantics(identifier: 'route:<pattern>')`, and
+    /// `AppRoutes.mount()` turns the semantics tree on on the web, so a driver that reads the
+    /// screen from the outside (Maestro) finds the page.
+    pub semantics_ids: bool,
     /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
     pub file_style: FileStyle,
     /// The `links:` section, as written. Only `fsp links` reads it, and it checks the values
@@ -154,6 +159,7 @@ impl Default for Config {
             data_retry: DataRetry::Inherit,
             keep_previous: true,
             push_updates_url: false,
+            semantics_ids: false,
             file_style: FileStyle::Snake,
             links: None,
         }
@@ -192,6 +198,7 @@ struct RawConfig {
     push_updates_url: Option<bool>,
     file_style: Option<FileStyle>,
     links: Option<LinksConfig>,
+    semantics_ids: Option<bool>,
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -503,6 +510,7 @@ impl Pubspec {
             config.push_updates_url = c.push_updates_url.unwrap_or(config.push_updates_url);
             config.file_style = c.file_style.unwrap_or(config.file_style);
             config.links = c.links;
+            config.semantics_ids = c.semantics_ids.unwrap_or(false);
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }

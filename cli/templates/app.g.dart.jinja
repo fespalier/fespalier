@@ -227,6 +227,10 @@ abstract final class AppRoutes {
   }) {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
+{% if semantics_ids %}
+    // pubspec `semantics_ids`: on the web, a driver like Maestro sees nothing without the semantics tree.
+    ensureWebSemantics();
+{% endif %}
     return [
 {% for r in tree %}
       {{ route(r) | indent(6) }},

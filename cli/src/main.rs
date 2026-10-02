@@ -456,6 +456,8 @@ mod route_api_tests;
 #[cfg(test)]
 mod selector_tests;
 #[cfg(test)]
+mod semantics_tests;
+#[cfg(test)]
 mod synth;
 #[cfg(test)]
 mod tests;

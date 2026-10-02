@@ -668,3 +668,33 @@ fn meta_imports_and_extra_imports_do_not_share_numbers() {
     );
     assert_eq!(manifest.matches("meta: _i").count(), 3, "{manifest}");
 }
+
+#[test]
+fn a_route_with_nest_false_is_listed_as_a_sibling() {
+    let page = |name: &str| {
+        format!(
+            "class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, required this.id}}); final String id; }}"
+        )
+    };
+    let (c, _) = generated(
+        "",
+        &[
+            ("orders/$id/page.dart", &page("Order")),
+            ("orders/$id/refund/page.dart", &page("Refund")),
+            ("orders/$id/refund/confirm/page.dart", &page("Confirm")),
+            ("orders/$id/refund/confirm/route.dart", "const nest = false;"),
+        ],
+    );
+    // Only the route that left says so; its path is the compound one, and it is written
+    // once, after the presentation and before the segments.
+    has(
+        &c,
+        &["type: ConfirmRoute,\n      path: '/orders/:id/refund/confirm',\n      folder: 'orders/\\$id/refund/confirm',\n      sibling: true,\n      segments: [RouteParam('id', 'String')],\n    ),"],
+    );
+    assert_eq!(c.matches("sibling: true").count(), 1, "{c}");
+    // The route it left, and the page above both, say nothing: `false` is the default.
+    has(
+        &c,
+        &["type: RefundRoute,\n      path: '/orders/:id/refund',\n      folder: 'orders/\\$id/refund',\n      segments: [RouteParam('id', 'String')],\n    ),"],
+    );
+}

@@ -1430,6 +1430,7 @@ abstract final class AppManifest {
       type: ConfirmRefundRoute,
       path: '/orders/:id/refund/confirm',
       folder: 'orders/\$id/refund/confirm',
+      sibling: true,
       layouts: [''],
       segments: [RouteParam('id', 'int')],
     ),

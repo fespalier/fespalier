@@ -1698,12 +1698,16 @@ fn configured(extra: &str, app_dir: &str, files: &[(&str, &str)]) -> tempfile::T
 
 #[test]
 fn config_defaults_and_custom_paths() {
-    assert_eq!(config("name: demo\n").unwrap(), Config::default());
+    // The pubspec's name is the one thing a bare pubspec changes: the package DevTools opens
+    // the app's files by.
+    let demo = Config {
+        package: Some("demo".into()),
+        ..Config::default()
+    };
+    assert_eq!(config("name: demo\n").unwrap(), demo);
     assert_eq!(config("").unwrap(), Config::default());
-    assert_eq!(
-        config("name: demo\nfespalier:\n").unwrap(),
-        Config::default()
-    );
+    assert_eq!(config("name: demo\nfespalier:\n").unwrap(), demo);
+    assert_eq!(config("fespalier:\n").unwrap().package, None);
     let c = config("name: demo\nfespalier:\n  app_dir: lib/pages/\n").unwrap();
     assert_eq!(
         (c.app_dir.as_str(), c.output.as_str()),

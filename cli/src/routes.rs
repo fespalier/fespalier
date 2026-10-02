@@ -50,7 +50,7 @@ pub fn run(project: &Path, json: bool, graph: Option<graph::Format>) -> Result<(
         bail!("{} error(s); no route table", diags.error_count());
     }
     if let Some(format) = graph {
-        print!("{}", graph::render(&app, format));
+        print!("{}", graph::render(&app, &cfg, format));
         return Ok(());
     }
     let out = if json {

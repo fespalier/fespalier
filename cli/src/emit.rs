@@ -15,6 +15,7 @@ use serde::Serialize;
 
 use crate::config::{Config, DataRetry, Remount};
 use crate::dart::Span;
+use crate::devtools;
 use crate::diag::Diags;
 use crate::enums;
 use crate::locale::{self, Localized};
@@ -47,6 +48,9 @@ struct FileCx {
     extra_imports: Vec<String>,
     /// `_i9.extraCodec`, from the app folder's `extra_codec.dart`: `router()` hands it to GoRouter.
     extra_codec: Option<String>,
+    /// The route tree as JSON (`fsp routes --graph json`), as a Dart string literal: what
+    /// `mount()` hands to DevTools, under `kFespalierDevTools`.
+    devtools_tree: String,
     /// Whether the root matches paths by case: what the mount point is compared with.
     case_sensitive: bool,
     /// `keep_previous` from the config: the `DataViews`' `keepPrevious`.
@@ -166,6 +170,9 @@ fn static_first(mut routes: Vec<TreeCx>) -> Vec<TreeCx> {
 struct CallCx {
     seg_fn: Option<String>,
     call: String,
+    /// For a guard: the folder it is in. `None` for a `redirect.dart`.
+    #[serde(skip)]
+    guard: Option<usize>,
 }
 
 /// A layout's builder body: `page` is the layout widget, which a section's `data`
@@ -467,6 +474,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
             .extra_codec
             .as_ref()
             .map(|c| format!("_i{}.extraCodec", c.import)),
+        devtools_tree: dart_str(&devtools::compact(app, cfg)),
         case_sensitive: app.routes[0].case_sensitive,
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
@@ -487,6 +495,9 @@ pub enum Frame {
         root: bool,
         /// A guard of its own, or of a page-less folder above, runs before it.
         guarded: bool,
+        /// The folders of the guards that run before it, in order: those of the page-less
+        /// folders above, then its own.
+        guards: Vec<usize>,
         children: Vec<Frame>,
     },
     /// The `ShellRoute` of the layout in folder `id`.
@@ -527,6 +538,7 @@ pub fn frames(app: &App) -> Vec<Frame> {
                 url,
                 root: t.root,
                 guarded: t.guarded,
+                guards: t.redirects.iter().filter_map(|c| c.guard).collect(),
                 children: children(t.routes),
             },
         }
@@ -1019,15 +1031,21 @@ fn redirects_of(
             fns.insert(ParamsFn::Guard(g));
             ParamsFn::Guard(g).name()
         });
-        out.push(hook_call(guard, "guard", &format!("g{g}@{id}"), seg_fn));
+        out.push(hook_call(
+            guard,
+            "guard",
+            &devtools::site_guard(g, id),
+            Some(g),
+            seg_fn,
+        ));
     }
-    for (hook, name, site) in [
-        (&r.guard, "guard", format!("g{id}@{id}")),
-        (&r.redirect, "redirect", String::new()),
+    for (hook, name, site, guard) in [
+        (&r.guard, "guard", devtools::site_guard(id, id), Some(id)),
+        (&r.redirect, "redirect", String::new(), None),
     ] {
         if let Some(h) = hook {
             let own = seg_fn.clone().filter(|_| !h.keys().is_empty());
-            out.push(hook_call(h, name, &site, own));
+            out.push(hook_call(h, name, &site, guard, own));
         }
     }
     out
@@ -1038,7 +1056,13 @@ fn redirects_of(
 /// _i3.guard(ref, id: v.id, uri: state.uri))` (the guard `g3` on the route `5`: a `const` name
 /// for the runtime to keep one subscription under) or, for a redirect, `refRedirect`.
 /// `seg_fn` parses `v`.
-fn hook_call(h: &Guard, name: &str, site: &str, seg_fn: Option<String>) -> CallCx {
+fn hook_call(
+    h: &Guard,
+    name: &str,
+    site: &str,
+    guard: Option<usize>,
+    seg_fn: Option<String>,
+) -> CallCx {
     let mut args = vec![];
     match h.first {
         HookFirst::Container => {
@@ -1057,7 +1081,11 @@ fn hook_call(h: &Guard, name: &str, site: &str, seg_fn: Option<String>) -> CallC
         (HookFirst::Ref, _) => format!("refRedirect(context, (ref) => {call})"),
         _ => call,
     };
-    CallCx { seg_fn, call }
+    CallCx {
+        seg_fn,
+        call,
+        guard,
+    }
 }
 
 /// The parse function a route's own guard and redirect share, when it needs one.

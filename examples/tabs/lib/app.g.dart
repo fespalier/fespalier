@@ -57,7 +57,7 @@ abstract final class AppRoutes {
     final routes = mount(navigatorKey: navigatorKey);
     // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
     GoRouter.optionURLReflectsImperativeAPIs = false;
-    return GoRouter(
+    final router = GoRouter(
       initialLocation: initialLocation,
       observers: observers,
       restorationScopeId: restorationScopeId,
@@ -67,6 +67,8 @@ abstract final class AppRoutes {
       routes: routes,
       errorBuilder: (context, state) => notFound(state.uri),
     );
+    if (kFespalierDevTools) devToolsAttach(router);
+    return router;
   }
 
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
@@ -81,6 +83,7 @@ abstract final class AppRoutes {
   }) {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
     return [
       StatefulShellRoute(
         navigatorContainerBuilder: _i1.container,
@@ -368,3 +371,8 @@ final class SettingsRoute extends TypedLocation {
   /// Like [of], or null when the route around [context] is another one.
   static SettingsRoute? maybeOf(BuildContext context) => maybeRouteOf<SettingsRoute>(context, AppRoutes.matchUrl);
 }
+
+/// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
+/// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
+/// build has false, so the string is not in one.
+String _devToolsTree() => '{"protocol":1,"package":"tabs","appDir":"lib/app","items":[{"type":"tabs","file":"(tabs)/layout.dart","folder":"(tabs)","markers":[],"branches":[{"index":0,"name":"(home)","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"(tabs)/(home)/page.dart","folder":"(tabs)/(home)","markers":[],"params":[],"redirect":false,"children":[]}]},{"index":1,"name":"search","items":[{"type":"route","pattern":"/search","route":"SearchRoute","file":"(tabs)/search/page.dart","folder":"(tabs)/search","markers":[],"spellings":{"fr":"/recherche"},"params":[],"redirect":false,"children":[]}]},{"index":2,"name":"profile","items":[{"type":"route","pattern":"/profile","route":"ProfileRoute","file":"(tabs)/profile/page.dart","folder":"(tabs)/profile","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/profile/edit","route":"EditProfileRoute","file":"(tabs)/profile/edit/page.dart","folder":"(tabs)/profile/edit","markers":["root"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/profile/security","route":"SecurityRoute","file":"(tabs)/profile/security/page.dart","folder":"(tabs)/profile/security","markers":[],"params":[],"redirect":false,"children":[]}]}]},{"index":3,"name":"library","items":[{"type":"tabs","file":"(tabs)/library/layout.dart","folder":"(tabs)/library","markers":[],"branches":[{"index":0,"name":"books","items":[{"type":"route","pattern":"/library/books","route":"BooksRoute","file":"(tabs)/library/books/page.dart","folder":"(tabs)/library/books","markers":[],"params":[],"redirect":false,"children":[]}]},{"index":1,"name":"authors","items":[{"type":"route","pattern":"/library/authors","route":"AuthorsRoute","file":"(tabs)/library/authors/page.dart","folder":"(tabs)/library/authors","markers":[],"params":[],"redirect":false,"children":[]}]}]}]}]},{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"settings/page.dart","folder":"settings","markers":[],"params":[],"redirect":false,"children":[]}],"sites":{}}';

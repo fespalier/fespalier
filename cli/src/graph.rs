@@ -15,6 +15,8 @@
 //! `#252;` for `ü`), Graphviz backslash escapes and HTML entities, so a label never ends a string
 //! or starts markup.
 
+use crate::config::Config;
+use crate::devtools;
 use crate::emit::{self, Frame};
 use crate::locale;
 use crate::resolve::{self, App, Route};
@@ -26,6 +28,8 @@ pub enum Format {
     Mermaid,
     /// A Graphviz `digraph` (`dot -Tsvg`)
     Dot,
+    /// The tree as JSON, what the DevTools extension reads (since 0.7.0)
+    Json,
 }
 
 /// A route node: its id in the output, and the lines of its label.
@@ -117,6 +121,7 @@ impl Builder {
                 root,
                 guarded,
                 children,
+                ..
             } => {
                 let r = &app.routes[*id];
                 let num = self.node_num();
@@ -202,7 +207,7 @@ impl Builder {
 
 /// The markers of a layout's box: a section's `data.dart`, a guard in its folder, and whether
 /// its shell is on the root navigator.
-fn layout_marks(r: &Route, root: bool) -> Vec<&'static str> {
+pub fn layout_marks(r: &Route, root: bool) -> Vec<&'static str> {
     [
         (r.is_section(), "data"),
         (r.guard.is_some(), "guard"),
@@ -240,8 +245,12 @@ fn entries_of(item: &Item, out: &mut Vec<usize>) {
     }
 }
 
-/// The graph of the app's routes in `format`, one line per element, ending in a newline.
-pub fn render(app: &App, format: Format) -> String {
+/// The graph of the app's routes in `format`, one line per element, ending in a newline. `Json`
+/// is the tree the DevTools extension reads (`devtools.rs`), which also needs `cfg`.
+pub fn render(app: &App, cfg: &Config, format: Format) -> String {
+    if format == Format::Json {
+        return devtools::pretty(app, cfg);
+    }
     let mut b = Builder::default();
     let items = b.items(app, &emit::frames(app));
     // Parents were numbered before their children: the edges read top-down, a route's children
@@ -280,6 +289,7 @@ pub fn render(app: &App, format: Format) -> String {
             }
             out.push("}".into());
         }
+        Format::Json => {}
     }
     let mut text = out.join("\n");
     text.push('\n');

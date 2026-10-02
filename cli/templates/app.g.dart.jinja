@@ -201,7 +201,7 @@ abstract final class AppRoutes {
     final routes = mount(navigatorKey: navigatorKey);
     // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
     GoRouter.optionURLReflectsImperativeAPIs = {{ "true" if push_updates_url else "false" }};
-    return GoRouter(
+    final router = GoRouter(
       initialLocation: initialLocation,
       observers: observers,
       restorationScopeId: restorationScopeId,
@@ -213,6 +213,8 @@ abstract final class AppRoutes {
       routes: routes,
       errorBuilder: (context, state) => notFound(state.uri),
     );
+    if (kFespalierDevTools) devToolsAttach(router);
+    return router;
   }
 
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
@@ -227,6 +229,7 @@ abstract final class AppRoutes {
   }) {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
     return [
 {% for r in tree %}
       {{ route(r) | indent(6) }},
@@ -510,3 +513,8 @@ final {{ a.top }} = {{ a.factory }}(
 );
 {% endfor %}
 {% endfor %}
+
+/// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
+/// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
+/// build has false, so the string is not in one.
+String _devToolsTree() => {{ devtools_tree }};

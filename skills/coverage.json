@@ -49,6 +49,8 @@
         "config:push_updates_url",
         "config:file_style",
         "config:links",
+        "config:semantics_ids",
+        "config:maestro",
         "command:gen",
         "command:check",
         "command:routes",
@@ -56,7 +58,9 @@
         "command:init",
         "command:new",
         "command:links",
+        "command:maestro",
         "README.md#Deep links and a sitemap (`fsp links`)",
+        "README.md#Maestro flows (`fsp maestro`)",
         "README.md",
         "ROADMAP.md",
         "install.sh",
@@ -73,6 +77,7 @@
         "cli/src/routes.rs",
         "cli/src/graph.rs",
         "cli/src/links.rs",
+        "cli/src/maestro.rs",
         "cli/src/format.rs",
         "cli/src/session.rs",
         "cli/src/parse_cache.rs",
@@ -189,7 +194,13 @@
       ]
     },
     "fespalier-testing": {
-      "covers": ["README.md#Testing", "packages/fespalier/lib/testing.dart"]
+      "covers": [
+        "README.md#Testing",
+        "packages/fespalier/lib/testing.dart",
+        "README.md#Maestro flows (`fsp maestro`)",
+        "config:semantics_ids",
+        "packages/fespalier/lib/src/web_semantics.dart"
+      ]
     },
     "fespalier-troubleshooting": {
       "covers": [

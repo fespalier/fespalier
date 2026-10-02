@@ -93,9 +93,8 @@ String currentLocation(WidgetTester tester) {
   final context = tester.element(find.byType(Navigator).first);
   final router = GoRouter.of(context);
   final matches = router.routerDelegate.currentConfiguration;
-  if (matches.isNotEmpty) {
-    final top = matches.last;
-    if (top is ImperativeRouteMatch) return top.matches.uri.toString();
-  }
+  // `lastOrNull` is the leaf: a page pushed inside a shell is in the shell's matches.
+  final top = matches.lastOrNull;
+  if (top is ImperativeRouteMatch) return top.matches.uri.toString();
   return router.routeInformationProvider.value.uri.toString();
 }

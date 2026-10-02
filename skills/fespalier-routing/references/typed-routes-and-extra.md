@@ -16,7 +16,7 @@ error that suggests `routeName`.
 ```dart
 ProductRoute(id: 42).go(context);            // replaces the stack, like context.go
 await ProductRoute(id: 42).push<bool>(context);   // Future<bool?>, like context.push
-ProductRoute(id: 42).replace(context);       // like context.replace
+ProductRoute(id: 42).replace(context);       // go + replaced history entry (since 0.6.0)
 ProductRoute(id: 42).location;               // '/products/42'
 const SearchRoute(q: 'ap', page: 2).location; // '/search?q=ap&page=2'
 ```
@@ -27,8 +27,10 @@ const SearchRoute(q: 'ap', page: 2).location; // '/search?q=ap&page=2'
   right under `AppRoutes.mount(at: '/shop')`. It is always the **canonical**
   spelling; `locationFor(locale)` and `locale:` pick a localized one (see
   `route-dart.md`).
-- `go`, `push` and `replace` are `context.go`, `context.push<T>` and
-  `context.replace` on `locationFor(locale)`.
+- `go` and `push` are `context.go` and `context.push<T>` on `locationFor(locale)`.
+  `replace` is `context.go` inside `Router.neglect` on every platform (since 0.6.0) when
+  the page on top is part of the declarative stack, and `context.replace` when that page
+  was pushed. See "`go`, `push` and `replace` and the address bar" below.
 - `watch`, `read`, `prefetch`, `preload`, `refresh`, `ref`, `keepFor` and (since 0.5.0)
   `of`, `maybeOf` and `copyWith` cannot be segment or query names: the class has those
   members (`fespalier-data`, and the next section; `preload` is reserved since 0.5.0).
@@ -138,9 +140,27 @@ void main() {
   behind it (see the README's Design notes): nothing is `dynamic`, constructors
   stay `const`. In `app.g.dart` it looks like `SearchRoute Function({String? q,
 int? page}) get copyWith => _copyWith;`; never edit it.
-- **Use `go` for state in the URL.** `replace` is go_router's: it swaps the top
-  page of the stack, but go_router does not put an imperative `replace` or `push`
-  in the address bar on the web (`GoRouter.optionURLReflectsImperativeAPIs`).
+- **`go`, `push` and `replace` and the address bar** (web).
+  - `go` adds a history entry and the URL is the new location.
+  - `replace` (since 0.6.0) shows the new location too and **replaces** the history entry,
+    so use it for a change that should not pile up in back (a search box). When the page
+    on top is part of the declarative stack it is `go` inside `Router.neglect`
+    (`replaceLocation(context, location)` in the runtime): the stack becomes the one the
+    new location has by itself, a page with the same path template keeps its state, and
+    `extra` is passed on. When the top page was `push`ed it is go_router's `replace`
+    (the pushed stack stays), because a `go` would drop it.
+  - `push` is not in the address bar by default: go_router keeps the pushed page out of
+    the route's `uri` unless `GoRouter.optionURLReflectsImperativeAPIs` is true.
+    `push_updates_url: true` in the pubspec's `fespalier:` section (since 0.6.0) makes the
+    generated `AppRoutes.router()` set it. The generated code assigns it on **every**
+    `router()` call, `true` or `false`, so no test leaks it into another. The cost is
+    go_router's: a reload or a deep link of a pushed route's URL builds that route's own
+    stack, not the stack it was pushed onto. Every fespalier route is a typed path, so the
+    URL is always a valid page.
+  - On 0.5.0 `replace` was go_router's `replace` in every case: over a page with none
+    below it the new URL showed up as a new history entry, otherwise the address bar showed
+    the page below's URL. Use `go`
+    for URL state there.
 - **Testing:** a browser's back or forward is the platform telling the app the
   entry it moved to; `examples/shop/test/url_state_test.dart` simulates it with
   a `pushRouteInformation` message and checks each `routeInformationUpdated`.

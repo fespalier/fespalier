@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -35,9 +37,14 @@ abstract class TypedLocation {
 
   /// Replaces the current location with this one.
   ///
+  /// The address bar and the browser's history follow on the web: when the page on top
+  /// is a route of the declarative stack, the entry is replaced (no new history entry)
+  /// and shows this location, see [replaceLocation]. Over a page that was pushed it is
+  /// go_router's `replace`, which keeps the pushed stack.
+  ///
   /// The optional [locale] picks one of the route's localized spellings.
   void replace(BuildContext context, {String? locale}) =>
-      context.replace(locationFor(locale));
+      replaceLocation(context, locationFor(locale));
 
   /// Starts loading every `data.dart` the page at this location reads (the
   /// data of each section above it, then its own: what `AppRoutes.dataAt`
@@ -50,6 +57,32 @@ abstract class TypedLocation {
   /// `RouteLink` calls it to preload.
   PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) =>
       ref.prefetchAll(const [], keepFor: keepFor);
+}
+
+/// Replaces the current location with [location], as `TypedLocation.replace` does.
+///
+/// When the page on top of the stack is part of the declarative stack (it was
+/// reached by `go`, a link or the address bar), it is `GoRouter.go` inside
+/// `Router.neglect`: the location is the router's `uri`, so the browser's address bar
+/// shows it, and the browser replaces its history entry instead of adding one. A page
+/// keeps its state, because go_router keys it by its path template. Everything below
+/// the top becomes the stack that [location] has by itself.
+///
+/// When the page on top was pushed (`push`), it is `GoRouter.replace`, because a `go`
+/// would drop the pushed stack. go_router shows that location in the address bar only
+/// when `GoRouter.optionURLReflectsImperativeAPIs` is true (the pubspec's
+/// `push_updates_url: true` sets it).
+///
+/// [extra] goes to the new location, as for `go`. The answer of `GoRouter.replace`
+/// (what the page pops with) is not given: nothing waits on a replaced page.
+void replaceLocation(BuildContext context, String location, {Object? extra}) {
+  final router = GoRouter.of(context);
+  final top = router.routerDelegate.currentConfiguration.lastOrNull;
+  if (top is ImperativeRouteMatch) {
+    unawaited(router.replace<Object?>(location, extra: extra));
+  } else {
+    Router.neglect(context, () => router.go(location, extra: extra));
+  }
 }
 
 /// Joins a mount prefix (`/shop`) and a route path (`/products/42`).

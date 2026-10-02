@@ -196,6 +196,8 @@ abstract final class AppRoutes {
     GlobalKey<NavigatorState>? navigatorKey,
   }) {
     final routes = mount(navigatorKey: navigatorKey);
+    // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
+    GoRouter.optionURLReflectsImperativeAPIs = true;
     return GoRouter(
       initialLocation: initialLocation,
       observers: observers,
@@ -2238,7 +2240,7 @@ final class NoteRoute extends TypedLocation {
       context.push<T>(locationFor(locale), extra: extra);
 
   @override
-  void replace(BuildContext context, {Note? extra, String? locale}) => context.replace(locationFor(locale), extra: extra);
+  void replace(BuildContext context, {Note? extra, String? locale}) => replaceLocation(context, locationFor(locale), extra: extra);
 
   /// The NoteRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.

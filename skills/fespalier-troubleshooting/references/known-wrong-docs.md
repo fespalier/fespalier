@@ -52,6 +52,24 @@ Two error messages were wrong in the same way, and were fixed in 0.4.0:
   you to make it _optional and nullable_, which it already was. 0.4.0 says the type
   isn't a query type and lists the ones that are.
 
+## Wrong in the 0.5.0 README, fixed in 0.6.0
+
+On 0.5.0 trust the right-hand side. Checked against v0.5.0 (`c107ccf`) with a widget test
+that records what the router tells the platform (`SystemChannels.navigation`).
+
+1. **"`replace` doesn't put its location in the address bar on the web, so use `go` for state
+   in the URL."** On 0.5.0 `replace` was go_router's: over a page with no page below it the
+   new URL was reported to the browser, as a **new** history entry; over a page with one
+   below it (a nested route, a `push`ed page) the address bar showed the URL of the page
+   below instead (`/p` after replacing `/p/c/1` with `/p/c/2`). 0.6.0 makes
+   `TypedLocation.replace` a `go` inside `Router.neglect` when the top page is not pushed, so
+   the URL follows and the history entry is **replaced**; over a pushed page it is still
+   go_router's `replace` (the stack stays) and follows `push_updates_url`. Using `go` for URL
+   state keeps working on every version.
+2. **`push` and the address bar.** A `push` never showed in the address bar (go_router's
+   `optionURLReflectsImperativeAPIs` is off by default); 0.6.0 adds the `push_updates_url`
+   pubspec key, and `router()` now assigns that go_router flag on every call.
+
 ## Things the README leaves out
 
 As of v0.4.0:

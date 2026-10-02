@@ -140,6 +140,12 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
   keeps the stack instead). A `push` stays out of the address bar unless the pubspec has
   `push_updates_url: true` (a reload then builds that URL's own stack). On 0.5.0 use `go` for URL
   state. See `references/typed-routes-and-extra.md`.
+- **`pushReplacement`** (since 0.7.0): `ProductRoute(id: 1).pushReplacement<T>(context)` is
+  go_router's: a new page key, so a sheet handing over to a full page does not keep the sheet's
+  state or transition (over a pushed page `replace` keeps the key; over a page of the declarative stack it is a
+  `go`, which keeps it only for the same path template). The replaced page's own future never
+  completes, and when it was the only page, neither does this one. Takes `locale:` and, where
+  the route has one, `extra:`.
 - **Trailing slashes** are dropped by go_router: `/products/` reaches
   `/products`. Nothing to configure.
 - **Case** is sensitive by default. `case_sensitive: false` in the pubspec, or a

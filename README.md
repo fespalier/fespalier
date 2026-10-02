@@ -753,7 +753,7 @@ ProductRoute(id: 2).location;                 // '/products/2'
 ProductRoute(id: 2).locationFor('fr');        // '/produits/2'
 ProductRoute(id: 2).locationFor('fr-CA');     // '/produits/2': a region falls back to its language
 ProductRoute(id: 2).locationFor('es');        // '/products/2': nobody spells it
-ProductRoute(id: 2).go(context, locale: 'de');  // → /produkte/2; also push<T>(…, locale:) and replace(…, locale:)
+ProductRoute(id: 2).go(context, locale: 'de');  // → /produkte/2; also push<T>(…, locale:), pushReplacement<T>(…, locale:) and replace(…, locale:)
 ```
 
 A level with no spelling for the locale keeps its canonical one, each level on its own (with
@@ -1481,6 +1481,12 @@ SearchRoute(q: 'ap').copyWith(page: 2).location;                   // '/search?q
   is set in [the pubspec](#getting-started) (since 0.6.0). On 0.5.0 `replace` was go_router's in
   every case: the address bar followed it only when no page was below it (as a new history entry),
   and showed the page below's URL otherwise, so use `go` for URL state there.
+- **`pushReplacement`** (since 0.7.0) is go_router's own, typed like `push`: the page on top leaves
+  and a new one is pushed, with a new page key, and the future completes with what that page pops
+  with. Use it where `replace` is wrong because the page's state or transition must not carry over:
+  a sheet that hands over to a full page, or the reverse. `replace` over a pushed page keeps its key (go_router's `replace`); over a page of the declarative stack it is a `go`, which keeps it only for the same path template. The replaced page's own
+  future never completes, and when it was the only page, neither does this one (go_router's
+  behaviour). Both take `locale:`, and `extra:` where the route has one.
 - **Reserved names.** `of`, `maybeOf` and `copyWith` are members of the route class, so
   they can't be segment or query names (see
   [Typed helpers on the route](#typed-helpers-on-the-route)).
@@ -1590,7 +1596,7 @@ class NotePage extends StatelessWidget {
   …
 }
 
-NoteRoute(id: 3).go(context, extra: note);      // also push<T>(…, extra:) and replace(…, extra:)
+NoteRoute(id: 3).go(context, extra: note);      // also push<T>(…, extra:), pushReplacement<T>(…, extra:) and replace(…, extra:)
 NoteRoute(id: 3).go(context, extra: 'oops');    // compile error: a String isn't a Note?
 ```
 
@@ -2254,6 +2260,7 @@ Each `RouteInfo<M>` has:
 | `paths`             | the path in each locale its folders spell it in, `{'fr': '/produits/:id'}` (a level with no spelling for a locale keeps its own); empty without [localized paths](#localized-paths). `pathFor(locale)` picks one, falling back to `path`                                                                                                                                                                                                                                             |
 | `folder`            | the route's folder relative to the app folder: `(buyer)/products/$id` (empty for the app folder itself)                                                                                                                                                                                                                                                                                                                                                                              |
 | `presentation`      | `RoutePresentation.page`; `.redirect` for a `redirect.dart` (`isRedirect`); `.root` for a page on the [root navigator](#the-root-navigator-navigatordart) through `navigator.dart`; `.custom` for a page a [`present.dart`](#presentdart-a-page-of-your-own) builds (it is on the root navigator too, unless a `navigator.dart` beside it says otherwise). Whether a page opens as a dialog or sheet is up to its `transition.dart` or `present.dart` at runtime, so it isn't listed |
+| `sibling`           | `true` for a route declared [`nest = false`](#a-sibling-with-a-compound-path) (since 0.7.0): a sibling of the page above it, with a compound path, not its child (the `sibling` tag of `fsp routes`); `false` otherwise                                                                                                                                                                                                                                                              |
 | `groups`            | the `(group)` folders above it, outermost first, parentheses included                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `layouts`           | the folders of the layouts that wrap it, outermost first (`''` is the app folder's own layout)                                                                                                                                                                                                                                                                                                                                                                                       |
 | `segments`, `query` | `RouteParam(name, type)`: `('id', 'int')`, `('page', 'int?')`, `('tags', 'List<String>')`. A catch-all is the last segment, a `List<String>` (or the `List` type it is typed with) with `catchAll: true`                                                                                                                                                                                                                                                                             |

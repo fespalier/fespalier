@@ -28,6 +28,12 @@ const _all = <RouteInfo<Object?>>[
     meta: Meta('B04'),
   ),
   RouteInfo(
+    type: int,
+    path: '/orders/:id/refund/confirm',
+    folder: r'orders/$id/refund/confirm',
+    sibling: true,
+  ),
+  RouteInfo(
     type: String,
     path: '/old',
     folder: 'old',
@@ -44,6 +50,7 @@ void main() {
       expect(info.folder, r'(buyer)/products/$id');
       expect(info.presentation, RoutePresentation.page);
       expect(info.isRedirect, isFalse);
+      expect(info.sibling, isFalse);
       expect(info.groups, ['(buyer)']);
       expect(info.layouts, ['', '(buyer)']);
       expect(info.segments.single.name, 'id');
@@ -58,6 +65,7 @@ void main() {
 
     test('defaults: a page with nothing else', () {
       final old = _all.last;
+      expect(old.sibling, isFalse);
       expect(old.isRedirect, isTrue);
       expect(old.groups, isEmpty);
       expect(old.layouts, isEmpty);
@@ -67,6 +75,12 @@ void main() {
       // No data.dart is null; a data.dart keyed by nothing is empty.
       expect(old.dataKeys, isNull);
       expect(old.meta, isNull);
+    });
+
+    test('sibling is the route declared `nest = false`', () {
+      final confirm = _all.singleWhere((i) => i.type == int);
+      expect(confirm.sibling, isTrue);
+      expect(_all.where((i) => i.sibling), [confirm]);
     });
 
     test('metaAs reads the meta as the type it is', () {

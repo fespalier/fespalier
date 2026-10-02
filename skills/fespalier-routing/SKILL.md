@@ -72,7 +72,10 @@ The class is named after the page class (`ProductPage` becomes `ProductRoute`),
 the folder path for a page **function** (`OrdersOrderIdCancelRoute`), or
 `const routeName = 'Name';` in `page.dart`. `.location` includes the mount
 prefix and is always the canonical spelling. Prefer typed routes over string
-paths: a renamed folder then breaks the build, not a link. More in
+paths: a renamed folder then breaks the build, not a link. A string path is allowed,
+and since 0.7.0 `fsp` warns about a literal that matches no route
+([`references/typed-routes-and-extra.md`](references/typed-routes-and-extra.md#string-paths)).
+More in
 [`references/typed-routes-and-extra.md`](references/typed-routes-and-extra.md),
 which also covers `of` / `maybeOf` / `copyWith` (the URL as state: read the typed
 route at the current location, change one query parameter, `null` clears it),
@@ -137,6 +140,12 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
   keeps the stack instead). A `push` stays out of the address bar unless the pubspec has
   `push_updates_url: true` (a reload then builds that URL's own stack). On 0.5.0 use `go` for URL
   state. See `references/typed-routes-and-extra.md`.
+- **`pushReplacement`** (since 0.7.0): `ProductRoute(id: 1).pushReplacement<T>(context)` is
+  go_router's: a new page key, so a sheet handing over to a full page does not keep the sheet's
+  state or transition (over a pushed page `replace` keeps the key; over a page of the declarative stack it is a
+  `go`, which keeps it only for the same path template). The replaced page's own future never
+  completes, and when it was the only page, neither does this one. Takes `locale:` and, where
+  the route has one, `extra:`.
 - **Trailing slashes** are dropped by go_router: `/products/` reaches
   `/products`. Nothing to configure.
 - **Case** is sensitive by default. `case_sensitive: false` in the pubspec, or a

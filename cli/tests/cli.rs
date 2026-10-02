@@ -739,6 +739,110 @@ fn json_diagnostics_go_to_stdout_as_lines() {
     assert!(ok && out.is_empty());
 }
 
+const NO_ROUTE: &str = "no route matches `/nope/x`, so it shows not-found [unknown_path]";
+
+/// A string path that matches no route is a warning: shown, in the file that has it, and the
+/// command still succeeds. With `unknown_path: error` `check` and `gen` fail, and `gen` still
+/// writes the output.
+#[test]
+fn check_warns_about_a_string_path_that_matches_no_route() {
+    let dir = project();
+    let root = dir.path();
+    fs::create_dir_all(root.join("lib/screens")).unwrap();
+    fs::write(
+        root.join("lib/screens/home.dart"),
+        "void f(BuildContext context) {\n  context.go('/');\n  context.go('/nope/x');\n}\n",
+    )
+    .unwrap();
+
+    let (ok, err) = fsp(root, &["check"]);
+    assert!(ok, "{err}");
+    assert!(err.contains("warning"), "{err}");
+    assert!(err.contains("lib/screens/home.dart"), "{err}");
+    assert!(err.contains(NO_ROUTE), "{err}");
+    assert!(err.contains("✓ 1 route, no errors"), "{err}");
+
+    let (ok, out, err) = fsp_full(root, &["check", "--json"], &[]);
+    assert!(ok, "{err}");
+    let lines: Vec<serde_json::Value> = out
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 1, "{out}");
+    assert_eq!(lines[0]["file"], "lib/screens/home.dart");
+    assert_eq!(lines[0]["severity"], "warning");
+    assert_eq!(lines[0]["line"], 3);
+    assert_eq!(lines[0]["column"], 14);
+    assert_eq!(lines[0]["message"], NO_ROUTE);
+
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  lints:\n    unknown_path: error\n",
+    )
+    .unwrap();
+    let (ok, err) = fsp(root, &["check"]);
+    assert!(!ok, "{err}");
+    assert!(
+        err.contains("1 error(s) in string paths (`lints: unknown_path: error`)")
+            && !err.contains("is up to date"),
+        "{err}"
+    );
+    assert!(
+        !root.join("lib/app.g.dart").exists(),
+        "check writes nothing"
+    );
+    let (ok, err) = fsp(root, &["gen"]);
+    assert!(!ok, "{err}");
+    assert!(
+        err.contains(
+            "1 error(s) in string paths (`lints: unknown_path: error`); lib/app.g.dart is up to date"
+        ),
+        "{err}"
+    );
+    assert!(root.join("lib/app.g.dart").exists(), "gen still writes");
+
+    // `off` skips it.
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  lints:\n    unknown_path: off\n",
+    )
+    .unwrap();
+    let (ok, err) = fsp(root, &["check"]);
+    assert!(ok && !err.contains("warning"), "{err}");
+}
+
+/// `watch` runs again when a Dart file under `lib/` but outside the app folder changes.
+#[test]
+fn watch_rechecks_string_paths_outside_the_app_folder() {
+    let dir = project();
+    let root = dir.path();
+    fs::create_dir_all(root.join("lib/screens")).unwrap();
+    let w = Watch::start(root);
+    w.wait_for("✓ 1 route → lib/app.g.dart");
+    w.settle();
+    let home = root.join("lib/screens/home.dart");
+
+    fs::write(&home, "void f(BuildContext c) { c.go('/nope/x'); }\n").unwrap();
+    w.wait_for(NO_ROUTE);
+    w.wait_for("lib/screens/home.dart");
+    w.settle();
+
+    // Fixed: the success line comes again, and the warning does not.
+    let mark = w.text().len();
+    fs::write(&home, "void f(BuildContext c) { c.go('/'); }\n").unwrap();
+    let end = Instant::now() + Duration::from_secs(10);
+    while !w.text()[mark..].contains("✓ 1 route, lib/app.g.dart unchanged") {
+        assert!(Instant::now() < end, "timed out; got:\n{}", w.text());
+        sleep(Duration::from_millis(50));
+    }
+    w.settle();
+    assert!(
+        !w.text()[mark..].contains("no route matches"),
+        "{}",
+        w.text()
+    );
+}
+
 /// A stand-in for `dart` whose `format` prepends a marker line to stdin.
 #[cfg(unix)]
 fn fake_dart(dir: &Path) -> std::path::PathBuf {

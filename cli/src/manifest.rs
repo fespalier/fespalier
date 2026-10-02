@@ -51,6 +51,8 @@ pub struct Info {
     /// How the route is served, when it isn't a plain page: `redirect` (a redirect.dart),
     /// `custom` (a present.dart builds the page) or `root` (on the root navigator).
     pub presentation: Option<&'static str>,
+    /// `nest = false`: a sibling of the page above it, not its child.
+    pub sibling: bool,
     /// `(buyer)`, outermost first.
     pub groups: Vec<String>,
     /// The folders of the layouts that wrap it, outermost first.
@@ -123,6 +125,7 @@ pub fn collect(app: &App) -> Vec<Info> {
                     (_, _, true) => Some("root"),
                     _ => None,
                 },
+                sibling: r.sibling,
                 groups,
                 layouts,
                 segments: app
@@ -295,6 +298,8 @@ struct RouteInfoCx {
     folder: String,
     /// `redirect`, `root` or `custom`: a `RoutePresentation`; `None` for a plain page.
     presentation: Option<&'static str>,
+    /// `nest = false`: `sibling: true` is written, and nothing for a route that nests.
+    sibling: bool,
     groups: Option<String>,
     layouts: Option<String>,
     segments: Option<String>,
@@ -353,6 +358,7 @@ pub fn cx(app: &App, first_import: usize) -> (ManifestCx, Vec<String>) {
                 }),
                 folder: dart_str(&i.folder),
                 presentation: i.presentation,
+                sibling: i.sibling,
                 groups: list(i.groups.iter().map(|g| dart_str(g)).collect()),
                 layouts: list(i.layouts.iter().map(|l| dart_str(l)).collect()),
                 segments: list(

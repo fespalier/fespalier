@@ -25,6 +25,9 @@ flutter:
 # ProviderScope's retry policy).
 fespalier:
   data_retry: none
+  # A string path that matches no route fails `fsp check` (the default is a warning).
+  lints:
+    unknown_path: error
   # Every page wears Semantics(identifier: 'route:<pattern>') and AppRoutes.mount() turns the
   # semantics tree on on the web: what Maestro reads (README, "Maestro flows (`fsp maestro`)").
   semantics_ids: true

@@ -403,7 +403,8 @@ fn the_top_level_unknown_key_message_lists_semantics_ids_and_maestro() {
         Pubspec::parse("name: demo\nfespalier:\n  maestr: {}\n").unwrap_err()
     );
     assert!(
-        e.contains("unknown field `maestr`") && e.contains("`links`, `semantics_ids`, `maestro`"),
+        e.contains("unknown field `maestr`")
+            && e.contains("`links`, `lints`, `semantics_ids`, `maestro`"),
         "{e}"
     );
 }

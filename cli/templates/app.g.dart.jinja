@@ -402,6 +402,10 @@ final class {{ r.name }}Route extends TypedLocation {
 
   @override
   void replace(BuildContext context, { {{- r.extra }} extra, String? locale}) => replaceLocation(context, locationFor(locale), extra: extra);
+
+  @override
+  Future<T?> pushReplacement<T extends Object?>(BuildContext context, { {{- r.extra }} extra, String? locale}) =>
+      GoRouter.of(context).pushReplacement<T>(locationFor(locale), extra: extra);
 {% endif %}
 
   /// The {{ r.name }}Route the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].

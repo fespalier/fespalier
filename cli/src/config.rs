@@ -22,6 +22,8 @@
 //!     android_sha256: ["AB:CD:..."]
 //!     ios_app_id: TEAMID.com.example.shop
 //!     out: links            # default
+//!   lints:                  # one level per lint (see `lint.rs`)
+//!     unknown_path: warning # default; `error` fails `gen` and `check`, `off` skips the check
 //!   maestro:                # default: none; what `fsp maestro` writes (see `maestro.rs`)
 //!     url: http://localhost:8080   # or `app_id: com.example.shop`, one of the two
 //!     link: http://localhost:8080/#
@@ -119,6 +121,33 @@ impl Remount {
     }
 }
 
+/// How a lint reports: not at all, as a warning, or as an error.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LintLevel {
+    /// The check does not run.
+    Off,
+    /// Shown, and never fails a command.
+    #[default]
+    Warning,
+    /// Shown, and `gen`, `check` and `watch` fail (the output is still written).
+    Error,
+}
+
+/// The `lints:` section: one level per lint.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Lints {
+    /// A string path passed to the router that matches no route (`lint.rs`).
+    pub unknown_path: LintLevel,
+}
+
+/// The `lints:` section as the pubspec has it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LintsConfig {
+    unknown_path: Option<LintLevel>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// Normalized, `/`-separated, no trailing slash: `lib/app`.
@@ -156,6 +185,8 @@ pub struct Config {
     /// The `links:` section, as written. Only `fsp links` reads it, and it checks the values
     /// then ([`LinksConfig::validate`]), so a mistake in it never stops `fsp gen`.
     pub links: Option<LinksConfig>,
+    /// The `lints:` section: how each lint over the app's own code reports.
+    pub lints: Lints,
     /// The `maestro:` section, as written. Only `fsp maestro` reads it, and it checks the values
     /// then ([`MaestroConfig::validate`]), so a mistake in it never stops `fsp gen`.
     pub maestro: Option<MaestroConfig>,
@@ -178,6 +209,7 @@ impl Default for Config {
             semantics_ids: false,
             file_style: FileStyle::Snake,
             links: None,
+            lints: Lints::default(),
             maestro: None,
         }
     }
@@ -215,6 +247,7 @@ struct RawConfig {
     push_updates_url: Option<bool>,
     file_style: Option<FileStyle>,
     links: Option<LinksConfig>,
+    lints: Option<LintsConfig>,
     semantics_ids: Option<bool>,
     maestro: Option<MaestroConfig>,
 }
@@ -676,6 +709,18 @@ impl Config {
         Ok(Pubspec::load(project)?.config)
     }
 
+    /// This config for `fsp new` and `fsp init`, which scaffold files and then generate: a lint
+    /// that is an error reports as a warning there, so a typo in code they did not write
+    /// does not read as a failure of the scaffold.
+    #[must_use]
+    pub fn for_scaffolding(&self) -> Config {
+        let mut cfg = self.clone();
+        if cfg.lints.unknown_path == LintLevel::Error {
+            cfg.lints.unknown_path = LintLevel::Warning;
+        }
+        cfg
+    }
+
     /// The import path from the output file's folder to `rel` inside the app
     /// folder: `app/page.dart` for the defaults, `../pages/page.dart` for
     /// `lib/pages` with the output in `lib/router/`.
@@ -770,6 +815,7 @@ impl Pubspec {
             config.push_updates_url = c.push_updates_url.unwrap_or(config.push_updates_url);
             config.file_style = c.file_style.unwrap_or(config.file_style);
             config.links = c.links;
+            config.lints.unknown_path = c.lints.and_then(|l| l.unknown_path).unwrap_or_default();
             config.semantics_ids = c.semantics_ids.unwrap_or(false);
             config.maestro = c.maestro;
             if let Some(d) = c.app_dir {

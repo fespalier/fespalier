@@ -32,3 +32,4 @@ export 'src/selected_data.dart';
 export 'src/tab_options.dart';
 export 'src/transitions.dart';
 export 'src/url_state.dart';
+export 'src/web_semantics.dart';

@@ -54,6 +54,9 @@ struct FileCx {
     /// `push_updates_url` from the config: what `router()` assigns to
     /// `GoRouter.optionURLReflectsImperativeAPIs`.
     push_updates_url: bool,
+    /// `semantics_ids` from the config: pages wear `Semantics(identifier:)`, and `mount()`
+    /// turns the semantics tree on on the web.
+    semantics_ids: bool,
     /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
     /// (`_keep`) that tells a parameter left out from one passed as `null`.
     copy_with: bool,
@@ -415,7 +418,7 @@ struct ProviderCx {
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let mut fns = BTreeSet::new();
-    let tree = routes_of(app, 0, true, "", &[], false, &mut fns);
+    let tree = routes_of(app, 0, true, "", &[], false, &mut fns, cfg.semantics_ids);
     check_order(&tree, diags);
     check_tab_starts(&tree, diags);
     check_root_children(&tree, diags);
@@ -470,6 +473,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         case_sensitive: app.routes[0].case_sensitive,
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
+        semantics_ids: cfg.semantics_ids,
     };
     templates::render("app.g.dart", &cx)
 }
@@ -531,7 +535,7 @@ pub fn frames(app: &App) -> Vec<Frame> {
             },
         }
     }
-    routes_of(app, 0, true, "", &[], false, &mut BTreeSet::new())
+    routes_of(app, 0, true, "", &[], false, &mut BTreeSet::new(), false)
         .into_iter()
         .map(frame)
         .collect()
@@ -632,6 +636,7 @@ fn own_part(r: &Route) -> String {
 /// `under_page` is set for the routes that nest in the page above (a page's subfolders, and
 /// what page-less folders below them hold): one with `nest = false` is left out, because the
 /// page writes it beside itself (see [`leavers`]).
+#[allow(clippy::too_many_arguments)]
 fn routes_of(
     app: &App,
     id: usize,
@@ -640,6 +645,7 @@ fn routes_of(
     inherited: &[usize],
     under_page: bool,
     fns: &mut BTreeSet<ParamsFn>,
+    ids: bool,
 ) -> Vec<TreeCx> {
     let r = &app.routes[id];
     if under_page && r.sibling {
@@ -653,7 +659,7 @@ fn routes_of(
     };
 
     if let (Some(layout), Some(tabs)) = (&r.layout, &r.tabs) {
-        return tab_routes(app, id, top, &path, layout, tabs, inherited, fns);
+        return tab_routes(app, id, top, &path, layout, tabs, inherited, fns, ids);
     }
 
     // Routes beside or below this folder that its own route doesn't contain.
@@ -673,13 +679,15 @@ fn routes_of(
         (Some(_), _) => {
             let mut out: Vec<TreeCx> = parent
                 .iter()
-                .map(|p| without_catch_all(page_route(app, id, top, p, false, inherited, fns), r))
+                .map(|p| {
+                    without_catch_all(page_route(app, id, top, p, false, inherited, fns, ids), r)
+                })
                 .collect();
-            out.push(page_route(app, id, top, &path, true, inherited, fns));
+            out.push(page_route(app, id, top, &path, true, inherited, fns, ids));
             // What leaves the page goes beside it, below its guard too: the routes are the
             // page's siblings, with the folders in between in their paths.
             let mut leaving = vec![];
-            leavers(app, id, top, &next, &below, fns, &mut leaving);
+            leavers(app, id, top, &next, &below, fns, ids, &mut leaving);
             (before, after) = in_front_of(&out, leaving);
             out
         }
@@ -693,14 +701,14 @@ fn routes_of(
             out.extend(
                 r.children
                     .iter()
-                    .flat_map(|&c| routes_of(app, c, top, &next, &below, under_page, fns)),
+                    .flat_map(|&c| routes_of(app, c, top, &next, &below, under_page, fns, ids)),
             );
             static_first(out)
         }
         (None, None) => static_first(
             r.children
                 .iter()
-                .flat_map(|&c| routes_of(app, c, top, &next, &below, under_page, fns))
+                .flat_map(|&c| routes_of(app, c, top, &next, &below, under_page, fns, ids))
                 .collect(),
         ),
     };
@@ -749,6 +757,7 @@ fn routes_of(
 /// compound (`refund/confirm`, or `refund/:step`), and `inherited` is the guards of the page
 /// and of the page-less folders between, which a route nested in the page would have had from
 /// its parents. A route that leaves keeps its own children nested under it.
+#[allow(clippy::too_many_arguments)]
 fn leavers(
     app: &App,
     id: usize,
@@ -756,12 +765,13 @@ fn leavers(
     prefix: &str,
     inherited: &[usize],
     fns: &mut BTreeSet<ParamsFn>,
+    ids: bool,
     out: &mut Vec<TreeCx>,
 ) {
     for &c in &app.routes[id].children {
         let r = &app.routes[c];
         if r.sibling {
-            out.extend(routes_of(app, c, top, prefix, inherited, false, fns));
+            out.extend(routes_of(app, c, top, prefix, inherited, false, fns, ids));
         } else if r.page.is_none() {
             // Page-less (or a redirect, which has nothing nested in it either): what is below
             // it nests in the same page, so its folder is part of the path of what leaves.
@@ -773,7 +783,7 @@ fn leavers(
             };
             let mut below = inherited.to_vec();
             below.extend(r.guard.as_ref().map(|_| c));
-            leavers(app, c, top, &next, &below, fns, out);
+            leavers(app, c, top, &next, &below, fns, ids, out);
         }
     }
 }
@@ -1068,8 +1078,18 @@ fn own_seg_fn(app: &App, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<Stri
     })
 }
 
+/// `page`, the call that builds a route's own page, wearing `Semantics(identifier:)`, where `id`
+/// is the identifier as a Dart literal. The wrapper sits on the innermost call, so it is in the
+/// tree exactly when the page is built (a loading, error or not-found view does not carry it).
+/// `Semantics` has no `const` constructor, so the wrapper is never `const`; a `const` page call
+/// keeps its own `const`, so the page is still built once.
+pub(crate) fn with_semantics(id: &str, page: String) -> String {
+    format!("Semantics(identifier: {id}, container: true, child: {page})")
+}
+
 /// The `GoRoute` for a folder's page.dart. Its subfolders' routes nest below it,
 /// unless `nested` is off (a tab layout's own page sits beside its tabs).
+#[allow(clippy::too_many_arguments)]
 fn page_route(
     app: &App,
     id: usize,
@@ -1078,6 +1098,7 @@ fn page_route(
     nested: bool,
     inherited: &[usize],
     fns: &mut BTreeSet<ParamsFn>,
+    ids: bool,
 ) -> TreeCx {
     let r = &app.routes[id];
     let page = r.page.as_ref().expect("page_route needs a page.dart");
@@ -1085,7 +1106,7 @@ fn page_route(
         static_first(
             r.children
                 .iter()
-                .flat_map(|&c| routes_of(app, c, false, "", &[], true, fns))
+                .flat_map(|&c| routes_of(app, c, false, "", &[], true, fns, ids))
                 .collect(),
         )
     } else {
@@ -1109,6 +1130,12 @@ fn page_route(
                 w.call(in_builder)
             }),
     });
+    let page_call = page.call(in_builder);
+    let page_call = if ids {
+        with_semantics(&dart_str(&resolve::semantics_id(&r.url)), page_call)
+    } else {
+        page_call
+    };
     TreeCx {
         layout: None,
         branches: vec![],
@@ -1120,7 +1147,7 @@ fn page_route(
         redirects,
         not_found_builder: false,
         seg_fn,
-        page: with_sections(app, &page.args, page.call(in_builder), fns, true),
+        page: with_sections(app, &page.args, page_call, fns, true),
         data,
         not_found: not_found_call(r),
         remount: remount.clone(),
@@ -1218,6 +1245,7 @@ fn tab_routes(
     tabs: &[Branch],
     inherited: &[usize],
     fns: &mut BTreeSet<ParamsFn>,
+    ids: bool,
 ) -> Vec<TreeCx> {
     // The tabs are siblings of the folder's page, so they share its path.
     let next = if path.is_empty() {
@@ -1234,9 +1262,9 @@ fn tab_routes(
         .enumerate()
         .map(|(i, b)| {
             let routes = match *b {
-                Branch::Own => vec![page_route(app, id, top, path, false, inherited, fns)],
+                Branch::Own => vec![page_route(app, id, top, path, false, inherited, fns, ids)],
                 Branch::Folder(c) => {
-                    static_first(routes_of(app, c, top, &next, &below, false, fns))
+                    static_first(routes_of(app, c, top, &next, &below, false, fns, ids))
                 }
             };
             // go_router opens a tab at its first route, and can't do that for a route with a

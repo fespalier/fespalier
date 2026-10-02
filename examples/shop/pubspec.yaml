@@ -28,3 +28,14 @@ fespalier:
   # A string path that matches no route fails `fsp check` (the default is a warning).
   lints:
     unknown_path: error
+  # Every page wears Semantics(identifier: 'route:<pattern>') and AppRoutes.mount() turns the
+  # semantics tree on on the web: what Maestro reads (README, "Maestro flows (`fsp maestro`)").
+  semantics_ids: true
+  # `fsp maestro` writes .maestro/routes/ from the routes. Serve the web build on port 8080
+  # (`flutter run -d web-server --web-port 8080`), then `maestro test .maestro/routes`.
+  maestro:
+    url: http://localhost:8080
+    link: http://localhost:8080/#   # the default hash URL strategy
+    samples:
+      greet/$name: Ada
+      products/$id: 1

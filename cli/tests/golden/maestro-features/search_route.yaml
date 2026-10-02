@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/search/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/search"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/search"
+- extendedWaitUntil:
+    visible:
+      id: "route:/search"
+    timeout: 20000

@@ -3410,6 +3410,12 @@ pub fn pattern(url: &[Seg]) -> String {
     format!("/{}", parts.join("/"))
 }
 
+/// The semantics identifier of the route at `url`: `route:/products/:id`. It depends only on the
+/// folder path, so it is the same for every localized spelling and every mount point.
+pub fn semantics_id(url: &[Seg]) -> String {
+    format!("route:{}", pattern(url))
+}
+
 fn in_path_order(keys: Vec<String>, segs: &[(String, usize)]) -> Vec<String> {
     let mut out: Vec<String> = segs
         .iter()

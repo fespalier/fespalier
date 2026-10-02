@@ -14,6 +14,7 @@
 //!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
 //!   push_updates_url: false # default; true puts a `push`ed route's URL in the browser's address bar
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
+//!   semantics_ids: false    # default; true gives each page `Semantics(identifier: 'route:/...')`, for Maestro
 //!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
 //!     domains: [shop.example.com]
 //!     scheme: myshop
@@ -23,11 +24,20 @@
 //!     out: links            # default
 //!   lints:                  # one level per lint (see `lint.rs`)
 //!     unknown_path: warning # default; `error` fails `gen` and `check`, `off` skips the check
+//!   maestro:                # default: none; what `fsp maestro` writes (see `maestro.rs`)
+//!     url: http://localhost:8080   # or `app_id: com.example.shop`, one of the two
+//!     link: http://localhost:8080/#
+//!     out: .maestro/routes  # default
+//!     guard_flow: .maestro/sign-in.yaml
+//!     timeout: 20000        # default, in milliseconds
+//!     samples:              # the value of each dynamic folder
+//!       products/$id: 1
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
 //! the generated file imports the app files as ordinary package code.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -41,6 +51,10 @@ pub const DEFAULT_APP_DIR: &str = "lib/app";
 pub const DEFAULT_OUTPUT: &str = "lib/app.g.dart";
 /// Where `fsp links` writes, relative to the project root.
 pub const DEFAULT_LINKS_OUT: &str = "links";
+/// Where `fsp maestro` writes, relative to the project root.
+pub const DEFAULT_MAESTRO_OUT: &str = ".maestro/routes";
+/// How long (in milliseconds) a flow waits for the page it opened.
+pub const DEFAULT_MAESTRO_TIMEOUT: u32 = 20_000;
 
 /// What the providers fespalier generates for `data()` functions do when they fail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -162,6 +176,10 @@ pub struct Config {
     /// `GoRouter.optionURLReflectsImperativeAPIs`, which `AppRoutes.router()` assigns: a
     /// `push`ed route shows its URL in the browser's address bar.
     pub push_updates_url: bool,
+    /// `semantics_ids`: each page wears `Semantics(identifier: 'route:<pattern>')`, and
+    /// `AppRoutes.mount()` turns the semantics tree on on the web, so a driver that reads the
+    /// screen from the outside (Maestro) finds the page.
+    pub semantics_ids: bool,
     /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
     pub file_style: FileStyle,
     /// The `links:` section, as written. Only `fsp links` reads it, and it checks the values
@@ -169,6 +187,9 @@ pub struct Config {
     pub links: Option<LinksConfig>,
     /// The `lints:` section: how each lint over the app's own code reports.
     pub lints: Lints,
+    /// The `maestro:` section, as written. Only `fsp maestro` reads it, and it checks the values
+    /// then ([`MaestroConfig::validate`]), so a mistake in it never stops `fsp gen`.
+    pub maestro: Option<MaestroConfig>,
 }
 
 impl Default for Config {
@@ -185,9 +206,11 @@ impl Default for Config {
             data_retry: DataRetry::Inherit,
             keep_previous: true,
             push_updates_url: false,
+            semantics_ids: false,
             file_style: FileStyle::Snake,
             links: None,
             lints: Lints::default(),
+            maestro: None,
         }
     }
 }
@@ -225,6 +248,8 @@ struct RawConfig {
     file_style: Option<FileStyle>,
     links: Option<LinksConfig>,
     lints: Option<LintsConfig>,
+    semantics_ids: Option<bool>,
+    maestro: Option<MaestroConfig>,
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -346,7 +371,7 @@ impl LinksConfig {
         }
         let out = match &self.out {
             None => DEFAULT_LINKS_OUT.to_string(),
-            Some(raw) => links_out(raw)?,
+            Some(raw) => project_folder("links.out", raw)?,
         };
         Ok(Links {
             domains,
@@ -354,6 +379,238 @@ impl LinksConfig {
             android,
             ios_app_id: self.ios_app_id.clone(),
             out,
+        })
+    }
+}
+
+/// The `maestro:` section of the `fespalier:` config, as the pubspec has it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MaestroConfig {
+    app_id: Option<String>,
+    url: Option<String>,
+    link: Option<String>,
+    out: Option<String>,
+    guard_flow: Option<String>,
+    timeout: Option<i64>,
+    samples: Option<BTreeMap<String, Value>>,
+}
+
+/// What each flow starts: the app on a device, or a page in a browser.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Target {
+    /// Android and iOS: the flow's `appId:`.
+    App(String),
+    /// The web: the flow's `url:`.
+    Web(String),
+}
+
+/// What a dynamic folder's sample is, as text: one segment, or the parts of a catch-all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SampleValue {
+    One(String),
+    Many(Vec<String>),
+}
+
+/// The `maestro:` section, checked: what `fsp maestro` writes flows for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Maestro {
+    pub target: Target,
+    /// What a route's path is appended to, as the flow opens it: `myshop://shop.example.com`,
+    /// `http://localhost:8080/#`; no trailing `/`.
+    pub link: String,
+    /// An Android and iOS flow opening an `https` link: Maestro's `autoVerify` skips the
+    /// "Open with" dialog of Android.
+    pub https_app_link: bool,
+    /// Normalized, `/`-separated, no trailing slash, relative to the project root; empty for
+    /// the root itself.
+    pub out: String,
+    /// A flow that gets past the guards (signs in), normalized and relative to the project root.
+    pub guard_flow: Option<String>,
+    /// How long a flow waits for its page, in milliseconds.
+    pub timeout: u32,
+    /// The value of each dynamic folder (its path below the app folder), as the pubspec orders them.
+    pub samples: Vec<(String, SampleValue)>,
+}
+
+/// `${APP_ID}`: a Maestro variable, which `maestro test -e APP_ID=...` fills in.
+fn is_variable(s: &str) -> bool {
+    s.strip_prefix("${")
+        .and_then(|r| r.strip_suffix('}'))
+        .is_some_and(|name| {
+            name.chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
+}
+
+/// `com.example.shop`: two or more dot-separated parts, each starting with a letter. Bundle ids
+/// take `-` too.
+fn is_bundle_or_application_id(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('.').collect();
+    parts.len() >= 2
+        && parts.iter().all(|p| {
+            p.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && p.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        })
+}
+
+/// `http://localhost:8080`: an http or https URL with a host, and no query or fragment.
+fn is_http_url(s: &str) -> bool {
+    let Some(rest) = s
+        .strip_prefix("http://")
+        .or_else(|| s.strip_prefix("https://"))
+    else {
+        return false;
+    };
+    !rest.split('/').next().unwrap_or_default().is_empty()
+        && !s.contains(char::is_whitespace)
+        && !s.contains(['?', '#'])
+}
+
+/// `<scheme>://` and something after it, with no whitespace and no query. A `#` may only end it
+/// (`http://localhost:8080/#`, a hash-strategy app's route prefix).
+fn is_link_prefix(s: &str) -> bool {
+    let Some((scheme, rest)) = s.split_once("://") else {
+        return false;
+    };
+    let scheme_ok = scheme
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    let body = rest.strip_suffix('#').unwrap_or(rest);
+    scheme_ok
+        && !rest.is_empty()
+        && !s.contains(char::is_whitespace)
+        && !s.contains('?')
+        && !body.contains('#')
+}
+
+/// A sample as text: a string, a number or a boolean.
+fn sample_text(v: &Value) -> Option<String> {
+    match v {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+impl MaestroConfig {
+    /// Checks the values, naming the key at fault. `links` is the `links:` section, which the
+    /// default `link` comes from when the flows are for an app.
+    pub fn validate(&self, links: Option<&LinksConfig>) -> Result<Maestro> {
+        let target = match (&self.app_id, &self.url) {
+            (None, None) => bail!(
+                "`fespalier.maestro` needs `app_id` (Android and iOS) or `url` (the web): what each flow's `appId:` or `url:` is"
+            ),
+            (Some(_), Some(_)) => bail!(
+                "`fespalier.maestro` takes `app_id` or `url`, not both: a flow is for Android and iOS or for the web"
+            ),
+            (Some(id), None) => {
+                if !is_variable(id) && !is_bundle_or_application_id(id) {
+                    bail!(
+                        "`fespalier.maestro.app_id` must be an application or bundle id like `com.example.shop`, or a Maestro variable like `${{APP_ID}}`, got `{id}`"
+                    );
+                }
+                Target::App(id.clone())
+            }
+            (None, Some(url)) => {
+                if !is_variable(url) && !is_http_url(url) {
+                    bail!(
+                        "`fespalier.maestro.url` must be an http or https URL like `http://localhost:8080`, or a Maestro variable like `${{URL}}`, got `{url}`"
+                    );
+                }
+                Target::Web(url.clone())
+            }
+        };
+        let link = match &self.link {
+            Some(raw) => {
+                if !is_variable(raw) && !is_link_prefix(raw) {
+                    bail!(
+                        "`fespalier.maestro.link` must be a URL like `myshop://shop.example.com` or `http://localhost:8080/#`, with no query, or a Maestro variable like `${{LINK}}`, got `{raw}`"
+                    );
+                }
+                raw.strip_suffix('/').unwrap_or(raw).to_string()
+            }
+            None => match (&target, links) {
+                (Target::Web(url), _) => url.strip_suffix('/').unwrap_or(url).to_string(),
+                (Target::App(_), Some(links)) => {
+                    let links = links.validate()?;
+                    let host = links.domains.first().cloned().unwrap_or_default();
+                    match links.scheme {
+                        Some(scheme) => format!("{scheme}://{host}"),
+                        None => format!("https://{host}"),
+                    }
+                }
+                (Target::App(_), None) => bail!(
+                    "`fespalier.maestro.link` is required with `app_id` when there is no `links:` section: write what a route's path goes after, e.g. `link: myshop://shop.example.com`"
+                ),
+            },
+        };
+        let out = match &self.out {
+            None => DEFAULT_MAESTRO_OUT.to_string(),
+            Some(raw) => project_folder("maestro.out", raw)?,
+        };
+        let guard_flow = match &self.guard_flow {
+            None => None,
+            Some(raw) => {
+                let file = project_path(raw).filter(|p| {
+                    let name = p.rsplit('/').next().unwrap_or_default();
+                    name.strip_suffix(".yaml")
+                        .or_else(|| name.strip_suffix(".yml"))
+                        .is_some_and(|stem| !stem.is_empty())
+                });
+                match file {
+                    Some(p) => Some(p),
+                    None => bail!(
+                        "`fespalier.maestro.guard_flow` must be a .yaml or .yml file inside the project (relative, no `..`), got `{raw}`"
+                    ),
+                }
+            }
+        };
+        let timeout = match self.timeout {
+            None => DEFAULT_MAESTRO_TIMEOUT,
+            Some(n) => match u32::try_from(n)
+                .ok()
+                .filter(|n| (1000..=600_000).contains(n))
+            {
+                Some(n) => n,
+                None => bail!(
+                    "`fespalier.maestro.timeout` is in milliseconds, from 1000 to 600000, got `{n}`"
+                ),
+            },
+        };
+        let mut samples = vec![];
+        for (key, value) in self.samples.iter().flatten() {
+            let sample = match value {
+                Value::Sequence(items) => items
+                    .iter()
+                    .map(sample_text)
+                    .collect::<Option<Vec<String>>>()
+                    .map(SampleValue::Many),
+                one => sample_text(one).map(SampleValue::One),
+            };
+            let Some(sample) = sample else {
+                bail!(
+                    "`fespalier.maestro.samples`: the value of `{key}` must be a text, a number, a boolean or a list of them"
+                );
+            };
+            samples.push((key.clone(), sample));
+        }
+        Ok(Maestro {
+            https_app_link: matches!(target, Target::App(_)) && link.starts_with("https://"),
+            target,
+            link,
+            out,
+            guard_flow,
+            timeout,
+            samples,
         })
     }
 }
@@ -417,8 +674,9 @@ fn is_scheme(s: &str) -> bool {
         && !matches!(s, "http" | "https")
 }
 
-/// A folder inside the project, `/`-separated; `.` is the project root itself (`""`).
-fn links_out(raw: &str) -> Result<String> {
+/// A path inside the project, `/`-separated, without `.` parts; `None` for an absolute one, a
+/// drive letter or a `..`. `.` is the project root itself (`""`).
+fn project_path(raw: &str) -> Option<String> {
     let parts: Vec<&str> = raw
         .split(['/', '\\'])
         .filter(|p| !p.is_empty() && *p != ".")
@@ -428,11 +686,20 @@ fn links_out(raw: &str) -> Result<String> {
         || raw.contains(':')
         || parts.contains(&"..")
     {
-        bail!(
-            "`fespalier.links.out` must be a folder inside the project (relative, no `..`), got `{raw}`"
-        );
+        return None;
     }
-    Ok(parts.join("/"))
+    Some(parts.join("/"))
+}
+
+/// A folder inside the project (the value of `fespalier.<key>`), `/`-separated; `.` is the
+/// project root itself (`""`).
+fn project_folder(key: &str, raw: &str) -> Result<String> {
+    let Some(folder) = project_path(raw) else {
+        bail!(
+            "`fespalier.{key}` must be a folder inside the project (relative, no `..`), got `{raw}`"
+        );
+    };
+    Ok(folder)
 }
 
 impl Config {
@@ -549,6 +816,8 @@ impl Pubspec {
             config.file_style = c.file_style.unwrap_or(config.file_style);
             config.links = c.links;
             config.lints.unknown_path = c.lints.and_then(|l| l.unknown_path).unwrap_or_default();
+            config.semantics_ids = c.semantics_ids.unwrap_or(false);
+            config.maestro = c.maestro;
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }
@@ -621,12 +890,12 @@ fn lib_path(key: &str, raw: &str) -> Result<String> {
     Ok(parts.join("/"))
 }
 
-fn parent(path: &str) -> &str {
+pub(crate) fn parent(path: &str) -> &str {
     path.rsplit_once('/').map_or("", |(dir, _)| dir)
 }
 
 /// `to` as a relative path from directory `from` (both `/`-separated).
-fn relative_dir(from: &str, to: &str) -> String {
+pub(crate) fn relative_dir(from: &str, to: &str) -> String {
     let from: Vec<&str> = from.split('/').filter(|p| !p.is_empty()).collect();
     let to: Vec<&str> = to.split('/').filter(|p| !p.is_empty()).collect();
     let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();

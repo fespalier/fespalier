@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/teams/$teamId/settings/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/teams/:teamId/settings"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/teams/1/settings"
+- extendedWaitUntil:
+    visible:
+      id: "route:/teams/:teamId/settings"
+    timeout: 20000

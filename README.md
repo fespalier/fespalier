@@ -284,6 +284,15 @@ fespalier:
   #   android_sha256: ["AB:CD:..."]
   #   ios_app_id: TEAMID.com.example.shop
   #   out: links                  # default
+  semantics_ids: false # `true` (since 0.7.0): every page wears `Semantics(identifier: 'route:/...')`, for Maestro
+  # maestro:                      # no default: what `fsp maestro` writes (see below)
+  #   url: http://localhost:8080  # the web; or `app_id: com.example.shop` for Android and iOS
+  #   link: http://localhost:8080/#
+  #   out: .maestro/routes        # default
+  #   guard_flow: .maestro/sign-in.yaml
+  #   timeout: 20000              # default, in milliseconds
+  #   samples:
+  #     products/$id: 1
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
@@ -311,6 +320,8 @@ is always a valid page. Without the key, `push` leaves the address bar on the pa
 `links:` is what [`fsp links`](#deep-links-and-a-sitemap-fsp-links) reads; only that command checks its values.
 `lints:` (since 0.7.0) sets how [a string path that matches no route](#checking-string-paths) is
 reported: `unknown_path` is `warning` (the default), `error` or `off`.
+`semantics_ids` (since 0.7.0) and `maestro:` are about [Maestro](#maestro-flows-fsp-maestro): the first
+changes the generated file, the second is read, and checked, only by `fsp maestro`.
 The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
 
@@ -2443,6 +2454,8 @@ fsp routes              # print the route table (--json: one object per route)
 fsp routes --graph      # the route tree as a Mermaid graph (--graph dot: Graphviz)
 fsp links               # App Links, Universal Links, assetlinks.json and a sitemap from the routes
 fsp links --check       # CI: non-zero exit when those files are stale
+fsp maestro             # Maestro smoke flows, one per route (since 0.7.0)
+fsp maestro --check     # CI: non-zero exit when those flows are stale
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --action --loading --error --layout --guard --transition
@@ -2819,6 +2832,166 @@ string literals in the call shapes above.
 `examples/shop` has a string path that matches (`context.go('/products?sort=expensive')`), one
 that is silenced, and `unknown_path: error`, so `just check-examples` fails if it gains a bad one.
 
+### Maestro flows (`fsp maestro`)
+
+Since 0.7.0. [Maestro](https://docs.maestro.dev) drives an app from the outside, through the
+platform's accessibility tree, so it cannot see a Flutter `Key`. It finds text, a `Semantics` label
+and a `Semantics(identifier:)`, which its `id:` selector matches. `fsp` gives every page one, and
+writes a smoke flow for each route that opens the route's URL and waits for that page.
+
+**`semantics_ids: true`** in the `fespalier:` section of `pubspec.yaml` wraps each page's own widget in
+
+```dart
+Semantics(identifier: 'route:/products/:id', container: true, child: ProductPage(id: v.id))
+```
+
+The identifier is `route:` and the pattern `fsp routes` prints (`route:/`, `route:/products/:id`,
+`route:/docs/*rest`, `route:/files/*path?`). It depends only on the folder path, so it is the same for
+every [localized spelling](#localized-paths) and every mount prefix, and it does not change when you
+rename a class. It is in the widget tree **if and only if the route's own page is built**:
+
+- The wrapper sits on the innermost call, inside `DataView` and `SectionView`, so `loading.dart`,
+  `error.dart` and `not_found.dart` do not carry it. A flow cannot pass while a spinner or an error shows.
+- go_router builds the whole matched stack, but the pages underneath the top one are off screen and
+  out of the semantics tree: `/products/1` has `route:/products/:id` and not `route:/products`.
+- Only a `page.dart` gets one: not a layout, a shell, a redirect or a not-found view.
+- `Semantics` has no `const` constructor, so the wrapper is never `const`; a page that was `const`
+  keeps its own `const` inside it, and the generated code passes the `const` lints. The `container: true`
+  node adds a node boundary and no label or action, so a screen reader has nothing to read from it. With the key off (the default), the
+  generated file is exactly what it was without the feature.
+
+On the web Flutter builds no semantics tree until a screen reader asks for one, so a driver that reads
+the page from outside finds nothing. With `semantics_ids: true` the generated `AppRoutes.mount()`
+(which `router()` calls, so an app that embeds the routes is covered too) first calls
+`ensureWebSemantics()` from `package:fespalier`. On the web it calls
+`SemanticsBinding.instance.ensureSemantics()` once and keeps the handle for the life of the app;
+anywhere else, and in every widget test (which runs on the VM), it does nothing. **That is not free:
+the tree stays on in the web build for every user of it,** which costs frame time and DOM nodes, and
+there is no key that narrows it to a test build. Weigh it before you turn the key on in an app
+whose web build you ship.
+
+**`maestro:`** says what the flows open. These are all the keys:
+
+```yaml
+fespalier:
+  semantics_ids: true              # required by `fsp maestro`
+  maestro:
+    app_id: com.example.shop       # Android and iOS: each flow's `appId:`   } exactly one
+    url: http://localhost:8080     # the web: each flow's `url:`             } of the two
+    link: myshop://shop.example.com   # what a route's path is appended to; default below
+    out: .maestro/routes           # default; a folder inside the project, no `..`
+    guard_flow: .maestro/sign-in.yaml   # optional: runs before the link of a guarded route
+    timeout: 20000                 # default; how long a flow waits for the page, 1000 to 600000 ms
+    samples:                       # the value of each dynamic folder, inherited by the routes below it
+      products/$id: 2
+      greet/$name: Ada
+      docs/$$rest: [guides, intro] # a catch-all takes a list of parts (a lone value is one part)
+```
+
+- `app_id`, `url` and `link` may be a Maestro variable written whole, such as `app_id: ${APP_ID}`; it is
+  copied into the flow as written, and `maestro test -e APP_ID=com.example.shop` fills it in.
+- **`link`** is what a route's path goes after: `myshop://shop.example.com` plus `/products/2`. It defaults
+  to the `url` for the web. For an app it comes from [`links:`](#deep-links-and-a-sitemap-fsp-links)
+  (`<scheme>://<first domain>` with a `scheme`, else `https://<first domain>`), and with neither it is
+  an error. A Flutter web app on the default **hash URL strategy** needs `link: http://localhost:8080/#`,
+  because its routes live after the `#`; with `usePathUrlStrategy()` the default is right.
+- **`samples`** keys are folders as `fsp routes` prints them without `/page.dart` (`products/$id`,
+  `(members)/notes/$id`), and each must be a `$x`, `$$x` or `$$$x` folder. A value is text, a number, a
+  boolean or, for a catch-all, a list of them; it is percent-encoded and checked against the segment's
+  type (`int`, `double`, `num`, `bool`, and `List` of them; a `String`, a `DateTime` or an enum is taken as
+  written, because the generator doesn't know an enum's values). The sample is for the _folder_, so
+  every route below `products/$id` opens `/products/2/...`. An optional catch-all (`$$$path`) with no
+  sample is the bare path. Quote a value that must stay text (`'1.10'`).
+
+`fsp maestro` writes one flow per route into `out` (commit it, like `app.g.dart`). This is the shop
+example's, `examples/shop/.maestro/routes/product_route.yaml`:
+
+```yaml
+# Written by `fsp maestro` from lib/app/products/$id/page.dart: don't edit it, run `fsp maestro` again.
+url: "http://localhost:8080"
+name: "/products/:id"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "http://localhost:8080/#/products/1"
+- extendedWaitUntil:
+    visible:
+      id: "route:/products/:id"
+    timeout: 20000
+```
+
+`launchApp` starts the app afresh, so every flow begins from the same state. `openLink` opens the
+route's sample URL (the long form with `autoVerify: true` for an Android app whose link is `https`,
+which skips Android's "Open with" dialog), and `extendedWaitUntil` returns the moment the identifier is
+on the screen, or fails after `timeout`. The route's guards ran, its data loaded and its page was built.
+A guarded route's flow also has `- runFlow: "../sign-in.yaml"` between `launchApp` and `openLink`
+(the path is relative to the flow, as Maestro wants it) and a comment naming the `guard.dart` files.
+
+**Which routes get a flow.** The rows are checked in this order, and the first that applies wins. Every
+skip is printed, on every run, and none of them fails `--check`.
+
+| Route                                          | Result  | Printed                                                                                                               |
+| ---------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
+| A `redirect.dart` route                        | skipped | `skipped /old: a redirect, with no page to see`                                                                       |
+| `app_id`, and `const linkable = false;`        | skipped | ``skipped /secret: `const linkable = false;`, so `fsp links` does not open the app at it``                            |
+| A `$x` or `$$x` segment with no sample         | skipped | ``skipped /products/:id: no sample for products/$id in `fespalier.maestro.samples` ``                                 |
+| A `guard.dart` at or above it, no `guard_flow` | skipped | ``skipped /checkout: guarded by checkout/guard.dart; set `fespalier.maestro.guard_flow` to a flow that gets past it`` |
+
+A `(group)` folder's guard covers the routes in it. Samples come from the pubspec only. Layouts,
+not-found views, query parameters and the localized spellings get no flow: a route is opened at its
+canonical path.
+
+**Files and ownership.** A flow is named after its typed route class in snake case: `ProductRoute`
+is `product_route.yaml`, `ProPlanRoute` is `pro_plan_route.yaml`, the root `HomeRoute` is
+`home_route.yaml` (the `_route` ending keeps a file from being Maestro's `config.yaml`). Every file
+`fsp maestro` writes starts with ``# Written by `fsp maestro` ``. In `out`, a `*.yaml` file with that first
+line is `fsp`'s: `fsp maestro` deletes it when no route needs it any more, and `--check` reports it. Any
+other file there (a flow you wrote, a `config.yaml`) is never read or touched, so hand-written
+journeys live beside the generated ones. The output is a function of the tree and the pubspec (a
+fixed order, no dates), so `fsp maestro --check` writes nothing and exits non-zero when a flow is
+missing, out of date or no longer a route's, and names it; run it next to `fsp check`. It does not check that
+`lib/app.g.dart` is current: that is `fsp check`'s job. The values of `maestro:` are checked only by
+`fsp maestro`, so a mistake there never stops `fsp gen`.
+
+**Running them.** `maestro test .maestro/routes`. Pass the folder, not `.maestro`: Maestro runs only the
+top-level flows of the folder it is given, and skips subfolders unless a `config.yaml` there lists them
+(`flows: ["routes/*"]`). `maestro test -e APP_ID=... -e URL=...` fills in variables.
+
+- **The web.** Maestro's web support is in beta. Serve the app at the `url`
+  (`flutter run -d web-server --web-port 8080`, or a static server for `flutter build web`; with the
+  path strategy it must serve `index.html` for unknown paths) and run the flows. `openLink` navigates
+  the browser, which reloads a Flutter web app.
+- **Android and iOS.** The app must open the link: Android needs the intent filters, iOS the
+  associated domains or the URL scheme, which [`fsp links`](#deep-links-and-a-sitemap-fsp-links) writes
+  (paste them in, as it says). iOS may ask "Open in ...?" before a custom scheme opens the app; the
+  generated flows do not answer it, so prefer an `https` link or start the run with a flow of your own.
+- **A guard flow** runs after `launchApp` and before `openLink`: write the sign-in once
+  (`.maestro/sign-in.yaml`), give it as `guard_flow`, and every guarded route's flow runs it first.
+  On the web `openLink` reloads the app, so the sign-in has to survive a reload (a stored token, not
+  in-memory state), or the guard will send the flow back to the login page.
+
+**In CI**, as documentation (this repository runs no Maestro): build and serve the web app, then
+run the flows and `fsp maestro --check`.
+
+```yaml
+- run: fsp maestro --check
+- run: curl -fsSL "https://get.maestro.mobile.dev" | bash
+- run: flutter build web
+- run: python3 -m http.server 8080 --directory build/web &
+- run: maestro test .maestro/routes
+```
+
+**What is not verified, and what is not built.**
+
+- Nothing here runs Maestro. The identifier is covered by widget tests (`find.bySemanticsIdentifier`)
+  and the flows by golden files. That Maestro's `id:` selector matches Flutter's
+  `Semantics(identifier:)` is what Maestro's documentation promises for Flutter; **on the web and on
+  iOS it has not been verified in this repository.** If a flow waits and times out on a page you can
+  see, check that first.
+- No `link:` identifier on `RouteLink`, no `samples` in `meta.dart`, and no web run of the examples in CI.
+- A route reached by a query parameter or a localized spelling has no flow of its own.
+
 ### Performance
 
 Measured on synthetic apps (`cli/src/bench.rs`: sections of 25 routes with layouts and guards,
@@ -3141,7 +3314,8 @@ import 'package:my_app/app/products/\$id/page.dart';
 go_router builds the whole matched stack, so a deep link like `/products/2` also runs
 `/products`' `data.dart` underneath. If your fakes use `Future.delayed`, pump long enough
 for the delays in both (or use `pumpAndSettle`), or the test ends with "A Timer is still
-pending". `examples/*/test/` has working tests for every file kind.
+pending". `examples/*/test/` has working tests for every file kind. For tests on a device or in a browser, and
+journeys across routes, see [Maestro flows](#maestro-flows-fsp-maestro).
 
 ## Design notes
 
@@ -3214,12 +3388,12 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 688 tests (641 unit, 36 CLI integration, 11 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 747 tests (698 unit, 38 CLI integration, 11 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
   scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), string paths that match no route (the lint, its matching, mount point and ignore comments), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 653 Flutter tests (the package 332, `shop` 52, `features` 222, `tabs` 39, `minimal` 8); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 664 Flutter tests (the package 339, `shop` 56, `features` 222, `tabs` 39, `minimal` 8); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

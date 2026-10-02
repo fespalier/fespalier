@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/shop/$category/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/shop/:category"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/shop/shoes"
+- extendedWaitUntil:
+    visible:
+      id: "route:/shop/:category"
+    timeout: 20000

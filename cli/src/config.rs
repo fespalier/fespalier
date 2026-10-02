@@ -24,7 +24,6 @@
 //!     out: links            # default
 //!   lints:                  # one level per lint (see `lint.rs`)
 //!     unknown_path: warning # default; `error` fails `gen` and `check`, `off` skips the check
-<<<<<<< HEAD
 //!   maestro:                # default: none; what `fsp maestro` writes (see `maestro.rs`)
 //!     url: http://localhost:8080   # or `app_id: com.example.shop`, one of the two
 //!     link: http://localhost:8080/#
@@ -33,8 +32,6 @@
 //!     timeout: 20000        # default, in milliseconds
 //!     samples:              # the value of each dynamic folder
 //!       products/$id: 1
-=======
->>>>>>> origin/main
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -190,12 +187,9 @@ pub struct Config {
     pub links: Option<LinksConfig>,
     /// The `lints:` section: how each lint over the app's own code reports.
     pub lints: Lints,
-<<<<<<< HEAD
     /// The `maestro:` section, as written. Only `fsp maestro` reads it, and it checks the values
     /// then ([`MaestroConfig::validate`]), so a mistake in it never stops `fsp gen`.
     pub maestro: Option<MaestroConfig>,
-=======
->>>>>>> origin/main
 }
 
 impl Default for Config {
@@ -216,10 +210,7 @@ impl Default for Config {
             file_style: FileStyle::Snake,
             links: None,
             lints: Lints::default(),
-<<<<<<< HEAD
             maestro: None,
-=======
->>>>>>> origin/main
         }
     }
 }
@@ -257,11 +248,8 @@ struct RawConfig {
     file_style: Option<FileStyle>,
     links: Option<LinksConfig>,
     lints: Option<LintsConfig>,
-<<<<<<< HEAD
     semantics_ids: Option<bool>,
     maestro: Option<MaestroConfig>,
-=======
->>>>>>> origin/main
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -828,11 +816,8 @@ impl Pubspec {
             config.file_style = c.file_style.unwrap_or(config.file_style);
             config.links = c.links;
             config.lints.unknown_path = c.lints.and_then(|l| l.unknown_path).unwrap_or_default();
-<<<<<<< HEAD
             config.semantics_ids = c.semantics_ids.unwrap_or(false);
             config.maestro = c.maestro;
-=======
->>>>>>> origin/main
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }

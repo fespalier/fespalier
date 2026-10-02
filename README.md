@@ -320,11 +320,8 @@ is always a valid page. Without the key, `push` leaves the address bar on the pa
 `links:` is what [`fsp links`](#deep-links-and-a-sitemap-fsp-links) reads; only that command checks its values.
 `lints:` (since 0.7.0) sets how [a string path that matches no route](#checking-string-paths) is
 reported: `unknown_path` is `warning` (the default), `error` or `off`.
-<<<<<<< HEAD
 `semantics_ids` (since 0.7.0) and `maestro:` are about [Maestro](#maestro-flows-fsp-maestro): the first
 changes the generated file, the second is read, and checked, only by `fsp maestro`.
-=======
->>>>>>> origin/main
 The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
 
@@ -2835,7 +2832,6 @@ string literals in the call shapes above.
 `examples/shop` has a string path that matches (`context.go('/products?sort=expensive')`), one
 that is silenced, and `unknown_path: error`, so `just check-examples` fails if it gains a bad one.
 
-<<<<<<< HEAD
 ### Maestro flows (`fsp maestro`)
 
 Since 0.7.0. [Maestro](https://docs.maestro.dev) drives an app from the outside, through the
@@ -2996,8 +2992,6 @@ run the flows and `fsp maestro --check`.
 - No `link:` identifier on `RouteLink`, no `samples` in `meta.dart`, and no web run of the examples in CI.
 - A route reached by a query parameter or a localized spelling has no flow of its own.
 
-=======
->>>>>>> origin/main
 ### Performance
 
 Measured on synthetic apps (`cli/src/bench.rs`: sections of 25 routes with layouts and guards,
@@ -3394,20 +3388,12 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-<<<<<<< HEAD
 - **Generator:** 747 tests (698 unit, 38 CLI integration, 11 version checks) cover parsing, every binding rule and contract error, query
-=======
-- **Generator:** 688 tests (641 unit, 36 CLI integration, 11 version checks) cover parsing, every binding rule and contract error, query
->>>>>>> origin/main
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
   scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), string paths that match no route (the lint, its matching, mount point and ignore comments), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-<<<<<<< HEAD
   hooks_riverpod 3, flutter_hooks 0.21). 664 Flutter tests (the package 339, `shop` 56, `features` 222, `tabs` 39, `minimal` 8); the example tests drive the generated router through every
-=======
-  hooks_riverpod 3, flutter_hooks 0.21). 653 Flutter tests (the package 332, `shop` 52, `features` 222, `tabs` 39, `minimal` 8); the example tests drive the generated router through every
->>>>>>> origin/main
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

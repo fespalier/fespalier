@@ -50,11 +50,8 @@
         "config:file_style",
         "config:links",
         "config:lints",
-<<<<<<< HEAD
         "config:semantics_ids",
         "config:maestro",
-=======
->>>>>>> origin/main
         "command:gen",
         "command:check",
         "command:routes",
@@ -82,10 +79,7 @@
         "cli/src/graph.rs",
         "cli/src/links.rs",
         "cli/src/lint.rs",
-<<<<<<< HEAD
         "cli/src/maestro.rs",
-=======
->>>>>>> origin/main
         "cli/src/format.rs",
         "cli/src/session.rs",
         "cli/src/parse_cache.rs",

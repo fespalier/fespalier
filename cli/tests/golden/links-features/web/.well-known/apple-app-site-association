@@ -197,6 +197,18 @@
             "caseSensitive": false
           },
           {
+            "/": "/remount/location/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/remount/never/?*",
+            "caseSensitive": false
+          },
+          {
+            "/": "/remount/segments/?*",
+            "caseSensitive": false
+          },
+          {
             "/": "/reports/monthly",
             "caseSensitive": false
           },

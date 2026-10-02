@@ -55,6 +55,9 @@
     <data android:path="/photos/share/terms" />
     <data android:path="/photos/sort" />
     <data android:path="/photos/upload" />
+    <data android:pathPattern="/remount/location/..*" />
+    <data android:pathPattern="/remount/never/..*" />
+    <data android:pathPattern="/remount/segments/..*" />
     <data android:path="/reports/monthly" />
     <data android:path="/reports/yearly" />
     <data android:path="/search" />
@@ -123,6 +126,9 @@
     <data android:path="/photos/share/terms" />
     <data android:path="/photos/sort" />
     <data android:path="/photos/upload" />
+    <data android:pathPattern="/remount/location/..*" />
+    <data android:pathPattern="/remount/never/..*" />
+    <data android:pathPattern="/remount/segments/..*" />
     <data android:path="/reports/monthly" />
     <data android:path="/reports/yearly" />
     <data android:path="/search" />
@@ -192,6 +198,9 @@
     <data android:path="/photos/share/terms" />
     <data android:path="/photos/sort" />
     <data android:path="/photos/upload" />
+    <data android:pathPattern="/remount/location/..*" />
+    <data android:pathPattern="/remount/never/..*" />
+    <data android:pathPattern="/remount/segments/..*" />
     <data android:path="/reports/monthly" />
     <data android:path="/reports/yearly" />
     <data android:path="/search" />

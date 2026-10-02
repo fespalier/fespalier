@@ -161,6 +161,12 @@ int? page}) get copyWith => _copyWith;`; never edit it.
     below it the new URL showed up as a new history entry, otherwise the address bar showed
     the page below's URL. Use `go`
     for URL state there.
+- **The page's own state** (a scroll position, a text field) stays across a `copyWith` that
+  only changes query parameters, as it does for any change of a parameter by default
+  (`Remount.never`) and under `Remount.onSegments`; `Remount.onLocation` starts the page again
+  on each one. To keep it across `page: 2` and still start fresh for another `id`, put
+  `const remount = Remount.onSegments;` in the folder's `route.dart` (since 0.6.0;
+  [`route-dart.md`](route-dart.md#remount-start-a-page-again-when-its-url-changes)).
 - **Testing:** a browser's back or forward is the platform telling the app the
   entry it moved to; `examples/shop/test/url_state_test.dart` simulates it with
   a `pushRouteInformation` message and checks each `routeInformationUpdated`.

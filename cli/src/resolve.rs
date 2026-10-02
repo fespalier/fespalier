@@ -20,6 +20,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use heck::ToUpperCamelCase;
 
+use crate::config::Remount;
 use crate::dart::{self, Class, Function, Lit, Module, Span, Ty};
 use crate::diag::Diags;
 use crate::enums::{self, Libs, Lookup};
@@ -381,6 +382,9 @@ pub struct Route {
     /// Whether `fsp links` lists this route: the nearest `route.dart`'s `const linkable`
     /// at or above it, else `true`.
     pub linkable: bool,
+    /// When the page gets a fresh state because its URL changed: the nearest `route.dart`'s
+    /// `const remount` at or above it, else the pubspec's `remount`.
+    pub remount: Remount,
 }
 
 impl Route {
@@ -606,6 +610,8 @@ struct Inherited {
     above: Option<PageAbove>,
     /// The nearest route.dart's `linkable`, else `true`.
     linkable: bool,
+    /// The nearest route.dart's `remount`, else the config's.
+    remount: Remount,
 }
 
 /// What a `nest = false` takes a route out of: the page above it, and the folders between.
@@ -648,9 +654,16 @@ struct BindCx<'a> {
     scope: Option<Scope>,
 }
 
-/// `case_sensitive` is the config's default, for folders with no `route.dart` at or above them.
-/// `libs` is where the enums of segments are looked for besides the files that name them.
-pub fn resolve(root: &Node, case_sensitive: bool, libs: &Libs, diags: &mut Diags) -> App {
+/// `case_sensitive` and `remount` are the config's defaults, for folders with no `route.dart`
+/// at or above them that sets them. `libs` is where the enums of segments are looked for
+/// besides the files that name them.
+pub fn resolve(
+    root: &Node,
+    case_sensitive: bool,
+    remount: Remount,
+    libs: &Libs,
+    diags: &mut Diags,
+) -> App {
     let mut sources = HashMap::new();
     collect_sources(root, &mut sources);
     let mut r = Resolver {
@@ -673,6 +686,7 @@ pub fn resolve(root: &Node, case_sensitive: bool, libs: &Libs, diags: &mut Diags
         &Inherited {
             case_sensitive,
             linkable: true,
+            remount,
             ..Inherited::default()
         },
     );
@@ -776,6 +790,7 @@ impl Resolver<'_> {
             localized: up.localized.clone(),
             sibling: false,
             linkable: up.linkable,
+            remount: up.remount,
         });
 
         let mut segs = up.segs.clone();
@@ -924,6 +939,7 @@ impl Resolver<'_> {
         let mut localized = up.localized.clone();
         let mut case_sensitive = up.case_sensitive;
         let mut linkable = up.linkable;
+        let mut remount = up.remount;
         if let Some(m) = modules.get(&Kind::Route) {
             let file = node.rel(Kind::Route);
             let spelled = locale::read(
@@ -937,9 +953,11 @@ impl Resolver<'_> {
             case_sensitive = self.route_config(m, &file).unwrap_or(up.case_sensitive);
             self.app.routes[id].sibling = self.nest(m, node, up.above.as_ref());
             linkable = self.linkable(m, &file).unwrap_or(up.linkable);
+            remount = self.remount(m, &file).unwrap_or(up.remount);
         }
         self.app.routes[id].case_sensitive = case_sensitive;
         self.app.routes[id].linkable = linkable;
+        self.app.routes[id].remount = remount;
         self.app.routes[id].localized = localized.clone();
 
         // loading.dart / error.dart apply here and to every folder below.
@@ -956,6 +974,7 @@ impl Resolver<'_> {
             localized: localized.clone(),
             above: up.above.clone(),
             linkable,
+            remount,
         };
         // A page is what a route below can leave; so is the layout of a folder between.
         let layout_file = node
@@ -1658,13 +1677,13 @@ impl Resolver<'_> {
     fn route_config(&mut self, m: &Module, file: &str) -> Option<bool> {
         let mut found = m.variables.iter().filter(|v| v.name == "caseSensitive");
         let Some(v) = found.next() else {
-            // A route.dart may hold only `paths`, `nest` or `linkable`.
+            // A route.dart may hold only `paths`, `nest`, `linkable` or `remount`.
             if !m
                 .variables
                 .iter()
-                .any(|v| matches!(v.name.as_str(), "paths" | "nest" | "linkable"))
+                .any(|v| matches!(v.name.as_str(), "paths" | "nest" | "linkable" | "remount"))
             {
-                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;` or `const linkable = false;`");
+                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;` or `const remount = Remount.onSegments;`");
             }
             return None;
         };
@@ -1694,6 +1713,30 @@ impl Resolver<'_> {
             self.diags.error(file, Some(&v.span), msg);
         }
         v.boolean
+    }
+
+    /// `const remount = Remount.onSegments;` in a folder's route.dart: when the pages of this
+    /// folder's routes and those below it get a fresh state because their URL changed. Like
+    /// `caseSensitive`, the nearest one wins, and it is read from the source, so it must be
+    /// one of the three `Remount` values, written out, and `const`.
+    fn remount(&mut self, m: &Module, file: &str) -> Option<Remount> {
+        let mut found = m.variables.iter().filter(|v| v.name == "remount");
+        let v = found.next()?;
+        if let Some(again) = found.next() {
+            self.diags
+                .error(file, Some(&again.span), "`remount` is declared twice");
+        }
+        if !v.is_const {
+            let msg = "`remount` must be `const`: write `const remount = Remount.onSegments;`";
+            self.diags.error(file, Some(&v.span), msg);
+            return None;
+        }
+        let value = v.value.as_deref().and_then(Remount::from_source);
+        if value.is_none() {
+            let msg = "`remount` must be `Remount.never`, `Remount.onSegments` or `Remount.onLocation`, written out: fsp reads it from the source, it doesn't run it";
+            self.diags.error(file, Some(&v.span), msg);
+        }
+        value
     }
 
     /// `const nest = false;` in a folder's route.dart: its route is not a child of the page

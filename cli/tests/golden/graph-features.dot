@@ -58,24 +58,27 @@ digraph routes {
       n36 [label="/orders/:id/refund\nRefundRoute\n(data, action, guard)"];
       n37 [label="/orders/:id/refund/receipt\nReceiptRoute"];
       n38 [label="/orders/:id/refund/confirm\nConfirmRefundRoute\n(guard, sibling)"];
-      n39 [label="/shop/:category\nCategoryShopRoute\nfr /boutique/:category, de /laden/:category\n(data)"];
+      n39 [label="/remount/location/:id\nRemountLocationRoute"];
+      n40 [label="/remount/never/:id\nRemountNeverRoute"];
+      n41 [label="/remount/segments/:id\nRemountSegmentsRoute"];
+      n42 [label="/shop/:category\nCategoryShopRoute\nfr /boutique/:category, de /laden/:category\n(data)"];
       subgraph cluster_b4 {
         label="layout shops/$shop/layout.dart (guard)";
         style=rounded;
-        n40 [label="/shops/:shop\nShopRoute\n(guard)"];
-        n41 [label="/shops/:shop/items/:id\nItemRoute\n(data)"];
+        n43 [label="/shops/:shop\nShopRoute\n(guard)"];
+        n44 [label="/shops/:shop/items/:id\nItemRoute\n(data)"];
       }
       subgraph cluster_b5 {
         label="layout teams/$teamId/layout.dart (data)";
         style=rounded;
-        n42 [label="/teams/:teamId/members\nMembersRoute"];
-        n43 [label="/teams/:teamId/members/:member\nMemberRoute\n(data)"];
-        n44 [label="/teams/:teamId/settings\nTeamSettingsRoute"];
+        n45 [label="/teams/:teamId/members\nMembersRoute"];
+        n46 [label="/teams/:teamId/members/:member\nMemberRoute\n(data)"];
+        n47 [label="/teams/:teamId/settings\nTeamSettingsRoute"];
       }
-      n45 [label="/browse/*categories\nBrowseRoute\n(data)"];
-      n46 [label="/compare/*ids\nCompareRoute\n(data)"];
-      n47 [label="/files/*path?\nFilesRoute"];
-      n48 [label="/wiki/*article\nWikiRoute\n(data)"];
+      n48 [label="/browse/*categories\nBrowseRoute\n(data)"];
+      n49 [label="/compare/*ids\nCompareRoute\n(data)"];
+      n50 [label="/files/*path?\nFilesRoute"];
+      n51 [label="/wiki/*article\nWikiRoute\n(data)"];
     }
   }
   n0 -> n1;
@@ -103,12 +106,15 @@ digraph routes {
   n0 -> n35;
   n0 -> n39;
   n0 -> n40;
+  n0 -> n41;
   n0 -> n42;
-  n0 -> n44;
+  n0 -> n43;
   n0 -> n45;
-  n0 -> n46;
   n0 -> n47;
   n0 -> n48;
+  n0 -> n49;
+  n0 -> n50;
+  n0 -> n51;
   n7 -> n8;
   n8 -> n9;
   n11 -> n12;
@@ -124,6 +130,6 @@ digraph routes {
   n35 -> n36;
   n35 -> n38;
   n36 -> n37;
-  n40 -> n41;
-  n42 -> n43;
+  n43 -> n44;
+  n45 -> n46;
 }

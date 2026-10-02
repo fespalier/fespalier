@@ -24,6 +24,12 @@ itself as `Widget child`, and optionally `GoRouterState state` and `bool shell`
 A `transition` without a `child` parameter, or not returning a `Page`, is an
 error.
 
+The key is go_router's `state.pageKey` (the path template) for a route's page, unless the route
+`remount`s (0.6.0, `fespalier-routing`, `references/route-dart.md`): then it is a
+`ValueKey<String>` that changes with the URL, so a change is a **new page** and this transition plays
+for it. A `transition()` that takes no `key` can't be given it, and `fsp` warns. A layout's shell
+is never remounted.
+
 `Transitions` has ready-made ones; each gives the page a `restorationId` from its
 key:
 

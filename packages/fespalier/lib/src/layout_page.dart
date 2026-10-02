@@ -1,6 +1,7 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
+
+import 'platform_page.dart';
 
 /// The page the generated router builds for a `layout.dart`, the way go_router
 /// builds one for a bare `builder`, but with a [restorationId] that is the
@@ -24,16 +25,8 @@ Page<void> layoutPage(
     ...state.pathParameters,
     ...state.uri.queryParameters,
   };
-  if (context.findAncestorWidgetOfExactType<CupertinoApp>() != null) {
-    return CupertinoPage<void>(
-      key: ValueKey<String>(restorationId),
-      name: name,
-      arguments: arguments,
-      restorationId: restorationId,
-      child: child,
-    );
-  }
-  return MaterialPage<void>(
+  return platformPage(
+    context,
     key: ValueKey<String>(restorationId),
     name: name,
     arguments: arguments,

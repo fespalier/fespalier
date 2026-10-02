@@ -46,20 +46,23 @@ flowchart TD
       n36["/orders/:id/refund<br/>RefundRoute<br/>(data, action, guard)"]
       n37["/orders/:id/refund/receipt<br/>ReceiptRoute"]
       n38["/orders/:id/refund/confirm<br/>ConfirmRefundRoute<br/>(guard, sibling)"]
-      n39["/shop/:category<br/>CategoryShopRoute<br/>fr /boutique/:category, de /laden/:category<br/>(data)"]
+      n39["/remount/location/:id<br/>RemountLocationRoute"]
+      n40["/remount/never/:id<br/>RemountNeverRoute"]
+      n41["/remount/segments/:id<br/>RemountSegmentsRoute"]
+      n42["/shop/:category<br/>CategoryShopRoute<br/>fr /boutique/:category, de /laden/:category<br/>(data)"]
       subgraph b4["layout shops/#36;shop/layout.dart (guard)"]
-        n40["/shops/:shop<br/>ShopRoute<br/>(guard)"]
-        n41["/shops/:shop/items/:id<br/>ItemRoute<br/>(data)"]
+        n43["/shops/:shop<br/>ShopRoute<br/>(guard)"]
+        n44["/shops/:shop/items/:id<br/>ItemRoute<br/>(data)"]
       end
       subgraph b5["layout teams/#36;teamId/layout.dart (data)"]
-        n42["/teams/:teamId/members<br/>MembersRoute"]
-        n43["/teams/:teamId/members/:member<br/>MemberRoute<br/>(data)"]
-        n44["/teams/:teamId/settings<br/>TeamSettingsRoute"]
+        n45["/teams/:teamId/members<br/>MembersRoute"]
+        n46["/teams/:teamId/members/:member<br/>MemberRoute<br/>(data)"]
+        n47["/teams/:teamId/settings<br/>TeamSettingsRoute"]
       end
-      n45["/browse/*categories<br/>BrowseRoute<br/>(data)"]
-      n46["/compare/*ids<br/>CompareRoute<br/>(data)"]
-      n47["/files/*path?<br/>FilesRoute"]
-      n48["/wiki/*article<br/>WikiRoute<br/>(data)"]
+      n48["/browse/*categories<br/>BrowseRoute<br/>(data)"]
+      n49["/compare/*ids<br/>CompareRoute<br/>(data)"]
+      n50["/files/*path?<br/>FilesRoute"]
+      n51["/wiki/*article<br/>WikiRoute<br/>(data)"]
     end
   end
   n0 --> n1
@@ -87,12 +90,15 @@ flowchart TD
   n0 --> n35
   n0 --> n39
   n0 --> n40
+  n0 --> n41
   n0 --> n42
-  n0 --> n44
+  n0 --> n43
   n0 --> n45
-  n0 --> n46
   n0 --> n47
   n0 --> n48
+  n0 --> n49
+  n0 --> n50
+  n0 --> n51
   n7 --> n8
   n8 --> n9
   n11 --> n12
@@ -108,7 +114,7 @@ flowchart TD
   n35 --> n36
   n35 --> n38
   n36 --> n37
-  n40 --> n41
-  n42 --> n43
+  n43 --> n44
+  n45 --> n46
   classDef redirect stroke-dasharray: 5 5
   class n21,n34 redirect

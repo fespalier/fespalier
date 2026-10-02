@@ -13,7 +13,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use serde::Serialize;
 
-use crate::config::{Config, DataRetry};
+use crate::config::{Config, DataRetry, Remount};
 use crate::dart::Span;
 use crate::diag::Diags;
 use crate::enums;
@@ -79,6 +79,9 @@ struct TreeCx {
     /// What an unparsable segment shows.
     not_found: String,
     transition: Option<TransitionCx>,
+    /// For a `GoRoute` whose page remounts when its URL changes (a `remount`, see
+    /// [`remount_args`]): the arguments of `remountKey` after the state.
+    remount: Option<String>,
     /// `parentNavigatorKey: rootNavigatorKey`: a page (or a shell) that goes on the root navigator.
     root: bool,
     /// Where `root` comes from, for the error when `go_router` can't honour it.
@@ -206,10 +209,19 @@ struct TransitionArgCx {
 /// The page hook `name` (`transition` or `present`) called for a route's page, or, with
 /// `shell` holding the restoration id, for a layout's shell: which is keyed by that id, a
 /// key that stays the same when the app restarts and while the routes inside the shell change.
-fn transition_cx(t: &Transition, name: &str, shell: Option<&str>) -> TransitionCx {
-    let value = |b: &Bind| match (b, shell) {
-        (Bind::PageKey, Some(id)) => format!("const ValueKey<String>({id})"),
-        (Bind::IsShell, _) => shell.is_some().to_string(),
+///
+/// A route that remounts passes `remount` (the arguments of `remountKey`) and gets a page key
+/// that changes with its URL instead of `state.pageKey`.
+fn transition_cx(
+    t: &Transition,
+    name: &str,
+    shell: Option<&str>,
+    remount: Option<&str>,
+) -> TransitionCx {
+    let value = |b: &Bind| match (b, shell, remount) {
+        (Bind::PageKey, Some(id), _) => format!("const ValueKey<String>({id})"),
+        (Bind::PageKey, None, Some(args)) => format!("remountKey(state, {args})"),
+        (Bind::IsShell, ..) => shell.is_some().to_string(),
         _ => in_builder(b),
     };
     let args = t
@@ -407,6 +419,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     check_order(&tree, diags);
     check_tab_starts(&tree, diags);
     check_root_children(&tree, diags);
+    check_remount(app, diags);
     // With no `output_manifest:` the manifest lives here, and imports its meta.dart files here.
     let (manifest, metas) = match cfg.output_manifest {
         None => {
@@ -522,6 +535,46 @@ pub fn frames(app: &App) -> Vec<Frame> {
         .into_iter()
         .map(frame)
         .collect()
+}
+
+/// The arguments of `remountKey` after the state for a route whose page remounts, else `None`:
+/// `Remount.onSegments, const ['id']` (the segments in its path, which a change of value makes a
+/// new page) or `Remount.onLocation`. A route with no segment has nothing for `onSegments` to
+/// watch, so it is built as without it.
+fn remount_args(r: &Route) -> Option<String> {
+    match r.remount {
+        Remount::Never => None,
+        Remount::OnSegments if r.segs.is_empty() => None,
+        Remount::OnSegments => {
+            let names: Vec<String> = r.segs.iter().map(|(n, _)| format!("'{n}'")).collect();
+            Some(format!("Remount.onSegments, const [{}]", names.join(", ")))
+        }
+        Remount::OnLocation => Some("Remount.onLocation".into()),
+    }
+}
+
+/// A route that remounts needs its `transition.dart` or `present.dart` to build the page under
+/// the key it is given: one that doesn't take it keeps the page, and its state, as it was.
+fn check_remount(app: &App, diags: &mut Diags) {
+    for r in app.routes.iter().filter(|r| r.page.is_some()) {
+        let Some(t) = r.present.as_ref().or(r.transition.as_ref()) else {
+            continue;
+        };
+        if remount_args(r).is_some() && !t.args.iter().any(|a| a.bind == Bind::PageKey) {
+            let hook = if r.present.is_some() {
+                "present"
+            } else {
+                "transition"
+            };
+            diags.warn(
+                &rel(r, Kind::Page),
+                r.page_span.as_ref(),
+                format!(
+                    "`remount` has no effect here: the `{hook}()` that builds this page doesn't take its key; add a `LocalKey key` parameter and give it to the page"
+                ),
+            );
+        }
+    }
 }
 
 /// How builder code spells each binding. `v` holds the parsed segments.
@@ -664,6 +717,7 @@ fn routes_of(
             data: None,
             not_found: String::new(),
             transition: None,
+            remount: None,
             root: r.root,
             root_at: r.root.then(|| (rel(r, Kind::Layout), None)),
             container: None,
@@ -817,7 +871,7 @@ fn layout_cx(
         transition: r
             .shell_transition
             .as_ref()
-            .map(|t| transition_cx(t, "transition", Some(&restoration_id))),
+            .map(|t| transition_cx(t, "transition", Some(&restoration_id), None)),
         restoration_id,
         seg_fn,
         page: wrapped,
@@ -1039,6 +1093,7 @@ fn page_route(
     };
     let seg_fn = own_seg_fn(app, id, fns);
     let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
+    let remount = remount_args(r);
     let root_key = r.root && r.layout.is_none();
     let data = r.data.as_ref().map(|d| ViewDataCx {
         provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
@@ -1068,12 +1123,13 @@ fn page_route(
         page: with_sections(app, &page.args, page.call(in_builder), fns, true),
         data,
         not_found: not_found_call(r),
+        remount: remount.clone(),
         transition: match &r.present {
-            Some(p) => Some(transition_cx(p, "present", None)),
+            Some(p) => Some(transition_cx(p, "present", None, remount.as_deref())),
             None => r
                 .transition
                 .as_ref()
-                .map(|t| transition_cx(t, "transition", None)),
+                .map(|t| transition_cx(t, "transition", None, remount.as_deref())),
         },
         // A layout's shell is what goes on the root navigator; its pages are inside it.
         root: root_key,
@@ -1128,6 +1184,7 @@ fn redirect_route(
         data: None,
         not_found: not_found_call(r),
         transition: None,
+        remount: None,
         root: false,
         root_at: None,
         container: None,
@@ -1225,6 +1282,7 @@ fn tab_routes(
         data: None,
         not_found: String::new(),
         transition: None,
+        remount: None,
         root: app.routes[id].root,
         root_at: app.routes[id]
             .root
@@ -2238,6 +2296,9 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     }
     if r.sibling {
         tags.push("sibling");
+    }
+    if r.page.is_some() && remount_args(r).is_some() {
+        tags.push("remount");
     }
     tags
 }

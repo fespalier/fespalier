@@ -82,6 +82,7 @@ class RouteInfo<M> {
     this.tabs = const [],
     this.dataKeys,
     this.meta,
+    this.deferred = false,
   });
 
   /// The generated typed-route class: `ProductRoute`.
@@ -140,6 +141,10 @@ class RouteInfo<M> {
   /// The route's `meta.dart`, exactly as declared there; null without one.
   /// It is the route's own: nothing is inherited from the folders above.
   final M? meta;
+
+  /// The route's `page.dart` is deferred (`const deferred = true;`, since 0.7.0): its code
+  /// loads on demand on the web.
+  final bool deferred;
 
   /// True for a `redirect.dart` route.
   bool get isRedirect => presentation == RoutePresentation.redirect;

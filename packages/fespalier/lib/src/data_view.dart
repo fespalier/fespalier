@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'deferred.dart';
+
 /// Glue emitted around every route that has a `data.dart`:
 /// watch the provider, then pick page / loading / error.
 ///
@@ -12,6 +14,11 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// load: a refresh or reload keeps rendering the old value (or the error), and a
 /// provider that failed and is being retried keeps showing its `error`. Off,
 /// `loading` shows whenever the provider is loading.
+///
+/// With a [library] (the route's `page.dart` is deferred, since 0.7.0) the page's code
+/// starts loading at the first build, in parallel with the data, and the page shows once
+/// both are there; `loading` covers both waits, and `error` a failed load of either (the
+/// code's with a retry that loads it again).
 class DataView<T> extends ConsumerWidget {
   /// Creates a view of the data [watch] reads, shown with [data], [loading] or [error].
   const DataView({
@@ -22,6 +29,7 @@ class DataView<T> extends ConsumerWidget {
     required this.loading,
     required this.error,
     this.keepPrevious = true,
+    this.library,
   });
 
   /// Reads the provider's state; called on every build.
@@ -44,14 +52,30 @@ class DataView<T> extends ConsumerWidget {
   /// Whether the previous data stays on screen while a refresh loads.
   final bool keepPrevious;
 
+  /// The code of the page [data] builds, when its `page.dart` is deferred; null otherwise.
+  /// It starts loading with the first build, and [data]'s page is built inside a
+  /// [DeferredView] for good, so the page's `State` survives the load.
+  final DeferredLibrary? library;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) => watch(ref).when(
-    skipLoadingOnReload: keepPrevious,
-    skipLoadingOnRefresh: keepPrevious,
-    data: data,
-    loading: loading,
-    error: (e, st) => error(e, st, () => _retry(ref)),
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lib = library;
+    lib?.preload();
+    return watch(ref).when(
+      skipLoadingOnReload: keepPrevious,
+      skipLoadingOnRefresh: keepPrevious,
+      data: lib == null
+          ? data
+          : (d) => DeferredView(
+              library: lib,
+              page: () => data(d),
+              loading: loading,
+              error: error,
+            ),
+      loading: loading,
+      error: (e, st) => error(e, st, () => _retry(ref)),
+    );
+  }
 
   /// A `retry` an app held on to (a debounced button, a timer, a future's callback) can run
   /// after the view is gone; `ref` can't be used then, so there is nothing to load again.

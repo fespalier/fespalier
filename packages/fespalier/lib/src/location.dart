@@ -50,7 +50,8 @@ abstract class TypedLocation {
   /// data of each section above it, then its own: what `AppRoutes.dataAt`
   /// answers for [location]) and keeps them alive until the returned handle is
   /// closed, so the page shows at once when it is reached. `keepFor` closes it
-  /// after that long, as for `prefetch`.
+  /// after that long, as for `prefetch`. For a deferred route (`const deferred = true;`)
+  /// it also starts loading its page's code, which stays loaded for good (since 0.7.0).
   ///
   /// It never navigates and never runs a guard or a redirect. A route without
   /// data, like this base, returns a closed handle: there is nothing to warm.

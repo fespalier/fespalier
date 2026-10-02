@@ -67,6 +67,18 @@ void main() {
       // No data.dart is null; a data.dart keyed by nothing is empty.
       expect(old.dataKeys, isNull);
       expect(old.meta, isNull);
+      expect(old.deferred, isFalse);
+    });
+
+    test('deferred says the route\'s page.dart loads on demand', () {
+      const info = RouteInfo<Object?>(
+        type: String,
+        path: '/',
+        folder: '',
+        deferred: true,
+      );
+      expect(info.deferred, isTrue);
+      expect(_all.first.deferred, isFalse);
     });
 
     test('metaAs reads the meta as the type it is', () {

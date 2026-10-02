@@ -62,10 +62,26 @@ cp -R build/web/. "$staged/"
 rm -rf "$staged/canvaskit" "$staged/.last_build_id" "$staged/flutter_service_worker.js"
 
 if [ "$check" = true ]; then
-  if ! diff -r "$staged" "$dest" > /dev/null 2>&1; then
+  # flutter_bootstrap.js is the Flutter tool's loader, not built from these sources. Its
+  # `_flutter.buildConfig` line carries the engine's revision and wasm hashes, which differ
+  # between a local SDK and CI's even at the same FLUTTER_VERSION, so that one line is compared
+  # for what the extension relies on rather than byte for byte.
+  bootstrap=flutter_bootstrap.js
+  if ! diff -r -x "$bootstrap" "$staged" "$dest" > /dev/null 2>&1 ||
+    ! diff <(grep -v '^_flutter.buildConfig = ' "$staged/$bootstrap") \
+      <(grep -v '^_flutter.buildConfig = ' "$dest/$bootstrap") > /dev/null 2>&1; then
     diff -rq "$staged" "$dest" >&2 || true
+    diff -u "$dest/$bootstrap" "$staged/$bootstrap" 2>&1 | head -n 40 >&2 || true
     echo "::error::the committed DevTools extension is not what packages/fespalier_devtools builds to: $rebuild" >&2
     exit 1
+  fi
+  if ! grep -q '^_flutter.buildConfig = .*"builds":\[{"compileTarget":"dart2js","renderer":"canvaskit","mainJsPath":"main.dart.js"}\]' "$dest/$bootstrap"; then
+    echo "::error::$dest/$bootstrap does not load main.dart.js with CanvasKit: $rebuild" >&2
+    exit 1
+  fi
+  if ! cmp -s "$staged/$bootstrap" "$dest/$bootstrap"; then
+    echo "::notice::flutter_bootstrap.js differs from the committed one only in its buildConfig line (the Flutter SDK's engine hashes)" >&2
+    diff <(grep '^_flutter.buildConfig = ' "$dest/$bootstrap") <(grep '^_flutter.buildConfig = ' "$staged/$bootstrap") >&2 || true
   fi
 else
   rm -rf "$dest"

@@ -145,7 +145,10 @@ class _HistoryRow extends StatelessWidget {
     return Padding(
       key: Key('history-${record.seq}'),
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 2,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Text(
             formatClock(record.at),
@@ -153,7 +156,6 @@ class _HistoryRow extends StatelessWidget {
               context,
             ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
           ),
-          const SizedBox(width: 8),
           SizedBox(
             width: 72,
             child: Align(
@@ -161,12 +163,9 @@ class _HistoryRow extends StatelessWidget {
               child: KindChip(record.kind, tone: tone),
             ),
           ),
-          const SizedBox(width: 8),
-          Flexible(child: Mono(record.uri)),
-          if (record.error != null) ...[
-            const SizedBox(width: 8),
+          Mono(record.uri),
+          if (record.error != null)
             const KindChip('not found', tone: ChipTone.error),
-          ],
         ],
       ),
     );

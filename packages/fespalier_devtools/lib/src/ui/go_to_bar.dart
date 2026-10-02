@@ -56,23 +56,26 @@ class _GoToBarState extends State<GoToBar> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            TextField(
+              key: const Key('goto-location'),
+              controller: _text,
+              decoration: const InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(),
+                hintText: '/products/2?tab=info',
+                labelText: 'Location',
+              ),
+              style: const TextStyle(fontFamily: 'monospace'),
+              onSubmitted: (_) => _go(),
+            ),
+            const SizedBox(height: 4),
+            // A Wrap, not a Row: the panel can be narrow, and a button that does not fit goes
+            // to the next line.
+            Wrap(
+              spacing: denseSpacing,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Expanded(
-                  child: TextField(
-                    key: const Key('goto-location'),
-                    controller: _text,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                      hintText: '/products/2?tab=info',
-                      labelText: 'Location',
-                    ),
-                    style: const TextStyle(fontFamily: 'monospace'),
-                    onSubmitted: (_) => _go(),
-                  ),
-                ),
-                const SizedBox(width: denseSpacing),
                 DropdownButton<String>(
                   key: const Key('goto-mode'),
                   value: _mode,
@@ -94,20 +97,17 @@ class _GoToBarState extends State<GoToBar> {
                   onChanged: (value) =>
                       setState(() => _mode = value ?? NavigateMode.go),
                 ),
-                const SizedBox(width: denseSpacing),
                 DevToolsButton(
                   key: const Key('goto-go'),
                   label: 'Go',
                   onPressed: _go,
                   elevated: true,
                 ),
-                const SizedBox(width: denseSpacing),
                 DevToolsButton(
                   key: const Key('goto-pop'),
                   label: 'Pop',
                   onPressed: () => _controller.navigate(NavigateMode.pop),
                 ),
-                const SizedBox(width: denseSpacing),
                 DevToolsButton(
                   key: const Key('goto-match'),
                   label: 'Match',

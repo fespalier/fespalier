@@ -68,7 +68,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [packages/fespalier, examples/shop, examples/features, examples/tabs, examples/minimal]
+        dir:
+          - packages/fespalier
+          - packages/fespalier_devtools
+          - examples/shop
+          - examples/features
+          - examples/tabs
+          - examples/minimal
     defaults:
       run:
         working-directory: ${{ matrix.dir }}
@@ -98,6 +104,28 @@ jobs:
         env:
           WORKSPACE: ${{ github.workspace }}
         run: '"$WORKSPACE/scripts/check-const-lints.sh" .'
+
+  devtools:
+    name: DevTools extension (built output is current)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      # packages/fespalier/extension/devtools/build is what DevTools loads, committed. This builds
+      # packages/fespalier_devtools again and fails on any difference (a UI change, a changed
+      # protocol file, a new Flutter), then runs `devtools_extensions validate`. To fix a failure:
+      # scripts/build-devtools-extension.sh, and commit the result.
+      - name: Build, compare with the committed build, validate
+        run: scripts/build-devtools-extension.sh --check
 
   scaffold:
     name: Scaffolded files compile
@@ -155,6 +183,37 @@ jobs:
           find lib -name '*.dart' ! -name '*.g.dart' -print0 |
             xargs -0 dart format --output=none --set-exit-if-changed
           flutter analyze
+      # A release build has none of fespalier's DevTools code: `kFespalierDevTools` is false there,
+      # so the service extensions, the route tree and the hooks are compiled away. A profile build
+      # has it, which is what gives the grep for it a meaning. (`fsp init` leaves main.dart alone,
+      # so the app is given one that uses the generated router.)
+      - name: A release build carries no DevTools code
+        run: |
+          cd "$RUNNER_TEMP/fresh_app"
+          cat > lib/main.dart <<'DART'
+          import 'package:fespalier/fespalier.dart';
+          import 'package:flutter/material.dart';
+
+          import 'app.g.dart';
+
+          void main() {
+            runApp(
+              ProviderScope(
+                child: MaterialApp.router(routerConfig: AppRoutes.router()),
+              ),
+            );
+          }
+          DART
+          flutter build web --profile --no-wasm-dry-run
+          grep -q 'ext\.fespalier\.snapshot' build/web/main.dart.js || {
+            echo "::error::the profile build has no DevTools code, so the release check below proves nothing"
+            exit 1
+          }
+          flutter build web --release --no-wasm-dry-run
+          if grep -q 'ext\.fespalier' build/web/main.dart.js; then
+            echo "::error::the release build contains fespalier's DevTools code"
+            exit 1
+          fi
       - name: dart run fespalier runs the given fsp
         working-directory: examples/shop
         run: |

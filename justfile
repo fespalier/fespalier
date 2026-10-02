@@ -5,8 +5,8 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-# The Dart package and every example: pub get, dart format, flutter analyze, flutter test.
-dart_dirs := "packages/fespalier examples/shop examples/features examples/tabs examples/minimal"
+# The Dart package, the DevTools extension and every example: pub get, dart format, flutter analyze, flutter test.
+dart_dirs := "packages/fespalier packages/fespalier_devtools examples/shop examples/features examples/tabs examples/minimal"
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
 examples := "shop features tabs minimal"
@@ -62,7 +62,7 @@ gen-examples:
         cargo run --quiet -- gen --project "../examples/$e"
     done
 
-# The package and every example: pub get, dart format (generated *.g.dart left out), analyze, test,
+# The package, the DevTools extension and every example: pub get, dart format (generated *.g.dart left out), analyze, test,
 # and the const lints on each example's generated code (scripts/check-const-lints.sh)
 flutter:
     #!/usr/bin/env bash
@@ -78,6 +78,14 @@ flutter:
         # The generated code is clean under the const lints its `ignore_for_file` hides.
         case "$d" in examples/*) scripts/check-const-lints.sh "$d" ;; esac
     done
+
+# Rebuild the DevTools extension into packages/fespalier/extension/devtools/build (needs Flutter)
+devtools-build:
+    scripts/build-devtools-extension.sh
+
+# The committed DevTools extension is what its source builds to, and DevTools accepts it (needs Flutter)
+devtools:
+    scripts/build-devtools-extension.sh --check
 
 # The Homebrew/Scoop rendering, checksum pinning and release staging tests
 packaging:
@@ -114,5 +122,5 @@ intellij:
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
 # are `just vscode` and `just intellij`.
 #
-# The gate: CI's Rust, Flutter, packaging and skills jobs
-ci: lint test deny check-examples flutter packaging skills
+# The gate: CI's Rust, Flutter, DevTools, packaging and skills jobs
+ci: lint test deny check-examples flutter devtools packaging skills

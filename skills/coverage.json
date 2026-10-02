@@ -86,7 +86,8 @@
         "examples/tabs",
         "editors/vscode",
         "editors/intellij",
-        "cli/templates/new/action.dart.jinja"
+        "cli/templates/new/action.dart.jinja",
+        "cli/src/devtools.rs"
       ]
     },
     "fespalier-routing": {
@@ -207,7 +208,10 @@
         "cli/src/config.rs",
         "cli/src/init.rs",
         "cli/src/scaffold.rs",
-        "cli/src/main.rs"
+        "cli/src/main.rs",
+        "README.md#DevTools extension",
+        "packages/fespalier/lib/src/devtools/devtools.dart",
+        "packages/fespalier/lib/src/devtools/protocol.dart"
       ]
     },
     "fespalier-migration": {

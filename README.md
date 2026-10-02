@@ -2428,6 +2428,7 @@ fsp gen                 # check lib/app/, write lib/app.g.dart
 fsp gen --format        # ...and run `dart format` on it
 fsp routes              # print the route table (--json: one object per route)
 fsp routes --graph      # the route tree as a Mermaid graph (--graph dot: Graphviz)
+fsp routes --graph json # the same tree as JSON (what the DevTools extension reads)
 fsp links               # App Links, Universal Links, assetlinks.json and a sitemap from the routes
 fsp links --check       # CI: non-zero exit when those files are stale
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
@@ -2482,6 +2483,12 @@ It draws what `app.g.dart` gives go_router, not the folders:
 
 The output has no timestamp and a fixed order, so a graph committed to a doc changes only when the
 routes do. `--graph` and `--json` cannot be combined.
+
+**`--graph json`** (since 0.7.0) prints the same tree as JSON, with each guard, `redirect.dart`,
+`data.dart` and `action.dart` as a _site_ the generated code names. It is what the
+[DevTools extension](#devtools-extension) reads, and `app.g.dart` embeds it. Every route has its URL
+pattern, its route class, its file and folder (relative to the app folder), its markers, its typed parameters and
+each other spelling of a localized path; layouts and tab layouts are items of their own.
 
 ```text
 flowchart TD
@@ -2765,6 +2772,94 @@ for a saving smaller than its bookkeeping. The walk is 80 ms at 5,000 routes, an
 files a small part of it; a cache keyed on modification times would save less than it risks
 (an edit in the same timestamp tick, a file replaced by one with the same size and time).
 
+## DevTools extension
+
+Since 0.7.0, fespalier has an extension for [Flutter DevTools](https://docs.flutter.dev/tools/devtools): a
+`fespalier` tab that shows, in a running app, what the router is doing and which file each route comes
+from. It answers:
+
+- **Which file serves this URL?** The _Location_ tab names the route and its `page.dart`. The _Routes_
+  tab is the whole tree with the route the router is at highlighted, and its **Match** button says
+  which route any location is, without going there.
+- **Why is this page's parameter null?** The parameters are shown with their declared type and the
+  value the app's own parser made of the URL, and the query and the `extra` beside them. A location no
+  route has shows go_router's error.
+- **What is on the stack?** The _Stack_ tab lists the pages, the layouts and tab layouts around them, and
+  the pages that were pushed, each with its route and file.
+- **How did I get here?** The history under _Location_ lists every location the router committed,
+  newest first, with whether it was a `go`, a `push`, a `pop`, a `replace` or a refresh.
+- **Can I try a URL?** The go-to bar above the tabs takes a location and a `go`, `push` or `replace`,
+  and has a **Pop** button. It asks the app's router, so guards and redirects run as they do for a
+  link.
+
+**How to see it.** Run the app in debug or profile mode and open DevTools: the `fespalier` tab is there
+when the app is connected. DevTools asks once per project before it loads an extension (the Extensions
+button), or you commit a `devtools_options.yaml` next to the `pubspec.yaml`:
+
+```yaml
+description: This file stores settings for Dart & Flutter DevTools.
+documentation: https://docs.flutter.dev/tools/devtools/extensions#configure-extension-enablement-states
+extensions:
+  - fespalier: true
+```
+
+DevTools finds the extension in every package the app depends on, a git or a path dependency included.
+`AppRoutes.router()` hands its router to the extension itself. An app that
+[mounts](#getting-started) the routes into a `GoRouter` of its own attaches it once:
+
+```dart
+final router = GoRouter(routes: [...yourRoutes, ...AppRoutes.mount()]);
+if (kFespalierDevTools) devToolsAttach(router);
+```
+
+**What it costs.** Nothing in a release build: `kFespalierDevTools` is a `const` that is false there, the
+generated `app.g.dart` calls the extension's code only under `if (kFespalierDevTools)`, and
+the compiler removes the service extensions, the route tree and the code that serves them. CI builds
+an app for profile and for release and checks that the release build has none of it. In a debug or
+profile build it adds one listener to the router's delegate and a list of the last 100 locations, and
+nothing else: no timer, no frame, no read of a provider, and nothing that runs unless DevTools asks. A
+bug in it is printed once and dropped; it never changes what a navigation does.
+`--dart-define=fespalier.devtools=false` takes it out of a debug build too.
+
+**Limits.**
+
+- The tab loads Flutter's CanvasKit from `gstatic.com`, as a Flutter web app does by default, so it
+  needs a network connection.
+- It follows one router, the last one attached. Locations and the stack are the router's own, so a
+  page that a `Navigator` of the app (not go_router) opened is not in them.
+- A hot reload changes the route tree and says nothing about it: press the refresh button. A hot restart
+  is a new app and reloads by itself.
+- The route class a location is matched to is the class's `runtimeType` name. A profile build on the web
+  minifies class names, so the tab finds the route by its path template instead, which a
+  [localized path](#localized-paths) may not match.
+- It shows locations, the stack and the route tree. Guards, data and actions are not followed.
+
+**For tool authors.** The extension and the app talk through `dart:developer`'s service extensions and
+events, protocol 1. Every response and event has `"protocol": 1` and an `"event"` number on events (one counter
+for all kinds: a number that skips means events were missed, and `snapshot` has the state). A change that only adds is not a
+new protocol: a reader ignores keys it does not know, and `hello` lists what the app can answer in
+`features`. A user value, like an `extra`, is never sent as it is but as `{"type", "text"}`, its runtime
+type and its text cut to 200 characters. The records are in
+[`packages/fespalier/lib/src/devtools/protocol.dart`](packages/fespalier/lib/src/devtools/protocol.dart),
+which imports nothing.
+
+| Service extension        | Parameters                                                               | Answers                                                                                |
+| ------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `ext.fespalier.hello`    | none                                                                     | the protocol, whether the app registered and attached a router, and its `features`     |
+| `ext.fespalier.tree`     | none                                                                     | the route tree, as `fsp routes --graph json` prints it                                 |
+| `ext.fespalier.snapshot` | none                                                                     | the location, the stack, the history and the number of the last event                  |
+| `ext.fespalier.match`    | `location`                                                               | the route a location is and its parsed parameters; it runs no guard and builds nothing |
+| `ext.fespalier.navigate` | `mode` (`go`, `push`, `replace` or `pop`) and `location` (not for `pop`) | `{"ok": true}` once the router has been asked                                          |
+| `ext.fespalier.clear`    | `what` (`history` or `all`)                                              | `{"ok": true}`; the history is emptied and the event counter goes on                   |
+
+| Event                  | Posted when                                | Carries                                  |
+| ---------------------- | ------------------------------------------ | ---------------------------------------- |
+| `fespalier:registered` | the app registers, or a router is attached | the number of the event                  |
+| `fespalier:navigation` | the router commits a location              | the number and the `record` of the entry |
+
+An error is a JSON-RPC error with the code `-32602` for a missing or bad parameter and `-32000` otherwise,
+and its detail says what was wrong. Events are posted only while a tool listens.
+
 ## Run the examples
 
 Start with [`examples/minimal`](examples/minimal): `flutter create` + `fsp init` and three pages
@@ -2838,6 +2933,9 @@ scripts/             packaging.py renders the Homebrew formula and Scoop manifes
                      pin_checksums.py writes the release's checksums into the Dart package
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
+packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
+packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
+                     and build/, the extension's release build, committed
 examples/minimal/    the smallest app: `flutter create` + `fsp init` + three pages, with widget tests
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
 examples/features/   every binding rule, section data and nested not_found.dart, with widget tests
@@ -2848,7 +2946,8 @@ skills/              agent skills: how to write lib/app/ and read fsp's errors (
 
 ```sh
 just ci          # everything CI runs on the code, locally (needs Flutter, Node, just, cargo-deny)
-just --list      # the individual steps: fmt, lint, test, deny, examples, flutter, packaging, skills
+just --list      # the individual steps: fmt, lint, test, deny, examples, flutter, devtools, packaging, skills
+just devtools-build   # rebuild the DevTools extension after touching its source (see below)
 ```
 
 [AGENTS.md](AGENTS.md) is the contributor and agent guide: the layout, the gate commands,
@@ -2857,9 +2956,15 @@ SHA-pinned actions, regenerating the examples).
 
 CI (`.github/workflows/ci.yml`) runs `just ci`'s steps: `cargo fmt --check`, clippy and the
 tests, `cargo deny check`, `fsp check` on the examples, and `dart format`, `flutter analyze`
-and `flutter test` on the package and every example. It also scaffolds every file kind
+and `flutter test` on the package, the DevTools extension and every example. A `devtools` job builds the
+extension again and fails when the committed build in `packages/fespalier/extension/devtools/build` is not
+what its source builds to, then runs `devtools_extensions validate`
+(`scripts/build-devtools-extension.sh --check`; after touching `packages/fespalier_devtools`,
+`lib/src/devtools/protocol.dart` or the Flutter version in `ci.yml`, run `just devtools-build` and commit the
+result). It also scaffolds every file kind
 with `fsp new` and `fsp init`, checks the result with `flutter analyze` and `dart format`,
-runs `dart run fespalier` against a
+builds that app for profile and for release and checks that the release build holds none of the DevTools
+code, runs `dart run fespalier` against a
 freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
 rendering, checksum pinning and release staging (`python3 scripts/test_packaging.py`,
 `python3 scripts/test_pin_checksums.py`, `python3 scripts/test_verify_staged.py`,
@@ -2868,7 +2973,7 @@ checks that the agent skills in `skills/` cover every README section, file kind,
 `fsp` command (`node scripts/skills/verify-coverage.mjs`; see [skills/README.md](skills/README.md)),
 and checks that the version agrees everywhere it is spelled out
 (`cli/tests/versions.rs`: `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`,
-`.release-please-manifest.json`, the `ref:` that `fsp init` prints, and the READMEs' and the
+`packages/fespalier/extension/devtools/config.yaml`, `.release-please-manifest.json`, the `ref:` that `fsp init` prints, and the READMEs' and the
 skills' `ref:`, `--tag` and `FSP_VERSION`; that each of them is annotated for release-please and listed in
 `release-please-config.json`; that the release workflows' own version readers,
 `scripts/read-version.sh`, still find each one; and that `release_checksums.dart` pins nothing

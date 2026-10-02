@@ -12,7 +12,9 @@ before changing how it behaves.
 | --- | --- |
 | `cli/` | The generator, Rust crate `fespalier`, binary `fsp`. Pipeline: `scan.rs` (the file tree) → `dart.rs` (tree-sitter reads each Dart file) → `resolve.rs` (binds parameters, checks how the files fit) → `emit.rs` and `manifest.rs` (write the output through `templates/`). Also `scaffold.rs` (`fsp new`), `init.rs`, `session.rs` and `parse_cache.rs` (incremental `fsp watch`), `locale.rs`, `enums.rs`, `extra.rs`. Unit tests sit next to the code as `*_tests.rs`; `cli/tests/` spawns the binary. |
 | `cli/templates/` | minijinja templates: `app.g.dart.jinja`, the manifest, and the files `fsp new` / `fsp init` write (`new/`, `init/`). |
-| `packages/fespalier/` | The Dart runtime (`DataView`, segment parsing, `TypedLocation`, `testing.dart`) and `bin/fespalier.dart`, the `dart run fespalier` launcher that downloads the matching `fsp`. Not published to a registry: apps use it as a git dependency at a release tag. |
+| `packages/fespalier/` | The Dart runtime (`DataView`, segment parsing, `TypedLocation`, `testing.dart`) and `bin/fespalier.dart`, the `dart run fespalier` launcher that downloads the matching `fsp`. `lib/src/devtools/` is the app side of the DevTools extension (`protocol.dart` is the wire format and imports nothing; `devtools.dart` is behind `kFespalierDevTools`, false in release). Not published to a registry: apps use it as a git dependency at a release tag. |
+| `packages/fespalier/extension/devtools/` | What DevTools loads: `config.yaml` (its `version:` is release-please's) and `build/`, the extension's release build, **committed and generated** by `scripts/build-devtools-extension.sh`. Never edit a file in `build/`. |
+| `packages/fespalier_devtools/` | The DevTools extension's source, a Flutter web app; only `lib/main.dart` imports `devtools_extensions`, so the rest is tested on the VM against a fake client. Its build is committed to `packages/fespalier/extension/devtools/build/`. `lib/src/protocol.dart` is a copy of the runtime's protocol file; `pubspec.lock` is committed on purpose. |
 | `examples/{minimal,shop,features,tabs}/` | Runnable apps with widget tests. Each commits its `lib/app.g.dart` (`tabs` also a manifest library); a test fails when one is stale. |
 | `editors/vscode/`, `editors/intellij/` | Editor plugins (TypeScript, Kotlin) that show `fsp --json` diagnostics. |
 | `skills/` | Agent skills for **apps that use fespalier** (one directory per skill, `SKILL.md` plus `references/`), with `skills/coverage.json`, the map from README sections, file kinds, config keys and commands to the skill that covers each. `skills/README.md` is their guide. Not published. |
@@ -29,7 +31,9 @@ before changing how it behaves.
 | `just test` | The generator's tests in `cli/` (unit, CLI, version checks) |
 | `just deny` | `cargo deny check` (licences, advisories, sources; `cli/deny.toml`) |
 | `just check-examples` | `fsp check` on every example |
-| `just flutter` | In the package and every example: `flutter pub get`, `dart format --set-exit-if-changed`, `flutter analyze`, `flutter test`; in each example also `scripts/check-const-lints.sh` (the const lints on a copy of the generated files, which `ignore_for_file` hides) |
+| `just flutter` | In the package, the DevTools extension and every example: `flutter pub get`, `dart format --set-exit-if-changed`, `flutter analyze`, `flutter test`; in each example also `scripts/check-const-lints.sh` (the const lints on a copy of the generated files, which `ignore_for_file` hides) |
+| `just devtools` | The committed DevTools extension build is what `packages/fespalier_devtools` builds to (a fresh build compared byte for byte, in a temporary folder), and `devtools_extensions validate` accepts it. Needs Flutter |
+| `just devtools-build` | Rebuild `packages/fespalier/extension/devtools/build` (and refresh the protocol copy). Run it and commit the result after touching `packages/fespalier_devtools/`, `lib/src/devtools/protocol.dart` or `FLUTTER_VERSION` |
 | `just packaging` | The Python tests for Homebrew/Scoop rendering, checksum pinning and release staging |
 | `just skills` | The skills' coverage gate: every README section, file kind, config key and `fsp` command is claimed by a skill, every claim still exists, and frontmatter, stamps and links are valid |
 | `just skill-samples [file.md ...]` | Builds the skills' code samples in a scratch app with this checkout's `fsp` (`gen`, `analyze`, `test`). Slow; not in `just ci` or CI, so run it when you touch a sample |
@@ -110,5 +114,21 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   message, behaviour or README claim needs the skill pages that quote it updated too: grep
   `skills/` for the old text. Say the release a change lands in ("since 0.5.0"), since apps
   pin older ones; `skills/README.md` has the rules.
+- **The DevTools extension's build is committed.** After touching `packages/fespalier_devtools/`,
+  `packages/fespalier/lib/src/devtools/protocol.dart` or `FLUTTER_VERSION` in `ci.yml`, run
+  `just devtools-build` and commit `packages/fespalier/extension/devtools/build/` with the change; CI
+  rebuilds it and compares byte for byte, so a Flutter bump fails the `devtools` job until someone
+  does. Do not run `dart run devtools_extensions build_and_copy`: it adds 37 MB of CanvasKit, a service
+  worker with a random version and every Material icon. The protocol file has one source,
+  `packages/fespalier/lib/src/devtools/protocol.dart` (it imports nothing); the extension holds a copy
+  that the build script refreshes and a test compares. The extension's `pubspec.lock` is committed on
+  purpose (a build must not change when a dependency publishes) and has no `fespalier` in it, which is why
+  the protocol is copied and not a path dependency: a release bump would make the lock stale.
+  `config.yaml`'s `version:` is release-please's, like the pubspec's.
+- **fespalier must not make apps flaky.** Everything the DevTools support adds sits behind
+  `kFespalierDevTools` (a `const`, false in release), so a release build has none of it (CI greps a
+  release build for `ext.fespalier`); in debug it starts no timer, schedules no frame, reads no
+  provider and wraps every path in a `try`. `app.g.dart` calls `devToolsRegister` and `devToolsAttach`:
+  never remove them by hand, and keep new calls under `if (kFespalierDevTools)`.
 - Every place that spells out the release version is annotated for release-please and checked by
   `cli/tests/versions.rs`; if that test fails after your change, you moved or removed an annotation.

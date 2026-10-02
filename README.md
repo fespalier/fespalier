@@ -1148,7 +1148,8 @@ GuardResult guard(Ref ref, {required Uri uri}) =>
 - **What gets generated.** Each page's `GoRoute` gets a `redirect` that calls, in order, the
   guards of the page-less folders above it and then its own. A `Ref` guard is called as
   `refGuard(context, 'g8@3', (ref) => _i8.guard(ref, uri: state.uri))` (the string names the
-  guard on that route, and is constant). Nested pages go through their
+  guard on that route, and is constant; since 0.7.0 each call sits in `traceGuard(state, 'g8@3', ...)`, which
+  returns it unchanged, for the [DevTools extension](#devtools-extension)). Nested pages go through their
   parent's `redirect`, so no guard runs twice. (A route that leaves the page above with `nest = false`
   has that page's guard and the ones of the folders between in its own `redirect`, the way a page-less
   folder's guard is, since the page is not its parent.) There's no redirect on `ShellRoute` or
@@ -2791,6 +2792,21 @@ from. It answers:
 - **Can I try a URL?** The go-to bar above the tabs takes a location and a `go`, `push` or `replace`,
   and has a **Pop** button. It asks the app's router, so guards and redirects run as they do for a
   link.
+- **Which guard redirected me?** The _Guards_ tab lists every guard and `redirect.dart` that answered,
+  newest first: the location it was asked about, its file and route, and its result: `pass`, `redirect`
+  (with where to), `pending` (an async guard that has not answered), `error`, or `skipped` (a segment
+  did not parse, so the guard did not run and the page shows not-found). Chips filter by result. A
+  redirect chain (`/admin` to `/login`) is one entry in the history, and the badge on it opens the
+  decisions behind it.
+- **Is this data loading or cached?** The _Data_ tab lists the provider of every `data.dart` that was
+  built: its file and route, the key (the segments and query it is keyed by), its state (`loading`,
+  `data`, `error`, `stream` or `disposed`), how often it was built, when, and what it holds. **Invalidate**
+  builds one again.
+- **What did that action do?** The _Actions_ tab lists the runs of the `action.dart` functions, newest
+  first: the function, its key and input, `running`, `done` or `error`, how long it took and what it
+  returned or threw.
+- **Open in IDE.** A route's details under _Routes_ (and each guard, data and action file listed there)
+  have a button that asks the IDE to open the file.
 
 **How to see it.** Run the app in debug or profile mode and open DevTools: the `fespalier` tab is there
 when the app is connected. DevTools asks once per project before it loads an extension (the Extensions
@@ -2814,11 +2830,22 @@ if (kFespalierDevTools) devToolsAttach(router);
 
 **What it costs.** Nothing in a release build: `kFespalierDevTools` is a `const` that is false there, the
 generated `app.g.dart` calls the extension's code only under `if (kFespalierDevTools)`, and
-the compiler removes the service extensions, the route tree and the code that serves them. CI builds
-an app for profile and for release and checks that the release build has none of it. In a debug or
-profile build it adds one listener to the router's delegate and a list of the last 100 locations, and
-nothing else: no timer, no frame, no read of a provider, and nothing that runs unless DevTools asks. A
-bug in it is printed once and dropped; it never changes what a navigation does.
+the compiler removes the service extensions, the route tree and the code that serves them. The calls
+that follow the guards and the data are wrappers that return what they are given
+(`traceGuard(state, 'g5@6', guard(...))`, `traceData(ref, 'd37', id, data(...))`); in a release build they
+are the identity and the compiler inlines them away. CI builds an app with a guard, a `data.dart` and an
+action for profile and for release and checks that the release build has none of it. What stays in a
+release build is one short string per action (its site, an argument of the generated action provider).
+
+In a debug or profile build it adds one listener to the router's delegate, one `onDispose` callback per
+build of a `data.dart` provider, and lists of what happened that stop at 100 locations, 200 guard
+decisions, 100 action runs, and the providers that are alive plus the last 50 disposed. There is no
+timer, no frame, no read of a provider, no listener on a provider, and nothing that answers unless
+DevTools asks. **A guard or a data function that answers at once still does:** the wrapper returns the very
+object it was given, so a synchronous guard stays synchronous, a `Future` is the `Future` go_router or
+Riverpod awaits, and the only thing added to one is a side `then` that records how it ended and handles
+its own errors. A `Stream` is not listened to. A bug in any of it is printed once and dropped; it never
+changes what a navigation, a guard, a provider or an action does.
 `--dart-define=fespalier.devtools=false` takes it out of a debug build too.
 
 **Limits.**
@@ -2832,7 +2859,18 @@ bug in it is printed once and dropped; it never changes what a navigation does.
 - The route class a location is matched to is the class's `runtimeType` name. A profile build on the web
   minifies class names, so the tab finds the route by its path template instead, which a
   [localized path](#localized-paths) may not match.
-- It shows locations, the stack and the route tree. Guards, data and actions are not followed.
+- A `data.dart` that returns or selects a provider of its own is listed under _Data_ as not traced, and
+  not followed: fespalier does not wrap what it does not make. The same goes for a guard or a data
+  function that throws before it returns anything: go_router or Riverpod get the error as they always
+  did, and the tab shows nothing for it.
+- **Who holds a provider** (the page, a `PrefetchHandle`, a `RouteLink` preload, something else) is not
+  shown: Riverpod does not export what that needs. Use Riverpod's own DevTools tab for the listeners.
+  fespalier does not add a `ProviderObserver` either: it does not own your `ProviderScope`.
+- A provider that returns a `Stream` shows the state `stream` and no value: nothing listens to it on the
+  tab's behalf.
+- **Open in IDE** posts a `navigate` event on the `ToolEvent` stream with a `package:` URI of the file, the
+  way Riverpod's DevTools extension opens a file. Whether VS Code and IntelliJ open a `package:` URI
+  from it is **unverified**; it needs the IDE's DevTools integration to be listening.
 
 **For tool authors.** The extension and the app talk through `dart:developer`'s service extensions and
 events, protocol 1. Every response and event has `"protocol": 1` and an `"event"` number on events (one counter
@@ -2843,19 +2881,31 @@ type and its text cut to 200 characters. The records are in
 [`packages/fespalier/lib/src/devtools/protocol.dart`](packages/fespalier/lib/src/devtools/protocol.dart),
 which imports nothing.
 
-| Service extension        | Parameters                                                               | Answers                                                                                |
-| ------------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `ext.fespalier.hello`    | none                                                                     | the protocol, whether the app registered and attached a router, and its `features`     |
-| `ext.fespalier.tree`     | none                                                                     | the route tree, as `fsp routes --graph json` prints it                                 |
-| `ext.fespalier.snapshot` | none                                                                     | the location, the stack, the history and the number of the last event                  |
-| `ext.fespalier.match`    | `location`                                                               | the route a location is and its parsed parameters; it runs no guard and builds nothing |
-| `ext.fespalier.navigate` | `mode` (`go`, `push`, `replace` or `pop`) and `location` (not for `pop`) | `{"ok": true}` once the router has been asked                                          |
-| `ext.fespalier.clear`    | `what` (`history` or `all`)                                              | `{"ok": true}`; the history is emptied and the event counter goes on                   |
+| Service extension          | Parameters                                                               | Answers                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `ext.fespalier.hello`      | none                                                                     | the protocol, whether the app registered and attached a router, and its `features`        |
+| `ext.fespalier.tree`       | none                                                                     | the route tree, as `fsp routes --graph json` prints it                                    |
+| `ext.fespalier.snapshot`   | none                                                                     | the location, the stack, the history and the number of the last event                     |
+| `ext.fespalier.match`      | `location`                                                               | the route a location is and its parsed parameters; it runs no guard and builds nothing    |
+| `ext.fespalier.navigate`   | `mode` (`go`, `push`, `replace` or `pop`) and `location` (not for `pop`) | `{"ok": true}` once the router has been asked                                             |
+| `ext.fespalier.clear`      | `what` (`history`, `guards`, `actions` or `all`)                         | `{"ok": true}`; what was named is emptied and the event counter goes on                   |
+| `ext.fespalier.invalidate` | `id` (a data record's)                                                   | `{"ok": true}` when that provider was alive and was invalidated, `{"ok": false}` when not |
+| `ext.fespalier.open`       | `file` (one of the tree's, relative to the app folder)                   | `{"ok": true}` once the IDE was asked, with a `package:` URI                              |
 
-| Event                  | Posted when                                | Carries                                  |
-| ---------------------- | ------------------------------------------ | ---------------------------------------- |
-| `fespalier:registered` | the app registers, or a router is attached | the number of the event                  |
-| `fespalier:navigation` | the router commits a location              | the number and the `record` of the entry |
+| Event                  | Posted when                                                                          | Carries                                     |
+| ---------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------- |
+| `fespalier:registered` | the app registers, or a router is attached                                           | the number of the event                     |
+| `fespalier:navigation` | the router commits a location                                                        | the number and the `record` of the entry    |
+| `fespalier:guard`      | a guard or `redirect.dart` answers, and again (same `seq`) when an async one settles | the number and the `record` of the decision |
+| `fespalier:data`       | a `data.dart` provider is built, settles, fails, is built again or is disposed       | the number and the `record` of the provider |
+| `fespalier:action`     | an action starts and when it ends                                                    | the number and the `record` of the run      |
+
+`hello`'s `features` lists what the app can answer: `navigation`, `match`, `navigate`, `guards`, `data`,
+`actions` and `open`. The `snapshot` has a `guards`, a `data` and an `actions` list, and a navigation record
+names the `guards` behind it; a reader that finds one of the features missing finds those empty. A guard record is
+`{seq, at, site, uri, fullPath, result, location, async, ms, error}`, a data record
+`{id, site, key, container, state, builds, created, updated, value, error}` and an action record
+`{seq, site, key, input, state, started, ms, result, error}`; a `site` is a key of the tree's `sites`.
 
 An error is a JSON-RPC error with the code `-32602` for a missing or bad parameter and `-32000` otherwise,
 and its detail says what was wrong. Events are posted only while a tool listens.
@@ -2963,8 +3013,9 @@ what its source builds to, then runs `devtools_extensions validate`
 `lib/src/devtools/protocol.dart` or the Flutter version in `ci.yml`, run `just devtools-build` and commit the
 result). It also scaffolds every file kind
 with `fsp new` and `fsp init`, checks the result with `flutter analyze` and `dart format`,
-builds that app for profile and for release and checks that the release build holds none of the DevTools
-code, runs `dart run fespalier` against a
+gives that app a guarded route with a `data.dart` and an `action.dart`, builds it for profile and for release
+and checks that the release build holds none of the DevTools code (the `traceGuard` and `traceData`
+wrappers included), runs `dart run fespalier` against a
 freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
 rendering, checksum pinning and release staging (`python3 scripts/test_packaging.py`,
 `python3 scripts/test_pin_checksums.py`, `python3 scripts/test_verify_staged.py`,

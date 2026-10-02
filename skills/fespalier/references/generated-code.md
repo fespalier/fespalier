@@ -102,13 +102,25 @@ calls, the string and the code behind them: a release build has none of it. **Ne
 (`fsp gen` writes them back); an app that mounts the routes into its own `GoRouter` calls
 `devToolsAttach(router)` itself. See the DevTools page of `fespalier-troubleshooting`.
 
+Three more pieces follow the guards, the data and the actions, and they are not under an `if`, because each
+returns what it is given: every guard and `redirect.dart` call in a `redirect:` is wrapped as
+`traceGuard(state, 'g5@6', <the call>)` (a `redirect.dart`'s site is `r32`; with `guardWithParams` the
+whole `guardWithParams(...)` is wrapped, so a bad segment reads `skipped`), the body of a generated
+provider as `traceData(ref, 'd37', id, _i4.data(ref, id: id))` (the key is the family's parameter, `k` for
+a record of keys, `null` for none; a `data.dart` that returns or selects a provider is not wrapped), and each
+action factory gets `site: 'a37_0'`. The sites are the keys of the tree's `sites`. `traceGuard` and
+`traceData` return their last argument, the very object: a sync guard or `data()` stays sync, a `Future`
+is not wrapped in another, and in a release build both are the identity, inlined away (a release build keeps
+only the action's `site` string). Never remove them by hand.
+
 ## What the file does not do
 
 - A guard that takes a `Ref` is called as
   `refGuard(context, 'g8@3', (ref) => _i8.guard(ref, uri: state.uri))` (and a redirect
   that takes one as `refRedirect(context, (ref) => ...)`); one that takes a
   `ProviderContainer` as `_i8.guard(ProviderScope.containerOf(context, listen: false), ...)`,
-  as before 0.5.0. The string is a constant naming that guard on that route.
+  as before 0.5.0. The string is a constant naming that guard on that route. Since 0.7.0 each call sits
+  inside `traceGuard(state, 'g8@3', ...)`, which returns it unchanged (see above).
 - No `redirect` on a `ShellRoute` or `StatefulShellRoute`; guards hang on each
   page's `GoRoute`, and go_router runs a matched route's redirect for deep links
   and navigation inside shells, tabs included.

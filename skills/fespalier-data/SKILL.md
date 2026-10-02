@@ -131,6 +131,15 @@ await RefundRoute.submit(ref, id: 1, input: input);  // a callback or a test: th
 [`references/actions.md`](references/actions.md) has the rules, the generated members,
 what is invalidated and a test that compiles.
 
+## Seeing it in DevTools (since 0.7.0)
+
+The `fespalier` tab's **Data** tab lists each provider fespalier makes from a `data.dart`: its state
+(`loading`, `data`, `error`, `stream`, `disposed`), builds, key and value, with an **Invalidate** button;
+**Actions** lists the runs of the `action.dart` functions. The generated provider body is wrapped in
+`traceData`, which returns the function's own result (a value stays a value, a `Future` stays the `Future`).
+A `data.dart` that returns or selects a provider is **not traced**, and who holds a provider is not shown
+(`fespalier-troubleshooting`, its DevTools page).
+
 ## Common symptoms
 
 | Symptom                                            | Look at                                                                                    |

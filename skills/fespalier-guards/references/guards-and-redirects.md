@@ -145,7 +145,9 @@ class LoginPage extends ConsumerWidget {
   with `firstRedirect`, which stays synchronous until a guard returns a
   `Future`). A `Ref` guard is called as
   `refGuard(context, 'g8@3', (ref) => _i8.guard(ref, uri: state.uri))`: the string is a
-  constant naming that guard on that route. Nested pages go through their parent's `redirect`, so **no guard runs
+  constant naming that guard on that route. (Since 0.7.0 every guard and redirect call is wrapped in
+  `traceGuard(state, 'g8@3', ...)`, which returns the call's own result: DevTools shows the decision.)
+  Nested pages go through their parent's `redirect`, so **no guard runs
   twice**. There is **no `redirect` on a `ShellRoute` or `StatefulShellRoute`**:
   go_router runs a matched route's redirect for deep links and for navigation
   inside a shell, tabs included, so the page routes are enough.

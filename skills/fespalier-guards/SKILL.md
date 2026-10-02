@@ -109,6 +109,11 @@ never stays on screen.
   fetching the providers it watches twice. **Don't `ref.keepAlive()` in a guard**: it
   leaks a provider per navigation. A guard that throws never moves the router.
   Details and a compiled sample: [`references/auth-patterns.md`](references/auth-patterns.md).
+- **DevTools shows each decision (since 0.7.0).** Its **Guards** tab lists every guard and
+  `redirect.dart` that answered, with `pass`, `redirect` (and where to), `pending` or `error` for an
+  async guard, or `skipped` when a segment did not parse; a redirect chain is one history entry.
+  The generated `redirect:` wraps each call in `traceGuard`, which returns the guard's own result, so
+  a sync guard stays sync (`fespalier-troubleshooting`, its DevTools page).
 
 ## Where to read more
 

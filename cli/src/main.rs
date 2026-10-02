@@ -9,6 +9,7 @@ mod graph;
 mod init;
 mod links;
 mod locale;
+mod maestro;
 mod manifest;
 mod parse_cache;
 mod resolve;
@@ -72,6 +73,12 @@ enum Cmd {
         #[arg(long)]
         check: bool,
     },
+    /// Write Maestro smoke flows, one per route, from the routes (`maestro:` in pubspec.yaml)
+    Maestro {
+        /// Write nothing; exit non-zero when the flows on disk are not what `fsp maestro` would write
+        #[arg(long)]
+        check: bool,
+    },
     /// Regenerate on every change under the app folder
     Watch,
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
@@ -98,6 +105,7 @@ fn main() {
             }
             Cmd::Routes { json, graph } => routes::run(&project, json, graph),
             Cmd::Links { check } => links::run(&project, check),
+            Cmd::Maestro { check } => maestro::run(&project, check),
             Cmd::Watch => watch(&project),
             Cmd::Init => init::run(&project),
             Cmd::New(cmd) => {
@@ -433,6 +441,8 @@ mod incremental_tests;
 mod links_tests;
 #[cfg(test)]
 mod locale_tests;
+#[cfg(test)]
+mod maestro_tests;
 #[cfg(test)]
 mod manifest_tests;
 #[cfg(test)]

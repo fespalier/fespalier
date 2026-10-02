@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/help/$topic/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/help/:topic"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/help/start"
+- extendedWaitUntil:
+    visible:
+      id: "route:/help/:topic"
+    timeout: 20000

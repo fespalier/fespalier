@@ -2320,6 +2320,10 @@ final class NoteRoute extends TypedLocation {
   @override
   void replace(BuildContext context, {Note? extra, String? locale}) => replaceLocation(context, locationFor(locale), extra: extra);
 
+  @override
+  Future<T?> pushReplacement<T extends Object?>(BuildContext context, {Note? extra, String? locale}) =>
+      GoRouter.of(context).pushReplacement<T>(locationFor(locale), extra: extra);
+
   /// The NoteRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
   static NoteRoute of(BuildContext context) => routeOf<NoteRoute>(context, AppRoutes.matchUrl);

@@ -749,7 +749,7 @@ ProductRoute(id: 2).location;                 // '/products/2'
 ProductRoute(id: 2).locationFor('fr');        // '/produits/2'
 ProductRoute(id: 2).locationFor('fr-CA');     // '/produits/2': a region falls back to its language
 ProductRoute(id: 2).locationFor('es');        // '/products/2': nobody spells it
-ProductRoute(id: 2).go(context, locale: 'de');  // → /produkte/2; also push<T>(…, locale:) and replace(…, locale:)
+ProductRoute(id: 2).go(context, locale: 'de');  // → /produkte/2; also push<T>(…, locale:), pushReplacement<T>(…, locale:) and replace(…, locale:)
 ```
 
 A level with no spelling for the locale keeps its canonical one, each level on its own (with
@@ -1477,6 +1477,11 @@ SearchRoute(q: 'ap').copyWith(page: 2).location;                   // '/search?q
   is set in [the pubspec](#getting-started) (since 0.6.0). On 0.5.0 `replace` was go_router's in
   every case: the address bar followed it only when no page was below it (as a new history entry),
   and showed the page below's URL otherwise, so use `go` for URL state there.
+- **`pushReplacement`** (since 0.7.0) is go_router's own, typed like `push`: the page on top leaves
+  and a new one is pushed, with a new page key, and the future completes with what that page pops
+  with. Use it where `replace` is wrong because the page's state or transition must not carry over:
+  a sheet that hands over to a full page, or the reverse. `replace` keeps the page key. Both take
+  `locale:`, and `extra:` where the route has one.
 - **Reserved names.** `of`, `maybeOf` and `copyWith` are members of the route class, so
   they can't be segment or query names (see
   [Typed helpers on the route](#typed-helpers-on-the-route)).
@@ -1586,7 +1591,7 @@ class NotePage extends StatelessWidget {
   …
 }
 
-NoteRoute(id: 3).go(context, extra: note);      // also push<T>(…, extra:) and replace(…, extra:)
+NoteRoute(id: 3).go(context, extra: note);      // also push<T>(…, extra:), pushReplacement<T>(…, extra:) and replace(…, extra:)
 NoteRoute(id: 3).go(context, extra: 'oops');    // compile error: a String isn't a Note?
 ```
 

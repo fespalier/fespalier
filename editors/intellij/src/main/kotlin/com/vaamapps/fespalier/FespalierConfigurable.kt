@@ -26,7 +26,7 @@ class FespalierConfigurable : BoundSearchableConfigurable("fespalier", "com.vaam
                     .comment("A name on PATH or a full path. Used when the runner is fsp, or auto and fsp is found.")
             }
             row {
-                checkBox("Check when a file under the app folder is saved")
+                checkBox("Check when a file under the app folder or a Dart file under lib/ is saved")
                     .bindSelected(s::checkOnSave)
                     .comment("The app folder is fespalier: app_dir: in pubspec.yaml (lib/app by default).")
             }

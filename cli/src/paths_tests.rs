@@ -574,6 +574,8 @@ fn a_page_can_ask_for_the_extra_object() {
             "Future<T?> push<T extends Object?>(BuildContext context, {Product? extra, String? locale}) =>",
             "context.push<T>(locationFor(locale), extra: extra);",
             "void replace(BuildContext context, {Product? extra, String? locale}) => replaceLocation(context, locationFor(locale), extra: extra);",
+            "Future<T?> pushReplacement<T extends Object?>(BuildContext context, {Product? extra, String? locale}) =>",
+            "GoRouter.of(context).pushReplacement<T>(locationFor(locale), extra: extra);",
             "unused_element, undefined_shown_name",
         ],
     );

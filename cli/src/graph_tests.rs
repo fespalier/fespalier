@@ -206,6 +206,36 @@ fn layouts_guards_data_and_redirects_are_marked() {
 }
 
 #[test]
+fn a_deferred_route_is_marked_last_and_a_layout_box_never_is() {
+    let files = [
+        ("page.dart", page("Home")),
+        ("route.dart", "const deferred = true;".into()),
+        ("layout.dart", "class AppLayout extends StatelessWidget { const AppLayout({super.key, required this.child}); final Widget child; }".into()),
+        ("account/page.dart", page("Account")),
+        ("account/guard.dart", "GuardResult guard(ProviderContainer c) => null;".into()),
+        ("old/redirect.dart", "String redirect() => '/account';".into()),
+    ];
+    let files: Vec<(&str, &str)> = files.iter().map(|(a, b)| (*a, b.as_str())).collect();
+    let text = render_files(&files, Format::Mermaid);
+    check_mermaid(&text);
+    assert!(
+        text.contains("AccountRoute<br/>(guard, deferred)"),
+        "{text}"
+    );
+    assert!(text.contains("HomeRoute<br/>(deferred)"), "{text}");
+    // A redirect has no page to defer, and a layout is a box, which is never marked.
+    assert!(text.contains("(redirect)"), "{text}");
+    assert!(!text.contains("(redirect, deferred)"), "{text}");
+    assert!(
+        text.contains("subgraph b0[\"layout layout.dart\"]"),
+        "{text}"
+    );
+    let dot = render_files(&files, Format::Dot);
+    check_dot(&dot);
+    assert!(dot.contains("(guard, deferred)"), "{dot}");
+}
+
+#[test]
 fn tab_branches_are_boxes_in_the_tab_layout() {
     let text = render_project(&examples("tabs"), Format::Mermaid);
     assert!(text.contains("tabs (tabs)/layout.dart"), "{text}");

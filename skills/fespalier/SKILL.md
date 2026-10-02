@@ -58,6 +58,11 @@ matches the package your `pubspec.lock` resolved.
 5. **The generator reads syntax, not types.** `Product` and a `typedef` of it are
    different types to `fsp`; the Dart compiler still has the last word on the
    generated code. An enum is the one type it looks up.
+6. **Typed routes are preferred, string paths are allowed.** `context.go('/products/2')` is
+   fine when a route matches it; since 0.7.0 `fsp gen`, `check` and `watch` warn about a
+   string path in `lib/` that matches **no** route:
+   ``no route matches `/prodcts/2`, so it shows not-found [unknown_path]``. Fix the path, use
+   the typed route, or silence one with `// fsp:ignore unknown_path`; see `fespalier-routing`.
 
 ## The file kinds
 
@@ -76,7 +81,7 @@ matches the package your `pubspec.lock` resolved.
 | `navigator.dart`   | `const navigator = RouteNavigator.root;`: render above every layout       |
 | `not_found.dart`   | Unknown URLs and unparsable segments; nearest folder wins                 |
 | `meta.dart`        | `const meta = ...;` this route's own facts, into the manifest             |
-| `route.dart`       | `const caseSensitive = ...;`, `paths`, `nest`, `linkable`, `remount`      |
+| `route.dart`       | `caseSensitive`, `paths`, `nest`, `linkable`, `remount`, `deferred`       |
 | `extra_codec.dart` | At the app root only: `extraCodec`, to restore `extra` after a restart    |
 
 Folder names: `products` is a static segment; `$id` a dynamic one; `$$rest` one
@@ -130,6 +135,7 @@ fsp watch                                  # regenerate on every change
 fsp check                                  # CI: non-zero on errors, writes nothing
 fsp routes [--json | --graph [dot | json]]  # the route table, or the tree as Mermaid / DOT / JSON
 fsp links [--check]                        # App Links, Universal Links, sitemap from the routes (0.5.0)
+fsp maestro [--check]                      # Maestro smoke flows, one per route (0.7.0)
 fsp new 'orders/[id]' --data --loading     # scaffold a route, then gen
 ```
 

@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { countBySeverity, groupByFile, parseFindings, toRange } from './diagnostics';
-import { appDirFromPubspec, isUnderAppDir } from './project';
+import { affectsCheck, appDirFromPubspec } from './project';
 import { fspOnPath, invocation, run, RunnerSetting } from './runner';
 
 interface Project {
@@ -254,8 +254,9 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
       const rel = path.relative(project.root, doc.uri.fsPath).split(path.sep).join('/');
-      // pubspec.yaml can move the app folder; anything under it can change the route table.
-      if (rel === 'pubspec.yaml' || isUnderAppDir(rel, project.appDir)) {
+      // pubspec.yaml can move the app folder; anything under it can change the route table; a
+      // Dart file elsewhere under lib/ can hold a string path that matches no route.
+      if (affectsCheck(rel, project.appDir)) {
         void schedule(project, 'check');
       }
     }),

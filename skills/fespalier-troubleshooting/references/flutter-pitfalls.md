@@ -88,6 +88,23 @@ A route with a `data.dart` **builds nothing until the data has arrived**: `loadi
 widget is a blank screen. With the default `keep_previous: true` only the **first** load
 shows it.
 
+## A deferred page shows `loading.dart` for a moment, or a test cannot load it
+
+Since 0.7.0 a route whose folder says `const deferred = true;` builds its page from a
+`deferred as` import. On the web its code is a chunk the browser fetches, so the page's place
+shows the nearest `loading.dart` (a centred spinner without one) until it arrives, and
+`error.dart` (with a retry that loads again) if it can't be fetched. Outside the web the code is
+already in the app, but `loadLibrary()` still takes a turn of the event loop, so the first visit
+shows `loading.dart` for about a frame unless the code was loaded before: call
+`await AppRoutes.loadDeferred();` before `runApp` there (`if (!kIsWeb) ...`), or preload it
+(`route.preload(ref)`, a `RouteLink` with `preload`). A `loading.dart` that returns an empty widget is
+a blank screen here too, and the landing page should not be deferred.
+
+In a **widget test**, `pumpRouter` loads the code first. A test that pumps a router of its own
+without `await tester.runAsync(AppRoutes.loadDeferred);` gets a `FlutterError` in a debug build:
+`The code of products/$id/page.dart is not loaded, and a widget test can't load it while it pumps.`
+(the rest of it, and the fix, are in `fespalier-testing`, `references/pitfalls.md`).
+
 ## `$` in an import
 
 `import 'package:my_app/app/products/$id/page.dart';` is a Dart error (`URIs can't use

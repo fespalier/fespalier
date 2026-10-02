@@ -1,7 +1,7 @@
-# `route.dart`: case, trailing slashes, localized paths, `nest`, `linkable` and `remount`
+# `route.dart`: case, trailing slashes, localized paths, `nest`, `linkable`, `remount` and `deferred`
 
-As of v0.4.0 (`linkable` since 0.5.0, `remount` since 0.6.0). A `route.dart` holds up to five
-declarations, and `fsp` reads them **from the source**; it never imports or runs the file, so
+As of v0.4.0 (`linkable` since 0.5.0, `remount` since 0.6.0, `deferred` since 0.7.0). A `route.dart`
+holds up to six declarations, and `fsp` reads them **from the source**; it never imports or runs the file, so
 each must be a literal:
 
 ```dart
@@ -10,13 +10,14 @@ const paths = {'fr': 'produits', 'de': 'produkte'};   // this folder's own segme
 const nest = false;                          // this folder's route only (0.4.0)
 const linkable = false;                      // this folder and below, for `fsp links` (0.5.0)
 const remount = Remount.onSegments;          // this folder and below: when a page starts again (0.6.0)
+const deferred = true;                       // this folder and below: pages load their code on demand (0.7.0)
 ```
 
 A `route.dart` adds and removes no route, and may hold any one of them alone.
-`caseSensitive`, `paths`, `linkable` and `remount` need no page beside it; `nest` does. One with
-none of the five is an error (since 0.6.0 its text names all five; on 0.5.0 it names four and on
-0.4.0 the first two):
-``expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;` or `const remount = Remount.onSegments;` ``.
+`caseSensitive`, `paths`, `linkable`, `remount` and `deferred` need no page beside it; `nest` does. One
+with none of the six is an error (since 0.7.0 its text names all six; on 0.6.0 it names five, without
+`deferred`, on 0.5.0 four and on 0.4.0 the first two):
+``expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;` ``.
 
 ## Trailing slashes
 
@@ -311,6 +312,12 @@ built nor asked for its `data.dart`. `fsp routes` tags it `(sibling)` (`"sibling
 `--json`). `examples/features` has `orders/$id/refund/confirm` (and `refund/receipt`,
 which nests) with widget tests for the stack and for back.
 
+- **At runtime** (since 0.7.0), `RouteInfo.sibling` is `true` for the route that declares
+  `nest = false` and `false` for the page it left and for every other route
+  (`AppRoutes.byType[ConfirmRoute]!.sibling`, like the rest of
+  `RouteInfo`). It is a flag, not a parent: the page it sits beside is not always one route
+  (the folders between can be page-less), and `path` already has the segments it joined.
+  A nested route below a sibling is not one itself.
 - **This folder's route only.** It is not inherited: the folders below `confirm/` nest
   under `confirm` as usual. Put it beside a `page.dart` or a `redirect.dart`; `true` is
   the default and says nothing.
@@ -475,3 +482,79 @@ fespalier:
 `examples/features` has all three under `remount/` (`never/` and `segments/` override the
 `onLocation` of `remount/route.dart`), with a widget test that presses a button, changes the URL
 and reads the count.
+
+## `deferred`: load a page's code on demand
+
+Since 0.7.0. On the web a Flutter app is one JavaScript bundle. A folder whose `route.dart` says
+
+```dart
+// lib/app/checkout/route.dart
+const deferred = true;
+```
+
+has the `page.dart` of its route, and of every route below it, imported `deferred as` in the
+generated file, so dart2js makes a chunk (`main.dart.js_N.part.js`) of it that the browser fetches
+when the page is first built, or earlier when it is preloaded. Nothing else about the route changes.
+
+```dart
+// lib/app/checkout/page.dart
+import 'package:flutter/material.dart';
+
+class CheckoutPage extends StatelessWidget {
+  const CheckoutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Text('Place order');
+}
+```
+
+For the whole app, `fespalier: { deferred: true }` in the pubspec (default `false`); a folder's
+`const deferred = false;` opts it out. **Off by default, and a route that isn't deferred generates
+byte-identical code.**
+
+- **Same rules as `caseSensitive`.** The nearest `route.dart` wins, over the parent's and over the
+  pubspec; it covers the folder and everything below, is inherited by `(group)` folders and
+  folders without a page, may sit at the root, and needs no page beside it. It must be a `true` or
+  `false` literal, declared once. A pubspec value that is not a bool is serde's error, not
+  ours: `invalid pubspec.yaml: fespalier.deferred: invalid type: string "maybe", expected a boolean at line 3 column 13`.
+- **Only `page.dart`** (a tab layout's own page included). `layout.dart` (it wraps a `Navigator`
+  and the state below it), `loading.dart` and `error.dart` (what shows while it loads or fails),
+  `guard.dart` and `redirect.dart` (they decide before any build), `data.dart`, `action.dart`,
+  `meta.dart`, `transition.dart`, `present.dart` and `not_found.dart` stay in the main bundle. A
+  `redirect.dart` route has no page, so it is never deferred. **Layouts are never deferred.**
+- **What the generated code does.** A route without data builds its page in a
+  `DeferredView(library: _lib2, page: () => _i7.CheckoutPage(), loading: ..., error: ...)`: the
+  nearest `loading.dart` (a spinner without one) shows until the code is there, the nearest
+  `error.dart` if it can't be fetched (with `retry` loading it again, and the error `loadLibrary()`
+  threw, a `DeferredLoadException` on the web). A route with data hands its library to the
+  `DataView` (`library: _lib6,`), so the code loads **in parallel** with the data and the page shows
+  when both are there. The page is built with no `const` (a deferred class can't be named in a
+  constant expression), and **once its code is loaded it is built synchronously**.
+- **`loading.dart` and `error.dart` now cover a page without data**, as for one with data, with the
+  same rule: an inherited view must fit every route it covers, so an `error.dart` asking for a
+  segment the deferred route doesn't have is the existing "can't fill" error, and one asking for a
+  query parameter adds it to the typed route.
+- **Guards run first**, from eager code: a guard that redirects means the code is never fetched.
+- **Preloading** also loads the code: `preload` of the typed route (so `RouteLink` and
+  `AppRoutes.preload`), and `AppRoutes.loadDeferred()` loads every deferred page now (call it after
+  the first frame; before `runApp` outside the web: `if (!kIsWeb) await AppRoutes.loadDeferred();`).
+  `AppRoutes.deferred` lists the `DeferredLibrary` of each.
+- **A type declared in a deferred page.dart is an error (G4).** An enum segment or query type, or a
+  typed `extra` class, declared in the page's own file is named by the generated file outside the
+  page, where Dart can't use a deferred library's type. Move it to its own file and import it in the
+  page, or say `const deferred = false;`. A type declared in a page that is not deferred is fine for a
+  deferred child.
+- **Where it shows.** `fsp routes` tags the page `deferred` (last), `fsp routes --json` has
+  `"deferred":true` for such a route only, `--graph` marks the node, and the manifest's
+  `RouteInfo.deferred` is `true`.
+- **Tests.** `pumpRouter` loads the deferred code first (in `runAsync`), so a deferred page is in the
+  first settled frame. A test that pumps its own router calls
+  `await tester.runAsync(AppRoutes.loadDeferred);` first (`fespalier-testing`).
+- **Not built:** deferring a layout, a `const preload = true;`, a cap on parallel loads, and
+  `deferred: auto`. Don't defer the landing page.
+- **Errors** (texts in `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`): a
+  value that is not a `true`/`false` literal, two declarations, a type declared in a deferred page,
+  and a pubspec `deferred:` that is not a bool.
+
+`examples/shop` defers `checkout/` and `products/$id/`, with `examples/shop/test/deferred_test.dart`,
+and `just web-chunks` builds it for the web and checks that their strings are in chunks of their own.

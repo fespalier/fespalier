@@ -46,11 +46,30 @@ abstract class TypedLocation {
   void replace(BuildContext context, {String? locale}) =>
       replaceLocation(context, locationFor(locale));
 
+  /// Replaces the page on top of the stack with this location and completes with what
+  /// the new page pops with.
+  ///
+  /// This is go_router's `pushReplacement`: the old page leaves and a new one is pushed
+  /// under a new key, so a sheet that hands over to a full page (or the other way round)
+  /// does not carry its state or its transition over to a page of another kind.
+  /// [replace] over a pushed page keeps its key (go_router's `replace`); over a page of
+  /// the declarative stack it is a `go`, which keeps it only for the same path template.
+  ///
+  /// The replaced page's own future never completes, and when it was the only page,
+  /// neither does this one (go_router's behaviour).
+  ///
+  /// The optional [locale] picks one of the route's localized spellings.
+  Future<T?> pushReplacement<T extends Object?>(
+    BuildContext context, {
+    String? locale,
+  }) => GoRouter.of(context).pushReplacement<T>(locationFor(locale));
+
   /// Starts loading every `data.dart` the page at this location reads (the
   /// data of each section above it, then its own: what `AppRoutes.dataAt`
   /// answers for [location]) and keeps them alive until the returned handle is
   /// closed, so the page shows at once when it is reached. `keepFor` closes it
-  /// after that long, as for `prefetch`.
+  /// after that long, as for `prefetch`. For a deferred route (`const deferred = true;`)
+  /// it also starts loading its page's code, which stays loaded for good (since 0.7.0).
   ///
   /// It never navigates and never runs a guard or a redirect. A route without
   /// data, like this base, returns a closed handle: there is nothing to warm.

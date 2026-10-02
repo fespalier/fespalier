@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/photos/$id/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/photos/:id"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/photos/9"
+- extendedWaitUntil:
+    visible:
+      id: "route:/photos/:id"
+    timeout: 20000

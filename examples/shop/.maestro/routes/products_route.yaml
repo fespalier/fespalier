@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/products/page.dart: don't edit it, run `fsp maestro` again.
+url: "http://localhost:8080"
+name: "/products"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "http://localhost:8080/#/products"
+- extendedWaitUntil:
+    visible:
+      id: "route:/products"
+    timeout: 20000

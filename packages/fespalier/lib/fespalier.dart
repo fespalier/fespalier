@@ -16,6 +16,7 @@ export 'package:hooks_riverpod/misc.dart' show ProviderListenable;
 
 export 'src/action.dart';
 export 'src/data_view.dart';
+export 'src/deferred.dart';
 // DevTools support (since 0.7.0): what a generated app.g.dart registers and attaches.
 export 'src/devtools/devtools.dart'
     show
@@ -40,3 +41,4 @@ export 'src/selected_data.dart';
 export 'src/tab_options.dart';
 export 'src/transitions.dart';
 export 'src/url_state.dart';
+export 'src/web_semantics.dart';

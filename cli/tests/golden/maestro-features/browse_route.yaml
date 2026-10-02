@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/browse/$$categories/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/browse/*categories"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/browse/a/b"
+- extendedWaitUntil:
+    visible:
+      id: "route:/browse/*categories"
+    timeout: 20000

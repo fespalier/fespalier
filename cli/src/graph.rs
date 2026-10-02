@@ -85,6 +85,9 @@ pub fn markers(r: &Route, root: bool, guarded: bool) -> Vec<&'static str> {
     if r.sibling {
         out.push("sibling");
     }
+    if r.defers_page() {
+        out.push("deferred");
+    }
     out
 }
 

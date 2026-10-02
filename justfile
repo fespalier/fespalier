@@ -44,7 +44,7 @@ test:
 deny:
     cargo deny check
 
-# `fsp check` on every example
+# `fsp check` on every example, and `fsp maestro --check` on the shop
 [working-directory: 'cli']
 check-examples:
     #!/usr/bin/env bash
@@ -52,8 +52,10 @@ check-examples:
     for e in {{ examples }}; do
         cargo run --quiet -- check --project "../examples/$e"
     done
+    # The shop's committed Maestro flows (.maestro/routes/) are what `fsp maestro` writes.
+    cargo run --quiet -- maestro --check --project ../examples/shop
 
-# Regenerate every example's committed lib/app.g.dart (after changing the emitter or a template)
+# Regenerate every example's committed lib/app.g.dart and the shop's .maestro/routes (after changing the emitter or a template)
 [working-directory: 'cli']
 gen-examples:
     #!/usr/bin/env bash
@@ -61,6 +63,7 @@ gen-examples:
     for e in {{ examples }}; do
         cargo run --quiet -- gen --project "../examples/$e"
     done
+    cargo run --quiet -- maestro --project ../examples/shop
 
 # The package, the DevTools extension and every example: pub get, dart format (generated *.g.dart left out), analyze, test,
 # and the const lints on each example's generated code (scripts/check-const-lints.sh)
@@ -119,8 +122,14 @@ intellij:
     ./gradlew build --no-daemon
     ./gradlew buildPlugin verifyPluginStructure --no-daemon
 
+# A deferred route's page is a chunk of its own on the web: builds examples/shop for the web in
+# a temporary copy and checks the split (needs Flutter with web support; about a minute, and not
+# part of `just ci`; CI runs it as the `web` job)
+web-chunks:
+    scripts/check-deferred-chunks.sh examples/shop 'Place order' 'Add to cart'
+
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
-# are `just vscode` and `just intellij`.
+# are `just vscode` and `just intellij`, and the web build of the deferred pages is `just web-chunks`.
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging and skills jobs
 ci: lint test deny check-examples flutter devtools packaging skills

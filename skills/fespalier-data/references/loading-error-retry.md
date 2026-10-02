@@ -102,6 +102,14 @@ class ItemPage extends StatelessWidget {
 - `error.dart`'s `retry` **invalidates the provider** (for a selector, the
   selected provider, through `invalidateSelected`). The error stays up until the
   new run has an answer.
+- **A deferred page's code load uses them too (since 0.7.0).** A route whose `page.dart` is
+  [deferred](../../fespalier-routing/references/route-dart.md#deferred-load-a-pages-code-on-demand)
+  shows the nearest `loading.dart` until its code has arrived, with or without a `data.dart`, and
+  the nearest `error.dart` when loading the code fails: `error` is what `loadLibrary()` threw (a
+  `DeferredLoadException` on the web) and `retry` loads the code again (the data is not read again).
+  Turning `deferred` on therefore binds these views to a route that has no data, with the same rule:
+  an inherited view must fit every route it covers. With a `data.dart` the code and the data load in
+  parallel and `loading.dart` covers both waits.
 - A function form works for both (`Widget loading()`,
   `Widget error({required Object error, required VoidCallback retry})`).
 - **`keep_previous` and `data_retry` do not change which file is chosen**, only

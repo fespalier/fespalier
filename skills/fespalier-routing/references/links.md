@@ -152,6 +152,12 @@ On the web `RouteLink` wraps `url_launcher`'s `Link`, which lays an invisible
 
 ## `uri:` links in debug
 
+Since 0.7.0 the same check also happens **statically**: `fsp gen`, `check` and `watch` warn at a
+`Uri.parse('...')` literal in `RouteLink(uri: ...)` that matches no route
+(``no route matches `/nope`, so it shows not-found [unknown_path]``), before the app runs.
+It does not see a `uri:` that is built or held in a variable, and does not check segment
+types; see `typed-routes-and-extra.md`, "String paths".
+
 In a debug build a `uri:` that matches no route throws a `FlutterError` when the
 link builds (`RouteLink(uri: /nope) points at no route of this app.`), and so
 does a `uri:` with a scheme or host (`is not a location in this app`). It asks
@@ -179,7 +185,12 @@ reads.
 `preload:` starts the data of the page the link points at, through
 `route.preload(ref)` (see
 [`fespalier-data`](../../fespalier-data/references/prefetch-and-lookup.md)),
-and the link owns the handle:
+and the link owns the handle. Since 0.7.0 that call also starts the page's **code**
+when the route is [deferred](route-dart.md#deferred-load-a-pages-code-on-demand)
+(`const deferred = true;`): the chunk is fetched with the data, and once loaded it
+stays loaded, so releasing the handle drops the data only. Before 0.7.0 a link
+preloaded data only. A `uri:` link goes through the matched route's `preload` too,
+so a hand-built `UrlMatch` whose route does not override `preload` preloads nothing:
 
 - `Preload.none`, the default.
 - `Preload.intent`: the pointer enters the link, something in it takes focus, or
@@ -210,6 +221,6 @@ gesture.removePointer)`. To enter again, move off it and `pump` first.
 ## Not built
 
 - No external links (use `Link`), no `target` (a new tab is the browser's
-  modifier click), no `extra`, and no prefetch of **code** (deferred loading is
-  separate from preloading data).
+  modifier click), and no `extra`. (Code is preloaded since 0.7.0, for a deferred route;
+  on 0.6.0 and earlier a link preloaded data only.)
 - No generated app-wide default: `RouteLinkScope` is the runtime one.

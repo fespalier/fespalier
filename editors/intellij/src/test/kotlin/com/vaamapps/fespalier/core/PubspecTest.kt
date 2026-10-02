@@ -97,8 +97,23 @@ class PubspecTest {
         assertNull(p.relativePath("/elsewhere/lib/app/a.dart"))
         assertTrue(p.affectedBy("/work/shop/lib/app/a/page.dart"))
         assertTrue(p.affectedBy("/work/shop/pubspec.yaml"))
-        assertFalse(p.affectedBy("/work/shop/lib/main.dart"))
         assertFalse(p.affectedBy("/work/shop/lib/app.g.dart"))
         assertFalse(p.affectedBy("/work/other/lib/app/a.dart"))
+    }
+
+    @Test
+    fun aDartFileUnderLibCanHoldAStringPath() {
+        val p = FespalierProject("/work/shop", "lib/app")
+        // Since 0.7.0 `fsp check` reads the string paths in every Dart file under `lib/`.
+        assertTrue(p.affectedBy("/work/shop/lib/main.dart"))
+        assertTrue(p.affectedBy("/work/shop/lib/screens/home.dart"))
+        assertTrue(p.affectedBy("\\work\\shop\\lib\\screens\\home.dart"))
+        assertTrue(p.affectedBy("/work/shop/lib/application/page.dart"))
+        // Not what `fsp` generates, not Dart, and not under `lib/`.
+        assertFalse(p.affectedBy("/work/shop/lib/screens/x.g.dart"))
+        assertFalse(p.affectedBy("/work/shop/lib/assets/logo.png"))
+        assertFalse(p.affectedBy("/work/shop/test/app_test.dart"))
+        assertFalse(p.affectedBy("/work/shop/README.md"))
+        assertFalse(p.affectedBy("/work/other/lib/main.dart"))
     }
 }

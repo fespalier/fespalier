@@ -20,6 +20,8 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show Override;
 
+import 'src/deferred.dart';
+
 Duration? _noRetry(int retryCount, Object error) => null;
 
 /// Disposes [router] unless the test already did: a second `dispose` is an error.
@@ -52,6 +54,12 @@ void _dispose(GoRouter router) {
 /// one's, and a second `dispose` throws), pass `disposeRouter: false` (since 0.6.0). A
 /// disposed router is gone, so don't share one between tests.
 ///
+/// The code of every deferred route (`const deferred = true;`) is loaded first, on the real
+/// event loop (since 0.7.0): a widget test's pumps never run it, so a deferred page behaves
+/// as an eager one, and is in the first settled frame. A test that pumps a router of its
+/// own calls `await tester.runAsync(AppRoutes.loadDeferred)` before it. An app without
+/// deferred routes is booted exactly as before.
+///
 /// This app is Flutter's `MaterialApp`. With go_router 18, which looks for
 /// `package:material_ui`'s instead, routes without a `transition.dart` don't
 /// animate in tests, and go_router's own error screen is unstyled (see the README).
@@ -72,6 +80,11 @@ Future<ProviderContainer> pumpRouter(
       container ?? ProviderContainer(overrides: overrides, retry: retry);
   if (container == null) addTearDown(used.dispose);
   if (disposeRouter) addTearDown(() => _dispose(router));
+  // A deferred route's code: `loadLibrary` only completes on the real event loop, which a
+  // widget test's pumps don't run.
+  if (DeferredLibrary.anyPending) {
+    await tester.runAsync(DeferredLibrary.loadAll);
+  }
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: used,

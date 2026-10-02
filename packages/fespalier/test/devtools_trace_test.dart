@@ -487,6 +487,29 @@ void main() {
       expect((await snapshot()).data.map((d) => d.key!.text), ['3', '4']);
     });
 
+    test(
+      'a Future that settles after its provider was disposed changes nothing',
+      () async {
+        final c = container();
+        final completer = Completer<String>();
+        final provider = FutureProvider.autoDispose<String>(
+          (ref) => traceData(ref, 'd7', null, completer.future),
+        );
+        final sub = c.listen(provider, (_, _) {});
+        await pumpEventQueue();
+        sub.close();
+        await pumpEventQueue();
+        expect((await snapshot()).data.single.state, DataState.disposed);
+        final before = dataEvents().length;
+        completer.complete('late');
+        await pumpEventQueue();
+        final record = (await snapshot()).data.single;
+        expect(record.state, DataState.disposed);
+        expect(record.value, isNull);
+        expect(dataEvents(), hasLength(before));
+      },
+    );
+
     test('a value body is data at once, and returned as it is', () async {
       final c = container();
       final value = Object();
@@ -884,7 +907,7 @@ void main() {
         var answer = await debugDevToolsCall(DevToolsMethods.open, {
           'file': 'a.dart',
         });
-        expect(answer['errorDetail'], isNotNull);
+        expect(answer['errorDetail'], 'no fespalier app registered');
         devToolsRegister(
           tree: () => jsonEncode({
             'protocol': 1,

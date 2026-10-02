@@ -621,7 +621,9 @@ void _traceData(Ref ref, String site, Object? key, Object? result) {
             !identical(_data[built.mapKey], built)) {
           return;
         }
+        // What the disposed build's `Future` reports when it settles is not news any more.
         built
+          ..generation += 1
           ..state = DataState.disposed
           ..updated = DateTime.now().millisecondsSinceEpoch;
         _disposed.add(built);
@@ -960,7 +962,7 @@ Map<String, Object?> _open(Map<String, String> params) {
   if (tree == null) {
     throw _Failure(
       developer.ServiceExtensionResponse.extensionError,
-      _noRouter,
+      'no fespalier app registered',
     );
   }
   final decoded = jsonDecode(tree()) as Map<String, Object?>;

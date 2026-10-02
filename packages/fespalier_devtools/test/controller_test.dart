@@ -253,7 +253,7 @@ void main() {
       final client = FakeFespalierClient();
       await started(client);
       client.calls.clear();
-      client.emit('fespalier:guard', {'protocol': 1, 'event': 20});
+      client.emit('fespalier:teleport', {'protocol': 1, 'event': 20});
       await pumpEventQueue();
       expect(client.calls, isEmpty);
     });

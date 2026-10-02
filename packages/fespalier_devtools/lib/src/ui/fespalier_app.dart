@@ -1,4 +1,4 @@
-/// The extension's one screen: a status line, the go-to bar and three tabs.
+/// The extension's one screen: a status line, the go-to bar and six tabs.
 library;
 
 import 'package:devtools_app_shared/ui.dart';
@@ -7,8 +7,11 @@ import 'package:flutter/material.dart';
 import '../client.dart';
 import '../controller.dart';
 import '../protocol.dart';
+import 'actions_panel.dart';
 import 'chips.dart';
+import 'data_panel.dart';
 import 'go_to_bar.dart';
+import 'guards_panel.dart';
 import 'location_panel.dart';
 import 'routes_panel.dart';
 import 'stack_panel.dart';
@@ -53,7 +56,7 @@ class _FespalierAppState extends State<FespalierApp>
   late final FespalierController _controller = FespalierController(
     widget.client,
   );
-  late final TabController _tabs = TabController(length: 3, vsync: this);
+  late final TabController _tabs = TabController(length: 6, vsync: this);
 
   @override
   void dispose() {
@@ -86,6 +89,9 @@ class _FespalierAppState extends State<FespalierApp>
                   Tab(text: 'Location'),
                   Tab(text: 'Stack'),
                   Tab(text: 'Routes'),
+                  Tab(text: 'Guards'),
+                  Tab(text: 'Data'),
+                  Tab(text: 'Actions'),
                 ],
               ),
               Expanded(
@@ -95,6 +101,9 @@ class _FespalierAppState extends State<FespalierApp>
                     LocationPanel(controller: _controller),
                     StackPanel(controller: _controller),
                     RoutesPanel(controller: _controller),
+                    GuardsPanel(controller: _controller),
+                    DataPanel(controller: _controller),
+                    ActionsPanel(controller: _controller),
                   ],
                 ),
               ),
@@ -149,6 +158,14 @@ class _Header extends StatelessWidget {
               PopupMenuItem(
                 value: ClearWhat.history,
                 child: Text('Clear history'),
+              ),
+              PopupMenuItem(
+                value: ClearWhat.guards,
+                child: Text('Clear guards'),
+              ),
+              PopupMenuItem(
+                value: ClearWhat.actions,
+                child: Text('Clear actions'),
               ),
               PopupMenuItem(value: ClearWhat.all, child: Text('Clear all')),
             ],

@@ -250,6 +250,9 @@ class _Details extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sites = tree.sitesOf(route);
+    // The app asks the IDE through a `package:` URI, so it needs the package's name.
+    final canOpen =
+        tree.package != null && controller.supports(DevToolsFeatures.open);
     return Column(
       key: const Key('route-details'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,6 +260,15 @@ class _Details extends StatelessWidget {
         Row(
           children: [
             Expanded(child: Mono(route.pattern, bold: true)),
+            if (canOpen)
+              DevToolsButton(
+                key: const Key('open-in-ide'),
+                label: 'Open in IDE',
+                tooltip:
+                    'Asks the IDE to open ${tree.appDir}/${route.file} '
+                    '(it has to listen for DevTools\' open requests)',
+                onPressed: () => controller.open(route.file),
+              ),
             if (!route.hasPathParams)
               DevToolsButton(
                 key: const Key('route-go'),
@@ -282,14 +294,28 @@ class _Details extends StatelessWidget {
         for (final s in sites)
           LabeledRow(
             s.kind,
-            Mono(
-              [
-                '${tree.appDir}/${s.file}',
-                if (s.kind == 'guard') '(${s.id})',
-                if (s.kind == 'action') '${s.name}()',
-                if (s.kind == 'data' && !s.traced)
-                  '(returns or selects a provider)',
-              ].join(' '),
+            Row(
+              children: [
+                Expanded(
+                  child: Mono(
+                    [
+                      '${tree.appDir}/${s.file}',
+                      if (s.kind == 'guard') '(${s.id})',
+                      if (s.kind == 'action') '${s.name}()',
+                      if (s.kind == 'data' && !s.traced)
+                        '(returns or selects a provider)',
+                    ].join(' '),
+                  ),
+                ),
+                if (canOpen)
+                  IconButton(
+                    key: Key('open-site-${s.id}'),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Open ${s.file} in the IDE',
+                    onPressed: () => controller.open(s.file),
+                  ),
+              ],
             ),
           ),
       ],

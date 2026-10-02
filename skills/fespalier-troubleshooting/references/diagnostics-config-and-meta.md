@@ -1,24 +1,24 @@
 # Diagnostics: config, `meta.dart`, `route.dart`, localized paths and the CLI
 
 As of v0.4.0 (`cli/src/config.rs`, `resolve.rs`, `locale.rs`, `manifest.rs`, `main.rs`,
-`init.rs`, `scaffold.rs`). Messages are quoted as `fsp` prints them.
+`init.rs`, `scaffold.rs`, and, since 0.7.0, `lint.rs`). Messages are quoted as `fsp` prints them.
 
 ## The `fespalier:` section of `pubspec.yaml`
 
 These are **not** diagnostics with a code frame: `fsp` prints the pubspec path, then the
 message, and exits 1.
 
-| Message                                                                                                                                                                                                                                                                       | Cause and fix                                                                                                                                 |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| ``invalid pubspec.yaml: fespalier: unknown field `nope`, expected one of `app_dir`, `output`, `format`, `output_manifest`, `meta`, `meta_unique`, `case_sensitive`, `remount`, `data_retry`, `keep_previous`, `push_updates_url`, `file_style`, `links` at line 25 column 3`` | An unknown (or misspelled) key: the section rejects them                                                                                      |
-| ``invalid pubspec.yaml: fespalier.remount: unknown variant `onSegments`, expected one of `never`, `on_segments`, `on_location` at line 25 column 12``                                                                                                                         | `remount` (since 0.6.0) is written in snake case in the pubspec (`on_segments`); in a `route.dart` it is the Dart enum (`Remount.onSegments`) |
-| ``invalid pubspec.yaml: fespalier.data_retry: unknown variant `maybe`, expected `inherit` or `none` at line 25 column 15``                                                                                                                                                    | Wrong enum value (`file_style`: `snake` or `kebab`)                                                                                           |
-| `` `fespalier.app_dir` must be a path under lib/ (it is imported as package code), got `app` ``                                                                                                                                                                               | `app_dir` and `output` live under `lib/`                                                                                                      |
-| `` `fespalier.output` must be a .dart file, got `lib/x.txt` ``                                                                                                                                                                                                                |                                                                                                                                               |
-| `` `fespalier.output_manifest` and `fespalier.output` are the same file (`lib/app.g.dart`); leave `output_manifest` out to keep the manifest in `output` ``                                                                                                                   |                                                                                                                                               |
-| `invalid pubspec.yaml: fespalier.push_updates_url: invalid type: string "sometimes", expected a boolean at line 4 column 21`                                                                                                                                                  | A boolean key (`format`, `case_sensitive`, `keep_previous`, `push_updates_url` since 0.6.0) given anything but `true` or `false`              |
-| `` `fespalier.meta` must be `required` or `optional`, got `always` ``                                                                                                                                                                                                         |                                                                                                                                               |
-| `` `fespalier.meta_unique` lists argument names of `meta`, e.g. `[code, slug]`; `a-b` is not one ``                                                                                                                                                                           | Names must be identifiers                                                                                                                     |
+| Message                                                                                                                                                                                                                                                                                | Cause and fix                                                                                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| ``invalid pubspec.yaml: fespalier: unknown field `nope`, expected one of `app_dir`, `output`, `format`, `output_manifest`, `meta`, `meta_unique`, `case_sensitive`, `remount`, `data_retry`, `keep_previous`, `push_updates_url`, `file_style`, `links`, `lints` at line 25 column 3`` | An unknown (or misspelled) key: the section rejects them                                                                                      |
+| ``invalid pubspec.yaml: fespalier.remount: unknown variant `onSegments`, expected one of `never`, `on_segments`, `on_location` at line 25 column 12``                                                                                                                                  | `remount` (since 0.6.0) is written in snake case in the pubspec (`on_segments`); in a `route.dart` it is the Dart enum (`Remount.onSegments`) |
+| ``invalid pubspec.yaml: fespalier.data_retry: unknown variant `maybe`, expected `inherit` or `none` at line 25 column 15``                                                                                                                                                             | Wrong enum value (`file_style`: `snake` or `kebab`)                                                                                           |
+| `` `fespalier.app_dir` must be a path under lib/ (it is imported as package code), got `app` ``                                                                                                                                                                                        | `app_dir` and `output` live under `lib/`                                                                                                      |
+| `` `fespalier.output` must be a .dart file, got `lib/x.txt` ``                                                                                                                                                                                                                         |                                                                                                                                               |
+| `` `fespalier.output_manifest` and `fespalier.output` are the same file (`lib/app.g.dart`); leave `output_manifest` out to keep the manifest in `output` ``                                                                                                                            |                                                                                                                                               |
+| `invalid pubspec.yaml: fespalier.push_updates_url: invalid type: string "sometimes", expected a boolean at line 4 column 21`                                                                                                                                                           | A boolean key (`format`, `case_sensitive`, `keep_previous`, `push_updates_url` since 0.6.0) given anything but `true` or `false`              |
+| `` `fespalier.meta` must be `required` or `optional`, got `always` ``                                                                                                                                                                                                                  |                                                                                                                                               |
+| `` `fespalier.meta_unique` lists argument names of `meta`, e.g. `[code, slug]`; `a-b` is not one ``                                                                                                                                                                                    | Names must be identifiers                                                                                                                     |
 
 ## `fsp links` (since 0.5.0)
 
@@ -42,6 +42,50 @@ field ...` error everywhere, like any other. These are printed without a code fr
 | `N error(s); no links`                                                                                                                                                                                                                                                | The route tree has errors: `fsp links` prints them first, like `fsp routes`                        |
 | `` no route can be linked: the app has no page, or every folder says `const linkable = false;` ``                                                                                                                                                                     | Nothing to list                                                                                    |
 | `links/web/sitemap.xml is missing` / `... is out of date` / `... is not wanted by this config`, then `` N file(s) out of date; run `fsp links` ``                                                                                                                     | `fsp links --check`: the files on disk differ from what `fsp links` would write; run it and commit |
+
+## String paths (`lints: unknown_path`, since 0.7.0)
+
+`fsp gen`, `check` and `watch` read the string literals your code gives the router
+(`context.go('/x')`, `push`, `pushReplacement`, `replace`, `RouteLink(uri: Uri.parse('/x'))`,
+`initialLocation:`) in every Dart file under `lib/`, and report a path that matches **no
+route**. The diagnostic has a code frame, in the file it is about (`lib/screens/home.dart`,
+or `products/page.dart` for a file in the app folder), is a **warning** by default, and ends
+in `[unknown_path]`: the id `// fsp:ignore` and `lints:` take. It does not run when the route
+tree itself has errors, so fix those first. The rules are in `fespalier-routing`,
+`references/typed-routes-and-extra.md`, "String paths".
+
+| Message                                                                                                                                       | Cause and fix                                                                                                                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ``no route matches `/nope/x`, so it shows not-found [unknown_path]``                                                                          | A literal path with no query, no `$`, and no route that fits it (a typo, a renamed or deleted folder, a catch-all that needs a part). Fix the path, use the typed route, or `// fsp:ignore unknown_path`           |
+| ``no route matches `/prodcts/2`, so it shows not-found; did you mean `/products/2`? [unknown_path]``                                          | The same, and exactly one **static** segment is within a couple of typos of a route's spelling (any localized one). The suggestion keeps the rest of the literal, query and fragment included. Take it, or silence |
+| ``no route starts with `/prodcts/`, so `/prodcts/$id` shows not-found whatever it interpolates [unknown_path]``                               | A path with `$` whose complete segments before the first `$` are the start of no route (`/prodcts/` here). Segments after the `$` are **not** checked: a value can be empty or hold a `/`                          |
+| ``1 error(s) in string paths (`lints: unknown_path: error`)``                                                                                 | `lints: unknown_path: error` and `fsp check` found paths (the `N` counts them). They print as `error:`. Fix them, or put the level back to `warning`                                                               |
+| ``1 error(s) in string paths (`lints: unknown_path: error`); lib/app.g.dart is up to date``                                                   | The same from `fsp gen` and `fsp watch`: the generated file **was written** (the lint does not stop it, so `watch` keeps regenerating) and the command still exits 1. With `output_manifest` both files are named  |
+| ``invalid pubspec.yaml: fespalier.lints.unknown_path: unknown variant `warn`, expected one of `off`, `warning`, `error` at line 4 column 19`` | The level is `off`, `warning` or `error`                                                                                                                                                                           |
+| ``invalid pubspec.yaml: fespalier.lints: unknown field `nope`, expected `unknown_path` at line 4 column 5``                                   | Only `unknown_path` is a lint so far                                                                                                                                                                               |
+| `invalid pubspec.yaml: fespalier.lints: invalid type: string "error", expected struct LintsConfig at line 3 column 10`                        | `lints:` is a map (`lints: {unknown_path: error}`), not a level                                                                                                                                                    |
+
+**Silencing.** `// fsp:ignore unknown_path` on the line above the path or after it, or above a
+multi-line call (a comment on its own line covers the call that starts on the next line; one
+after code covers its own line); `// fsp:ignore-file unknown_path` for the whole file. Text
+after the id is a free comment (`-- gift cards aren't built yet`). Another id does not silence it.
+
+**Not checked, so no diagnostic and no false comfort:**
+
+- **Segment types.** `/products/abc` matches `products/$id` although `id` is an `int`; it
+  shows not-found at run time (`BadSegment`).
+- **Anything after the first `$`**, and a path that starts with one (`'$base/x'`), is built
+  rather than a literal; a relative path (`'details'`), a URL, a `..` and a malformed `%` are
+  skipped.
+- **Files outside `lib/`.** `test/`, `integration_test/` and `bin/` are not read (tests go to
+  unknown paths on purpose), nor are `*.g.dart` and the generated outputs.
+- **A mount point it cannot read.** `AppRoutes.mount(at: base)`, or two different literals,
+  turn the whole check **off** for the run, silently. Under `AppRoutes.mount(at: '/shop')`
+  only paths below `/shop` are looked at; with the tree at `/` a host router's own string
+  paths are reported (silence them or `lints: {unknown_path: off}`).
+- **Calls it does not recognise:** a bare `go('/x')`, `goNamed`, `Navigator.pushNamed`,
+  `AppRoutes.match`, `matchUrl`, `dataAt`, `preload`, a Dart 3.10 dot shorthand
+  (`uri: .parse('/x')`), a path in a variable or built with `+`.
 
 ## The command line
 

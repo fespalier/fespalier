@@ -38,7 +38,44 @@ const SearchRoute(q: 'ap', page: 2).location; // '/search?q=ap&page=2'
   what `route.go(context)` does and adds an `href` on the web and preloading (see
   [`links.md`](links.md)).
 - Build typed links rather than string paths: the compiler then checks the
-  arguments, and a renamed folder breaks the build instead of a link.
+  arguments, and a renamed folder breaks the build instead of a link. A string
+  path is allowed, though, and `fsp` checks it (next section).
+
+## String paths
+
+Since 0.7.0. `context.go('/products/2')` works, and is the right thing for a path you only
+have as a string (a CMS link, a notification payload, a path from another router). `fsp
+gen`, `check` and `watch` read the string **literals** your code gives the router and warn
+about one that **matches no route**. A path that matches is fine; typed routes are
+preferred, not forced.
+
+``warning: no route matches `/prodcts/2`, so it shows not-found; did you mean `/products/2`? [unknown_path]``,
+with a code frame in the file it is in. The messages, and what each means, are in
+`fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`.
+
+- **Checked:** the first argument of `.go(`, `.push(` (`push<T>(`), `.pushReplacement(` and
+  `.replace(` on any receiver, `RouteLink(uri: Uri.parse('...'))`, and `initialLocation:` of
+  `AppRoutes.router(...)` and `GoRouter(...)`. **Not checked:** `go('/x')` with no receiver,
+  `goNamed`/`pushNamed`, typed routes, `TabOptions(initialLocation:)` (it has its own error),
+  `AppRoutes.match`/`dataAt`/`preload`, a path in a variable or built with `+`.
+- **Matching** is `AppRoutes.match`'s: segments, catch-alls, case by the route's own setting,
+  every localized spelling, decoded `%` escapes. `redirect.dart` is a route, `not_found.dart`
+  is not. The query and fragment are ignored. **Segment types are not checked**: `/products/abc`
+  matches `products/$id` when `id` is an `int` (it still shows not-found at run time).
+- **Interpolation:** only what comes before the first `$` is checked, up to the last complete
+  segment: `'/products/$id'` is fine, `'/prodcts/$id'` is flagged, `'/products/$id/revews'` is
+  **not** (a value can hold a `/`). A relative path, a URL and one that starts with `$` are skipped.
+- **Files:** every `.dart` file under `lib/` except `*.g.dart`, the generated outputs and
+  folders that start with `.`. **Not `test/`**, `integration_test/` or `bin/`: tests navigate
+  to unknown paths on purpose.
+- **Mount:** `AppRoutes.mount(at: '/shop')` is read from `lib/`; only paths under it are
+  checked, so a host router's own paths are left alone. An `at:` that is not a literal (or two
+  different ones) turns the check **off** for the run, without a message. With the tree mounted
+  at `/` a host router's own string paths are warned about: silence them or set `off`.
+- **Silence one:** `// fsp:ignore unknown_path` on the line above (or after the path); it
+  covers the call on the next line, however many lines it takes. `// fsp:ignore-file
+unknown_path` silences a file. `lints: unknown_path: off` in the pubspec turns it off;
+  `error` makes `fsp check` fail (config: `fespalier`, `references/cli-and-config.md`).
 
 ## The URL as state: `of` and `copyWith`
 

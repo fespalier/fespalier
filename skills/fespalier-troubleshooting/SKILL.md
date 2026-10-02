@@ -17,7 +17,8 @@ description: "Diagnosing fespalier failures where the message or the symptom doe
 | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `flutter analyze`: **`The function 'XRoute' isn't defined`**                                                    | `lib/app.g.dart` is stale. `fsp check` passes anyway (it compares nothing). Run `fsp gen`                                                                                                                                                                 |
 | `fsp gen` fails and `app.g.dart` does not change                                                                | By design: errors leave the old file. Read the **first** error; fix `lib/app/`, never the generated file                                                                                                                                                  |
-| A URL shows **`Nothing at /path`** (or your `not_found.dart`)                                                   | No route matches: case (`/Products`), an unparsable segment, `$$rest` needs one part, or a guard loop                                                                                                                                                     |
+| A URL shows **`Nothing at /path`** (or your `not_found.dart`)                                                   | No route matches: case (`/Products`), an unparsable segment, `$$rest` needs one part, or a guard loop. Since 0.7.0 `fsp check` warns about a string path that is a literal in `lib/` (next row)                                                           |
+| ``no route matches `/x`, so it shows not-found [unknown_path]``                                                 | A string path in `lib/` matches no route (a typo, a renamed folder): fix it, use a typed route, or `// fsp:ignore unknown_path` (0.7.0): `references/diagnostics-config-and-meta.md`                                                                      |
 | The login page itself shows **`Nothing at /login`**                                                             | The guard covers the login page: its `from=` redirect loops until go_router gives up. Move `login/` outside                                                                                                                                               |
 | `X is unreachable: $a/page.dart (/:a) comes first ...`                                                          | A `(group)` holding a dynamic route cannot be sorted around a dynamic sibling outside it                                                                                                                                                                  |
 | A deep link builds a page you did not open (`/orders/1/refund` under `.../refund/confirm`)                      | A page is the parent of the routes below it. To make one a sibling with a compound path: `const nest = false;` in its `route.dart` (0.4.0), see `fespalier-routing`                                                                                       |
@@ -45,7 +46,10 @@ declaration** at fault, `error:` or `warning:`; with `--json` each is one JSON o
 `app.g.dart` as it was (`N error(s); lib/app.g.dart left unchanged`, exit 1); warnings do
 not. A file the parser cannot fully read is a **warning** (`couldn't fully parse this
 file; ...`): `fsp` worked with what it could, and the Dart compiler reports the exact
-error. `fsp routes` and `fsp check` print the same diagnostics.
+error. `fsp routes` and `fsp check` print the same diagnostics. Since 0.7.0 a diagnostic can
+also point at a file **outside the app folder** (`lib/screens/home.dart`): the string-path lint
+reads every Dart file under `lib/`, and `--json` gives that file's path from the project root
+like any other.
 
 **Fix the first error first**: later ones can be consequences of it.
 

@@ -152,6 +152,12 @@ On the web `RouteLink` wraps `url_launcher`'s `Link`, which lays an invisible
 
 ## `uri:` links in debug
 
+Since 0.7.0 the same check also happens **statically**: `fsp gen`, `check` and `watch` warn at a
+`Uri.parse('...')` literal in `RouteLink(uri: ...)` that matches no route
+(``no route matches `/nope`, so it shows not-found [unknown_path]``), before the app runs.
+It does not see a `uri:` that is built or held in a variable, and does not check segment
+types; see `typed-routes-and-extra.md`, "String paths".
+
 In a debug build a `uri:` that matches no route throws a `FlutterError` when the
 link builds (`RouteLink(uri: /nope) points at no route of this app.`), and so
 does a `uri:` with a scheme or host (`is not a location in this app`). It asks

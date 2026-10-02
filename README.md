@@ -272,6 +272,8 @@ fespalier:
   keep_previous: true
   push_updates_url: false # `true` (since 0.6.0): a `push`ed route's URL is in the address bar
   file_style: snake
+  lints: # since 0.7.0: see "Checking string paths"
+    unknown_path: warning # `error` | `off`: a string path that matches no route
   meta: optional # `required`: every route needs a meta.dart
   # meta_unique: [code]       # no two routes may pass the same literal `code:` to `meta`
   # output_manifest: lib/app.routes.g.dart   # no default: the manifest lives in `output`
@@ -307,6 +309,8 @@ is always a valid page. Without the key, `push` leaves the address bar on the pa
 `meta_unique` makes a duplicate value in it one, and
 `output_manifest` writes the route manifest to a library of its own (same section).
 `links:` is what [`fsp links`](#deep-links-and-a-sitemap-fsp-links) reads; only that command checks its values.
+`lints:` (since 0.7.0) sets how [a string path that matches no route](#checking-string-paths) is
+reported: `unknown_path` is `warning` (the default), `error` or `off`.
 The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
 
@@ -2170,7 +2174,9 @@ the route and the builder are constant.
   field). It is a path of this app with the mount prefix, not an external URL. In a debug build a
   `uri:` that no route matches throws when the link builds, saying so: it asks the router above
   it (`GoRouter.configuration.findMatch`), or `RouteLinkScope.match` below. It can't see a segment
-  that doesn't parse (`/products/abc`), which only the generated matcher does.
+  that doesn't parse (`/products/abc`), which only the generated matcher does. `fsp` also warns
+  about a `Uri.parse` literal that matches no route when it builds (since 0.7.0, see
+  [Checking string paths](#checking-string-paths)).
 - **No `extra`.** An `extra` is not part of the URL, so a link has none. For a route that takes
   one, call `route.go(context, extra: ...)` from the child's own `onTap`.
 
@@ -2441,7 +2447,8 @@ fsp new 'shop' --not-found      # not_found.dart (not-found.dart with `file_styl
 ```
 
 All commands take `--project <dir>` (default: the nearest folder with a `pubspec.yaml`).
-`fsp new` writes `page.dart` (plus the kinds you ask for with flags), skips files that
+`fsp gen`, `check` and `watch` also look at the string paths in `lib/` (see
+[Checking string paths](#checking-string-paths)). `fsp new` writes `page.dart` (plus the kinds you ask for with flags), skips files that
 already exist, and takes its class names from `--name` (default: from the path, e.g.
 `ProductsId`). With `--function` it writes [function views](#function-views) instead of classes,
 and `--name` becomes the `routeName` (an UpperCamelCase name). A segment that already has a
@@ -2707,6 +2714,103 @@ with no redirect.
 so the same input gives the same bytes. `fsp links --check` writes nothing and exits non-zero when
 a file is missing, out of date or no longer wanted, and names it; run it in CI next to `fsp check`.
 `fsp routes --json` is unchanged.
+
+### Checking string paths
+
+Since 0.7.0. The typed routes (`ProductRoute(id: 2).go(context)`) can't be misspelled, but a string
+path is sometimes the right thing (a CMS link, a notification payload), and `context.go('/prodcts/2')`
+compiles, runs and shows `not_found.dart`. So `fsp gen`, `check` and `watch` read the string paths
+your code gives the router and warn about one that **matches no route**. A path that matches is
+fine: typed routes are preferred, not forced.
+
+```text
+warning: no route matches `/prodcts/2`, so it shows not-found; did you mean `/products/2`? [unknown_path]
+  ┌─ lib/screens/home.dart:2:14
+  │
+2 │   context.go('/prodcts/2');
+  │              ^^^^^^^^^^^^
+```
+
+**What is checked.** A string literal in one of these places:
+
+- the first argument of `.go(...)`, `.push(...)`, `.pushReplacement(...)` or `.replace(...)` on
+  anything (`context.go('/x')`, `GoRouter.of(context).push<int>('/x')`, `router..go('/x')`);
+- `RouteLink(uri: Uri.parse('/x'))`;
+- `initialLocation:` of `AppRoutes.router(...)` or `GoRouter(...)`.
+
+Not these: a bare `go('/x')` with no receiver, `goNamed` and `pushNamed`, `Navigator.pushNamed`, the
+typed routes (their argument is not a string), `TabOptions(initialLocation:)` (the generator already
+checks it against the tab), and `AppRoutes.match`, `matchUrl`, `dataAt` and `preload`, which exist to
+ask about any location. A path that is built (`'/a' + b`) or held in a variable is not a literal and is
+not read.
+
+**What matches.** The same rules as `AppRoutes.match`: segments, [catch-alls](#catch-all-segments)
+(`$$rest` needs one part, `$$$rest` none), [case](#case-and-trailing-slashes) by the route's own
+setting, every [localized spelling](#localized-paths) (mixed spellings too), non-ASCII paths and `%`
+escapes decoded, and a trailing slash or `//` ignored. A `redirect.dart` is a route; a
+`not_found.dart` is not. The query and the fragment are not looked at (`go_router` ignores
+parameters it doesn't know). Segment **types are not checked**: `/products/abc` matches
+`products/$id` although `id` is an `int` (it reaches the route, which shows not-found by itself, the
+way [an unparsable segment](#segment-types) does). A path that interpolates is checked up to its first
+`$`: `'/products/$id'` is fine and `'/prodcts/$id'` is flagged (`no route starts with ...`), but
+nothing after a `$` is, since the value can be empty or hold a `/`. A path that is not an app path is
+skipped: a relative one (`'details'`), a URL (`'https://...'`), one that starts with an interpolation
+(`'$base/x'`), one with a `..` or a malformed `%` escape.
+
+**Which files.** Every Dart file under `lib/` (the app folder included), except the generated ones
+(`*.g.dart`, the `output` and `output_manifest`) and folders that start with a `.`. Not `test/`,
+`integration_test/` or `bin/`: tests navigate to paths that match nothing on purpose, to try
+`not_found.dart`, and mount the tree under prefixes the app doesn't use.
+
+**The mount point.** `AppRoutes.mount(at: '/shop')` is read, and a path is checked below it:
+`/shop/products/2` is looked up as `/products/2`. A path outside the mount point belongs to the host
+router (`legacyRoutes` beside `...AppRoutes.mount(at: '/shop')`) and is skipped. When `at:` is not a
+string literal, or two calls give two different values, `fsp` can't know where the tree is, and the
+check reports nothing for the run. A host router with routes of its own and the tree mounted at `/`
+gets a warning for those routes' string paths: silence them as below, or turn the lint off.
+
+**Severity.** `lints:` in the `fespalier:` section of `pubspec.yaml`:
+
+```yaml
+fespalier:
+  lints:
+    unknown_path: warning # default; `error` fails `fsp gen` and `fsp check`; `off` skips the check
+```
+
+A warning never fails a command, so a false positive can't break a build. With `error`, `fsp check`
+exits 1 (``1 error(s) in string paths (`lints: unknown_path: error`)``), and so do `fsp gen` and
+`fsp watch` after they write the output (``...; lib/app.g.dart is up to date``): the generated file
+doesn't depend on the lint, so a typo in some other file does not stop `watch` from regenerating.
+`fsp new` and `fsp init` report it as a warning at most. If the route tree itself has errors, the
+check doesn't run: a half-resolved tree would make every path look unknown.
+
+**Silencing one.** A comment on the line above, or after the path on its own line:
+
+```dart
+TextButton(
+  // fsp:ignore unknown_path -- gift cards aren't built yet: not_found.dart shows
+  onPressed: () => context.go('/gift-cards'),
+  child: const Text('Gift cards'),
+),
+```
+
+A comment on a line of its own covers the call that starts on the next line, however long it is; one
+after code covers that line. `// fsp:ignore-file unknown_path` anywhere in a file silences the file.
+The lint's id, `unknown_path`, is what both and `lints:` name; it is also the last word of the message.
+
+**In the editor.** Both plugins show it in the file it is about, and check again when any Dart file
+under `lib/` is saved, not only one under the app folder.
+
+**Why in `fsp`.** It already has the route tree, parses Dart, and reports diagnostics that both
+plugins show, and `fsp check` in CI and `fsp watch` next to `flutter run` get the lint with nothing
+for an app to add. An analyzer plugin would have to be loaded through `analysis_options.yaml`, which
+takes a package from pub.dev or a `path:` and not a git dependency (fespalier is one), pins an
+`analyzer` major that moves several times a year, and would need its own copy of the matcher. The
+cost of a syntax tree is that `fsp` can't know that `context` is a `BuildContext`: it only reads
+string literals in the call shapes above.
+
+`examples/shop` has a string path that matches (`context.go('/products?sort=expensive')`), one
+that is silenced, and `unknown_path: error`, so `just check-examples` fails if it gains a bad one.
 
 ### Performance
 
@@ -3103,12 +3207,12 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 532 tests (491 unit, 30 CLI integration, 11 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 688 tests (641 unit, 36 CLI integration, 11 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
-  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
+  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), string paths that match no route (the lint, its matching, mount point and ignore comments), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 453 Flutter tests (the package 196, `shop` 24, `features` 190, `tabs` 35, `minimal` 8); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 653 Flutter tests (the package 332, `shop` 52, `features` 222, `tabs` 39, `minimal` 8); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

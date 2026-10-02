@@ -25,3 +25,6 @@ flutter:
 # ProviderScope's retry policy).
 fespalier:
   data_retry: none
+  # A string path that matches no route fails `fsp check` (the default is a warning).
+  lints:
+    unknown_path: error

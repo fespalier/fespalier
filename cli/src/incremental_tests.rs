@@ -518,6 +518,44 @@ fn an_enum_outside_the_app_folder_follows() {
     assert!(!sim.same("the export removed").ok);
 }
 
+/// A string path in a file outside the app folder is checked on every run, whether the tree
+/// changed or not, and a save of that file alone is noticed.
+#[test]
+fn a_string_path_outside_the_app_folder_follows() {
+    let mut sim = Sim::new(&app(30), NO_CONFIG, 3);
+    assert!(sim.same("the first run").ok);
+    sim.lib_write(
+        "screens/home.dart",
+        "void f(BuildContext c) { c.go('/missing/x'); }\n",
+    );
+    let bad = sim.same("a path that matches no route");
+    assert!(bad.ok && bad.diags.len() == 1, "{bad:?}");
+    assert!(
+        bad.diags[0].starts_with("! lib/screens/home.dart:1  no route matches `/missing/x`"),
+        "{bad:?}"
+    );
+    // The same source again: the same report, and nothing is written.
+    let again = sim.same("the same file saved again");
+    assert_eq!((&again.diags, again.wrote), (&bad.diags, false));
+    sim.lib_write(
+        "screens/home.dart",
+        "void f(BuildContext c) { c.go('/'); }\n",
+    );
+    assert!(sim.same("the path fixed").diags.is_empty());
+    // A route that appears makes a path that matched nothing match.
+    sim.lib_write(
+        "screens/home.dart",
+        "void f(BuildContext c) { c.go('/fresh'); }\n",
+    );
+    assert_eq!(sim.same("a path to a route not there yet").diags.len(), 1);
+    sim.write("fresh/page.dart", &page("FreshPage", ""));
+    assert!(sim.same("the route added").diags.is_empty());
+    sim.remove("fresh");
+    assert_eq!(sim.same("the route removed again").diags.len(), 1);
+    sim.lib_remove("screens/home.dart");
+    assert!(sim.same("the file deleted").diags.is_empty());
+}
+
 #[test]
 fn touch_a_group_folder() {
     let mut sim = Sim::new(&app(60), NO_CONFIG, 6);
@@ -892,6 +930,31 @@ impl Sim {
                         format!("models/all.dart is {src:?}")
                     }
                 }
+            }
+            17 => {
+                // A string path in a file outside the app folder (`lib/screens/`): to a route
+                // that is there, or one that is not. The lint reads these files on every run.
+                let file = format!("screens/s{}.dart", self.rng.below(3));
+                if self.rng.below(4) == 0 {
+                    self.lib_remove(&file);
+                    return format!("deleting lib/{file}");
+                }
+                let url = if pages.is_empty() || self.rng.below(3) == 0 {
+                    format!("/missing{n}")
+                } else {
+                    let dir = parent_of(self.rng.pick(&pages));
+                    let parts: Vec<&str> = dir
+                        .split('/')
+                        .filter(|p| !p.is_empty() && !p.starts_with('('))
+                        .map(|p| if p.starts_with('$') { "1" } else { p })
+                        .collect();
+                    format!("/{}", parts.join("/"))
+                };
+                self.lib_write(
+                    &file,
+                    &format!("void f(BuildContext c) {{ c.go('{url}'); }}\n"),
+                );
+                format!("lib/{file} goes to {url}")
             }
             _ => "nothing".into(),
         }

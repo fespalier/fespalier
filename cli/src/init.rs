@@ -47,7 +47,7 @@ pub fn run(project: &Path) -> Result<()> {
         eprintln!("  new   {shown}");
     }
 
-    let o = crate::gen_with(project, cfg, true)?;
+    let o = crate::gen_with(project, &cfg.for_scaffolding(), true)?;
     eprintln!("{}", o.line());
 
     let mut step = 0;

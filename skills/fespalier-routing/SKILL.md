@@ -72,7 +72,10 @@ The class is named after the page class (`ProductPage` becomes `ProductRoute`),
 the folder path for a page **function** (`OrdersOrderIdCancelRoute`), or
 `const routeName = 'Name';` in `page.dart`. `.location` includes the mount
 prefix and is always the canonical spelling. Prefer typed routes over string
-paths: a renamed folder then breaks the build, not a link. More in
+paths: a renamed folder then breaks the build, not a link. A string path is allowed,
+and since 0.7.0 `fsp` warns about a literal that matches no route
+([`references/typed-routes-and-extra.md`](references/typed-routes-and-extra.md#string-paths)).
+More in
 [`references/typed-routes-and-extra.md`](references/typed-routes-and-extra.md),
 which also covers `of` / `maybeOf` / `copyWith` (the URL as state: read the typed
 route at the current location, change one query parameter, `null` clears it),

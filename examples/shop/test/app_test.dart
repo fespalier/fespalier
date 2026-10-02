@@ -1,4 +1,5 @@
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shop/api.dart';
@@ -32,6 +33,30 @@ void main() {
     await boot(tester, '/');
     expect(find.text('Shop'), findsOneWidget);
     expect(find.text('Browse products'), findsOneWidget);
+  });
+
+  // A string path that matches a route works like the typed one; `fsp check` verifies
+  // that it matches (and, with `unknown_path: error`, fails when it stops matching).
+  testWidgets('a string path that matches a route navigates to it',
+      (tester) async {
+    await boot(tester, '/');
+    await tester.tap(find.text('Most expensive first'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(currentLocation(tester), '/products?sort=expensive');
+    // Sorted by price, the dearest first: the cheapest is on the second page.
+    expect(find.text('Flaky grinder (fails once)'), findsOneWidget);
+    expect(find.text('Coffee beans, 500 g'), findsNothing);
+  });
+
+  // `fsp:ignore unknown_path` in page.dart: the path matches no route, so it is not-found.
+  testWidgets(
+      'a silenced string path that matches no route shows not_found.dart',
+      (tester) async {
+    await boot(tester, '/');
+    await tester.tap(find.text('Gift cards'));
+    await tester.pump();
+    expect(find.text('Nothing at /gift-cards'), findsOneWidget);
   });
 
   testWidgets('data.dart: loading.dart first, then the page', (tester) async {

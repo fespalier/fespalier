@@ -151,6 +151,9 @@ struct LintsConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
+    /// The pubspec's `name`: the package the app's files are imported by (`package:shop/…`).
+    /// `None` without a pubspec, or a name in it.
+    pub package: Option<String>,
     /// Normalized, `/`-separated, no trailing slash: `lib/app`.
     pub app_dir: String,
     /// Normalized, `/`-separated: `lib/app.g.dart`.
@@ -199,6 +202,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            package: None,
             app_dir: DEFAULT_APP_DIR.into(),
             output: DEFAULT_OUTPUT.into(),
             format: false,
@@ -811,7 +815,10 @@ impl Pubspec {
             return Ok(Pubspec::default());
         }
         let raw: RawPubspec = serde_yaml_ng::from_str(yaml).context("invalid pubspec.yaml")?;
-        let mut config = Config::default();
+        let mut config = Config {
+            package: raw.name.clone(),
+            ..Config::default()
+        };
         if let Some(c) = raw.fespalier {
             config.format = c.format.unwrap_or(false);
             config.case_sensitive = c.case_sensitive.unwrap_or(true);

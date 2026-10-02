@@ -20,7 +20,7 @@ fn render_project(project: &Path, format: Format) -> String {
     let cfg = Config::load(project).unwrap();
     let (_, diags, app) = crate::analyze(&project.join(&cfg.app_dir), &cfg).unwrap();
     assert!(diags.0.is_empty(), "{:?}", diags.0);
-    graph::render(&app, format)
+    graph::render(&app, &cfg, format)
 }
 
 fn render_files(files: &[(&str, &str)], format: Format) -> String {
@@ -274,9 +274,12 @@ fn an_app_with_no_route_is_an_empty_graph() {
     fs::create_dir_all(dir.path().join("lib/app")).unwrap();
     let cfg = Config::load(dir.path()).unwrap();
     let (_, _, app) = crate::analyze(&dir.path().join("lib/app"), &cfg).unwrap();
-    assert_eq!(graph::render(&app, Format::Mermaid), "flowchart TD\n");
     assert_eq!(
-        graph::render(&app, Format::Dot),
+        graph::render(&app, &Config::default(), Format::Mermaid),
+        "flowchart TD\n"
+    );
+    assert_eq!(
+        graph::render(&app, &Config::default(), Format::Dot),
         "digraph routes {\n  rankdir=TB;\n  node [shape=box];\n}\n"
     );
 }

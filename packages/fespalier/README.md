@@ -40,3 +40,7 @@ on first use). The main README's
 
 See the [main README](https://github.com/vaam-apps/fespalier#readme) for the
 file conventions, the `fsp` CLI and full examples.
+
+The package carries fespalier's [DevTools extension](https://github.com/vaam-apps/fespalier#devtools-extension)
+(since 0.7.0): a `fespalier` tab with the route tree, the router's location, stack and history. It is not
+compiled into release builds.

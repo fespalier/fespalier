@@ -10,5 +10,10 @@ pubspec.lock
 *.iml
 .claude/worktrees/
 
+# The DevTools extension's build is committed (scripts/build-devtools-extension.sh), and so is its
+# lockfile: the build must not change when a dependency publishes.
+!/packages/fespalier/extension/devtools/build/
+!/packages/fespalier_devtools/pubspec.lock
+
 # Node (ci/commit-message-parse)
 node_modules/

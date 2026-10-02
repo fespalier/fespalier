@@ -122,6 +122,17 @@ A `data()` function becomes `FutureProvider.autoDispose.family(...)` (or
 policy, so the app's `ProviderScope(retry:)` applies. A `data.dart` that
 exports its own provider (`final data = ...`) or selects one is used as is.
 
+## DevTools hooks (since 0.7.0)
+
+The file calls the runtime's DevTools support in three places, all under `if (kFespalierDevTools)`:
+`mount()` ends its setup with `devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl)`, `router()` builds the
+`GoRouter`, passes it to `devToolsAttach(router)` and returns it, and `String _devToolsTree()` at the end of the
+file returns the route tree (`fsp routes --graph json`) as one string. `kFespalierDevTools` is a `const` that
+is false in release builds (and with `--dart-define=fespalier.devtools=false`), so the compiler removes the
+calls, the string and the code behind them: a release build has none of it. **Never remove these lines by hand**
+(`fsp gen` writes them back); an app that mounts the routes into its own `GoRouter` calls
+`devToolsAttach(router)` itself. See the DevTools page of `fespalier-troubleshooting`.
+
 ## What the file does not do
 
 - A guard that takes a `Ref` is called as

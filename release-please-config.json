@@ -73,6 +73,10 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier/extension/devtools/config.yaml"
+        },
+        {
+          "type": "generic",
           "path": "cli/src/init.rs"
         },
         {

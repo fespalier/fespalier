@@ -1,0 +1,123 @@
+{
+  "protocol": 1,
+  "event": 12,
+  "registered": true,
+  "attached": true,
+  "location": {
+    "uri": "/orders/5",
+    "fullPath": "/orders/:id",
+    "pathParameters": {
+      "id": "5"
+    },
+    "query": {},
+    "extra": null,
+    "route": "OrderRoute",
+    "params": {
+      "id": {
+        "type": "int",
+        "text": "5"
+      }
+    },
+    "error": null
+  },
+  "stack": [
+    {
+      "type": "shell",
+      "path": "",
+      "location": "/",
+      "pageKey": "k-root",
+      "children": [
+        {
+          "type": "page",
+          "path": "/",
+          "location": "/",
+          "pageKey": "/",
+          "children": []
+        },
+        {
+          "type": "shell",
+          "path": "/",
+          "location": "/profile",
+          "pageKey": "k-account",
+          "children": [
+            {
+              "type": "page",
+              "path": "/profile",
+              "location": "/profile",
+              "pageKey": "/profile",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "pushed",
+      "path": "/orders/:id",
+      "location": "/orders/5",
+      "pageKey": "pk1",
+      "children": [
+        {
+          "type": "shell",
+          "path": "",
+          "location": "/orders/5",
+          "pageKey": "k-root2",
+          "children": [
+            {
+              "type": "page",
+              "path": "/",
+              "location": "/",
+              "pageKey": "/",
+              "children": []
+            },
+            {
+              "type": "page",
+              "path": "/orders/:id",
+              "location": "/orders/5",
+              "pageKey": "/orders/:id",
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "history": [
+    {
+      "seq": 8,
+      "at": 1696230000000,
+      "kind": "initial",
+      "uri": "/profile",
+      "fullPath": "/profile",
+      "depth": 0,
+      "error": null
+    },
+    {
+      "seq": 9,
+      "at": 1696230001000,
+      "kind": "push",
+      "uri": "/orders/5",
+      "fullPath": "/orders/:id",
+      "depth": 1,
+      "error": null
+    },
+    {
+      "seq": 10,
+      "at": 1696230002000,
+      "kind": "replace",
+      "uri": "/orders/5",
+      "fullPath": "/orders/:id",
+      "depth": 1,
+      "error": null
+    },
+    {
+      "seq": 11,
+      "at": 1696230003000,
+      "kind": "refresh",
+      "uri": "/orders/5",
+      "fullPath": "/orders/:id",
+      "depth": 1,
+      "error": null
+    }
+  ]
+}

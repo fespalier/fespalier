@@ -17,7 +17,7 @@ above; pass --project`).
 | `fsp routes [--json]`         | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                        |
 | `fsp links [--check]`         | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                              |
 | `fsp maestro [--check]`       | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0) |
-| `fsp routes --graph [FORMAT]` | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default) or a Graphviz `digraph` (`dot`), since 0.5.0                                                                                              |
+| `fsp routes --graph [FORMAT]` | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default), a Graphviz `digraph` (`dot`), since 0.5.0, or JSON (`json`, since 0.7.0)                                                                 |
 | `fsp new <path> [flags]`      | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                                                           |
 
 What they print, to stderr unless noted:
@@ -66,8 +66,18 @@ URL pattern, route class, each localized spelling, and the markers `redirect`, `
 from the page above its parent, not from the page above it; a box is a navigator: the root
 navigator, a `layout.dart` shell (marked `data` for a section, `guard`) and each tab
 branch. The output is deterministic (no timestamps, a fixed order), so it can be
-committed. `--graph` cannot be combined with `--json`, and a value other than `mermaid`
-or `dot` is a usage error that lists both.
+committed. `--graph` cannot be combined with `--json`, and a value other than `mermaid`,
+`dot` or `json` is a usage error that lists the three (`invalid value 'svg' for '--graph [<FORMAT>]'`,
+then `[possible values: mermaid, dot, json]`; before 0.7.0 only the first two).
+
+**`--graph json`** (since 0.7.0) prints the same tree as indented JSON with a trailing newline: `protocol`
+(1), `package` (the pubspec's `name`, or `null`), `appDir`, `items` and `sites`. An item is a `route`
+(`pattern`, `route`, `file`, `folder`, `markers`, `params` as in `routes --json`, `spellings` only for a
+localized route, `redirect`, `children`), a `shell` (a `layout.dart`, with its `items`) or `tabs` (with `branches`);
+`file` and `folder` are relative to the app folder. `sites` names each guard (`g5@6`), `redirect.dart`
+(`r32`), `data.dart` (`d37`, with `traced: false` when the file returns or selects a provider) and action
+(`a37_0`) by the string the generated code uses. It is what the DevTools extension reads, and `app.g.dart` embeds
+it (see the DevTools page of `fespalier-troubleshooting`).
 
 ### `fsp links` (since 0.5.0)
 

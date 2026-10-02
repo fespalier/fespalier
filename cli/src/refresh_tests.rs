@@ -139,7 +139,7 @@ fn router_assigns_the_url_reflection_explicitly() {
     lacks(&c, &[&format!("{assign}false;")]);
     // The assignment comes before the router is built, in `router()` only.
     assert_eq!(c.matches(assign).count(), 1, "{c}");
-    assert!(c.find(assign) < c.find("return GoRouter("), "{c}");
+    assert!(c.find(assign) < c.find("final router = GoRouter("), "{c}");
 }
 
 #[test]

@@ -1,0 +1,101 @@
+{
+  "protocol": 1,
+  "event": 7,
+  "registered": true,
+  "attached": true,
+  "location": {
+    "uri": "/catalog/p1/reviews?page=2",
+    "fullPath": "/catalog/:productId/reviews",
+    "pathParameters": {
+      "productId": "p1"
+    },
+    "query": {
+      "page": [
+        "2"
+      ]
+    },
+    "extra": {
+      "type": "String",
+      "text": "from-link"
+    },
+    "route": "ReviewsRoute",
+    "params": {
+      "productId": {
+        "type": "String",
+        "text": "p1"
+      },
+      "page": {
+        "type": "int",
+        "text": "2"
+      }
+    },
+    "error": null
+  },
+  "stack": [
+    {
+      "type": "shell",
+      "path": "",
+      "location": "/",
+      "pageKey": "k-root",
+      "children": [
+        {
+          "type": "page",
+          "path": "/",
+          "location": "/",
+          "pageKey": "/",
+          "children": []
+        },
+        {
+          "type": "page",
+          "path": "/catalog",
+          "location": "/catalog",
+          "pageKey": "/catalog",
+          "children": []
+        },
+        {
+          "type": "page",
+          "path": "/catalog/:productId",
+          "location": "/catalog/p1",
+          "pageKey": "/catalog/:productId",
+          "children": []
+        },
+        {
+          "type": "page",
+          "path": "/catalog/:productId/reviews",
+          "location": "/catalog/p1/reviews",
+          "pageKey": "/catalog/:productId/reviews",
+          "children": []
+        }
+      ]
+    }
+  ],
+  "history": [
+    {
+      "seq": 1,
+      "at": 1696230000123,
+      "kind": "initial",
+      "uri": "/",
+      "fullPath": "/",
+      "depth": 0,
+      "error": null
+    },
+    {
+      "seq": 2,
+      "at": 1696230001456,
+      "kind": "go",
+      "uri": "/catalog",
+      "fullPath": "/catalog",
+      "depth": 0,
+      "error": null
+    },
+    {
+      "seq": 3,
+      "at": 1696230002789,
+      "kind": "go",
+      "uri": "/catalog/p1/reviews?page=2",
+      "fullPath": "/catalog/:productId/reviews",
+      "depth": 0,
+      "error": null
+    }
+  ]
+}

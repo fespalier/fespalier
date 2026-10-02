@@ -46,7 +46,7 @@ abstract final class AppRoutes {
     final routes = mount(navigatorKey: navigatorKey);
     // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
     GoRouter.optionURLReflectsImperativeAPIs = false;
-    return GoRouter(
+    final router = GoRouter(
       initialLocation: initialLocation,
       observers: observers,
       restorationScopeId: restorationScopeId,
@@ -54,6 +54,8 @@ abstract final class AppRoutes {
       routes: routes,
       errorBuilder: (context, state) => notFound(state.uri),
     );
+    if (kFespalierDevTools) devToolsAttach(router);
+    return router;
   }
 
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
@@ -68,6 +70,8 @@ abstract final class AppRoutes {
   }) {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
+    if (kFespalierDevTools)
+      devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
     return [
       ShellRoute(
         pageBuilder: (context, state, child) => _i1.transition(
@@ -317,3 +321,9 @@ final _data3 = FutureProvider.autoDispose.family(
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
 );
+
+/// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
+/// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
+/// build has false, so the string is not in one.
+String _devToolsTree() =>
+    '{"protocol":1,"package":"minimal","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/about","route":"AboutRoute","file":"about/page.dart","folder":"about","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/items/:id","route":"ItemRoute","file":"items/\$id/page.dart","folder":"items/\$id","markers":["data"],"params":[{"name":"id","type":"int","in":"path"},{"name":"qty","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]}],"sites":{"d3":{"kind":"data","file":"items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true}}}';

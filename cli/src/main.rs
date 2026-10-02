@@ -1,5 +1,6 @@
 mod config;
 mod dart;
+mod devtools;
 mod diag;
 mod emit;
 mod enums;
@@ -64,7 +65,7 @@ enum Cmd {
         /// One JSON object per route, one per line
         #[arg(long, conflicts_with = "graph")]
         json: bool,
-        /// The route tree as a graph: `mermaid` (the default) or `dot`
+        /// The route tree as a graph: `mermaid` (the default) or `dot`; or `json`, the tree the DevTools extension reads
         #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "mermaid", value_name = "FORMAT")]
         graph: Option<graph::Format>,
     },
@@ -462,6 +463,8 @@ mod case_tests;
 mod cli_tests;
 #[cfg(test)]
 mod deferred_tests;
+#[cfg(test)]
+mod devtools_tests;
 #[cfg(test)]
 mod enum_tests;
 #[cfg(test)]

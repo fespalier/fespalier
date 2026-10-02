@@ -151,6 +151,28 @@ fn the_dart_package_has_the_cli_version() {
 }
 
 #[test]
+fn the_devtools_extension_has_the_cli_version() {
+    // `config.yaml` is what DevTools shows as the extension's version. It is release-please's like
+    // the pubspec's, so it is annotated, and listed in release-please-config.json (checked below).
+    let cargo = env!("CARGO_PKG_VERSION");
+    let config = read("packages/fespalier/extension/devtools/config.yaml");
+    assert_eq!(
+        pubspec_version(&config),
+        cargo,
+        "packages/fespalier/extension/devtools/config.yaml `version:` must equal cli/Cargo.toml"
+    );
+    let line = config
+        .lines()
+        .position(|l| l.starts_with("version:"))
+        .expect("config.yaml has a version")
+        + 1;
+    assert!(
+        annotated_lines(&config).contains(&line),
+        "packages/fespalier/extension/devtools/config.yaml:{line}: the version is not annotated"
+    );
+}
+
+#[test]
 fn the_release_please_manifest_has_the_cli_version() {
     let cargo = env!("CARGO_PKG_VERSION");
     let manifest: serde_json::Value =

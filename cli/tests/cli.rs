@@ -510,6 +510,29 @@ fn routes_graph_prints_mermaid_by_default_and_dot_on_request() {
     assert!(!ok && err.contains("--json"), "{err}");
 }
 
+#[test]
+fn routes_graph_json_prints_the_tree_the_devtools_extension_reads() {
+    let dir = project();
+    fs::create_dir_all(dir.path().join("lib/app/cart")).unwrap();
+    fs::write(dir.path().join("lib/app/cart/page.dart"), page("CartPage")).unwrap();
+    let (ok, out, err) = fsp_full(dir.path(), &["routes", "--graph", "json"], &[]);
+    assert!(ok, "{err}");
+    // Indented, ending in one newline, and the same on every run.
+    assert!(out.starts_with("{\n  \"protocol\": 1,\n"), "{out}");
+    assert!(out.ends_with("}\n") && !out.ends_with("\n\n"), "{out}");
+    let tree: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(tree["protocol"], 1);
+    assert_eq!(tree["appDir"], "lib/app");
+    assert_eq!(tree["items"][0]["route"], "HomeRoute");
+    assert_eq!(tree["items"][0]["children"][0]["pattern"], "/cart");
+    let (_, again, _) = fsp_full(dir.path(), &["routes", "--graph=json"], &[]);
+    assert_eq!(again, out);
+
+    // `--json` is the rows, `--graph` the drawings: the two do not mix.
+    let (ok, _, err) = fsp_full(dir.path(), &["routes", "--graph", "json", "--json"], &[]);
+    assert!(!ok && err.contains("--json"), "{err}");
+}
+
 const LINKS: &str = "fespalier:\n  links:\n    domains: [shop.example.com]\n    android_package: com.example.shop\n    android_sha256: [\"14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5\"]\n    ios_app_id: ABCDE12345.com.example.shop\n";
 
 #[test]

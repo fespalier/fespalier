@@ -142,10 +142,20 @@ void main() {
       expect(hello.protocol, 1);
       expect(hello.registered, isFalse);
       expect(hello.attached, isFalse);
+      // The first three are what an extension of the first release asks for.
+      expect(hello.features.take(3), [
+        DevToolsFeatures.navigation,
+        DevToolsFeatures.match,
+        DevToolsFeatures.navigate,
+      ]);
       expect(hello.features, [
         DevToolsFeatures.navigation,
         DevToolsFeatures.match,
         DevToolsFeatures.navigate,
+        DevToolsFeatures.guards,
+        DevToolsFeatures.data,
+        DevToolsFeatures.actions,
+        DevToolsFeatures.open,
       ]);
     });
 
@@ -622,12 +632,12 @@ void main() {
 
     test('an unknown `what` is invalidParams', () async {
       final answer = await debugDevToolsCall(DevToolsMethods.clear, {
-        'what': 'guards',
+        'what': 'nonsense',
       });
       expect(answer['errorCode'], -32602);
       expect(
         answer['errorDetail'],
-        'unknown `what` `guards`: one of history, all',
+        'unknown `what` `nonsense`: one of history, guards, actions, all',
       );
       expect(
         (await debugDevToolsCall(DevToolsMethods.clear))['errorCode'],

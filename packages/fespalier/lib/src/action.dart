@@ -4,6 +4,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart'
     show NotifierProviderFamily, ProviderListenable, ProviderOrFamily;
 
+import 'devtools/devtools.dart'
+    show kFespalierDevTools, traceActionEnd, traceActionStart;
+
 /// The provider of one function of an `action.dart`: what the generated
 /// `XRoute.action` (or `XRoute.approveAction`, ...) is, called with the action's keys when
 /// it has any.
@@ -30,11 +33,21 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
   /// Creates the notifier for [_run], invalidating what [_invalidates] lists after a success.
   /// The generated file builds one per key through [actionProvider] or [actionFamily]; an app
   /// has no reason to.
-  ActionNotifier(this._run, this._invalidates);
+  ///
+  /// [site] and [key] say which action this is to the DevTools extension (since 0.7.0); they
+  /// are only kept in a build that has it.
+  ActionNotifier(this._run, this._invalidates, {String? site, Object? key})
+    : _site = kFespalierDevTools ? site : null,
+      _key = kFespalierDevTools ? key : null;
 
   final FutureOr<T> Function(Ref ref, I input) _run;
   final Iterable<ProviderListenable<AsyncValue<Object?>>> Function()
   _invalidates;
+
+  /// The action's key in the tree's `sites` and the family's key, for DevTools; null in a build
+  /// without it.
+  final String? _site;
+  final Object? _key;
 
   /// Counts the runs, so that only the last one started (or [reset]) writes the state.
   int _runs = 0;
@@ -53,15 +66,18 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
   /// `isPending` if a double write is wrong for the action.
   FutureOr<T> call(I input) {
     final run = ++_runs;
+    final int? trace = kFespalierDevTools
+        ? traceActionStart(_site, _key, input)
+        : null;
     final FutureOr<T> result;
     try {
       result = _run(ref, input);
     } catch (error, stackTrace) {
-      _fail(run, error, stackTrace);
+      _fail(run, error, stackTrace, trace);
       rethrow;
     }
     if (result is! Future<T>) {
-      _succeed(run, result);
+      _succeed(run, result, trace);
       return result;
     }
     // Alive until the write is over, whoever watches: the state of a submission that
@@ -71,7 +87,7 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     return result.then<T>(
       (value) {
         try {
-          _succeed(run, value);
+          _succeed(run, value, trace);
         } finally {
           link.close();
         }
@@ -79,7 +95,7 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
       },
       onError: (Object error, StackTrace stackTrace) {
         try {
-          _fail(run, error, stackTrace);
+          _fail(run, error, stackTrace, trace);
         } finally {
           link.close();
         }
@@ -95,7 +111,8 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     if (ref.mounted) state = const AsyncData<Null>(null);
   }
 
-  void _succeed(int run, T value) {
+  void _succeed(int run, T value, int? trace) {
+    if (kFespalierDevTools) traceActionEnd(trace, result: value);
     if (!ref.mounted) return;
     if (run == _runs) state = AsyncData<T?>(value);
     for (final target in _invalidates()) {
@@ -104,7 +121,10 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     }
   }
 
-  void _fail(int run, Object error, StackTrace stackTrace) {
+  void _fail(int run, Object error, StackTrace stackTrace, int? trace) {
+    if (kFespalierDevTools) {
+      traceActionEnd(trace, failed: true, error: error);
+    }
     if (ref.mounted && run == _runs) state = AsyncError<T?>(error, stackTrace);
   }
 }
@@ -116,27 +136,32 @@ StateError _notAProvider(Object target) => StateError(
 );
 
 /// The provider of an action with no keys: [run] is the function of `action.dart` and
-/// [invalidates] what a success makes stale. Called by the generated file.
+/// [invalidates] what a success makes stale. Called by the generated file, which passes [site],
+/// the action's key in the route tree DevTools reads (since 0.7.0).
 ActionProvider<I, T> actionProvider<I, T>(
   FutureOr<T> Function(Ref ref, I input) run, {
   required Iterable<ProviderListenable<AsyncValue<Object?>>> Function()
   invalidates,
+  String? site,
 }) => NotifierProvider.autoDispose<ActionNotifier<I, T>, AsyncValue<T?>>(
-  () => ActionNotifier<I, T>(run, invalidates),
+  () => ActionNotifier<I, T>(run, invalidates, site: site),
 );
 
 /// The provider family of an action keyed by [K]: its segments and query parameters, like a
-/// `data.dart`'s. Called by the generated file.
+/// `data.dart`'s. Called by the generated file, which passes [site] as [actionProvider] does.
 NotifierProviderFamily<ActionNotifier<I, T>, AsyncValue<T?>, K>
 actionFamily<K, I, T>(
   FutureOr<T> Function(Ref ref, K key, I input) run, {
   required Iterable<ProviderListenable<AsyncValue<Object?>>> Function(K key)
   invalidates,
+  String? site,
 }) => NotifierProvider.autoDispose
     .family<ActionNotifier<I, T>, AsyncValue<T?>, K>(
       (key) => ActionNotifier<I, T>(
         (ref, input) => run(ref, key, input),
         () => invalidates(key),
+        site: site,
+        key: key,
       ),
     );
 

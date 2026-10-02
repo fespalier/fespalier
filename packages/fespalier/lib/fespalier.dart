@@ -18,7 +18,12 @@ export 'src/action.dart';
 export 'src/data_view.dart';
 // DevTools support (since 0.7.0): what a generated app.g.dart registers and attaches.
 export 'src/devtools/devtools.dart'
-    show kFespalierDevTools, devToolsAttach, devToolsRegister;
+    show
+        devToolsAttach,
+        devToolsRegister,
+        kFespalierDevTools,
+        traceData,
+        traceGuard;
 export 'src/extra_codec.dart';
 export 'src/guards.dart';
 export 'src/layout_page.dart';

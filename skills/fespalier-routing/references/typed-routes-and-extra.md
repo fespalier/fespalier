@@ -36,7 +36,8 @@ const SearchRoute(q: 'ap', page: 2).location; // '/search?q=ap&page=2'
   members (`fespalier-data`, and the next section; `preload` is reserved since 0.5.0).
 - To **link** to a route from a widget, `RouteLink(to: route, builder: ...)` does
   what `route.go(context)` does and adds an `href` on the web and preloading (see
-  [`links.md`](links.md)).
+  [`links.md`](links.md)). `route.preload(ref)` starts the page's data, and since 0.7.0 its
+  code when the route is deferred.
 - Build typed links rather than string paths: the compiler then checks the
   arguments, and a renamed folder breaks the build instead of a link.
 
@@ -251,6 +252,11 @@ the URL: a deep link or a reload leaves it null, so declare it nullable, e.g.
   does not export it is ignored; a type declared in the file itself, or under an
   import prefix, is found too). So the type must be reachable from the file's
   imports. `dart:core` types need nothing.
+- **Not in a deferred page (since 0.7.0).** A class declared in a `page.dart` that is
+  [deferred](route-dart.md#deferred-load-a-pages-code-on-demand) can't be named by the
+  generated file outside the page, so it is an error (`` `Note` is declared in this page.dart, which is deferred, ... ``, in full in
+  `fespalier-troubleshooting`). Move the type to a file of its own, or say
+  `const deferred = false;` in the folder.
 
 ### Layouts, guards and redirects take it too
 

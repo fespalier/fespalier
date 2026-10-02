@@ -216,3 +216,34 @@ void main() {
   });
 }
 ```
+
+## A deferred route (since 0.7.0)
+
+With `const deferred = true;` in `lib/app/products/\$id/route.dart`, the recipes above need no
+change: `pumpRouter` loads the page's code first, so `find.byType(ProductPage)` finds it in the
+first settled frame. A test that pumps its own router calls `loadDeferred` itself:
+
+```dart
+testWidgets('a deferred page, with a router of my own', (tester) async {
+  final container = ProviderContainer(
+    overrides: [apiProvider.overrideWithValue(FakeApi())],
+  );
+  addTearDown(container.dispose);
+  final router = AppRoutes.router(initialLocation: '/products/2');
+  addTearDown(router.dispose);
+
+  // `loadLibrary()` completes only on the real event loop, which `pump` never runs.
+  await tester.runAsync(AppRoutes.loadDeferred);
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp.router(routerConfig: router),
+    ),
+  );
+  await tester.pumpAndSettle();
+  expect(find.byType(ProductPage), findsOneWidget);
+});
+```
+
+`preload` of a deferred route starts its code as well as its data
+(`ProductRoute(id: 2).preload(ref)`); both are loaded after the same `pump`.

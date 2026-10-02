@@ -36,12 +36,14 @@ What they print, to stderr unless noted:
 - `routes` prints `pattern  RouteClass  file  (tags)` per route. The tags are
   `redirect`, `data`, `action` (since 0.5.0), `guard`, `layout`, `present` or `transition`, `root`,
   `sibling` (a [`nest = false`](../../fespalier-routing/references/route-dart.md) route,
-  since 0.4.0) and `remount` (a page that starts again when its URL changes, since 0.6.0), in that order. `routes --json` prints, per line, in
+  since 0.4.0), `remount` (a page that starts again when its URL changes, since 0.6.0) and `deferred` (a page whose code loads on demand,
+  since 0.7.0), in that order. `routes --json` prints, per line, in
   this order: `pattern`, `route`, `file`, `tags`, `params` (`{name, type, in}`
   with `in` of `path` or `query`), `folder`, `presentation` (`page`, `redirect`,
   `root`, `custom`), `groups`, `layouts`, `tabs`, `data_keys`, `meta`,
   `catch_all`, then `remount` (`on_segments` or `on_location`, since 0.6.0) **only** for a route
-  that remounts, and `paths` **only** for a route with localized segments.
+  that remounts, then `deferred` (`true`, since 0.7.0) **only** for a route whose page is deferred, and `paths` **only** for a route with
+  localized segments.
 
 ### `fsp routes --graph` (since 0.5.0)
 
@@ -171,6 +173,7 @@ fespalier:
   format: false
   case_sensitive: true
   remount: never
+  deferred: false           # since 0.7.0
   data_retry: inherit
   keep_previous: true
   push_updates_url: false   # since 0.6.0
@@ -188,6 +191,7 @@ fespalier:
 | `format`           | `true` / `false`                        | Run `dart format` on the output (needs `dart` on `PATH`; without it `fsp` warns and writes the unformatted code)                                                                                                                                                                                                                                                               |
 | `case_sensitive`   | `true` / `false`                        | `false` emits `caseSensitive: false` on every route; a `route.dart` overrides it per folder                                                                                                                                                                                                                                                                                    |
 | `remount`          | `never` / `on_segments` / `on_location` | When a page gets a fresh state because its URL changed (since 0.6.0): `on_segments` when a segment's value changes, `on_location` on any change, the query included; a `route.dart` overrides it per folder. See `fespalier-routing`. Another value: `` invalid pubspec.yaml: fespalier.remount: unknown variant `x`, expected one of `never`, `on_segments`, `on_location` `` |
+| `deferred`         | `true` / `false`                        | Since 0.7.0. `true` makes every page's code load on demand (`import ... deferred as`, a chunk of its own on the web); a `route.dart` with `const deferred = ...;` overrides it per folder. See `fespalier-routing`. Not a bool: `invalid pubspec.yaml: fespalier.deferred: invalid type: string "maybe", expected a boolean at line 3 column 13`                               |
 | `data_retry`       | `inherit` / `none`                      | `none` gives generated `data()` providers `retry: (retryCount, error) => null`. See `fespalier-data`                                                                                                                                                                                                                                                                           |
 | `keep_previous`    | `true` / `false`                        | `false` shows `loading.dart` on every reload. See `fespalier-data`                                                                                                                                                                                                                                                                                                             |
 | `push_updates_url` | `true` / `false`                        | Since 0.6.0. `true` puts a `push`ed route's URL in the browser's address bar: `router()` sets `GoRouter.optionURLReflectsImperativeAPIs = true` (`false` otherwise, on every call). See `fespalier-routing`                                                                                                                                                                    |

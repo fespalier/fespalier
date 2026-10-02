@@ -51,6 +51,61 @@ String currentLocation(WidgetTester tester)
   error screen is unstyled; with the root `transition.dart` that `fsp init` writes,
   no nested `material_ui` app is needed.
 
+## Deferred routes: `pumpRouter` loads them, your own router must
+
+Since 0.7.0 a route whose folder says `const deferred = true;` has its `page.dart` imported
+`deferred as`. Loading it (`loadLibrary()`) always ends with a zero-duration `Timer`, which a
+widget test's fake async never runs on its own: `pump()`, `pump(1µs)` and `pumpAndSettle()` leave it
+pending, `pump(const Duration(seconds: 1))` happens to finish it, and the test ends with `A Timer
+is still pending even after the widget tree was disposed`. Whether a test saw the page would
+depend on what else pumped time. So:
+
+- **`pumpRouter` loads the code of every deferred route first**, in `tester.runAsync`, which
+  runs on the real event loop, and only then pumps. A deferred page is in the first settled frame,
+  as an eager one is, and a test written for an app before it deferred anything passes unchanged.
+  An app with no deferred route behaves exactly as before.
+- **A test that pumps a router of its own does the same itself**, before `pumpWidget`:
+
+```dart
+await tester.runAsync(AppRoutes.loadDeferred);
+await tester.pumpWidget(
+  UncontrolledProviderScope(
+    container: container,
+    child: MaterialApp.router(routerConfig: AppRoutes.router(initialLocation: '/checkout')),
+  ),
+);
+```
+
+`AppRoutes.loadDeferred` is there when the app has a deferred route and works before any
+`router()` call. Load only some with `DeferredLibrary.loadAll([...])`.
+
+- **Forget it and a debug build throws**, rather than hang, a `FlutterError` when the page is
+  built (`tester.takeException()` is it, and the page is not shown). It has three parts, here
+  for a deferred `products/$id/page.dart`:
+  - The summary: `The code of products/$id/page.dart is not loaded, and a widget test can't load it while it pumps.`
+  - The description: `` `products/$id/page.dart` is a deferred route (`const deferred = true`): its `loadLibrary()` completes only on the real event loop, which `tester.pump()` doesn't run, so the page would show its loading view and leave a timer pending. ``
+  - The hint: ``Boot the router with `pumpRouter`, which loads the code of every deferred route first, or call `await tester.runAsync(AppRoutes.loadDeferred)` before pumping a router of your own.``
+
+  It is an `assert`: release builds and `flutter drive` / integration tests (a real event loop) are
+  not affected.
+
+- **The loading state of a real deferred page can't be observed** in a widget test (the code is
+  loaded before the first frame). To test your own `loading.dart` and `error.dart` around a code
+  load, build the view the generated file builds, with a library whose load you control:
+
+```dart
+final done = Completer<void>();
+final library = DeferredLibrary(
+  () => done.future,
+  'x/page.dart',
+  loadsInFakeAsync: true, // the load is yours, so a test may start it
+);
+// DeferredView(library: library, page: ..., loading: ..., error: (e, st, retry) => ...)
+// pump: the loading view; done.complete(); pump(): the page.
+```
+
+A failed load shows `error.dart`, and its `retry` calls the library's load again.
+
 ## One router per test
 
 A router **remembers where it went**: build a new one per test

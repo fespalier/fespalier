@@ -43,6 +43,10 @@ class AppLayout extends StatelessWidget {
   **outside** the layout's folder: they bring their own `Scaffold`.
 - A page-less folder with a `layout.dart` and a `data.dart` is a **section**: the
   layout waits for the data (`fespalier-data`).
+- **A layout is never deferred** (since 0.7.0, `const deferred = true;` in a `route.dart` defers
+  `page.dart` only): it wraps a `Navigator` (a `StatefulNavigationShell` for tabs), and a
+  placeholder in its place would unmount them and their state. A tab layout's own page is deferred
+  like any page, inside its branch (see `const deferred` in the `route.dart` reference of [`fespalier-routing`](../fespalier-routing/)).
 - A group's routes stay together in one `ShellRoute`, so a group holding a dynamic
   route cannot be sorted around a dynamic sibling outside it: that is the usual
   "unreachable" error (`fespalier-routing`).

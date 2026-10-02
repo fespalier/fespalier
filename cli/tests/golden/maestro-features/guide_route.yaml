@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/guide/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/guide"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/guide"
+- extendedWaitUntil:
+    visible:
+      id: "route:/guide"
+    timeout: 20000

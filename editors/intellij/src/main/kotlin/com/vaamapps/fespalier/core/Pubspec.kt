@@ -83,6 +83,12 @@ fun isUnderAppDir(relPath: String, appDir: String): Boolean {
     return p == dir || p.startsWith("$dir/")
 }
 
+/** Whether [relPath] (relative to the project root) is a Dart file under `lib/` that is not generated (`*.g.dart`). */
+fun isLibDartSource(relPath: String): Boolean {
+    val p = normalizeDir(relPath)
+    return p.startsWith("lib/") && p.endsWith(".dart") && !p.endsWith(".g.dart")
+}
+
 /** A project that uses fespalier: the folder with its pubspec.yaml, and its app folder. */
 data class FespalierProject(
     /** Absolute path of the folder with the pubspec.yaml, with `/` separators. */
@@ -90,10 +96,14 @@ data class FespalierProject(
     /** Relative to [root], normalised (`lib/app` by default). */
     val appDir: String,
 ) {
-    /** Whether a file at [absolutePath] is one that changes the route table (or where it lives). */
+    /**
+     * Whether a file at [absolutePath] can change what `fsp check` finds: `pubspec.yaml` (it can
+     * move the app folder), a file under the app folder (the route tree), or a Dart file anywhere
+     * under `lib/` that `fsp` did not generate (the string paths it checks, since fespalier 0.7.0).
+     */
     fun affectedBy(absolutePath: String): Boolean {
         val rel = relativePath(absolutePath) ?: return false
-        return rel == "pubspec.yaml" || isUnderAppDir(rel, appDir)
+        return rel == "pubspec.yaml" || isUnderAppDir(rel, appDir) || isLibDartSource(rel)
     }
 
     /** [absolutePath] relative to [root] with `/` separators, or null when it is outside it. */

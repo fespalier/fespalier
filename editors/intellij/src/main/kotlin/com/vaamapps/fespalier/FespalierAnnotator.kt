@@ -15,7 +15,8 @@ import com.vaamapps.fespalier.core.toSpan
 
 /**
  * Shows what `fsp check --json` reports inline, in the files under the project's app folder
- * (and in its pubspec.yaml). The check itself is shared by all open files of the project, see
+ * (and in its pubspec.yaml), and in any other Dart file under `lib/` (string paths that match no
+ * route, since fespalier 0.7.0). The check itself is shared by all open files of the project, see
  * [FespalierService].
  *
  * Like the generator, it reads the files as they are on disk. Highlights in a file with unsaved

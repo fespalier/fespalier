@@ -295,6 +295,14 @@ git diff --exit-code lib/app.g.dart
 (`fespalier`'s own repository has a test that its committed example outputs are up to
 date; your app needs the equivalent.)
 
+## Tests may go to unknown paths
+
+Since 0.7.0 `fsp` warns about a string path in `lib/` that matches no route
+(``no route matches `/nope`, so it shows not-found [unknown_path]``), but it does **not**
+read `test/`, `integration_test/` or `bin/`: a test that boots `AppRoutes.router(initialLocation:
+'/nope')` to see `not_found.dart`, or mounts the tree under a prefix the app does not use, is
+not flagged and needs no `fsp:ignore`.
+
 ## Leftovers
 
 `flutter create` writes `test/widget_test.dart`, which refers to the `MyApp` you

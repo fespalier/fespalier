@@ -787,6 +787,110 @@ fn json_diagnostics_go_to_stdout_as_lines() {
     assert!(ok && out.is_empty());
 }
 
+const NO_ROUTE: &str = "no route matches `/nope/x`, so it shows not-found [unknown_path]";
+
+/// A string path that matches no route is a warning: shown, in the file that has it, and the
+/// command still succeeds. With `unknown_path: error` `check` and `gen` fail, and `gen` still
+/// writes the output.
+#[test]
+fn check_warns_about_a_string_path_that_matches_no_route() {
+    let dir = project();
+    let root = dir.path();
+    fs::create_dir_all(root.join("lib/screens")).unwrap();
+    fs::write(
+        root.join("lib/screens/home.dart"),
+        "void f(BuildContext context) {\n  context.go('/');\n  context.go('/nope/x');\n}\n",
+    )
+    .unwrap();
+
+    let (ok, err) = fsp(root, &["check"]);
+    assert!(ok, "{err}");
+    assert!(err.contains("warning"), "{err}");
+    assert!(err.contains("lib/screens/home.dart"), "{err}");
+    assert!(err.contains(NO_ROUTE), "{err}");
+    assert!(err.contains("✓ 1 route, no errors"), "{err}");
+
+    let (ok, out, err) = fsp_full(root, &["check", "--json"], &[]);
+    assert!(ok, "{err}");
+    let lines: Vec<serde_json::Value> = out
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 1, "{out}");
+    assert_eq!(lines[0]["file"], "lib/screens/home.dart");
+    assert_eq!(lines[0]["severity"], "warning");
+    assert_eq!(lines[0]["line"], 3);
+    assert_eq!(lines[0]["column"], 14);
+    assert_eq!(lines[0]["message"], NO_ROUTE);
+
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  lints:\n    unknown_path: error\n",
+    )
+    .unwrap();
+    let (ok, err) = fsp(root, &["check"]);
+    assert!(!ok, "{err}");
+    assert!(
+        err.contains("1 error(s) in string paths (`lints: unknown_path: error`)")
+            && !err.contains("is up to date"),
+        "{err}"
+    );
+    assert!(
+        !root.join("lib/app.g.dart").exists(),
+        "check writes nothing"
+    );
+    let (ok, err) = fsp(root, &["gen"]);
+    assert!(!ok, "{err}");
+    assert!(
+        err.contains(
+            "1 error(s) in string paths (`lints: unknown_path: error`); lib/app.g.dart is up to date"
+        ),
+        "{err}"
+    );
+    assert!(root.join("lib/app.g.dart").exists(), "gen still writes");
+
+    // `off` skips it.
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  lints:\n    unknown_path: off\n",
+    )
+    .unwrap();
+    let (ok, err) = fsp(root, &["check"]);
+    assert!(ok && !err.contains("warning"), "{err}");
+}
+
+/// `watch` runs again when a Dart file under `lib/` but outside the app folder changes.
+#[test]
+fn watch_rechecks_string_paths_outside_the_app_folder() {
+    let dir = project();
+    let root = dir.path();
+    fs::create_dir_all(root.join("lib/screens")).unwrap();
+    let w = Watch::start(root);
+    w.wait_for("✓ 1 route → lib/app.g.dart");
+    w.settle();
+    let home = root.join("lib/screens/home.dart");
+
+    fs::write(&home, "void f(BuildContext c) { c.go('/nope/x'); }\n").unwrap();
+    w.wait_for(NO_ROUTE);
+    w.wait_for("lib/screens/home.dart");
+    w.settle();
+
+    // Fixed: the success line comes again, and the warning does not.
+    let mark = w.text().len();
+    fs::write(&home, "void f(BuildContext c) { c.go('/'); }\n").unwrap();
+    let end = Instant::now() + Duration::from_secs(10);
+    while !w.text()[mark..].contains("✓ 1 route, lib/app.g.dart unchanged") {
+        assert!(Instant::now() < end, "timed out; got:\n{}", w.text());
+        sleep(Duration::from_millis(50));
+    }
+    w.settle();
+    assert!(
+        !w.text()[mark..].contains("no route matches"),
+        "{}",
+        w.text()
+    );
+}
+
 /// A stand-in for `dart` whose `format` prepends a marker line to stdin.
 #[cfg(unix)]
 fn fake_dart(dir: &Path) -> std::path::PathBuf {
@@ -1159,4 +1263,199 @@ fn routes_tags_a_route_with_an_action_and_check_frames_a_bad_one() {
         err.contains("Future<void> action(Ref ref, {required int id}) async {}"),
         "{err}"
     );
+}
+
+const MAESTRO: &str = "fespalier:\n  semantics_ids: true\n  maestro:\n    url: http://localhost:8080\n    link: http://localhost:8080/#\n    samples:\n      products/$id: 1\n";
+
+#[test]
+fn maestro_writes_the_flows_and_check_follows_them() {
+    let dir = project();
+    fs::create_dir_all(dir.path().join("lib/app/products/$id")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/products/$id/page.dart"),
+        "class ProductPage extends StatelessWidget { const ProductPage({super.key, required this.id}); final int id; }",
+    )
+    .unwrap();
+    fs::create_dir_all(dir.path().join("lib/app/orders/$id")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/orders/$id/page.dart"),
+        "class OrderPage extends StatelessWidget { const OrderPage({super.key, required this.id}); final int id; }",
+    )
+    .unwrap();
+    let pubspec = dir.path().join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    let flow = |name: &str| dir.path().join(".maestro/routes").join(name);
+
+    // Without a `maestro:` section it says what to add, and writes nothing.
+    let (ok, out, err) = fsp_full(dir.path(), &["maestro"], &[]);
+    assert!(!ok && out.is_empty(), "{err}");
+    assert_eq!(
+        err,
+        "no `maestro:` in the `fespalier:` section of pubspec.yaml; say what the flows open, e.g.\n  fespalier:\n    semantics_ids: true\n    maestro:\n      app_id: com.example.shop\n"
+    );
+    assert!(!dir.path().join(".maestro").exists());
+
+    // Without `semantics_ids` there is no identifier for a flow to wait for.
+    let no_ids = MAESTRO.replace("  semantics_ids: true\n", "");
+    fs::write(&pubspec, format!("{base}{no_ids}")).unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["maestro"], &[]);
+    assert!(!ok, "{err}");
+    assert_eq!(
+        err,
+        "`fsp maestro` finds each page by its semantics identifier: set `semantics_ids: true` in the `fespalier:` section of pubspec.yaml, then run `fsp gen`\n"
+    );
+
+    fs::write(&pubspec, format!("{base}{MAESTRO}")).unwrap();
+    let (ok, out, err) = fsp_full(dir.path(), &["maestro", "--check"], &[]);
+    assert!(!ok && out.is_empty(), "{err}");
+    assert!(
+        err.contains(".maestro/routes/home_route.yaml is missing"),
+        "{err}"
+    );
+    assert!(
+        err.contains("2 flow(s) out of date; run `fsp maestro`"),
+        "{err}"
+    );
+    assert!(
+        !dir.path().join(".maestro").exists(),
+        "--check writes nothing"
+    );
+
+    let (ok, out, err) = fsp_full(dir.path(), &["maestro"], &[]);
+    assert!(ok && out.is_empty(), "{err}");
+    assert!(
+        err.contains("  wrote .maestro/routes/home_route.yaml\n"),
+        "{err}"
+    );
+    assert!(
+        err.contains(
+            "  skipped /orders/:id: no sample for orders/$id in `fespalier.maestro.samples`\n"
+        ),
+        "{err}"
+    );
+    assert!(
+        err.ends_with(
+            "✓ maestro: 2 flows in .maestro/routes (2 written, 0 unchanged); 1 route skipped\n"
+        ),
+        "{err}"
+    );
+    let product = fs::read_to_string(flow("product_route.yaml")).unwrap();
+    assert!(
+        product.contains("- openLink: \"http://localhost:8080/#/products/1\"\n"),
+        "{product}"
+    );
+    assert!(
+        product.contains("      id: \"route:/products/:id\"\n"),
+        "{product}"
+    );
+
+    // Again: nothing to write, and check passes (a skip is not a failure).
+    let (ok, _, err) = fsp_full(dir.path(), &["maestro"], &[]);
+    assert!(
+        ok && err.contains("(0 written, 2 unchanged); 1 route skipped") && !err.contains("wrote"),
+        "{err}"
+    );
+    let (ok, _, err) = fsp_full(dir.path(), &["maestro", "--check"], &[]);
+    assert!(
+        ok && err.contains("  skipped /orders/:id")
+            && err.ends_with("✓ maestro: 2 flows in .maestro/routes are up to date\n"),
+        "{err}"
+    );
+
+    // A hand-written flow is never read, reported or removed.
+    fs::write(flow("journey.yaml"), "appId: x\n---\n- launchApp\n").unwrap();
+    fs::write(flow("config.yaml"), "flows: []\n").unwrap();
+
+    // A new page makes the flows stale, and `fsp maestro` brings them back.
+    fs::create_dir_all(dir.path().join("lib/app/about")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/about/page.dart"),
+        page("AboutPage"),
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["maestro", "--check"], &[]);
+    assert!(
+        !ok && err.contains(".maestro/routes/about_route.yaml is missing"),
+        "{err}"
+    );
+    assert!(fsp_full(dir.path(), &["maestro"], &[]).0);
+    assert!(fsp_full(dir.path(), &["maestro", "--check"], &[]).0);
+
+    // Changing what a flow opens makes it out of date.
+    let moved = MAESTRO.replace("products/$id: 1", "products/$id: 2");
+    fs::write(&pubspec, format!("{base}{moved}")).unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["maestro", "--check"], &[]);
+    assert!(
+        !ok && err.contains(".maestro/routes/product_route.yaml is out of date")
+            && err.contains("1 flow(s) out of date; run `fsp maestro`"),
+        "{err}"
+    );
+    assert!(fsp_full(dir.path(), &["maestro"], &[]).0);
+
+    // Deleting a page leaves its flow behind: `--check` says so, and `fsp maestro` removes it.
+    fs::remove_dir_all(dir.path().join("lib/app/about")).unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["maestro", "--check"], &[]);
+    assert!(
+        !ok && err.contains(".maestro/routes/about_route.yaml is no longer a route's flow"),
+        "{err}"
+    );
+    assert!(flow("about_route.yaml").exists());
+    let (ok, _, err) = fsp_full(dir.path(), &["maestro"], &[]);
+    assert!(
+        ok && err.contains("  removed .maestro/routes/about_route.yaml\n"),
+        "{err}"
+    );
+    assert!(!flow("about_route.yaml").exists());
+    assert_eq!(
+        fs::read_to_string(flow("journey.yaml")).unwrap(),
+        "appId: x\n---\n- launchApp\n"
+    );
+    assert_eq!(
+        fs::read_to_string(flow("config.yaml")).unwrap(),
+        "flows: []\n"
+    );
+    assert!(fsp_full(dir.path(), &["maestro", "--check"], &[]).0);
+
+    // A guard flow that is not there is named.
+    let guarded = MAESTRO.replace(
+        "    samples:",
+        "    guard_flow: .maestro/sign-in.yaml\n    samples:",
+    );
+    fs::write(&pubspec, format!("{base}{guarded}")).unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["maestro"], &[]);
+    assert!(
+        !ok && err == "`fespalier.maestro.guard_flow`: .maestro/sign-in.yaml does not exist\n",
+        "{err}"
+    );
+}
+
+#[test]
+fn maestro_reports_config_and_route_errors_with_a_failing_exit() {
+    let dir = project();
+    let pubspec = dir.path().join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    fs::write(
+        &pubspec,
+        format!("{base}fespalier:\n  semantics_ids: true\n  maestro:\n    out: flows\n"),
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["maestro"], &[]);
+    assert!(
+        !ok && err
+            .starts_with("`fespalier.maestro` needs `app_id` (Android and iOS) or `url` (the web)"),
+        "{err}"
+    );
+    // A route error stops it before anything is written.
+    let only_url =
+        "fespalier:\n  semantics_ids: true\n  maestro:\n    url: http://localhost:8080\n";
+    fs::write(&pubspec, format!("{base}{only_url}")).unwrap();
+    fs::create_dir_all(dir.path().join("lib/app/bad name")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/bad name/page.dart"),
+        page("BadPage"),
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["maestro"], &[]);
+    assert!(!ok && err.ends_with("1 error(s); no flows\n"), "{err}");
+    assert!(!dir.path().join(".maestro").exists());
 }

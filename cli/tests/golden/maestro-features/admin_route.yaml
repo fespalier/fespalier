@@ -1,0 +1,14 @@
+# Written by `fsp maestro` from lib/app/(members)/admin/page.dart: don't edit it, run `fsp maestro` again.
+# Guarded by (members)/guard.dart, (members)/admin/guard.dart: ../sign-in.yaml runs before the link.
+appId: "com.example.features"
+name: "/admin"
+tags:
+  - "fespalier"
+---
+- launchApp
+- runFlow: "../sign-in.yaml"
+- openLink: "features://app.example.com/admin"
+- extendedWaitUntil:
+    visible:
+      id: "route:/admin"
+    timeout: 20000

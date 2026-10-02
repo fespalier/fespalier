@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { appDirFromPubspec, isUnderAppDir, normalizeDir } from '../src/project';
+import { affectsCheck, appDirFromPubspec, isUnderAppDir, normalizeDir } from '../src/project';
 import { invocation } from '../src/runner';
 
 test('app_dir defaults to lib/app', () => {
@@ -27,6 +27,25 @@ test('saved files: inside the app folder or not', () => {
   assert.equal(isUnderAppDir('lib/application/page.dart', 'lib/app'), false);
   assert.equal(isUnderAppDir('lib/main.dart', 'lib/app'), false);
   assert.equal(isUnderAppDir('lib\\app\\page.dart', './lib/app/'), true);
+});
+
+test('saved files that can change what fsp check finds', () => {
+  // The route tree, and pubspec.yaml (it can move the app folder).
+  assert.equal(affectsCheck('pubspec.yaml', 'lib/app'), true);
+  assert.equal(affectsCheck('lib/app/products/$id/page.dart', 'lib/app'), true);
+  assert.equal(affectsCheck('lib/app/_widgets/card.dart', 'lib/app'), true);
+  // A Dart file anywhere under lib/ can hold a string path (since 0.7.0).
+  assert.equal(affectsCheck('lib/screens/home.dart', 'lib/app'), true);
+  assert.equal(affectsCheck('lib/main.dart', 'lib/app'), true);
+  assert.equal(affectsCheck('lib\\screens\\home.dart', 'lib/app'), true);
+  assert.equal(affectsCheck('lib/application/page.dart', 'lib/app'), true);
+  // Not what fsp generates, not code, and not under lib/.
+  assert.equal(affectsCheck('lib/app.g.dart', 'lib/app'), false);
+  assert.equal(affectsCheck('lib/screens/x.g.dart', 'lib/app'), false);
+  assert.equal(affectsCheck('lib/assets/logo.png', 'lib/app'), false);
+  assert.equal(affectsCheck('test/app_test.dart', 'lib/app'), false);
+  assert.equal(affectsCheck('README.md', 'lib/app'), false);
+  assert.equal(affectsCheck('example/lib/main.dart', 'lib/app'), false);
 });
 
 test('normalizeDir', () => {

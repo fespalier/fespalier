@@ -1,6 +1,6 @@
 ---
 name: fespalier-testing
-description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in, pure tests of locations, dataAt and match, and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
+description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in, pure tests of locations, dataAt and match, Maestro on a device or the web (semantics_ids, fsp maestro), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
 ---
 
 # fespalier-testing
@@ -96,6 +96,15 @@ Full compiled tests for all of these are in
 [`references/recipes.md`](references/recipes.md); the traps, each of which cost a test
 run while these skills were written, are in
 [`references/pitfalls.md`](references/pitfalls.md).
+
+**Widget tests for logic and states; Maestro for real devices, the web and journeys across
+routes.** Maestro reads the accessibility tree and cannot see a `Key`, so (since 0.7.0)
+`semantics_ids: true` gives every page a `Semantics(identifier: 'route:<pattern>')` that is in the
+tree only when the route's own page is built, and `fsp maestro` writes a smoke flow per route that
+waits for it. The identifier contract, the test that proves it
+(`find.bySemanticsIdentifier`, with the handle disposed in the test body) and the traps (hash URLs,
+`maestro test .maestro` skipping `routes/`, the web reload under a guard flow, the semantics tree
+staying on in a web build) are in [`references/maestro.md`](references/maestro.md).
 
 ## Three facts to keep in mind
 

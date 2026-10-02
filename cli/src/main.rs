@@ -8,7 +8,9 @@ mod format;
 mod graph;
 mod init;
 mod links;
+mod lint;
 mod locale;
+mod maestro;
 mod manifest;
 mod parse_cache;
 mod resolve;
@@ -72,6 +74,12 @@ enum Cmd {
         #[arg(long)]
         check: bool,
     },
+    /// Write Maestro smoke flows, one per route, from the routes (`maestro:` in pubspec.yaml)
+    Maestro {
+        /// Write nothing; exit non-zero when the flows on disk are not what `fsp maestro` would write
+        #[arg(long)]
+        check: bool,
+    },
     /// Regenerate on every change under the app folder
     Watch,
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
@@ -98,11 +106,12 @@ fn main() {
             }
             Cmd::Routes { json, graph } => routes::run(&project, json, graph),
             Cmd::Links { check } => links::run(&project, check),
+            Cmd::Maestro { check } => maestro::run(&project, check),
             Cmd::Watch => watch(&project),
             Cmd::Init => init::run(&project),
             Cmd::New(cmd) => {
                 let created = scaffold::new_route_opts(&project, &cmd.args, cmd.no_page)?;
-                match generate(&project, true) {
+                match gen_with(&project, &Config::load(&project)?.for_scaffolding(), true) {
                     Ok(o) => {
                         eprintln!("{}", o.line());
                         Ok(())
@@ -223,21 +232,33 @@ fn gen_core(
         // The manifest is a second file when `output_manifest:` asks for one. `check`
         // renders it too, but writes and compares nothing.
         let mut files = vec![];
+        let mut table = lint::Table::default();
         if !diags.has_errors() {
             files.push((cfg.output.clone(), code));
             files.extend(cfg.output_manifest.clone().zip(manifest::emit(&app, cfg)));
+            table = lint::Table::new(&app);
         }
         (
             Run {
                 diags,
                 routes,
                 files,
+                table,
             },
             libs.reads(),
         )
     };
     let run = session.last.keep(tree, scan_diags, reads, run);
-    show(&app_dir, &run.diags);
+    // The lint reads files outside the tree, so it runs on every run, reused or not. A tree
+    // with errors is half resolved and would make every path look unknown.
+    let lints = if run.diags.has_errors() {
+        diag::Diags::default()
+    } else {
+        lint::check(project, cfg, &run.table, &mut session.sites)
+    };
+    let mut everything = run.diags.clone();
+    everything.0.extend(lints.0.iter().cloned());
+    show(&app_dir, &everything);
     if run.diags.has_errors() {
         let left = match &cfg.output_manifest {
             Some(m) => format!("{} and {m}", cfg.output),
@@ -273,6 +294,17 @@ fn gen_core(
         Some(m) => format!("{}, {m}", cfg.output),
         None => cfg.output.clone(),
     };
+    // A lint error fails the command but not the output: the generated file does not depend on
+    // it, and `watch` must not stop regenerating for a typo in some other file.
+    if lints.has_errors() {
+        let n = lints.error_count();
+        if write {
+            bail!(
+                "{n} error(s) in string paths (`lints: unknown_path: error`); {output} is up to date"
+            );
+        }
+        bail!("{n} error(s) in string paths (`lints: unknown_path: error`)");
+    }
     Ok(Outcome {
         wrote,
         routes: run.routes,
@@ -441,7 +473,11 @@ mod incremental_tests;
 #[cfg(test)]
 mod links_tests;
 #[cfg(test)]
+mod lint_tests;
+#[cfg(test)]
 mod locale_tests;
+#[cfg(test)]
+mod maestro_tests;
 #[cfg(test)]
 mod manifest_tests;
 #[cfg(test)]
@@ -464,6 +500,8 @@ mod rest_types_tests;
 mod route_api_tests;
 #[cfg(test)]
 mod selector_tests;
+#[cfg(test)]
+mod semantics_tests;
 #[cfg(test)]
 mod synth;
 #[cfg(test)]

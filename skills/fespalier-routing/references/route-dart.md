@@ -312,6 +312,12 @@ built nor asked for its `data.dart`. `fsp routes` tags it `(sibling)` (`"sibling
 `--json`). `examples/features` has `orders/$id/refund/confirm` (and `refund/receipt`,
 which nests) with widget tests for the stack and for back.
 
+- **At runtime** (since 0.7.0), `RouteInfo.sibling` is `true` for the route that declares
+  `nest = false` and `false` for the page it left and for every other route
+  (`AppRoutes.byType[ConfirmRoute]!.sibling`, like the rest of
+  `RouteInfo`). It is a flag, not a parent: the page it sits beside is not always one route
+  (the folders between can be page-less), and `path` already has the segments it joined.
+  A nested route below a sibling is not one itself.
 - **This folder's route only.** It is not inherited: the folders below `confirm/` nest
   under `confirm` as usual. Put it beside a `page.dart` or a `redirect.dart`; `true` is
   the default and says nothing.

@@ -8,16 +8,17 @@ Every command takes `--project <dir>`; the default is the nearest folder, at or
 above the current one, with a `pubspec.yaml` (none: `no pubspec.yaml here or
 above; pass --project`).
 
-| Command                       | What it does                                                                                                                                                                 |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fsp init`                    | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do |
-| `fsp gen [--format] [--json]` | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                     |
-| `fsp check [--json]`          | The same checks; **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                             |
-| `fsp watch`                   | `gen` once, then again on every relevant change; keep it next to `flutter run`                                                                                               |
-| `fsp routes [--json]`         | Prints the route table (errors: `N error(s); no route table`)                                                                                                                |
-| `fsp links [--check]`         | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)      |
-| `fsp routes --graph [FORMAT]` | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default) or a Graphviz `digraph` (`dot`), since 0.5.0                                                      |
-| `fsp new <path> [flags]`      | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                   |
+| Command                       | What it does                                                                                                                                                                                                         |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fsp init`                    | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do                                         |
+| `fsp gen [--format] [--json]` | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                             |
+| `fsp check [--json]`          | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                      |
+| `fsp watch`                   | `gen` once, then again on every relevant change; keep it next to `flutter run`                                                                                                                                       |
+| `fsp routes [--json]`         | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                        |
+| `fsp links [--check]`         | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                              |
+| `fsp maestro [--check]`       | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0) |
+| `fsp routes --graph [FORMAT]` | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default) or a Graphviz `digraph` (`dot`), since 0.5.0                                                                                              |
+| `fsp new <path> [flags]`      | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                                                           |
 
 What they print, to stderr unless noted:
 
@@ -25,6 +26,13 @@ What they print, to stderr unless noted:
   (with `output_manifest`, both files are named). On errors:
   `N error(s); lib/app.g.dart left unchanged` and exit code 1.
 - `check`: `✓ 12 routes, no errors`.
+- `gen`, `check` and `watch` also read the **string paths** in `lib/` and warn about one that
+  matches no route (since 0.7.0):
+  ``warning: no route matches `/nope/x`, so it shows not-found [unknown_path]``, with a code
+  frame in the file it is in (`lib/screens/home.dart`,
+  not only under `lib/app/`; `--json` gives that path as `file`). A warning never changes the
+  exit code or the success line. See `fespalier-routing`, `references/typed-routes-and-extra.md`
+  ("String paths"), and `lints:` below.
 - `watch`: `watching lib/app/ …`, the `gen` line at startup, then a line (with a
   duration) each time a save changes the output. An edit that changes nothing
   generated (a `build` method) prints nothing.
@@ -103,6 +111,72 @@ and, with `scheme`, `ios/info-url-types.xml` (iOS, when `ios_app_id` is set); an
 - The config values are checked only by `fsp links` (a mistake there never stops `gen`);
   the messages are in `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`.
 
+### `fsp maestro` (since 0.7.0)
+
+Writes one [Maestro](https://docs.maestro.dev) smoke flow per route. Maestro reads the platform's
+accessibility tree, never a `Key`, so it **needs `semantics_ids: true`**: every page's own widget
+call is then wrapped in `Semantics(identifier: 'route:<pattern>', container: true, child: ...)`
+(`route:/`, `route:/products/:id`, `route:/docs/*rest`, `route:/files/*path?`), and a flow waits for it.
+
+```yaml
+# pubspec.yaml
+fespalier:
+  semantics_ids: true                  # required by `fsp maestro`
+  maestro:
+    app_id: com.example.shop           # Android and iOS: the flow's `appId:`  } exactly one
+    url: http://localhost:8080         # the web: the flow's `url:`            } of the two
+    link: myshop://shop.example.com    # what a route's path is appended to
+    out: .maestro/routes               # default; a folder inside the project, no `..`
+    guard_flow: .maestro/sign-in.yaml  # optional: runs before the link of a guarded route
+    timeout: 20000                     # default; ms the flow waits for the page, 1000 to 600000
+    samples:                           # a dynamic folder's value, inherited by the routes below it
+      products/$id: 2
+      docs/$$rest: [guides, intro]     # a catch-all: a list of parts (a lone value is one part)
+```
+
+- **The identifier** is in the tree **only when the route's own page is built**: not on
+  `loading.dart`, `error.dart` or `not_found.dart`, and not on a page underneath the top one. It
+  depends only on the folder path, so it is the same for every localized spelling. The wrapper is
+  never `const` (`Semantics` has no `const` constructor); a `const` page keeps its own `const`
+  inside it. With the key off the generated file is exactly what it was. On the web, `mount()` also
+  calls `ensureWebSemantics()` (`package:fespalier`), which turns the semantics tree on **for every
+  user of that web build** for good: say so before enabling the key in an app whose web build ships.
+- **`app_id`, `url` and `link`** may each be one whole Maestro variable (`app_id: ${APP_ID}`), copied
+  through as written. **`link` defaults** to the `url` on the web, and for an app to `<scheme>://<first
+domain>` (else `https://<first domain>`) of `links:`; an app with neither is an error. A Flutter web
+  app on the default **hash** strategy needs `link: http://localhost:8080/#`.
+- **`samples`** keys are folders as `fsp routes` prints them, without `/page.dart` (`products/$id`,
+  `(members)/notes/$id`), each a `$x`, `$$x` or `$$$x` folder. Values are text, numbers, booleans
+  or (catch-all) lists of them, checked against `int`, `double`, `num`, `bool` and `List<...>` of those;
+  `String`, `DateTime` and enums are taken as written. An optional catch-all with no sample is the
+  bare path. Samples come from the pubspec only (not `meta.dart`).
+- **Which routes get a flow**, first rule that applies: a redirect is skipped (`a redirect, with no
+page to see`); with `app_id`, a `const linkable = false;` route is skipped; a route with a `$x` or
+  `$$x` segment and no sample is skipped; a route with a `guard.dart` at or above it (a `(group)`
+  folder's too) is skipped unless `guard_flow` is set. Each skip is printed on every run, and **no
+  skip fails `--check`**.
+- **A flow** is `launchApp`, then `runFlow` of `guard_flow` (guarded routes only, path relative to
+  the flow), then `openLink` (the `autoVerify: true` form for an Android `https` link), then
+  `extendedWaitUntil` the identifier is visible, up to `timeout`. On the web `openLink` reloads the
+  app, so a guard flow's sign-in must survive a reload.
+- **Files.** `<route class in snake case>.yaml`: `ProductRoute` is `product_route.yaml`, the root
+  `home_route.yaml`. Each starts with ``# Written by `fsp maestro` ``; in `out` a `*.yaml` with that
+  first line is `fsp`'s, and `fsp maestro` removes it when no route needs it. Any other file in
+  `out` (a hand-written flow, `config.yaml`) is never read or touched. The output has no dates, so
+  `--check` is byte-exact.
+- **`--check`** exits 1 and names each flow that is missing, out of date or no longer a route's.
+  It does not check that `lib/app.g.dart` is current (`fsp check`'s job).
+- **Running them:** `maestro test .maestro/routes`, **not** `maestro test .maestro` (Maestro runs only the
+  top-level flows of the folder it is given, and a `config.yaml` has to list subfolders in `flows:`).
+- **Verified here:** the identifier in widget tests (`find.bySemanticsIdentifier`) and the flows as
+  golden files. **Not verified:** that Maestro's `id:` selector matches Flutter's
+  `Semantics(identifier:)` on the web and on iOS (nothing in this repository runs Maestro).
+- **Not built:** a `link:` identifier on `RouteLink`, `samples` in `meta.dart`, a flow for a layout,
+  a not-found view, a query parameter or a localized spelling, and a Maestro run in this repository's CI.
+- The config values are checked only by `fsp maestro` (a mistake there never stops `gen`); the
+  messages are in `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`. The
+  recipe for testing the identifier is in `fespalier-testing`, `references/maestro.md`.
+
 ### `fsp new`
 
 ```sh
@@ -179,27 +253,33 @@ fespalier:
   push_updates_url: false   # since 0.6.0
   file_style: snake
   meta: optional
+  semantics_ids: false      # since 0.7.0
   # meta_unique: [code]
   # output_manifest: lib/app.routes.g.dart
   # links: {domains: [shop.example.com]}   # see `fsp links` above
+  lints: {unknown_path: warning}   # since 0.7.0; `error` | `off`
+  # maestro: {url: http://localhost:8080}  # see `fsp maestro` above
 ```
 
-| Key                | Values                                  | Effect                                                                                                                                                                                                                                                                                                                                                                         |
-| ------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `app_dir`          | a path under `lib/`                     | Where the tree is. Not under `lib/`: `` `fespalier.app_dir` must be a path under lib/ (it is imported as package code) ``                                                                                                                                                                                                                                                      |
-| `output`           | a `.dart` path under `lib/`             | Where `app.g.dart` goes: `` `fespalier.output` must be a .dart file ``                                                                                                                                                                                                                                                                                                         |
-| `format`           | `true` / `false`                        | Run `dart format` on the output (needs `dart` on `PATH`; without it `fsp` warns and writes the unformatted code)                                                                                                                                                                                                                                                               |
-| `case_sensitive`   | `true` / `false`                        | `false` emits `caseSensitive: false` on every route; a `route.dart` overrides it per folder                                                                                                                                                                                                                                                                                    |
-| `remount`          | `never` / `on_segments` / `on_location` | When a page gets a fresh state because its URL changed (since 0.6.0): `on_segments` when a segment's value changes, `on_location` on any change, the query included; a `route.dart` overrides it per folder. See `fespalier-routing`. Another value: `` invalid pubspec.yaml: fespalier.remount: unknown variant `x`, expected one of `never`, `on_segments`, `on_location` `` |
-| `deferred`         | `true` / `false`                        | Since 0.7.0. `true` makes every page's code load on demand (`import ... deferred as`, a chunk of its own on the web); a `route.dart` with `const deferred = ...;` overrides it per folder. See `fespalier-routing`. Not a bool: `invalid pubspec.yaml: fespalier.deferred: invalid type: string "maybe", expected a boolean at line 3 column 13`                               |
-| `data_retry`       | `inherit` / `none`                      | `none` gives generated `data()` providers `retry: (retryCount, error) => null`. See `fespalier-data`                                                                                                                                                                                                                                                                           |
-| `keep_previous`    | `true` / `false`                        | `false` shows `loading.dart` on every reload. See `fespalier-data`                                                                                                                                                                                                                                                                                                             |
-| `push_updates_url` | `true` / `false`                        | Since 0.6.0. `true` puts a `push`ed route's URL in the browser's address bar: `router()` sets `GoRouter.optionURLReflectsImperativeAPIs = true` (`false` otherwise, on every call). See `fespalier-routing`                                                                                                                                                                    |
-| `file_style`       | `snake` / `kebab`                       | What `fsp init` and `fsp new` write: `not_found.dart` or `not-found.dart`. Reading accepts both                                                                                                                                                                                                                                                                                |
-| `meta`             | `optional` / `required`                 | `required`: a route without `meta.dart` is an error                                                                                                                                                                                                                                                                                                                            |
-| `meta_unique`      | list of argument names                  | No two routes may pass the same **literal** for that named argument of `meta`'s constructor call                                                                                                                                                                                                                                                                               |
-| `output_manifest`  | a `.dart` path under `lib/`             | Writes `AppManifest` to a library of its own (it may not equal `output`)                                                                                                                                                                                                                                                                                                       |
-| `links`            | a map (keys above)                      | What `fsp links` writes; only that command checks the values (since 0.5.0)                                                                                                                                                                                                                                                                                                     |
+| Key                | Values                                           | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app_dir`          | a path under `lib/`                              | Where the tree is. Not under `lib/`: `` `fespalier.app_dir` must be a path under lib/ (it is imported as package code) ``                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `output`           | a `.dart` path under `lib/`                      | Where `app.g.dart` goes: `` `fespalier.output` must be a .dart file ``                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `format`           | `true` / `false`                                 | Run `dart format` on the output (needs `dart` on `PATH`; without it `fsp` warns and writes the unformatted code)                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `case_sensitive`   | `true` / `false`                                 | `false` emits `caseSensitive: false` on every route; a `route.dart` overrides it per folder                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `remount`          | `never` / `on_segments` / `on_location`          | When a page gets a fresh state because its URL changed (since 0.6.0): `on_segments` when a segment's value changes, `on_location` on any change, the query included; a `route.dart` overrides it per folder. See `fespalier-routing`. Another value: `` invalid pubspec.yaml: fespalier.remount: unknown variant `x`, expected one of `never`, `on_segments`, `on_location` ``                                                                                                                                                                                                            |
+| `deferred`         | `true` / `false`                                 | Since 0.7.0. `true` makes every page's code load on demand (`import ... deferred as`, a chunk of its own on the web); a `route.dart` with `const deferred = ...;` overrides it per folder. See `fespalier-routing`. Not a bool: `invalid pubspec.yaml: fespalier.deferred: invalid type: string "maybe", expected a boolean at line 3 column 13`                                                                                                                                                                                                                                          |
+| `data_retry`       | `inherit` / `none`                               | `none` gives generated `data()` providers `retry: (retryCount, error) => null`. See `fespalier-data`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `keep_previous`    | `true` / `false`                                 | `false` shows `loading.dart` on every reload. See `fespalier-data`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `push_updates_url` | `true` / `false`                                 | Since 0.6.0. `true` puts a `push`ed route's URL in the browser's address bar: `router()` sets `GoRouter.optionURLReflectsImperativeAPIs = true` (`false` otherwise, on every call). See `fespalier-routing`                                                                                                                                                                                                                                                                                                                                                                               |
+| `file_style`       | `snake` / `kebab`                                | What `fsp init` and `fsp new` write: `not_found.dart` or `not-found.dart`. Reading accepts both                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `meta`             | `optional` / `required`                          | `required`: a route without `meta.dart` is an error                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `meta_unique`      | list of argument names                           | No two routes may pass the same **literal** for that named argument of `meta`'s constructor call                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `output_manifest`  | a `.dart` path under `lib/`                      | Writes `AppManifest` to a library of its own (it may not equal `output`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `links`            | a map (keys above)                               | What `fsp links` writes; only that command checks the values (since 0.5.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `lints`            | a map: `unknown_path: off` / `warning` / `error` | Since 0.7.0. How a **string path that matches no route** is reported (default `warning`; `off` skips the check). `error` makes `check` exit 1 with ``1 error(s) in string paths (`lints: unknown_path: error`)`` and `gen` and `watch` too, after writing the output (`...; lib/app.g.dart is up to date`). A bad value: ``invalid pubspec.yaml: fespalier.lints.unknown_path: unknown variant `warn`, expected one of `off`, `warning`, `error` ``; a key of its own: ``invalid pubspec.yaml: fespalier.lints: unknown field `nope`, expected `unknown_path` ``. See `fespalier-routing` |
+| `semantics_ids`    | `true` / `false`                                 | Since 0.7.0. `true` wraps each page in `Semantics(identifier: 'route:<pattern>')` and makes `mount()` call `ensureWebSemantics()`; `fsp maestro` needs it. See `fsp maestro` above                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `maestro`          | a map (keys above)                               | What `fsp maestro` writes flows for; only that command checks the values (since 0.7.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 There is no key for `extraCodec`: `lib/app/extra_codec.dart` is found by name.
 
@@ -244,7 +324,9 @@ file to exist.
 - **Editors.** `editors/vscode/` and `editors/intellij/` show `fsp check --json`
   diagnostics in the editor and offer generate and check commands. Neither is
   on a marketplace as of v0.4.0; build them from source. Both run `fsp` from
-  `PATH`, else `dart run fespalier`.
+  `PATH`, else `dart run fespalier`. Since 0.7.0 both also check again when any Dart
+  file under `lib/` is saved (not `*.g.dart`), and show a string-path warning in that file,
+  because `fsp check` now reports on files outside the app folder.
 - **`flutter create` leftovers.** `flutter create` writes
   `test/widget_test.dart`, which refers to the `MyApp` you replaced, so
   `flutter analyze` fails on it until you delete or rewrite it.

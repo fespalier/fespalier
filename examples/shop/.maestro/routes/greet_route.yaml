@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/greet/$name/page.dart: don't edit it, run `fsp maestro` again.
+url: "http://localhost:8080"
+name: "/greet/:name"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "http://localhost:8080/#/greet/Ada"
+- extendedWaitUntil:
+    visible:
+      id: "route:/greet/:name"
+    timeout: 20000

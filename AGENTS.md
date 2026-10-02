@@ -28,13 +28,13 @@ before changing how it behaves.
 | `just lint` | `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` in `cli/` |
 | `just test` | The generator's tests in `cli/` (unit, CLI, version checks) |
 | `just deny` | `cargo deny check` (licences, advisories, sources; `cli/deny.toml`) |
-| `just check-examples` | `fsp check` on every example |
+| `just check-examples` | `fsp check` on every example, and `fsp maestro --check` on `examples/shop` (its committed `.maestro/routes/`) |
 | `just flutter` | In the package and every example: `flutter pub get`, `dart format --set-exit-if-changed`, `flutter analyze`, `flutter test`; in each example also `scripts/check-const-lints.sh` (the const lints on a copy of the generated files, which `ignore_for_file` hides) |
 | `just packaging` | The Python tests for Homebrew/Scoop rendering, checksum pinning and release staging |
 | `just skills` | The skills' coverage gate: every README section, file kind, config key and `fsp` command is claimed by a skill, every claim still exists, and frontmatter, stamps and links are valid |
 | `just web-chunks` | `flutter build web --release` of `examples/shop` in a temporary copy, and a check that each deferred page is a `main.dart.js_N.part.js` of its own (about a minute, web artifacts; CI's `web` job runs it, `just ci` does not) |
 | `just skill-samples [file.md ...]` | Builds the skills' code samples in a scratch app with this checkout's `fsp` (`gen`, `analyze`, `test`). Slow; not in `just ci` or CI, so run it when you touch a sample |
-| `just gen-examples` | Regenerate every example's committed `lib/app.g.dart` |
+| `just gen-examples` | Regenerate every example's committed `lib/app.g.dart`, and `examples/shop`'s `.maestro/routes/` |
 | `just fmt` | `cargo fmt` and `dart format` over everything |
 | `just vscode`, `just intellij` | The editor plugins (need Node / JDK 21; CI runs them, `just ci` does not) |
 

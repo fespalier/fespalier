@@ -233,6 +233,10 @@ abstract final class AppRoutes {
 {% if deferred_libs %}
     DeferredLibrary.register(deferred);
 {% endif %}
+{% if semantics_ids %}
+    // pubspec `semantics_ids`: on the web, a driver like Maestro sees nothing without the semantics tree.
+    ensureWebSemantics();
+{% endif %}
     return [
 {% for r in tree %}
       {{ route(r) | indent(6) }},
@@ -422,6 +426,10 @@ final class {{ r.name }}Route extends TypedLocation {
 
   @override
   void replace(BuildContext context, { {{- r.extra }} extra, String? locale}) => replaceLocation(context, locationFor(locale), extra: extra);
+
+  @override
+  Future<T?> pushReplacement<T extends Object?>(BuildContext context, { {{- r.extra }} extra, String? locale}) =>
+      GoRouter.of(context).pushReplacement<T>(locationFor(locale), extra: extra);
 {% endif %}
 
   /// The {{ r.name }}Route the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].

@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/reports/monthly/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/reports/monthly"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/reports/monthly"
+- extendedWaitUntil:
+    visible:
+      id: "route:/reports/monthly"
+    timeout: 20000

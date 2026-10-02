@@ -309,6 +309,10 @@ final class EditProfileRoute extends TypedLocation {
   @override
   void replace(BuildContext context, {ProfileDraft? extra, String? locale}) => replaceLocation(context, locationFor(locale), extra: extra);
 
+  @override
+  Future<T?> pushReplacement<T extends Object?>(BuildContext context, {ProfileDraft? extra, String? locale}) =>
+      GoRouter.of(context).pushReplacement<T>(locationFor(locale), extra: extra);
+
   /// The EditProfileRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
   static EditProfileRoute of(BuildContext context) => routeOf<EditProfileRoute>(context, AppRoutes.matchUrl);

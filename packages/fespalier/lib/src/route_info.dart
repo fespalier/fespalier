@@ -75,6 +75,7 @@ class RouteInfo<M> {
     this.paths = const {},
     required this.folder,
     this.presentation = RoutePresentation.page,
+    this.sibling = false,
     this.groups = const [],
     this.layouts = const [],
     this.segments = const [],
@@ -117,6 +118,16 @@ class RouteInfo<M> {
 
   /// How the route is shown: a page, a dialog, a sheet or something custom.
   final RoutePresentation presentation;
+
+  /// True when the route's folder declares `const nest = false;` in its `route.dart`: it is a
+  /// sibling of the page above it, with a compound path (`/orders/:id/refund/confirm` beside
+  /// `/orders/:id/refund`), not a child of it, so a deep link to it does not build that page
+  /// below it. False for every other route, including the ones that nest under it.
+  ///
+  /// It is the `sibling` tag of `fsp routes`. A flag and not a reference to the page it
+  /// would have nested in, because that page is not always one route: the folders between
+  /// can be page-less, and [path] already says which segments it has joined.
+  final bool sibling;
 
   /// The `(group)` folders above the route, outermost first, parentheses
   /// included: `['(buyer)']`.

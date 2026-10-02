@@ -50,6 +50,9 @@
         "config:push_updates_url",
         "config:file_style",
         "config:links",
+        "config:lints",
+        "config:semantics_ids",
+        "config:maestro",
         "command:gen",
         "command:check",
         "command:routes",
@@ -57,7 +60,9 @@
         "command:init",
         "command:new",
         "command:links",
+        "command:maestro",
         "README.md#Deep links and a sitemap (`fsp links`)",
+        "README.md#Maestro flows (`fsp maestro`)",
         "README.md",
         "ROADMAP.md",
         "install.sh",
@@ -74,6 +79,8 @@
         "cli/src/routes.rs",
         "cli/src/graph.rs",
         "cli/src/links.rs",
+        "cli/src/lint.rs",
+        "cli/src/maestro.rs",
         "cli/src/format.rs",
         "cli/src/session.rs",
         "cli/src/parse_cache.rs",
@@ -107,6 +114,7 @@
         "README.md#The URL as state: `of` and `copyWith`",
         "README.md#Remounting a page: `remount`",
         "README.md#Deferred routes: a page's code on demand",
+        "README.md#Checking string paths",
         "README.md#Typed `extra`",
         "README.md#Restoring `extra` on the web",
         "README.md#Route manifest and `meta.dart`",
@@ -122,6 +130,7 @@
         "config:case_sensitive",
         "config:remount",
         "config:deferred",
+        "config:lints",
         "config:push_updates_url",
         "config:meta",
         "config:meta_unique",
@@ -194,7 +203,13 @@
       ]
     },
     "fespalier-testing": {
-      "covers": ["README.md#Testing", "packages/fespalier/lib/testing.dart"]
+      "covers": [
+        "README.md#Testing",
+        "packages/fespalier/lib/testing.dart",
+        "README.md#Maestro flows (`fsp maestro`)",
+        "config:semantics_ids",
+        "packages/fespalier/lib/src/web_semantics.dart"
+      ]
     },
     "fespalier-troubleshooting": {
       "covers": [
@@ -208,6 +223,7 @@
         "cli/src/enums.rs",
         "cli/src/extra.rs",
         "cli/src/diag.rs",
+        "cli/src/lint.rs",
         "cli/src/dart.rs",
         "cli/src/config.rs",
         "cli/src/init.rs",

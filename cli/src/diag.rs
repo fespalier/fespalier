@@ -4,7 +4,7 @@
 
 use std::fmt;
 use std::io::IsTerminal;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
@@ -21,39 +21,60 @@ pub enum Level {
     Warning,
 }
 
+/// What [`Diag::file`] is relative to.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Base {
+    /// The app folder (`lib/app` by default): what the tree's own diagnostics are about.
+    #[default]
+    App,
+    /// The project root: a lint over a file anywhere in `lib/` (`lib/screens/home.dart`).
+    Project,
+}
+
 #[derive(Debug, Clone)]
 pub struct Diag {
     pub level: Level,
-    /// Relative to the app folder (`lib/app` by default).
+    pub base: Base,
+    /// Relative to [`Diag::base`]: the app folder (`lib/app` by default) or the project.
     pub file: String,
     pub span: Option<Span>,
     pub msg: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Diags(pub Vec<Diag>);
 
 impl Diags {
     pub fn error(&mut self, file: &str, span: Option<&Span>, msg: impl Into<String>) {
-        self.push(Level::Error, file, span, msg.into());
+        self.add(Level::Error, Base::App, file, span, msg);
     }
 
     pub fn warn(&mut self, file: &str, span: Option<&Span>, msg: impl Into<String>) {
-        self.push(Level::Warning, file, span, msg.into());
+        self.add(Level::Warning, Base::App, file, span, msg);
     }
 
-    fn push(&mut self, level: Level, file: &str, span: Option<&Span>, msg: String) {
+    /// `file` relative to `base`; [`error`](Diags::error) and [`warn`](Diags::warn) are this
+    /// with [`Base::App`].
+    pub fn add(
+        &mut self,
+        level: Level,
+        base: Base,
+        file: &str,
+        span: Option<&Span>,
+        msg: impl Into<String>,
+    ) {
         let d = Diag {
             level,
+            base,
             file: file.into(),
             span: span.cloned(),
-            msg,
+            msg: msg.into(),
         };
         // Inherited files can trip the same check from several routes.
         if !self
             .0
             .iter()
-            .any(|x| x.file == d.file && x.msg == d.msg && x.span == d.span)
+            .any(|x| x.base == d.base && x.file == d.file && x.msg == d.msg && x.span == d.span)
         {
             self.0.push(d);
         }
@@ -81,6 +102,27 @@ impl fmt::Display for Diag {
     }
 }
 
+/// The project root, given the app folder `app_dir` and how the user spells it (`lib/app`).
+fn project_of<'a>(app_dir: &'a Path, shown: &str) -> Option<&'a Path> {
+    app_dir.ancestors().nth(shown.split('/').count())
+}
+
+/// Where `d`'s file is on disk.
+fn source_path(app_dir: &Path, shown: &str, d: &Diag) -> Option<PathBuf> {
+    match d.base {
+        Base::App => Some(app_dir.join(&d.file)),
+        Base::Project => project_of(app_dir, shown).map(|p| p.join(&d.file)),
+    }
+}
+
+/// `d`'s file as it is shown: relative to the project root, `lib/app/page.dart`.
+fn shown_file(shown: &str, d: &Diag) -> String {
+    match d.base {
+        Base::App => format!("{shown}/{}", d.file),
+        Base::Project => d.file.clone(),
+    }
+}
+
 /// Prints diagnostics to stderr, with the offending source when there is a span.
 /// `shown` is the app folder as the user spells it (`lib/app`).
 pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
@@ -97,11 +139,11 @@ pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
             Level::Error => Diagnostic::error(),
             Level::Warning => Diagnostic::warning(),
         };
-        let shown = format!("{shown}/{}", d.file);
         let source = d
             .span
             .as_ref()
-            .and_then(|_| std::fs::read_to_string(app_dir.join(&d.file)).ok());
+            .and_then(|_| std::fs::read_to_string(source_path(app_dir, shown, d)?).ok());
+        let shown = shown_file(shown, d);
         let diagnostic = match (&d.span, source) {
             (Some(span), Some(src)) => {
                 let id = files.add(shown, src);
@@ -124,8 +166,8 @@ pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
 pub fn json_line(app_dir: &Path, shown: &str, d: &Diag) -> String {
     let (line, column) = match &d.span {
         Some(span) => {
-            let column = std::fs::read_to_string(app_dir.join(&d.file))
-                .ok()
+            let column = source_path(app_dir, shown, d)
+                .and_then(|p| std::fs::read_to_string(p).ok())
                 .and_then(|src| {
                     let before = src.get(..span.bytes.start)?;
                     Some(before.rsplit('\n').next().unwrap_or("").chars().count() + 1)
@@ -135,7 +177,7 @@ pub fn json_line(app_dir: &Path, shown: &str, d: &Diag) -> String {
         None => (None, None),
     };
     serde_json::json!({
-        "file": format!("{shown}/{}", d.file),
+        "file": shown_file(shown, d),
         "line": line,
         "column": column,
         "severity": match d.level {

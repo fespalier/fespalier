@@ -79,6 +79,8 @@ abstract final class AppRoutes {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
     DeferredLibrary.register(deferred);
+    // pubspec `semantics_ids`: on the web, a driver like Maestro sees nothing without the semantics tree.
+    ensureWebSemantics();
     return [
       ShellRoute(
         pageBuilder: (context, state, child) => _i3.transition(
@@ -90,14 +92,14 @@ abstract final class AppRoutes {
             path: joinLocation(at, '/'),
             pageBuilder: (context, state) => _i3.transition(
               state.pageKey,
-              const _i0.HomePage(),
+              Semantics(identifier: 'route:/', container: true, child: const _i0.HomePage()),
             ),
             routes: [
               GoRoute(
                 path: 'cart',
                 pageBuilder: (context, state) => _i3.transition(
                   state.pageKey,
-                  const _i6.CartPage(),
+                  Semantics(identifier: 'route:/cart', container: true, child: const _i6.CartPage()),
                 ),
               ),
               GoRoute(
@@ -107,7 +109,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   DeferredView(
                     library: _lib2,
-                    page: () => _i7.CheckoutPage(),
+                    page: () => Semantics(identifier: 'route:/checkout', container: true, child: _i7.CheckoutPage()),
                     loading: () => const _i1.RootLoading(),
                     error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
                   ),
@@ -122,7 +124,7 @@ abstract final class AppRoutes {
                     (v) => DataView(
                       watch: (ref) => ref.watch(_i10.data),
                       refresh: (ref) => ref.invalidate(_i10.data),
-                      data: (d) => _i11.ProductsPage(products: d, sort: v.sort, page: v.page),
+                      data: (d) => Semantics(identifier: 'route:/products', container: true, child: _i11.ProductsPage(products: d, sort: v.sort, page: v.page)),
                       loading: () => const _i12.ProductsLoading(),
                       error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
                       keepPrevious: true,
@@ -140,7 +142,7 @@ abstract final class AppRoutes {
                         (v) => DataView(
                           watch: (ref) => ref.watch(_data6(v.id)),
                           refresh: (ref) => ref.invalidate(_data6(v.id)),
-                          data: (d) => _i14.ProductPage(product: d),
+                          data: (d) => Semantics(identifier: 'route:/products/:id', container: true, child: _i14.ProductPage(product: d)),
                           loading: () => const _i12.ProductsLoading(),
                           error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),
                           keepPrevious: true,
@@ -158,7 +160,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   buildWithParams(
                     () => _params4(state),
-                    (v) => _i9.GreetPage(name: v.name),
+                    (v) => Semantics(identifier: 'route:/greet/:name', container: true, child: _i9.GreetPage(name: v.name)),
                     () => notFound(state.uri),
                   ),
                 ),

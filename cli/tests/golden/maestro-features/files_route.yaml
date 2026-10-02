@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/files/$$$path/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/files/*path?"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/files"
+- extendedWaitUntil:
+    visible:
+      id: "route:/files/*path?"
+    timeout: 20000

@@ -44,7 +44,7 @@ test:
 deny:
     cargo deny check
 
-# `fsp check` on every example
+# `fsp check` on every example, and `fsp maestro --check` on the shop
 [working-directory: 'cli']
 check-examples:
     #!/usr/bin/env bash
@@ -52,8 +52,10 @@ check-examples:
     for e in {{ examples }}; do
         cargo run --quiet -- check --project "../examples/$e"
     done
+    # The shop's committed Maestro flows (.maestro/routes/) are what `fsp maestro` writes.
+    cargo run --quiet -- maestro --check --project ../examples/shop
 
-# Regenerate every example's committed lib/app.g.dart (after changing the emitter or a template)
+# Regenerate every example's committed lib/app.g.dart and the shop's .maestro/routes (after changing the emitter or a template)
 [working-directory: 'cli']
 gen-examples:
     #!/usr/bin/env bash
@@ -61,6 +63,7 @@ gen-examples:
     for e in {{ examples }}; do
         cargo run --quiet -- gen --project "../examples/$e"
     done
+    cargo run --quiet -- maestro --project ../examples/shop
 
 # The package and every example: pub get, dart format (generated *.g.dart left out), analyze, test,
 # and the const lints on each example's generated code (scripts/check-const-lints.sh)

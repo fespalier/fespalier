@@ -1,0 +1,44 @@
+{
+  "protocol": 1,
+  "event": 4,
+  "registered": true,
+  "attached": true,
+  "location": {
+    "uri": "/search",
+    "fullPath": "/search",
+    "pathParameters": {},
+    "query": {},
+    "extra": null,
+    "route": null,
+    "params": null,
+    "error": null
+  },
+  "stack": [
+    {
+      "type": "shell",
+      "path": "",
+      "location": "/search",
+      "pageKey": "k-tabs",
+      "children": [
+        {
+          "type": "page",
+          "path": "/search",
+          "location": "/search",
+          "pageKey": "/search",
+          "children": []
+        }
+      ]
+    }
+  ],
+  "history": [
+    {
+      "seq": 1,
+      "at": 1696230000000,
+      "kind": "initial",
+      "uri": "/search",
+      "fullPath": "/search",
+      "depth": 0,
+      "error": null
+    }
+  ]
+}

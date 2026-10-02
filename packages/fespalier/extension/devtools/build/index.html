@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    `flutter build` replaces this with the --base-href it is given. DevTools serves the build
+    from a path of its own, so it is relative there.
+  -->
+  <base href="/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="fespalier's DevTools extension.">
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>fespalier</title>
+</head>
+<body>
+  <!--
+    flutter_bootstrap.js is replaced on purpose: Flutter's default registers a service worker
+    and writes a random version into it, so no two builds would be the same, and DevTools has
+    no use for an offline page. Without them the build is byte for byte reproducible, which
+    `scripts/build-devtools-extension.sh --check` relies on.
+  -->
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

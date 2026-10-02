@@ -1,0 +1,25 @@
+name: fespalier_devtools
+description: The source of fespalier's DevTools extension, a Flutter web app. Its release build is committed to packages/fespalier/extension/devtools/build (scripts/build-devtools-extension.sh), which is what DevTools loads.
+# Not published, and no `version:` here: the version in the extension's config.yaml is
+# release-please's, and nothing in this package may depend on the release (see AGENTS.md).
+publish_to: 'none'
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Only lib/main.dart imports it: it does not compile on the VM, so everything else is tested there.
+  devtools_extensions: ^0.5.1
+  devtools_app_shared: ^0.5.1
+  vm_service: ">=15.0.0 <16.0.0"
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

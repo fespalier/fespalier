@@ -1,0 +1,37 @@
+{
+  "protocol": 1,
+  "event": 3,
+  "registered": true,
+  "attached": true,
+  "location": {
+    "uri": "/no/such/page",
+    "fullPath": "",
+    "pathParameters": {},
+    "query": {},
+    "extra": null,
+    "route": null,
+    "params": null,
+    "error": "GoException: no routes for location: /no/such/page"
+  },
+  "stack": [],
+  "history": [
+    {
+      "seq": 1,
+      "at": 1696230000000,
+      "kind": "initial",
+      "uri": "/",
+      "fullPath": "/",
+      "depth": 0,
+      "error": null
+    },
+    {
+      "seq": 2,
+      "at": 1696230001000,
+      "kind": "go",
+      "uri": "/no/such/page",
+      "fullPath": "",
+      "depth": 0,
+      "error": "GoException: no routes for location: /no/such/page"
+    }
+  ]
+}

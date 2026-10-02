@@ -185,7 +185,12 @@ reads.
 `preload:` starts the data of the page the link points at, through
 `route.preload(ref)` (see
 [`fespalier-data`](../../fespalier-data/references/prefetch-and-lookup.md)),
-and the link owns the handle:
+and the link owns the handle. Since 0.7.0 that call also starts the page's **code**
+when the route is [deferred](route-dart.md#deferred-load-a-pages-code-on-demand)
+(`const deferred = true;`): the chunk is fetched with the data, and once loaded it
+stays loaded, so releasing the handle drops the data only. Before 0.7.0 a link
+preloaded data only. A `uri:` link goes through the matched route's `preload` too,
+so a hand-built `UrlMatch` whose route does not override `preload` preloads nothing:
 
 - `Preload.none`, the default.
 - `Preload.intent`: the pointer enters the link, something in it takes focus, or
@@ -216,6 +221,6 @@ gesture.removePointer)`. To enter again, move off it and `pump` first.
 ## Not built
 
 - No external links (use `Link`), no `target` (a new tab is the browser's
-  modifier click), no `extra`, and no prefetch of **code** (deferred loading is
-  separate from preloading data).
+  modifier click), and no `extra`. (Code is preloaded since 0.7.0, for a deferred route;
+  on 0.6.0 and earlier a link preloaded data only.)
 - No generated app-wide default: `RouteLinkScope` is the runtime one.

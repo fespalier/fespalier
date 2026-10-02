@@ -10,6 +10,9 @@ import 'package:shop/app.g.dart';
 Future<void> boot(WidgetTester tester, String location) async {
   final container = ProviderContainer();
   addTearDown(container.dispose);
+  // /checkout and /products/:id are deferred routes (`const deferred = true;`): their code loads
+  // on the real event loop, which a widget test's pumps never run, so load it first.
+  await tester.runAsync(AppRoutes.loadDeferred);
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,

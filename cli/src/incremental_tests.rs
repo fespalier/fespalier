@@ -328,6 +328,28 @@ fn add_and_remove_a_layout() {
 }
 
 #[test]
+fn deferred_follows_a_route_dart() {
+    let mut sim = Sim::new(&app(60), NO_CONFIG, 10);
+    sim.same("the first run");
+    sim.write("s1/route.dart", "const deferred = true;");
+    let r = sim.same("a route.dart that defers");
+    assert!(
+        r.ok && r.wrote && r.outputs[0].as_ref().unwrap().contains("DeferredLibrary("),
+        "{r:?}"
+    );
+    sim.write("s1/route.dart", "const deferred = false;");
+    let r = sim.same("turning it off");
+    assert!(
+        r.ok && !r.outputs[0].as_ref().unwrap().contains("DeferredLibrary"),
+        "{r:?}"
+    );
+    sim.write("s1/route.dart", "const deferred = maybe;");
+    assert!(!sim.same("a route.dart that isn't a literal").ok);
+    sim.remove("s1/route.dart");
+    assert!(sim.same("removing it").ok);
+}
+
+#[test]
 fn route_dart_extra_codec_and_extra_on_layouts_follow() {
     let mut sim = Sim::new(&app(60), NO_CONFIG, 10);
     sim.same("the first run");

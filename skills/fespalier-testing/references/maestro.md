@@ -20,8 +20,8 @@ generated router wraps **each page's own widget call** in
 - **`<pattern>` is what `fsp routes` prints**: `route:/`, `route:/products/:id`, `route:/docs/*rest`,
   `route:/files/*path?`. It depends only on the folder path: the same for every localized spelling and every
   `AppRoutes.mount(at:)` prefix, and not changed by renaming a class. A `(group)` adds nothing.
-- **It is in the tree if and only if the route's own page is built.** The wrapper is inside `DataView`
-  and `SectionView`, so while `loading.dart` shows, when `error.dart` shows, and for `not_found.dart`
+- **It is in the tree if and only if the route's own page is built.** The wrapper is inside `DataView`,
+  `DeferredView` and `SectionView`, so while `loading.dart` shows (a deferred page's code included), when `error.dart` shows, and for `not_found.dart`
   (an unparsable segment, `/products/abc`) there is **no** identifier. A smoke flow that waits for it
   cannot pass on a spinner.
 - **Not on a page underneath.** go_router builds the whole matched stack, but only the top page is on

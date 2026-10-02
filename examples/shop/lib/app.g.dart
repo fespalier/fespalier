@@ -3,10 +3,10 @@
 //
 //   /              HomeRoute      page.dart  (layout, transition)
 //   /cart          CartRoute      cart/page.dart  (transition)
-//   /checkout      CheckoutRoute  checkout/page.dart  (guard, transition)
+//   /checkout      CheckoutRoute  checkout/page.dart  (guard, transition, deferred)
 //   /greet/:name   GreetRoute     greet/$name/page.dart  (transition)
 //   /products      ProductsRoute  products/page.dart  (data, transition)
-//   /products/:id  ProductRoute   products/$id/page.dart  (data, transition)
+//   /products/:id  ProductRoute   products/$id/page.dart  (data, transition, deferred)
 
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/widgets.dart';
@@ -18,14 +18,14 @@ import 'app/transition.dart' as _i3;
 import 'app/layout.dart' as _i4;
 import 'app/not_found.dart' as _i5;
 import 'app/cart/page.dart' as _i6;
-import 'app/checkout/page.dart' as _i7;
+import 'app/checkout/page.dart' deferred as _i7;
 import 'app/checkout/guard.dart' as _i8;
 import 'app/greet/\$name/page.dart' as _i9;
 import 'app/products/data.dart' as _i10;
 import 'app/products/page.dart' as _i11;
 import 'app/products/loading.dart' as _i12;
 import 'app/products/\$id/data.dart' as _i13;
-import 'app/products/\$id/page.dart' as _i14;
+import 'app/products/\$id/page.dart' deferred as _i14;
 import 'app/products/\$id/error.dart' as _i15;
 
 /// The file tree under lib/app/, ready to mount.
@@ -78,6 +78,7 @@ abstract final class AppRoutes {
   }) {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
+    DeferredLibrary.register(deferred);
     // pubspec `semantics_ids`: on the web, a driver like Maestro sees nothing without the semantics tree.
     ensureWebSemantics();
     return [
@@ -106,7 +107,12 @@ abstract final class AppRoutes {
                 redirect: (context, state) => _i8.guard(ProviderScope.containerOf(context, listen: false)),
                 pageBuilder: (context, state) => _i3.transition(
                   state.pageKey,
-                  Semantics(identifier: 'route:/checkout', container: true, child: const _i7.CheckoutPage()),
+                  DeferredView(
+                    library: _lib2,
+                    page: () => Semantics(identifier: 'route:/checkout', container: true, child: _i7.CheckoutPage()),
+                    loading: () => const _i1.RootLoading(),
+                    error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
+                  ),
                 ),
               ),
               GoRoute(
@@ -140,6 +146,7 @@ abstract final class AppRoutes {
                           loading: () => const _i12.ProductsLoading(),
                           error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),
                           keepPrevious: true,
+                          library: _lib6,
                         ),
                         () => notFound(state.uri),
                       ),
@@ -200,11 +207,21 @@ abstract final class AppRoutes {
   /// without data; null when no route fits or a segment doesn't parse.
   static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
 
-  /// Starts loading everything the page at [uri] reads, `ref.prefetchAll(dataAt(uri) ?? [])`: one
-  /// handle keeps it all alive until it is closed (or `keepFor` passes). A location that matches no
-  /// route, or a route without data, has nothing to warm and gets a closed handle. It never
-  /// navigates and runs no guard.
-  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);
+  /// Starts loading everything the page at [uri] reads, and its code when it is a deferred route:
+  /// `matchUrl(uri)?.route.preload(ref)`. One handle keeps the data alive until it is closed (or
+  /// `keepFor` passes); code, once loaded, stays. A location that matches no route gets a closed
+  /// handle. It never navigates and runs no guard.
+  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => matchUrl(uri)?.route.preload(ref, keepFor: keepFor) ?? ref.prefetchAll(const [], keepFor: keepFor);
+
+  /// The code of each deferred route (`const deferred = true;` in a route.dart, or `deferred: true`
+  /// in pubspec.yaml): its page.dart, imported `deferred as` and loaded the first time the page is
+  /// built, or ahead of time by `preload`, a `RouteLink` or [loadDeferred].
+  static final List<DeferredLibrary> deferred = [_lib2, _lib6];
+
+  /// Loads the code of every deferred route now, and completes when it is all there: once the app
+  /// is idle on the web, or before `runApp` elsewhere. A widget test that pumps its own router calls
+  /// `await tester.runAsync(AppRoutes.loadDeferred)` first (`pumpRouter` does it for you).
+  static Future<void> loadDeferred() => DeferredLibrary.loadAll(deferred);
 
   /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
   static List<RouteInfo<Object?>> get all => AppManifest.all;
@@ -242,6 +259,7 @@ abstract final class AppManifest {
       path: '/checkout',
       folder: 'checkout',
       layouts: [''],
+      deferred: true,
     ),
     RouteInfo(
       type: GreetRoute,
@@ -265,6 +283,7 @@ abstract final class AppManifest {
       layouts: [''],
       segments: [RouteParam('id', 'int')],
       dataKeys: ['id'],
+      deferred: true,
     ),
   ];
 
@@ -336,6 +355,13 @@ final class CheckoutRoute extends TypedLocation {
 
   /// Like [of], or null when the route around [context] is another one.
   static CheckoutRoute? maybeOf(BuildContext context) => maybeRouteOf<CheckoutRoute>(context, AppRoutes.matchUrl);
+
+  /// Starts loading this page's code (checkout/page.dart is deferred); it reads no data, so the handle holds nothing. Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) {
+    _lib2.preload();
+    return ref.prefetchAll(const [], keepFor: keepFor);
+  }
 }
 
 /// `/greet/:name` → greet/$name/page.dart
@@ -447,9 +473,12 @@ final class ProductRoute extends TypedLocation {
   /// Re-runs products/$id/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);
 
-  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes), and its code (products/$id/page.dart is deferred). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data6(id)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) {
+    _lib6.preload();
+    return ref.prefetchAll([_data6(id)], keepFor: keepFor);
+  }
 }
 
 /// What a `copyWith` parameter is when it is left out: private, so no caller can pass it,
@@ -467,6 +496,12 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 ({_i11.Sort? sort, int? page}) _params5(GoRouterState s) => (sort: Query.asEnum(s, 'sort', _i11.Sort.values), page: Query.asInt(s, 'page'));
 
 ({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));
+
+/// checkout/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
+final _lib2 = DeferredLibrary(_i7.loadLibrary, 'checkout/page.dart');
+
+/// products/$id/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
+final _lib6 = DeferredLibrary(_i14.loadLibrary, 'products/\$id/page.dart');
 
 final _data6 = FutureProvider.autoDispose.family(
   (Ref ref, int id) => _i13.data(ref, id: id),

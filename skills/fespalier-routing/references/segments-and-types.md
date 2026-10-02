@@ -167,6 +167,12 @@ class ShopPage extends StatelessWidget {
   query parameter, as for `int`.
 - `fsp new` below an enum segment writes its type name into the new files; you
   add the import.
+- **Not in a deferred page (since 0.7.0).** An enum declared in the `page.dart` of a
+  [deferred](route-dart.md#deferred-load-a-pages-code-on-demand) route is named by the
+  generated file outside the page, which Dart forbids for a deferred library, so `fsp`
+  reports it (G4, `fespalier-troubleshooting`) and says to move the enum to a file of its own,
+  as `lib/models/category.dart` above. An enum declared in a page that is not deferred is
+  fine for a deferred child.
 
 ## Catch-all segments
 

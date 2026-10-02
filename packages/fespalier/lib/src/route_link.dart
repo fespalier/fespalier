@@ -12,7 +12,8 @@ import 'location.dart';
 import 'route_data.dart';
 import 'route_match.dart';
 
-/// When a [RouteLink] starts loading the data of the page it points at.
+/// When a [RouteLink] starts loading the data, and for a deferred route the code, of the
+/// page it points at.
 enum Preload {
   /// Never: the page loads its data when it is reached.
   none,
@@ -78,7 +79,8 @@ class RouteLinkScope extends InheritedWidget {
   /// The generated `AppRoutes.matchUrl`: how a `uri:` link finds the route it
   /// points at, to preload its data and, in debug builds, to assert that one
   /// exists (a segment that doesn't parse included). Without it, a `uri:` link
-  /// preloads nothing and is checked against go_router's configuration.
+  /// preloads nothing and is checked against go_router's configuration. The link
+  /// preloads with the matched route's `preload`: its data and a deferred page's code.
   final UrlMatch? Function(Uri uri)? match;
 
   /// The nearest scope above [context], if any; [context] depends on it.
@@ -116,8 +118,9 @@ class RouteLinkScope extends InheritedWidget {
 /// `extra`: for a route that takes one, call `route.go(context, extra: ...)`
 /// from the child's own `onTap`.
 ///
-/// With [preload] the data of the page it points at loads before it is followed
-/// (see [Preload]); nothing navigates and no guard runs until it is.
+/// With [preload] the data of the page it points at loads before it is followed, and so
+/// does its code when its `page.dart` is deferred (since 0.7.0, see [Preload]); nothing
+/// navigates and no guard runs until it is.
 class RouteLink extends ConsumerStatefulWidget {
   /// A link to [to] or [uri] (exactly one of them), built by [builder].
   const RouteLink({
@@ -151,7 +154,8 @@ class RouteLink extends ConsumerStatefulWidget {
   /// How a plain click navigates: [LinkMethod.go] by default.
   final LinkMethod method;
 
-  /// When the data of the page it points at starts loading; null for the
+  /// When the data (and the code of a deferred page) of the page it points at starts
+  /// loading; null for the
   /// nearest [RouteLinkScope]'s, or [Preload.none] without one.
   final Preload? preload;
 
@@ -302,7 +306,7 @@ class _RouteLinkState extends ConsumerState<RouteLink> {
     } else {
       final match = _scope?.match?.call(widget.uri!);
       if (match == null) return;
-      _handle = ref.prefetchAll(match.data);
+      _handle = match.route.preload(ref);
     }
     _startedFor = (_location, _preload);
   }

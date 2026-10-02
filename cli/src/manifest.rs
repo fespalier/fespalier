@@ -68,6 +68,8 @@ pub struct Info {
     pub tabs: Vec<TabInfo>,
     /// meta.dart, relative to the app folder.
     pub meta: Option<String>,
+    /// The page.dart is deferred (see `Route::defers_page`).
+    pub deferred: bool,
 }
 
 /// Every route, in the order of the table in the header of `app.g.dart`.
@@ -145,6 +147,7 @@ pub fn collect(app: &App) -> Vec<Info> {
                 data_keys: r.data.as_ref().map(|d| d.keys.clone()),
                 tabs: tabs.get(&id).cloned().unwrap_or_default(),
                 meta: r.meta.clone(),
+                deferred: r.defers_page(),
             }
         })
         .collect()
@@ -307,6 +310,8 @@ struct RouteInfoCx {
     tabs: Option<String>,
     data_keys: Option<String>,
     meta: Option<String>,
+    /// `deferred: true`: the route's page.dart loads on demand.
+    deferred: bool,
 }
 
 #[derive(Serialize)]
@@ -392,6 +397,7 @@ pub fn cx(app: &App, first_import: usize) -> (ManifestCx, Vec<String>) {
                     )
                 }),
                 meta,
+                deferred: i.deferred,
             }
         })
         .collect();

@@ -41,6 +41,9 @@ abstract final class AppManifest {
 {% if r.meta %}
       meta: {{ r.meta }},
 {% endif %}
+{% if r.deferred %}
+      deferred: true,
+{% endif %}
     ),
 {% endfor %}
   ];

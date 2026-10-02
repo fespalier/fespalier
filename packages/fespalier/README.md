@@ -7,7 +7,8 @@ guard, transition, not_found); the `fsp` CLI generates `lib/app.g.dart`, one mou
 
 This package is the runtime that generated code depends on: typed route
 locations, segment and query parameter helpers, page transitions
-(`Transitions.fade`, `slide`, `none`, `material`, `cupertino`), and `DataView`. It also
+(`Transitions.fade`, `slide`, `none`, `material`, `cupertino`), `DataView`, and deferred
+routes (`DeferredView`, since 0.7.0). It also
 re-exports `go_router`, `hooks_riverpod` and `flutter_hooks`, so an app can
 import a single package.
 

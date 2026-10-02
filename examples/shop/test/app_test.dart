@@ -17,6 +17,10 @@ Future<ProviderContainer> boot(
     overrides: [if (api != null) apiProvider.overrideWithValue(api)],
   );
   addTearDown(container.dispose);
+  // /checkout and /products/:id are deferred routes (`const deferred = true;`): their code
+  // loads on the real event loop, which a widget test's pumps never run, so load it first.
+  // `pumpRouter` does this by itself; a test that pumps its own router does it like so.
+  await tester.runAsync(AppRoutes.loadDeferred);
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,

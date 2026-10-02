@@ -50,6 +50,16 @@ testWidgets('shows a product', (tester) async {
     `addTearDown(router.dispose)` before the call passes `disposeRouter: false` (since 0.6.0):
     those teardowns run after `pumpRouter`'s, and a second `dispose` throws.
     Build one router per test.
+  - **Deferred routes (since 0.7.0).** A route with `const deferred = true;` has its `page.dart`
+    imported `deferred as`, whose `loadLibrary()` completes only on the real event loop, which a
+    widget test's `pump` never runs. `pumpRouter` therefore loads every deferred route's code first,
+    in `runAsync`, and the page is in the first settled frame like an eager one's. **A test that
+    pumps a router of its own** (`MaterialApp.router` in `pumpWidget`) must do it itself, before:
+    `await tester.runAsync(AppRoutes.loadDeferred);`. Forget it, and a debug build throws a
+    `FlutterError` that says so (`pitfalls.md`) instead of hanging. The loading view of a _real_
+    deferred page can't be seen in a widget test: use
+    `DeferredLibrary(() => completer.future, 'x/page.dart', loadsInFakeAsync: true)` in a
+    `DeferredView`.
   - **Guards: return synchronously when you can.** Any `Future`, even `Future.value(...)`,
     costs a frame, so a cold deep link shows a blank first frame before the page.
 - **`currentLocation(tester)`** is where the router is, as a string
@@ -79,6 +89,7 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 | A `WidgetRef` (prefetch, refresh)  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                     |
 | An action (a write, since 0.5.0)   | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                      |
 | Restoration                        | your own app widget building the router in `State`, `restartAndRestore()`                                                                          |
+| A deferred route (0.7.0)           | `pumpRouter` loads it; with your own router, `await tester.runAsync(AppRoutes.loadDeferred)` before `pumpWidget` (`pitfalls.md`)                   |
 | A `RouteLink` hover (0.5.0)        | a mouse `createGesture`, `moveTo`, `pump`; `container.exists(XRoute.data(...))` (`pitfalls.md`)                                                    |
 
 Full compiled tests for all of these are in

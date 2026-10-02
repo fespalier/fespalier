@@ -686,6 +686,54 @@ fn links_reports_config_and_route_errors_with_a_failing_exit() {
 }
 
 #[test]
+fn check_reports_a_bad_deferred_with_a_failing_exit() {
+    let dir = project();
+    let route = dir.path().join("lib/app/route.dart");
+    fs::write(&route, "const deferred = nope;").unwrap();
+    let (ok, err) = fsp(dir.path(), &["check"]);
+    assert!(
+        !ok && err.contains("`deferred` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it"),
+        "{err}"
+    );
+    fs::write(&route, "const nothing = 1;").unwrap();
+    let (ok, err) = fsp(dir.path(), &["check"]);
+    assert!(
+        !ok && err.contains("expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;`"),
+        "{err}"
+    );
+    // The key in pubspec.yaml is serde's to check.
+    fs::write(&route, "const deferred = true;").unwrap();
+    let pubspec = dir.path().join("pubspec.yaml");
+    fs::write(&pubspec, "name: demo\nfespalier:\n  deferred: maybe\n").unwrap();
+    let (ok, err) = fsp(dir.path(), &["check"]);
+    assert!(
+        !ok && err.contains("invalid pubspec.yaml: fespalier.deferred: invalid type: string \"maybe\", expected a boolean at line 3 column 13"),
+        "{err}"
+    );
+}
+
+#[test]
+fn check_says_a_type_in_a_deferred_page_belongs_in_a_file_of_its_own() {
+    let dir = project();
+    fs::write(
+        dir.path().join("lib/app/route.dart"),
+        "const deferred = true;",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("lib/app/page.dart"),
+        "enum Sort { name, price }\nclass HomePage extends StatelessWidget { const HomePage({super.key, this.sort}); final Sort? sort; }",
+    )
+    .unwrap();
+    let (ok, err) = fsp(dir.path(), &["check"]);
+    assert!(
+        !ok && err.contains("`Sort` is declared in this page.dart, which is deferred")
+            && err.contains("Move `Sort` to a file of its own"),
+        "{err}"
+    );
+}
+
+#[test]
 fn routes_fails_on_errors() {
     let dir = project();
     fs::write(

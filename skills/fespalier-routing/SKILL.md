@@ -1,6 +1,6 @@
 ---
 name: fespalier-routing
-description: "How a fespalier folder tree becomes URLs and typed routes — static, dynamic ($id), catch-all ($$rest, $$$rest) and (group) folders, _private folders, typed and enum segments, query parameters, sibling order and unreachable routes, not_found.dart, route.dart (caseSensitive, localized paths, nest = false for a sibling with a compound path, linkable = false to keep a folder out of fsp links, and remount to start a page again when its URL changes), navigator.dart and present.dart for the root navigator, the generated typed routes (.go, .push, .location, locationFor), RouteLink (a typed link that is a real anchor on the web and can preload its page's data), typed extra with extra_codec.dart, and the route manifest with meta.dart. Load before adding or renaming a route folder, changing a segment's type, writing a link between pages (RouteLink), or when a URL shows not_found.dart instead of its page."
+description: "How a fespalier folder tree becomes URLs and typed routes — static, dynamic ($id), catch-all ($$rest, $$$rest) and (group) folders, _private folders, typed and enum segments, query parameters, sibling order and unreachable routes, not_found.dart, route.dart (caseSensitive, localized paths, nest = false for a sibling with a compound path, linkable = false to keep a folder out of fsp links, remount to start a page again when its URL changes, and deferred to load a page's code on demand on the web), navigator.dart and present.dart for the root navigator, the generated typed routes (.go, .push, .location, locationFor), RouteLink (a typed link that is a real anchor on the web and can preload its page's data), typed extra with extra_codec.dart, and the route manifest with meta.dart. Load before adding or renaming a route folder, changing a segment's type, writing a link between pages (RouteLink), or when a URL shows not_found.dart instead of its page."
 ---
 
 # fespalier-routing
@@ -97,7 +97,7 @@ RouteLink(
 prefix and `locale:` spelling), a plain widget elsewhere, and a plain click that goes
 through go_router with `method`. **Give `follow` to the child**, or the link shows a
 URL and does nothing. It carries no `extra`. `preload:` starts the data of the page it
-points at (`fespalier-data`); `RouteLinkScope` sets the default for the app. In debug a
+points at (`fespalier-data`), and since 0.7.0 its code when the page is [deferred](references/route-dart.md#deferred-load-a-pages-code-on-demand); `RouteLinkScope` sets the default for the app. In debug a
 `uri:` that matches no route throws. Detail, the web click path and tests:
 [`references/links.md`](references/links.md).
 
@@ -126,6 +126,7 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
 | Paths match in any case, or one folder stays exact                           | `route.dart` with `caseSensitive`: [`references/route-dart.md`](references/route-dart.md)                  |
 | `/produits` and `/produkte` for `/products`, one route                       | `route.dart` with `paths`, `locationFor`, `locale:`: same reference                                        |
 | A page must start again (fresh state) when its URL changes, not keep it      | `route.dart` with `const remount = Remount.onSegments;` or the pubspec's `remount` (0.6.0): same reference |
+| A page's code must be a chunk of its own on the web, loaded on demand        | `route.dart` with `const deferred = true;` or the pubspec's `deferred` (0.7.0): same reference             |
 | A deep link must not build the page above (`refund` under `refund/confirm`)  | `route.dart` with `const nest = false;` (0.4.0): a sibling with a compound path, same reference            |
 | A page full-screen above the tab bar, URL still under its parent             | `navigator.dart`: [`references/navigators-and-present.md`](references/navigators-and-present.md)           |
 | A sheet or dialog page class of your own, with a URL                         | `present.dart`: same reference                                                                             |
@@ -152,6 +153,11 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
   `route.dart` per folder (nearest wins), emits `caseSensitive: false`. The
   requested case is **kept** in the router's location; only
   `state.matchedLocation` is spelled by the route.
+- **A deferred page** (0.7.0, `const deferred = true;` in a `route.dart`) shows the nearest `loading.dart`
+  while its code loads on the web and `error.dart` if that fails; once loaded it builds synchronously.
+  Only `page.dart` is deferred, **layouts never are**, and a type (an enum, an `extra` class) declared
+  in a deferred page.dart is an error. A test that pumps its own router needs
+  `await tester.runAsync(AppRoutes.loadDeferred);` (`pumpRouter` does it).
 - **A page keeps its state** when only its parameters change (`/c/1` to `/c/2`):
   go_router keys it by the path template. `remount` (0.6.0) changes that per folder
   or app-wide; the default is `never`.

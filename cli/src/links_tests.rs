@@ -285,7 +285,7 @@ fn linkable_must_be_a_literal_and_declared_once() {
 }
 
 #[test]
-fn a_route_dart_with_nothing_it_knows_names_all_five() {
+fn a_route_dart_with_nothing_it_knows_names_all_six() {
     let e = errors(&[
         ("route.dart", "const other = 1;"),
         ("page.dart", &page("Home")),
@@ -293,7 +293,7 @@ fn a_route_dart_with_nothing_it_knows_names_all_five() {
     assert_eq!(
         e,
         [
-            "✗ route.dart  expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;` or `const remount = Remount.onSegments;`"
+            "✗ route.dart  expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;`"
         ]
     );
 }

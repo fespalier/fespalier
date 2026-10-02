@@ -20,6 +20,9 @@ DataView(
   loading: () => {{ b.data.loading }},
   error: (e, st, retry) => {{ b.data.error }},
   keepPrevious: {{ "true" if keep_previous else "false" }},
+{% if b.data.library %}
+  library: {{ b.data.library }},
+{% endif %}
 )
 {%- else -%}
 {{ b.page }}
@@ -167,7 +170,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:flutter/widgets.dart';
 
 {% for i in imports %}
-import '{{ i }}' as _i{{ loop.index0 }};
+import '{{ i.path }}'{{ " deferred" if i.deferred }} as _i{{ loop.index0 }};
 {% endfor %}
 {% for i in extra_imports %}
 {{ i }}
@@ -227,6 +230,9 @@ abstract final class AppRoutes {
   }) {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
+{% if deferred_libs %}
+    DeferredLibrary.register(deferred);
+{% endif %}
 {% if semantics_ids %}
     // pubspec `semantics_ids`: on the web, a driver like Maestro sees nothing without the semantics tree.
     ensureWebSemantics();
@@ -286,11 +292,29 @@ abstract final class AppRoutes {
   /// without data; null when no route fits or a segment doesn't parse.
   static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
 
+{% if deferred_libs %}
+  /// Starts loading everything the page at [uri] reads, and its code when it is a deferred route:
+  /// `matchUrl(uri)?.route.preload(ref)`. One handle keeps the data alive until it is closed (or
+  /// `keepFor` passes); code, once loaded, stays. A location that matches no route gets a closed
+  /// handle. It never navigates and runs no guard.
+  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => matchUrl(uri)?.route.preload(ref, keepFor: keepFor) ?? ref.prefetchAll(const [], keepFor: keepFor);
+
+  /// The code of each deferred route (`const deferred = true;` in a route.dart, or `deferred: true`
+  /// in pubspec.yaml): its page.dart, imported `deferred as` and loaded the first time the page is
+  /// built, or ahead of time by `preload`, a `RouteLink` or [loadDeferred].
+  static final List<DeferredLibrary> deferred = [{% for l in deferred_libs %}{{ l.name }}{{ ", " if not loop.last }}{% endfor %}];
+
+  /// Loads the code of every deferred route now, and completes when it is all there: once the app
+  /// is idle on the web, or before `runApp` elsewhere. A widget test that pumps its own router calls
+  /// `await tester.runAsync(AppRoutes.loadDeferred)` first (`pumpRouter` does it for you).
+  static Future<void> loadDeferred() => DeferredLibrary.loadAll(deferred);
+{% else %}
   /// Starts loading everything the page at [uri] reads, `ref.prefetchAll(dataAt(uri) ?? [])`: one
   /// handle keeps it all alive until it is closed (or `keepFor` passes). A location that matches no
   /// route, or a route without data, has nothing to warm and gets a closed handle. It never
   /// navigates and runs no guard.
   static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);
+{% endif %}
 {% if manifest %}
 
   /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
@@ -442,7 +466,23 @@ final class {{ r.name }}Route extends TypedLocation {
   Future<void> refresh(WidgetRef ref) => ref.refresh(data{{ r.data.key }}.future);
 {% endif %}
 {% endif %}
-{% if r.preload %}
+{% if r.code and r.preload %}
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes), and its code ({{ r.file }} is deferred). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) {
+    {{ r.code }}.preload();
+    return ref.prefetchAll([{{ r.preload }}], keepFor: keepFor);
+  }
+{% elif r.code %}
+
+  /// Starts loading this page's code ({{ r.file }} is deferred); it reads no data, so the handle holds nothing. Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) {
+    {{ r.code }}.preload();
+    return ref.prefetchAll(const [], keepFor: keepFor);
+  }
+{% elif r.preload %}
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
@@ -469,6 +509,11 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 {% for f in params_fns %}
 
 {{ f.record }} {{ f.name }}(GoRouterState s) => {{ f.parse }};
+{% endfor %}
+{% for l in deferred_libs %}
+
+/// {{ l.path }}, imported `deferred as`: loaded the first time the page is built, or ahead of time.
+final {{ l.name }} = DeferredLibrary(_i{{ l.import }}.loadLibrary, {{ l.file }});
 {% endfor %}
 {% for p in providers %}
 {% if p.selector and p.family %}

@@ -46,7 +46,7 @@ guardWithParams(
 )
 {%- endmacro %}
 {% macro redirect_call(c) -%}
-{{ guard_with_segments(c.seg_fn, c.call) if c.seg_fn else c.call }}
+traceGuard(state, '{{ c.site }}', {{ guard_with_segments(c.seg_fn, c.call) if c.seg_fn else c.call }})
 {%- endmacro %}
 {% macro layout_call(l) -%}
 {{ (with_segments(l.seg_fn, view(l), l.not_found) if l.seg_fn else view(l)) | indent(2) }}
@@ -477,7 +477,7 @@ final _data{{ p.id }} = {{ p.call }};
 {% else %}
 
 final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
-  ({{ p.params }}) => {{ p.call }},
+  ({{ p.params }}) => traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}),
 {% if p.no_retry %}
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
@@ -496,6 +496,7 @@ final {{ a.top }} = {{ a.factory }}(
 {% else %}
   invalidates: () => {{ a.invalidates }},
 {% endif %}
+  site: '{{ a.site }}',
 );
 {% endfor %}
 {% endfor %}
@@ -510,6 +511,7 @@ final {{ a.top }} = {{ a.factory }}(
 {% else %}
   invalidates: () => {{ a.invalidates }},
 {% endif %}
+  site: '{{ a.site }}',
 );
 {% endfor %}
 {% endfor %}

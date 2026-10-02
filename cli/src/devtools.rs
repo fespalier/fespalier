@@ -22,8 +22,12 @@
 //!
 //! **Sites** name the places the generated code has a guard, a `redirect.dart`, a `data.dart` or an
 //! action, by the same strings the generated code uses (`refGuard`'s `'g5@6'`, `_data37`,
-//! `_action37_0`), so a later protocol can tell DevTools which of them ran. The functions that
-//! spell them are here, and `emit.rs` calls them, so the tree and the code cannot disagree.
+//! `_action37_0`), so the extension can tell which of them ran. The generated code passes each to
+//! the runtime: `traceGuard(state, 'g5@6', …)` around a guard or a `redirect.dart` (`r32`),
+//! `traceData(ref, 'd37', key, …)` around the body of a `data.dart` provider (not around one that
+//! returns or selects a provider: `"traced": false`), and `site: 'a37_0'` on an action's provider.
+//! The functions that spell them are here, and `emit.rs` calls them, so the tree and the code
+//! cannot disagree.
 
 use std::collections::{BTreeMap, HashMap};
 

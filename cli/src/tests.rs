@@ -77,9 +77,9 @@ fn example_app_generates_cleanly() {
             // products/data.dart exports its own provider; it's used as-is.
             "watch: (ref) => ref.watch(_i10.data),",
             "static final data = _i10.data;",
-            "(Ref ref, int id) => _i13.data(ref, id: id),",
+            "(Ref ref, int id) => traceData(ref, 'd6', id, _i13.data(ref, id: id)),",
             "Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);",
-            "redirect: (context, state) => _i8.guard(ProviderScope.containerOf(context, listen: false)),",
+            "redirect: (context, state) => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false))),",
             "String get location => joinLocation(AppRoutes.base, '/products/$id');",
             "'/greet/${Uri.encodeComponent(name)}'",
         ],
@@ -178,7 +178,7 @@ fn page_params_are_filled_by_name_then_type() {
             "data: (d) => _i1.ItemPage(d, shop: v.shop, note: v.note),",
             "({String shop, int id, String? note}) _params2(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'), note: Query.asString(s, 'note'));",
             // Several segments key the provider by a record.
-            "(Ref ref, ({String shop, int id}) k) => _i0.data(ref, shop: k.shop, id: k.id),",
+            "(Ref ref, ({String shop, int id}) k) => traceData(ref, 'd2', k, _i0.data(ref, shop: k.shop, id: k.id)),",
             "watch: (ref) => ref.watch(_data2((shop: v.shop, id: v.id))),",
             "const ItemRoute({required this.shop, required this.id, this.note});",
             "withQuery(joinLocation(AppRoutes.base, '/${Uri.encodeComponent(shop)}/$id'), {'note': note})",
@@ -302,7 +302,7 @@ fn error_views_get_error_and_retry_by_name_or_type() {
         &[
             "error: (e, st, retry) => _i2.E(e, retry, stackTrace: st),",
             "final _data0 = StreamProvider.autoDispose(",
-            "(Ref ref) => _i0.data(ref),\n);",
+            "(Ref ref) => traceData(ref, 'd0', null, _i0.data(ref)),\n);",
             "/// Restarts data.dart",
         ],
     );
@@ -487,7 +487,7 @@ fn layouts_get_child_and_segments_above_them() {
         &c,
         &[
             "pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:\\$shop/',\n          buildWithParams(\n            () => _layout1(state),\n            (v) => _i1.ShopLayout(child: child, shop: v.shop),",
-            "redirect: (context, state) => guardWithParams(\n              () => _params1(state),\n              (v) => _i2.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),",
+            "redirect: (context, state) => traceGuard(state, 'g1@1', guardWithParams(\n              () => _params1(state),\n              (v) => _i2.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),",
             "path: joinLocation(at, '/:shop')",
         ],
     );
@@ -929,7 +929,7 @@ fn query_params_reach_every_file_and_key_data() {
         &c,
         &[
             "({String? q, int? page, List<String> tags, bool? admin}) _params1(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'), admin: Query.asBool(s, 'admin'));",
-            "(Ref ref, ({String? q, int? page}) k) => _i1.data(ref, q: k.q, page: k.page),",
+            "(Ref ref, ({String? q, int? page}) k) => traceData(ref, 'd1', k, _i1.data(ref, q: k.q, page: k.page)),",
             "watch: (ref) => ref.watch(_data1((q: v.q, page: v.page))),",
             "data: (d) => _i2.SearchPage(results: d, q: v.q, tags: v.tags),",
             "loading: () => _i3.L(page: v.page),",
@@ -1536,7 +1536,7 @@ fn a_tab_holds_nested_routes_data_guards_and_transitions() {
             "path: joinLocation(at, '/shop'),",
             // Nested inside the tab, relative to the page, static before dynamic.
             "path: 'cart',",
-            "redirect: (context, state) => _i11.guard(ProviderScope.containerOf(context, listen: false)),",
+            "redirect: (context, state) => traceGuard(state, 'g6@6', _i11.guard(ProviderScope.containerOf(context, listen: false))),",
             "path: ':id',",
             "data: (d) => _i9.ItemPage(data: d),",
             "data: (d) => _i6.ShopPage(d),",
@@ -2075,7 +2075,7 @@ fn a_folders_own_guard_and_page_keep_todays_output_plus_inherited_ones() {
     has(
         &alone,
         &[&format!(
-            "redirect: (context, state) => {g}.guard(ProviderScope.containerOf(context, listen: false)),"
+            "redirect: (context, state) => traceGuard(state, 'g1@1', {g}.guard(ProviderScope.containerOf(context, listen: false))),"
         )],
     );
     assert!(!alone.contains("firstRedirect"), "{alone}");
@@ -2118,7 +2118,7 @@ fn inherited_guards_read_segments_at_their_folder_and_query_by_name() {
         &[
             // Its own parse function: only what the guard asks for.
             "({String shop, String? ref}) _guard1(GoRouterState s) => (shop: Segment.asString(s, 'shop'), ref: Query.asString(s, 'ref'));",
-            "redirect: (context, state) => guardWithParams(\n          () => _guard1(state),\n          (v) => _i0.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop, ref: v.ref, uri: state.uri),",
+            "redirect: (context, state) => traceGuard(state, 'g1@3', guardWithParams(\n          () => _guard1(state),\n          (v) => _i0.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop, ref: v.ref, uri: state.uri),",
         ],
     );
     // `?ref` belongs to the guard: it doesn't become a field of the routes below.
@@ -2141,7 +2141,7 @@ fn a_guard_can_take_only_the_uri() {
     has(
         &c,
         &[
-            "redirect: (context, state) => _i0.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri),",
+            "redirect: (context, state) => traceGuard(state, 'g0@1', _i0.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri)),",
         ],
     );
     assert!(!c.contains("_guard0"), "{c}");
@@ -2161,7 +2161,7 @@ fn a_guard_that_takes_a_ref_runs_through_ref_guard() {
     has(
         &c,
         &[&format!(
-            "redirect: (context, state) => refGuard(context, 'g0@1', (ref) => {g}.guard(ref, uri: state.uri)),"
+            "redirect: (context, state) => traceGuard(state, 'g0@1', refGuard(context, 'g0@1', (ref) => {g}.guard(ref, uri: state.uri))),"
         )],
     );
     assert!(!c.contains("containerOf"), "{c}");
@@ -2202,8 +2202,12 @@ fn ref_and_container_guards_chain_in_order_and_each_keeps_its_own_form() {
         &c,
         &[
             "firstRedirect([",
-            &format!("() => refGuard(context, 'g1@2', (ref) => {outer}.guard(ref)),"),
-            &format!("() => {own}.guard(ProviderScope.containerOf(context, listen: false)),"),
+            &format!(
+                "() => traceGuard(state, 'g1@2', refGuard(context, 'g1@2', (ref) => {outer}.guard(ref))),"
+            ),
+            &format!(
+                "() => traceGuard(state, 'g2@2', {own}.guard(ProviderScope.containerOf(context, listen: false))),"
+            ),
         ],
     );
     assert!(
@@ -2269,8 +2273,8 @@ fn a_redirect_that_takes_a_ref_evaluates_once() {
     has(
         &c,
         &[
-            "redirect: (context, state) => refRedirect(context, (ref) => _i0.redirect(ref)),",
-            "redirect: (context, state) => refRedirect(context, (ref) => _i1.redirect(ref, uri: state.uri)),",
+            "redirect: (context, state) => traceGuard(state, 'r1', refRedirect(context, (ref) => _i0.redirect(ref))),",
+            "redirect: (context, state) => traceGuard(state, 'r2', refRedirect(context, (ref) => _i1.redirect(ref, uri: state.uri))),",
             "(v) => refRedirect(context, (ref) => _i2.redirect(ref, id: v.id)),",
         ],
     );
@@ -2383,7 +2387,7 @@ fn only_a_guard_that_reads_params_is_skipped_for_an_unparsable_segment() {
     has(
         &c,
         &[
-            "redirect: (context, state) => _i1.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri),",
+            "redirect: (context, state) => traceGuard(state, 'g2@2', _i1.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri)),",
             "(v) => _i3.guard(ProviderScope.containerOf(context, listen: false), id: v.id),",
         ],
     );
@@ -2529,7 +2533,7 @@ fn a_guard_inside_a_shell_stays_on_the_page_routes() {
     let route = at(&c, "GoRoute(");
     assert!(!c[shell..route].contains("redirect:"), "{c}");
     assert!(
-        c[route..].contains("redirect: (context, state) => _i1.guard("),
+        c[route..].contains("redirect: (context, state) => traceGuard(state, 'g1@2', _i1.guard("),
         "{c}"
     );
 }
@@ -2550,7 +2554,7 @@ fn redirect_dart_makes_a_route_that_only_redirects() {
         &[
             "//   /old/:id  OldIdRoute  old/$id/redirect.dart  (redirect)",
             "path: 'old/:id',",
-            "redirect: (context, state) => guardWithParams(",
+            "redirect: (context, state) => traceGuard(state, 'r2', guardWithParams(",
             "(v) => _i1.redirect(id: v.id),",
             // A typed route, so links to the old URL stay typed.
             "/// `/old/:id` → old/$id/redirect.dart\nfinal class OldIdRoute extends TypedLocation {",
@@ -2594,8 +2598,8 @@ fn a_redirect_takes_an_optional_container_and_the_uri() {
     has(
         &c,
         &[
-            "redirect: (context, state) => _i0.redirect(),",
-            "redirect: (context, state) => _i1.redirect(ProviderScope.containerOf(context, listen: false), uri: state.uri),",
+            "redirect: (context, state) => traceGuard(state, 'r1', _i0.redirect()),",
+            "redirect: (context, state) => traceGuard(state, 'r2', _i1.redirect(ProviderScope.containerOf(context, listen: false), uri: state.uri)),",
         ],
     );
 }

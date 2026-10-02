@@ -277,8 +277,8 @@ abstract final class AppRoutes {
                 path: 'admin',
                 caseSensitive: false,
                 redirect: (context, state) => firstRedirect([
-                  () => refGuard(context, 'g5@6', (ref) => _i8.guard(ref, uri: state.uri)),
-                  () => _i10.guard(ProviderScope.containerOf(context, listen: false)),
+                  () => traceGuard(state, 'g5@6', refGuard(context, 'g5@6', (ref) => _i8.guard(ref, uri: state.uri))),
+                  () => traceGuard(state, 'g6@6', _i10.guard(ProviderScope.containerOf(context, listen: false))),
                 ]),
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
@@ -288,7 +288,7 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'inbox',
                 caseSensitive: false,
-                redirect: (context, state) => refGuard(context, 'g5@7', (ref) => _i8.guard(ref, uri: state.uri)),
+                redirect: (context, state) => traceGuard(state, 'g5@7', refGuard(context, 'g5@7', (ref) => _i8.guard(ref, uri: state.uri))),
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
                   buildWithParams(
@@ -498,10 +498,10 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'old-search',
                 caseSensitive: false,
-                redirect: (context, state) => guardWithParams(
+                redirect: (context, state) => traceGuard(state, 'r32', guardWithParams(
                   () => _params32(state),
                   (v) => _i42.redirect(q: v.q),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'photos',
@@ -663,7 +663,7 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'notes/:id',
                     caseSensitive: false,
-                    redirect: (context, state) => _i41.guard(ProviderScope.containerOf(context, listen: false), extra: extraOrNull(state)),
+                    redirect: (context, state) => traceGuard(state, 'g31@31', _i41.guard(ProviderScope.containerOf(context, listen: false), extra: extraOrNull(state))),
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       buildWithParams(
@@ -679,10 +679,10 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'old-shops/:shop',
                 caseSensitive: false,
-                redirect: (context, state) => guardWithParams(
+                redirect: (context, state) => traceGuard(state, 'r34', guardWithParams(
                   () => _params34(state),
                   (v) => _i43.redirect(shop: v.shop),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'orders/:id',
@@ -699,10 +699,10 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'refund',
                     caseSensitive: false,
-                    redirect: (context, state) => guardWithParams(
+                    redirect: (context, state) => traceGuard(state, 'g37@37', guardWithParams(
                       () => _params37(state),
                       (v) => _i48.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
-                    ),
+                    )),
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       buildWithParams(
@@ -736,10 +736,10 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'refund/confirm',
                     caseSensitive: false,
-                    redirect: (context, state) => guardWithParams(
+                    redirect: (context, state) => traceGuard(state, 'g37@38', guardWithParams(
                       () => _guard37(state),
                       (v) => _i48.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
-                    ),
+                    )),
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       buildWithParams(
@@ -819,10 +819,10 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'shops/:shop',
                     caseSensitive: false,
-                    redirect: (context, state) => guardWithParams(
+                    redirect: (context, state) => traceGuard(state, 'g60@60', guardWithParams(
                       () => _params60(state),
                       (v) => _i74.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
-                    ),
+                    )),
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       buildWithParams(
@@ -3192,7 +3192,7 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 ({int id}) _guard37(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
 final _data12 = FutureProvider.autoDispose.family(
-  (Ref ref, String categories) => _i14.data(ref, categories: restParts(categories).map(Category.values.byName).toList()),
+  (Ref ref, String categories) => traceData(ref, 'd12', categories, _i14.data(ref, categories: restParts(categories).map(Category.values.byName).toList())),
 );
 
 /// data.dart selects the app's own provider: nothing wraps it.
@@ -3205,55 +3205,57 @@ final _data14 = (String productId) => _i18.data(productId: productId);
 final _data15 = (({String productId, int? page}) k) => _i22.data(productId: k.productId, page: k.page);
 
 final _data17 = FutureProvider.autoDispose.family(
-  (Ref ref, String ids) => _i24.data(ref, ids: restParts(ids).map(int.parse).toList()),
+  (Ref ref, String ids) => traceData(ref, 'd17', ids, _i24.data(ref, ids: restParts(ids).map(int.parse).toList())),
 );
 
 final _data37 = FutureProvider.autoDispose.family(
-  (Ref ref, int id) => _i45.data(ref, id: id),
+  (Ref ref, int id) => traceData(ref, 'd37', id, _i45.data(ref, id: id)),
 );
 
 final _data53 = FutureProvider.autoDispose.family(
-  (Ref ref, String? period) => _i64.data(ref, period: period),
+  (Ref ref, String? period) => traceData(ref, 'd53', period, _i64.data(ref, period: period)),
 );
 
 final _data56 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => _i68.data(ref, q: k.q, page: k.page, tags: k.tags),
+  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => traceData(ref, 'd56', k, _i68.data(ref, q: k.q, page: k.page, tags: k.tags)),
 );
 
 final _data58 = FutureProvider.autoDispose.family(
-  (Ref ref, Category category) => _i70.data(ref, category: category),
+  (Ref ref, Category category) => traceData(ref, 'd58', category, _i70.data(ref, category: category)),
 );
 
 final _data62 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String shop, int id}) k) => _i75.data(ref, shop: k.shop, id: k.id),
+  (Ref ref, ({String shop, int id}) k) => traceData(ref, 'd62', k, _i75.data(ref, shop: k.shop, id: k.id)),
 );
 
 final _data64 = FutureProvider.autoDispose.family(
-  (Ref ref, String teamId) => _i78.data(ref, teamId: teamId),
+  (Ref ref, String teamId) => traceData(ref, 'd64', teamId, _i78.data(ref, teamId: teamId)),
 );
 
 final _data66 = FutureProvider.autoDispose.family(
-  (Ref ref, int member) => _i86.data(ref, member: member),
+  (Ref ref, int member) => traceData(ref, 'd66', member, _i86.data(ref, member: member)),
 );
 
 final _data68 = StreamProvider.autoDispose(
-  (Ref ref) => _i89.data(ref),
+  (Ref ref) => traceData(ref, 'd68', null, _i89.data(ref)),
 );
 
 final _data70 = FutureProvider.autoDispose.family(
-  (Ref ref, String article) => _i92.data(ref, article: restParts(article)),
+  (Ref ref, String article) => traceData(ref, 'd70', article, _i92.data(ref, article: restParts(article))),
 );
 
 /// `action()` of orders/$id/refund/action.dart: its state, and what it invalidates after a success.
 final _action37_0 = actionFamily(
   (Ref ref, int id, RefundInput input) => _i46.action(ref, id: id, input: input),
   invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_data37(id)],
+  site: 'a37_0',
 );
 
 /// `addMember()` of teams/$teamId/action.dart: its state, and what it invalidates after a success.
 final _action64_0 = actionFamily(
   (Ref ref, String teamId, String input) => _i79.addMember(ref, teamId: teamId, input: input),
   invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_data64(teamId)],
+  site: 'a64_0',
 );
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so

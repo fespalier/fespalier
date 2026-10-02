@@ -362,7 +362,7 @@ fn data_keyed_by_a_catch_all_uses_its_path_as_the_key() {
         &c,
         &[
             // Lists compare by identity, so the provider is keyed by the encoded path.
-            "(Ref ref, String rest) => _i0.data(ref, rest: restParts(rest)),",
+            "(Ref ref, String rest) => traceData(ref, 'd2', rest, _i0.data(ref, rest: restParts(rest))),",
             "ref.watch(_data2(restKey(v.rest)))",
             "static final watch = (WidgetRef ref, {required List<String> rest}) => ref.watch(data(restKey(rest)));",
         ],

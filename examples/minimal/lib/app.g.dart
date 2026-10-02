@@ -317,7 +317,7 @@ T _kept<T>(Object? value, T current) =>
     (id: Segment.asInt(s, 'id'), qty: Query.asInt(s, 'qty'));
 
 final _data3 = FutureProvider.autoDispose.family(
-  (Ref ref, int id) => _i5.data(ref, id: id),
+  (Ref ref, int id) => traceData(ref, 'd3', id, _i5.data(ref, id: id)),
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
 );

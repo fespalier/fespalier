@@ -149,6 +149,15 @@ int? page}) get copyWith => _copyWith;`; never edit it.
     new location has by itself, a page with the same path template keeps its state, and
     `extra` is passed on. When the top page was `push`ed it is go_router's `replace`
     (the pushed stack stays), because a `go` would drop it.
+  - `pushReplacement<T>` (since 0.7.0) is go_router's, with `locale:` and, for a route that has
+    one, a typed `extra:`: the top page leaves and the new one is pushed under a **new page
+    key**, so nothing of the old page's state or transition is kept; the future completes with
+    what the new page pops with. Use it, not `replace`, where one kind of page hands over to
+    another (a sheet to a full page): over a pushed page `replace` keeps its key (go_router's
+    `replace`), and over a page of the declarative stack it is a `go`, which keeps it only for
+    the same path template. The replaced page's own future never completes, and when it was
+    the only page, neither does this one (go_router's behaviour). Like `push`, it is in the address bar only with
+    `push_updates_url: true`.
   - `push` is not in the address bar by default: go_router keeps the pushed page out of
     the route's `uri` unless `GoRouter.optionURLReflectsImperativeAPIs` is true.
     `push_updates_url: true` in the pubspec's `fespalier:` section (since 0.6.0) makes the

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/vaam-apps/fespalier/compare/v0.5.0...v0.6.0) (2026-10-02)
+
+
+### Features
+
+* pumpRouter(disposeRouter: false) for tests that dispose the router themselves ([#38](https://github.com/vaam-apps/fespalier/issues/38)) ([ca896d7](https://github.com/vaam-apps/fespalier/commit/ca896d75952078caf3c58d79a3b4fed676576fa5))
+* remount, when a page gets a fresh state because its URL changed ([#40](https://github.com/vaam-apps/fespalier/issues/40)) ([78b2f60](https://github.com/vaam-apps/fespalier/commit/78b2f609398e12898aafb66820145f9c745350ae))
+
+
+### Bug Fixes
+
+* typed replace and push put their URL in the browser's address bar ([#39](https://github.com/vaam-apps/fespalier/issues/39)) ([c79bd08](https://github.com/vaam-apps/fespalier/commit/c79bd0876a7f54683deb28f4d5417a3838fb1627))
+
 ## [0.5.0](https://github.com/vaam-apps/fespalier/compare/v0.4.1...v0.5.0) (2026-10-01)
 
 

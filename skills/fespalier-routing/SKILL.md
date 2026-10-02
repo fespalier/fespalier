@@ -139,8 +139,10 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
   state. See `references/typed-routes-and-extra.md`.
 - **`pushReplacement`** (since 0.7.0): `ProductRoute(id: 1).pushReplacement<T>(context)` is
   go_router's: a new page key, so a sheet handing over to a full page does not keep the sheet's
-  state or transition (`replace` keeps the key). Takes `locale:` and, where the route has one,
-  `extra:`.
+  state or transition (over a pushed page `replace` keeps the key; over a page of the declarative stack it is a
+  `go`, which keeps it only for the same path template). The replaced page's own future never
+  completes, and when it was the only page, neither does this one. Takes `locale:` and, where
+  the route has one, `extra:`.
 - **Trailing slashes** are dropped by go_router: `/products/` reaches
   `/products`. Nothing to configure.
 - **Case** is sensitive by default. `case_sensitive: false` in the pubspec, or a

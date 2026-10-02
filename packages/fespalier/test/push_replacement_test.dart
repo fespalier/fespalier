@@ -54,9 +54,7 @@ void main() {
       expect(find.text('Home'), findsOneWidget);
     });
 
-    testWidgets('the replaced page completes with what the new one pops with', (
-      tester,
-    ) async {
+    testWidgets('completes with what the new page pops with', (tester) async {
       final router = makeRouter();
       await pumpRouter(tester, router);
       unawaited(const ItemLoc(1).push<String>(top(tester)));

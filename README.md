@@ -1480,8 +1480,9 @@ SearchRoute(q: 'ap').copyWith(page: 2).location;                   // '/search?q
 - **`pushReplacement`** (since 0.7.0) is go_router's own, typed like `push`: the page on top leaves
   and a new one is pushed, with a new page key, and the future completes with what that page pops
   with. Use it where `replace` is wrong because the page's state or transition must not carry over:
-  a sheet that hands over to a full page, or the reverse. `replace` keeps the page key. Both take
-  `locale:`, and `extra:` where the route has one.
+  a sheet that hands over to a full page, or the reverse. `replace` over a pushed page keeps its key (go_router's `replace`); over a page of the declarative stack it is a `go`, which keeps it only for the same path template. The replaced page's own
+  future never completes, and when it was the only page, neither does this one (go_router's
+  behaviour). Both take `locale:`, and `extra:` where the route has one.
 - **Reserved names.** `of`, `maybeOf` and `copyWith` are members of the route class, so
   they can't be segment or query names (see
   [Typed helpers on the route](#typed-helpers-on-the-route)).

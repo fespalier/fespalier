@@ -49,10 +49,14 @@ abstract class TypedLocation {
   /// Replaces the page on top of the stack with this location and completes with what
   /// the new page pops with.
   ///
-  /// Unlike [replace], which keeps the page's key and so its state, this is go_router's
-  /// `pushReplacement`: the old page leaves and a new one is pushed, so a sheet that
-  /// hands over to a full page (or the other way round) does not carry its state or its
-  /// transition over to a page of another kind.
+  /// This is go_router's `pushReplacement`: the old page leaves and a new one is pushed
+  /// under a new key, so a sheet that hands over to a full page (or the other way round)
+  /// does not carry its state or its transition over to a page of another kind.
+  /// [replace] over a pushed page keeps its key (go_router's `replace`); over a page of
+  /// the declarative stack it is a `go`, which keeps it only for the same path template.
+  ///
+  /// The replaced page's own future never completes, and when it was the only page,
+  /// neither does this one (go_router's behaviour).
   ///
   /// The optional [locale] picks one of the route's localized spellings.
   Future<T?> pushReplacement<T extends Object?>(

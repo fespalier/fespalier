@@ -53,6 +53,7 @@ fn bench_stages() {
             &tree,
             cfg.case_sensitive,
             cfg.remount,
+            cfg.deferred,
             &crate::enums::Libs::default(),
             &mut Diags::default(),
         );
@@ -62,6 +63,7 @@ fn bench_stages() {
                 &tree,
                 cfg.case_sensitive,
                 cfg.remount,
+                cfg.deferred,
                 &crate::enums::Libs::default(),
                 &mut Diags::default(),
             )

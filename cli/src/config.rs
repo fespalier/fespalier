@@ -10,6 +10,7 @@
 //!   meta_unique: [code]     # default: none; no two routes may pass the same literal `code:` to `meta`
 //!   case_sensitive: true    # default; false matches `/Products` too (a route.dart sets it per folder)
 //!   remount: never          # default; on_segments or on_location give a page a fresh state when its URL changes (a route.dart sets it per folder)
+//!   deferred: false         # default; true loads each page's code on demand on the web (a route.dart sets it per folder)
 //!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
 //!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
 //!   push_updates_url: false # default; true puts a `push`ed route's URL in the browser's address bar
@@ -127,6 +128,9 @@ pub struct Config {
     /// When a page gets a fresh state because its URL changed; the default for folders with
     /// no `route.dart` at or above them that says `const remount`.
     pub remount: Remount,
+    /// Whether pages load their code on demand (`import ... deferred as`); the default for
+    /// folders with no `route.dart` at or above them that says `const deferred`.
+    pub deferred: bool,
     pub data_retry: DataRetry,
     /// Keep rendering the old value or error while `data.dart` reloads.
     pub keep_previous: bool,
@@ -151,6 +155,7 @@ impl Default for Config {
             meta_unique: vec![],
             case_sensitive: true,
             remount: Remount::Never,
+            deferred: false,
             data_retry: DataRetry::Inherit,
             keep_previous: true,
             push_updates_url: false,
@@ -187,6 +192,7 @@ struct RawConfig {
     meta_unique: Option<Vec<String>>,
     case_sensitive: Option<bool>,
     remount: Option<Remount>,
+    deferred: Option<bool>,
     data_retry: Option<DataRetry>,
     keep_previous: Option<bool>,
     push_updates_url: Option<bool>,
@@ -498,6 +504,7 @@ impl Pubspec {
             config.format = c.format.unwrap_or(false);
             config.case_sensitive = c.case_sensitive.unwrap_or(true);
             config.remount = c.remount.unwrap_or(config.remount);
+            config.deferred = c.deferred.unwrap_or(config.deferred);
             config.data_retry = c.data_retry.unwrap_or(config.data_retry);
             config.keep_previous = c.keep_previous.unwrap_or(config.keep_previous);
             config.push_updates_url = c.push_updates_url.unwrap_or(config.push_updates_url);

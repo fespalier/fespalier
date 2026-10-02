@@ -92,6 +92,16 @@ pub struct Widget {
 impl Widget {
     /// Constructor call, given how to spell each binding.
     pub fn call(&self, value: impl Fn(&Bind) -> String) -> String {
+        self.call_with(value, true)
+    }
+
+    /// [`call`](Self::call) that is never `const`: a deferred page's class can't be named in
+    /// a constant expression (`const_deferred_class`).
+    pub fn call_non_const(&self, value: impl Fn(&Bind) -> String) -> String {
+        self.call_with(value, false)
+    }
+
+    fn call_with(&self, value: impl Fn(&Bind) -> String, allow_const: bool) -> String {
         let args: Vec<String> = self
             .args
             .iter()
@@ -103,7 +113,7 @@ impl Widget {
                 }
             })
             .collect();
-        let konst = if self.is_const && args.is_empty() {
+        let konst = if allow_const && self.is_const && args.is_empty() {
             "const "
         } else {
             ""
@@ -385,9 +395,19 @@ pub struct Route {
     /// When the page gets a fresh state because its URL changed: the nearest `route.dart`'s
     /// `const remount` at or above it, else the pubspec's `remount`.
     pub remount: Remount,
+    /// Whether the page.dart is imported `deferred as`: the nearest `route.dart`'s
+    /// `const deferred` at or above it, else the pubspec's `deferred`. See
+    /// [`defers_page`](Self::defers_page).
+    pub deferred: bool,
 }
 
 impl Route {
+    /// Whether this route's page is built from a deferred import: it has a page, and
+    /// `deferred` is on. The one predicate for it (a `redirect.dart` route has no page).
+    pub fn defers_page(&self) -> bool {
+        self.deferred && self.page.is_some()
+    }
+
     /// A page-less folder whose layout wraps a section, and whose data.dart
     /// feeds the layout and the pages below it.
     pub fn is_section(&self) -> bool {
@@ -612,6 +632,8 @@ struct Inherited {
     linkable: bool,
     /// The nearest route.dart's `remount`, else the config's.
     remount: Remount,
+    /// The nearest route.dart's `deferred`, else the config's.
+    deferred: bool,
 }
 
 /// What a `nest = false` takes a route out of: the page above it, and the folders between.
@@ -654,13 +676,14 @@ struct BindCx<'a> {
     scope: Option<Scope>,
 }
 
-/// `case_sensitive` and `remount` are the config's defaults, for folders with no `route.dart`
-/// at or above them that sets them. `libs` is where the enums of segments are looked for
+/// `case_sensitive`, `remount` and `deferred` are the config's defaults, for folders with no
+/// `route.dart` at or above them that sets them. `libs` is where the enums of segments are looked for
 /// besides the files that name them.
 pub fn resolve(
     root: &Node,
     case_sensitive: bool,
     remount: Remount,
+    deferred: bool,
     libs: &Libs,
     diags: &mut Diags,
 ) -> App {
@@ -687,6 +710,7 @@ pub fn resolve(
             case_sensitive,
             linkable: true,
             remount,
+            deferred,
             ..Inherited::default()
         },
     );
@@ -791,6 +815,7 @@ impl Resolver<'_> {
             sibling: false,
             linkable: up.linkable,
             remount: up.remount,
+            deferred: up.deferred,
         });
 
         let mut segs = up.segs.clone();
@@ -940,6 +965,7 @@ impl Resolver<'_> {
         let mut case_sensitive = up.case_sensitive;
         let mut linkable = up.linkable;
         let mut remount = up.remount;
+        let mut deferred = up.deferred;
         if let Some(m) = modules.get(&Kind::Route) {
             let file = node.rel(Kind::Route);
             let spelled = locale::read(
@@ -954,10 +980,12 @@ impl Resolver<'_> {
             self.app.routes[id].sibling = self.nest(m, node, up.above.as_ref());
             linkable = self.linkable(m, &file).unwrap_or(up.linkable);
             remount = self.remount(m, &file).unwrap_or(up.remount);
+            deferred = self.deferred(m, &file).unwrap_or(up.deferred);
         }
         self.app.routes[id].case_sensitive = case_sensitive;
         self.app.routes[id].linkable = linkable;
         self.app.routes[id].remount = remount;
+        self.app.routes[id].deferred = deferred;
         self.app.routes[id].localized = localized.clone();
 
         // loading.dart / error.dart apply here and to every folder below.
@@ -975,6 +1003,7 @@ impl Resolver<'_> {
             above: up.above.clone(),
             linkable,
             remount,
+            deferred,
         };
         // A page is what a route below can leave; so is the layout of a folder between.
         let layout_file = node
@@ -1040,37 +1069,40 @@ impl Resolver<'_> {
         };
         // A layout is a navigator of its own: what is below it isn't on the root one.
         here.root = root && !node.files.contains_key(&Kind::Layout);
-        let (loading, error) = if data.is_some() {
-            let covering = show_dir(&node.dir);
-            let bind = |r: &mut Self, f: &Option<Fallback>, role| {
-                f.as_ref().map(|f| {
-                    // A section's views are built by its layout, which reads the URL for them.
-                    let scope = if section {
-                        Scope::Layout(id)
-                    } else {
-                        Scope::Route(id)
-                    };
-                    let cx = BindCx {
-                        role,
-                        segs: &segs,
-                        data: None,
-                        sections: &[],
-                        file: &f.file,
-                        covering: Some(&covering),
-                        scope: Some(scope),
-                    };
-                    let mut w = r.bind(&f.class, &cx);
-                    w.import = f.import;
-                    w
-                })
+        // A deferred page shows loading.dart while its code loads, and error.dart when that
+        // fails: the same views as for data.
+        let (loading, error) =
+            if data.is_some() || (deferred && node.files.contains_key(&Kind::Page)) {
+                let covering = show_dir(&node.dir);
+                let bind = |r: &mut Self, f: &Option<Fallback>, role| {
+                    f.as_ref().map(|f| {
+                        // A section's views are built by its layout, which reads the URL for them.
+                        let scope = if section {
+                            Scope::Layout(id)
+                        } else {
+                            Scope::Route(id)
+                        };
+                        let cx = BindCx {
+                            role,
+                            segs: &segs,
+                            data: None,
+                            sections: &[],
+                            file: &f.file,
+                            covering: Some(&covering),
+                            scope: Some(scope),
+                        };
+                        let mut w = r.bind(&f.class, &cx);
+                        w.import = f.import;
+                        w
+                    })
+                };
+                (
+                    bind(self, &here.loading, Role::Loading),
+                    bind(self, &here.error, Role::Error),
+                )
+            } else {
+                (None, None)
             };
-            (
-                bind(self, &here.loading, Role::Loading),
-                bind(self, &here.error, Role::Error),
-            )
-        } else {
-            (None, None)
-        };
 
         let mut layout_extra = None;
         let layout = modules.get(&Kind::Layout).and_then(|m| {
@@ -1677,13 +1709,14 @@ impl Resolver<'_> {
     fn route_config(&mut self, m: &Module, file: &str) -> Option<bool> {
         let mut found = m.variables.iter().filter(|v| v.name == "caseSensitive");
         let Some(v) = found.next() else {
-            // A route.dart may hold only `paths`, `nest`, `linkable` or `remount`.
-            if !m
-                .variables
-                .iter()
-                .any(|v| matches!(v.name.as_str(), "paths" | "nest" | "linkable" | "remount"))
-            {
-                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;` or `const remount = Remount.onSegments;`");
+            // A route.dart may hold only `paths`, `nest`, `linkable`, `remount` or `deferred`.
+            if !m.variables.iter().any(|v| {
+                matches!(
+                    v.name.as_str(),
+                    "paths" | "nest" | "linkable" | "remount" | "deferred"
+                )
+            }) {
+                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;`");
             }
             return None;
         };
@@ -1710,6 +1743,24 @@ impl Resolver<'_> {
         }
         if v.boolean.is_none() {
             let msg = "`linkable` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it";
+            self.diags.error(file, Some(&v.span), msg);
+        }
+        v.boolean
+    }
+
+    /// `const deferred = true;` in a folder's route.dart: the page.dart of this folder's
+    /// routes and those below it is imported `deferred as` and loads on demand. Like
+    /// `caseSensitive`, the nearest one wins, and it is read from the source, so it must be a
+    /// `true` or `false` literal.
+    fn deferred(&mut self, m: &Module, file: &str) -> Option<bool> {
+        let mut found = m.variables.iter().filter(|v| v.name == "deferred");
+        let v = found.next()?;
+        if let Some(again) = found.next() {
+            self.diags
+                .error(file, Some(&again.span), "`deferred` is declared twice");
+        }
+        if v.boolean.is_none() {
+            let msg = "`deferred` must be a `true` or `false` literal: fsp reads it from the source, it doesn't run it";
             self.diags.error(file, Some(&v.span), msg);
         }
         v.boolean

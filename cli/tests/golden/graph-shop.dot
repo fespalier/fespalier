@@ -9,9 +9,9 @@ digraph routes {
       style=rounded;
       n0 [label="/\nHomeRoute"];
       n1 [label="/cart\nCartRoute"];
-      n2 [label="/checkout\nCheckoutRoute\n(guard)"];
+      n2 [label="/checkout\nCheckoutRoute\n(guard, deferred)"];
       n3 [label="/products\nProductsRoute\n(data)"];
-      n4 [label="/products/:id\nProductRoute\n(data)"];
+      n4 [label="/products/:id\nProductRoute\n(data, deferred)"];
       n5 [label="/greet/:name\nGreetRoute"];
     }
   }

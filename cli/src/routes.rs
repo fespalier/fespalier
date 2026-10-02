@@ -11,7 +11,8 @@
 //! {"pattern","route","file","tags":[…],"params":[{"name","type","in"}],
 //!  "folder","presentation","groups":[…],"layouts":[…],
 //!  "tabs":[{"layout","index","branch"}],"data_keys":[…]|null,"meta":"…"|null,
-//!  "catch_all":{"name","optional"}|null,"remount":"on_segments","paths":{"fr":"/produits/:id"}}
+//!  "catch_all":{"name","optional"}|null,"remount":"on_segments","deferred":true,
+//!  "paths":{"fr":"/produits/:id"}}
 //! ```
 //!
 //! `file` and `meta` are relative to the project root (`meta` is the route's
@@ -20,7 +21,8 @@
 //! `query`; `type` is the Dart type by name (`int?`, `List<Category>`: an enum without the
 //! import prefix its file gave it); `remount` (since 0.6.0) is when the route's page gets a fresh state
 //! because its URL changed, `on_segments` or `on_location` (its folder's `route.dart`, else the pubspec's), and is only there
-//! for a route that has one; `paths` is the route's path in each locale its folders spell it in, and only there for a route with a localized segment; `presentation` is `page`, `redirect`, `root` (on the root navigator, from a
+//! for a route that has one; `deferred` (since 0.7.0) is `true` for a route whose page.dart is imported `deferred as` (its
+//! folder's `route.dart`, else the pubspec's), and is only there for such a route; `paths` is the route's path in each locale its folders spell it in, and only there for a route with a localized segment; `presentation` is `page`, `redirect`, `root` (on the root navigator, from a
 //! `navigator.dart`) or `custom` (a `present.dart` builds its page).
 
 use std::path::Path;
@@ -100,6 +102,10 @@ pub fn json_lines(app: &App, app_dir: &str) -> Vec<String> {
             // Only for a route that remounts, so the rows of an app without any are as they were.
             if r.remount != Remount::Never {
                 row["remount"] = r.remount.config_name().into();
+            }
+            // Only for a route whose page.dart is deferred, so the rows of an app without any are as they were.
+            if r.defers_page() {
+                row["deferred"] = true.into();
             }
             // Only for a route with a localized segment, so the rows of an app without any are as they were.
             if !i.paths.is_empty() {

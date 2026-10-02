@@ -12,11 +12,11 @@ before changing how it behaves.
 | --- | --- |
 | `cli/` | The generator, Rust crate `fespalier`, binary `fsp`. Pipeline: `scan.rs` (the file tree) → `dart.rs` (tree-sitter reads each Dart file) → `resolve.rs` (binds parameters, checks how the files fit) → `emit.rs` and `manifest.rs` (write the output through `templates/`). Also `scaffold.rs` (`fsp new`), `init.rs`, `session.rs` and `parse_cache.rs` (incremental `fsp watch`), `locale.rs`, `enums.rs`, `extra.rs`. Unit tests sit next to the code as `*_tests.rs`; `cli/tests/` spawns the binary. |
 | `cli/templates/` | minijinja templates: `app.g.dart.jinja`, the manifest, and the files `fsp new` / `fsp init` write (`new/`, `init/`). |
-| `packages/fespalier/` | The Dart runtime (`DataView`, segment parsing, `TypedLocation`, `testing.dart`) and `bin/fespalier.dart`, the `dart run fespalier` launcher that downloads the matching `fsp`. Not published to a registry: apps use it as a git dependency at a release tag. |
+| `packages/fespalier/` | The Dart runtime (`DataView`, `DeferredLibrary` and `DeferredView`, segment parsing, `TypedLocation`, `testing.dart`) and `bin/fespalier.dart`, the `dart run fespalier` launcher that downloads the matching `fsp`. Not published to a registry: apps use it as a git dependency at a release tag. |
 | `examples/{minimal,shop,features,tabs}/` | Runnable apps with widget tests. Each commits its `lib/app.g.dart` (`tabs` also a manifest library); a test fails when one is stale. |
 | `editors/vscode/`, `editors/intellij/` | Editor plugins (TypeScript, Kotlin) that show `fsp --json` diagnostics. |
 | `skills/` | Agent skills for **apps that use fespalier** (one directory per skill, `SKILL.md` plus `references/`), with `skills/coverage.json`, the map from README sections, file kinds, config keys and commands to the skill that covers each. `skills/README.md` is their guide. Not published. |
-| `scripts/` | Python and shell helpers for releases (Homebrew/Scoop rendering, checksum pinning, staged-asset verification) and their tests; `scripts/skills/` holds the skills' coverage gate and sample builder (Node). |
+| `scripts/` | Python and shell helpers for releases (Homebrew/Scoop rendering, checksum pinning, staged-asset verification) and their tests, `check-const-lints.sh`, and `check-deferred-chunks.sh` (the web build behind `just web-chunks`); `scripts/skills/` holds the skills' coverage gate and sample builder (Node). |
 | `ci/commit-message-parse/` | The squash-message parser the `pr-title` workflow runs; a standalone npm project pinned to release-please's grammar. |
 | `.github/workflows/` | `ci.yml` (the gate), `quality.yml` (org lint and trivy), `pr-title.yml`, `issue-governance.yml`, and the release workflows. |
 
@@ -32,6 +32,7 @@ before changing how it behaves.
 | `just flutter` | In the package and every example: `flutter pub get`, `dart format --set-exit-if-changed`, `flutter analyze`, `flutter test`; in each example also `scripts/check-const-lints.sh` (the const lints on a copy of the generated files, which `ignore_for_file` hides) |
 | `just packaging` | The Python tests for Homebrew/Scoop rendering, checksum pinning and release staging |
 | `just skills` | The skills' coverage gate: every README section, file kind, config key and `fsp` command is claimed by a skill, every claim still exists, and frontmatter, stamps and links are valid |
+| `just web-chunks` | `flutter build web --release` of `examples/shop` in a temporary copy, and a check that each deferred page is a `main.dart.js_N.part.js` of its own (about a minute, web artifacts; CI's `web` job runs it, `just ci` does not) |
 | `just skill-samples [file.md ...]` | Builds the skills' code samples in a scratch app with this checkout's `fsp` (`gen`, `analyze`, `test`). Slow; not in `just ci` or CI, so run it when you touch a sample |
 | `just gen-examples` | Regenerate every example's committed `lib/app.g.dart` |
 | `just fmt` | `cargo fmt` and `dart format` over everything |

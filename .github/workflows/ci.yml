@@ -163,6 +163,27 @@ jobs:
           FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier --version
           FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier routes
 
+  web:
+    name: Deferred routes split on the web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      # `flutter build web --release` of examples/shop in a throwaway copy (the examples stay
+      # platform-free): each deferred page must be a main.dart.js_N.part.js of its own, with its
+      # strings out of main.dart.js. The script is `just web-chunks`.
+      - name: Each deferred page is a chunk of its own
+        run: scripts/check-deferred-chunks.sh examples/shop 'Place order' 'Add to cart'
+
   vscode:
     name: VS Code extension
     runs-on: ubuntu-latest

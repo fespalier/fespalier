@@ -1,14 +1,19 @@
 # Diagnostics: config, `meta.dart`, `route.dart`, localized paths and the CLI
 
 As of v0.4.0 (`cli/src/config.rs`, `resolve.rs`, `locale.rs`, `manifest.rs`, `main.rs`,
+<<<<<<< HEAD
 As of v0.4.0 (`cli/src/config.rs`, `resolve.rs`, `locale.rs`, `manifest.rs`, `main.rs`,
 `init.rs`, `scaffold.rs`; since 0.7.0 also `lint.rs` and, for the `fsp maestro` section, `maestro.rs`). Messages are quoted as `fsp` prints them.
+=======
+`init.rs`, `scaffold.rs`, and, since 0.7.0, `lint.rs`). Messages are quoted as `fsp` prints them.
+>>>>>>> origin/main
 
 ## The `fespalier:` section of `pubspec.yaml`
 
 These are **not** diagnostics with a code frame: `fsp` prints the pubspec path, then the
 message, and exits 1.
 
+<<<<<<< HEAD
 | Message                                                                                                                                                                                                                                                                                                            | Cause and fix                                                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ``invalid pubspec.yaml: fespalier: unknown field `nope`, expected one of `app_dir`, `output`, `format`, `output_manifest`, `meta`, `meta_unique`, `case_sensitive`, `remount`, `data_retry`, `keep_previous`, `push_updates_url`, `file_style`, `links`, `lints`, `semantics_ids`, `maestro` at line 25 column 3`` | An unknown (or misspelled) key: the section rejects them                                                                                                      |
@@ -20,6 +25,19 @@ message, and exits 1.
 | `invalid pubspec.yaml: fespalier.push_updates_url: invalid type: string "sometimes", expected a boolean at line 4 column 21`                                                                                                                                                                                       | A boolean key (`format`, `case_sensitive`, `keep_previous`, `push_updates_url` since 0.6.0, `semantics_ids` since 0.7.0) given anything but `true` or `false` |
 | `` `fespalier.meta` must be `required` or `optional`, got `always` ``                                                                                                                                                                                                                                              |                                                                                                                                                               |
 | `` `fespalier.meta_unique` lists argument names of `meta`, e.g. `[code, slug]`; `a-b` is not one ``                                                                                                                                                                                                                | Names must be identifiers                                                                                                                                     |
+=======
+| Message                                                                                                                                                                                                                                                                                | Cause and fix                                                                                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| ``invalid pubspec.yaml: fespalier: unknown field `nope`, expected one of `app_dir`, `output`, `format`, `output_manifest`, `meta`, `meta_unique`, `case_sensitive`, `remount`, `data_retry`, `keep_previous`, `push_updates_url`, `file_style`, `links`, `lints` at line 25 column 3`` | An unknown (or misspelled) key: the section rejects them                                                                                      |
+| ``invalid pubspec.yaml: fespalier.remount: unknown variant `onSegments`, expected one of `never`, `on_segments`, `on_location` at line 25 column 12``                                                                                                                                  | `remount` (since 0.6.0) is written in snake case in the pubspec (`on_segments`); in a `route.dart` it is the Dart enum (`Remount.onSegments`) |
+| ``invalid pubspec.yaml: fespalier.data_retry: unknown variant `maybe`, expected `inherit` or `none` at line 25 column 15``                                                                                                                                                             | Wrong enum value (`file_style`: `snake` or `kebab`)                                                                                           |
+| `` `fespalier.app_dir` must be a path under lib/ (it is imported as package code), got `app` ``                                                                                                                                                                                        | `app_dir` and `output` live under `lib/`                                                                                                      |
+| `` `fespalier.output` must be a .dart file, got `lib/x.txt` ``                                                                                                                                                                                                                         |                                                                                                                                               |
+| `` `fespalier.output_manifest` and `fespalier.output` are the same file (`lib/app.g.dart`); leave `output_manifest` out to keep the manifest in `output` ``                                                                                                                            |                                                                                                                                               |
+| `invalid pubspec.yaml: fespalier.push_updates_url: invalid type: string "sometimes", expected a boolean at line 4 column 21`                                                                                                                                                           | A boolean key (`format`, `case_sensitive`, `keep_previous`, `push_updates_url` since 0.6.0) given anything but `true` or `false`              |
+| `` `fespalier.meta` must be `required` or `optional`, got `always` ``                                                                                                                                                                                                                  |                                                                                                                                               |
+| `` `fespalier.meta_unique` lists argument names of `meta`, e.g. `[code, slug]`; `a-b` is not one ``                                                                                                                                                                                    | Names must be identifiers                                                                                                                     |
+>>>>>>> origin/main
 
 ## `fsp links` (since 0.5.0)
 
@@ -88,6 +106,7 @@ after the id is a free comment (`-- gift cards aren't built yet`). Another id do
   `AppRoutes.match`, `matchUrl`, `dataAt`, `preload`, a Dart 3.10 dot shorthand
   (`uri: .parse('/x')`), a path in a variable or built with `+`.
 
+<<<<<<< HEAD
 ## `fsp maestro` (since 0.7.0)
 
 `fsp maestro` reads the `maestro:` section of `fespalier:` and **checks its values only when it
@@ -154,6 +173,8 @@ underneath, not `loading.dart`, `error.dart` or `not_found.dart`); on the web th
 flow's `url` and a hash-strategy app has `link: .../#`; and that Maestro's `id:` selector matches
 Flutter's `Semantics(identifier:)` on the web and on iOS has **not been verified** in this repository.
 
+=======
+>>>>>>> origin/main
 ## The command line
 
 | Message                                                                                                                                   | Cause and fix                                                                 |

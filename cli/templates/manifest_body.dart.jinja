@@ -17,6 +17,9 @@ abstract final class AppManifest {
 {% if r.presentation %}
       presentation: RoutePresentation.{{ r.presentation }},
 {% endif %}
+{% if r.sibling %}
+      sibling: true,
+{% endif %}
 {% if r.groups %}
       groups: {{ r.groups }},
 {% endif %}
@@ -37,6 +40,9 @@ abstract final class AppManifest {
 {% endif %}
 {% if r.meta %}
       meta: {{ r.meta }},
+{% endif %}
+{% if r.deferred %}
+      deferred: true,
 {% endif %}
     ),
 {% endfor %}

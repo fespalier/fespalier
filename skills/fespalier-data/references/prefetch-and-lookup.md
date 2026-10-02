@@ -170,14 +170,22 @@ byUri.close();
   `PrefetchHandle` hold: kept until `close()` (or `keepFor:`), closing twice is
   fine, and **a failed load is not kept**. With several providers, one failure
   closes the whole handle (since 0.5.0), so a retry starts them all fresh.
-- A route with **no data at all, and none above it**, has no generated `preload`;
-  it inherits one that returns a closed handle. `AppRoutes.preload` does the same
+- A route with **no data at all, and none above it, and no deferred page**, has no generated
+  `preload`; it inherits one that returns a closed handle. `AppRoutes.preload` does the same
   for a location no route fits, or a segment that does not parse (the
   `not_found.dart` rule), without throwing.
 - **It never navigates and runs no `guard.dart` or `redirect.dart`.** A guard runs
   when the user arrives; preloading is only the load, so a link to a guarded page
   can be preloaded for a user who will be redirected: that costs a request, not
   access.
+- **It loads a deferred page's code too (since 0.7.0).** When the route's `page.dart` is
+  [deferred](../../fespalier-routing/references/route-dart.md#deferred-load-a-pages-code-on-demand)
+  (`const deferred = true;`), `preload` also starts loading it (`_lib6.preload()` in the generated
+  override), and so does a `RouteLink`. A deferred route that reads no data now has a `preload`
+  override that returns a closed handle (it holds nothing). The code, once loaded, stays loaded:
+  closing the handle releases the data only. `AppRoutes.preload` goes through
+  `matchUrl(uri)?.route.preload(ref)` in an app that has a deferred route (otherwise it is
+  `ref.prefetchAll(dataAt(uri) ?? const [])` as before). Before 0.7.0 preloading was data only.
 - Two preloads of one provider (two links to the same product) load it **once**.
 - `RouteLink` calls it for you: `RouteLink(to: ..., preload: Preload.intent)`
   starts it on hover, focus or touch, `Preload.visible` when the link is on screen,

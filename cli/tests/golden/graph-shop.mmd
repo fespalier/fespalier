@@ -3,9 +3,9 @@ flowchart TD
     subgraph b0["layout layout.dart"]
       n0["/<br/>HomeRoute"]
       n1["/cart<br/>CartRoute"]
-      n2["/checkout<br/>CheckoutRoute<br/>(guard)"]
+      n2["/checkout<br/>CheckoutRoute<br/>(guard, deferred)"]
       n3["/products<br/>ProductsRoute<br/>(data)"]
-      n4["/products/:id<br/>ProductRoute<br/>(data)"]
+      n4["/products/:id<br/>ProductRoute<br/>(data, deferred)"]
       n5["/greet/:name<br/>GreetRoute"]
     end
   end

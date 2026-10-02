@@ -1433,6 +1433,7 @@ abstract final class AppManifest {
       type: ConfirmRefundRoute,
       path: '/orders/:id/refund/confirm',
       folder: 'orders/\$id/refund/confirm',
+      sibling: true,
       layouts: [''],
       segments: [RouteParam('id', 'int')],
     ),
@@ -2322,6 +2323,10 @@ final class NoteRoute extends TypedLocation {
 
   @override
   void replace(BuildContext context, {Note? extra, String? locale}) => replaceLocation(context, locationFor(locale), extra: extra);
+
+  @override
+  Future<T?> pushReplacement<T extends Object?>(BuildContext context, {Note? extra, String? locale}) =>
+      GoRouter.of(context).pushReplacement<T>(locationFor(locale), extra: extra);
 
   /// The NoteRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.

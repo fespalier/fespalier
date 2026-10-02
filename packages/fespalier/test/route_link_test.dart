@@ -34,6 +34,30 @@ final class ItemRoute extends TypedLocation {
       ref.prefetchAll([item(id)], keepFor: keepFor);
 }
 
+/// A route whose page.dart is deferred: it preloads its code (a library whose load the
+/// test controls), and counts how often it was asked to.
+final class CodeRoute extends TypedLocation {
+  const CodeRoute();
+
+  static var preloads = 0;
+  static final completer = Completer<void>();
+  static final library = DeferredLibrary(
+    () => completer.future,
+    'code/page.dart',
+    loadsInFakeAsync: true,
+  );
+
+  @override
+  String get location => '/code';
+
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) {
+    preloads++;
+    library.preload();
+    return ref.prefetchAll([item(7)], keepFor: keepFor);
+  }
+}
+
 /// A route without data: it inherits the no-op.
 final class AboutRoute extends TypedLocation {
   const AboutRoute();
@@ -703,6 +727,36 @@ void main() {
       );
       expect(container.exists(item(2)), isTrue);
     });
+
+    testWidgets(
+      'a uri: link preloads with the matched route: its data and its code',
+      (tester) async {
+        CodeRoute.preloads = 0;
+        final (_, container) = await boot(
+          tester,
+          RouteLink(
+            uri: Uri.parse('/code'),
+            preload: Preload.intent,
+            builder: (context, follow) =>
+                ListTile(title: const Text('Code'), onTap: follow),
+          ),
+          scope: (child) => RouteLinkScope(
+            match: (uri) =>
+                UrlMatch(uri, const CodeRoute(), const {}, [item(7)]),
+            child: child,
+          ),
+        );
+        expect(CodeRoute.library.isLoaded, isFalse);
+        final pointer = await mouse(tester);
+        await hover(tester, pointer, find.text('Code'));
+        expect(CodeRoute.preloads, 1);
+        expect(container.exists(item(7)), isTrue);
+
+        CodeRoute.completer.complete();
+        await tester.pump();
+        expect(CodeRoute.library.isLoaded, isTrue);
+      },
+    );
 
     testWidgets('without match a uri: link preloads nothing', (tester) async {
       final (_, container) = await boot(

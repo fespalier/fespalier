@@ -1,5 +1,7 @@
 // DataView keeping the old value or error on screen while a provider reloads or
 // retries, and QueryList as a provider key.
+import 'dart:async';
+
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -281,6 +283,156 @@ void main() {
       );
       expect(runs, 2);
       sub.close();
+    });
+  });
+
+  group('a deferred page (library:)', () {
+    Widget deferredView(
+      FutureProvider<int> provider,
+      DeferredLibrary library, {
+      List<VoidCallback>? retries,
+    }) => MaterialApp(
+      home: DataView<int>(
+        watch: (ref) => ref.watch(provider),
+        refresh: (ref) => ref.invalidate(provider),
+        data: (d) => Text('page $d'),
+        loading: () => const Text('loading'),
+        error: (e, st, retry) {
+          retries?.add(retry);
+          return TextButton(onPressed: retry, child: Text('error $e'));
+        },
+        library: library,
+      ),
+    );
+
+    DeferredLibrary controlled(Completer<void> completer, [List<int>? calls]) =>
+        DeferredLibrary(
+          () {
+            calls?.add(1);
+            return completer.future;
+          },
+          'x/page.dart',
+          loadsInFakeAsync: true,
+        );
+
+    testWidgets(
+      'loads the code with the data, and shows the page when both are there',
+      (tester) async {
+        final code = Completer<void>();
+        final calls = <int>[];
+        final flaky = Flaky(0);
+        final p = FutureProvider.autoDispose((ref) => flaky());
+        await tester.pumpWidget(
+          ProviderScope(
+            retry: (_, _) => null,
+            child: deferredView(p, controlled(code, calls)),
+          ),
+        );
+        // Both started in the first frame: no waterfall.
+        expect(calls, hasLength(1));
+        expect(flaky.runs, 1);
+        expect(find.text('loading'), findsOneWidget);
+
+        // The data first: the code is still awaited.
+        await ms(tester, 20);
+        expect(find.text('loading'), findsOneWidget);
+        expect(find.text('page 1'), findsNothing);
+
+        code.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('page 1'), findsOneWidget);
+        expect(calls, hasLength(1));
+      },
+    );
+
+    testWidgets('the code first, then the data', (tester) async {
+      final code = Completer<void>();
+      final flaky = Flaky(0);
+      final p = FutureProvider.autoDispose((ref) => flaky());
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: (_, _) => null,
+          child: deferredView(p, controlled(code)),
+        ),
+      );
+      code.complete();
+      await tester.pump();
+      expect(find.text('loading'), findsOneWidget);
+      await ms(tester, 20);
+      expect(find.text('page 1'), findsOneWidget);
+    });
+
+    testWidgets('a code error shows error with the code retry, the data stays', (
+      tester,
+    ) async {
+      var attempts = 0;
+      final flaky = Flaky(0);
+      final p = FutureProvider.autoDispose((ref) => flaky());
+      final library = DeferredLibrary(
+        () {
+          attempts++;
+          // The first load is the preload at build (its failure is ignored); the view
+          // the data brings tries again, fails too, and shows error.
+          return attempts <= 2
+              ? Future<void>.error(DeferredLoadException('chunk $attempts'))
+              : Future<void>.value();
+        },
+        'x/page.dart',
+        loadsInFakeAsync: true,
+      );
+      await tester.pumpWidget(
+        ProviderScope(retry: (_, _) => null, child: deferredView(p, library)),
+      );
+      await ms(tester, 20);
+      await tester.pump();
+      expect(find.textContaining('chunk 2'), findsOneWidget);
+      expect(flaky.runs, 1);
+
+      await tester.tap(find.byType(TextButton));
+      await tester.pumpAndSettle();
+      expect(find.text('page 1'), findsOneWidget);
+      expect(attempts, 3);
+      expect(flaky.runs, 1, reason: 'the data provider is not read again');
+    });
+
+    testWidgets('a data error still shows error with the data retry', (
+      tester,
+    ) async {
+      final code = Completer<void>()..complete();
+      final flaky = Flaky(1);
+      final p = FutureProvider.autoDispose((ref) => flaky());
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: (_, _) => null,
+          child: deferredView(p, controlled(code)),
+        ),
+      );
+      await ms(tester, 20);
+      expect(find.textContaining('error Exception: boom 1'), findsOneWidget);
+      await tester.tap(find.byType(TextButton));
+      await ms(tester, 20);
+      expect(find.text('page 2'), findsOneWidget);
+    });
+
+    testWidgets('a refresh keeps the page and its State', (tester) async {
+      final code = Completer<void>()..complete();
+      final flaky = Flaky(0);
+      final p = FutureProvider.autoDispose((ref) => flaky());
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: (_, _) => null,
+          child: deferredView(p, controlled(code)),
+        ),
+      );
+      await ms(tester, 20);
+      expect(find.text('page 1'), findsOneWidget);
+      ProviderScope.containerOf(
+        tester.element(find.byType(DataView<int>)),
+      ).invalidate(p);
+      await ms(tester, 1);
+      expect(find.text('page 1'), findsOneWidget);
+      await ms(tester, 20);
+      expect(find.text('page 2'), findsOneWidget);
     });
   });
 }

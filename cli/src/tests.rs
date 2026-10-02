@@ -158,6 +158,52 @@ fn committed_output_is_up_to_date() {
     }
 }
 
+/// The string-path lint finds nothing in the examples, which are real apps: no false positive.
+/// `examples/shop` has a string path that matches and a silenced one that does not.
+#[test]
+fn examples_have_no_unknown_paths() {
+    for name in ["shop", "features", "tabs", "minimal"] {
+        let cfg = Config::load(&examples(name)).unwrap();
+        let (_, diags, app) = crate::analyze(&examples(name).join("lib/app"), &cfg).unwrap();
+        assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
+        let found = crate::lint::check(
+            &examples(name),
+            &cfg,
+            &crate::lint::Table::new(&app),
+            &mut crate::lint::Sites::default(),
+        );
+        assert!(found.0.is_empty(), "{name}: {:?}", found.0);
+    }
+    let shop = Config::load(&examples("shop")).unwrap();
+    assert_eq!(shop.lints.unknown_path, crate::config::LintLevel::Error);
+    let page = fs::read_to_string(examples("shop").join("lib/app/page.dart")).unwrap();
+    let sites = crate::lint::sites(&page);
+    assert_eq!(sites.len(), 2, "{sites:?}");
+    assert_eq!(sites.iter().filter(|s| s.ignored).count(), 1, "{sites:?}");
+}
+
+/// The runtime package has no route tree of its own, and its code is not a site for the lint
+/// either: the paths in its documentation are comments.
+#[test]
+fn the_package_has_no_string_paths() {
+    let lib = Path::new(env!("CARGO_MANIFEST_DIR")).join("../packages/fespalier/lib");
+    let mut dirs = vec![lib];
+    let mut files = 0;
+    while let Some(dir) = dirs.pop() {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().is_some_and(|e| e == "dart") {
+                files += 1;
+                let sites = crate::lint::sites(&fs::read_to_string(&path).unwrap());
+                assert!(sites.is_empty(), "{}: {sites:?}", path.display());
+            }
+        }
+    }
+    assert!(files > 5);
+}
+
 #[test]
 fn page_params_are_filled_by_name_then_type() {
     let c = code(&[

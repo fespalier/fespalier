@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/photos/share/terms/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/photos/share/terms"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/photos/share/terms"
+- extendedWaitUntil:
+    visible:
+      id: "route:/photos/share/terms"
+    timeout: 20000

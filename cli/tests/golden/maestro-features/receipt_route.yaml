@@ -1,0 +1,14 @@
+# Written by `fsp maestro` from lib/app/orders/$id/refund/receipt/page.dart: don't edit it, run `fsp maestro` again.
+# Guarded by orders/$id/refund/guard.dart: ../sign-in.yaml runs before the link.
+appId: "com.example.features"
+name: "/orders/:id/refund/receipt"
+tags:
+  - "fespalier"
+---
+- launchApp
+- runFlow: "../sign-in.yaml"
+- openLink: "features://app.example.com/orders/5/refund/receipt"
+- extendedWaitUntil:
+    visible:
+      id: "route:/orders/:id/refund/receipt"
+    timeout: 20000

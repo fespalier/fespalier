@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/photos/sort/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/photos/sort"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/photos/sort"
+- extendedWaitUntil:
+    visible:
+      id: "route:/photos/sort"
+    timeout: 20000

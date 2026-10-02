@@ -1,6 +1,6 @@
 ---
 name: fespalier-testing
-description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in, pure tests of locations, dataAt and match, and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
+description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in, pure tests of locations, dataAt and match, Maestro on a device or the web (semantics_ids, fsp maestro), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
 ---
 
 # fespalier-testing
@@ -50,6 +50,16 @@ testWidgets('shows a product', (tester) async {
     `addTearDown(router.dispose)` before the call passes `disposeRouter: false` (since 0.6.0):
     those teardowns run after `pumpRouter`'s, and a second `dispose` throws.
     Build one router per test.
+  - **Deferred routes (since 0.7.0).** A route with `const deferred = true;` has its `page.dart`
+    imported `deferred as`, whose `loadLibrary()` completes only on the real event loop, which a
+    widget test's `pump` never runs. `pumpRouter` therefore loads every deferred route's code first,
+    in `runAsync`, and the page is in the first settled frame like an eager one's. **A test that
+    pumps a router of its own** (`MaterialApp.router` in `pumpWidget`) must do it itself, before:
+    `await tester.runAsync(AppRoutes.loadDeferred);`. Forget it, and a debug build throws a
+    `FlutterError` that says so (`pitfalls.md`) instead of hanging. The loading view of a _real_
+    deferred page can't be seen in a widget test: use
+    `DeferredLibrary(() => completer.future, 'x/page.dart', loadsInFakeAsync: true)` in a
+    `DeferredView`.
   - **Guards: return synchronously when you can.** Any `Future`, even `Future.value(...)`,
     costs a frame, so a cold deep link shows a blank first frame before the page.
 - **`currentLocation(tester)`** is where the router is, as a string
@@ -83,12 +93,22 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 | A `WidgetRef` (prefetch, refresh)  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                     |
 | An action (a write, since 0.5.0)   | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                      |
 | Restoration                        | your own app widget building the router in `State`, `restartAndRestore()`                                                                          |
+| A deferred route (0.7.0)           | `pumpRouter` loads it; with your own router, `await tester.runAsync(AppRoutes.loadDeferred)` before `pumpWidget` (`pitfalls.md`)                   |
 | A `RouteLink` hover (0.5.0)        | a mouse `createGesture`, `moveTo`, `pump`; `container.exists(XRoute.data(...))` (`pitfalls.md`)                                                    |
 
 Full compiled tests for all of these are in
 [`references/recipes.md`](references/recipes.md); the traps, each of which cost a test
 run while these skills were written, are in
 [`references/pitfalls.md`](references/pitfalls.md).
+
+**Widget tests for logic and states; Maestro for real devices, the web and journeys across
+routes.** Maestro reads the accessibility tree and cannot see a `Key`, so (since 0.7.0)
+`semantics_ids: true` gives every page a `Semantics(identifier: 'route:<pattern>')` that is in the
+tree only when the route's own page is built, and `fsp maestro` writes a smoke flow per route that
+waits for it. The identifier contract, the test that proves it
+(`find.bySemanticsIdentifier`, with the handle disposed in the test body) and the traps (hash URLs,
+`maestro test .maestro` skipping `routes/`, the web reload under a guard flow, the semantics tree
+staying on in a web build) are in [`references/maestro.md`](references/maestro.md).
 
 ## Three facts to keep in mind
 

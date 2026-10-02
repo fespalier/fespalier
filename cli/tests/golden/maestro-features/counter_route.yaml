@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/counter/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/counter"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/counter"
+- extendedWaitUntil:
+    visible:
+      id: "route:/counter"
+    timeout: 20000

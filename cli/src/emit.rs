@@ -30,7 +30,9 @@ use crate::templates;
 struct FileCx {
     app_dir: String,
     table: Vec<String>,
-    imports: Vec<String>,
+    imports: Vec<ImportCx>,
+    /// One `DeferredLibrary` for each route whose page.dart is imported `deferred as`.
+    deferred_libs: Vec<DeferredLibCx>,
     tree: Vec<TreeCx>,
     not_found: String,
     /// `not_found.dart` files below the root, deepest first.
@@ -58,9 +60,33 @@ struct FileCx {
     /// `push_updates_url` from the config: what `router()` assigns to
     /// `GoRouter.optionURLReflectsImperativeAPIs`.
     push_updates_url: bool,
+    /// `semantics_ids` from the config: pages wear `Semantics(identifier:)`, and `mount()`
+    /// turns the semantics tree on on the web.
+    semantics_ids: bool,
     /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
     /// (`_keep`) that tells a parameter left out from one passed as `null`.
     copy_with: bool,
+}
+
+/// One `import` of the generated file.
+#[derive(Serialize)]
+struct ImportCx {
+    path: String,
+    /// `deferred as`: the page.dart of a deferred route (see [`Route::defers_page`]).
+    deferred: bool,
+}
+
+/// The `DeferredLibrary` of a deferred route: `final _lib2 = DeferredLibrary(_i7.loadLibrary, ...)`.
+#[derive(Serialize)]
+struct DeferredLibCx {
+    /// `_lib2`: the route's id, as `_data2` and `_params2` use it.
+    name: String,
+    /// The index of the page.dart's import.
+    import: usize,
+    /// The page.dart relative to the app folder, as a Dart string literal.
+    file: String,
+    /// The same, as a doc comment shows it.
+    path: String,
 }
 
 /// A `GoRoute`; a `ShellRoute` when `layout` is set; a `StatefulShellRoute` when
@@ -257,6 +283,8 @@ struct ViewDataCx {
     invalidate: String,
     loading: String,
     error: String,
+    /// `_lib6`, for a deferred page: `DataView` loads its code in parallel with the data.
+    library: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -277,6 +305,8 @@ struct RouteCx {
     /// `preload`: the providers it starts (`_data1(shop), _data3(id)`); None for a route
     /// without data of its own or above it, which inherits the no-op.
     preload: Option<String>,
+    /// `_lib6`, when the page.dart is deferred: `preload` starts loading its code too.
+    code: Option<String>,
     /// The functions of its `action.dart`.
     actions: Vec<ActionCx>,
 }
@@ -422,11 +452,12 @@ struct ProviderCx {
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let mut fns = BTreeSet::new();
-    let tree = routes_of(app, 0, true, "", &[], false, &mut fns);
+    let tree = routes_of(app, 0, true, "", &[], false, &mut fns, cfg.semantics_ids);
     check_order(&tree, diags);
     check_tab_starts(&tree, diags);
     check_root_children(&tree, diags);
     check_remount(app, diags);
+    check_deferred_types(app, diags);
     // With no `output_manifest:` the manifest lives here, and imports its meta.dart files here.
     let (manifest, metas) = match cfg.output_manifest {
         None => {
@@ -436,6 +467,12 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         Some(_) => (None, vec![]),
     };
     let matchers = matchers(app, &mut fns);
+    let deferred_imports: BTreeSet<usize> = app
+        .routes
+        .iter()
+        .filter(|r| r.defers_page())
+        .filter_map(|r| r.page.as_ref().map(|p| p.import))
+        .collect();
     let routes: Vec<RouteCx> = app
         .routes
         .iter()
@@ -448,8 +485,25 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         imports: app
             .imports
             .iter()
-            .chain(&metas)
-            .map(|rel| cfg.import_path(&rel.replace('$', "\\$")))
+            .enumerate()
+            .map(|(i, rel)| (rel, deferred_imports.contains(&i)))
+            .chain(metas.iter().map(|rel| (rel, false)))
+            .map(|(rel, deferred)| ImportCx {
+                path: cfg.import_path(&rel.replace('$', "\\$")),
+                deferred,
+            })
+            .collect(),
+        deferred_libs: app
+            .routes
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.defers_page())
+            .map(|(id, r)| DeferredLibCx {
+                name: format!("_lib{id}"),
+                import: r.page.as_ref().expect("a deferred route has a page").import,
+                file: dart_str(&rel(r, Kind::Page)),
+                path: rel(r, Kind::Page),
+            })
             .collect(),
         manifest,
         tree,
@@ -478,6 +532,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         case_sensitive: app.routes[0].case_sensitive,
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
+        semantics_ids: cfg.semantics_ids,
     };
     templates::render("app.g.dart", &cx)
 }
@@ -543,7 +598,7 @@ pub fn frames(app: &App) -> Vec<Frame> {
             },
         }
     }
-    routes_of(app, 0, true, "", &[], false, &mut BTreeSet::new())
+    routes_of(app, 0, true, "", &[], false, &mut BTreeSet::new(), false)
         .into_iter()
         .map(frame)
         .collect()
@@ -583,6 +638,83 @@ fn check_remount(app: &App, diags: &mut Diags) {
                 r.page_span.as_ref(),
                 format!(
                     "`remount` has no effect here: the `{hook}()` that builds this page doesn't take its key; add a `LocalKey key` parameter and give it to the page"
+                ),
+            );
+        }
+    }
+}
+
+/// The identifiers that follow `_i{import}.` in `ty`, for each `import` in `wanted`: the types
+/// the generated file names through one of those imports. The prefix must be a whole token, so
+/// `_i1.` is not found in `_i11.Size`.
+fn names_through(ty: &str, wanted: &BTreeSet<usize>) -> Vec<(usize, String)> {
+    let ident = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$';
+    let bytes = ty.as_bytes();
+    let mut out = vec![];
+    let mut at = 0;
+    while let Some(found) = ty[at..].find("_i") {
+        let start = at + found;
+        at = start + 2;
+        if ty[..start].chars().next_back().is_some_and(ident) {
+            continue;
+        }
+        let digits = ty[at..].bytes().take_while(u8::is_ascii_digit).count();
+        let end = at + digits;
+        if digits == 0 || bytes.get(end) != Some(&b'.') {
+            continue;
+        }
+        let Ok(import) = ty[at..end].parse::<usize>() else {
+            continue;
+        };
+        if !wanted.contains(&import) {
+            continue;
+        }
+        let name: String = ty[end + 1..].chars().take_while(|&c| ident(c)).collect();
+        if !name.is_empty() {
+            out.push((import, name));
+        }
+    }
+    out
+}
+
+/// A deferred library's types can't be named outside it (`type_annotation_deferred_class`),
+/// and the generated file names the types of segments, query parameters and `extra`s outside
+/// the page that declares them. So a type declared in a deferred page.dart is an error: it
+/// belongs in a file of its own.
+fn check_deferred_types(app: &App, diags: &mut Diags) {
+    let pages: HashMap<usize, &Route> = app
+        .routes
+        .iter()
+        .filter(|r| r.defers_page())
+        .filter_map(|r| r.page.as_ref().map(|p| (p.import, r)))
+        .collect();
+    if pages.is_empty() {
+        return;
+    }
+    let wanted: BTreeSet<usize> = pages.keys().copied().collect();
+    let mut spelled: Vec<String> = vec![];
+    for r in &app.routes {
+        spelled.extend(app.url_params(r).into_iter().map(|(_, ty)| ty));
+        spelled.extend(r.extra.iter().map(|e| e.ty.clone()));
+        spelled.extend(r.layout_extra.iter().map(|e| e.ty.ty.clone()));
+        for h in r.guard.iter().chain(&r.redirect) {
+            spelled.extend(h.extra.iter().map(|e| e.ty.ty.clone()));
+        }
+        spelled.extend(r.actions.iter().map(|a| a.input.ty.clone()));
+    }
+    spelled.extend(app.enum_types.iter().map(|e| e.ty.clone()));
+    let mut reported: BTreeSet<(usize, String)> = BTreeSet::new();
+    for ty in &spelled {
+        for (import, name) in names_through(ty, &wanted) {
+            if !reported.insert((import, name.clone())) {
+                continue;
+            }
+            let r = pages[&import];
+            diags.error(
+                &rel(r, Kind::Page),
+                r.page_span.as_ref(),
+                format!(
+                    "`{name}` is declared in this page.dart, which is deferred, and the generated code names it outside the page (as the type of a segment, a query parameter or an `extra`): Dart can't use a deferred library's types there. Move `{name}` to a file of its own and import it here, or say `const deferred = false;` in this folder's route.dart"
                 ),
             );
         }
@@ -644,6 +776,7 @@ fn own_part(r: &Route) -> String {
 /// `under_page` is set for the routes that nest in the page above (a page's subfolders, and
 /// what page-less folders below them hold): one with `nest = false` is left out, because the
 /// page writes it beside itself (see [`leavers`]).
+#[allow(clippy::too_many_arguments)]
 fn routes_of(
     app: &App,
     id: usize,
@@ -652,6 +785,7 @@ fn routes_of(
     inherited: &[usize],
     under_page: bool,
     fns: &mut BTreeSet<ParamsFn>,
+    ids: bool,
 ) -> Vec<TreeCx> {
     let r = &app.routes[id];
     if under_page && r.sibling {
@@ -665,7 +799,7 @@ fn routes_of(
     };
 
     if let (Some(layout), Some(tabs)) = (&r.layout, &r.tabs) {
-        return tab_routes(app, id, top, &path, layout, tabs, inherited, fns);
+        return tab_routes(app, id, top, &path, layout, tabs, inherited, fns, ids);
     }
 
     // Routes beside or below this folder that its own route doesn't contain.
@@ -685,13 +819,15 @@ fn routes_of(
         (Some(_), _) => {
             let mut out: Vec<TreeCx> = parent
                 .iter()
-                .map(|p| without_catch_all(page_route(app, id, top, p, false, inherited, fns), r))
+                .map(|p| {
+                    without_catch_all(page_route(app, id, top, p, false, inherited, fns, ids), r)
+                })
                 .collect();
-            out.push(page_route(app, id, top, &path, true, inherited, fns));
+            out.push(page_route(app, id, top, &path, true, inherited, fns, ids));
             // What leaves the page goes beside it, below its guard too: the routes are the
             // page's siblings, with the folders in between in their paths.
             let mut leaving = vec![];
-            leavers(app, id, top, &next, &below, fns, &mut leaving);
+            leavers(app, id, top, &next, &below, fns, ids, &mut leaving);
             (before, after) = in_front_of(&out, leaving);
             out
         }
@@ -705,14 +841,14 @@ fn routes_of(
             out.extend(
                 r.children
                     .iter()
-                    .flat_map(|&c| routes_of(app, c, top, &next, &below, under_page, fns)),
+                    .flat_map(|&c| routes_of(app, c, top, &next, &below, under_page, fns, ids)),
             );
             static_first(out)
         }
         (None, None) => static_first(
             r.children
                 .iter()
-                .flat_map(|&c| routes_of(app, c, top, &next, &below, under_page, fns))
+                .flat_map(|&c| routes_of(app, c, top, &next, &below, under_page, fns, ids))
                 .collect(),
         ),
     };
@@ -761,6 +897,7 @@ fn routes_of(
 /// compound (`refund/confirm`, or `refund/:step`), and `inherited` is the guards of the page
 /// and of the page-less folders between, which a route nested in the page would have had from
 /// its parents. A route that leaves keeps its own children nested under it.
+#[allow(clippy::too_many_arguments)]
 fn leavers(
     app: &App,
     id: usize,
@@ -768,12 +905,13 @@ fn leavers(
     prefix: &str,
     inherited: &[usize],
     fns: &mut BTreeSet<ParamsFn>,
+    ids: bool,
     out: &mut Vec<TreeCx>,
 ) {
     for &c in &app.routes[id].children {
         let r = &app.routes[c];
         if r.sibling {
-            out.extend(routes_of(app, c, top, prefix, inherited, false, fns));
+            out.extend(routes_of(app, c, top, prefix, inherited, false, fns, ids));
         } else if r.page.is_none() {
             // Page-less (or a redirect, which has nothing nested in it either): what is below
             // it nests in the same page, so its folder is part of the path of what leaves.
@@ -785,7 +923,7 @@ fn leavers(
             };
             let mut below = inherited.to_vec();
             below.extend(r.guard.as_ref().map(|_| c));
-            leavers(app, c, top, &next, &below, fns, out);
+            leavers(app, c, top, &next, &below, fns, ids, out);
         }
     }
 }
@@ -887,19 +1025,16 @@ fn layout_cx(
         restoration_id,
         seg_fn,
         page: wrapped,
-        data: section.map(|d| ViewDataCx {
-            provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
-            invalidate: invalidate_expr(app, id, r, d),
-            loading: r
-                .loading
-                .as_ref()
-                .map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
-            error: r
-                .error
-                .as_ref()
-                .map_or("DefaultError(error: e, retry: retry)".into(), |w| {
-                    w.call(in_builder)
-                }),
+        data: section.map(|d| {
+            let (loading, error) = fallbacks(r);
+            ViewDataCx {
+                provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+                invalidate: invalidate_expr(app, id, r, d),
+                loading,
+                error,
+                // Layouts are never deferred.
+                library: None,
+            }
         }),
         not_found: not_found_call(r),
     }
@@ -1096,8 +1231,42 @@ fn own_seg_fn(app: &App, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<Stri
     })
 }
 
+/// What a route shows while its data or its code loads, and when that fails: its nearest
+/// `loading.dart` and `error.dart`, or the runtime's defaults.
+fn fallbacks(r: &Route) -> (String, String) {
+    let loading = r
+        .loading
+        .as_ref()
+        .map_or("const DefaultLoading()".into(), |w| w.call(in_builder));
+    let error = r
+        .error
+        .as_ref()
+        .map_or("DefaultError(error: e, retry: retry)".into(), |w| {
+            w.call(in_builder)
+        });
+    (loading, error)
+}
+
+/// A deferred page without data: `page` in a `DeferredView` that loads `library` first.
+fn deferred_view(library: &str, page: &str, loading: &str, error: &str) -> String {
+    format!(
+        "DeferredView(\n  library: {library},\n  page: () => {},\n  loading: () => {loading},\n  error: (e, st, retry) => {error},\n)",
+        page.replace('\n', "\n  ")
+    )
+}
+
+/// `page`, the call that builds a route's own page, wearing `Semantics(identifier:)`, where `id`
+/// is the identifier as a Dart literal. The wrapper sits on the innermost call, so it is in the
+/// tree exactly when the page is built (a loading, error or not-found view does not carry it).
+/// `Semantics` has no `const` constructor, so the wrapper is never `const`; a `const` page call
+/// keeps its own `const`, so the page is still built once.
+pub(crate) fn with_semantics(id: &str, page: String) -> String {
+    format!("Semantics(identifier: {id}, container: true, child: {page})")
+}
+
 /// The `GoRoute` for a folder's page.dart. Its subfolders' routes nest below it,
 /// unless `nested` is off (a tab layout's own page sits beside its tabs).
+#[allow(clippy::too_many_arguments)]
 fn page_route(
     app: &App,
     id: usize,
@@ -1106,6 +1275,7 @@ fn page_route(
     nested: bool,
     inherited: &[usize],
     fns: &mut BTreeSet<ParamsFn>,
+    ids: bool,
 ) -> TreeCx {
     let r = &app.routes[id];
     let page = r.page.as_ref().expect("page_route needs a page.dart");
@@ -1113,7 +1283,7 @@ fn page_route(
         static_first(
             r.children
                 .iter()
-                .flat_map(|&c| routes_of(app, c, false, "", &[], true, fns))
+                .flat_map(|&c| routes_of(app, c, false, "", &[], true, fns, ids))
                 .collect(),
         )
     } else {
@@ -1123,20 +1293,37 @@ fn page_route(
     let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
     let remount = remount_args(r);
     let root_key = r.root && r.layout.is_none();
+    let (loading, error) = fallbacks(r);
+    let library = r.defers_page().then(|| format!("_lib{id}"));
     let data = r.data.as_ref().map(|d| ViewDataCx {
         provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
         invalidate: invalidate_expr(app, id, r, d),
-        loading: r
-            .loading
-            .as_ref()
-            .map_or("const DefaultLoading()".into(), |w| w.call(in_builder)),
-        error: r
-            .error
-            .as_ref()
-            .map_or("DefaultError(error: e, retry: retry)".into(), |w| {
-                w.call(in_builder)
-            }),
+        loading: loading.clone(),
+        error: error.clone(),
+        library: library.clone(),
     });
+    // A deferred page's class can't be named in a constant expression.
+    let page_call = if library.is_some() {
+        page.call_non_const(in_builder)
+    } else {
+        page.call(in_builder)
+    };
+    let page_call = if ids {
+        with_semantics(&dart_str(&resolve::semantics_id(&r.url)), page_call)
+    } else {
+        page_call
+    };
+    let page_expr = match (&library, &data) {
+        (Some(_), Some(_)) => with_sections(app, &page.args, page_call, fns, true),
+        (Some(lib), None) => with_sections(
+            app,
+            &page.args,
+            deferred_view(lib, &page_call, &loading, &error),
+            fns,
+            true,
+        ),
+        (None, _) => with_sections(app, &page.args, page_call, fns, true),
+    };
     TreeCx {
         layout: None,
         branches: vec![],
@@ -1148,7 +1335,7 @@ fn page_route(
         redirects,
         not_found_builder: false,
         seg_fn,
-        page: with_sections(app, &page.args, page.call(in_builder), fns, true),
+        page: page_expr,
         data,
         not_found: not_found_call(r),
         remount: remount.clone(),
@@ -1246,6 +1433,7 @@ fn tab_routes(
     tabs: &[Branch],
     inherited: &[usize],
     fns: &mut BTreeSet<ParamsFn>,
+    ids: bool,
 ) -> Vec<TreeCx> {
     // The tabs are siblings of the folder's page, so they share its path.
     let next = if path.is_empty() {
@@ -1262,9 +1450,9 @@ fn tab_routes(
         .enumerate()
         .map(|(i, b)| {
             let routes = match *b {
-                Branch::Own => vec![page_route(app, id, top, path, false, inherited, fns)],
+                Branch::Own => vec![page_route(app, id, top, path, false, inherited, fns, ids)],
                 Branch::Folder(c) => {
-                    static_first(routes_of(app, c, top, &next, &below, false, fns))
+                    static_first(routes_of(app, c, top, &next, &below, false, fns, ids))
                 }
             };
             // go_router opens a tab at its first route, and can't do that for a route with a
@@ -2002,6 +2190,7 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
         preload: Some(route_providers(app, id, r, ""))
             .filter(|p| !p.is_empty())
             .map(|p| p.join(", ")),
+        code: r.defers_page().then(|| format!("_lib{id}")),
         actions: actions_of(app, id, r),
     })
 }
@@ -2327,6 +2516,9 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     }
     if r.page.is_some() && remount_args(r).is_some() {
         tags.push("remount");
+    }
+    if r.defers_page() {
+        tags.push("deferred");
     }
     tags
 }

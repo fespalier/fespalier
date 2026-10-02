@@ -1,5 +1,5 @@
 //! What `fsp watch` keeps from one regeneration to the next, so a save redoes only what it
-//! changed. Three layers, from the cheapest to skip to the dearest:
+//! changed. Four layers, from the cheapest to skip to the dearest:
 //!
 //! 1. **The result of the last run.** Everything after the scan (resolve, check, emit) is a
 //!    function of the scanned tree, the files named below, and the configuration (which `watch`
@@ -16,6 +16,9 @@
 //!    formatted to are kept. A save that changes a page's `build` method changes the tree,
 //!    but not the generated code, and doesn't run `dart` at all.
 //! 3. **Parse results**, in [`crate::parse_cache`]: a changed tree parses only its changed files.
+//! 4. **The lint's per-file sites** ([`crate::lint::Sites`]): string paths are checked on every
+//!    run, reused or not, because they live in files the tree doesn't hold (`lib/screens/`).
+//!    Each file is parsed again only when its source changed.
 //!
 //! What isn't kept, on purpose: the resolver and the emitter run again for a changed tree.
 //! On the benchmark's 5,000-route app that is about 0.2 s, of which resolving is 30 ms, and
@@ -29,6 +32,7 @@ use std::collections::HashMap;
 
 use crate::diag::Diags;
 use crate::enums::{Libs, Reads};
+use crate::lint::{Sites, Table};
 use crate::scan::Node;
 
 /// What one scan → resolve → emit produced, before formatting.
@@ -38,6 +42,8 @@ pub struct Run {
     /// `(path relative to the project, generated code)`: the output, then the manifest if it
     /// has its own file. Empty when there are errors.
     pub files: Vec<(String, String)>,
+    /// The routes, for matching string paths ([`crate::lint`]); empty when there are errors.
+    pub table: Table,
 }
 
 struct Last {
@@ -50,11 +56,12 @@ struct Last {
     run: Run,
 }
 
-/// Layers 1 and 2 above, one field each so a run can hold one while it uses the other.
+/// Layers 1, 2 and 4 above, one field each so a run can hold one while it uses the other.
 #[derive(Default)]
 pub struct Session {
     pub last: LastRun,
     pub formats: Formats,
+    pub sites: Sites,
 }
 
 #[derive(Default)]

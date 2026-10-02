@@ -37,7 +37,8 @@
               "file": "checkout/page.dart",
               "folder": "checkout",
               "markers": [
-                "guard"
+                "guard",
+                "deferred"
               ],
               "params": [],
               "redirect": false,
@@ -73,7 +74,8 @@
                   "file": "products/$id/page.dart",
                   "folder": "products/$id",
                   "markers": [
-                    "data"
+                    "data",
+                    "deferred"
                   ],
                   "params": [
                     {

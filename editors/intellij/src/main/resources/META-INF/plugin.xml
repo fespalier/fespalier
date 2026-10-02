@@ -10,8 +10,9 @@
     <ul>
         <li><b>Inline diagnostics.</b> A file under the app folder
             (<code>fespalier: app_dir:</code> in <code>pubspec.yaml</code>, <code>lib/app</code> by default)
-            is highlighted with the problems <code>fsp check --json</code> reports for it, with severity.
-            Saving a file checks again.</li>
+            or any other Dart file under <code>lib/</code> (a string path that matches no route, since
+            fespalier 0.7.0) is highlighted with the problems <code>fsp check --json</code> reports for it,
+            with severity. Saving a file checks again.</li>
         <li><b>Tools | fespalier: Generate</b> runs <code>fsp gen</code> and writes <code>lib/app.g.dart</code>.
             <b>Tools | fespalier: Check</b> checks on demand and lists what it found.</li>
         <li><b>Runner.</b> Uses <code>fsp</code> from your PATH, or <code>dart run fespalier</code> when there

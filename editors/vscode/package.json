@@ -67,7 +67,7 @@
         "fespalier.checkOnSave": {
           "type": "boolean",
           "default": true,
-          "description": "Run fsp check when a file under the app folder (fespalier: app_dir in pubspec.yaml, lib/app by default) is saved."
+          "description": "Run fsp check when a file under the app folder (fespalier: app_dir in pubspec.yaml, lib/app by default) or a Dart file under lib/ is saved."
         }
       }
     }

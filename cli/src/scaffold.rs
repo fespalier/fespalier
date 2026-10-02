@@ -150,6 +150,7 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         &scan::scan(&app_dir, &mut diags)?,
         true,
         crate::config::Remount::Never,
+        false,
         &libs,
         &mut diags,
     );

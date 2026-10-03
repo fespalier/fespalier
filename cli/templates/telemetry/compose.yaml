@@ -43,6 +43,7 @@ services:
       <<: *credentials
       FSP_O2_URL: http://openobserve:5080
       FSP_O2_WAIT: ${FSP_O2_WAIT:-180}
+      FSP_O2_PORT: ${FSP_O2_PORT:-5080}
     volumes:
       - ./openobserve:/fespalier:ro
       - dashboards-state:/state
@@ -62,7 +63,7 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
       GF_NEWS_NEWS_FEED_ENABLED: "false"
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/fespalier/grafana-dashboards/navigation.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/fespalier/grafana-dashboards/health.json
     volumes:
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro

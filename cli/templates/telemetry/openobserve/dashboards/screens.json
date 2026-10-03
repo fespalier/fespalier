@@ -1,0 +1,1307 @@
+{
+  "version": 8,
+  "title": "fespalier · Screens",
+  "description": "Are screens opening fast, where do people go, and what slows a screen down: its checks (guard.dart), its content (data.dart) or its code (deferred pages)?",
+  "role": "",
+  "owner": "",
+  "tabs": [
+    {
+      "tabId": "default",
+      "name": "Overview",
+      "panels": [
+        {
+          "id": "panel_about",
+          "type": "markdown",
+          "title": "What a screen is",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 192,
+            "h": 6,
+            "i": 1
+          },
+          "markdownContent": "A **screen** is a route: a `page.dart` under `lib/app/`. **Open** runs from the tap to its first frame (redirects and guards included). **Content** is the `data.dart` load that follows. Colours as on App health: 🟢 good · 🟠 needs attention · 🔴 bad · grey: not enough data yet."
+        },
+        {
+          "id": "panel_screens_viewed",
+          "type": "metric",
+          "title": "How many screens were viewed?",
+          "description": "Screens that opened in this time range (back and tab switches included, refreshes not). It tells you how much the other tiles are based on.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS views FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'ok' AND fespalier_navigation_kind <> 'refresh' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "views",
+                    "alias": "views",
+                    "column": "views",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 6,
+            "w": 48,
+            "h": 8,
+            "i": 2
+          }
+        },
+        {
+          "id": "panel_screens_open",
+          "type": "metric",
+          "title": "Do screens open quickly?",
+          "description": "Time from a tap to the new screen's first frame, for the slowest 5 % of opens. Good: under 300 ms. If not: open Screens; slow ones usually wait on a guard.dart or build too much in page.dart.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": "milliseconds",
+            "decimals": 1,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "300",
+                "color": "#fab219"
+              },
+              {
+                "type": "gte",
+                "value": "1000",
+                "color": "#d03b3b"
+              }
+            ],
+            "no_value_replacement": "Not enough data yet"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT CASE WHEN SUM(CASE WHEN fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded' THEN 1 ELSE 0 END) >= 20 THEN approx_percentile_cont(CASE WHEN fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded' THEN duration END, 0.95) / 1000.0 END AS p95_ms FROM \"default\" WHERE service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "p95_ms",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 6,
+            "w": 48,
+            "h": 8,
+            "i": 3
+          }
+        },
+        {
+          "id": "panel_content_loads",
+          "type": "metric",
+          "title": "Does content load quickly?",
+          "description": "How long data.dart takes to deliver a screen's content, slowest 5 %. Good: under 1 s. If not: Screens lists each data.dart; cache it (dataCache), load less, or show what you have first.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": "milliseconds",
+            "decimals": 1,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "1000",
+                "color": "#fab219"
+              },
+              {
+                "type": "gte",
+                "value": "3000",
+                "color": "#d03b3b"
+              }
+            ],
+            "no_value_replacement": "Not enough data yet"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT CASE WHEN SUM(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN 1 ELSE 0 END) >= 20 THEN approx_percentile_cont(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN duration END, 0.95) / 1000.0 END AS p95_ms FROM \"default\" WHERE service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "p95_ms",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 6,
+            "w": 48,
+            "h": 8,
+            "i": 4
+          }
+        },
+        {
+          "id": "panel_dead_ends",
+          "type": "metric",
+          "title": "How often does a link lead nowhere?",
+          "description": "Share of navigations that matched no route and showed not_found.dart. Good: under 1 %. If not: check the links you build by hand; typed routes (AppRoutes) cannot go wrong.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": "percent",
+            "decimals": 1,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "1",
+                "color": "#fab219"
+              },
+              {
+                "type": "gte",
+                "value": "5",
+                "color": "#d03b3b"
+              }
+            ],
+            "no_value_replacement": "Not enough data yet"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT CASE WHEN SUM(CASE WHEN fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded' THEN 1 ELSE 0 END) >= 20 THEN 100.0 * SUM(CASE WHEN fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'not_found' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded' THEN 1 ELSE 0 END), 0) END AS not_found_pct FROM \"default\" WHERE service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "not_found_pct",
+                    "alias": "not_found_pct",
+                    "column": "not_found_pct",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 144,
+            "y": 6,
+            "w": 48,
+            "h": 8,
+            "i": 5
+          }
+        },
+        {
+          "id": "panel_by_screen",
+          "type": "table",
+          "title": "How long does each screen take?",
+          "description": "Every screen with its typical (p50) and slowest-5 % (p95) open time, and its content load. Sort by any column. A red Open usually means a slow guard.dart or a heavy page.dart build.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 1,
+            "override_config": [
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "views"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "open_p50"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "milliseconds",
+                      "customUnit": null
+                    }
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "open_p95"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "milliseconds",
+                      "customUnit": null
+                    }
+                  },
+                  {
+                    "type": "conditional_styles",
+                    "rules": [
+                      {
+                        "operator": ">=",
+                        "threshold": 0,
+                        "bgColor": "#f0fdf4",
+                        "textColor": "#15803d"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 300,
+                        "bgColor": "#fefce8",
+                        "textColor": "#a16207"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 1000,
+                        "bgColor": "#fef2f2",
+                        "textColor": "#b91c1c"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "content_p95"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "milliseconds",
+                      "customUnit": null
+                    }
+                  },
+                  {
+                    "type": "conditional_styles",
+                    "rules": [
+                      {
+                        "operator": ">=",
+                        "threshold": 0,
+                        "bgColor": "#f0fdf4",
+                        "textColor": "#15803d"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 1000,
+                        "bgColor": "#fefce8",
+                        "textColor": "#a16207"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 3000,
+                        "bgColor": "#fef2f2",
+                        "textColor": "#b91c1c"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_route AS route, SUM(CASE WHEN fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'ok' AND fespalier_navigation_kind <> 'refresh' THEN 1 ELSE 0 END) AS views, approx_percentile_cont(CASE WHEN fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded' THEN duration END, 0.5) / 1000.0 AS open_p50, approx_percentile_cont(CASE WHEN fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded' THEN duration END, 0.95) / 1000.0 AS open_p95, approx_percentile_cont(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN duration END, 0.95) / 1000.0 AS content_p95 FROM \"default\" WHERE fespalier_route IS NOT NULL AND service_name = '$service' GROUP BY route ORDER BY open_p95 DESC NULLS LAST",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Screen",
+                    "alias": "route",
+                    "column": "route",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Views",
+                    "alias": "views",
+                    "column": "views",
+                    "color": null
+                  },
+                  {
+                    "label": "Open, typical",
+                    "alias": "open_p50",
+                    "column": "open_p50",
+                    "color": null
+                  },
+                  {
+                    "label": "Open, slowest 5 %",
+                    "alias": "open_p95",
+                    "column": "open_p95",
+                    "color": null
+                  },
+                  {
+                    "label": "Content, slowest 5 %",
+                    "alias": "content_p95",
+                    "column": "content_p95",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 14,
+            "w": 192,
+            "h": 12,
+            "i": 6
+          }
+        },
+        {
+          "id": "panel_open_over_time",
+          "type": "line",
+          "title": "Are screens getting slower?",
+          "description": "The slowest-5 % open time over time. The dashed lines are the good (300 ms) and bad (1 s) marks. A jump right after a change points at that change.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "milliseconds",
+            "decimals": 1,
+            "mark_line": [
+              {
+                "name": "good",
+                "type": "yAxis",
+                "value": "300"
+              },
+              {
+                "name": "bad",
+                "type": "yAxis",
+                "value": "1000"
+              }
+            ]
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS t, approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded' AND service_name = '$service' GROUP BY t ORDER BY t",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "t",
+                    "column": "t",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Slowest 5 % of opens",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 26,
+            "w": 192,
+            "h": 16,
+            "i": 7
+          }
+        },
+        {
+          "id": "panel_most_viewed",
+          "type": "bar",
+          "title": "Which screens do people open most?",
+          "description": "Your busiest screens: make these fast first.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_route AS route, COUNT(*) AS n FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'ok' AND fespalier_navigation_kind <> 'refresh' AND service_name = '$service' GROUP BY route ORDER BY n DESC LIMIT 10",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Screen",
+                    "alias": "route",
+                    "column": "route",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Views",
+                    "alias": "n",
+                    "column": "n",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 42,
+            "w": 96,
+            "h": 16,
+            "i": 8
+          }
+        },
+        {
+          "id": "panel_journeys",
+          "type": "table",
+          "title": "Where do people go next?",
+          "description": "The most common moves from one screen to the next. A surprising path can mean a confusing button.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_navigation_from AS from_screen, fespalier_route AS to_screen, COUNT(*) AS n FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'ok' AND fespalier_navigation_kind <> 'refresh' AND fespalier_navigation_from IS NOT NULL AND service_name = '$service' GROUP BY from_screen, to_screen ORDER BY n DESC LIMIT 10",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "From",
+                    "alias": "from_screen",
+                    "column": "from_screen",
+                    "color": null
+                  },
+                  {
+                    "label": "To",
+                    "alias": "to_screen",
+                    "column": "to_screen",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Times",
+                    "alias": "n",
+                    "column": "n",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 42,
+            "w": 96,
+            "h": 16,
+            "i": 9
+          }
+        },
+        {
+          "id": "panel_by_data",
+          "type": "table",
+          "title": "Which data.dart files are slow or failing?",
+          "description": "Each data.dart with its loads, failure rate and slowest-5 % time. Abandoned means the user left before it finished; many abandoned loads mean it is too slow.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 1,
+            "override_config": [
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "loads"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "failed_pct"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "percent",
+                      "customUnit": null
+                    }
+                  },
+                  {
+                    "type": "conditional_styles",
+                    "rules": [
+                      {
+                        "operator": ">=",
+                        "threshold": 0,
+                        "bgColor": "#f0fdf4",
+                        "textColor": "#15803d"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 1,
+                        "bgColor": "#fefce8",
+                        "textColor": "#a16207"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 5,
+                        "bgColor": "#fef2f2",
+                        "textColor": "#b91c1c"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "abandoned"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "p50_ms"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "milliseconds",
+                      "customUnit": null
+                    }
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "p95_ms"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "milliseconds",
+                      "customUnit": null
+                    }
+                  },
+                  {
+                    "type": "conditional_styles",
+                    "rules": [
+                      {
+                        "operator": ">=",
+                        "threshold": 0,
+                        "bgColor": "#f0fdf4",
+                        "textColor": "#15803d"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 1000,
+                        "bgColor": "#fefce8",
+                        "textColor": "#a16207"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 3000,
+                        "bgColor": "#fef2f2",
+                        "textColor": "#b91c1c"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_file AS file, fespalier_route AS route, COUNT(*) AS loads, 100.0 * SUM(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state = 'error' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN 1 ELSE 0 END), 0) AS failed_pct, SUM(CASE WHEN fespalier_data_state = 'disposed' THEN 1 ELSE 0 END) AS abandoned, approx_percentile_cont(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN duration END, 0.5) / 1000.0 AS p50_ms, approx_percentile_cont(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN duration END, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'data' AND service_name = '$service' GROUP BY file, route ORDER BY p95_ms DESC NULLS LAST",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "File",
+                    "alias": "file",
+                    "column": "file",
+                    "color": null
+                  },
+                  {
+                    "label": "Screen",
+                    "alias": "route",
+                    "column": "route",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Loads",
+                    "alias": "loads",
+                    "column": "loads",
+                    "color": null
+                  },
+                  {
+                    "label": "Failed",
+                    "alias": "failed_pct",
+                    "column": "failed_pct",
+                    "color": null
+                  },
+                  {
+                    "label": "Abandoned",
+                    "alias": "abandoned",
+                    "column": "abandoned",
+                    "color": null
+                  },
+                  {
+                    "label": "Typical",
+                    "alias": "p50_ms",
+                    "column": "p50_ms",
+                    "color": null
+                  },
+                  {
+                    "label": "Slowest 5 %",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 58,
+            "w": 192,
+            "h": 16,
+            "i": 10
+          }
+        },
+        {
+          "id": "panel_by_guard",
+          "type": "table",
+          "title": "Do checks slow screens down?",
+          "description": "Each guard.dart and redirect.dart: how often it ran, sent people elsewhere or threw, and how long an async one kept them waiting. A check runs before the screen shows, so keep it under 100 ms.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 1,
+            "override_config": [
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "ran"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "sent_elsewhere"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "failed"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "wait_p95"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "milliseconds",
+                      "customUnit": null
+                    }
+                  },
+                  {
+                    "type": "conditional_styles",
+                    "rules": [
+                      {
+                        "operator": ">=",
+                        "threshold": 0,
+                        "bgColor": "#f0fdf4",
+                        "textColor": "#15803d"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 100,
+                        "bgColor": "#fefce8",
+                        "textColor": "#a16207"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 300,
+                        "bgColor": "#fef2f2",
+                        "textColor": "#b91c1c"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_file AS file, COUNT(*) AS ran, SUM(CASE WHEN fespalier_guard_decision = 'redirect' THEN 1 ELSE 0 END) AS sent_elsewhere, SUM(CASE WHEN fespalier_guard_decision = 'error' THEN 1 ELSE 0 END) AS failed, approx_percentile_cont(CASE WHEN fespalier_async = 'true' THEN duration END, 0.95) / 1000.0 AS wait_p95 FROM \"default\" WHERE fespalier_operation IN ('guard', 'redirect') AND service_name = '$service' GROUP BY file ORDER BY ran DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "File",
+                    "alias": "file",
+                    "column": "file",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Ran",
+                    "alias": "ran",
+                    "column": "ran",
+                    "color": null
+                  },
+                  {
+                    "label": "Sent elsewhere",
+                    "alias": "sent_elsewhere",
+                    "column": "sent_elsewhere",
+                    "color": null
+                  },
+                  {
+                    "label": "Failed",
+                    "alias": "failed",
+                    "column": "failed",
+                    "color": null
+                  },
+                  {
+                    "label": "Wait, slowest 5 %",
+                    "alias": "wait_p95",
+                    "column": "wait_p95",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 74,
+            "w": 96,
+            "h": 16,
+            "i": 11
+          }
+        },
+        {
+          "id": "panel_sent_elsewhere",
+          "type": "table",
+          "title": "Where were people sent instead?",
+          "description": "Screens people landed on after a guard or redirect.dart sent them away, usually the sign-in screen.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_route AS landed, COUNT(*) AS n FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_redirected = 'true' AND service_name = '$service' GROUP BY landed ORDER BY n DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Landed on",
+                    "alias": "landed",
+                    "column": "landed",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Times",
+                    "alias": "n",
+                    "column": "n",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 74,
+            "w": 96,
+            "h": 16,
+            "i": 12
+          }
+        },
+        {
+          "id": "panel_code_download",
+          "type": "table",
+          "title": "How long does a deferred page's code take to arrive?",
+          "description": "Only for deferred pages (deferred: true, mostly on the web): how long the page's code takes to download. Good: under 500 ms. If not: split it, or make fewer pages deferred.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 1,
+            "override_config": [
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "loads"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "failed"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "p95_ms"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "milliseconds",
+                      "customUnit": null
+                    }
+                  },
+                  {
+                    "type": "conditional_styles",
+                    "rules": [
+                      {
+                        "operator": ">=",
+                        "threshold": 0,
+                        "bgColor": "#f0fdf4",
+                        "textColor": "#15803d"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 500,
+                        "bgColor": "#fefce8",
+                        "textColor": "#a16207"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 2000,
+                        "bgColor": "#fef2f2",
+                        "textColor": "#b91c1c"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_file AS file, COUNT(*) AS loads, SUM(CASE WHEN fespalier_deferred_result = 'error' THEN 1 ELSE 0 END) AS failed, approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'deferred' AND service_name = '$service' GROUP BY file ORDER BY p95_ms DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "File",
+                    "alias": "file",
+                    "column": "file",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Loads",
+                    "alias": "loads",
+                    "column": "loads",
+                    "color": null
+                  },
+                  {
+                    "label": "Failed",
+                    "alias": "failed",
+                    "column": "failed",
+                    "color": null
+                  },
+                  {
+                    "label": "Slowest 5 %",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 90,
+            "w": 96,
+            "h": 16,
+            "i": 13
+          }
+        },
+        {
+          "id": "panel_kinds",
+          "type": "bar",
+          "title": "How do people get to screens?",
+          "description": "How screens were reached: app start, a link or tab (go), pushed on top, back, replaced, or the same screen again.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT CASE fespalier_navigation_kind WHEN 'initial' THEN 'App start' WHEN 'go' THEN 'Link, tab or go()' WHEN 'push' THEN 'Pushed on top' WHEN 'pop' THEN 'Back' WHEN 'replace' THEN 'Replaced' WHEN 'refresh' THEN 'Same screen again' ELSE fespalier_navigation_kind END AS kind, COUNT(*) AS n FROM \"default\" WHERE fespalier_operation = 'navigate' AND service_name = '$service' GROUP BY kind ORDER BY n DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "Reached by",
+                    "alias": "kind",
+                    "column": "kind",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Screens",
+                    "alias": "n",
+                    "column": "n",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 90,
+            "w": 96,
+            "h": 16,
+            "i": 14
+          }
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "list": [
+      {
+        "type": "query_values",
+        "name": "service",
+        "label": "App",
+        "query_data": {
+          "stream_type": "traces",
+          "stream": "default",
+          "field": "service_name",
+          "max_record_size": 20
+        },
+        "value": null,
+        "options": [],
+        "multiSelect": false
+      }
+    ],
+    "showDynamicFilters": false
+  },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "1h"
+  }
+}

@@ -129,69 +129,287 @@ def load_conventions(path=CONVENTIONS):
 
 # ---------------------------------------------------------------------------------------- spec
 
+# Macros with arguments: {name:arg|arg}. How many arguments each takes (split at the top-level `|`).
+CALLS = {
+    "p50_of": 1,
+    "p95_of": 1,
+    "n_of": 1,
+    "rate_of": 2,
+    "p95_gated": 1,
+    "pct": 2,
+    "verdict": 3,
+    "label": 2,
+    "pct_prom": 2,
+    "gate_prom": 1,
+}
+CALL = re.compile(r"\{(" + "|".join(sorted(CALLS, key=len, reverse=True)) + r"):")
+UNITS = ("ms", "percent", "count")
+TEXT_LIMIT = 280
 
-def expand(text, macros):
-    """Expands {name} and {sel:ops}, nested ones too."""
 
-    def sel(match):
-        ops = match.group(1)
-        if ops is None:
-            return 'service_name="$service"'
-        operator = "=~" if "|" in ops else "="
-        return f'fespalier_operation{operator}"{ops}", service_name="$service"'
+def fail(where, message):
+    raise SystemExit(f"{where}: {message}")
 
-    for _ in range(8):
-        before = text
-        text = re.sub(r"\{sel(?::([^}]*))?\}", sel, text)
-        text = re.sub(
-            r"\{(" + "|".join(map(re.escape, macros)) + r")\}", lambda m: macros[m.group(1)], text
+
+def matching_brace(text, start):
+    """The index of the `}` that closes the `{` at `start`."""
+    depth = 0
+    for index in range(start, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+    raise SystemExit(f"unbalanced braces in {text!r}")
+
+
+def split_args(text, count):
+    """Splits at the top-level `|` (outside quotes and braces), into exactly `count` parts."""
+    parts, depth, quote, start = [], 0, None, 0
+    for index, char in enumerate(text):
+        if quote:
+            quote = None if char == quote else quote
+        elif char in "'\"":
+            quote = char
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+        elif char == "|" and depth == 0 and len(parts) < count - 1:
+            parts.append(text[start:index])
+            start = index + 1
+    parts.append(text[start:])
+    if len(parts) != count:
+        raise SystemExit(f"expected {count} arguments separated by |, got {text!r}")
+    return [part.strip() for part in parts]
+
+
+def number(value):
+    """A threshold as it is written in SQL and JSON: 300, not 300.0."""
+    return str(int(value)) if float(value) == int(value) else str(value)
+
+
+def sql_text(text):
+    return "'" + text.replace("'", "''") + "'"
+
+
+class Context:
+    """The spec's shared tables, and the macros that need them."""
+
+    def __init__(self, spec):
+        self.spec = spec
+        self.style = spec["style"]
+        self.min_samples = int(self.style["min_samples"])
+        self.macros = {**spec.get("macros", {}), "min_samples": str(self.min_samples)}
+        self.thresholds = {}
+        for tid, item in spec.get("thresholds", {}).items():
+            if item.get("unit") not in UNITS:
+                fail(f"thresholds.{tid}", f"unit must be one of {UNITS}")
+            if item["good_below"] > item["bad_from"]:
+                fail(f"thresholds.{tid}", "good_below is above bad_from")
+            if not item.get("why"):
+                fail(f"thresholds.{tid}", "needs a `why`")
+            self.thresholds[tid] = {"id": tid, **item}
+        self.labels = spec.get("labels", {})
+
+    def threshold(self, tid, where):
+        if tid not in self.thresholds:
+            fail(where, f"{tid!r} is not in [thresholds]")
+        return self.thresholds[tid]
+
+    # -- macros ---------------------------------------------------------------------------
+
+    def call(self, name, body):
+        args = [self.expand(arg) for arg in split_args(body, CALLS[name])]
+        return getattr(self, f"call_{name}")(*args)
+
+    @staticmethod
+    def call_n_of(pred):
+        return f"SUM(CASE WHEN {pred} THEN 1 ELSE 0 END)"
+
+    @staticmethod
+    def call_p50_of(pred):
+        return f"approx_percentile_cont(CASE WHEN {pred} THEN duration END, 0.5) / 1000.0"
+
+    @staticmethod
+    def call_p95_of(pred):
+        return f"approx_percentile_cont(CASE WHEN {pred} THEN duration END, 0.95) / 1000.0"
+
+    def call_rate_of(self, num, den):
+        return f"100.0 * {self.call_n_of(num)} / NULLIF({self.call_n_of(den)}, 0)"
+
+    def call_p95_gated(self, pred):
+        return f"CASE WHEN {self.call_n_of(pred)} >= {self.min_samples} THEN {self.call_p95_of(pred)} END"
+
+    def call_pct(self, num, den):
+        return f"CASE WHEN {self.call_n_of(den)} >= {self.min_samples} THEN {self.call_rate_of(num, den)} END"
+
+    @staticmethod
+    def call_pct_prom(den, ok):
+        # OpenObserve's PromQL answers nothing for `X or vector(0)` when X is empty, so the failures
+        # are the calls minus the ones that did not fail: 0 when nothing failed.
+        total = f"sum(sum_over_time(fespalier_calls{{{den}}}[$__range]))"
+        passed = f"sum(sum_over_time(fespalier_calls{{{ok}}}[$__range]))"
+        return f"100 * ({total} - {passed}) / {total}"
+
+    def call_gate_prom(self, selector):
+        return f"and on() (sum(sum_over_time(fespalier_calls{{{selector}}}[$__range])) >= {self.min_samples})"
+
+    def call_label(self, name, column):
+        labels = self.labels.get(name)
+        if not labels:
+            raise SystemExit(f"{{label:{name}}}: there is no [labels.{name}]")
+        whens = " ".join(f"WHEN {sql_text(k)} THEN {sql_text(v)}" for k, v in labels.items())
+        return f"CASE {column} {whens} ELSE {column} END"
+
+    def call_verdict(self, tid, value, count):
+        t = self.threshold(tid, "{verdict}")
+        if t["unit"] == "ms":
+            shown = (
+                f"CASE WHEN {value} >= 1000 THEN CAST(ROUND({value} / 1000.0, 1) AS VARCHAR) || ' s' "
+                f"ELSE CAST(CAST(ROUND({value}) AS BIGINT) AS VARCHAR) || ' ms' END"
+            )
+        elif t["unit"] == "percent":
+            shown = f"CAST(ROUND({value}, 1) AS VARCHAR) || ' %'"
+        else:
+            raise SystemExit(f"{{verdict:{tid}}}: a count has no verdict string")
+        middle = ""
+        if t["good_below"] < t["bad_from"]:
+            middle = f"WHEN {value} < {number(t['bad_from'])} THEN '! Needs attention · ' "
+        return (
+            f"CASE WHEN {count} < {self.min_samples} THEN '… Too few to judge (' || CAST({count} AS VARCHAR) || ')' "
+            f"ELSE (CASE WHEN {value} < {number(t['good_below'])} THEN '✓ Good · ' {middle}ELSE '✗ Bad · ' END) "
+            f"|| {shown} END"
         )
-        if text == before:
-            break
-    else:
-        raise SystemExit(f"macros do not settle in {text!r}")
-    return re.sub(r"\{ +", "{", re.sub(r" +\}", "}", text))
+
+    # -- expansion ------------------------------------------------------------------------
+
+    def expand(self, text):
+        """Expands {name}, {sel:ops} and the macros with arguments, nested ones too."""
+
+        def sel(match):
+            ops = match.group(1)
+            if ops is None:
+                return 'service_name="$service"'
+            operator = "=~" if "|" in ops else "="
+            return f'fespalier_operation{operator}"{ops}", service_name="$service"'
+
+        names = "|".join(map(re.escape, self.macros))
+        for _ in range(12):
+            before = text
+            text = self.expand_calls(text)
+            text = re.sub(r"\{sel(?::([^}]*))?\}", sel, text)
+            text = re.sub(r"\{(" + names + r")\}", lambda m: self.macros[m.group(1)], text)
+            if text == before:
+                break
+        else:
+            raise SystemExit(f"macros do not settle in {text!r}")
+        return re.sub(r"\{ +", "{", re.sub(r" +\}", "}", text))
+
+    def expand_calls(self, text):
+        out, pos = [], 0
+        while True:
+            match = CALL.search(text, pos)
+            if not match:
+                out.append(text[pos:])
+                return "".join(out)
+            end = matching_brace(text, match.start())
+            out.append(text[pos : match.start()])
+            out.append(self.call(match.group(1), text[match.end() : end]))
+            pos = end + 1
 
 
 def prepare(spec, conventions):
-    """The spec with macros expanded."""
-    macros = spec.get("macros", {})
-    dashboards = []
+    """The spec with macros expanded, panels copied from `same_as`, and thresholds resolved."""
+    ctx = Context(spec)
+    ids = [d["id"] for d in spec["dashboard"]]
+    homes = [d["id"] for d in spec["dashboard"] if d.get("home")]
+    if len(homes) != 1:
+        fail("dashboards", f"exactly one needs home = true, found {homes}")
+    raws, dashboards = {}, []
     for dash in spec["dashboard"]:
-        panels = []
-        for panel in dash["panels"]:
-            panel = dict(panel)
-            panel["columns"] = [dict(c) for c in panel["columns"]]
-            promql = [dict(p) for p in panel.get("promql", [])]
-            panel["sql"] = expand(panel["sql"], macros)
-            for target in promql:
-                target["expr"] = expand(target["expr"], macros)
-            panel["promql"] = promql
-            panel.setdefault("stream_type", "traces")
-            panel.setdefault("width", "quarter" if panel["type"] == "stat" else "half")
-            panel.setdefault("grafana", True)
-            for c in panel["columns"]:
-                c.setdefault("axis", "y")
-            panels.append(panel)
-        dashboards.append({**dash, "panels": panels})
+        panels, seen = [], set()
+        for raw in dash["panels"]:
+            where = f"{dash['id']}.{raw['id']}"
+            if "same_as" in raw:
+                base = raws.get(raw["same_as"])
+                if base is None:
+                    fail(where, f"same_as {raw['same_as']!r} names no earlier panel")
+                raw = {**base, **{k: v for k, v in raw.items() if k != "same_as"}}
+            if raw["id"] in seen:
+                fail(where, "the panel id is used twice in the dashboard")
+            seen.add(raw["id"])
+            raws[where] = raw
+            panels.append(prepare_panel(raw, dash, ids, ctx, where))
+        dashboards.append({**dash, "home": bool(dash.get("home")), "panels": panels})
     return dashboards
+
+
+def prepare_panel(raw, dash, ids, ctx, where):
+    panel = dict(raw)
+    kind = panel["type"]
+    panel["columns"] = [dict(c) for c in panel.get("columns", [])]
+    panel["promql"] = [dict(p) for p in panel.get("promql", [])]
+    panel["sql"] = ctx.expand(panel["sql"]) if panel.get("sql") else ""
+    for target in panel["promql"]:
+        target["expr"] = ctx.expand(target["expr"])
+    panel.setdefault("stream_type", "traces")
+    panel.setdefault("width", {"stat": "quarter", "text": "full"}.get(kind, "half"))
+    panel.setdefault("grafana", True)
+    for c in panel["columns"]:
+        c.setdefault("axis", "y")
+        c.setdefault("label", c["name"])
+    # Resolved thresholds, so that the generators need no lookups.
+    panel["limits"] = ctx.threshold(panel["verdict"], where) if panel.get("verdict") else None
+    panel["column_limits"] = {
+        column: ctx.threshold(tid, where) for column, tid in panel.get("verdicts", {}).items()
+    }
+    panel["mark_limits"] = ctx.threshold(panel["marks"], where) if panel.get("marks") else None
+    panel["label_sets"] = {}
+    for column, name in panel.get("labels", {}).items():
+        if name not in ctx.labels:
+            fail(where, f"labels: {column} -> [labels.{name}] does not exist")
+        panel["label_sets"][column] = dict(ctx.labels[name])
+    target = panel.get("drilldown") or None
+    panel["drilldown"] = None if target == dash["id"] else target
+    if panel["drilldown"] and panel["drilldown"] not in ids:
+        fail(where, f"drilldown names the dashboard {target!r}, which does not exist")
+    if kind == "text":
+        if not panel.get("content"):
+            fail(where, "a text panel needs `content`")
+        return panel
+    description = panel.get("description", "")
+    if not description or len(description) > TEXT_LIMIT:
+        fail(where, f"needs a description of 1 to {TEXT_LIMIT} characters, has {len(description)}")
+    if panel.get("verdict") and kind != "stat":
+        fail(where, "`verdict` is for stats; a table uses `verdicts`")
+    names = {c["name"] for c in panel["columns"]}
+    for column in [*panel.get("verdicts", {}), *panel.get("units", {}), *panel.get("labels", {})]:
+        if column not in names:
+            fail(where, f"{column!r} is not one of the columns")
+    if panel.get("sort") and panel["sort"] not in names:
+        fail(where, f"sort: {panel['sort']!r} is not one of the columns")
+    return panel
 
 
 # ----------------------------------------------------------------------------------- OpenObserve
 
-OO_TYPES = {"stat": "metric", "timeseries": "line", "bars": "bar", "table": "table"}
+OO_TYPES = {"stat": "metric", "timeseries": "line", "bars": "bar", "table": "table", "text": "markdown"}
+OO_UNITS = {"ms": "milliseconds", "percent": "percent"}
 OO_WIDTH = {"quarter": 48, "half": 96, "full": 192}
-OO_HEIGHT = {"stat": 8}
+OO_HEIGHT = {"stat": 8, "text": 6}
 GF_WIDTH = {"quarter": 6, "half": 12, "full": 24}
-GF_HEIGHT = {"stat": 4}
+GF_HEIGHT = {"stat": 4, "text": 3}
+FOLDER = "fespalier"
 
 
-def flow(panels, widths, heights, total, default_height):
+def flow(panels, widths, height, total, default_height):
     """Left to right, wrapping at `total`; a row is as high as its tallest panel."""
     placed, x, y, row_height = [], 0, 0, 0
     for panel in panels:
         w = widths[panel["width"]]
-        h = heights.get(panel["type"], default_height)
+        h = height(panel, default_height)
         if x + w > total:
             x, y, row_height = 0, y + row_height, 0
         placed.append({"x": x, "y": y, "w": w, "h": h})
@@ -200,14 +418,112 @@ def flow(panels, widths, heights, total, default_height):
     return placed
 
 
+def oo_height(panel, default):
+    return panel.get("height") or OO_HEIGHT.get(panel["type"], default)
+
+
+def gf_height(panel, default):
+    if panel.get("height"):
+        return max(3, round(panel["height"] * 9 / 16))
+    return GF_HEIGHT.get(panel["type"], default)
+
+
 def axis_item(column):
-    return {"label": column["name"], "alias": column["name"], "column": column["name"], "color": None}
+    return {"label": column["label"], "alias": column["name"], "column": column["name"], "color": None}
 
 
-def oo_panel(panel, number, layout):
+def grades(limits):
+    """The grades of a threshold, lowest first, each with the number it starts at."""
+    steps = [("good", 0)]
+    if limits["good_below"] < limits["bad_from"]:
+        steps += [("attention", limits["good_below"]), ("bad", limits["bad_from"])]
+    else:
+        steps += [("bad", limits["good_below"])]
+    return steps
+
+
+def oo_conditional_rules(style, limits):
+    rules = []
+    for grade, start in grades(limits):
+        background, text = style["table"][grade]
+        rules.append({"operator": ">=", "threshold": start, "bgColor": background, "textColor": text})
+    return rules
+
+
+def oo_panel(panel, ordinal, layout, style, titles):
     columns = panel["columns"]
-    unit = "milliseconds" if panel.get("unit") == "ms" else None
     kind = OO_TYPES[panel["type"]]
+    config = {
+        "show_legends": kind in ("line", "bar"),
+        "legends_position": None,
+        "unit": OO_UNITS.get(panel.get("unit")),
+        "decimals": 1 if panel.get("unit") or panel.get("units") else 0,
+    }
+    if panel["type"] == "stat" and panel["limits"]:
+        # The last matching mapping wins, and a mapping without `text` keeps the value.
+        config["mappings"] = [
+            {"type": "gte", "value": number(start), "color": style[grade]}
+            for grade, start in grades(panel["limits"])
+        ]
+    if panel.get("gate"):
+        config["no_value_replacement"] = style["no_data"]
+    if panel["type"] == "table":
+        overrides = []
+        for column in columns:
+            name = column["name"]
+            items = []
+            if name in panel.get("units", {}):
+                unit = {"unit": OO_UNITS[panel["units"][name]], "customUnit": None}
+                items.append({"type": "unit", "value": unit})
+            if name in panel["column_limits"]:
+                rules = oo_conditional_rules(style, panel["column_limits"][name])
+                items.append({"type": "conditional_styles", "rules": rules})
+            if panel.get("units") and column["axis"] == "y" and name not in panel["units"]:
+                # The panel shows one decimal for its times and percentages; a count is not one.
+                items.append({"type": "field_type", "value": "text"})
+            if items:
+                overrides.append({"field": {"matchBy": "name", "value": name}, "config": items})
+        if overrides:
+            config["override_config"] = overrides
+        mappings = [
+            {"type": "value", "value": value, "text": text}
+            for labels in panel["label_sets"].values()
+            for value, text in labels.items()
+        ]
+        if panel.get("transpose"):
+            for prefix, grade in (("^✓", "good"), ("^!", "attention"), ("^✗", "bad")):
+                background, text = style["table"][grade]
+                mappings.append({"type": "regex", "pattern": prefix, "color": background, "textColor": text})
+            config["table_transpose"] = True
+        if mappings:
+            config["mappings"] = mappings
+    if panel["mark_limits"]:
+        limits = panel["mark_limits"]
+        config["mark_line"] = [
+            {"name": "good", "type": "yAxis", "value": number(limits["good_below"])},
+            {"name": "bad", "type": "yAxis", "value": number(limits["bad_from"])},
+        ]
+    # A click on a stat tile does nothing in OpenObserve (checked on v1.0.4); a table row opens it.
+    if panel["drilldown"] and panel["type"] != "stat":
+        title = titles[panel["drilldown"]]
+        config["drilldown"] = [
+            {
+                "name": f"Open {title}",
+                "type": "byDashboard",
+                "targetBlank": False,
+                "findBy": "name",
+                "data": {
+                    "folder": FOLDER,
+                    "dashboard": f"fespalier · {title}",
+                    "tab": "Overview",
+                    "passAllVariables": True,
+                    "variables": [],
+                    "url": "",
+                    "logsMode": "auto",
+                    "logsQuery": "",
+                },
+            }
+        ]
     fields = {
         "stream": "default",
         "stream_type": panel["stream_type"],
@@ -217,17 +533,12 @@ def oo_panel(panel, number, layout):
         "breakdown": [axis_item(c) for c in columns if c["axis"] == "breakdown"],
         "filter": {"filterType": "group", "logicalOperator": "AND", "conditions": []},
     }
-    return {
+    out = {
         "id": f"panel_{panel['id']}",
         "type": kind,
         "title": panel["title"],
-        "description": "",
-        "config": {
-            "show_legends": kind in ("line", "bar"),
-            "legends_position": None,
-            "unit": unit,
-            "decimals": 1 if unit else 0,
-        },
+        "description": panel.get("description", ""),
+        "config": config,
         "queryType": "sql",
         "queries": [
             {
@@ -238,13 +549,16 @@ def oo_panel(panel, number, layout):
                 "config": {"promql_legend": ""},
             }
         ],
-        "layout": {**layout, "i": number},
+        "layout": {**layout, "i": ordinal},
     }
+    if panel["type"] == "text":
+        out["markdownContent"] = panel["content"]
+    return out
 
 
-def openobserve_dashboard(dash):
+def openobserve_dashboard(dash, style, titles):
     panels = dash["panels"]
-    layouts = flow(panels, OO_WIDTH, OO_HEIGHT, 192, 16)
+    layouts = flow(panels, OO_WIDTH, oo_height, 192, 16)
     return {
         "version": 8,
         "title": f"fespalier · {dash['title']}",
@@ -256,7 +570,7 @@ def openobserve_dashboard(dash):
                 "tabId": "default",
                 "name": "Overview",
                 "panels": [
-                    oo_panel(p, n, layouts[n - 1]) for n, p in enumerate(panels, 1)
+                    oo_panel(p, n, layouts[n - 1], style, titles) for n, p in enumerate(panels, 1)
                 ],
             }
         ],
@@ -287,6 +601,7 @@ def openobserve_dashboard(dash):
 
 DS = {"type": "prometheus", "uid": "fespalier-openobserve"}
 REF_IDS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+GF_UNITS = {"ms": "ms", "percent": "percent"}
 
 
 def table_columns(panel):
@@ -299,19 +614,59 @@ def table_columns(panel):
     return result
 
 
-def grafana_panel(panel, number, grid):
+def gf_label(panel, name):
+    """The header a person reads for a column (or for an extra target)."""
+    for column in panel["columns"]:
+        if column["name"] == name:
+            return column["label"]
+    for target in panel["promql"]:
+        if target.get("name") == name:
+            return target.get("label", name)
+    return name
+
+
+def gf_steps(style, limits):
+    colors = style["grafana"]
+    steps = [{"color": colors["good"], "value": None}]
+    for grade, start in grades(limits)[1:]:
+        steps.append({"color": colors[grade], "value": start})
+    return steps
+
+
+def gf_mappings(labels):
+    options = {value: {"text": text, "index": i} for i, (value, text) in enumerate(labels.items())}
+    return [{"type": "value", "options": options}]
+
+
+def grafana_panel(panel, ordinal, grid, style, titles):
     kind = panel["type"]
+    if kind == "text":
+        return {
+            "id": ordinal,
+            "type": "text",
+            "title": panel["title"],
+            "gridPos": grid,
+            "options": {"mode": "markdown", "content": panel.get("content_grafana", panel["content"])},
+        }
     category_bars = kind == "bars" and not any(c.get("time") for c in panel["columns"])
     tabular = kind == "table" or category_bars
     gf_type = {"stat": "stat", "timeseries": "timeseries", "bars": "timeseries", "table": "table"}[kind]
     if category_bars:
         gf_type = "barchart"
     defaults = {
-        "unit": "ms" if panel.get("unit") == "ms" else "short",
+        "unit": GF_UNITS.get(panel.get("unit"), "short"),
         "color": {"mode": "fixed", "fixedColor": "text"},
         "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": None}]},
     }
     options = {}
+    link = None
+    if panel["drilldown"]:
+        link = {
+            "title": f"Open {titles[panel['drilldown']]}",
+            "url": f"/d/fespalier-{panel['drilldown']}?${{__url_time_range}}&${{service:queryparam}}",
+        }
+        if kind == "stat":
+            defaults["links"] = [link]
     if kind == "stat":
         options = {
             "colorMode": "none",
@@ -319,15 +674,35 @@ def grafana_panel(panel, number, grid):
             "textMode": "value",
             "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
         }
+        if panel["limits"]:
+            defaults["color"] = {"mode": "thresholds"}
+            defaults["thresholds"] = {"mode": "absolute", "steps": gf_steps(style, panel["limits"])}
+            options["colorMode"] = "background_solid"
+        if panel.get("gate"):
+            defaults["noValue"] = style["no_data"]
+        elif not panel.get("unit"):
+            # A count with nothing to count is a series that does not exist: show it as 0.
+            defaults["noValue"] = "0"
     elif kind == "bars" and not category_bars:
         defaults["custom"] = {
             "drawStyle": "bars",
             "fillOpacity": 80,
             "stacking": {"mode": "normal", "group": "A"},
         }
+    elif kind == "timeseries" and panel["mark_limits"]:
+        limits = panel["mark_limits"]
+        colors = style["grafana"]
+        defaults["custom"] = {"thresholdsStyle": {"mode": "dashed"}}
+        defaults["thresholds"] = {
+            "mode": "absolute",
+            "steps": [
+                {"color": "text", "value": None},
+                {"color": colors["attention"], "value": limits["good_below"]},
+                {"color": colors["bad"], "value": limits["bad_from"]},
+            ],
+        }
     elif category_bars:
         defaults["color"] = {"mode": "palette-classic"}
-        defaults["thresholds"] = {"mode": "absolute", "steps": [{"color": "text", "value": None}]}
     targets = []
     for index, target in enumerate(panel["promql"]):
         item = {
@@ -344,27 +719,31 @@ def grafana_panel(panel, number, grid):
             item.update({"instant": False, "range": True})
         targets.append(item)
     out = {
-        "id": number,
+        "id": ordinal,
         "type": gf_type,
         "title": panel["title"],
-        "description": "",
+        "description": panel["description"],
         "datasource": DS,
-        "gridPos": {**grid, "h": grid["h"]},
+        "gridPos": grid,
         "targets": targets,
         "fieldConfig": {"defaults": defaults, "overrides": []},
         "options": options,
     }
     if tabular:
         values = {
-            f"Value #{REF_IDS[i]}": name for i, (_, name) in enumerate(table_columns(panel))
+            f"Value #{REF_IDS[i]}": gf_label(panel, name) for i, (_, name) in enumerate(table_columns(panel))
         }
-        rename = {**panel.get("rename", {}), **values}
+        rename = {prom: gf_label(panel, column) for prom, column in panel.get("rename", {}).items()}
+        rename.update(values)
+        if len(values) == 1:
+            # With a single query Grafana names the column "Value", not "Value #A".
+            rename["Value"] = next(iter(values.values()))
         labels = {v: k for k, v in panel.get("rename", {}).items()}
         order = []
         for column in panel["columns"]:
             if column["axis"] == "x" and not column.get("oo_only") and column["name"] in labels:
                 order.append(labels[column["name"]])
-        order += list(values)
+        order += list(values) + (["Value"] if len(values) == 1 else [])
         out["transformations"] = [
             {"id": "merge", "options": {}},
             {
@@ -376,16 +755,33 @@ def grafana_panel(panel, number, grid):
                 },
             },
         ]
-        ms = [name for name in values.values() if name.endswith("_ms")]
-        out["fieldConfig"]["overrides"] = [
-            {
-                "matcher": {"id": "byName", "options": name},
-                "properties": [{"id": "unit", "value": "ms"}],
-            }
-            for name in ms
-        ]
+        first_x = next((c for c in panel["columns"] if c["axis"] == "x" and not c.get("oo_only")), None)
+        for column in panel["columns"]:
+            name = column["name"]
+            if column.get("oo_only") or column["axis"] == "breakdown":
+                continue
+            properties = []
+            if name in panel.get("units", {}):
+                properties.append({"id": "unit", "value": GF_UNITS[panel["units"][name]]})
+            if name in panel["column_limits"]:
+                steps = gf_steps(style, panel["column_limits"][name])
+                properties += [
+                    {"id": "thresholds", "value": {"mode": "absolute", "steps": steps}},
+                    {"id": "color", "value": {"mode": "thresholds"}},
+                    {"id": "custom.cellOptions", "value": {"type": "color-text"}},
+                ]
+            if name in panel["label_sets"]:
+                properties.append({"id": "mappings", "value": gf_mappings(panel["label_sets"][name])})
+            if link and column is first_x:
+                # Every cell of a column with a link is drawn as one, so only the first column has it.
+                properties.append({"id": "links", "value": [link]})
+            if properties:
+                matcher = {"id": "byName", "options": column["label"]}
+                out["fieldConfig"]["overrides"].append({"matcher": matcher, "properties": properties})
+        if kind == "table" and panel.get("sort"):
+            out["options"] = {"sortBy": [{"displayName": gf_label(panel, panel["sort"]), "desc": True}]}
         if category_bars:
-            x = next(c["name"] for c in panel["columns"] if c["axis"] == "x")
+            x = next(c["label"] for c in panel["columns"] if c["axis"] == "x")
             out["options"] = {
                 "xField": x,
                 "orientation": "auto",
@@ -393,14 +789,21 @@ def grafana_panel(panel, number, grid):
                 "stacking": "none",
                 "showValue": "auto",
             }
+    elif kind == "bars":
+        # A series is named by its legend, which shows the raw value: rename it.
+        for labels in panel["label_sets"].values():
+            for value, text in labels.items():
+                matcher = {"id": "byName", "options": value}
+                properties = [{"id": "displayName", "value": text}]
+                out["fieldConfig"]["overrides"].append({"matcher": matcher, "properties": properties})
     if panel.get("links"):
         out["links"] = [{**link, "targetBlank": True} for link in panel["links"]]
     return out
 
 
-def grafana_dashboard(dash):
+def grafana_dashboard(dash, style, titles):
     panels = [p for p in dash["panels"] if p["grafana"]]
-    grids = flow(panels, GF_WIDTH, GF_HEIGHT, 24, 9)
+    grids = flow(panels, GF_WIDTH, gf_height, 24, 9)
     return {
         "uid": f"fespalier-{dash['id']}",
         "title": f"fespalier · {dash['title']}",
@@ -410,6 +813,16 @@ def grafana_dashboard(dash):
         "schemaVersion": 41,
         "time": {"from": "now-1h", "to": "now"},
         "refresh": "30s",
+        "links": [
+            {
+                "title": "fespalier",
+                "type": "dashboards",
+                "tags": ["fespalier"],
+                "asDropdown": False,
+                "includeVars": True,
+                "keepTime": True,
+            }
+        ],
         "templating": {
             "list": [
                 {
@@ -427,7 +840,7 @@ def grafana_dashboard(dash):
                 }
             ]
         },
-        "panels": [grafana_panel(p, n, grids[n - 1]) for n, p in enumerate(panels, 1)],
+        "panels": [grafana_panel(p, n, grids[n - 1], style, titles) for n, p in enumerate(panels, 1)],
     }
 
 
@@ -480,21 +893,29 @@ def collector_text(current, keys):
 def build(spec_path=SPEC, conventions=None, out=OUT):
     """Maps each output path (relative to the repo) to its text."""
     conventions = conventions or load_conventions()
-    with open(spec_path, "rb") as handle:
-        spec = tomllib.load(handle)
+    spec = load_spec(spec_path)
     dashboards = prepare(spec, conventions)
+    titles = {d["id"]: d["title"] for d in dashboards}
+    style = spec["style"]
     files = {}
     for dash in dashboards:
         files[out / "openobserve/dashboards" / f"{dash['id']}.json"] = dump(
-            openobserve_dashboard(dash)
+            openobserve_dashboard(dash, style, titles)
         )
-        files[out / "grafana/dashboards" / f"{dash['id']}.json"] = dump(grafana_dashboard(dash))
+        files[out / "grafana/dashboards" / f"{dash['id']}.json"] = dump(
+            grafana_dashboard(dash, style, titles)
+        )
     files[out / "openobserve/fields.json"] = dump(fields_json(conventions))
     config = out / "collector/config.yaml"
     files[config] = collector_text(
         config.read_text(encoding="utf-8"), dimensions(dashboards, conventions)
     )
     return files, dashboards
+
+
+def load_spec(path=SPEC):
+    with open(path, "rb") as handle:
+        return tomllib.load(handle)
 
 
 def stale_files(files, out=OUT):

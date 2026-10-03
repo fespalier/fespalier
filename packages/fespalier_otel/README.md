@@ -81,6 +81,16 @@ takes as "telemetry off", so a store build never sends to a developer's computer
 
 An app that starts the SDK itself (`OTel.initialize`) leaves `isReady` out.
 
+### See what it sends
+
+`fsp telemetry` (since 0.8.0) starts OpenObserve with four dashboards that answer plain questions ("Do screens
+open quickly?") in green, amber or red, and `fsp telemetry --report` says the same in the terminal. The
+README's section "Dashboards on your computer" has the details.
+
+![fespalier's App health dashboard in OpenObserve: eight tiles answer whether screens open and load quickly and whether loads, actions or the app fail, coloured green, amber or red, above a table of verdicts in words.](../../docs/images/telemetry/openobserve-app-health.png)
+
+_Sample data from `scripts/telemetry/seed.py --showcase`._
+
 ## Known limitation: `otel_zone` `runGuarded` on the web
 
 Since 0.8.0, known limitation: on the web, `OtelZone.runGuarded` never runs its body, so the app

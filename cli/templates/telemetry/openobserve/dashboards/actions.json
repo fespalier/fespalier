@@ -1,7 +1,7 @@
 {
   "version": 8,
   "title": "fespalier · Actions",
-  "description": "How action.dart writes behave: volume, failures and latency per action.",
+  "description": "What people do (each function in an action.dart), and whether it works.",
   "role": "",
   "owner": "",
   "tabs": [
@@ -10,10 +10,54 @@
       "name": "Overview",
       "panels": [
         {
+          "id": "panel_about",
+          "type": "markdown",
+          "title": "What an action is",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 192,
+            "h": 6,
+            "i": 1
+          },
+          "markdownContent": "An **action** is a function in an `action.dart`: a tap that changes something, like saving or paying. **Failed** means it threw. Colours as on App health: 🟢 good · 🟠 needs attention · 🔴 bad · grey: not enough data yet."
+        },
+        {
           "id": "panel_runs",
           "type": "metric",
-          "title": "Runs",
-          "description": "",
+          "title": "How many actions ran?",
+          "description": "Every call of an action.dart function in this time range.",
           "config": {
             "show_legends": false,
             "legends_position": null,
@@ -53,22 +97,175 @@
           ],
           "layout": {
             "x": 0,
-            "y": 0,
+            "y": 6,
             "w": 48,
             "h": 8,
-            "i": 1
+            "i": 2
+          }
+        },
+        {
+          "id": "panel_action_failures",
+          "type": "metric",
+          "title": "How often do actions fail?",
+          "description": "Share of action.dart runs that threw. Good: under 1 %. If not: Actions lists the failing action and Errors its error type; check its validate() and the server's answer.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": "percent",
+            "decimals": 1,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "1",
+                "color": "#fab219"
+              },
+              {
+                "type": "gte",
+                "value": "5",
+                "color": "#d03b3b"
+              }
+            ],
+            "no_value_replacement": "Not enough data yet"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT CASE WHEN SUM(CASE WHEN fespalier_operation = 'action' THEN 1 ELSE 0 END) >= 20 THEN 100.0 * SUM(CASE WHEN fespalier_operation = 'action' AND fespalier_action_result = 'error' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN fespalier_operation = 'action' THEN 1 ELSE 0 END), 0) END AS failed_pct FROM \"default\" WHERE service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "failed_pct",
+                    "alias": "failed_pct",
+                    "column": "failed_pct",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 6,
+            "w": 48,
+            "h": 8,
+            "i": 3
+          }
+        },
+        {
+          "id": "panel_actions_finish",
+          "type": "metric",
+          "title": "Do actions finish quickly?",
+          "description": "How long an action.dart takes, from the tap to its result, slowest 5 %. Good: under 1 s. If not: Actions shows which one; consider optimistic() so the screen answers at once.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": "milliseconds",
+            "decimals": 1,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "1000",
+                "color": "#fab219"
+              },
+              {
+                "type": "gte",
+                "value": "3000",
+                "color": "#d03b3b"
+              }
+            ],
+            "no_value_replacement": "Not enough data yet"
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT CASE WHEN SUM(CASE WHEN fespalier_operation = 'action' THEN 1 ELSE 0 END) >= 20 THEN approx_percentile_cont(CASE WHEN fespalier_operation = 'action' THEN duration END, 0.95) / 1000.0 END AS p95_ms FROM \"default\" WHERE service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "p95_ms",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 6,
+            "w": 48,
+            "h": 8,
+            "i": 4
           }
         },
         {
           "id": "panel_failures",
           "type": "metric",
-          "title": "Failures",
-          "description": "",
+          "title": "How many actions failed?",
+          "description": "Runs that threw. Good: none. If not: the table below names the action; Errors has the error type and message.",
           "config": {
             "show_legends": false,
             "legends_position": null,
             "unit": null,
-            "decimals": 0
+            "decimals": 0,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "1",
+                "color": "#fab219"
+              },
+              {
+                "type": "gte",
+                "value": "10",
+                "color": "#d03b3b"
+              }
+            ]
           },
           "queryType": "sql",
           "queries": [
@@ -102,37 +299,173 @@
             }
           ],
           "layout": {
-            "x": 48,
-            "y": 0,
+            "x": 144,
+            "y": 6,
             "w": 48,
             "h": 8,
-            "i": 2
+            "i": 5
           }
         },
         {
-          "id": "panel_action_p95",
-          "type": "metric",
-          "title": "Latency, p95",
-          "description": "",
+          "id": "panel_by_action",
+          "type": "table",
+          "title": "Which actions are slow or failing?",
+          "description": "Each action with its runs, failure rate, typical and slowest-5 % time. File is the action.dart to open.",
           "config": {
             "show_legends": false,
             "legends_position": null,
-            "unit": "milliseconds",
-            "decimals": 1
+            "unit": null,
+            "decimals": 1,
+            "override_config": [
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "runs"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "failed_pct"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "percent",
+                      "customUnit": null
+                    }
+                  },
+                  {
+                    "type": "conditional_styles",
+                    "rules": [
+                      {
+                        "operator": ">=",
+                        "threshold": 0,
+                        "bgColor": "#f0fdf4",
+                        "textColor": "#15803d"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 1,
+                        "bgColor": "#fefce8",
+                        "textColor": "#a16207"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 5,
+                        "bgColor": "#fef2f2",
+                        "textColor": "#b91c1c"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "p50_ms"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "milliseconds",
+                      "customUnit": null
+                    }
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "p95_ms"
+                },
+                "config": [
+                  {
+                    "type": "unit",
+                    "value": {
+                      "unit": "milliseconds",
+                      "customUnit": null
+                    }
+                  },
+                  {
+                    "type": "conditional_styles",
+                    "rules": [
+                      {
+                        "operator": ">=",
+                        "threshold": 0,
+                        "bgColor": "#f0fdf4",
+                        "textColor": "#15803d"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 1000,
+                        "bgColor": "#fefce8",
+                        "textColor": "#a16207"
+                      },
+                      {
+                        "operator": ">=",
+                        "threshold": 3000,
+                        "bgColor": "#fef2f2",
+                        "textColor": "#b91c1c"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
           },
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'action' AND service_name = '$service'",
+              "query": "SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, 100.0 * SUM(CASE WHEN fespalier_operation = 'action' AND fespalier_action_result = 'error' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN fespalier_operation = 'action' THEN 1 ELSE 0 END), 0) AS failed_pct, approx_percentile_cont(duration, 0.5) / 1000.0 AS p50_ms, approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'action' AND service_name = '$service' GROUP BY action, file ORDER BY failed_pct DESC, runs DESC",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {
                 "stream": "default",
                 "stream_type": "traces",
-                "x": [],
+                "x": [
+                  {
+                    "label": "Action",
+                    "alias": "action",
+                    "column": "action",
+                    "color": null
+                  },
+                  {
+                    "label": "File",
+                    "alias": "file",
+                    "column": "file",
+                    "color": null
+                  }
+                ],
                 "y": [
                   {
-                    "label": "p95_ms",
+                    "label": "Runs",
+                    "alias": "runs",
+                    "column": "runs",
+                    "color": null
+                  },
+                  {
+                    "label": "Failed",
+                    "alias": "failed_pct",
+                    "column": "failed_pct",
+                    "color": null
+                  },
+                  {
+                    "label": "Typical",
+                    "alias": "p50_ms",
+                    "column": "p50_ms",
+                    "color": null
+                  },
+                  {
+                    "label": "Slowest 5 %",
                     "alias": "p95_ms",
                     "column": "p95_ms",
                     "color": null
@@ -152,18 +485,18 @@
             }
           ],
           "layout": {
-            "x": 96,
-            "y": 0,
-            "w": 48,
-            "h": 8,
-            "i": 3
+            "x": 0,
+            "y": 14,
+            "w": 192,
+            "h": 10,
+            "i": 6
           }
         },
         {
           "id": "panel_rate",
           "type": "bar",
-          "title": "Runs by action",
-          "description": "",
+          "title": "When do people use each action?",
+          "description": "Runs over time, per action.",
           "config": {
             "show_legends": true,
             "legends_position": null,
@@ -181,7 +514,7 @@
                 "stream_type": "traces",
                 "x": [
                   {
-                    "label": "t",
+                    "label": "Time",
                     "alias": "t",
                     "column": "t",
                     "color": null
@@ -189,7 +522,7 @@
                 ],
                 "y": [
                   {
-                    "label": "runs",
+                    "label": "Runs",
                     "alias": "runs",
                     "column": "runs",
                     "color": null
@@ -198,7 +531,7 @@
                 "z": [],
                 "breakdown": [
                   {
-                    "label": "action",
+                    "label": "Action",
                     "alias": "action",
                     "column": "action",
                     "color": null
@@ -217,17 +550,17 @@
           ],
           "layout": {
             "x": 0,
-            "y": 8,
-            "w": 96,
+            "y": 24,
+            "w": 192,
             "h": 16,
-            "i": 4
+            "i": 7
           }
         },
         {
           "id": "panel_failures_over_time",
           "type": "bar",
-          "title": "Failures by action",
-          "description": "",
+          "title": "When did actions fail?",
+          "description": "Failed runs over time, per action. A spike usually lines up with a server problem or a release.",
           "config": {
             "show_legends": true,
             "legends_position": null,
@@ -245,7 +578,7 @@
                 "stream_type": "traces",
                 "x": [
                   {
-                    "label": "t",
+                    "label": "Time",
                     "alias": "t",
                     "column": "t",
                     "color": null
@@ -253,7 +586,7 @@
                 ],
                 "y": [
                   {
-                    "label": "failures",
+                    "label": "Failed",
                     "alias": "failures",
                     "column": "failures",
                     "color": null
@@ -262,93 +595,12 @@
                 "z": [],
                 "breakdown": [
                   {
-                    "label": "action",
+                    "label": "Action",
                     "alias": "action",
                     "column": "action",
                     "color": null
                   }
                 ],
-                "filter": {
-                  "filterType": "group",
-                  "logicalOperator": "AND",
-                  "conditions": []
-                }
-              },
-              "config": {
-                "promql_legend": ""
-              }
-            }
-          ],
-          "layout": {
-            "x": 96,
-            "y": 8,
-            "w": 96,
-            "h": 16,
-            "i": 5
-          }
-        },
-        {
-          "id": "panel_by_action",
-          "type": "table",
-          "title": "By action",
-          "description": "",
-          "config": {
-            "show_legends": false,
-            "legends_position": null,
-            "unit": null,
-            "decimals": 0
-          },
-          "queryType": "sql",
-          "queries": [
-            {
-              "query": "SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, SUM(CASE WHEN fespalier_action_result = 'error' THEN 1 ELSE 0 END) AS failures, approx_percentile_cont(duration, 0.5) / 1000.0 AS p50_ms, approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'action' AND service_name = '$service' GROUP BY action, file ORDER BY runs DESC",
-              "vrlFunctionQuery": "",
-              "customQuery": true,
-              "fields": {
-                "stream": "default",
-                "stream_type": "traces",
-                "x": [
-                  {
-                    "label": "action",
-                    "alias": "action",
-                    "column": "action",
-                    "color": null
-                  },
-                  {
-                    "label": "file",
-                    "alias": "file",
-                    "column": "file",
-                    "color": null
-                  }
-                ],
-                "y": [
-                  {
-                    "label": "runs",
-                    "alias": "runs",
-                    "column": "runs",
-                    "color": null
-                  },
-                  {
-                    "label": "failures",
-                    "alias": "failures",
-                    "column": "failures",
-                    "color": null
-                  },
-                  {
-                    "label": "p50_ms",
-                    "alias": "p50_ms",
-                    "column": "p50_ms",
-                    "color": null
-                  },
-                  {
-                    "label": "p95_ms",
-                    "alias": "p95_ms",
-                    "column": "p95_ms",
-                    "color": null
-                  }
-                ],
-                "z": [],
-                "breakdown": [],
                 "filter": {
                   "filterType": "group",
                   "logicalOperator": "AND",
@@ -362,10 +614,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 24,
+            "y": 40,
             "w": 192,
             "h": 16,
-            "i": 6
+            "i": 8
           }
         }
       ]

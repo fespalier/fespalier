@@ -127,6 +127,13 @@ skill-samples *files:
     (cd cli && cargo build --quiet)
     FSP="$PWD/cli/target/debug/fsp" node scripts/skills/verify-samples.mjs {{ files }}
 
+# FSP_CHROMIUM=/path/to/chrome uses a Chromium that is already on disk.
+#
+# Regenerate the README screenshots in docs/images/telemetry (Docker, Node, Chromium; about 10 minutes; not part of `just ci` or CI)
+telemetry-screenshots:
+    cd ci/web-routes && npm ci
+    node scripts/telemetry/screenshots.mjs
+
 # The VS Code extension: compile, unit-test, package (needs Node; not part of `just ci`)
 [working-directory: 'editors/vscode']
 vscode:
@@ -156,7 +163,8 @@ web-routes:
 
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
 # are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
-# `just web-routes` (the Maestro flows), and the stack in Docker is `just telemetry-smoke`.
+# `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, and the README
+# screenshots are `just telemetry-screenshots` (not in CI at all).
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs
 ci: lint test deny check-examples flutter devtools packaging telemetry skills

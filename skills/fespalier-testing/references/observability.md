@@ -3,7 +3,8 @@
 fespalier reports spans for navigations, guards, `redirect.dart` files, `data.dart` loads, actions
 and deferred loads (the telemetry conventions, contract v1). `fsp telemetry` starts the place to look
 at them while you develop: a local OpenTelemetry collector, OpenObserve, and with `--grafana` Grafana,
-with six ready-made dashboards. It is for development. Use it to see what a running app does, which
+with four ready-made dashboards, written as the questions a developer asks ("Do screens open
+quickly?"), not as metrics. It is for development. Use it to see what a running app does, which
 route is slow, which guard redirects, and which `data.dart` fails. It is not a test tool: a widget test
 asserts behaviour (`pumpRouter`), and a production collector is the app's own.
 
@@ -31,17 +32,18 @@ flutter run               # any device
   `FSP_TELEMETRY_DIR`); settings are in `.env` there, written once and never overwritten.
   `fsp telemetry --no-start --dir ops/telemetry` writes a copy to commit.
 
-| Flag         | Does                                                                             |
-| ------------ | -------------------------------------------------------------------------------- |
-| `--grafana`  | Also starts Grafana                                                              |
-| `--lan`      | Binds the OTLP ports to every interface for this run; writes `dart-defines.json` |
-| `--stop`     | Stops the stack, keeps the data                                                  |
-| `--reset`    | Stops it and deletes the data (the OpenObserve and Grafana volumes)              |
-| `--dir <D>`  | Another folder than `~/.fespalier/telemetry`                                     |
-| `--no-start` | Writes the files and prints `docker compose up -d`; runs no Docker               |
+| Flag         | Does                                                                                           |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| `--grafana`  | Also starts Grafana                                                                            |
+| `--lan`      | Binds the OTLP ports to every interface for this run; writes `dart-defines.json`               |
+| `--stop`     | Stops the stack, keeps the data                                                                |
+| `--reset`    | Stops it and deletes the data (the OpenObserve and Grafana volumes)                            |
+| `--report`   | Prints how each app is doing in plain words and exits (the stack must be running; since 0.8.0) |
+| `--dir <D>`  | Another folder than `~/.fespalier/telemetry`                                                   |
+| `--no-start` | Writes the files and prints `docker compose up -d`; runs no Docker                             |
 
-`--stop`, `--reset` and `--no-start` exclude the other flags (clap says `the argument '--stop'
-cannot be used with '--grafana'`).
+`--stop`, `--reset`, `--no-start` and `--report` exclude the other flags (clap says `the argument
+'--stop' cannot be used with '--grafana'`).
 
 ## Point the app at it
 
@@ -72,35 +74,72 @@ nothing printed. `start()` works on the web. Use
 
 ## Which dashboard answers what
 
-All in OpenObserve's folder `fespalier` (and Grafana's). The default range is the last hour.
+All in OpenObserve's folder `fespalier` (and Grafana's, where **App health** is the home page). The default
+range is the last hour, and the **App** variable starts on the first app. Every title is a question, and the
+ⓘ next to it (Grafana: (i)) says what the panel shows, what good looks like and which file to open.
 
-| Question                                                     | Dashboard                    | Panel                                        |
-| ------------------------------------------------------------ | ---------------------------- | -------------------------------------------- |
-| Which route is slow to its first frame?                      | `fespalier · Navigation`     | Time to first frame by route (p50, p95)      |
-| Which navigations were redirected, and where did they land?  | Navigation                   | Redirected navigations, by where they landed |
-| Is a route the app links to missing?                         | Navigation                   | Not found                                    |
-| Which guard sends users away, throws, or keeps them waiting? | `fespalier · Guards`         | By guard; Async guard pending, p95           |
-| Which `data.dart` fails or is slow?                          | `fespalier · Data`           | By data.dart; Load time, p95, by data.dart   |
-| Do sync `data()` loads really stay sync?                     | Data                         | Sync and async loads                         |
-| Which action fails, and how slow is it?                      | `fespalier · Actions`        | By action                                    |
-| How long does a deferred page's code take?                   | `fespalier · Deferred loads` | By page                                      |
-| What failed, where, with which message and trace?            | `fespalier · Errors`         | By error type; Recent failures (OpenObserve) |
-| Did the app crash or hit an uncaught error?                  | Errors                       | Uncaught errors; Native crashes and ANRs     |
+| Question                                                     | Dashboard                | Panel                                                                   |
+| ------------------------------------------------------------ | ------------------------ | ----------------------------------------------------------------------- |
+| Is the app fast, and does it work?                           | `fespalier · App health` | Eight tiles; _Verdicts, in words_ (OpenObserve)                         |
+| Do screens open quickly? Does content load quickly?          | App health               | _Do screens open quickly?_; _Does content load quickly?_                |
+| Which screen is slow?                                        | `fespalier · Screens`    | _How long does each screen take?_; _Are screens getting slower?_        |
+| Which `data.dart` fails or is slow?                          | Screens                  | _Which data.dart files are slow or failing?_                            |
+| Which guard sends users away, throws, or keeps them waiting? | Screens                  | _Do checks slow screens down?_; _Where were people sent instead?_       |
+| Is a route the app links to missing?                         | Screens                  | _How often does a link lead nowhere?_                                   |
+| How long does a deferred page's code take?                   | Screens                  | _How long does a deferred page's code take to arrive?_                  |
+| Which action fails, and how slow is it?                      | `fespalier · Actions`    | _Which actions are slow or failing?_                                    |
+| What failed, where, with which message and trace?            | `fespalier · Errors`     | _What failed, and where?_; _What failed last?_ (OpenObserve)            |
+| Did the app crash or hit an uncaught error?                  | Errors (and App health)  | _Did anything throw an uncaught error?_; _Did the app crash or freeze?_ |
+
+Guards, `data.dart` and deferred pages are on **Screens**, not on dashboards of their own, because a developer
+thinks "this screen is slow". Clicking a row of an OpenObserve table (a tile in Grafana) opens the dashboard that
+explains it, with the App and the time range kept.
+
+### What the colours mean (since 0.8.0)
+
+A tile is green (good), amber (needs attention) or red (bad), by one table of limits for both backends and for the
+dashed lines and table cells too. They are defaults for a mobile app; the README's "Reading the colours" has the
+reason for each.
+
+| Measure                                            | Good      | Needs attention | Bad       |
+| -------------------------------------------------- | --------- | --------------- | --------- |
+| Opening a screen (`screen_open`)                   | < 300 ms  | 300–999 ms      | ≥ 1000 ms |
+| Loading a screen's content (`content_load`)        | < 1000 ms | 1000–2999 ms    | ≥ 3000 ms |
+| Finishing an action (`action_time`)                | < 1000 ms | 1000–2999 ms    | ≥ 3000 ms |
+| A check before a screen (`guard_wait`)             | < 100 ms  | 100–299 ms      | ≥ 300 ms  |
+| A deferred page's code (`code_download`)           | < 500 ms  | 500–1999 ms     | ≥ 2000 ms |
+| A load or action that fails (`failure_rate`)       | < 1 %     | 1–4.9 %         | ≥ 5 %     |
+| A link that leads nowhere (`not_found_rate`)       | < 1 %     | 1–4.9 %         | ≥ 5 %     |
+| Uncaught errors, failed operations (`error_count`) | 0         | 1–9             | ≥ 10      |
+| Native crashes and freezes (`crash_count`)         | 0         | —               | ≥ 1       |
+
+A tile that rests on **fewer than 20 samples is grey and says _Not enough data yet_** (the verdict table says _Too
+few to judge_). Colour is not the only signal: OpenObserve's _Verdicts, in words_ says each answer as text.
 
 Panels for retries, cache hits, optimistic rollbacks and submits stopped by validation exist only when
 the telemetry conventions emit those attributes (they are not in contract v1).
+
+## A summary without a browser: `--report` (since 0.8.0)
+
+`fsp telemetry --report` prints, for each app that sent spans in the last hour, one line per App health question
+(`✓ good`, `! needs attention`, `✗ bad`, `… too few to judge`, with the value), then the slowest screen, what fails
+most (`Nothing failed.` when nothing did) and where the dashboard is. It runs `report.py` in the stack's own Python
+container with App health's own SQL, so it needs the stack running and no Python on the host. An agent can read it
+instead of opening a browser. Its messages are in `fespalier-troubleshooting`, `references/diagnostics-telemetry.md`.
 
 ## OpenObserve and Grafana
 
 - **Counts are the same** in both. **Percentiles differ**: Grafana's are interpolated within histogram
   buckets, OpenObserve's are exact. Grafana counts a span when the collector receives it, OpenObserve at
   the span's own time (a phone that replays a batch later differs).
-- **Only OpenObserve has messages and trace ids** (_Recent failures_, _Recent uncaught errors_). Grafana
-  reads span metrics through OpenObserve's PromQL API; there is no Tempo, Prometheus or Loki.
+- **Only OpenObserve has messages and trace ids** (_What failed last?_, _What was uncaught last?_), and it alone has
+  _Verdicts, in words_ and _Where do people go next?_. Grafana reads span metrics through OpenObserve's PromQL API;
+  there is no Tempo, Prometheus or Loki, and it shows colour but no words.
 - **A dashboard edited in OpenObserve is left alone** when a new `fsp` carries a new version (the
   importer prints `changed in OpenObserve since fsp telemetry wrote it, left alone; delete it to get the
 new version`). Delete it, run `fsp telemetry`, and it comes back. Grafana's are provisioned and
-  read-only: save a copy to change one.
+  read-only: save a copy to change one. To change a colour limit, edit the dashboard in OpenObserve (it is then
+  left alone). A dashboard a newer `fsp` no longer ships is deleted if nobody edited it.
 - The dashboards are **generated** from `scripts/telemetry/dashboards.toml` in the fespalier repository
   (`just telemetry-dashboards`); a fespalier contributor never edits the JSON.
 
@@ -111,6 +150,8 @@ new version`). Delete it, run `fsp telemetry`, and it comes back. Grafana's are 
   `diagnostics-telemetry.md`.
 - **The password is set on the first start.** A changed `FSP_O2_PASSWORD` needs `fsp telemetry --reset`
   (it deletes the data), and OpenObserve refuses a weak one.
+- **Grey tiles saying _Not enough data yet_** mean fewer than 20 samples, not a fault: use the app longer, or
+  widen the time range.
 - **Ports 3000 and 5080 are common.** Change `FSP_GRAFANA_PORT` / `FSP_O2_PORT` in `.env`.
 - **`--lan` is for one run.** The next `fsp telemetry` binds to `127.0.0.1` again.
 
@@ -124,7 +165,8 @@ for `.env`, to the stack folder; the folder also runs as it is with `docker comp
 | `compose.yaml`, `env.example`                                | The four services (`collector`, `openobserve`, `dashboards`, `grafana` behind a profile) and `.env`'s defaults |
 | `collector/config.yaml`                                      | OTLP in (with CORS), spans and logs out to OpenObserve, span metrics and error counts for Grafana              |
 | `openobserve/import.py`                                      | The one-shot importer: waits, creates the streams' columns and the `fespalier` folder, loads the dashboards    |
-| `openobserve/dashboards/*.json`, `grafana/dashboards/*.json` | The six dashboards, **generated** from `scripts/telemetry/dashboards.toml`                                     |
+| `openobserve/report.py`                                      | What `fsp telemetry --report` runs in the importer's container (since 0.8.0)                                   |
+| `openobserve/dashboards/*.json`, `grafana/dashboards/*.json` | The four dashboards, **generated** from `scripts/telemetry/dashboards.toml`                                    |
 | `openobserve/fields.json`                                    | The columns the importer creates, **generated**                                                                |
 | `grafana/provisioning/**`                                    | Grafana's data source (OpenObserve's PromQL API) and dashboard provider                                        |
 

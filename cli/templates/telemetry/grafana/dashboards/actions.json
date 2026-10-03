@@ -1,7 +1,7 @@
 {
   "uid": "fespalier-actions",
   "title": "fespalier · Actions",
-  "description": "How action.dart writes behave: volume, failures and latency per action.",
+  "description": "What people do (each function in an action.dart), and whether it works.",
   "tags": [
     "fespalier"
   ],
@@ -12,6 +12,18 @@
     "to": "now"
   },
   "refresh": "30s",
+  "links": [
+    {
+      "title": "fespalier",
+      "type": "dashboards",
+      "tags": [
+        "fespalier"
+      ],
+      "asDropdown": false,
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
   "templating": {
     "list": [
       {
@@ -35,16 +47,31 @@
   "panels": [
     {
       "id": 1,
+      "type": "text",
+      "title": "What an action is",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "An **action** is a function in an `action.dart`: a tap that changes something, like saving or paying. **Failed** means it threw. Colours as on App health: 🟢 good · 🟠 needs attention · 🔴 bad · grey: not enough data yet."
+      }
+    },
+    {
+      "id": 2,
       "type": "stat",
-      "title": "Runs",
-      "description": "",
+      "title": "How many actions ran?",
+      "description": "Every call of an action.dart function in this time range.",
       "datasource": {
         "type": "prometheus",
         "uid": "fespalier-openobserve"
       },
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 3,
         "w": 6,
         "h": 4
       },
@@ -76,7 +103,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "noValue": "0"
         },
         "overrides": []
       },
@@ -94,17 +122,153 @@
       }
     },
     {
-      "id": 2,
+      "id": 3,
       "type": "stat",
-      "title": "Failures",
-      "description": "",
+      "title": "How often do actions fail?",
+      "description": "Share of action.dart runs that threw. Good: under 1 %. If not: Actions lists the failing action and Errors its error type; check its validate() and the server's answer.",
       "datasource": {
         "type": "prometheus",
         "uid": "fespalier-openobserve"
       },
       "gridPos": {
         "x": 6,
-        "y": 0,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "100 * (sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) - sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_result=\"ok\"}[$__range]))) / sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) and on() (sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) >= 20)",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "noValue": "Not enough data yet"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Do actions finish quickly?",
+      "description": "How long an action.dart takes, from the tap to its result, slowest 5 %. Good: under 1 s. If not: Actions shows which one; consider optimistic() so the screen answers at once.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"action\", service_name=\"$service\"}[$__range]))) and on() (sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) >= 20)",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 3000
+              }
+            ]
+          },
+          "noValue": "Not enough data yet"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "How many actions failed?",
+      "description": "Runs that threw. Good: none. If not: the table below names the action; Errors has the error type and message.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 3,
         "w": 6,
         "h": 4
       },
@@ -125,23 +289,37 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
+            "mode": "thresholds"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "text",
+                "color": "green",
                 "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
               }
             ]
-          }
+          },
+          "links": [
+            {
+              "title": "Open Errors",
+              "url": "/d/fespalier-errors?${__url_time_range}&${service:queryparam}"
+            }
+          ],
+          "noValue": "0"
         },
         "overrides": []
       },
       "options": {
-        "colorMode": "none",
+        "colorMode": "background_solid",
         "graphMode": "none",
         "textMode": "value",
         "reduceOptions": {
@@ -152,195 +330,21 @@
           "values": false
         }
       }
-    },
-    {
-      "id": 3,
-      "type": "stat",
-      "title": "Latency, p95",
-      "description": "",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "fespalier-openobserve"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "fespalier-openobserve"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])))",
-          "legendFormat": "__auto",
-          "instant": true,
-          "range": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      }
-    },
-    {
-      "id": 4,
-      "type": "timeseries",
-      "title": "Runs by action",
-      "description": "",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "fespalier-openobserve"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 4,
-        "w": 12,
-        "h": 9
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "fespalier-openobserve"
-          },
-          "expr": "sum by (fespalier_action_name) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__interval]))",
-          "legendFormat": "{{fespalier_action_name}}",
-          "instant": false,
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "custom": {
-            "drawStyle": "bars",
-            "fillOpacity": 80,
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {}
-    },
-    {
-      "id": 5,
-      "type": "timeseries",
-      "title": "Failures by action",
-      "description": "",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "fespalier-openobserve"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 4,
-        "w": 12,
-        "h": 9
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "fespalier-openobserve"
-          },
-          "expr": "sum by (fespalier_action_name) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_result=\"error\"}[$__interval]))",
-          "legendFormat": "{{fespalier_action_name}}",
-          "instant": false,
-          "range": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "custom": {
-            "drawStyle": "bars",
-            "fillOpacity": 80,
-            "stacking": {
-              "mode": "normal",
-              "group": "A"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {}
     },
     {
       "id": 6,
       "type": "table",
-      "title": "By action",
-      "description": "",
+      "title": "Which actions are slow or failing?",
+      "description": "Each action with its runs, failure rate, typical and slowest-5 % time. File is the action.dart to open.",
       "datasource": {
         "type": "prometheus",
         "uid": "fespalier-openobserve"
       },
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 7,
         "w": 24,
-        "h": 9
+        "h": 6
       },
       "targets": [
         {
@@ -361,7 +365,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_result=\"error\"}[$__range]))",
+          "expr": "100 * (sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) - sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_result=\"ok\"}[$__range]))) / sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false,
@@ -413,7 +417,51 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "p50_ms"
+              "options": "Failed"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Typical"
             },
             "properties": [
               {
@@ -425,18 +473,57 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "p95_ms"
+              "options": "Slowest 5 %"
             },
             "properties": [
               {
                 "id": "unit",
                 "value": "ms"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1000
+                    },
+                    {
+                      "color": "red",
+                      "value": 3000
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
               }
             ]
           }
         ]
       },
-      "options": {},
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Failed",
+            "desc": true
+          }
+        ]
+      },
       "transformations": [
         {
           "id": "merge",
@@ -457,16 +544,130 @@
               "Value #D": 5
             },
             "renameByName": {
-              "fespalier_action_name": "action",
-              "fespalier_file": "file",
-              "Value #A": "runs",
-              "Value #B": "failures",
-              "Value #C": "p50_ms",
-              "Value #D": "p95_ms"
+              "fespalier_action_name": "Action",
+              "fespalier_file": "File",
+              "Value #A": "Runs",
+              "Value #B": "Failed",
+              "Value #C": "Typical",
+              "Value #D": "Slowest 5 %"
             }
           }
         }
       ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "When do people use each action?",
+      "description": "Runs over time, per action.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_action_name) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__interval]))",
+          "legendFormat": "{{fespalier_action_name}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "When did actions fail?",
+      "description": "Failed runs over time, per action. A spike usually lines up with a server problem or a release.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_action_name) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_result=\"error\"}[$__interval]))",
+          "legendFormat": "{{fespalier_action_name}}",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
     }
   ]
 }

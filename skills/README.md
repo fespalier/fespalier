@@ -17,16 +17,17 @@ point at a checkout of this repository.
 
 ## The skills
 
-| Skill                                                     | Load it when                                                                               |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [`fespalier`](fespalier/)                                 | Anything. Orientation, the file kinds, install, the golden rules, the map                  |
-| [`fespalier-routing`](fespalier-routing/)                 | Folders, segments, enums, typed routes, `route.dart` (incl. `nest`), `extra`, the manifest |
-| [`fespalier-data`](fespalier-data/)                       | `data.dart`, loading and error views, retries, sections, prefetch, `dataAt`                |
-| [`fespalier-layouts`](fespalier-layouts/)                 | `layout.dart`, tabs, transitions, dialogs, restoration, adaptive layouts                   |
-| [`fespalier-guards`](fespalier-guards/)                   | `guard.dart`, `redirect.dart`, `returnTo`, sign-in and refresh on auth change              |
-| [`fespalier-testing`](fespalier-testing/)                 | `pumpRouter`, deep links, data states, and the traps that hang a test                      |
-| [`fespalier-troubleshooting`](fespalier-troubleshooting/) | **An `fsp` error, a stale `app.g.dart`, a URL that shows the wrong page**                  |
-| [`fespalier-migration`](fespalier-migration/)             | Upgrading between releases, or adopting fespalier in a go_router app                       |
+| Skill                                                     | Load it when                                                                                                   |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| [`fespalier`](fespalier/)                                 | Anything. Orientation, the file kinds, install, the golden rules, the map                                      |
+| [`fespalier-routing`](fespalier-routing/)                 | Folders, segments, enums, typed routes, `route.dart` (incl. `nest`), `extra`, the manifest                     |
+| [`fespalier-data`](fespalier-data/)                       | `data.dart`, loading and error views, retries, sections, prefetch, `dataAt`                                    |
+| [`fespalier-layouts`](fespalier-layouts/)                 | `layout.dart`, tabs, transitions, dialogs, restoration, adaptive layouts                                       |
+| [`fespalier-guards`](fespalier-guards/)                   | `guard.dart`, `redirect.dart`, `returnTo`, sign-in and refresh on auth change                                  |
+| [`fespalier-testing`](fespalier-testing/)                 | `pumpRouter`, deep links, data states, and the traps that hang a test                                          |
+| [`fespalier-observability`](fespalier-observability/)     | `observe.dart` hooks (analytics, titles), telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions |
+| [`fespalier-troubleshooting`](fespalier-troubleshooting/) | **An `fsp` error, a stale `app.g.dart`, a URL that shows the wrong page**                                      |
+| [`fespalier-migration`](fespalier-migration/)             | Upgrading between releases, or adopting fespalier in a go_router app                                           |
 
 Start with `fespalier`: it is the orientation skill and it routes to the rest. If
 something is not working, read
@@ -147,7 +148,7 @@ skills/<name>/
 
 `name:` must equal the directory; `description:` is the only thing an agent reads when
 deciding whether to load the skill, so say what it covers **and** when to reach for it.
-Keep `SKILL.md` readable in one sitting and push detail into `references/`. Eight skills
+Keep `SKILL.md` readable in one sitting and push detail into `references/`. Nine skills
 is already a routing decision; fold new material into the owning skill rather than adding
 one.
 

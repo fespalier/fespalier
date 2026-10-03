@@ -51,6 +51,8 @@ below its folder**, and the folder needs no `page.dart`: put the guard in a
   boots with no blank first frame; **any** `Future`, even a completed one, costs a
   frame. Return a `Future` only when you await something.
 - A `guard.dart` with no route at or below its folder is a **warning**.
+- **To redirect, use a guard, not an `onEnter`** (since 0.8.0): an `observe.dart` hook runs after the
+  navigation committed and cannot veto it. See [`fespalier-observability`](../fespalier-observability/SKILL.md).
 - **A guard is not access control**: the server must still authorise the data.
 
 ## Keep the login page outside the guard

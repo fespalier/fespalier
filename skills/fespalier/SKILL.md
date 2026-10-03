@@ -66,23 +66,24 @@ matches the package your `pubspec.lock` resolved.
 
 ## The file kinds
 
-| File               | What it is                                                                |
-| ------------------ | ------------------------------------------------------------------------- |
-| `page.dart`        | A widget (or `Widget page()`): serves the folder's URL                    |
-| `data.dart`        | What the page (or a whole section) loads: function, selector, provider    |
-| `action.dart`      | A write: `action(Ref ref, {..., required Input input})` (since 0.5.0)     |
-| `loading.dart`     | Shown while `data.dart` first loads; inherited by folders below           |
-| `error.dart`       | Shown when `data.dart` fails, with `retry`; inherited                     |
-| `layout.dart`      | Wraps this folder and below (`child`), or holds tabs (`navigationShell`)  |
-| `guard.dart`       | `GuardResult guard(Ref ref, {...})`: redirect or `null`; re-runs on watch |
-| `redirect.dart`    | In place of a page: a route that only redirects                           |
-| `transition.dart`  | `Page<void> transition(...)`: how routes (and layout shells) animate      |
-| `present.dart`     | `Page<void> present(...)`: the app builds this route's own page           |
-| `navigator.dart`   | `const navigator = RouteNavigator.root;`: render above every layout       |
-| `not_found.dart`   | Unknown URLs and unparsable segments; nearest folder wins                 |
-| `meta.dart`        | `const meta = ...;` this route's own facts, into the manifest             |
-| `route.dart`       | `caseSensitive`, `paths`, `nest`, `linkable`, `remount`, `deferred`       |
-| `extra_codec.dart` | At the app root only: `extraCodec`, to restore `extra` after a restart    |
+| File               | What it is                                                                         |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| `page.dart`        | A widget (or `Widget page()`): serves the folder's URL                             |
+| `data.dart`        | What the page (or a whole section) loads: function, selector, provider             |
+| `action.dart`      | A write: `action(Ref ref, {..., required Input input})` (since 0.5.0)              |
+| `loading.dart`     | Shown while `data.dart` first loads; inherited by folders below                    |
+| `error.dart`       | Shown when `data.dart` fails, with `retry`; inherited                              |
+| `layout.dart`      | Wraps this folder and below (`child`), or holds tabs (`navigationShell`)           |
+| `guard.dart`       | `GuardResult guard(Ref ref, {...})`: redirect or `null`; re-runs on watch          |
+| `redirect.dart`    | In place of a page: a route that only redirects                                    |
+| `observe.dart`     | `void onEnter(Ref ref, {...})`, `onFocus`, `onLeave`: hooks per page (since 0.8.0) |
+| `transition.dart`  | `Page<void> transition(...)`: how routes (and layout shells) animate               |
+| `present.dart`     | `Page<void> present(...)`: the app builds this route's own page                    |
+| `navigator.dart`   | `const navigator = RouteNavigator.root;`: render above every layout                |
+| `not_found.dart`   | Unknown URLs and unparsable segments; nearest folder wins                          |
+| `meta.dart`        | `const meta = ...;` this route's own facts, into the manifest                      |
+| `route.dart`       | `caseSensitive`, `paths`, `nest`, `linkable`, `remount`, `deferred`                |
+| `extra_codec.dart` | At the app root only: `extraCodec`, to restore `extra` after a restart             |
 
 Folder names: `products` is a static segment; `$id` a dynamic one; `$$rest` one
 or more remaining segments and `$$$rest` zero or more; `(account)` a group that
@@ -157,16 +158,17 @@ and the reserved names.
 
 ## Which skill to load
 
-| The work                                                                                               | Load                                            |
-| ------------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| Folders, segments, catch-alls, enums, typed routes, `RouteLink`, `route.dart`, `extra`, `present.dart` | `fespalier-routing`                             |
-| `data.dart`, loading and error views, retries, prefetch, sections, `dataAt`                            | `fespalier-data`                                |
-| `layout.dart`, tabs, `container`, shell transitions, restoration                                       | `fespalier-layouts`                             |
-| `guard.dart`, `redirect.dart`, `returnTo`, sign-in flows                                               | `fespalier-guards`                              |
-| Widget tests: `pumpRouter`, `currentLocation`, deep links, data states                                 | `fespalier-testing`                             |
-| An `fsp` error, a stale `app.g.dart`, a route that does not show                                       | `fespalier-troubleshooting`                     |
-| Looking at a running app in Flutter DevTools (the `fespalier` tab, since 0.7.0)                        | `fespalier-troubleshooting` (its DevTools page) |
-| Upgrading 0.2 to 0.3, or adopting fespalier in a go_router app                                         | `fespalier-migration`                           |
+| The work                                                                                                 | Load                                            |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Folders, segments, catch-alls, enums, typed routes, `RouteLink`, `route.dart`, `extra`, `present.dart`   | `fespalier-routing`                             |
+| `data.dart`, loading and error views, retries, prefetch, sections, `dataAt`                              | `fespalier-data`                                |
+| `layout.dart`, tabs, `container`, shell transitions, restoration                                         | `fespalier-layouts`                             |
+| `guard.dart`, `redirect.dart`, `returnTo`, sign-in flows                                                 | `fespalier-guards`                              |
+| `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.0) | `fespalier-observability`                       |
+| Widget tests: `pumpRouter`, `currentLocation`, deep links, data states                                   | `fespalier-testing`                             |
+| An `fsp` error, a stale `app.g.dart`, a route that does not show                                         | `fespalier-troubleshooting`                     |
+| Looking at a running app in Flutter DevTools (the `fespalier` tab, since 0.7.0)                          | `fespalier-troubleshooting` (its DevTools page) |
+| Upgrading 0.2 to 0.3, or adopting fespalier in a go_router app                                           | `fespalier-migration`                           |
 
 ## Where the truth is
 

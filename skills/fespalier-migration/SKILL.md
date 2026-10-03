@@ -30,6 +30,24 @@ flutter analyze && flutter test
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
 
+## 0.7 to 0.8: what to check
+
+Bump to `v0.8.0` and regenerate. Nothing changes unless you use it: an app with no `observe.dart` and no
+`telemetry: true` generates the same `app.g.dart` as 0.7.0.
+
+1. **New, opt-in:** `observe.dart` (`onEnter`, `onFocus`, `onLeave` per page), the `telemetry` key,
+   `package:fespalier_otel`, `RecordingTelemetry` and `fsp new --observe`. See
+   [`fespalier-observability`](../fespalier-observability/SKILL.md).
+2. **`fsp new` with nothing to create** now lists `--observe`: `nothing to create: ... also pass --action,
+--layout, --loading, --error, --not-found, --guard, --observe or --transition`.
+3. **A new tag on `fsp routes`**: a page with an `observe.dart` at or above it is tagged `observe` (and
+   `--json` `tags` and the route tree's `markers` gain the value); consumers that match tags
+   exactly should accept it.
+4. **`otel_zone` pins go_router 17** (through `otel_go_router`). fespalier accepts 17 and 18; add
+   `dependency_overrides: go_router: ^18.0.0` to stay on 18.
+5. **`DeferredLibrary` has an optional `route`** (the generator sets it with `telemetry: true`), and
+   `traceGuard` and `traceData` take an optional `telemetry:`; nothing to do unless you call them yourself.
+
 ## 0.4 to 0.5: what to check
 
 Bump to `v0.5.0`, regenerate, and look at these:

@@ -187,6 +187,14 @@ jobs:
           find lib -name '*.dart' ! -name '*.g.dart' -print0 |
             xargs -0 dart format --output=none --set-exit-if-changed
           flutter analyze
+      # A release build has none of fespalier's telemetry code either (since 0.8.0): the app does not
+      # opt in (`fespalier: telemetry: true`), so no call site passes a `TelemetrySite`, and nothing
+      # installs a sink. Its `observe.dart` is there on purpose: the lifecycle hooks share a router
+      # watch with telemetry, and an app that has hooks but no telemetry must not carry any of it.
+      # `fespalier telemetry` is the line the runtime prints when a sink throws, which only the
+      # telemetry code can reach; with the key on, a release build has it (checked by hand when this
+      # step was written), so its absence here means something.
+      #
       # A release build has none of fespalier's DevTools code: `kFespalierDevTools` is false there,
       # so the service extensions, the route tree, the hooks and the `traceGuard` / `traceData`
       # wrappers around the guards and the data are compiled away. A profile build has all of
@@ -199,11 +207,16 @@ jobs:
           FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
         run: |
           cd "$RUNNER_TEMP/fresh_app"
-          "$FSP_BIN" new 'orders/[id]' --data --action --guard
+          "$FSP_BIN" new 'orders/[id]' --data --action --guard --observe
           "$FSP_BIN" gen
           grep -q 'traceGuard(' lib/app.g.dart
           grep -q 'traceData(' lib/app.g.dart
           grep -q "site: 'a" lib/app.g.dart
+          grep -q 'observeAttach(' lib/app.g.dart
+          if grep -q 'TelemetrySite' lib/app.g.dart; then
+            echo "::error::an app that does not opt in got telemetry call sites"
+            exit 1
+          fi
           cat > lib/main.dart <<'DART'
           import 'package:fespalier/fespalier.dart';
           import 'package:flutter/material.dart';
@@ -234,10 +247,15 @@ jobs:
               exit 1
             }
           done
+          # The profile build keeps the DevTools code but, with no sink installed, none of telemetry.
+          if grep -q 'fespalier telemetry' build/web/main.dart.js; then
+            echo "::error::the profile build contains fespalier's telemetry code, though nothing opts in"
+            exit 1
+          fi
           flutter build web --release --no-wasm-dry-run
-          for needle in 'ext\.fespalier' 'fespalier:' 'ToolEvent'; do
+          for needle in 'ext\.fespalier' 'fespalier:' 'ToolEvent' 'fespalier telemetry'; do
             if grep -q "$needle" build/web/main.dart.js; then
-              echo "::error::the release build contains fespalier's DevTools code ($needle)"
+              echo "::error::the release build contains fespalier's DevTools or telemetry code ($needle)"
               exit 1
             fi
           done

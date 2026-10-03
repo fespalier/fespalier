@@ -198,7 +198,7 @@ fsp new 'docs/[...rest]'            # $$rest; 'docs/[[...rest]]' is $$$rest
 ```
 
 Flags: `--name`, `--function`, `--data`, `--action` (`action.dart`, since 0.5.0),
-`--loading`, `--error`, `--layout`, `--not-found`, `--guard`, `--transition`, `--no-page`. A `(group)` target gets no
+`--loading`, `--error`, `--layout`, `--not-found`, `--guard`, `--observe` (`observe.dart`, since 0.8.0), `--transition`, `--no-page`. A `(group)` target gets no
 `page.dart`, and with nothing left to write it fails with `nothing to create`.
 `--name` is the class-name stem (default: from the path, `ProductsId`), and with
 `--function` the `routeName` (UpperCamelCase). **Every new segment is a
@@ -264,6 +264,7 @@ fespalier:
   file_style: snake
   meta: optional
   semantics_ids: false      # since 0.7.0
+  telemetry: false          # since 0.8.0
   # meta_unique: [code]
   # output_manifest: lib/app.routes.g.dart
   # links: {domains: [shop.example.com]}   # see `fsp links` above
@@ -289,6 +290,7 @@ fespalier:
 | `links`            | a map (keys above)                               | What `fsp links` writes; only that command checks the values (since 0.5.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `lints`            | a map: `unknown_path: off` / `warning` / `error` | Since 0.7.0. How a **string path that matches no route** is reported (default `warning`; `off` skips the check). `error` makes `check` exit 1 with ``1 error(s) in string paths (`lints: unknown_path: error`)`` and `gen` and `watch` too, after writing the output (`...; lib/app.g.dart is up to date`). A bad value: ``invalid pubspec.yaml: fespalier.lints.unknown_path: unknown variant `warn`, expected one of `off`, `warning`, `error` ``; a key of its own: ``invalid pubspec.yaml: fespalier.lints: unknown field `nope`, expected `unknown_path` ``. See `fespalier-routing` |
 | `semantics_ids`    | `true` / `false`                                 | Since 0.7.0. `true` wraps each page in `Semantics(identifier: 'route:<pattern>')` and makes `mount()` call `ensureWebSemantics()`; `fsp maestro` needs it. See `fsp maestro` above                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `telemetry`        | `true` / `false`                                 | Since 0.8.0. `true` makes `app.g.dart` pass a `const TelemetrySite` to each guard, data provider, action and deferred page and follow the router (`telemetryAttach`); nothing is reported until the app installs a sink. A value that is not a bool is an error. See `fespalier-observability`                                                                                                                                                                                                                                                                                            |
 | `maestro`          | a map (keys above)                               | What `fsp maestro` writes flows for; only that command checks the values (since 0.7.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 There is no key for `extraCodec`: `lib/app/extra_codec.dart` is found by name.

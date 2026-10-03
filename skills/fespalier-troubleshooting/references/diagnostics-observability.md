@@ -1,0 +1,57 @@
+# Diagnostics: observe.dart, telemetry and the OpenTelemetry adapter
+
+Since 0.8.0 (`cli/src/resolve.rs`, `cli/src/config.rs`, `cli/src/scaffold.rs`,
+`packages/fespalier/lib/src/lifecycle.dart` and `telemetry.dart`). Each message is quoted from a real run
+and followed by its cause and fix. [`fespalier-observability`](../../fespalier-observability/SKILL.md)
+explains the rules behind them.
+
+## `observe.dart`
+
+| Message                                                                                                                           | Cause and fix                                                                                                                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ``expected `void onEnter(Ref ref, {...})`, `void onLeave(...)` or `void onFocus(...)` ``                                          | The file has none of the three functions (a helper alone does not count). Add one, or delete the file                                                                                             |
+| ``onEnter() must return `void`: an observe.dart hook runs synchronously, at the end of the frame that shows the page``            | The hook returns something, is `async`, or has no return type (`onLeave()` and `onFocus()` read the same). Write `void` out; do the async work in a provider the hook starts                      |
+| ``an observe.dart hook runs outside the widget tree: take `Ref` ``                                                                | First parameter is a `WidgetRef`. Take `Ref ref`                                                                                                                                                  |
+| ``onLeave() takes `Ref ref` first, or no provider at all; `ProviderContainer` is the older form of guards, not of hooks``         | First parameter is a `ProviderContainer`. Take `Ref ref`, or nothing                                                                                                                              |
+| ``onEnter() can't take `extra`: a hook runs after the navigation, when the page's `extra` is not kept``                           | A parameter named `extra`. Read it in the page, or put what you need in the URL                                                                                                                   |
+| ``the typed route of the page is `TypedLocation route`; name the parameter `route` ``                                             | A `TypedLocation` parameter with another name. It is bound by type and must be `route`                                                                                                            |
+| `observe.dart observes no pages: there is no page.dart at or below this folder` (a **warning**)                                   | The folder and everything below it has no `page.dart` (a `redirect.dart` route never stays on screen). Move the file, or add a page                                                               |
+| `` `nope` isn't a segment of this path (it has none); for a query parameter make it optional and nullable, e.g. `String? nope` `` | A hook asked for a segment that is not at or above its folder, or a required parameter that is not a segment. The same message a guard gives; make it optional and nullable for a query parameter |
+
+A hook that throws at run time is not an `fsp` diagnostic; it is reported with `FlutterError.reportError`
+(library `fespalier`):
+
+```text
+══╡ EXCEPTION CAUGHT BY FESPALIER ╞══════════════════════════════
+The following StateError was thrown while running onEnter of
+products/$id/observe.dart:
+Bad state: nope
+```
+
+The context is `while running onEnter of products/$id/observe.dart` (the hook and the file filled in).
+The hooks after it still run, a widget test fails, and in an app `otel_zone` exports it. The fix is in the
+hook: it ran after the frame, with the `Ref` of a throwaway provider.
+
+## The `telemetry` key
+
+| Message                                                                                                                                    | Cause and fix                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `invalid pubspec.yaml: fespalier.telemetry: invalid type: string "yes please", expected a boolean at line 3 column 14`                     | `telemetry` is not `true` or `false`. YAML `yes`/`no` are strings here; write `true`                     |
+| ``invalid pubspec.yaml: fespalier: unknown field `telemetri`, expected one of ..., `semantics_ids`, `telemetry`, `maestro` at line 3 ...`` | A misspelled key. The full list is in [`diagnostics-config-and-meta.md`](diagnostics-config-and-meta.md) |
+
+## `fsp new --observe`
+
+| Message                                                                                                                                              | Cause and fix                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nothing to create: a (group) folder has no page; also pass --action, --layout, --loading, --error, --not-found, --guard, --observe or --transition` | `fsp new '(group)'` with no flag, or `--no-page` alone. Since 0.8.0 the list includes `--observe` (0.7.0 and earlier: `... --guard or --transition`) |
+
+## Telemetry at run time
+
+| What you see                                                                                                                                                                                                                                                                                                   | Cause and fix                                                                                                                                                                                                                |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fespalier telemetry: Bad state: sink (not shown again)` in the console, once                                                                                                                                                                                                                                  | The installed `FespalierTelemetry` threw (here a `StateError('sink')`). fespalier caught and dropped it; fix the sink: it must return at once and not throw                                                                  |
+| No spans at all                                                                                                                                                                                                                                                                                                | `telemetry: true` missing (or `app.g.dart` not regenerated); no `FespalierTelemetry.install` before `AppRoutes.router()`; `FespalierOtel(isReady:)` still false (the SDK never started, or `endpoint` is `''` in release)    |
+| The first navigation has no span                                                                                                                                                                                                                                                                               | The sink was installed after the router was built: install it first                                                                                                                                                          |
+| A Flutter web app is blank and `main()`'s first line never runs                                                                                                                                                                                                                                                | `OtelZone.runGuarded` on the web (since 0.8.0, known limitation): run the body as it is on the web, `kIsWeb ? body() : observability.runGuarded(body)`                                                                       |
+| `Because every version of fespalier_otel from path depends on fespalier from git https://github.com/vaam-apps/fespalier at v0.7.0 in packages/fespalier and demo depends on fespalier from git https://github.com/vaam-apps/fespalier at v0.6.0 in packages/fespalier, fespalier_otel from path is forbidden.` | pub's own message (here `fespalier_otel` was a path, and reads `from git` for the git form): the app's `fespalier` and `fespalier_otel` are not the same dependency. Give both the same `url` (no `.git`) and the same `ref` |
+| pub resolves go_router 17.5.0 though the app asked for 18                                                                                                                                                                                                                                                      | `otel_zone` depends on `otel_go_router`, which declares `go_router: ^17.0.0`. Add `dependency_overrides: go_router: ^18.0.0`, as `otel_zone`'s README says                                                                   |

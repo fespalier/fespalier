@@ -1,0 +1,30 @@
+ fespalier dev · shop                                                             ● running · debug
+ Pixel 8 (emulator-5554) · android-arm64                   VM service ws://127.0.0.1:52341/aBcD=/ws
+ DevTools http://127.0.0.1:9100/?uri=ws://127.0.0.1:52341/aBcD=/ws
+ 1 flutter │ 2 fsp • │ 3 build_runner •
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ Launching lib/main.dart on Pixel 8 in debug mode...
+ Running Gradle task 'assembleDebug'...
+ ✓ Built build┌ keys ────────────────────────────────────────────────────────────────┐
+ Installing bu│ r                   hot reload                                       │
+ Syncing files│ R                   hot restart (runs flutter again when it stopped) │
+ I/flutter ( 4│ d                   open DevTools                                    │
+ I/flutter ( 4│ o                   open the app in the browser (web)                │
+ I/flutter ( 4│ t                   start fsp telemetry in a pane                    │
+ Performing ho│ Tab, 1-9            switch panes                                     │
+ Restarted app│ ↑ ↓ PgUp PgDn Home  scroll the pane                                  │
+ I/flutter ( 4│ End, G              follow the end of the log                        │
+              │ /                   filter the pane (Enter keeps it)                 │
+              │ Esc                 clear the filter                                 │
+              │ c                   clear the pane                                   │
+              │ ?                   this help; any key closes it                     │
+              │ q, Ctrl-C           quit; again to kill everything                   │
+              └──────────────────────────────────────────────────────────────────────┘
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ 14 routes · generated 4 s ago in 3.1 ms · no errors · hot restart ✓ 412 ms
+ r reload  R restart  d DevTools  o open  t telemetry  1-9/Tab pane  / filter  ? help  q quit

@@ -1,0 +1,30 @@
+ fespalier dev · shop                                                             ● running · debug
+ Pixel 8 (emulator-5554) · android-arm64                   VM service ws://127.0.0.1:52341/aBcD=/ws
+ DevTools http://127.0.0.1:9100/?uri=ws://127.0.0.1:52341/aBcD=/ws
+ 1 flutter │ 2 fsp • │ 3 build_runner •
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ Launching lib/main.dart on Pixel 8 in debug mode...
+ Running Gradle task 'assembleDebug'...
+ ✓ Built build/app/outputs/flutter-apk/app-debug.apk
+ Installing build/app/outputs/flutter-apk/app-debug.apk...
+ Syncing files to device Pixel 8...
+ I/flutter ( 4242): signed in as ada
+ I/flutter ( 4242): GET /api/products 200 (84 ms)
+ I/flutter ( 4242): GET /api/cart 200 (31 ms)
+ Performing hot restart...
+ Restarted application in 412ms.
+ I/flutter ( 4242): signed in as ada
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ 14 routes · generated 4 s ago in 3.1 ms · no errors · hot restart ✓ 412 ms
+ r reload  R restart  d DevTools  o open  t telemetry  1-9/Tab pane  / filter  ? help  q quit

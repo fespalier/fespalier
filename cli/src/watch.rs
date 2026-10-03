@@ -18,10 +18,12 @@ use crate::diag::{self, Diags, Level, Loc};
 use crate::parse_cache;
 use crate::session::Session;
 
-/// What wakes the loop: a relevant change on disk, or a request to end.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What wakes the loop: a relevant change on disk, a failure of the file watcher, or a request
+/// to end.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Wake {
     Changed,
+    Failed(String),
     Stop,
 }
 
@@ -136,7 +138,9 @@ pub fn watch_loop(
                 let _ = tx.send(Wake::Changed);
             }
             Ok(_) => {}
-            Err(e) => eprintln!("watch error: {e}"),
+            Err(e) => {
+                let _ = tx.send(Wake::Failed(e.to_string()));
+            }
         },
         notify::Config::default(),
     )?;
@@ -150,11 +154,22 @@ pub fn watch_loop(
     };
     watcher.watch(&watched, RecursiveMode::Recursive)?;
     sink(Watched::Watching(format!("watching {}/ …", cfg.app_dir)));
-    while let Ok(Wake::Changed) = rx.recv() {
+    loop {
+        match rx.recv() {
+            Ok(Wake::Changed) => {}
+            Ok(Wake::Failed(why)) => {
+                sink(Watched::Warning(format!("watch error: {why}")));
+                continue;
+            }
+            Ok(Wake::Stop) | Err(_) => break,
+        }
         // Editors save in bursts; one regeneration per burst.
         loop {
             match rx.recv_timeout(Duration::from_millis(80)) {
                 Ok(Wake::Changed) => {}
+                Ok(Wake::Failed(why)) => {
+                    sink(Watched::Warning(format!("watch error: {why}")));
+                }
                 Ok(Wake::Stop) => return Ok(()),
                 Err(_) => break,
             }

@@ -59,6 +59,14 @@ pub struct Pane {
     pub name: String,
     pub lines: VecDeque<PaneLine>,
     pub proc: Proc,
+    /// Lines arrived while another pane was shown.
+    pub unread: bool,
+    /// ... and one of them was an error.
+    pub unread_err: bool,
+    /// How many lines (of the filtered ones) are below what is shown: 0 follows the end.
+    pub scroll: usize,
+    /// Only lines with this text (any case) are shown.
+    pub filter: Option<String>,
 }
 
 impl Pane {
@@ -67,8 +75,34 @@ impl Pane {
             name: name.to_string(),
             lines: VecDeque::new(),
             proc: Proc::Idle,
+            unread: false,
+            unread_err: false,
+            scroll: 0,
+            filter: None,
         }
     }
+
+    /// The lines the filter lets through, oldest first.
+    #[must_use]
+    pub fn visible(&self) -> Vec<&PaneLine> {
+        match &self.filter {
+            None => self.lines.iter().collect(),
+            Some(f) => {
+                let f = f.to_lowercase();
+                self.lines
+                    .iter()
+                    .filter(|l| l.text.to_lowercase().contains(&f))
+                    .collect()
+            }
+        }
+    }
+}
+
+/// What covers the panes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Overlay {
+    None,
+    Help,
 }
 
 /// A line of a pane that plain mode prints.
@@ -80,16 +114,24 @@ pub struct PlainLine {
 }
 
 /// What a key is, whatever the terminal library calls it.
-#[allow(dead_code, reason = "the full-screen view reads it (the next commit)")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
     Char(char),
     Ctrl(char),
     Enter,
+    Esc,
+    Tab,
+    BackTab,
+    Up,
+    Down,
+    PageUp,
+    PageDown,
+    Home,
+    End,
+    Backspace,
 }
 
 /// Everything that can happen to `fsp dev`.
-#[allow(dead_code, reason = "the full-screen view reads it (the next commit)")]
 #[derive(Debug, Clone)]
 pub enum Input {
     /// A message from flutter's daemon protocol.
@@ -115,6 +157,10 @@ pub enum Input {
     },
     /// Time passed.
     Tick,
+    /// The terminal is this many columns by rows.
+    Resize(u16, u16),
+    /// Something for the status line: a URL that would not open.
+    Notice(String),
 }
 
 /// What the caller has to do.
@@ -130,6 +176,12 @@ pub enum Effect {
     Finish,
     /// A second quit: kill every group at once and leave.
     KillAll,
+    /// Open this URL in the browser.
+    Open(String),
+    /// Start `fsp telemetry` in this pane.
+    StartTelemetry(usize),
+    /// Run flutter again, after it stopped by itself.
+    Respawn,
 }
 
 /// A device `flutter devices --machine` lists.
@@ -292,7 +344,6 @@ pub struct App {
 }
 
 /// What the last generation did.
-#[allow(dead_code, reason = "the full-screen view reads it (the next commit)")]
 #[derive(Debug, Clone, Default)]
 pub struct Generation {
     pub routes: Option<usize>,
@@ -304,7 +355,6 @@ pub struct Generation {
 }
 
 /// The last hot reload or restart.
-#[allow(dead_code, reason = "the full-screen view reads it (the next commit)")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HotResult {
     pub full: bool,
@@ -336,6 +386,8 @@ enum Stage {
 
 /// What the state is made from.
 pub struct Opts {
+    /// The app's name, from the pubspec.
+    pub name: String,
     /// The names of the `with` panes, in order.
     pub with: Vec<String>,
     /// `hot_reload:` of the task: whether a save reloads by itself.
@@ -350,7 +402,15 @@ pub struct Opts {
 
 /// Everything `fsp dev` knows. See the module docs.
 pub struct DevState {
+    name: String,
     panes: Vec<Pane>,
+    selected: usize,
+    overlay: Overlay,
+    /// The filter being typed.
+    editing: Option<String>,
+    telemetry: Option<usize>,
+    notice: Option<(String, Duration)>,
+    viewport: (u16, u16),
     plain: bool,
     plain_out: VecDeque<PlainLine>,
     hot_reload: bool,
@@ -375,7 +435,14 @@ impl DevState {
         let mut panes = vec![Pane::new("flutter"), Pane::new("fsp")];
         panes.extend(opts.with.iter().map(|n| Pane::new(n)));
         DevState {
+            name: opts.name,
             panes,
+            selected: 0,
+            overlay: Overlay::None,
+            editing: None,
+            telemetry: None,
+            notice: None,
+            viewport: (100, 30),
             plain: opts.plain,
             plain_out: VecDeque::new(),
             hot_reload: opts.hot_reload,
@@ -404,14 +471,50 @@ impl DevState {
         &self.panes
     }
 
+    /// The app's name.
     #[must_use]
-    #[allow(dead_code, reason = "the full-screen view reads it (the next commit)")]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The pane that is shown.
+    #[must_use]
+    pub fn selected(&self) -> usize {
+        self.selected
+    }
+
+    #[must_use]
+    pub fn overlay(&self) -> Overlay {
+        self.overlay
+    }
+
+    /// The filter being typed, if one is.
+    #[must_use]
+    pub fn editing(&self) -> Option<&str> {
+        self.editing.as_deref()
+    }
+
+    /// A notice for the status line, for 8 s after it came.
+    #[must_use]
+    pub fn notice(&self, now: Duration) -> Option<&str> {
+        self.notice
+            .as_ref()
+            .filter(|(_, at)| now.saturating_sub(*at) < Duration::from_secs(8))
+            .map(|(t, _)| t.as_str())
+    }
+
+    /// Adds a pane for a process started later (`fsp telemetry`); returns its number.
+    pub fn add_pane(&mut self, name: &str) -> usize {
+        self.panes.push(Pane::new(name));
+        self.panes.len() - 1
+    }
+
+    #[must_use]
     pub fn phase(&self) -> Phase {
         self.phase
     }
 
     #[must_use]
-    #[allow(dead_code, reason = "the full-screen view reads it (the next commit)")]
     pub fn last_hot(&self) -> Option<&HotResult> {
         self.last_hot.as_ref()
     }
@@ -481,6 +584,7 @@ impl DevState {
         }
         for line in lines {
             let line = line.trim_end_matches('\r');
+            let hidden = pane != self.selected;
             let p = &mut self.panes[pane];
             if p.lines.len() == RING {
                 p.lines.pop_front();
@@ -489,6 +593,14 @@ impl DevState {
                 text: line.to_string(),
                 kind,
             });
+            if hidden {
+                p.unread = true;
+                p.unread_err |= kind == Kind::Error;
+            }
+            if p.scroll > 0 {
+                // Keep what is shown where it is while new lines arrive below it.
+                p.scroll = (p.scroll + 1).min(RING);
+            }
             if self.plain {
                 self.plain_out.push_back(PlainLine {
                     pane,
@@ -519,6 +631,8 @@ impl DevState {
             Input::Signal => self.shut_down(now, true, &mut fx),
             Input::Exited { pane, status } => self.on_exit(now, pane, status, &mut fx),
             Input::Tick => self.on_tick(now, &mut fx),
+            Input::Resize(w, h) => self.viewport = (w, h),
+            Input::Notice(text) => self.notice = Some((text, now)),
         }
         fx
     }
@@ -763,8 +877,85 @@ impl DevState {
     // --- keys ---------------------------------------------------------------------------------
 
     fn on_key(&mut self, now: Duration, key: Key, fx: &mut Vec<Effect>) {
+        if key == Key::Ctrl('c') {
+            return self.shut_down(now, false, fx);
+        }
+        if self.plain {
+            return self.on_typed_key(now, key, fx);
+        }
+        if self.overlay != Overlay::None {
+            // Any key closes it.
+            self.overlay = Overlay::None;
+            return;
+        }
+        if self.editing.is_some() {
+            return self.on_filter_key(key);
+        }
         match key {
-            Key::Char('q') | Key::Ctrl('c') => self.shut_down(now, false, fx),
+            Key::Char('q') => self.shut_down(now, false, fx),
+            Key::Char('?') => self.overlay = Overlay::Help,
+            Key::Char('/') => {
+                self.editing = Some(self.panes[self.selected].filter.clone().unwrap_or_default());
+            }
+            Key::Esc => {
+                let p = &mut self.panes[self.selected];
+                p.filter = None;
+                p.scroll = 0;
+            }
+            Key::Char('c') => {
+                let p = &mut self.panes[self.selected];
+                p.lines.clear();
+                p.scroll = 0;
+            }
+            Key::Tab => self.select((self.selected + 1) % self.panes.len()),
+            Key::BackTab => {
+                self.select((self.selected + self.panes.len() - 1) % self.panes.len());
+            }
+            Key::Char(d @ '1'..='9') => {
+                let n = d as usize - '1' as usize;
+                if n < self.panes.len() {
+                    self.select(n);
+                }
+            }
+            Key::Up | Key::Down | Key::PageUp | Key::PageDown | Key::Home | Key::End => {
+                self.scroll(key);
+            }
+            Key::Char('G') => self.scroll(Key::End),
+            _ if self.quit.is_some() => {}
+            Key::Char('r') => self.request(now, false, true, fx),
+            Key::Char('R') | Key::Enter if matches!(self.phase, Phase::Stopped(_)) => {
+                self.respawn(fx);
+            }
+            Key::Char('R') => self.request(now, true, true, fx),
+            Key::Char('d') => match self.app.devtools.clone() {
+                Some(uri) => fx.push(Effect::Open(uri)),
+                None => self.notice = Some(("no DevTools URL yet".into(), now)),
+            },
+            Key::Char('o') => match (self.app.web_url.clone(), &self.app.device) {
+                (Some(url), _) => fx.push(Effect::Open(url)),
+                (None, Some(d)) => {
+                    self.notice = Some((format!("no web URL: the app runs on {}", d.name), now));
+                }
+                (None, None) => self.notice = Some(("no web URL yet".into(), now)),
+            },
+            Key::Char('t') => {
+                if let Some(pane) = self.telemetry {
+                    self.select(pane);
+                } else {
+                    let pane = self.add_pane("telemetry");
+                    self.telemetry = Some(pane);
+                    self.select(pane);
+                    fx.push(Effect::StartTelemetry(pane));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Plain mode: the keys are letters typed as lines.
+    fn on_typed_key(&mut self, now: Duration, key: Key, fx: &mut Vec<Effect>) {
+        match key {
+            Key::Char('q') => self.shut_down(now, false, fx),
             _ if self.quit.is_some() => {}
             Key::Char('r') => self.request(now, false, true, fx),
             Key::Char('R') => self.request(now, true, true, fx),
@@ -783,8 +974,74 @@ impl DevState {
                 };
                 self.say(&line, Kind::Normal);
             }
-            Key::Char(_) | Key::Ctrl(_) | Key::Enter => {}
+            _ => {}
         }
+    }
+
+    /// Typing a filter: text, Backspace, Enter keeps it, Esc drops it.
+    fn on_filter_key(&mut self, key: Key) {
+        let Some(text) = self.editing.as_mut() else {
+            return;
+        };
+        match key {
+            Key::Char(c) => text.push(c),
+            Key::Backspace => {
+                text.pop();
+            }
+            Key::Enter => {
+                let text = std::mem::take(text);
+                self.editing = None;
+                let p = &mut self.panes[self.selected];
+                p.filter = (!text.is_empty()).then_some(text);
+                p.scroll = 0;
+            }
+            Key::Esc => {
+                self.editing = None;
+                let p = &mut self.panes[self.selected];
+                p.filter = None;
+                p.scroll = 0;
+            }
+            _ => {}
+        }
+    }
+
+    fn select(&mut self, pane: usize) {
+        self.selected = pane;
+        let p = &mut self.panes[pane];
+        p.unread = false;
+        p.unread_err = false;
+    }
+
+    /// The arrows, Page Up and Down, Home and End scroll the pane; End follows the log again.
+    fn scroll(&mut self, key: Key) {
+        let page = usize::from(self.viewport.1.saturating_sub(10)).max(1);
+        let p = &mut self.panes[self.selected];
+        let last = p.visible().len().saturating_sub(1);
+        p.scroll = match key {
+            Key::Up => p.scroll + 1,
+            Key::PageUp => p.scroll + page,
+            Key::Home => last,
+            Key::Down => p.scroll.saturating_sub(1),
+            Key::PageDown => p.scroll.saturating_sub(page),
+            _ => 0,
+        }
+        .min(last);
+    }
+
+    /// Runs flutter again: a new spawn, with a new app id.
+    fn respawn(&mut self, fx: &mut Vec<Effect>) {
+        let device = self.app.device.take();
+        self.app = App {
+            device,
+            supports_restart: true,
+            ..App::default()
+        };
+        self.phase = Phase::Starting;
+        self.flutter_failed = None;
+        self.last_hot = None;
+        self.panes[FLUTTER].proc = Proc::Idle;
+        self.say("running flutter again…", Kind::Normal);
+        fx.push(Effect::Respawn);
     }
 
     // --- shutdown -----------------------------------------------------------------------------

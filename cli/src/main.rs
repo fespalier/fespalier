@@ -3,6 +3,7 @@ mod daemon;
 mod dart;
 mod dev;
 mod dev_state;
+mod dev_tui;
 mod devtools;
 mod diag;
 mod emit;
@@ -471,6 +472,8 @@ mod daemon_tests;
 mod deferred_tests;
 #[cfg(test)]
 mod dev_state_tests;
+#[cfg(test)]
+mod dev_tui_tests;
 #[cfg(test)]
 mod devtools_tests;
 #[cfg(test)]

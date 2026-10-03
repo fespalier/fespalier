@@ -14,6 +14,7 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::Instant;
@@ -25,8 +26,9 @@ use crate::Exit;
 use crate::config::Config;
 use crate::daemon::{self, Line};
 use crate::dev_state::{
-    self, DevState, Device, Effect, FLUTTER, FSP, Input, Opts, Pick, PlainLine,
+    self, DevState, Device, Effect, FLUTTER, FSP, Input, Kind, Opts, Pick, PlainLine,
 };
+use crate::dev_tui::{self, TerminalGuard};
 use crate::diag;
 use crate::osc8;
 use crate::procs::{self, Out, Supervised};
@@ -162,26 +164,55 @@ fn ask_device(project: &Path, devices: &[Device]) -> Result<Device> {
     Ok(devices[index].clone())
 }
 
-/// What to do with the device listing: the device to pass, or nothing.
+/// What the device question came to.
+enum Chosen {
+    /// Run on this device, or on flutter's own choice (`None`), with a warning to show.
+    Device(Option<Device>, Option<String>),
+    /// `q` in the picker.
+    Quit,
+}
+
+/// What to do with the device listing: the device to pass, or nothing. With a view (`ui`) the
+/// picker is a screen of its own; with a terminal on stdin it is a prompt; with neither,
+/// several devices are an error that says which flag to use.
 fn choose_device(
     project: &Path,
     args: &[String],
     listing: Result<String, String>,
-    interactive: bool,
-) -> Result<Option<Device>> {
+    ui: Option<&mut TerminalGuard>,
+    stdin_tty: bool,
+) -> Result<Chosen> {
+    let unlisted = |why: &str| {
+        Chosen::Device(
+            None,
+            Some(format!(
+                "warning: could not list the devices (`flutter devices --machine`: {why}); flutter run picks one"
+            )),
+        )
+    };
     let text = match listing {
         Ok(t) => t,
-        Err(why) => {
-            eprintln!(
-                "warning: could not list the devices (`flutter devices --machine`: {why}); flutter run picks one"
-            );
-            return Ok(None);
-        }
+        Err(why) => return Ok(unlisted(&why)),
     };
-    match dev_state::pick_device(&text, args, interactive) {
-        Pick::Skip => Ok(None),
-        Pick::Device(d) => Ok(Some(d)),
-        Pick::Choose(devices) => ask_device(project, &devices).map(Some),
+    match dev_state::pick_device(&text, args, ui.is_some() || stdin_tty) {
+        Pick::Skip => Ok(Chosen::Device(None, None)),
+        Pick::Device(d) => Ok(Chosen::Device(Some(d), None)),
+        Pick::Choose(devices) => match ui {
+            Some(g) => {
+                let last = remembered(project);
+                let default = last
+                    .and_then(|id| devices.iter().position(|d| d.id == id))
+                    .unwrap_or(0);
+                match g.pick(&devices, default)? {
+                    Some(i) => {
+                        remember(project, &devices[i].id);
+                        Ok(Chosen::Device(Some(devices[i].clone()), None))
+                    }
+                    None => Ok(Chosen::Quit),
+                }
+            }
+            None => ask_device(project, &devices).map(|d| Chosen::Device(Some(d), None)),
+        },
         Pick::NeedFlag(ids) => bail!(
             "more than one device: pick one with `fsp dev -- -d <id>` (ids: {})",
             ids.join(", ")
@@ -189,12 +220,7 @@ fn choose_device(
         Pick::NoDevice => bail!(
             "no device to run on: `flutter devices` lists none that this project supports. Start an emulator or a simulator, connect a phone, or enable a platform with `flutter create --platforms=web .`"
         ),
-        Pick::Unlisted => {
-            eprintln!(
-                "warning: could not list the devices (`flutter devices --machine`: it printed no JSON); flutter run picks one"
-            );
-            Ok(None)
-        }
+        Pick::Unlisted => Ok(unlisted("it printed no JSON")),
     }
 }
 
@@ -305,19 +331,60 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
     if procs::signalled() {
         return Err(Exit(130).into());
     }
+
+    // 4. The view: the whole screen on a terminal, plain lines elsewhere.
+    let stdin_tty = std::io::stdin().is_terminal();
+    let mut guard = None;
+    if dev_tui::want_tui(
+        cmd.no_tui,
+        |k| std::env::var(k).ok(),
+        std::io::stdout().is_terminal(),
+        stdin_tty,
+    ) {
+        match TerminalGuard::enter() {
+            Ok(g) => guard = Some(g),
+            Err(e) => eprintln!("warning: could not take over the terminal ({e}); plain output"),
+        }
+    }
+    let mut warning_text = None;
     let device = match listing {
         Some(handle) => {
             let listing = handle
                 .join()
                 .unwrap_or_else(|_| Err("the device thread panicked".into()));
-            choose_device(project, &cmd.args, listing, std::io::stdin().is_terminal())?
+            let asked = choose_device(project, &cmd.args, listing, guard.as_mut(), stdin_tty)?;
+            match asked {
+                Chosen::Device(d, warning) => {
+                    warning_text = warning;
+                    d
+                }
+                // `q` in the picker: nothing was started, nothing to say.
+                Chosen::Quit => return Err(Exit(0).into()),
+            }
         }
         None => None,
     };
 
-    // 4. The loop.
-    let outcome = run_loop(project, &cfg, &plan, &env, &cmd.args, device);
-    let outcome = outcome?;
+    // 5. The loop.
+    if guard.is_none()
+        && let Some(w) = warning_text.take()
+    {
+        eprintln!("{w}");
+    }
+    let outcome = run_loop(
+        project,
+        &cfg,
+        &plan,
+        &env,
+        &cmd.args,
+        device,
+        warning_text,
+        guard,
+    )?;
+    // The terminal is back; what flutter said last stays on screen.
+    for line in &outcome.tail {
+        procs::write_stderr_line(line);
+    }
     if outcome.after_ok {
         tasks::run_steps("after", &plan.name, &plan.after, &env)?;
     }
@@ -331,8 +398,43 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
 struct Outcome {
     code: i32,
     after_ok: bool,
+    /// The last lines of the panes worth showing once the view is closed (TUI only).
+    tail: Vec<String>,
 }
 
+/// Starts flutter (`run`, with `--machine` and the device) and tells the state.
+fn start_flutter(
+    plan: &Plan,
+    env: &Env<'_>,
+    args: &[String],
+    device: Option<&Device>,
+    tx: &Sender<Input>,
+) -> Result<Supervised> {
+    let place = format!("`run` of `{}`", plan.name);
+    let extra = run_args(args, device);
+    let prepared = tasks::prepare(&plan.run, &extra, env)
+        .map_err(|w| tasks::start_error(&plan.run, &place, &w))?;
+    let program = prepared.program;
+    procs::spawn(prepared.process, true, sink_for(FLUTTER, tx))
+        .map_err(|e| tasks::start_error(&plan.run, &place, &tasks::why(&e, &program)))
+}
+
+/// Starts `fsp telemetry` for this project, for the pane `pane`.
+fn start_telemetry(project: &Path, pane: usize, tx: &Sender<Input>) -> Result<Supervised> {
+    let exe = std::env::current_exe()?;
+    let mut command = std::process::Command::new(exe);
+    command
+        .arg("--project")
+        .arg(project)
+        .arg("telemetry")
+        .current_dir(project);
+    Ok(procs::spawn(command, false, sink_for(pane, tx))?)
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the loop's inputs, each used once"
+)]
 fn run_loop(
     project: &Path,
     cfg: &Config,
@@ -340,18 +442,29 @@ fn run_loop(
     env: &Env<'_>,
     args: &[String],
     device: Option<Device>,
+    warning: Option<String>,
+    mut guard: Option<TerminalGuard>,
 ) -> Result<Outcome> {
     let (tx, rx) = mpsc::channel::<Input>();
     let start = Instant::now();
     let color = procs::color_enabled();
+    let tui = guard.is_some();
+    let links = tui && osc8::enabled_here();
     let mut state = DevState::new(Opts {
+        name: cfg.package.clone().unwrap_or_else(|| {
+            project
+                .file_name()
+                .map_or_else(|| "app".to_string(), |n| n.to_string_lossy().into_owned())
+        }),
         with: plan.with.iter().map(|(n, _)| n.clone()).collect(),
         hot_reload: plan.hot_reload,
-        plain: true,
+        plain: !tui,
         output: cfg.output.clone(),
         device: device.clone(),
     });
-    let names: Vec<String> = state.panes().iter().map(|p| p.name.clone()).collect();
+    if let Some(w) = warning {
+        state.say(&w, Kind::Warn);
+    }
     let mut running = Procs {
         flutter: None,
         with: vec![],
@@ -375,23 +488,14 @@ fn run_loop(
             }
         }
     }
-    let place = format!("`run` of `{}`", plan.name);
-    let extra = run_args(args, device.as_ref());
-    let prepared = tasks::prepare(&plan.run, &extra, env)
-        .map_err(|w| tasks::start_error(&plan.run, &place, &w))?;
-    let program = prepared.program;
-    match procs::spawn(prepared.process, true, sink_for(FLUTTER, &tx)) {
+    match start_flutter(plan, env, args, device.as_ref(), &tx) {
         Ok(s) => {
             state.started(FLUTTER);
             running.flutter = Some(s);
         }
         Err(e) => {
             abort(&running);
-            return Err(tasks::start_error(
-                &plan.run,
-                &place,
-                &tasks::why(&e, &program),
-            ));
+            return Err(e);
         }
     }
 
@@ -401,7 +505,7 @@ fn run_loop(
     let stop_watcher = wtx.clone();
     let watcher = {
         let (project, cfg, tx) = (project.to_path_buf(), cfg.clone(), tx.clone());
-        let links = osc8::enabled_here() && std::io::stderr().is_terminal();
+        let links = !tui && osc8::enabled_here() && std::io::stderr().is_terminal();
         thread::spawn(move || {
             let sent = tx.clone();
             let result = watch::watch_loop(&project, &cfg, wtx, &wrx, |msg| {
@@ -443,8 +547,15 @@ fn run_loop(
         })
     };
 
-    // Keys are typed as lines in plain mode; an end of input does not quit.
-    {
+    // Keys: the terminal's in the full-screen view, lines typed on stdin in plain mode (an end of
+    // input does not quit).
+    let stop_keys = Arc::new(AtomicBool::new(false));
+    let keys = if let Some(g) = &guard {
+        if let Ok((w, h)) = g.size() {
+            let _ = tx.send(Input::Resize(w, h));
+        }
+        Some(dev_tui::spawn_input(tx.clone(), Arc::clone(&stop_keys)))
+    } else {
         let tx = tx.clone();
         thread::spawn(move || {
             for line in std::io::stdin().lock().lines() {
@@ -454,7 +565,8 @@ fn run_loop(
                 }
             }
         });
-    }
+        None
+    };
     // Signals.
     {
         let tx = tx.clone();
@@ -472,12 +584,18 @@ fn run_loop(
         let _ = tx.send(Input::Signal);
     }
 
+    let tick = std::time::Duration::from_millis(250);
     while !state.finished() {
-        let input = match state
+        let wait = state
             .next_deadline()
-            .map(|at| at.saturating_sub(start.elapsed()))
-        {
-            Some(wait) => match rx.recv_timeout(wait) {
+            .map(|at| at.saturating_sub(start.elapsed()));
+        let wait = match (wait, tui) {
+            (Some(w), true) => Some(w.min(tick)),
+            (None, true) => Some(tick),
+            (w, false) => w,
+        };
+        let first = match wait {
+            Some(w) => match rx.recv_timeout(w) {
                 Ok(i) => i,
                 Err(mpsc::RecvTimeoutError::Timeout) => Input::Tick,
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -487,35 +605,100 @@ fn run_loop(
                 Err(_) => break,
             },
         };
-        for effect in state.update(start.elapsed(), input) {
-            match effect {
-                Effect::SendFlutter(line) => {
-                    if let Some(f) = &running.flutter {
-                        let _ = f.write_line(&line);
+        // Everything that is waiting, then one draw: a burst of log lines is one frame.
+        let mut batch = vec![first];
+        while batch.len() < 500
+            && let Ok(more) = rx.try_recv()
+        {
+            batch.push(more);
+        }
+        for input in batch {
+            for effect in state.update(start.elapsed(), input) {
+                match effect {
+                    Effect::SendFlutter(line) => {
+                        if let Some(f) = &running.flutter {
+                            let _ = f.write_line(&line);
+                        }
                     }
-                }
-                Effect::Term(pane) => {
-                    if let Some(pid) = running.pid(pane) {
-                        procs::term_group(pid);
+                    Effect::Term(pane) => {
+                        if let Some(pid) = running.pid(pane) {
+                            procs::term_group(pid);
+                        }
                     }
-                }
-                Effect::Kill(pane) => {
-                    if let Some(pid) = running.pid(pane) {
-                        procs::kill_group(pid);
+                    Effect::Kill(pane) => {
+                        if let Some(pid) = running.pid(pane) {
+                            procs::kill_group(pid);
+                        }
                     }
+                    Effect::KillAll => running.kill_all(),
+                    Effect::Finish => {}
+                    Effect::Open(url) => {
+                        if let Err(e) = procs::open_url(&url) {
+                            let _ = tx.send(Input::Notice(format!("could not open {url}: {e}")));
+                        }
+                    }
+                    Effect::StartTelemetry(pane) => match start_telemetry(project, pane, &tx) {
+                        Ok(s) => {
+                            state.started(pane);
+                            running.with.push((pane, s));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Input::Line {
+                                pane,
+                                text: format!("{e:#}"),
+                                err: true,
+                            });
+                        }
+                    },
+                    Effect::Respawn => match start_flutter(plan, env, args, device.as_ref(), &tx) {
+                        Ok(s) => {
+                            state.started(FLUTTER);
+                            running.flutter = Some(s);
+                        }
+                        Err(e) => {
+                            // It did not start: the view stays stopped, with the reason.
+                            let _ = tx.send(Input::Line {
+                                pane: FLUTTER,
+                                text: format!("{e:#}"),
+                                err: true,
+                            });
+                            let _ = tx.send(Input::Exited {
+                                pane: FLUTTER,
+                                status: procs::Status {
+                                    code: 1,
+                                    signal: None,
+                                },
+                            });
+                        }
+                    },
                 }
-                Effect::KillAll => running.kill_all(),
-                Effect::Finish => {}
             }
         }
-        plain_print(&state.drain_plain(), &names, color);
+        if let Some(g) = guard.as_mut() {
+            let _ = g.draw(&state, start.elapsed(), links);
+        } else {
+            let names: Vec<String> = state.panes().iter().map(|p| p.name.clone()).collect();
+            plain_print(&state.drain_plain(), &names, color);
+        }
     }
 
+    stop_keys.store(true, Ordering::SeqCst);
     let _ = stop_watcher.send(Wake::Stop);
     let _ = watcher.join();
+    if let Some(k) = keys {
+        let _ = k.join();
+    }
+    let tail = if tui {
+        dev_tui::tail(&state, 20)
+    } else {
+        vec![]
+    };
+    // The terminal goes back before anything else is printed.
+    drop(guard.take());
     Ok(Outcome {
         code: state.exit_code(),
         after_ok: state.after_ok(),
+        tail,
     })
 }
 

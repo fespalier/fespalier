@@ -17,6 +17,7 @@ fn ms(n: u64) -> Duration {
 
 fn state_with(plain: bool, hot_reload: bool, with: &[&str]) -> DevState {
     let mut s = DevState::new(Opts {
+        name: "shop".into(),
         with: with.iter().map(|w| (*w).to_string()).collect(),
         hot_reload,
         plain,

@@ -19,11 +19,13 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
-ctrlc = { version = "3.5", features = ["termination"] }
 codespan-reporting = "0.13"
+ctrlc = { version = "3.5", features = ["termination"] }
 heck = "0.5"
 minijinja = { version = "2", features = ["loader"] }
 notify = "8"
+# The full-screen view of `fsp dev` (crossterm comes through it: `ratatui::crossterm`, so no version skew).
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml_ng = "0.10.0"

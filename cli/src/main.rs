@@ -13,6 +13,7 @@ mod lint;
 mod locale;
 mod maestro;
 mod manifest;
+mod menu;
 mod parse_cache;
 mod resolve;
 mod routes;
@@ -511,6 +512,8 @@ mod maestro_tests;
 mod manifest_tests;
 #[cfg(test)]
 mod match_tests;
+#[cfg(test)]
+mod menu_tests;
 #[cfg(test)]
 mod nav_tests;
 #[cfg(test)]

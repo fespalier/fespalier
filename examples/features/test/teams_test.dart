@@ -22,7 +22,7 @@ void main() {
       (tester) async {
         await open(tester, '/teams/acme/members', settle: false);
         expect(find.text('Loading team'), findsOneWidget);
-        expect(find.textContaining('Members'), findsNothing);
+        expect(find.text('Members: ann, bob'), findsNothing);
 
         await tester.pumpAndSettle();
         expect(find.text('Loading team'), findsNothing);
@@ -67,8 +67,9 @@ void main() {
         find.text('Team failed: Exception: no team ghost'),
         findsOneWidget,
       );
-      expect(find.textContaining('Team GHOST'), findsNothing);
-      expect(find.textContaining('Members'), findsNothing);
+      // (The breadcrumbs name the team and the page; the layout and the page are not built.)
+      expect(find.text('Team GHOST'), findsNothing);
+      expect(find.text('Members: ann, bob'), findsNothing);
       expect(team_data.teamFetches, 1);
 
       await tester.tap(find.byType(TextButton));

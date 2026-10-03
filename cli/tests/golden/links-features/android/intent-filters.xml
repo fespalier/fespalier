@@ -71,6 +71,7 @@
     <data android:pathPattern="/teams/..*/members/..*" />
     <data android:pathPattern="/teams/..*/settings" />
     <data android:path="/ticks" />
+    <data android:path="/vault" />
     <data android:pathPrefix="/wiki/" />
 </intent-filter>
 <intent-filter android:autoVerify="true">
@@ -143,6 +144,7 @@
     <data android:pathPattern="/teams/..*/members/..*" />
     <data android:pathPattern="/teams/..*/settings" />
     <data android:path="/ticks" />
+    <data android:path="/vault" />
     <data android:pathPrefix="/wiki/" />
 </intent-filter>
 <intent-filter>
@@ -216,5 +218,6 @@
     <data android:pathPattern="/teams/..*/members/..*" />
     <data android:pathPattern="/teams/..*/settings" />
     <data android:path="/ticks" />
+    <data android:path="/vault" />
     <data android:pathPrefix="/wiki/" />
 </intent-filter>

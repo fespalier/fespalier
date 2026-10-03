@@ -788,6 +788,7 @@ fn fsp_new_below_an_enum_segment_uses_its_name() {
         layout: false,
         guard: false,
         transition: false,
+        nav: false,
     };
     crate::scaffold::new_route(dir.path(), &args).unwrap();
     // The type is the name the app writes; the new file imports the enum itself.

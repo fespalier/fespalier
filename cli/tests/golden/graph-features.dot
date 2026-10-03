@@ -48,38 +48,39 @@ digraph routes {
       }
       n31 [label="/search\nSearchRoute\n(data)"];
       n32 [label="/ticks\nTicksRoute\n(data)"];
-      n33 [label="/:slug\nSlugRoute"];
+      n33 [label="/vault\nVaultRoute\n(guard)"];
+      n34 [label="/:slug\nSlugRoute"];
       subgraph cluster_b3 {
         label="layout notes/layout.dart";
         style=rounded;
-        n34 [label="/notes/:id\nNoteRoute\n(guard)"];
+        n35 [label="/notes/:id\nNoteRoute\n(guard)"];
       }
-      n35 [label="/old-shops/:shop\nOldShopsShopRoute\n(redirect)", style=dashed];
-      n36 [label="/orders/:id\nOrderRoute"];
-      n37 [label="/orders/:id/refund\nRefundRoute\n(data, action, guard)"];
-      n38 [label="/orders/:id/refund/receipt\nReceiptRoute"];
-      n39 [label="/orders/:id/refund/confirm\nConfirmRefundRoute\n(guard, sibling)"];
-      n40 [label="/remount/location/:id\nRemountLocationRoute"];
-      n41 [label="/remount/never/:id\nRemountNeverRoute"];
-      n42 [label="/remount/segments/:id\nRemountSegmentsRoute"];
-      n43 [label="/shop/:category\nCategoryShopRoute\nfr /boutique/:category, de /laden/:category\n(data)"];
+      n36 [label="/old-shops/:shop\nOldShopsShopRoute\n(redirect)", style=dashed];
+      n37 [label="/orders/:id\nOrderRoute"];
+      n38 [label="/orders/:id/refund\nRefundRoute\n(data, action, guard)"];
+      n39 [label="/orders/:id/refund/receipt\nReceiptRoute"];
+      n40 [label="/orders/:id/refund/confirm\nConfirmRefundRoute\n(guard, sibling)"];
+      n41 [label="/remount/location/:id\nRemountLocationRoute"];
+      n42 [label="/remount/never/:id\nRemountNeverRoute"];
+      n43 [label="/remount/segments/:id\nRemountSegmentsRoute"];
+      n44 [label="/shop/:category\nCategoryShopRoute\nfr /boutique/:category, de /laden/:category\n(data)"];
       subgraph cluster_b4 {
         label="layout shops/$shop/layout.dart (guard)";
         style=rounded;
-        n44 [label="/shops/:shop\nShopRoute\n(guard)"];
-        n45 [label="/shops/:shop/items/:id\nItemRoute\n(data)"];
+        n45 [label="/shops/:shop\nShopRoute\n(guard)"];
+        n46 [label="/shops/:shop/items/:id\nItemRoute\n(data)"];
       }
       subgraph cluster_b5 {
         label="layout teams/$teamId/layout.dart (data, fresh)";
         style=rounded;
-        n46 [label="/teams/:teamId/members\nMembersRoute"];
-        n47 [label="/teams/:teamId/members/:member\nMemberRoute\n(data, fresh)"];
-        n48 [label="/teams/:teamId/settings\nTeamSettingsRoute"];
+        n47 [label="/teams/:teamId/members\nMembersRoute"];
+        n48 [label="/teams/:teamId/members/:member\nMemberRoute\n(data, fresh)"];
+        n49 [label="/teams/:teamId/settings\nTeamSettingsRoute"];
       }
-      n49 [label="/browse/*categories\nBrowseRoute\n(data)"];
-      n50 [label="/compare/*ids\nCompareRoute\n(data)"];
-      n51 [label="/files/*path?\nFilesRoute"];
-      n52 [label="/wiki/*article\nWikiRoute\n(data)"];
+      n50 [label="/browse/*categories\nBrowseRoute\n(data)"];
+      n51 [label="/compare/*ids\nCompareRoute\n(data)"];
+      n52 [label="/files/*path?\nFilesRoute"];
+      n53 [label="/wiki/*article\nWikiRoute\n(data)"];
     }
   }
   n0 -> n1;
@@ -106,17 +107,18 @@ digraph routes {
   n0 -> n34;
   n0 -> n35;
   n0 -> n36;
-  n0 -> n40;
+  n0 -> n37;
   n0 -> n41;
   n0 -> n42;
   n0 -> n43;
   n0 -> n44;
-  n0 -> n46;
-  n0 -> n48;
+  n0 -> n45;
+  n0 -> n47;
   n0 -> n49;
   n0 -> n50;
   n0 -> n51;
   n0 -> n52;
+  n0 -> n53;
   n7 -> n8;
   n8 -> n9;
   n11 -> n12;
@@ -129,9 +131,9 @@ digraph routes {
   n23 -> n27;
   n23 -> n28;
   n24 -> n25;
-  n36 -> n37;
-  n36 -> n39;
   n37 -> n38;
-  n44 -> n45;
-  n46 -> n47;
+  n37 -> n40;
+  n38 -> n39;
+  n45 -> n46;
+  n47 -> n48;
 }

@@ -359,6 +359,22 @@ pub struct BranchOptions {
     pub initial_location: Option<String>,
 }
 
+/// A folder's `nav.dart` (since 0.8.0): `const nav = Nav(label: 'Products', order: 1);` and,
+/// optionally, `String label(BuildContext context, {required int id})`.
+#[derive(Debug, Clone)]
+pub struct NavDecl {
+    /// The index of the nav.dart in the generated file's imports.
+    pub import: usize,
+    /// Relative to the app folder: `products/nav.dart`.
+    pub file: String,
+    /// `order:` as written, or 0.
+    pub order: i64,
+    /// `label:` when it is a string literal (for `fsp routes --json`).
+    pub label: Option<String>,
+    /// The segments `label()` asks for, in declaration order; `None` without a `label()`.
+    pub label_args: Option<Vec<String>>,
+}
+
 #[derive(Debug)]
 pub struct Route {
     pub dir: String,
@@ -424,6 +440,9 @@ pub struct Route {
     pub layout_extra: Option<HookExtra>,
     /// The literal named arguments of `const meta = Meta(code: 'x', ...)`, for `meta_unique`.
     pub meta_args: Vec<dart::ObjectArg>,
+    /// The folder's `nav.dart`, when it has a valid one: how it shows in the menus (`AppMenu`).
+    /// Set for a folder with or without a page.
+    pub nav: Option<NavDecl>,
     /// The sections (route ids) above this folder, outermost first, whose data.dart the
     /// layouts above load: what `AppRoutes.dataAt` lists before the route's own data.
     pub sections: Vec<usize>,
@@ -870,6 +889,7 @@ impl Resolver<'_> {
             extra: None,
             layout_extra: None,
             meta_args: vec![],
+            nav: None,
             sections: up.sections.iter().map(|s| s.id).collect(),
             case_sensitive: up.case_sensitive,
             localized: up.localized.clone(),
@@ -1298,6 +1318,9 @@ impl Resolver<'_> {
         self.app.routes[id].meta = modules
             .get(&Kind::Meta)
             .and_then(|m| self.meta(m, node, has_route));
+        self.app.routes[id].nav = modules
+            .get(&Kind::Nav)
+            .and_then(|m| self.nav(m, node, &segs));
         // A redirect.dart route can carry an `extra` too, which its redirect reads.
         let extra = extra.or_else(|| {
             redirect
@@ -1390,7 +1413,10 @@ impl Resolver<'_> {
             let msg = "guard.dart guards no routes: there is no page.dart or redirect.dart at or below this folder";
             self.diags.warn(&node.rel(Kind::Guard), None, msg);
         }
-        let bare = !node.files.contains_key(&Kind::Page) && !node.files.contains_key(&Kind::Guard);
+        // A lone nav.dart is a heading nothing hangs from: the menu check says so (W-N9).
+        let bare = !node.files.contains_key(&Kind::Page)
+            && !node.files.contains_key(&Kind::Guard)
+            && !node.files.contains_key(&Kind::Nav);
         if !any_route && node.children.is_empty() && !node.dir.is_empty() && bare {
             self.diags.warn(
                 &node.dir,
@@ -1670,6 +1696,149 @@ impl Resolver<'_> {
             return None;
         }
         Some(file)
+    }
+
+    /// `const nav = Nav(label: 'Products', order: 1);` in a folder's nav.dart, and the optional
+    /// `String label(BuildContext context, {required int id})`: how the folder shows in the menus.
+    /// Read from the source, like `meta`, so `nav` must be a `const` `Nav(...)` call with a
+    /// whole-number `order`. `segs` are the folder's segments: what `label()` can ask for.
+    fn nav(&mut self, m: &Module, node: &Node, segs: &[(String, usize)]) -> Option<NavDecl> {
+        let file = node.rel(Kind::Nav);
+        let mut found = m.variables.iter().filter(|v| v.name == "nav");
+        let Some(v) = found.next() else {
+            self.diags
+                .error(&file, None, "expected `const nav = Nav(label: '...');`");
+            return None;
+        };
+        if let Some(again) = found.next() {
+            self.diags
+                .error(&file, Some(&again.span), "`nav` is declared twice");
+        }
+        if !v.is_const {
+            let msg = "`nav` must be `const` (AppMenu lists it in a const tree): write `const nav = Nav(...);`";
+            self.diags.error(&file, Some(&v.span), msg);
+            return None;
+        }
+        let written = v.value.as_deref().unwrap_or_default();
+        let is_nav = written.starts_with("Nav(") || written.starts_with("constNav(");
+        let Some(args) = v.ctor_args.as_ref().filter(|_| is_nav) else {
+            let msg = "`nav` must be a `Nav(...)` call, so fsp can read its `order`: `const nav = Nav(label: 'Products', order: 1);`";
+            self.diags.error(&file, Some(&v.span), msg);
+            return None;
+        };
+        let mut order = 0;
+        let mut label = None;
+        let mut ok = true;
+        for a in args {
+            match (a.name.as_str(), &a.value) {
+                ("order", Lit::Num(n)) if n.parse::<i64>().is_ok() => {
+                    order = n.parse::<i64>().unwrap_or_default();
+                }
+                ("order", _) => {
+                    let msg = "`order` must be a whole-number literal, like `order: 2`: fsp sorts the menu with it";
+                    self.diags.error(&file, Some(&a.span), msg);
+                    ok = false;
+                }
+                ("label", Lit::Str(l)) => label = Some(l.clone()),
+                _ => {}
+            }
+        }
+        let label_args = m
+            .functions
+            .iter()
+            .find(|f| f.name == "label")
+            .map(|f| self.nav_label(f, &file, segs));
+        let label_args = match label_args {
+            Some(Some(args)) => Some(args),
+            Some(None) => {
+                ok = false;
+                None
+            }
+            None => None,
+        };
+        let import = self.import(&file);
+        ok.then_some(NavDecl {
+            import,
+            file,
+            order,
+            label,
+            label_args,
+        })
+    }
+
+    /// `String label(BuildContext context, {required int id})` in a nav.dart: the segments it
+    /// asks for, in declaration order; `None` when it is wrong (the errors are reported).
+    fn nav_label(
+        &mut self,
+        f: &Function,
+        file: &str,
+        segs: &[(String, usize)],
+    ) -> Option<Vec<String>> {
+        let mut ok = true;
+        if !f.ret.as_ref().is_some_and(|r| r.is("String")) {
+            let msg = "label() must return a String: `String label(BuildContext context) => ...`";
+            self.diags.error(file, Some(&f.span), msg);
+            ok = false;
+        }
+        let first_is_context = f
+            .params
+            .first()
+            .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("BuildContext")));
+        if !first_is_context {
+            let msg =
+                "label() must take `BuildContext context` first: the menu calls it while it builds";
+            self.diags.error(file, Some(&f.span), msg);
+            ok = false;
+        }
+        let mut asked = vec![];
+        for p in f.params.iter().skip(1) {
+            let Some((_, folder)) = segs.iter().find(|(n, _)| *n == p.name) else {
+                let msg = if segs.is_empty() {
+                    format!(
+                        "label() gets no segments here (this folder and the ones above it have none); remove `{}`",
+                        p.name
+                    )
+                } else {
+                    format!(
+                        "label() can ask for the segments of its folder and above ({}); `{}` is none of them",
+                        show_segs(segs),
+                        p.name
+                    )
+                };
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+                continue;
+            };
+            if !p.named {
+                let msg = format!(
+                    "label() takes segments as named parameters, e.g. `{{required int {}}}`",
+                    p.name
+                );
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+            } else if !p.required {
+                let msg = format!(
+                    "`{}` must be `required`: a menu entry always has its segments",
+                    p.name
+                );
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+            } else if let Some(ty) = &p.ty {
+                self.constraints.push(Constraint {
+                    folder: *folder,
+                    name: p.name.clone(),
+                    ty: ty.clone(),
+                    file: file.to_string(),
+                    span: p.span.clone(),
+                });
+            } else {
+                let msg = format!("give `{}` a type (String, int, double or bool)", p.name);
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+            }
+            asked.push(p.name.clone());
+        }
+        ok.then_some(asked)
     }
 
     /// `const navigator = RouteNavigator.root;` in a folder's navigator.dart: the navigator

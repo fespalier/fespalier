@@ -643,6 +643,7 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
         layout,
         guard: false,
         transition: false,
+        nav: false,
     };
     // A group has no page of its own; with its layout, data.dart is the section's.
     new_route(dir.path(), &args("(shop)", true, true)).unwrap();

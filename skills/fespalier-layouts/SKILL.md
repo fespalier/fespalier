@@ -1,6 +1,6 @@
 ---
 name: fespalier-layouts
-description: "Layouts and shells in fespalier — layout.dart (a ShellRoute around a folder and everything below it), (group) layouts, tab layouts on a StatefulNavigationShell with tabs, tabOptions and a custom container, nested tabs, transition.dart and how a layout's shell animates, dialogs and sheets as routes, state restoration ids, scroll restoration on the browser's back and forward, and adaptive patterns (rail versus bar, drawer versus side list). Load before adding or changing a layout.dart, a tab bar, a transition.dart or restoration, or when a layout wraps the wrong pages, a tab loses its state, or a ListTile asserts about its Material."
+description: "Layouts and shells in fespalier — layout.dart (a ShellRoute around a folder and everything below it), (group) layouts, tab layouts on a StatefulNavigationShell with tabs, tabOptions and a custom container, nested tabs, transition.dart and how a layout's shell animates, dialogs and sheets as routes, state restoration ids, scroll restoration on the browser's back and forward, and adaptive patterns (rail versus bar, drawer versus side list), and, since 0.8.0, menus and breadcrumbs generated from nav.dart files (a drawer, a tab bar, a breadcrumb row that respects guards). Load before adding or changing a layout.dart, a tab bar, a menu, a nav.dart, a transition.dart or restoration, or when a layout wraps the wrong pages, a tab loses its state, or a ListTile asserts about its Material."
 ---
 
 # fespalier-layouts
@@ -100,6 +100,17 @@ flights in a hidden tab), and `heroes: const Heroes(onBackGesture: true)` on a `
 call sets how they fly; nothing flies into a dialog or sheet. All in
 [`references/transitions-and-restoration.md`](references/transitions-and-restoration.md).
 
+## Menus and breadcrumbs (`nav.dart`, since 0.8.0)
+
+A `nav.dart` (`const nav = Nav(label: 'Products', order: 1);` and an optional
+`String label(BuildContext context, {...segments})`) in a folder makes it a menu entry, and `fsp gen`
+writes `AppMenu` in `app.g.dart`: `AppMenu.watch(ref, under: '(tabs)')` for drawers and tab bars
+(each item has `tab`), `AppMenu.breadcrumbs(ref)` for the path to the page. Entries follow the guards
+that would run for them: a sync answer is in the first frame, a `Future` shows the entry pending, a
+`Ref` guard is followed. Call them in a layout or a page, never above the router. Rules, guards, traps
+and the app-without-nav.dart guarantee are in
+[`references/menus-and-breadcrumbs.md`](references/menus-and-breadcrumbs.md).
+
 **Scroll restoration** (since 0.8.0): `scroll_restoration: true` in the pubspec's `fespalier:` section
 wraps each page in `RouteScrollMemory`; the browser's back and forward then give a scrollable its
 offset back, **only if it has a `PageStorageKey`**, and a `go` starts at the top. Same page.
@@ -123,6 +134,7 @@ drawer-versus-side-list plain layout that highlights the current route through
 | `tabs` error on a `(group)` or `$folder` tab      | The tab's first route has a `:segment`; add `tabOptions` `initialLocation` or restructure |
 | A full-screen page shows the tab bar              | It is inside the layout's folder without `navigator.dart` (or outside it, to avoid tabs)  |
 | Dialog opens over a blank screen on a deep link   | The dialog route has no parent page above it in the tree                                  |
+| A menu entry is missing                           | Its folder needs segments the location lacks, `inMenu: false`, or a guard refuses it      |
 | Restored app forgets a page's local state         | Custom `Page` without `restorationId: key.value`, or renamed folders                      |
 | A list starts at the top after the browser's back | `scroll_restoration` is off, or the scrollable has no `PageStorageKey` (since 0.8.0)      |
 

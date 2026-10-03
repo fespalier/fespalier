@@ -397,6 +397,7 @@ widget class" and lists them. Make helpers private (`_Name`) rather than lean on
 | `meta.dart`        | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data                                                                                                                                           |
 | `extra_codec.dart` | at the root of the app folder only: a top-level `extraCodec`, the `Codec<Object?, Object?>` the router saves an [`extra`](#restoring-extra-on-the-web) with                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data                                                                                                                                           |
 | `route.dart`       | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`; and/or `const paths = {'fr': 'produits'};` in a static folder: [its other spellings per locale](#localized-paths); and/or `const nest = false;` beside a `page.dart` or `redirect.dart`: [its route is a sibling of the page above, not a child](#a-sibling-with-a-compound-path); and/or `const linkable = false;` (since 0.5.0): [`fsp links`](#deep-links-and-a-sitemap-fsp-links) leaves this folder's routes and those below it out, [the nearest one winning](#case-and-trailing-slashes); and/or `const remount = Remount.onSegments;` (since 0.6.0): [when the pages in this folder and below get a fresh state because their URL changed](#remounting-a-page-remount), the nearest one winning over the pubspec's `remount`; and/or `const deferred = true;` (since 0.7.0): [the pages in this folder and below load their code on demand](#deferred-routes-a-pages-code-on-demand), the nearest one winning over the pubspec's `deferred`; and/or `const freshness = Freshness(staleTime: Duration(minutes: 5));` (since 0.8.0): [the default for when the data.dart functions in this folder and below load again](#freshness-staletime-resume-and-reconnect), the nearest one winning, a data.dart's own over all. Read from the source, never imported | nothing: it is data                                                                                                                                           |
+| `nav.dart`         | in any folder (since 0.8.0): `const nav = Nav(label: 'Products', order: 1);` — how the folder shows in the generated [menus and breadcrumbs](#menus-and-breadcrumbs-navdart) (`AppMenu`) — and optionally `String label(BuildContext context, {…})`, the label shown, localized. Read from the source (its `order` and the segments `label()` asks for); a folder with no page is a heading                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data; `label()` takes a `BuildContext` and the segments of its folder and above (named, `required`)                                            |
 
 ### Function views
 
@@ -1116,6 +1117,124 @@ and wrap the ones it doesn't show in `TickerMode(enabled: false)`, as go_router'
 [shared element](#shared-elements-heroes) (since 0.8.0) knows its tab is hidden.
 A `container` in a layout that isn't a tab layout is ignored with a warning. `examples/tabs`
 cross-fades, and its tests check that a tab's state survives.
+
+### Menus and breadcrumbs: `nav.dart`
+
+Since 0.8.0. A drawer, a bottom bar, a tab bar and a breadcrumb row all list the same thing:
+the folders of the app and where they go. A `nav.dart` in a folder says how that folder shows
+up, and `fsp gen` writes `AppMenu` at the end of `lib/app.g.dart` from all of them, so a menu is
+not a second list to keep in step with the routes. An app with no `nav.dart` generates exactly
+the file it did before.
+
+```dart
+// lib/app/products/nav.dart
+import 'package:fespalier/nav.dart';
+import 'package:flutter/material.dart';
+
+const nav = Nav(
+  label: 'Products', // without a BuildContext (`fsp routes`, tests), and the fallback
+  icon: Icons.storefront_outlined,
+  selectedIcon: Icons.storefront,
+  order: 1, // siblings sort by `order`, then by their place as a tab, then by folder name
+);
+
+/// Optional: the label shown, localized. It can ask for the segments of its folder and above.
+String label(BuildContext context) => AppLocalizations.of(context)!.products;
+```
+
+`Nav` and `NavItem` live in `package:fespalier/nav.dart`, not in the barrel, so they collide
+with nothing you have. `nav` must be a `const` `Nav(...)` call and `order` a whole-number
+literal: `fsp` reads both from the source. A folder with a `page.dart` or `redirect.dart` is an
+entry that goes there; a folder without one is a **heading** that holds the entries of the
+folders below it, and is left out (with a warning) when there are none.
+
+```dart
+// lib/app/orders/$id/nav.dart: a breadcrumb, not a menu entry
+const nav = Nav(label: 'Order', inMenu: false);
+String label(BuildContext context, {required int id}) => 'Order #$id';
+```
+
+**Reading it.** `AppMenu.watch(ref)` returns the entries at the current location, nested as the
+folders are, as `NavItem`s; `AppMenu.breadcrumbs(ref)` the entries from the top down to the
+page. Call them in `build`, in a layout or a page: they read the router's location, so the
+widget rebuilds when it changes (above the router, in `MaterialApp.builder`, there is none).
+
+```dart
+class AppDrawer extends ConsumerWidget {
+  const AppDrawer({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => ListView(
+    children: [
+      for (final item in AppMenu.watch(ref))
+        ListTile(
+          leading: Icon(item.icon), // selectedIcon while selected
+          title: Text(item.label(context)),
+          selected: item.selected,
+          enabled: item.enabled, // false: its guards refuse it, with `NavRefused.disable`
+          onTap: () => item.go(context),
+        ),
+    ],
+  );
+}
+
+// a tab bar: AppMenu.watch(ref, under: '(tabs)') lists the entries at or below that folder,
+// and each one's `tab` is its index in the tab layout of that folder
+final tabs = AppMenu.watch(ref, under: '(tabs)');
+NavigationBar(
+  selectedIndex: navigationShell.currentIndex,
+  onDestinationSelected: (i) => navigationShell.goBranch(i),
+  destinations: [for (final t in tabs) NavigationDestination(icon: Icon(t.icon), label: t.label(context))],
+);
+
+// breadcrumbs
+Text(AppMenu.breadcrumbs(ref).map((c) => c.label(context)).join(' › '));
+```
+
+**Which entries, and in what order.**
+
+- The app folder's own `nav.dart`, and the one of a tab layout's own `page.dart`, are _flat_:
+  they sit beside the entries below them instead of holding them, and are selected on their own
+  route only. Any other entry holds the entries of the folders below it (`children`).
+- Siblings sort by `order`, then by their index as a tab (see `NavItem.tab`), then by folder
+  name.
+- `under:` takes a folder (`'(tabs)'`, `r'teams/$teamId'`, `''` for everything) and returns the
+  topmost entries at or below it. It is an assertion in debug when no `nav.dart` is there.
+- An entry whose folder has segments (`orders/$id`) is listed only at a location that has them
+  (`/orders/7`, `/orders/7/refund`): its route is built from that location. Elsewhere it is
+  left out, with the entries below it. `inMenu: false` leaves an entry out of `watch` and its
+  children with it; the breadcrumbs keep it.
+- A selected entry is the one of the page or of a folder above it.
+
+**Guards.** An entry is shown only if the guards that would run for a navigation to it let it
+through: those of its folder and the ones above it, asked with the entry's own location. What
+the menu does with a refused one is the entry's `whenRefused`: `NavRefused.hide` (the default),
+`disable` (listed, `enabled == false`) or `show` (listed, and its guards are not asked at all).
+
+- A guard that answers at once (the usual `ref.watch(session) ? null : '/login'`) is in the
+  **first frame** of the widget that asks. A `Ref` guard is followed: when what it `ref.watch`es
+  changes, the entry changes in the next frame, with no navigation.
+- A guard that returns a `Future` makes the entry **pending**: listed and enabled
+  (`NavItem.access == NavAccess.pending`) until the answer is in, then allowed or refused. Nothing
+  waits for it, and no timer is used. A guard that throws is reported (`FlutterError.reportError`)
+  and the entry stays pending.
+- A guard written with `ProviderContainer c` (the older form) is called with the `Ref`'s
+  container, and read once when the menu asks, as a navigation does: the menu does not follow
+  it.
+- The menu **runs your guards**, each once per entry while a menu with it is on screen (and
+  again when what they watch changes), so a guard has to be cheap and free of side effects. The
+  answers are kept in one provider per entry that goes with the widgets that watch it:
+  a menu that leaves the screen lets go of everything its guards watch.
+
+**Labels.** `label()` gets the `BuildContext`, so it can read `AppLocalizations`, the locale or a
+provider-backed setting, and the segments it names (`required int id`), typed like any other file
+in the folder. It is not given data: a breadcrumb that shows a product's name reads the product
+in the widget (`ProductRoute.watch(ref, id: item.params['id'] as int)`).
+
+Not built: more than one menu per app (use `under:` and `inMenu`), labels from `data.dart`.
+`fsp new orders --nav` writes a `nav.dart` for a folder, `fsp routes --json` has a `nav` key on
+the routes whose folder has one (`file`, `label` when it is a string literal, `order`), and
+`examples/features` has a menu, a team sub-menu and breadcrumbs, with tests for each guard case.
 
 ### Guards
 
@@ -3111,6 +3230,7 @@ fsp new '(account)' --layout    # a (group) folder: layout only, no page.dart
 fsp new 'kyc/shop/name' --function --name KycShopName
                         # views as functions (`Widget page()`), with a routeName
 fsp new 'shop' --not-found      # not_found.dart (not-found.dart with `file_style: kebab`)
+fsp new 'orders' --nav          # nav.dart: how the folder shows in the generated menus (since 0.8.0)
 ```
 
 All commands take `--project <dir>` (default: the nearest folder with a `pubspec.yaml`).
@@ -4509,12 +4629,12 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 922 tests (864 unit, 45 CLI integration, 13 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 946 tests (888 unit, 45 CLI integration, 13 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
   scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), string paths that match no route (the lint, its matching, mount point and ignore comments), `fsp size` (dart2js's table of deferred parts read from a real build's `main.dart.js`, own and shared bytes, the stale-build checks and the `size:` budgets), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 1141 Flutter tests (the package 598, the DevTools extension 189, `shop` 77, `features` 229, `tabs` 40, `minimal` 8); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 1184 Flutter tests (the package 626, the DevTools extension 189, `shop` 77, `features` 244, `tabs` 40, `minimal` 8); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

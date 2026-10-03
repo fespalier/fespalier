@@ -371,7 +371,10 @@
         "packages/fespalier/lib/src/navigation_kind.dart",
         "packages/fespalier/lib/src/version.dart",
         "cli/templates/new/observe.dart.jinja",
-        "examples/telemetry"
+        "examples/telemetry",
+        "README.md#Several sinks: combine and add",
+        "README.md#Spans around data() and actions",
+        "README.md#Where a navigation came from: navigateFrom"
       ]
     }
   },

@@ -98,6 +98,11 @@ fn off_is_the_committed_output() {
         assert!(!committed.contains("Telemetry"), "{name}");
         assert!(!committed.contains("telemetry"), "{name}");
         assert!(!committed.contains("static void attach"), "{name}");
+        // The data providers are `traceData(..., data(...))`, as before 0.9.0.
+        assert!(!committed.contains("traceDataCall"), "{name}");
+        if name != "tabs" {
+            assert!(committed.contains("traceData(ref, '"), "{name}");
+        }
     }
 }
 
@@ -107,7 +112,8 @@ fn off_is_the_committed_output() {
 fn every_guard_data_provider_and_action_is_told_where_it_is() {
     let on = example("shop", true);
     // Every traced call carries its site.
-    for needle in ["traceGuard(", "traceData("] {
+    // Since 0.9.0 the data call is a closure the sink may run its span around.
+    for needle in ["traceGuard(", "traceDataCall("] {
         let calls: Vec<&str> = on.lines().filter(|l| l.contains(needle)).collect();
         assert!(!calls.is_empty(), "no {needle} in the shop");
         for l in calls {
@@ -277,4 +283,121 @@ fn off_with_the_key_written_out_is_the_same_as_without_it() {
     };
     let (code, _, _) = crate::build(&dir.path().join("lib/app"), &cfg).unwrap();
     assert_eq!(code, code_with(false, files));
+}
+
+// ---- the data span is current while data() runs (since 0.9.0) ----
+
+const FRESH: &str = "const freshness = Freshness(staleTime: Duration(minutes: 1));\n";
+const CACHE: &str =
+    "final dataCache = DataCache<String>.json(toJson: (v) => v, fromJson: (j) => j! as String);\n";
+
+fn motd_page() -> &'static str {
+    "class MotdPage extends StatelessWidget { const MotdPage({super.key, required this.text}); final String text; }"
+}
+
+#[test]
+fn a_data_provider_calls_data_inside_a_closure() {
+    let c = code_with(
+        true,
+        &[
+            ("page.dart", &page("Home")),
+            ("items/$id/page.dart", &item()),
+            (
+                "items/$id/data.dart",
+                "import 'package:fespalier/fespalier.dart';\nFuture<String> data(Ref ref, {required int id}) async => 'x';",
+            ),
+        ],
+    );
+    has(
+        &c,
+        &[
+            "final _data2 = FutureProvider.autoDispose.family(",
+            "(Ref ref, int id) => traceDataCall(ref, 'd2', id, () => _i1.data(ref, id: id), telemetry: const TelemetrySite('items/\\$id/data.dart', route: '/items/:id')),",
+        ],
+    );
+    assert!(!c.contains("traceData("), "{c}");
+}
+
+#[test]
+fn a_provider_with_no_key_and_one_with_a_record_key_do_too() {
+    let c = code_with(
+        true,
+        &[
+            ("page.dart", &page("Home")),
+            ("motd/page.dart", motd_page()),
+            (
+                "motd/data.dart",
+                "import 'package:fespalier/fespalier.dart';\nFuture<String> data(Ref ref) async => 'x';",
+            ),
+            (
+                "shops/$shop/items/$id/page.dart",
+                "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.data}); final String data; }",
+            ),
+            (
+                "shops/$shop/items/$id/data.dart",
+                "import 'package:fespalier/fespalier.dart';\nFuture<String> data(Ref ref, {required String shop, required int id}) async => 'x';",
+            ),
+        ],
+    );
+    has(
+        &c,
+        &[
+            "(Ref ref) => traceDataCall(ref, 'd1', null, () => _i1.data(ref), telemetry: const TelemetrySite('motd/data.dart', route: '/motd')),",
+            "(Ref ref, ({String shop, int id}) k) => traceDataCall(ref, 'd5', k, () => _i3.data(ref, shop: k.shop, id: k.id), telemetry: const TelemetrySite('shops/\\$shop/items/\\$id/data.dart', route: '/shops/:shop/items/:id')),",
+        ],
+    );
+}
+
+#[test]
+fn freshness_and_a_data_cache_keep_the_closure() {
+    let c = code_with(
+        true,
+        &[
+            ("page.dart", &page("Home")),
+            ("items/$id/page.dart", &item()),
+            (
+                "items/$id/data.dart",
+                &format!(
+                    "import 'package:fespalier/fespalier.dart';\n{FRESH}Future<String> data(Ref ref, {{required int id}}) async => 'x';"
+                ),
+            ),
+            ("motd/page.dart", motd_page()),
+            (
+                "motd/data.dart",
+                &format!(
+                    "import 'package:fespalier/fespalier.dart';\n{CACHE}Future<String> data(Ref ref) async => 'x';"
+                ),
+            ),
+        ],
+    );
+    has(
+        &c,
+        &[
+            "(Ref ref, int id) => freshData(ref, _i1.freshness, traceDataCall(ref, 'd2', id, () => _i1.data(ref, id: id), telemetry: const TelemetrySite('items/\\$id/data.dart', route: '/items/:id'))),",
+            "final _data3 = cachedData(",
+            "(Ref ref) => traceDataCall(ref, 'd3', null, () => _i3.data(ref), telemetry: const TelemetrySite('motd/data.dart', route: '/motd')),",
+        ],
+    );
+    assert!(!c.contains("traceData("), "{c}");
+}
+
+#[test]
+fn off_keeps_trace_data_around_the_value() {
+    let files: &[(&str, &str)] = &[
+        ("page.dart", &page("Home")),
+        ("motd/page.dart", motd_page()),
+        (
+            "motd/data.dart",
+            "import 'package:fespalier/fespalier.dart';\nFuture<String> data(Ref ref) async => 'x';",
+        ),
+    ];
+    let off = code_with(false, files);
+    has(
+        &off,
+        &["(Ref ref) => traceData(ref, 'd1', null, _i1.data(ref)),"],
+    );
+    assert!(!off.contains("traceDataCall"), "{off}");
+    assert!(!off.contains("TelemetrySite"), "{off}");
+    let on = code_with(true, files);
+    assert!(on.contains("traceDataCall("), "{on}");
 }

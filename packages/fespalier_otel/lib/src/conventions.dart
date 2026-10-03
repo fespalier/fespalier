@@ -87,6 +87,9 @@ abstract final class FespalierConventions {
   /// How many pushed pages the stack holds after the commit.
   static const String navigationDepth = 'fespalier.navigation.depth';
 
+  /// Where the navigation came from when the app's own code did not start it (since 0.9.0).
+  static const String navigationSource = 'fespalier.navigation.source';
+
   /// The committed path (semconv `url.path`); only with `recordLocations`.
   static const String urlPath = 'url.path';
 
@@ -112,6 +115,20 @@ abstract final class FespalierConventions {
 
   /// The same location again.
   static const String kindRefresh = 'refresh';
+
+  // The values of `fespalier.navigation.source` (since 0.9.0).
+
+  /// A tap on a notification.
+  static const String sourceNotification = 'notification';
+
+  /// A home-screen shortcut.
+  static const String sourceShortcut = 'shortcut';
+
+  /// A home-screen widget.
+  static const String sourceWidget = 'widget';
+
+  /// A link a bridge handed over.
+  static const String sourceLink = 'link';
 
   // The values of `fespalier.navigation.outcome`.
 

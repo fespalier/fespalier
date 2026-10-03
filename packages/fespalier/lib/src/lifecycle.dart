@@ -205,7 +205,10 @@ final class RouterWatch {
       // Not parsed yet: this is the initial navigation, and it starts now.
       if (telemetryOn) {
         final uri = router.routeInformationProvider.value.uri;
-        _nav = _Nav(telemetryNavigationStart(uri), uri);
+        _nav = _Nav(
+          telemetryNavigationStart(uri, source: takeNavigationSource()),
+          uri,
+        );
       }
     } else {
       // Attached late: the router already shows its first location.
@@ -231,7 +234,10 @@ final class RouterWatch {
       // `go` to where you are commits nothing. Not a new navigation.
       if (uri == router.routerDelegate.currentConfiguration.uri) return;
       _endPending();
-      _nav = _Nav(telemetryNavigationStart(uri), uri);
+      _nav = _Nav(
+        telemetryNavigationStart(uri, source: takeNavigationSource()),
+        uri,
+      );
     } catch (e) {
       telemetryAttachError(e);
     }

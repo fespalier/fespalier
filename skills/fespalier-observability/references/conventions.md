@@ -28,6 +28,7 @@ navigate                fespalier.navigation.kind = initial | go | push | pop | 
                         fespalier.navigation.outcome = ok | not_found | superseded
                         fespalier.navigation.from, fespalier.navigation.redirected (bool)
                         fespalier.navigation.depth (int), url.path, url.query (recordLocations only)
+                        fespalier.navigation.source = notification | shortcut | widget | link   (since 0.9.0)
 guard, redirect         fespalier.guard.decision = pass | redirect | error | skipped
                         fespalier.guard.location (recordLocations only)
 data                    fespalier.data.state = data | error | stream | disposed
@@ -59,6 +60,14 @@ enter, focus events     fespalier.route
   `auth sign_out`. A sink that switches exhaustively over `TelemetryOp` needs an `auth` case (0.9.0).
 - A **guard parent**: guard, redirect, data and deferred spans started while a navigation is pending are
   children of its `navigate` span; an action is a root span (a user's tap).
+- **A data or action span is the current span while `data()` or the action runs** (since 0.9.0, through
+  the `within` hook of `FespalierOtel`): spans an HTTP client makes inside it, after an `await` too, are
+  its children. A `data` span starts before `data()` runs, so its duration includes the sync part.
+- **`fespalier.navigation.source`** (since 0.9.0, within version 1: a new key) is where a navigation came
+  from when the app's own code did not start it: `notification`, `shortcut`, `widget` or `link`, set by
+  `navigateFrom`. It is **absent** otherwise, and fespalier never sets it by itself. A cold-start launch
+  is `kind = initial` with a source, not a new kind: a dashboard that counts `initial` as "App start"
+  still does.
 - **Never recorded**: segment and query values (unless `recordLocations: true`), family keys, `extra`,
   action input and result, data values, guard inputs. Exception text is scrubbed by `otel_zone`. From
   `fespalier_auth`: tokens, user ids, claims, user names, e-mails, issuer and endpoint URLs, DPoP proofs
@@ -69,8 +78,8 @@ enter, focus events     fespalier.route
   provider its retry count), a data source (network or cache), an action rolled back, an action rejected
   by validation.
 - **Metrics**: none. Derive them in the collector with the `spanmetrics` connector, using these
-  attributes as dimensions. The `fespalier.auth.*` attributes are not dimensions of the collector
-  `fsp telemetry` starts yet (since 0.9.0).
+  attributes as dimensions. The `fespalier.auth.*` attributes and `fespalier.navigation.source` are not
+  dimensions of the collector `fsp telemetry` starts yet (since 0.9.0).
 - **The backend decides the column names.** OpenObserve turns `.` into `_` and stores every span
   attribute as a string (a bool is `'true'`), keeps resource attributes under `service_`, and has no
   instrumentation-scope column on traces: select fespalier's spans by `fespalier_operation`.

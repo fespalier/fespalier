@@ -9,7 +9,11 @@ import 'devtools/devtools.dart'
     show kFespalierDevTools, traceActionEnd, traceActionStart;
 import 'optimistic.dart' show OptimisticPatch;
 import 'telemetry.dart'
-    show TelemetrySite, telemetryActionEnd, telemetryActionStart;
+    show
+        TelemetrySite,
+        telemetryActionEnd,
+        telemetryActionStart,
+        telemetryWithin;
 
 /// The provider of one function of an `action.dart`: what the generated
 /// `XRoute.action` (or `XRoute.approveAction`, ...) is, called with the action's keys when
@@ -105,7 +109,10 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     final ticket = _optimistic?.begin(ref, input);
     final FutureOr<T> result;
     try {
-      result = _run(ref, input);
+      // Within the action's span, so a span made inside it (an HTTP client's) is its child.
+      result = span == null
+          ? _run(ref, input)
+          : telemetryWithin(span, () => _run(ref, input));
     } catch (error, stackTrace) {
       _fail(run, error, stackTrace, trace, span, false, ticket);
       rethrow;

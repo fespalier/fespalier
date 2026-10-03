@@ -20,6 +20,7 @@ mod samples;
 mod scaffold;
 mod scan;
 mod session;
+mod smoke;
 mod templates;
 
 use std::path::{Path, PathBuf};
@@ -82,6 +83,12 @@ enum Cmd {
         #[arg(long)]
         check: bool,
     },
+    /// Write a widget smoke test per route into `test/routes/routes_test.dart` (`test:` in pubspec.yaml)
+    Test {
+        /// Write nothing; exit non-zero when the test file on disk is not what `fsp test` would write
+        #[arg(long)]
+        check: bool,
+    },
     /// Regenerate on every change under the app folder
     Watch,
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
@@ -109,6 +116,7 @@ fn main() {
             Cmd::Routes { json, graph } => routes::run(&project, json, graph),
             Cmd::Links { check } => links::run(&project, check),
             Cmd::Maestro { check } => maestro::run(&project, check),
+            Cmd::Test { check } => smoke::run(&project, check),
             Cmd::Watch => watch(&project),
             Cmd::Init => init::run(&project),
             Cmd::New(cmd) => {
@@ -506,6 +514,8 @@ mod route_api_tests;
 mod selector_tests;
 #[cfg(test)]
 mod semantics_tests;
+#[cfg(test)]
+mod smoke_tests;
 #[cfg(test)]
 mod synth;
 #[cfg(test)]

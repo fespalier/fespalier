@@ -53,6 +53,7 @@
         "config:lints",
         "config:semantics_ids",
         "config:maestro",
+        "config:test",
         "command:gen",
         "command:check",
         "command:routes",
@@ -61,6 +62,7 @@
         "command:new",
         "command:links",
         "command:maestro",
+        "command:test",
         "README.md#Deep links and a sitemap (`fsp links`)",
         "README.md#Maestro flows (`fsp maestro`)",
         "README.md",
@@ -81,6 +83,8 @@
         "cli/src/links.rs",
         "cli/src/lint.rs",
         "cli/src/maestro.rs",
+        "cli/src/smoke.rs",
+        "cli/src/samples.rs",
         "cli/src/format.rs",
         "cli/src/session.rs",
         "cli/src/parse_cache.rs",
@@ -209,7 +213,8 @@
         "packages/fespalier/lib/testing.dart",
         "README.md#Maestro flows (`fsp maestro`)",
         "config:semantics_ids",
-        "packages/fespalier/lib/src/web_semantics.dart"
+        "packages/fespalier/lib/src/web_semantics.dart",
+        "README.md#Route smoke tests (`fsp test`)"
       ]
     },
     "fespalier-troubleshooting": {

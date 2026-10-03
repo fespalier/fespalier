@@ -1482,3 +1482,152 @@ fn maestro_reports_config_and_route_errors_with_a_failing_exit() {
     assert!(!ok && err.ends_with("1 error(s); no flows\n"), "{err}");
     assert!(!dir.path().join(".maestro").exists());
 }
+
+// --- fsp test ---------------------------------------------------------------
+
+#[test]
+fn test_writes_the_file_and_check_follows_it() {
+    let dir = project();
+    fs::create_dir_all(dir.path().join("lib/app/cart")).unwrap();
+    fs::write(dir.path().join("lib/app/cart/page.dart"), page("CartPage")).unwrap();
+    fs::create_dir_all(dir.path().join("lib/app/members")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/members/page.dart"),
+        page("MembersPage"),
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("lib/app/members/guard.dart"),
+        "String? guard(Ref ref) => null;",
+    )
+    .unwrap();
+    let file = dir.path().join("test/routes/routes_test.dart");
+
+    // Not written yet: `--check` says so and writes nothing.
+    let (ok, out, err) = fsp_full(dir.path(), &["test", "--check"], &[]);
+    assert!(!ok && out.is_empty(), "{err}");
+    assert!(
+        err.ends_with("  skipped /members: guarded by members/guard.dart; give test/routes/setup.dart an `overrides(String pattern)` that gets past it\ntest/routes/routes_test.dart is missing; run `fsp test`\n"),
+        "{err}"
+    );
+    assert!(!dir.path().join("test").exists());
+
+    let (ok, out, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert!(ok && out.is_empty(), "{err}");
+    assert_eq!(
+        err,
+        "  skipped /members: guarded by members/guard.dart; give test/routes/setup.dart an `overrides(String pattern)` that gets past it\n  wrote test/routes/routes_test.dart\n✓ test: 2 routes in test/routes/routes_test.dart; 1 route skipped\n"
+    );
+    let written = fs::read_to_string(&file).unwrap();
+    assert!(
+        written.starts_with("// Written by `fsp test` from lib/app/: don't edit it, run `fsp test` again.\n// dart format off\n"),
+        "{written}"
+    );
+    assert!(written.contains("'/cart at /cart'"), "{written}");
+    assert!(
+        written.contains("page: find.byType(\n        _i1.CartPage,\n      ),"),
+        "{written}"
+    );
+    assert!(!written.contains("'/members at"), "{written}");
+
+    let (ok, _, err) = fsp_full(dir.path(), &["test", "--check"], &[]);
+    assert!(
+        ok && err.ends_with("✓ test: test/routes/routes_test.dart is up to date (2 routes)\n"),
+        "{err}"
+    );
+    let (ok, _, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert!(
+        ok && !err.contains("wrote")
+            && err.ends_with(
+                "✓ test: 2 routes in test/routes/routes_test.dart (unchanged); 1 route skipped\n"
+            ),
+        "{err}"
+    );
+
+    // A new page makes the file stale, and only `fsp test` brings it back.
+    fs::create_dir_all(dir.path().join("lib/app/about")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/about/page.dart"),
+        page("AboutPage"),
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["test", "--check"], &[]);
+    assert!(
+        !ok && err.ends_with("test/routes/routes_test.dart is out of date; run `fsp test`\n"),
+        "{err}"
+    );
+    assert_eq!(fs::read_to_string(&file).unwrap(), written);
+    assert!(fsp_full(dir.path(), &["test"], &[]).0);
+    assert!(fsp_full(dir.path(), &["test", "--check"], &[]).0);
+
+    // A setup with `overrides` gets a guarded route its test.
+    fs::write(
+        dir.path().join("test/routes/setup.dart"),
+        "List<Override> overrides(String pattern) => [];\n",
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert!(
+        ok && !err.contains("skipped")
+            && err.ends_with("✓ test: 4 routes in test/routes/routes_test.dart\n"),
+        "{err}"
+    );
+    let with_setup = fs::read_to_string(&file).unwrap();
+    assert!(
+        with_setup.contains("import 'setup.dart' as setup;")
+            && with_setup.contains("  // Guarded by members/guard.dart.\n"),
+        "{with_setup}"
+    );
+}
+
+#[test]
+fn test_reports_config_and_file_errors_with_a_failing_exit() {
+    let dir = project();
+    let pubspec = dir.path().join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    let file = dir.path().join("test/routes/routes_test.dart");
+
+    fs::write(
+        &pubspec,
+        format!("{base}fespalier:\n  test:\n    timeout: 5\n"),
+    )
+    .unwrap();
+    let (ok, out, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert!(!ok && out.is_empty(), "{err}");
+    assert_eq!(
+        err,
+        "`fespalier.test.timeout` is in milliseconds of the test's fake clock, from 1000 to 600000, got `5`\n"
+    );
+
+    fs::write(
+        &pubspec,
+        format!("{base}fespalier:\n  test:\n    folder: test\n"),
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert!(
+        !ok && err.contains(
+            "unknown field `folder`, expected one of `out`, `setup`, `timeout`, `samples`, `skip`"
+        ),
+        "{err}"
+    );
+    // The section is only read by `fsp test`: `fsp gen` and `fsp check` don't see it.
+    fs::write(
+        &pubspec,
+        format!("{base}fespalier:\n  test:\n    timeout: 5\n"),
+    )
+    .unwrap();
+    assert!(fsp_full(dir.path(), &["check"], &[]).0);
+
+    // A file of that name that `fsp test` did not write is never overwritten.
+    fs::write(&pubspec, &base).unwrap();
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, "void main() {}\n").unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert_eq!(
+        err,
+        "test/routes/routes_test.dart was not written by `fsp test` (its first line isn't ``// Written by `fsp test` ``); move it, or set `fespalier.test.out` to another folder\n"
+    );
+    assert!(!ok);
+    assert_eq!(fs::read_to_string(&file).unwrap(), "void main() {}\n");
+}

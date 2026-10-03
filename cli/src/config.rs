@@ -33,6 +33,13 @@
 //!     timeout: 20000        # default, in milliseconds
 //!     samples:              # the value of each dynamic folder
 //!       products/$id: 1
+//!   test:                   # default: none, and `fsp test` works without it (see `smoke.rs`)
+//!     out: test/routes      # default; `test`, `integration_test` or a folder below one
+//!     setup: test/routes/setup.dart   # default: <out>/setup.dart, used when it exists
+//!     timeout: 30000        # default, in milliseconds of the test's fake clock
+//!     samples:              # default: the maestro ones
+//!       products/$id: 1
+//!     skip: [/admin]        # patterns as `fsp routes` prints them
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -46,8 +53,8 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_yaml_ng::Value;
 
-pub use crate::samples::SampleValue;
 use crate::samples;
+pub use crate::samples::SampleValue;
 use crate::scan::FileStyle;
 
 pub const DEFAULT_APP_DIR: &str = "lib/app";
@@ -58,6 +65,11 @@ pub const DEFAULT_LINKS_OUT: &str = "links";
 pub const DEFAULT_MAESTRO_OUT: &str = ".maestro/routes";
 /// How long (in milliseconds) a flow waits for the page it opened.
 pub const DEFAULT_MAESTRO_TIMEOUT: u32 = 20_000;
+
+/// Where `fsp test` writes, relative to the project root.
+pub const DEFAULT_TEST_OUT: &str = "test/routes";
+/// How long (in milliseconds of a test's fake clock) a smoke test waits for its page.
+pub const DEFAULT_TEST_TIMEOUT: u32 = 30_000;
 
 /// What the providers fespalier generates for `data()` functions do when they fail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -199,6 +211,9 @@ pub struct Config {
     /// The `maestro:` section, as written. Only `fsp maestro` reads it, and it checks the values
     /// then ([`MaestroConfig::validate`]), so a mistake in it never stops `fsp gen`.
     pub maestro: Option<MaestroConfig>,
+    /// The `test:` section, as written. Only `fsp test` reads it, and it checks the values
+    /// then ([`TestConfig::validate`]), so a mistake in it never stops `fsp gen`.
+    pub test: Option<TestConfig>,
 }
 
 impl Default for Config {
@@ -222,6 +237,7 @@ impl Default for Config {
             links: None,
             lints: Lints::default(),
             maestro: None,
+            test: None,
         }
     }
 }
@@ -262,6 +278,7 @@ struct RawConfig {
     lints: Option<LintsConfig>,
     semantics_ids: Option<bool>,
     maestro: Option<MaestroConfig>,
+    test: Option<TestConfig>,
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -599,6 +616,100 @@ impl MaestroConfig {
     }
 }
 
+/// The `test:` section of the `fespalier:` config, as the pubspec has it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TestConfig {
+    out: Option<String>,
+    setup: Option<String>,
+    timeout: Option<i64>,
+    samples: Option<BTreeMap<String, Value>>,
+    skip: Option<Vec<String>>,
+}
+
+/// The `test:` section, checked: what `fsp test` writes a test file for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Test {
+    /// Normalized, `/`-separated, relative to the project root, `test`, `integration_test` or a
+    /// folder below one.
+    pub out: String,
+    /// The setup file as the pubspec names it: normalized and relative to the project root.
+    /// `None` is the default, `<out>/setup.dart`, which is used when it exists.
+    pub setup: Option<String>,
+    /// How long a test waits for its page, in milliseconds of its fake clock.
+    pub timeout: u32,
+    /// The patterns (as `fsp routes` prints them) that get no test.
+    pub skip: Vec<String>,
+}
+
+impl Test {
+    /// The setup file, as a path relative to the project root: the configured one, or else
+    /// `<out>/setup.dart`.
+    pub fn setup_path(&self) -> String {
+        self.setup
+            .clone()
+            .unwrap_or_else(|| format!("{}/setup.dart", self.out))
+    }
+}
+
+impl TestConfig {
+    /// The samples as written (`fsp test` falls back to the maestro ones when there are none).
+    pub fn raw_samples(&self) -> Option<&BTreeMap<String, Value>> {
+        self.samples.as_ref()
+    }
+
+    /// Checks the values, naming the key at fault. The samples are checked by the command, with
+    /// the routes they are for.
+    pub fn validate(&self) -> Result<Test> {
+        let out = match &self.out {
+            None => DEFAULT_TEST_OUT.to_string(),
+            Some(raw) => {
+                let out = project_folder("test.out", raw)?;
+                if !matches!(out.split('/').next(), Some("test" | "integration_test")) {
+                    bail!(
+                        "`fespalier.test.out` must be `test`, `integration_test` or a folder below one of them, where `flutter test` finds tests, got `{raw}`"
+                    );
+                }
+                out
+            }
+        };
+        let setup = match &self.setup {
+            None => None,
+            Some(raw) => {
+                let file = project_path(raw).filter(|p| {
+                    let name = p.rsplit('/').next().unwrap_or_default();
+                    name.strip_suffix(".dart")
+                        .is_some_and(|stem| !stem.is_empty())
+                });
+                match file {
+                    Some(p) => Some(p),
+                    None => bail!(
+                        "`fespalier.test.setup` must be a .dart file inside the project (relative, no `..`), got `{raw}`"
+                    ),
+                }
+            }
+        };
+        let timeout = match self.timeout {
+            None => DEFAULT_TEST_TIMEOUT,
+            Some(n) => match u32::try_from(n)
+                .ok()
+                .filter(|n| (1000..=600_000).contains(n))
+            {
+                Some(n) => n,
+                None => bail!(
+                    "`fespalier.test.timeout` is in milliseconds of the test's fake clock, from 1000 to 600000, got `{n}`"
+                ),
+            },
+        };
+        Ok(Test {
+            out,
+            setup,
+            timeout,
+            skip: self.skip.clone().unwrap_or_default(),
+        })
+    }
+}
+
 /// A host name, lower-cased, optionally with a `*.` wildcard in front: two or more labels of
 /// ASCII letters, digits and inner hyphens.
 fn host_name(raw: &str) -> Option<String> {
@@ -806,6 +917,7 @@ impl Pubspec {
             config.lints.unknown_path = c.lints.and_then(|l| l.unknown_path).unwrap_or_default();
             config.semantics_ids = c.semantics_ids.unwrap_or(false);
             config.maestro = c.maestro;
+            config.test = c.test;
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }

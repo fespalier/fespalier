@@ -17,6 +17,7 @@ above; pass --project`).
 | `fsp routes [--json]`         | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                        |
 | `fsp links [--check]`         | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                              |
 | `fsp maestro [--check]`       | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0) |
+| `fsp test [--check]`          | Writes one widget smoke test per route into `test/routes/routes_test.dart` (`pumpRouter`, wait on the fake clock for the page) from the route tree and the optional `test:` config (since 0.8.0); see below          |
 | `fsp routes --graph [FORMAT]` | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default), a Graphviz `digraph` (`dot`), since 0.5.0, or JSON (`json`, since 0.7.0)                                                                 |
 | `fsp new <path> [flags]`      | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                                                           |
 
@@ -187,6 +188,47 @@ page to see`); with `app_id`, a `const linkable = false;` route is skipped; a ro
   messages are in `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`. The
   recipe for testing the identifier is in `fespalier-testing`, `references/maestro.md`.
 
+### `fsp test` (since 0.8.0)
+
+Writes one widget smoke test per route, all in **one file**, `test/routes/routes_test.dart` (`flutter test`
+compiles each test file on its own, so a file per route would cost minutes). It does not run Flutter:
+`flutter test` does. Each test opens the route at a sample URL with `pumpRouter`, pumps the fake clock in
+100 ms steps until the route's page is on screen (`smokeTestRoute`, in `package:fespalier/testing.dart`) and
+expects exactly one. The page is found by its `route:<pattern>` semantics identifier with
+`semantics_ids: true`, else by its class (`find.byType`); a function page needs `semantics_ids`.
+
+```yaml
+fespalier:
+  test:                            # optional: `fsp test` works with no section at all
+    out: test/routes               # default; `test`, `integration_test` or a folder below one
+    setup: test/routes/setup.dart  # default: <out>/setup.dart, used when it exists
+    timeout: 30000                 # default; ms of the fake clock a test waits for its page, 1000 to 600000
+    samples:                       # default: `maestro.samples`; same format and checks
+      products/$id: 1
+    skip: [/admin]                 # patterns as `fsp routes` prints them
+```
+
+- **`setup.dart` is yours**, never written by `fsp`. It may export `List<Override> overrides(String pattern)`
+  (called once per test, so fakes are fresh; it can vary by route) and `Widget app(GoRouter router)` (the app
+  around the router, default `MaterialApp.router(routerConfig: router)`). `fsp test` only parses it to see
+  which exists. Each takes exactly one required positional parameter. `Override` comes from
+  `package:fespalier/testing.dart` (since 0.8.0).
+- **Samples** are `test.samples`, else `maestro.samples`, else none; nothing else of `maestro:` is read, so a
+  `maestro:` section `fsp maestro` refuses does not stop `fsp test`.
+- **Skipped, and printed on every run** (never a failure, also in `--check`): a redirect, a route in `skip`,
+  a dynamic route with no sample, a route with a `guard.dart` above it when there is no `overrides`, a
+  function page without `semantics_ids`. A `linkable = false` route is tested.
+- **Ownership.** The first line is ``// Written by `fsp test` ``; a file of that name that does not start with
+  it is never overwritten (it is an error). The second line is `// dart format off`, and the file is laid out
+  one argument to a line with trailing commas, so `dart format` leaves it alone under every language
+  version (the short style, before Dart 3.7, does not read the marker). Never edit it: edit `setup.dart`.
+- **`--check`** exits 1 when the file is missing or out of date. CI: `fsp test --check`, then `flutter test`.
+- **Not built:** query parameters and localized spellings (each route opens at its canonical path), a file per
+  route, running Flutter from `fsp`, and tests of not-found views.
+- The config values are checked only by `fsp test` (a mistake there never stops `gen`); the messages are in
+  `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`. The setup file, the failure
+  message and the pitfalls are in `fespalier-testing`, `references/route-smoke-tests.md`.
+
 ### `fsp new`
 
 ```sh
@@ -269,6 +311,7 @@ fespalier:
   # links: {domains: [shop.example.com]}   # see `fsp links` above
   lints: {unknown_path: warning}   # since 0.7.0; `error` | `off`
   # maestro: {url: http://localhost:8080}  # see `fsp maestro` above
+  # test: {timeout: 30000}                # since 0.8.0; see `fsp test` above
 ```
 
 | Key                | Values                                           | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -290,6 +333,7 @@ fespalier:
 | `lints`            | a map: `unknown_path: off` / `warning` / `error` | Since 0.7.0. How a **string path that matches no route** is reported (default `warning`; `off` skips the check). `error` makes `check` exit 1 with ``1 error(s) in string paths (`lints: unknown_path: error`)`` and `gen` and `watch` too, after writing the output (`...; lib/app.g.dart is up to date`). A bad value: ``invalid pubspec.yaml: fespalier.lints.unknown_path: unknown variant `warn`, expected one of `off`, `warning`, `error` ``; a key of its own: ``invalid pubspec.yaml: fespalier.lints: unknown field `nope`, expected `unknown_path` ``. See `fespalier-routing` |
 | `semantics_ids`    | `true` / `false`                                 | Since 0.7.0. `true` wraps each page in `Semantics(identifier: 'route:<pattern>')` and makes `mount()` call `ensureWebSemantics()`; `fsp maestro` needs it. See `fsp maestro` above                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `maestro`          | a map (keys above)                               | What `fsp maestro` writes flows for; only that command checks the values (since 0.7.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `test`             | a map (keys above)                               | What `fsp test` writes a smoke test file for; only that command checks the values (since 0.8.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 There is no key for `extraCodec`: `lib/app/extra_codec.dart` is found by name.
 

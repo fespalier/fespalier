@@ -61,16 +61,16 @@ like any other.
 Each page lists the message text, the cause and the fix, taken from the source and
 confirmed by running `fsp` on a tree that triggers it.
 
-| Area                                                                                                                                  | Reference                                                                                              |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Folder names, view files, duplicate URLs, route names, unreachable routes                                                             | [`references/diagnostics-tree.md`](references/diagnostics-tree.md)                                     |
-| Filling parameters, segment and query types, enums, `extra`                                                                           | [`references/diagnostics-binding.md`](references/diagnostics-binding.md)                               |
-| `data.dart` (three forms), `action.dart`, `guard.dart`, `redirect.dart`, `transition.dart`, `present.dart`                            | [`references/diagnostics-data-and-hooks.md`](references/diagnostics-data-and-hooks.md)                 |
-| Layouts, `tabs`, `tabOptions`, `container`, `navigator.dart`                                                                          | [`references/diagnostics-layouts-and-navigators.md`](references/diagnostics-layouts-and-navigators.md) |
-| Pubspec config, `fsp links` and `fsp maestro`, the CLI and launcher, `meta.dart`, `route.dart`, localized `paths`, `extra_codec.dart` | [`references/diagnostics-config-and-meta.md`](references/diagnostics-config-and-meta.md)               |
-| Stale `app.g.dart`, the ink assertion, silent query parameters, case, go_router 18, the web                                           | [`references/flutter-pitfalls.md`](references/flutter-pitfalls.md)                                     |
-| The DevTools extension (0.7.0): setup, every status line, the traps, the protocol                                                     | [`references/devtools.md`](references/devtools.md)                                                     |
-| README claims that were false in 0.3.0 (and what to do instead)                                                                       | [`references/known-wrong-docs.md`](references/known-wrong-docs.md)                                     |
+| Area                                                                                                                                              | Reference                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Folder names, view files, duplicate URLs, route names, unreachable routes                                                                         | [`references/diagnostics-tree.md`](references/diagnostics-tree.md)                                     |
+| Filling parameters, segment and query types, enums, `extra`                                                                                       | [`references/diagnostics-binding.md`](references/diagnostics-binding.md)                               |
+| `data.dart` (three forms), `action.dart`, `guard.dart`, `redirect.dart`, `transition.dart`, `present.dart`                                        | [`references/diagnostics-data-and-hooks.md`](references/diagnostics-data-and-hooks.md)                 |
+| Layouts, `tabs`, `tabOptions`, `container`, `navigator.dart`                                                                                      | [`references/diagnostics-layouts-and-navigators.md`](references/diagnostics-layouts-and-navigators.md) |
+| Pubspec config, `fsp links`, `fsp maestro` and `fsp test`, the CLI and launcher, `meta.dart`, `route.dart`, localized `paths`, `extra_codec.dart` | [`references/diagnostics-config-and-meta.md`](references/diagnostics-config-and-meta.md)               |
+| Stale `app.g.dart`, the ink assertion, silent query parameters, case, go_router 18, the web                                                       | [`references/flutter-pitfalls.md`](references/flutter-pitfalls.md)                                     |
+| The DevTools extension (0.7.0): setup, every status line, the traps, the protocol                                                                 | [`references/devtools.md`](references/devtools.md)                                                     |
+| README claims that were false in 0.3.0 (and what to do instead)                                                                                   | [`references/known-wrong-docs.md`](references/known-wrong-docs.md)                                     |
 
 ## Three things to do before anything else
 

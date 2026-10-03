@@ -15,7 +15,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 web_cleanup() {
   if [ -n "${server:-}" ]; then
-    kill "$server" 2>/dev/null || true
+    kill "$server" 2> /dev/null || true
   fi
   rm -rf "${work:-}"
 }

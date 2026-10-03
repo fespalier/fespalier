@@ -61,12 +61,12 @@ fi
 
 # Dual-stack, so `localhost` works over IPv4 and IPv6 (IPv4 only where the machine has no IPv6).
 bind=::
-python3 -c 'import socket; socket.socket(socket.AF_INET6).close()' 2>/dev/null || bind=127.0.0.1
-python3 -m http.server "$port" --bind "$bind" --directory build/web >"$work/server.log" 2>&1 &
+python3 -c 'import socket; socket.socket(socket.AF_INET6).close()' 2> /dev/null || bind=127.0.0.1
+python3 -m http.server "$port" --bind "$bind" --directory build/web > "$work/server.log" 2>&1 &
 server=$!
 ready=0
 for _ in $(seq 1 50); do
-  if curl -fsS "http://localhost:$port/" >/dev/null 2>&1; then
+  if curl -fsS "http://localhost:$port/" > /dev/null 2>&1; then
     ready=1
     break
   fi

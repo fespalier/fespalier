@@ -1,4 +1,4 @@
-/// What fespalier reports while it routes (since 0.8.0): navigations, guard and redirect
+/// What fespalier reports while it routes (since 0.8.1): navigations, guard and redirect
 /// decisions, data loads, actions and deferred loads, for an OpenTelemetry adapter
 /// (`package:fespalier_otel`) or a test (`RecordingTelemetry` in `package:fespalier/testing.dart`).
 ///
@@ -24,7 +24,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart' show Ref;
 
 import 'lifecycle.dart' show RouterWatch;
 
-/// What fespalier reports while it routes (since 0.8.0): navigations, guard and redirect
+/// What fespalier reports while it routes (since 0.8.1): navigations, guard and redirect
 /// decisions, data loads, actions and deferred loads.
 ///
 /// Nothing is reported until [install] is called, and only from an app generated with

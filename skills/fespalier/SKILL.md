@@ -9,7 +9,7 @@ description: "Orientation for working with fespalier — Next.js-style file-tree
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
-> [Versions](https://github.com/vaam-apps/fespalier/blob/main/skills/README.md#versions).
+> [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
 fespalier routes a Flutter app from a folder tree. You write plain widgets and
 functions in small files under `lib/app/`; **the file name says what a file is,
@@ -76,7 +76,7 @@ matches the package your `pubspec.lock` resolved.
 | `layout.dart`      | Wraps this folder and below (`child`), or holds tabs (`navigationShell`)           |
 | `guard.dart`       | `GuardResult guard(Ref ref, {...})`: redirect or `null`; re-runs on watch          |
 | `redirect.dart`    | In place of a page: a route that only redirects                                    |
-| `observe.dart`     | `void onEnter(Ref ref, {...})`, `onFocus`, `onLeave`: hooks per page (since 0.8.0) |
+| `observe.dart`     | `void onEnter(Ref ref, {...})`, `onFocus`, `onLeave`: hooks per page (since 0.8.1) |
 | `transition.dart`  | `Page<void> transition(...)`: how routes (and layout shells) animate               |
 | `present.dart`     | `Page<void> present(...)`: the app builds this route's own page                    |
 | `navigator.dart`   | `const navigator = RouteNavigator.root;`: render above every layout                |
@@ -84,10 +84,10 @@ matches the package your `pubspec.lock` resolved.
 | `meta.dart`        | `const meta = ...;` this route's own facts, into the manifest                      |
 | `route.dart`       | `caseSensitive`, `paths`, `nest`, `linkable`, `remount`, `deferred`, `freshness`   |
 | `extra_codec.dart` | At the app root only: `extraCodec`, to restore `extra` after a restart             |
-| `app.dart`         | App root only (since 0.8.0): the widget around the router (`MaterialApp`)          |
-| `startup.dart`     | App root only (since 0.8.0): `startup()`, `zone()`, observers, `retry()`           |
-| `splash.dart`      | App root only (since 0.8.0): shown while an async `startup()` runs                 |
-| `nav.dart`         | `const nav = Nav(...)`: how a folder shows in the generated menus (0.8.0)          |
+| `app.dart`         | App root only (since 0.8.1): the widget around the router (`MaterialApp`)          |
+| `startup.dart`     | App root only (since 0.8.1): `startup()`, `zone()`, observers, `retry()`           |
+| `splash.dart`      | App root only (since 0.8.1): shown while an async `startup()` runs                 |
+| `nav.dart`         | `const nav = Nav(...)`: how a folder shows in the generated menus (0.8.1)          |
 
 Folder names: `products` is a static segment; `$id` a dynamic one; `$$rest` one
 or more remaining segments and `$$$rest` zero or more; `(account)` a group that
@@ -104,7 +104,7 @@ about each kind, what it can ask for and where it applies is in
 dependencies:
   fespalier:
     git:
-      url: https://github.com/vaam-apps/fespalier
+      url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.8.0
 ```
@@ -126,9 +126,9 @@ Get `fsp` one of these ways (details in
 <!-- x-release-please-start-version -->
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 dart run fespalier <command>      # installs nothing: downloads the matching release, SHA-256 pinned
-cargo install --git https://github.com/vaam-apps/fespalier --tag v0.8.0 fespalier
+cargo install --git https://github.com/fespalier/fespalier --tag v0.8.0 fespalier
 ```
 
 <!-- x-release-please-end -->
@@ -141,16 +141,16 @@ fsp check                                  # CI: non-zero on errors, writes noth
 fsp routes [--json | --graph [dot | json]]  # the route table, or the tree as Mermaid / DOT / JSON
 fsp links [--check]                        # App Links, Universal Links, sitemap from the routes (0.5.0)
 fsp maestro [--check]                      # Maestro smoke flows, one per route (0.7.0)
-fsp size [--json] [--check]                # the web build's JavaScript per deferred route, and budgets (0.8.0)
-fsp test [--check]                         # a widget smoke test per route, test/routes/routes_test.dart (0.8.0)
-fsp telemetry [--grafana | --lan | --stop | --reset]   # a local OpenTelemetry stack and dashboards, in Docker (0.8.0)
+fsp size [--json] [--check]                # the web build's JavaScript per deferred route, and budgets (0.8.1)
+fsp test [--check]                         # a widget smoke test per route, test/routes/routes_test.dart (0.8.1)
+fsp telemetry [--grafana | --lan | --stop | --reset]   # a local OpenTelemetry stack and dashboards, in Docker (0.8.1)
 fsp new 'orders/[id]' --data --loading     # scaffold a route, then gen
 ```
 
-`fsp init` then prints the `main.dart` you need. Since 0.8.0 it is
+`fsp init` then prints the `main.dart` you need. Since 0.8.1 it is
 `Future<void> main() => AppMain.run();`, with the generated `lib/app.main.g.dart` running
 `lib/app/app.dart` (and `startup.dart`, `splash.dart`); see
-[`references/app-main.md`](references/app-main.md). Before 0.8.0, and with `main: manual`, it prints
+[`references/app-main.md`](references/app-main.md). Before 0.8.1, and with `main: manual`, it prints
 `MaterialApp.router(routerConfig: AppRoutes.router())` inside a `ProviderScope`. To add the tree to an
 existing `GoRouter`, use `AppRoutes.mount(at: '/x')` (see `fespalier-migration`).
 
@@ -174,7 +174,7 @@ and the reserved names.
 | `data.dart`, loading and error views, retries, prefetch, sections, `dataAt`                              | `fespalier-data`                                |
 | `layout.dart`, tabs, `container`, shell transitions, restoration                                         | `fespalier-layouts`                             |
 | `guard.dart`, `redirect.dart`, `returnTo`, sign-in flows                                                 | `fespalier-guards`                              |
-| `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.0) | `fespalier-observability`                       |
+| `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.1) | `fespalier-observability`                       |
 | `app.dart`, `startup.dart`, `splash.dart`, `main: manual`, `AppMain` (the generated `main()`)            | this skill: `references/app-main.md`            |
 | Widget tests: `pumpRouter`, `currentLocation`, deep links, data states                                   | `fespalier-testing`                             |
 | An `fsp` error, a stale `app.g.dart`, a route that does not show                                         | `fespalier-troubleshooting`                     |
@@ -184,7 +184,7 @@ and the reserved names.
 
 ## Where the truth is
 
-The README in `vaam-apps/fespalier` is long and exact as far as anyone has checked;
+The README in `fespalier/fespalier` is long and exact as far as anyone has checked;
 where it and the code disagree, the `.rs` and `.dart` files win, and
 [`fespalier-troubleshooting`](../fespalier-troubleshooting/) lists the disagreements
 found so far and the release that fixed each. `examples/minimal` is the smallest real app (read it

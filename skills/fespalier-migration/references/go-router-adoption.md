@@ -13,7 +13,7 @@ and keep the rest as they are.
 dependencies:
   fespalier:
     git:
-      url: https://github.com/vaam-apps/fespalier
+      url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.8.0
 ```

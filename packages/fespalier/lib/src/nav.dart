@@ -7,7 +7,7 @@ import 'route_match.dart';
 import 'segments.dart';
 
 /// How a folder shows in the menus `fsp` generates (`AppMenu`): what its `nav.dart`
-/// declares (since 0.8.0).
+/// declares (since 0.8.1).
 ///
 /// ```dart
 /// // lib/app/products/nav.dart
@@ -119,7 +119,7 @@ final class NavNode {
   final List<NavNode> children;
 }
 
-/// One entry of a menu at the current location (since 0.8.0).
+/// One entry of a menu at the current location (since 0.8.1).
 final class NavItem {
   /// Creates an entry. `AppMenu.watch` and `AppMenu.breadcrumbs` build them.
   const NavItem({

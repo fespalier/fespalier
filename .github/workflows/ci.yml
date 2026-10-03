@@ -196,7 +196,7 @@ jobs:
           find lib -name '*.dart' ! -name '*.g.dart' -print0 |
             xargs -0 dart format --output=none --set-exit-if-changed
           flutter analyze
-      # A release build has none of fespalier's telemetry code either (since 0.8.0): the app does not
+      # A release build has none of fespalier's telemetry code either (since 0.8.1): the app does not
       # opt in (`fespalier: telemetry: true`), so no call site passes a `TelemetrySite`, and nothing
       # installs a sink. Its `observe.dart` is there on purpose: the lifecycle hooks share a router
       # watch with telemetry, and an app that has hooks but no telemetry must not carry any of it.

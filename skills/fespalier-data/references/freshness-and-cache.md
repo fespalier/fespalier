@@ -1,6 +1,6 @@
 # Freshness and the data cache
 
-Since 0.8.0. Two opt-in declarations in a `data.dart` (and, for the first, a `route.dart`): `freshness` says when a
+Since 0.8.1. Two opt-in declarations in a `data.dart` (and, for the first, a `route.dart`): `freshness` says when a
 loaded value is old enough to load again, and `dataCache` saves it for the next start. An app that writes neither
 generates the same code as 0.7.0.
 

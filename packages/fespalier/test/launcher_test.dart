@@ -46,7 +46,7 @@ void main() {
           '0.1.1',
           'fsp-x86_64-apple-darwin.tar.gz.sha256',
         ).toString(),
-        'https://github.com/vaam-apps/fespalier/releases/download/v0.1.1/fsp-x86_64-apple-darwin.tar.gz.sha256',
+        'https://github.com/fespalier/fespalier/releases/download/v0.1.1/fsp-x86_64-apple-darwin.tar.gz.sha256',
       );
       expect(
         releaseUrl('http://localhost:8/', '1.0.0', 'a').toString(),
@@ -363,8 +363,8 @@ void main() {
       final path = await l.locate();
       expect(path, l.cachedBinary.path);
       expect(fetched.map((u) => u.toString()), [
-        'https://github.com/vaam-apps/fespalier/releases/download/v0.1.1/fsp-x86_64-unknown-linux-gnu.tar.gz',
-        'https://github.com/vaam-apps/fespalier/releases/download/v0.1.1/fsp-x86_64-unknown-linux-gnu.tar.gz.sha256',
+        'https://github.com/fespalier/fespalier/releases/download/v0.1.1/fsp-x86_64-unknown-linux-gnu.tar.gz',
+        'https://github.com/fespalier/fespalier/releases/download/v0.1.1/fsp-x86_64-unknown-linux-gnu.tar.gz.sha256',
       ]);
       final run = await Process.run(path, ['--version']);
       expect(run.stdout, 'fsp 0.1.1\n');

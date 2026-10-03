@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'location.dart';
 
 /// The tag of a shared element: the route it shows, by its path (the location without the
-/// query, mount prefix included), and a name (since 0.8.0).
+/// query, mount prefix included), and a name (since 0.8.1).
 ///
 /// Equal on the list and on the detail page when both name the same route:
 /// `ProductRoute(id: 1).heroTag('image')`.
@@ -29,7 +29,7 @@ final class RouteHeroTag {
   String toString() => 'RouteHeroTag($path, $name)';
 }
 
-/// The path a hero flies along (since 0.8.0).
+/// The path a hero flies along (since 0.8.1).
 enum HeroFlightPath {
   /// The navigator's controller decides: an arc in a Material app, a straight line in a
   /// Cupertino one (go_router picks the controller by app type).
@@ -42,7 +42,7 @@ enum HeroFlightPath {
   straight,
 }
 
-/// How the shared elements of the pages a `transition.dart` covers fly (since 0.8.0).
+/// How the shared elements of the pages a `transition.dart` covers fly (since 0.8.1).
 ///
 /// Give it to a `Transitions.*` call as `heroes:`; every [RouteHero] below the page takes
 /// these as its defaults.
@@ -77,7 +77,7 @@ final class Heroes {
   int get hashCode => Object.hash(onBackGesture, path, shuttle);
 }
 
-/// Gives the [RouteHero] widgets below it their defaults (since 0.8.0).
+/// Gives the [RouteHero] widgets below it their defaults (since 0.8.1).
 ///
 /// `Transitions.*` put it around the page when given `heroes:`. A `present.dart` page or a
 /// `Page` of your own wraps its child in one to get the same.
@@ -110,7 +110,7 @@ CreateRectTween? _tween(HeroFlightPath path) => switch (path) {
   HeroFlightPath.straight => _straight,
 };
 
-/// A Flutter [Hero] that stays out of flights while its tab is not shown (since 0.8.0).
+/// A Flutter [Hero] that stays out of flights while its tab is not shown (since 0.8.1).
 ///
 /// "Not shown" is `TickerMode` off, which go_router's tab container and fespalier's
 /// examples set on the tabs they hide; a custom container must do the same. Two tabs can
@@ -166,7 +166,7 @@ class RouteHero extends StatelessWidget {
 }
 
 /// A route's shared elements: one line on each side of a list to detail flight
-/// (since 0.8.0).
+/// (since 0.8.1).
 ///
 /// An extension, so a route with a query parameter named `hero` still compiles; it
 /// shadows the extension's member, and `RouteHeroes(route).hero(...)` reaches it.

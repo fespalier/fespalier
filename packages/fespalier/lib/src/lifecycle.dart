@@ -1,4 +1,4 @@
-/// Route lifecycle (since 0.8.0): the `observe.dart` hooks, run when a page becomes the one the
+/// Route lifecycle (since 0.8.1): the `observe.dart` hooks, run when a page becomes the one the
 /// user sees, is the one on top again, and is gone.
 ///
 /// One watch per router diffs the router's committed configuration at the end of the first

@@ -1,4 +1,4 @@
-# fespalier's local telemetry stack (since 0.8.0). Written by `fsp telemetry`: don't edit it, run
+# fespalier's local telemetry stack (since 0.8.1). Written by `fsp telemetry`: don't edit it, run
 # `fsp telemetry` again. Settings go in .env next to this file (see env.example).
 # Runs as it is too: `docker compose up -d`, and `--profile grafana` for Grafana.
 name: fespalier-telemetry

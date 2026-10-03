@@ -1,4 +1,4 @@
-/// What an app needs to write its own `dataCacheStorage` (since 0.8.0): Riverpod's
+/// What an app needs to write its own `dataCacheStorage` (since 0.8.1): Riverpod's
 /// experimental offline-persistence types, re-exported so the app needn't depend on
 /// hooks_riverpod directly.
 ///

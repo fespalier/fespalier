@@ -14,7 +14,7 @@ class PubspecTest {
             sdk: flutter
           fespalier:
             git:
-              url: https://github.com/vaam-apps/fespalier.git
+              url: https://github.com/fespalier/fespalier.git
               path: packages/fespalier
     """.trimIndent()
 

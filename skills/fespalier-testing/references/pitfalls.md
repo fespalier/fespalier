@@ -3,7 +3,7 @@
 As of v0.4.0, observed against go_router 18.0.2, hooks_riverpod 3.4.3 and Flutter
 3.47. Each one was hit while writing these skills.
 
-The traps of the route smoke tests `fsp test` writes (since 0.8.0: a periodic timer in a fake, a failure that
+The traps of the route smoke tests `fsp test` writes (since 0.8.1: a periodic timer in a fake, a failure that
 names where the router ended) are in [`route-smoke-tests.md`](route-smoke-tests.md).
 
 ## `pumpRouter` and `currentLocation`
@@ -150,7 +150,7 @@ router.routerDelegate.currentConfiguration.last.matchedLocation   // '/products/
   runs `/products`' `data.dart` underneath. If your fakes delay, pump long enough
   for both, or `pumpAndSettle`.
 
-## Aging data and the cache (since 0.8.0)
+## Aging data and the cache (since 0.8.1)
 
 - `await tester.pump(const Duration(minutes: 6))` makes data with a `freshness` stale: `clock.now()` is
   `testWidgets`' fake clock, and nothing starts a timer. A stale value loads again when something **reads** it,
@@ -212,7 +212,7 @@ An unescaped `$id` in an import is a Dart string-interpolation error
 import 'package:my_app/app/products/\$id/page.dart';
 ```
 
-## Playing the browser's back button (scroll restoration, since 0.8.0)
+## Playing the browser's back button (scroll restoration, since 0.8.1)
 
 A widget test plays back and forward with a `pushRouteInformation` platform message, and
 `scroll_restoration` only restores when that message carries **the history state the app gave

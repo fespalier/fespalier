@@ -1886,7 +1886,7 @@ abstract final class TeamsTeamIdSection {
   /// teams/$teamId/data.dart as a Riverpod provider keyed by `teamId`.
   static final data = _data66;
 
-  /// Watches teams/$teamId/data.dart, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference. Since 0.8.0.
+  /// Watches teams/$teamId/data.dart, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference. Since 0.8.1.
   static final watch = (WidgetRef ref, {required String teamId}) => ref.watchOptimistic(data(teamId), _optimistic66(teamId));
 
   /// Reads teams/$teamId/data.dart once, keeping it alive until it completes.
@@ -1965,7 +1965,7 @@ final class NicknameRoute extends TypedLocation {
   /// Like [of], or null when the route around [context] is another one.
   static NicknameRoute? maybeOf(BuildContext context) => maybeRouteOf<NicknameRoute>(context, AppRoutes.matchUrl);
 
-  /// Watches (account)/nickname/data.dart, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference (static, so it can name the keys). Since 0.8.0.
+  /// Watches (account)/nickname/data.dart, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference (static, so it can name the keys). Since 0.8.1.
   static final watch = (WidgetRef ref) => ref.watchOptimistic(data, _optimistic3);
 
   /// Reads (account)/nickname/data.dart once, keeping it alive until it completes.
@@ -1990,7 +1990,7 @@ final class NicknameRoute extends TypedLocation {
   /// Watches the state of `action()` and gives `call(input)` to run it, for `build`. A failed run is in `state`, not thrown.
   static final useAction = (WidgetRef ref) => ref.watchAction(action);
 
-  /// The form of `action()` ((account)/nickname/action.dart), for `build` in a `HookConsumerWidget`: a typed field per field of its input, starting from `form(data)`; `onSubmit` checks the fields and `validate()`, then runs it, and is null while it runs. Since 0.8.0.
+  /// The form of `action()` ((account)/nickname/action.dart), for `build` in a `HookConsumerWidget`: a typed field per field of its input, starting from `form(data)`; `onSubmit` checks the fields and `validate()`, then runs it, and is null while it runs. Since 0.8.1.
   static final useForm = (WidgetRef ref, {required Profile data, ActionFormValidation validation = ActionFormValidation.afterSubmit, bool resetOnSuccess = false, ActionFormMessages messages = const ActionFormMessages()}) => useActionForm(ref, action, data: data, initial: () => _i8.form(data), fields: (ActionFormFields<_i8.NicknameFields> f) => (nickname: f.text('nickname', (v) => v.nickname, FieldCodec.text), age: f.text('age', (v) => v.age, FieldCodec.optionalInteger), newsletter: f.value('newsletter', (v) => v.newsletter)), input: (f) => (nickname: f.nickname.value, age: f.age.value, newsletter: f.newsletter.value), validate: _i8.validate, validation: validation, resetOnSuccess: resetOnSuccess, messages: messages);
 }
 
@@ -3572,10 +3572,10 @@ final _data73 = FutureProvider.autoDispose.family(
   (Ref ref, String article) => traceData(ref, 'd73', article, _i109.data(ref, article: restParts(article))),
 );
 
-/// What reads of (account)/nickname/data.dart show while a write that patches it is in flight (`optimistic()` of (account)/nickname/action.dart). Since 0.8.0.
+/// What reads of (account)/nickname/data.dart show while a write that patches it is in flight (`optimistic()` of (account)/nickname/action.dart). Since 0.8.1.
 final _optimistic3 = optimisticLayer(_data3);
 
-/// What reads of teams/$teamId/data.dart show while a write that patches it is in flight (`addMemberOptimistic()` of teams/$teamId/action.dart). Since 0.8.0.
+/// What reads of teams/$teamId/data.dart show while a write that patches it is in flight (`addMemberOptimistic()` of teams/$teamId/action.dart). Since 0.8.1.
 final _optimistic66 = optimisticLayerFamily((String teamId) => _data66(teamId));
 
 /// `action()` of (account)/nickname/action.dart: its state, and what it invalidates after a success.
@@ -3602,7 +3602,7 @@ final _action66_0 = actionFamily(
   site: 'a66_0',
 );
 
-/// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.0).
+/// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.1).
 abstract final class AppMenu {
   /// Every nav.dart, nested as their folders are (the app folder's own entry, and a tab layout's
   /// own page, sit beside the entries below them), each level by `order`, then by folder.

@@ -1,6 +1,6 @@
 # Menus and breadcrumbs: `nav.dart`
 
-Since 0.8.0 (`cli/src/menu.rs`, `packages/fespalier/lib/src/nav.dart`). A drawer, a bottom bar, a
+Since 0.8.1 (`cli/src/menu.rs`, `packages/fespalier/lib/src/nav.dart`). A drawer, a bottom bar, a
 tab bar and a breadcrumb row are one list: the folders of the app and where they go. A `nav.dart`
 in a folder says how that folder shows up; `fsp gen` writes `AppMenu` at the end of `app.g.dart`
 from all of them. **An app with no `nav.dart` generates exactly the file it did before**, so

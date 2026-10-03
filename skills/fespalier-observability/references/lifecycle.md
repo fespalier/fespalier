@@ -1,6 +1,6 @@
 # Route lifecycle: `observe.dart`
 
-Since 0.8.0. The README's [Route lifecycle](https://github.com/vaam-apps/fespalier#route-lifecycle-observedart)
+Since 0.8.1. The README's [Route lifecycle](https://github.com/fespalier/fespalier#route-lifecycle-observedart)
 section is the user documentation; this page is what an agent needs to get a hook right and to explain one
 that misbehaves.
 

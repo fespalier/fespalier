@@ -1,4 +1,4 @@
-//! Data freshness and the data cache (since 0.8.0): `const freshness = Freshness(...)` in a
+//! Data freshness and the data cache (since 0.8.1): `const freshness = Freshness(...)` in a
 //! data.dart or a route.dart (the default of every `data()` function at and below its folder), and
 //! `final dataCache = DataCache(...)` in a data.dart. The generator never reads their values: it
 //! emits `freshData(...)` / `cachedData(...)` around the provider and refers to the variables,

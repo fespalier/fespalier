@@ -1,4 +1,4 @@
-/// OpenTelemetry for fespalier (since 0.8.0): `FespalierOtel` turns what fespalier reports while
+/// OpenTelemetry for fespalier (since 0.8.1): `FespalierOtel` turns what fespalier reports while
 /// it routes into spans, on the SDK that `otel_zone` (or the app) started, and
 /// `FespalierConventions` holds every name it emits.
 library;

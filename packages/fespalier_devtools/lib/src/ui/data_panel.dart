@@ -1,5 +1,5 @@
 /// The providers of the `data.dart` files: each one's state (loading, data, error), how often it
-/// was built, when, and what it holds, with a button to build it again and, since 0.8.0, one that
+/// was built, when, and what it holds, with a button to build it again and, since 0.8.1, one that
 /// lists who holds it.
 library;
 
@@ -116,7 +116,7 @@ class _DataPanelState extends State<DataPanel> {
 class DataRecordRow extends StatefulWidget {
   /// A row for [record], whose `data.dart` is [site] in the tree (null when it is not there).
   /// [refreshedAt] is what the age of the last change is counted to. [loadHolders] asks the app
-  /// who holds the provider; without it (an app older than 0.8.0) there is no Holders button.
+  /// who holds the provider; without it (an app older than 0.8.1) there is no Holders button.
   const DataRecordRow({
     super.key,
     required this.record,

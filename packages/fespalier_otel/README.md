@@ -1,12 +1,12 @@
 # fespalier_otel
 
-OpenTelemetry for [fespalier](https://github.com/vaam-apps/fespalier) (since 0.8.0): spans for
+OpenTelemetry for [fespalier](https://github.com/fespalier/fespalier) (since 0.8.1): spans for
 navigations, guards and redirects, data loads, actions and deferred loads, on the SDK that
 [`otel_zone`](https://github.com/vaam-apps/flutter-otel-zone) (or your app) started. fespalier
 itself has no OpenTelemetry dependency: it tells a `FespalierTelemetry` sink what happened, and
 this package is the sink that turns it into spans.
 
-The main README documents all of it: [Telemetry](https://github.com/vaam-apps/fespalier#telemetry)
+The main README documents all of it: [Telemetry](https://github.com/fespalier/fespalier#telemetry)
 (turning it on, the install, the conventions every span and attribute follows, testing, what it
 costs). This page is the short version.
 
@@ -20,12 +20,12 @@ package only if they are the same repository dependency.
 dependencies:
   fespalier:
     git:
-      url: https://github.com/vaam-apps/fespalier
+      url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.8.0
   fespalier_otel:
     git:
-      url: https://github.com/vaam-apps/fespalier
+      url: https://github.com/fespalier/fespalier
       path: packages/fespalier_otel
       ref: v0.8.0
 ```
@@ -83,7 +83,7 @@ An app that starts the SDK itself (`OTel.initialize`) leaves `isReady` out.
 
 ### See what it sends
 
-`fsp telemetry` (since 0.8.0) starts OpenObserve with four dashboards that answer plain questions ("Do screens
+`fsp telemetry` (since 0.8.1) starts OpenObserve with four dashboards that answer plain questions ("Do screens
 open quickly?") in green, amber or red, and `fsp telemetry --report` says the same in the terminal. The
 README's section "Dashboards on your computer" has the details.
 
@@ -93,7 +93,7 @@ _Sample data from `scripts/telemetry/seed.py --showcase`._
 
 ## Known limitation: `otel_zone` `runGuarded` on the web
 
-Since 0.8.0, known limitation: on the web, `OtelZone.runGuarded` never runs its body, so the app
+Since 0.8.1, known limitation: on the web, `OtelZone.runGuarded` never runs its body, so the app
 stays blank. Inside the zone, before the body, it builds a `ReceivePort`, which `dart:isolate` does
 not support there. `OtelZone.start()` itself works on the web, so spans and logs are exported.
 Until `otel_zone` guards that call, run the body as it is on the web, as `guarded` above does. The

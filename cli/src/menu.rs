@@ -1,4 +1,4 @@
-//! The menus the `nav.dart` files describe (since 0.8.0): which folders are entries, how they
+//! The menus the `nav.dart` files describe (since 0.8.1): which folders are entries, how they
 //! nest, which routes show a breadcrumb trail, what asks which guards. The result is the
 //! `AppMenu` block at the end of `app.g.dart`; `package:fespalier/nav.dart` reads it at runtime.
 //!

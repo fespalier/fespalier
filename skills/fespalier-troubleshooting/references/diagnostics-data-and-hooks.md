@@ -22,7 +22,7 @@ and the fix follow each.
 | `` expected `Future<T> data(Ref ref, {...segments})`, `ProviderListenable<AsyncValue<T>> data({...segments})` or `final data = FutureProvider<T>(...)` ``                                                                    | `data.dart` exports none of the three forms (a misspelled name, e.g. `fetch`)                                                                                                |
 | `data.dart has no page.dart to feed; with a layout.dart beside it, it would be the data of the section below that layout`                                                                                                    | A `data.dart` with no page and no layout                                                                                                                                     |
 
-`freshness` and `dataCache` (since 0.8.0) are variables of a `data.dart` that `fsp` reads by name; the error is at the
+`freshness` and `dataCache` (since 0.8.1) are variables of a `data.dart` that `fsp` reads by name; the error is at the
 variable, with a code frame. They apply to the function form that returns a `Future<T>`, a `FutureOr<T>` or a `T`:
 
 | Message                                                                                                                                                                                                                          | Cause and fix                                                                                                                                   |
@@ -39,9 +39,9 @@ variable, with a code frame. They apply to the function form that returns a `Fut
 | `` `dataCache` applies to the provider fespalier makes of a data() function, and this data.dart exports its own `data` provider; persist it with Riverpod's `persist` (from package:fespalier/persist.dart) instead ``           | `dataCache` beside a provider form                                                                                                              |
 
 An app with a public top-level `freshness` or `dataCache` of another type gets the first error of its kind since
-0.8.0: rename it (a private `_freshness` is never read).
+0.8.1: rename it (a private `_freshness` is never read).
 
-Runtime, since 0.8.0, `debugPrint` in debug only (never an error of the route): `fespalier: dataCache of <name> could not read a saved value, dropped it: <error>`
+Runtime, since 0.8.1, `debugPrint` in debug only (never an error of the route): `fespalier: dataCache of <name> could not read a saved value, dropped it: <error>`
 (a saved value that did not decode, or a storage whose `read` threw; the entry is deleted and the load goes on) and
 `fespalier: dataCache of <name> could not save: <error>` (the storage's `write` or `delete` failed, or `encode`
 threw; nothing is saved and the page is unaffected).
@@ -87,7 +87,7 @@ Runtime, not `fsp`: an action does not throw out of a page that is gone, and nev
 retries; a `StateError` ("An action tried to invalidate ...") would be a bug in the
 generated list.
 
-### Companions: `form()`, `validate()` and `optimistic()` (since 0.8.0)
+### Companions: `form()`, `validate()` and `optimistic()` (since 0.8.1)
 
 `<f>`, `<v>` and `<o>` are the companion's own name (`form`, `approveValidate`, ...), `<name>` the
 action's (`action`, `approve`), `<input>` the text of its `input` type, `<hook>` the form hook

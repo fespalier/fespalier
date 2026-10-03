@@ -1,4 +1,4 @@
-//! `fsp telemetry`: a local OpenTelemetry stack with fespalier's dashboards (since 0.8.0).
+//! `fsp telemetry`: a local OpenTelemetry stack with fespalier's dashboards (since 0.8.1).
 //!
 //! The stack is the folder `cli/templates/telemetry/`: a Docker Compose file, an OpenTelemetry
 //! collector, OpenObserve with its dashboards, a one-shot importer that loads them, and Grafana

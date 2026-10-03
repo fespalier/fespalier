@@ -1,12 +1,12 @@
 # Installs the `fsp` binary (the fespalier code generator) on Windows, without needing Rust.
 #
-#   irm https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/fespalier/fespalier/main/install.ps1 | iex
 #
 # Environment:
 #   FSP_VERSION      release tag to install, e.g. v0.3.0 (default: latest release)
 #   FSP_INSTALL_DIR  where to put fsp.exe (default: %LOCALAPPDATA%\fespalier\bin)
 #   FSP_BASE_URL     where releases are downloaded from
-#                    (default: https://github.com/vaam-apps/fespalier/releases/download)
+#                    (default: https://github.com/fespalier/fespalier/releases/download)
 #
 # Works in Windows PowerShell 5.1 and PowerShell 7. Everything lives in one function so
 # that piping the script into `iex` never closes your terminal on an error.
@@ -19,7 +19,7 @@ function Install-Fsp {
     # PowerShell 5.1 defaults to TLS 1.0/1.1, which GitHub refuses.
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
 
-    $repo = 'vaam-apps/fespalier'
+    $repo = 'fespalier/fespalier'
     $releasesUrl = "https://github.com/$repo/releases"
     $baseUrl = if ($env:FSP_BASE_URL) { $env:FSP_BASE_URL.TrimEnd('/') } else { "$releasesUrl/download" }
 

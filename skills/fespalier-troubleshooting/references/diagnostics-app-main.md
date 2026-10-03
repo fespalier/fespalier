@@ -1,6 +1,6 @@
 # Diagnostics: the generated `main()` (`app.dart`, `startup.dart`, `splash.dart`)
 
-Since 0.8.0 (`cli/src/entry.rs`, `cli/src/config.rs`, `cli/src/resolve.rs`). Messages are quoted as
+Since 0.8.1 (`cli/src/entry.rs`, `cli/src/config.rs`, `cli/src/resolve.rs`). Messages are quoted as
 `fsp` prints them; the feature is in `fespalier` (`references/app-main.md`). An error leaves
 `lib/app.g.dart` **and** `lib/app.main.g.dart` untouched (`N error(s); lib/app.g.dart and lib/app.main.g.dart left unchanged`).
 

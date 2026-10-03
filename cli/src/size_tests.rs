@@ -1,4 +1,4 @@
-//! `fsp size` (since 0.8.0): reading dart2js's table of deferred parts out of `main.dart.js`, which
+//! `fsp size` (since 0.8.1): reading dart2js's table of deferred parts out of `main.dart.js`, which
 //! bytes belong to which deferred route, the stale-build checks, and the `size:` budgets.
 //!
 //! The build is `tests/fixtures/shop-build/main.dart.js`, a trimmed excerpt of a real

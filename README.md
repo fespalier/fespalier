@@ -11,7 +11,7 @@ mountable `lib/app.g.dart`. It's built on go_router, Riverpod and flutter_hooks,
 with no build_runner.
 
 ```text
-lib/main.dart            Future<void> main() => AppMain.run();           (the whole main(), since 0.8.0)
+lib/main.dart            Future<void> main() => AppMain.run();           (the whole main(), since 0.8.1)
 lib/app/
   app.dart               App({required GoRouter router})              the MaterialApp.router around the router (root only, optional)
   startup.dart           Future<List<Override>> startup()             before the app: overrides, observers, a zone (root only, optional)
@@ -55,7 +55,7 @@ lib/app/
 ```
 
 ```dart
-// the whole app entry point (since 0.8.0): lib/main.dart runs the main() fsp generates
+// the whole app entry point (since 0.8.1): lib/main.dart runs the main() fsp generates
 Future<void> main() => AppMain.run();
 
 // or by hand
@@ -93,7 +93,7 @@ You need Flutter 3.32 or newer (Dart 3.8) for the package. go_router 18 needs Fl
 **1. Install the CLI.** On Linux and macOS:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 ```
 
 It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.8.0` <!-- x-release-please-version -->
@@ -101,7 +101,7 @@ to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to
 elsewhere. On Windows, in PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/fespalier/fespalier/main/install.ps1 | iex
 ```
 
 It puts `fsp.exe` in `%LOCALAPPDATA%\fespalier\bin` (tell it otherwise with
@@ -112,18 +112,32 @@ any platform:
 <!-- x-release-please-start-version -->
 
 ```sh
-cargo install --git https://github.com/vaam-apps/fespalier --tag v0.8.0 fespalier
+cargo install --git https://github.com/fespalier/fespalier --tag v0.8.0 fespalier
 ```
 
 <!-- x-release-please-end -->
 
-With Homebrew (macOS, Linux) or Scoop (Windows), once the maintainers have set up the tap and
-bucket (see [Releasing](#releasing)):
+With Homebrew (macOS, Linux) or Scoop (Windows), from the tap and the bucket that releases push to
+(see [Releasing](#releasing)):
 
 ```sh
-brew install vaam-apps/tap/fsp
-scoop bucket add vaam-apps https://github.com/vaam-apps/scoop-bucket && scoop install fsp
+brew tap fespalier/tap && brew install fsp   # or in one go: brew install fespalier/tap/fsp
+scoop bucket add fespalier https://github.com/fespalier/scoop-bucket && scoop install fsp
 ```
+
+They hold the latest release only once it has pushed to them. Scoop also installs a manifest
+straight from a URL, so without the bucket (or before it has the release) the `fsp.json` that
+every release attaches does the same, and it names that release's archives and their SHA-256s:
+
+```powershell
+scoop install https://github.com/fespalier/fespalier/releases/latest/download/fsp.json
+```
+
+To update that one, `scoop uninstall fsp` and run it again. Homebrew has no such fallback:
+`brew install` reads formulae from taps only (a path is refused by default, `brew install
+./fsp.rb`, see `HOMEBREW_FORBID_PACKAGES_FROM_PATHS`, and a URL is no longer accepted), so
+`fsp.rb` is only useful to a tap. Where the tap has no release yet, macOS users use the install
+script above.
 
 **Or install nothing.** Once the package is in your `pubspec.yaml` (step 2), `dart run
 fespalier <command>` runs `fsp` for you, so use it wherever this README says `fsp`:
@@ -148,7 +162,7 @@ binary are versioned together, and this is what keeps them in step.
 dependencies:
   fespalier:
     git:
-      url: https://github.com/vaam-apps/fespalier
+      url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.8.0
 ```
@@ -166,7 +180,7 @@ fsp init
 
 It creates `lib/app/layout.dart`, `page.dart`, `not_found.dart` (`not-found.dart` with
 [`file_style: kebab`](#file-names)), `transition.dart` (every
-route animates with the Material transition) and, since 0.8.0, `app.dart` (the `MaterialApp.router`
+route animates with the Material transition) and, since 0.8.1, `app.dart` (the `MaterialApp.router`
 around the router; not with [`main: manual`](#main-appdart-startupdart-and-splashdart)), and writes
 `lib/app.g.dart` and, from `app.dart`, `lib/app.main.g.dart`. It never
 overwrites a file that exists: those are reported as `skip`.
@@ -184,7 +198,7 @@ Future<void> main() => AppMain.run();
 `AppMain` is generated from `lib/app/app.dart` (and `startup.dart` and `splash.dart`, if you
 add them): it starts the app inside a `ProviderScope`, builds the router once and runs
 `runApp`. See [`main()`: app.dart, startup.dart and splash.dart](#main-appdart-startupdart-and-splashdart).
-Before 0.8.0 `fsp init` printed a `main()` that built the `ProviderScope` and the
+Before 0.8.1 `fsp init` printed a `main()` that built the `ProviderScope` and the
 `MaterialApp.router` itself, and that still works: it is what `main: manual` keeps.
 
 A plain `flutter create` (not `flutter create --empty`) also wrote `test/widget_test.dart`,
@@ -226,7 +240,7 @@ with what the tree would generate, so it passes when `lib/app.g.dart` is stale; 
 section has a check that fails then.
 
 ```yaml
-- run: curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
+- run: curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 - run: fsp check
 ```
@@ -296,9 +310,9 @@ fespalier:
   #   ios_app_id: TEAMID.com.example.shop
   #   out: links                  # default
   semantics_ids: false # `true` (since 0.7.0): every page wears `Semantics(identifier: 'route:/...')`, for Maestro
-  scroll_restoration: false # `true` (since 0.8.0): the browser's back and forward bring a page's scroll offsets back
-  main: auto # `generated` | `manual` (since 0.8.0): whether `fsp` writes the main() in lib/app.main.g.dart
-  telemetry: false # `true` (since 0.8.0): report navigations, guards, data, actions and deferred loads (see "Telemetry")
+  scroll_restoration: false # `true` (since 0.8.1): the browser's back and forward bring a page's scroll offsets back
+  main: auto # `generated` | `manual` (since 0.8.1): whether `fsp` writes the main() in lib/app.main.g.dart
+  telemetry: false # `true` (since 0.8.1): report navigations, guards, data, actions and deferred loads (see "Telemetry")
   # maestro:                      # no default: what `fsp maestro` writes (see below)
   #   url: http://localhost:8080  # the web; or `app_id: com.example.shop` for Android and iOS
   #   link: http://localhost:8080/#
@@ -307,7 +321,7 @@ fespalier:
   #   timeout: 20000              # default, in milliseconds
   #   samples:
   #     products/$id: 1
-  # size:                         # no default: what `fsp size` checks the web build against (since 0.8.0)
+  # size:                         # no default: what `fsp size` checks the web build against (since 0.8.1)
   #   main: 3 MB                  # main.dart.js
   #   routes:
   #     /checkout: 8 KB           # a deferred route's own and shared chunks
@@ -350,20 +364,20 @@ is always a valid page. Without the key, `push` leaves the address bar on the pa
 reported: `unknown_path` is `warning` (the default), `error` or `off`.
 `semantics_ids` (since 0.7.0) and `maestro:` are about [Maestro](#maestro-flows-fsp-maestro): the first
 changes the generated file, the second is read, and checked, only by `fsp maestro`.
-`scroll_restoration` (since 0.8.0) is `true` or `false`: whether each page is wrapped in a `PageStorage` that the
+`scroll_restoration` (since 0.8.1) is `true` or `false`: whether each page is wrapped in a `PageStorage` that the
 browser's back and forward button hand back (see [Scroll restoration](#scroll-restoration)). A value that isn't a
 bool is an error.
-`size:` (since 0.8.0) is what [`fsp size`](#web-chunk-sizes-fsp-size) checks the web build against; only that command checks its values.
-`test:` (since 0.8.0) is what [`fsp test`](#route-smoke-tests-fsp-test) reads, and only that command checks it.
+`size:` (since 0.8.1) is what [`fsp size`](#web-chunk-sizes-fsp-size) checks the web build against; only that command checks its values.
+`test:` (since 0.8.1) is what [`fsp test`](#route-smoke-tests-fsp-test) reads, and only that command checks it.
 
-`main` (since 0.8.0) is `auto`, `generated` or `manual`: whether `fsp` writes [`lib/app.main.g.dart`](#main-appdart-startupdart-and-splashdart),
+`main` (since 0.8.1) is `auto`, `generated` or `manual`: whether `fsp` writes [`lib/app.main.g.dart`](#main-appdart-startupdart-and-splashdart),
 with `AppMain`. `auto` writes it when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart`,
 `generated` always, `manual` never (and then those three files are not read). Any other value is an error that lists
 the three: ``unknown variant `always`, expected one of `auto`, `generated`, `manual` ``. The file sits beside
 `output`, with `.main.g.dart` in place of `.g.dart` (`lib/router/routes.g.dart` makes `lib/router/routes.main.g.dart`);
 there is no key for the path, and `output_manifest` cannot be it.
 
-`telemetry` (since 0.8.0) is `true` or `false`: whether the generated file tells fespalier where each guard,
+`telemetry` (since 0.8.1) is `true` or `false`: whether the generated file tells fespalier where each guard,
 data provider, action and deferred page is, and follows the router's navigations (see
 [Telemetry](#telemetry)). A value that isn't a bool is an error.
 The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
@@ -374,7 +388,7 @@ found by its name, like the other files.
 - **Web URLs.** Flutter web uses hash URLs (`/#/products/1`) unless you switch to path
   URLs. Add `flutter_web_plugins: {sdk: flutter}` to `dependencies` and call
   `usePathUrlStrategy()` (from `package:flutter_web_plugins/url_strategy.dart`) before
-  `runApp`, or, with the generated `main()` (since 0.8.0), as the first line of `startup()`: the
+  `runApp`, or, with the generated `main()` (since 0.8.1), as the first line of `startup()`: the
   router is only built after it. Your web server must also serve `index.html` for unknown paths.
 - **go_router 18 and Material.** go_router 18 checks for `MaterialApp` from
   `package:material_ui`, not the one in `package:flutter/material.dart`. With Flutter's
@@ -414,20 +428,20 @@ widget class" and lists them. Make helpers private (`_Name`) rather than lean on
 | `layout.dart`      | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs. A tab layout can also export a [`container`](#tab-layouts) function                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside; the navigation [`extra`](#typed-extra) |
 | `guard.dart`       | `GuardResult guard(Ref ref, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder, and runs again when what it `ref.watch`es changes (since 0.5.0; `ProviderContainer c` first is the older form, read once)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `uri`; segments at or above its folder; query (named); `extra`                                                                                                |
 | `redirect.dart`    | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `Ref ref` first (since 0.5.0), or `ProviderContainer c`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `uri`; segments; query (named); `extra`                                                                                                                       |
-| `observe.dart`     | `void onEnter(Ref ref, {…})`, `onLeave` and `onFocus` (any of them): run for every page at and below its folder when it is entered, left and focused (since 0.8.0). See [Route lifecycle](#route-lifecycle-observedart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `Ref ref` first; segments at or above its folder; query (named); `uri`; `TypedLocation route`                                                                 |
+| `observe.dart`     | `void onEnter(Ref ref, {…})`, `onLeave` and `onFocus` (any of them): run for every page at and below its folder when it is entered, left and focused (since 0.8.1). See [Route lifecycle](#route-lifecycle-observedart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `Ref ref` first; segments at or above its folder; query (named); `uri`; `TypedLocation route`                                                                 |
 | `transition.dart`  | `Page<…> transition(…)`; applies to this folder and below, layouts' shells included                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `key`, `child`, `state`, `shell` (a `bool`)                                                                                                                   |
 | `present.dart`     | `Page<…> present(…)`: the app builds this route's own page (a sheet, say), on the [root navigator](#presentdart-a-page-of-your-own); this folder only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `key`, `child`, `state`                                                                                                                                       |
 | `navigator.dart`   | `const navigator = RouteNavigator.root;`: this folder and below [render on the root navigator](#the-root-navigator-navigatordart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | nothing: it is data                                                                                                                                           |
 | `not_found.dart`   | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `uri`                                                                                                                                                         |
 | `meta.dart`        | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data                                                                                                                                           |
 | `extra_codec.dart` | at the root of the app folder only: a top-level `extraCodec`, the `Codec<Object?, Object?>` the router saves an [`extra`](#restoring-extra-on-the-web) with                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data                                                                                                                                           |
-| `app.dart`         | at the root of the app folder only (since 0.8.0): a widget (any kind) that gets the `router` and builds the `MaterialApp.router` around it; optionally `GoRouter router()` too. [`AppMain.app`](#main-appdart-startupdart-and-splashdart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `router` (a `GoRouter`); other parameters must be optional                                                                                                    |
-| `startup.dart`     | at the root of the app folder only (since 0.8.0): `startup()` (before the app; may return the `Override`s), `zone()`, `providerObservers`, `routerObservers`, `retry()`; at least one                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | nothing: `startup()` takes no parameters                                                                                                                      |
-| `splash.dart`      | at the root of the app folder only (since 0.8.0): a widget shown while an async `startup()` runs, and when it fails                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `error`, `stackTrace`, `retry` (each nullable: null while `startup()` runs)                                                                                   |
-| `route.dart`       | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`; and/or `const paths = {'fr': 'produits'};` in a static folder: [its other spellings per locale](#localized-paths); and/or `const nest = false;` beside a `page.dart` or `redirect.dart`: [its route is a sibling of the page above, not a child](#a-sibling-with-a-compound-path); and/or `const linkable = false;` (since 0.5.0): [`fsp links`](#deep-links-and-a-sitemap-fsp-links) leaves this folder's routes and those below it out, [the nearest one winning](#case-and-trailing-slashes); and/or `const remount = Remount.onSegments;` (since 0.6.0): [when the pages in this folder and below get a fresh state because their URL changed](#remounting-a-page-remount), the nearest one winning over the pubspec's `remount`; and/or `const deferred = true;` (since 0.7.0): [the pages in this folder and below load their code on demand](#deferred-routes-a-pages-code-on-demand), the nearest one winning over the pubspec's `deferred`; and/or `const freshness = Freshness(staleTime: Duration(minutes: 5));` (since 0.8.0): [the default for when the data.dart functions in this folder and below load again](#freshness-staletime-resume-and-reconnect), the nearest one winning, a data.dart's own over all. Read from the source, never imported | nothing: it is data                                                                                                                                           |
-| `nav.dart`         | in any folder (since 0.8.0): `const nav = Nav(label: 'Products', order: 1);` — how the folder shows in the generated [menus and breadcrumbs](#menus-and-breadcrumbs-navdart) (`AppMenu`) — and optionally `String label(BuildContext context, {…})`, the label shown, localized. Read from the source (its `order` and the segments `label()` asks for); a folder with no page is a heading                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data; `label()` takes a `BuildContext` and the segments of its folder and above (named, `required`)                                            |
+| `app.dart`         | at the root of the app folder only (since 0.8.1): a widget (any kind) that gets the `router` and builds the `MaterialApp.router` around it; optionally `GoRouter router()` too. [`AppMain.app`](#main-appdart-startupdart-and-splashdart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `router` (a `GoRouter`); other parameters must be optional                                                                                                    |
+| `startup.dart`     | at the root of the app folder only (since 0.8.1): `startup()` (before the app; may return the `Override`s), `zone()`, `providerObservers`, `routerObservers`, `retry()`; at least one                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | nothing: `startup()` takes no parameters                                                                                                                      |
+| `splash.dart`      | at the root of the app folder only (since 0.8.1): a widget shown while an async `startup()` runs, and when it fails                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `error`, `stackTrace`, `retry` (each nullable: null while `startup()` runs)                                                                                   |
+| `route.dart`       | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`; and/or `const paths = {'fr': 'produits'};` in a static folder: [its other spellings per locale](#localized-paths); and/or `const nest = false;` beside a `page.dart` or `redirect.dart`: [its route is a sibling of the page above, not a child](#a-sibling-with-a-compound-path); and/or `const linkable = false;` (since 0.5.0): [`fsp links`](#deep-links-and-a-sitemap-fsp-links) leaves this folder's routes and those below it out, [the nearest one winning](#case-and-trailing-slashes); and/or `const remount = Remount.onSegments;` (since 0.6.0): [when the pages in this folder and below get a fresh state because their URL changed](#remounting-a-page-remount), the nearest one winning over the pubspec's `remount`; and/or `const deferred = true;` (since 0.7.0): [the pages in this folder and below load their code on demand](#deferred-routes-a-pages-code-on-demand), the nearest one winning over the pubspec's `deferred`; and/or `const freshness = Freshness(staleTime: Duration(minutes: 5));` (since 0.8.1): [the default for when the data.dart functions in this folder and below load again](#freshness-staletime-resume-and-reconnect), the nearest one winning, a data.dart's own over all. Read from the source, never imported | nothing: it is data                                                                                                                                           |
+| `nav.dart`         | in any folder (since 0.8.1): `const nav = Nav(label: 'Products', order: 1);` — how the folder shows in the generated [menus and breadcrumbs](#menus-and-breadcrumbs-navdart) (`AppMenu`) — and optionally `String label(BuildContext context, {…})`, the label shown, localized. Read from the source (its `order` and the segments `label()` asks for); a folder with no page is a heading                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data; `label()` takes a `BuildContext` and the segments of its folder and above (named, `required`)                                            |
 
-Since 0.8.0 an `action.dart` may also hold the companions of an action: its [`form()`, `validate()`](#forms-form-and-validate) and [`optimistic()`](#optimistic-updates-optimistic). They are functions in that file, not a file kind.
+Since 0.8.1 an `action.dart` may also hold the companions of an action: its [`form()`, `validate()`](#forms-form-and-validate) and [`optimistic()`](#optimistic-updates-optimistic). They are functions in that file, not a file kind.
 
 ### Function views
 
@@ -1144,13 +1158,13 @@ extra parameter, or a return type that isn't `Widget` is an error at the paramet
 holds one navigator per tab in the layout's tab order, and the container must keep them all in the
 tree (`Offstage`, `Opacity` or a `Stack`, as `IndexedStack` does) or the tabs lose their state,
 and wrap the ones it doesn't show in `TickerMode(enabled: false)`, as go_router's does: that is how a
-[shared element](#shared-elements-heroes) (since 0.8.0) knows its tab is hidden.
+[shared element](#shared-elements-heroes) (since 0.8.1) knows its tab is hidden.
 A `container` in a layout that isn't a tab layout is ignored with a warning. `examples/tabs`
 cross-fades, and its tests check that a tab's state survives.
 
 ### Menus and breadcrumbs: `nav.dart`
 
-Since 0.8.0. A drawer, a bottom bar, a tab bar and a breadcrumb row all list the same thing:
+Since 0.8.1. A drawer, a bottom bar, a tab bar and a breadcrumb row all list the same thing:
 the folders of the app and where they go. A `nav.dart` in a folder says how that folder shows
 up, and `fsp gen` writes `AppMenu` at the end of `lib/app.g.dart` from all of them, so a menu is
 not a second list to keep in step with the routes. An app with no `nav.dart` generates exactly
@@ -1396,7 +1410,7 @@ the typed routes include the mount prefix when the tree is mounted with `at:`.
 
 ### Route lifecycle: `observe.dart`
 
-Since 0.8.0, an `observe.dart` runs code when a page becomes the one the user sees, when it is on
+Since 0.8.1, an `observe.dart` runs code when a page becomes the one the user sees, when it is on
 top again, and when it is gone: analytics, logging, a window title. It observes and cannot veto
 (blocking a leave is go_router's `GoRoute.onExit`, which fespalier does not wrap).
 
@@ -1508,7 +1522,7 @@ The function returns a `Page`, and takes the page's key as `LocalKey key`, the p
 itself as `Widget child`, and optionally `GoRouterState state`. `Transitions` has
 ready-made ones: `fade`, `slide`, `none`, `material`, `cupertino`, and `dialog`, `sheet`
 and `fullscreenDialog` (below). Every one but `dialog` and `sheet` takes `heroes:`
-([shared elements](#shared-elements-heroes), since 0.8.0).
+([shared elements](#shared-elements-heroes), since 0.8.1).
 
 ```dart
 // lib/app/transition.dart: every route fades in, unless a folder overrides it
@@ -1577,7 +1591,7 @@ the platform transition under a Material or Cupertino app, none otherwise (see t
 
 #### Shared elements (heroes)
 
-Since 0.8.0, a shared element that flies from a list to a detail page is one line on each side:
+Since 0.8.1, a shared element that flies from a list to a detail page is one line on each side:
 `route.hero(name, child: ...)` on every typed route.
 
 ```dart
@@ -1620,7 +1634,7 @@ Page<void> transition(LocalKey key, Widget child) =>
 
 `heroes:` wraps the page's child in a `RouteHeroScope`, which every `RouteHero` below it reads; the
 nearest `transition.dart` that passes `heroes:` decides, and one that doesn't leaves the tree as it was
-before 0.8.0. A layout's shell takes it too, so the scope covers every page inside the layout. A
+before 0.8.1. A layout's shell takes it too, so the scope covers every page inside the layout. A
 `RouteHero`'s own `onBackGesture:`, `path:` and `shuttle:` override it for that hero. A
 [`present.dart`](#presentdart-a-page-of-your-own) page, or a `Page` of your own, wraps its child in a
 `RouteHeroScope(heroes: ..., child: ...)` itself.
@@ -2127,7 +2141,7 @@ dependencies changing) keeps rendering it: the old page stays until the new valu
 instead of blinking to `loading.dart` and back. `error.dart`'s `retry` still invalidates the
 provider; the error stays up until the new run has an answer. Off, `loading.dart` shows
 whenever the provider is loading (a refresh included), except while a write whose
-[`optimistic()`](#optimistic-updates-optimistic) patched the data settles (since 0.8.0). This is `skipLoadingOnReload` and
+[`optimistic()`](#optimistic-updates-optimistic) patched the data settles (since 0.8.1). This is `skipLoadingOnReload` and
 `skipLoadingOnRefresh` on Riverpod's `AsyncValue.when`. It applies to a route's `data.dart` and
 to a section's, including a provider you write yourself.
 
@@ -2157,7 +2171,7 @@ With `keep_previous: false` a retry shows `loading.dart` again.
 `retry: (retryCount, error) => null`, whatever the app's policy is: a failure is final until
 `error.dart`'s `retry` runs it again, which is how 0.1.1 behaved.
 
-**A route with a `freshness` or a `dataCache`** (since 0.8.0) keeps its data when a reload fails,
+**A route with a `freshness` or a `dataCache`** (since 0.8.1) keeps its data when a reload fails,
 whatever `keep_previous` says: `error.dart` only shows when there is nothing to show (see
 [Freshness](#freshness-staletime-resume-and-reconnect)). And `DataView` shows a value that
 Riverpod's offline persistence restored (`isFromCache`) while the fresh one loads, with
@@ -2165,7 +2179,7 @@ Riverpod's offline persistence restored (`isFromCache`) while the fresh one load
 
 #### Freshness: `staleTime`, resume and reconnect
 
-Since 0.8.0 a `data.dart` can say when its value is old enough to load again. It is opt in: a
+Since 0.8.1 a `data.dart` can say when its value is old enough to load again. It is opt in: a
 route without the declaration below loads once and keeps the value for as long as something
 watches it, as before.
 
@@ -2316,7 +2330,7 @@ private `_freshness` is never read).
 
 #### A cache that survives a restart: `dataCache`
 
-Since 0.8.0 a `data.dart` can save its last value, and show it at the next start while the fresh one
+Since 0.8.1 a `data.dart` can save its last value, and show it at the next start while the fresh one
 loads. It is built on Riverpod 3's **experimental** offline persistence (`persist()` and its
 `Storage` interface), isolated in one runtime file, and it is opt in twice: the `data.dart` declares
 how its value is saved, and the app gives a place to save it.
@@ -2478,7 +2492,7 @@ final all = ProductRoute(id: 42).preload(ref);     // the same, for everything t
 ```
 
 `watch` includes the patches of an [`optimistic()`](#optimistic-updates-optimistic) when the data
-has any (since 0.8.0).
+has any (since 0.8.1).
 
 `watch` and `read` are _static_, and take the keys the provider uses as named arguments
 (`ItemRoute.watch(ref, shop: 'a', id: 1)`, `SearchRoute.watch(ref, q: 'ap', page: 2)`;
@@ -2490,7 +2504,7 @@ inference, so `Product` flows through and is never `dynamic`. (More in
 
 `read` keeps the provider alive until it completes, which a plain `ref.read(p.future)`
 doesn't for an `autoDispose` provider. Don't call it from `build`. On a route with a
-[`freshness`](#freshness-staletime-resume-and-reconnect) (since 0.8.0) `read` returns the value in
+[`freshness`](#freshness-staletime-resume-and-reconnect) (since 0.8.1) `read` returns the value in
 memory even if it is stale, and starts the reload; `refresh` waits for the network.
 
 `prefetch(ref)` starts the load and returns a `PrefetchHandle` that **keeps the provider alive
@@ -2712,7 +2726,7 @@ final Refund done = await RefundRoute.submit(ref, id: 1, input: input);
   except while a write is in flight.
 - **`useAction`** takes the keys and returns a handle: `state` (the same `AsyncValue<T?>`),
   `isPending`, `hasError`, `fieldErrors` (the [`FieldErrors`](#forms-form-and-validate) the last
-  run failed with, since 0.8.0, or null), `reset()`, and `call(input)`. `call` runs the action and completes with
+  run failed with, since 0.8.1, or null), `reset()`, and `call(input)`. `call` runs the action and completes with
   the result, or with `null` when it failed, because the error is in `state`: an `onPressed:
   () => refund.call(input)` can't leave an unhandled error behind. `submit` is the other way: it
   throws what the action threw, for code that wants to handle it (and the error is in `state` too).
@@ -2779,7 +2793,7 @@ teamId: 'acme', input: 'carol')`), and what it invalidates by default is the sec
 the sections above it. A section with no `data.dart` gets a handle for its actions alone
 (`ShopSection`), named like [any section's](#section-data).
 
-Since 0.5.0. Forms and optimistic updates (since 0.8.0) are in the two subsections after the list
+Since 0.5.0. Forms and optimistic updates (since 0.8.1) are in the two subsections after the list
 below; without them, `state` plus `invalidates` cover most pages.
 
 `fsp new 'orders/[id]/refund' --action` scaffolds one, with the path's segments and an `Object?`
@@ -2795,11 +2809,11 @@ input to replace with your own type. `fsp routes` tags the route `action` (also 
   route nor a section handle or has no `data.dart`, and a key of the data it invalidates that the
   action doesn't take;
 - helper names that collide;
-- since 0.8.0, a `form()`, `validate()` or `optimistic()` that doesn't fit its action (see below).
+- since 0.8.1, a `form()`, `validate()` or `optimistic()` that doesn't fit its action (see below).
 
 #### Forms: `form()` and `validate()`
 
-Since 0.8.0. A form is the UI of one write, so it is not a file kind: `form()`, `validate()` and
+Since 0.8.1. A form is the UI of one write, so it is not a file kind: `form()`, `validate()` and
 `optimistic()` are _companion functions_ in the `action.dart` of the action they belong to, found
 by name. For the action called `action` the companion is the role itself; for any other action,
 say `approve`, it is `approveForm`, `approveValidate` and `approveOptimistic`. A companion is never
@@ -2883,7 +2897,7 @@ TextButton(onPressed: form.isDirty ? form.reset : null, child: …),
 
 #### Optimistic updates: `optimistic()`
 
-Since 0.8.0. `T optimistic(T current, Input input)` is what the page shows of one `data.dart` from
+Since 0.8.1. `T optimistic(T current, Input input)` is what the page shows of one `data.dart` from
 the moment a write starts, until the server's answer is in:
 
 ```dart
@@ -3297,7 +3311,7 @@ with [localized paths](#localized-paths) has one more key after `catch_all`, `"p
 routes have none; it is in `fsp routes --json` only, not in the manifest. A route whose page is
 [deferred](#deferred-routes-a-pages-code-on-demand) (since 0.7.0) has `"deferred":true` after `remount`, and the other
 routes have none; the manifest says it as `RouteInfo.deferred`. A route whose own `data.dart` has a
-[`freshness`](#freshness-staletime-resume-and-reconnect) (since 0.8.0) has `"freshness":"lib/app/teams/$teamId/route.dart"`
+[`freshness`](#freshness-staletime-resume-and-reconnect) (since 0.8.1) has `"freshness":"lib/app/teams/$teamId/route.dart"`
 after `deferred`: the file whose `Freshness` applies (the `data.dart` itself, or the nearest `route.dart` above it, relative to the
 project root like `file`); and one whose `data.dart` has a [`dataCache`](#a-cache-that-survives-a-restart-datacache) has
 `"cache":true` after it. The other routes have neither, and the manifest does not carry them.
@@ -3349,7 +3363,7 @@ a page's `RestorableInt` and a page's `extra` with `tester.restartAndRestore()`.
 
 ### `main()`: app.dart, startup.dart and splash.dart
 
-Since 0.8.0 the framework can own `main()`. You write what is yours, in up to three files at the
+Since 0.8.1 the framework can own `main()`. You write what is yours, in up to three files at the
 **root** of the app folder (a copy below it is ignored, with a warning), and `fsp` writes
 `lib/app.main.g.dart`, whose `AppMain` runs them. `lib/main.dart` stays yours, and is one line:
 
@@ -3504,7 +3518,7 @@ there gets a warning saying so): use it for an app that keeps its own `main()` o
 
 **From a 0.7 app.** Nothing changes until you opt in. To move the code of a hand-written `main()`:
 
-| Today, in `lib/main.dart`                                                 | 0.8.0                                                                                         |
+| Today, in `lib/main.dart`                                                 | 0.8.1                                                                                         |
 | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `MaterialApp.router(title:, theme:, builder:, routerConfig: _router)`     | the same widget in `lib/app/app.dart`, with `routerConfig: router`                            |
 | `final _router = AppRoutes.router(restorationScopeId: …, observers: …)`   | `GoRouter router() => AppRoutes.router(…)` in app.dart, or `routerObservers` in startup.dart  |
@@ -3523,7 +3537,7 @@ files and a `zone()`), and `examples/tabs` keeps a `main()` of its own.
 
 ### Scroll restoration
 
-Since 0.8.0. Flutter builds a page from nothing when the browser's back or forward button brings it
+Since 0.8.1. Flutter builds a page from nothing when the browser's back or forward button brings it
 back, so a long list starts at the top again. `scroll_restoration: true` in the `fespalier:` section of
 `pubspec.yaml` (off by default) gives each page's scroll offsets back:
 
@@ -3627,11 +3641,11 @@ fsp links               # App Links, Universal Links, assetlinks.json and a site
 fsp links --check       # CI: non-zero exit when those files are stale
 fsp maestro             # Maestro smoke flows, one per route (since 0.7.0)
 fsp maestro --check     # CI: non-zero exit when those flows are stale
-fsp size                # the web build's JavaScript per deferred route (since 0.8.0)
+fsp size                # the web build's JavaScript per deferred route (since 0.8.1)
 fsp size --check        # CI: non-zero exit when a budget in `size:` is exceeded
-fsp test                # a widget smoke test per route, in test/routes/ (since 0.8.0)
+fsp test                # a widget smoke test per route, in test/routes/ (since 0.8.1)
 fsp test --check        # CI: non-zero exit when that file is stale
-fsp telemetry           # a local OpenTelemetry stack with fespalier's dashboards (since 0.8.0; needs Docker)
+fsp telemetry           # a local OpenTelemetry stack with fespalier's dashboards (since 0.8.1; needs Docker)
 fsp telemetry --grafana # ...and Grafana, with the same dashboards
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
@@ -3641,8 +3655,8 @@ fsp new '(account)' --layout    # a (group) folder: layout only, no page.dart
 fsp new 'kyc/shop/name' --function --name KycShopName
                         # views as functions (`Widget page()`), with a routeName
 fsp new 'shop' --not-found      # not_found.dart (not-found.dart with `file_style: kebab`)
-fsp new 'orders' --nav          # nav.dart: how the folder shows in the generated menus (since 0.8.0)
-fsp new 'orders/[id]' --observe # observe.dart: onEnter, onFocus and onLeave (since 0.8.0)
+fsp new 'orders' --nav          # nav.dart: how the folder shows in the generated menus (since 0.8.1)
+fsp new 'orders/[id]' --observe # observe.dart: onEnter, onFocus and onLeave (since 0.8.1)
 ```
 
 All commands take `--project <dir>` (default: the nearest folder with a `pubspec.yaml`).
@@ -3662,9 +3676,9 @@ until you add a route inside the group. That's expected.
 
 `fsp routes` prints what the header of `lib/app.g.dart` lists: each route's URL pattern, its typed
 route class, its `page.dart` and its tags (`redirect`, `data`, `action`, `guard`, `layout`, `transition`,
-`present`, `observe` (a page with an [`observe.dart`](#route-lifecycle-observedart) at or above it, since 0.8.0), `root`, `sibling` for a route with [`nest = false`](#a-sibling-with-a-compound-path), and
+`present`, `observe` (a page with an [`observe.dart`](#route-lifecycle-observedart) at or above it, since 0.8.1), `root`, `sibling` for a route with [`nest = false`](#a-sibling-with-a-compound-path), and
 `remount` for a page that [starts again when its URL changes](#remounting-a-page-remount), and last `deferred` for a page whose
-[code loads on demand](#deferred-routes-a-pages-code-on-demand), since 0.7.0). Since 0.8.0 `fresh` follows `data` for a route whose data has a
+[code loads on demand](#deferred-routes-a-pages-code-on-demand), since 0.7.0). Since 0.8.1 `fresh` follows `data` for a route whose data has a
 [`freshness`](#freshness-staletime-resume-and-reconnect), and `cached` for one with a [`dataCache`](#a-cache-that-survives-a-restart-datacache).
 
 ```text
@@ -3786,7 +3800,7 @@ What the commands print:
 
 - `fsp gen`: `✓ 12 routes → lib/app.g.dart`, or `✓ 12 routes, lib/app.g.dart unchanged`
   when the output didn't change (with `output_manifest`, or a [generated `main()`](#main-appdart-startupdart-and-splashdart)
-  since 0.8.0, every file is named: `✓ 12 routes → lib/app.g.dart, lib/app.main.g.dart`).
+  since 0.8.1, every file is named: `✓ 12 routes → lib/app.g.dart, lib/app.main.g.dart`).
 - `fsp check`: `✓ 12 routes, no errors`.
 - `fsp watch`: the `gen` line once at startup, then a line each time a save changes
   `lib/app.g.dart`. An edit that doesn't (a widget's `build` method, say) prints nothing.
@@ -3957,7 +3971,7 @@ not read.
 setting, every [localized spelling](#localized-paths) (mixed spellings too), non-ASCII paths and `%`
 escapes decoded, and a trailing slash or `//` ignored. A `redirect.dart` is a route; a
 `not_found.dart` is not. The query and the fragment are not looked at (`go_router` ignores
-parameters it doesn't know). Since 0.8.0 segment **types are checked** too, the way the route
+parameters it doesn't know). Since 0.8.1 segment **types are checked** too, the way the route
 parses them: `/products/abc` reaches `products/$id`, and with `{required int id}` that route shows
 not-found, so it is reported (``` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found [unknown_path] ```).
 As in `AppRoutes.match`, the first route that fits the path decides: a later route that would take
@@ -3966,7 +3980,7 @@ the text is never tried. `int`, `double`, `num`, `bool`, `DateTime` (its start o
 [catch-all](#typed-catch-alls). An enum's message lists its values and suggests the nearest. A part
 with a space or other non-ASCII whitespace is not judged (Dart trims it before parsing). The message
 names the route by its canonical pattern, also for a [localized](#localized-paths) spelling. An app
-with `unknown_path: error` that passed on 0.7.0 can fail on 0.8.0 for a path that always showed
+with `unknown_path: error` that passed on 0.7.0 can fail on 0.8.1 for a path that always showed
 not-found. A path that interpolates is checked up to its first `$`: `'/products/$id'` is fine and
 `'/prodcts/$id'` is flagged (`no route starts with ...`), and the complete segments before the `$`
 are checked by type too (`'/products/abc/$tab'` is reported), but nothing after a `$` is, since the
@@ -4170,7 +4184,7 @@ top-level flows of the folder it is given, and skips subfolders unless a `config
   On the web `openLink` reloads the app, so the sign-in has to survive a reload (a stored token, not
   in-memory state), or the guard will send the flow back to the login page.
 
-**In CI.** Since 0.8.0 this repository's `web-routes` job builds `examples/shop` for the web (a release
+**In CI.** Since 0.8.1 this repository's `web-routes` job builds `examples/shop` for the web (a release
 build with `--no-web-resources-cdn`, in a throwaway copy: the examples have no `web/` folder), serves it,
 and replays every committed flow in Chromium, with every request that is not to the local server blocked.
 It reads the very same YAML: `launchApp`, `openLink`, then it waits for the element whose
@@ -4199,7 +4213,7 @@ red run there is not a failed pull request.
 **What is not verified, and what is not built.**
 
 - On the web, CI opens every committed flow's link in Chromium and finds the identifier (`web-routes`,
-  since 0.8.0), and a weekly job runs Maestro itself (`maestro-web`, not a gate). The identifier is also
+  since 0.8.1), and a weekly job runs Maestro itself (`maestro-web`, not a gate). The identifier is also
   covered by widget tests (`find.bySemanticsIdentifier`) and the flows by golden files. **On iOS it has
   not been verified in this repository.** If a flow waits and times out on a page you can see, check
   that first.
@@ -4208,7 +4222,7 @@ red run there is not a failed pull request.
 
 ### Web chunk sizes (`fsp size`)
 
-Since 0.8.0. A [deferred route](#deferred-routes-a-pages-code-on-demand) is a
+Since 0.8.1. A [deferred route](#deferred-routes-a-pages-code-on-demand) is a
 `main.dart.js_N.part.js` on the web, and the chunk files say nothing about which route they belong
 to. `fsp size` reads that out of the build and reports what each deferred route costs, and it can hold
 the build to byte budgets in CI. Build for the web first (`flutter build web`), then:
@@ -4323,7 +4337,7 @@ the excerpt of a real build they read.
 
 ### Route smoke tests (`fsp test`)
 
-Since 0.8.0. `fsp test` writes a widget smoke test for every route, into one file,
+Since 0.8.1. `fsp test` writes a widget smoke test for every route, into one file,
 `test/routes/routes_test.dart`. Each test opens the route at a sample URL with `pumpRouter`, waits until
 its page is on screen, and expects exactly one. It proves what a [Maestro flow](#maestro-flows-fsp-maestro)
 proves (the route exists, its guards let it through, its data loaded, its page was built) in
@@ -4420,9 +4434,9 @@ Widget app(GoRouter router) => MaterialApp.router(routerConfig: router, theme: a
 
 - `List<Override> overrides(String pattern)` is called once per test with the route's pattern. It
   returns the providers that test boots with (`package:fespalier/testing.dart` exports riverpod's
-  `Override` since 0.8.0), and it can vary by route: a signed-in user for a guarded route.
+  `Override` since 0.8.1), and it can vary by route: a signed-in user for a guarded route.
 - `Widget app(GoRouter router)` builds the app around the router; the default is
-  `MaterialApp.router(routerConfig: router)`. `pumpRouter` takes the same `app:` since 0.8.0.
+  `MaterialApp.router(routerConfig: router)`. `pumpRouter` takes the same `app:` since 0.8.1.
 - Each takes exactly one required positional parameter. A setup file with neither, or with one that takes
   another shape, is an error that says what to write.
 - A route with a `guard.dart` at or above it is skipped when there is no `overrides`, because the guard would
@@ -4516,7 +4530,7 @@ files a small part of it; a cache keyed on modification times would save less th
 
 ## Telemetry
 
-Since 0.8.0, fespalier reports what it does while it routes: each navigation, guard and
+Since 0.8.1, fespalier reports what it does while it routes: each navigation, guard and
 `redirect.dart` decision, `data.dart` load, action run and deferred-page load, with the pages that
 entered, were focused or left. fespalier has no OpenTelemetry dependency: it tells a
 `FespalierTelemetry` sink, and `package:fespalier_otel` is the sink that turns it into spans on the SDK
@@ -4536,7 +4550,7 @@ fespalier:
 guard, `data.dart` provider and action, gives each deferred library its page's pattern, and has
 `AppRoutes.attach` follow the router (`AppRoutes.router()` calls it; an app that mounts the tree in a
 `GoRouter` of its own calls `AppRoutes.attach(router)` once with that router). A value that is not a bool
-is an error. Without the key, the generated file is exactly what it was before 0.8.0.
+is an error. Without the key, the generated file is exactly what it was before 0.8.1.
 
 At run time nothing is reported until the app installs a sink, before `runApp` and before the router is
 built, so the first navigation is reported too:
@@ -4554,8 +4568,8 @@ once), and must not navigate or read a provider.
 `otel_zone` is not on pub.dev: depend on it by git, pinned to a commit. Add `fespalier_otel` next to
 fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if they are the
 same repository dependency; a mismatch fails with `Because every version of fespalier_otel from path
-depends on fespalier from git https://github.com/vaam-apps/fespalier at v0.7.0 in packages/fespalier and
-demo depends on fespalier from git https://github.com/vaam-apps/fespalier at v0.6.0 in packages/fespalier,
+depends on fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and
+demo depends on fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier,
 fespalier_otel from path is forbidden.`, the form it takes when the second is a path):
 
 <!-- x-release-please-start-version -->
@@ -4564,12 +4578,12 @@ fespalier_otel from path is forbidden.`, the form it takes when the second is a 
 dependencies:
   fespalier:
     git:
-      url: https://github.com/vaam-apps/fespalier
+      url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.8.0
   fespalier_otel:
     git:
-      url: https://github.com/vaam-apps/fespalier
+      url: https://github.com/fespalier/fespalier
       path: packages/fespalier_otel
       ref: v0.8.0
 ```
@@ -4623,7 +4637,7 @@ host) and `http://localhost:4318` elsewhere, and a release build gets `''`, whic
 "telemetry off", so a store build never sends to a developer's computer. A failure while the app
 starts arrives through `FlutterError.reportError`.
 
-Since 0.8.0, known limitation: otel_zone `runGuarded` on web. On the web `OtelZone.runGuarded` never runs
+Since 0.8.1, known limitation: otel_zone `runGuarded` on web. On the web `OtelZone.runGuarded` never runs
 its body, so the app stays blank: it builds a `ReceivePort` first, which `dart:isolate` does not support
 there. `start()` itself works on the web. Until `otel_zone` guards that call, run the body as it is on the
 web, as `guarded` above does; the error hooks `runGuarded` installs are then not installed there.
@@ -4647,7 +4661,7 @@ for the rest.
 | `service.version`             | the app's version                                | `otel_zone` `start(serviceVersion:)`       |
 | `app.build_id`                | the build number                                 | `otel_zone` `start(buildId:)`              |
 | `deployment.environment.name` | e.g. `production`                                | `OtelZoneConfig.deploymentEnvironmentName` |
-| `fespalier.version`           | the fespalier release, e.g. `0.8.0`              | `FespalierOtel.resourceAttributes`         |
+| `fespalier.version`           | the fespalier release, e.g. `0.8.1`              | `FespalierOtel.resourceAttributes`         |
 | `fespalier.telemetry.version` | `1` (a string): the version of these conventions | `FespalierOtel.resourceAttributes`         |
 
 **Scope.** Every span is made by the instrumentation scope `fespalier`, whose version is the fespalier
@@ -4721,7 +4735,7 @@ collector with the `spanmetrics` connector, with `fespalier.operation`, `fespali
 `fespalier.data.state`, `fespalier.action.name`, `fespalier.action.result`, `fespalier.deferred.result`
 and `fespalier.file` as dimensions, next to the resource's `service.name`, `service.version` and
 `fespalier.version`. A data attempt, a data source, an action rolled back and an action rejected by
-validation are not recorded in 0.8.0.
+validation are not recorded in 0.8.1.
 
 **Never recorded.** Segment and query values (unless `recordLocations: true`), family keys, `extra`, action
 inputs and results, data values and guard inputs. What is recorded is a route pattern, a file path, a
@@ -4772,7 +4786,7 @@ after the app resumes.
 
 ### Dashboards on your computer: `fsp telemetry`
 
-Since 0.8.0. fespalier's telemetry (spans for navigations, guards, `data.dart` loads, actions and deferred loads) is only useful when someone looks at it. `fsp telemetry` starts a stack on your computer that receives it and shows four ready-made dashboards, written as the questions an app developer asks ("Do screens open quickly?", "How often do actions fail?") rather than as metrics: an OpenTelemetry collector, [OpenObserve](https://openobserve.ai), and, with `--grafana`, [Grafana](https://grafana.com) with the same dashboards. It needs [Docker](https://docs.docker.com/get-docker/) with Compose 2.20 or later, and runs in any folder, with or without a project: the stack belongs to you, not to one app.
+Since 0.8.1. fespalier's telemetry (spans for navigations, guards, `data.dart` loads, actions and deferred loads) is only useful when someone looks at it. `fsp telemetry` starts a stack on your computer that receives it and shows four ready-made dashboards, written as the questions an app developer asks ("Do screens open quickly?", "How often do actions fail?") rather than as metrics: an OpenTelemetry collector, [OpenObserve](https://openobserve.ai), and, with `--grafana`, [Grafana](https://grafana.com) with the same dashboards. It needs [Docker](https://docs.docker.com/get-docker/) with Compose 2.20 or later, and runs in any folder, with or without a project: the stack belongs to you, not to one app.
 
 ![fespalier's App health dashboard in OpenObserve: eight tiles answer whether screens open and load quickly and whether loads, actions or the app fail, coloured green, amber or red, above a table of verdicts in words.](docs/images/telemetry/openobserve-app-health.png)
 
@@ -4847,7 +4861,7 @@ Click a row of a table in OpenObserve, or a tile in Grafana, to open the dashboa
 
 #### Reading the colours
 
-Since 0.8.0. A tile is **green** when the answer is good, **amber** when it needs attention and **red** when it is bad. "Slowest 5 %" is the time that 19 of 20 are faster than, so one slow outlier does not turn a tile red. The same limits colour the cells of the tables and draw the dashed lines in _Are screens getting slower?_. They are defaults for a mobile app, with a reason each:
+Since 0.8.1. A tile is **green** when the answer is good, **amber** when it needs attention and **red** when it is bad. "Slowest 5 %" is the time that 19 of 20 are faster than, so one slow outlier does not turn a tile red. The same limits colour the cells of the tables and draw the dashed lines in _Are screens getting slower?_. They are defaults for a mobile app, with a reason each:
 
 | Measure                                               | Good      | Needs attention | Bad       | Why                                                                                                                                                                                                                  |
 | ----------------------------------------------------- | --------- | --------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -4896,7 +4910,7 @@ OpenObserve refuses a weak root password and restarts forever: it needs 8 to 128
 
 #### A summary in the terminal: `--report`
 
-Since 0.8.0. `fsp telemetry --report` answers "how is my app doing?" without opening a browser. It runs inside the stack (the host needs no Python), asks OpenObserve the very questions App health asks, and prints one block per app that sent fespalier spans in the last hour:
+Since 0.8.1. `fsp telemetry --report` answers "how is my app doing?" without opening a browser. It runs inside the stack (the host needs no Python), asks OpenObserve the very questions App health asks, and prints one block per app that sent fespalier spans in the last hour:
 
 ```text
 fespalier · telemetry-example · last hour
@@ -4984,11 +4998,11 @@ from. It answers:
 - **Is this data loading or cached?** The _Data_ tab lists the provider of every `data.dart` that was
   built: its file and route, the key (the segments and query it is keyed by), its state (`loading`,
   `data`, `error`, `stream` or `disposed`), how often it was built, when, and what it holds. **Invalidate**
-  builds one again. Since 0.8.0 a provider fespalier built also shows how many listeners it has, and
+  builds one again. Since 0.8.1 a provider fespalier built also shows how many listeners it has, and
   **Holders** lists who keeps it: the page's view, a section's view, a `prefetch` / `preload` handle (and
   for how long), a `RouteLink` preload, and how many other listeners there are (`ref.watch` or `listen`
   in your code, or another provider). A `data.dart` that returns or selects the app's own provider is
-  shown too, marked `app provider`, with the state the page saw (since 0.8.0).
+  shown too, marked `app provider`, with the state the page saw (since 0.8.1).
 - **What did that action do?** The _Actions_ tab lists the runs of the `action.dart` functions, newest
   first: the function, its key and input, `running`, `done` or `error`, how long it took and what it
   returned or threw.
@@ -5027,7 +5041,7 @@ release build is one short string per action (its site, an argument of the gener
 
 In a debug or profile build it adds one listener to the router's delegate, an `onDispose`, an
 `onAddListener` and an `onRemoveListener` callback per build of a `data.dart` provider (the last two count
-its listeners; since 0.8.0), and lists of what happened that stop at 100 locations, 200 guard
+its listeners; since 0.8.1), and lists of what happened that stop at 100 locations, 200 guard
 decisions, 100 action runs, and the providers that are alive plus the last 50 disposed. The views, the
 prefetch handles and the `RouteLink` preloads it lists as holders are held weakly. There is no
 timer, no frame, no read of a provider, no listener on a provider, and nothing that answers unless
@@ -5054,7 +5068,7 @@ changes what a navigation, a guard, a provider or an action does.
 - An app provider (a `data.dart` that returns or selects one) is seen through fespalier's views: its
   state is what the last page or section that watched it got, it has no build count, and its other
   listeners are not visible. A `.select(...)` can't be invalidated or checked for being alive. Until a
-  page, a section or a preload watches it, its file is listed under _Not watched yet_ (since 0.8.0). The
+  page, a section or a preload watches it, its file is listed under _Not watched yet_ (since 0.8.1). The
   same goes for a guard or a data function that throws before it returns anything: go_router or Riverpod
   get the error as they always did, and the tab shows nothing for it.
 - **Holders** are the ones fespalier creates (views, prefetches, `RouteLink` preloads); anything else is
@@ -5088,7 +5102,7 @@ which imports nothing.
 | `ext.fespalier.clear`      | `what` (`history`, `guards`, `actions` or `all`)                         | `{"ok": true}`; what was named is emptied and the event counter goes on                   |
 | `ext.fespalier.invalidate` | `id` (a data record's)                                                   | `{"ok": true}` when that provider was alive and was invalidated, `{"ok": false}` when not |
 | `ext.fespalier.open`       | `file` (one of the tree's, relative to the app folder)                   | `{"ok": true}` once the IDE was asked, with a `package:` URI                              |
-| `ext.fespalier.holders`    | `id` (a data record's)                                                   | who holds that provider now (since 0.8.0): `{found, alive, listeners, others, holders}`   |
+| `ext.fespalier.holders`    | `id` (a data record's)                                                   | who holds that provider now (since 0.8.1): `{found, alive, listeners, others, holders}`   |
 
 | Event                  | Posted when                                                                          | Carries                                     |
 | ---------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------- |
@@ -5099,12 +5113,12 @@ which imports nothing.
 | `fespalier:action`     | an action starts and when it ends                                                    | the number and the `record` of the run      |
 
 `hello`'s `features` lists what the app can answer: `navigation`, `match`, `navigate`, `guards`, `data`,
-`actions`, `open`, `holders` and `watched` (the last two since 0.8.0). The `snapshot` has a `guards`, a `data` and an `actions` list, and a navigation record
+`actions`, `open`, `holders` and `watched` (the last two since 0.8.1). The `snapshot` has a `guards`, a `data` and an `actions` list, and a navigation record
 names the `guards` behind it; a reader that finds one of the features missing finds those empty. A guard record is
 `{seq, at, site, uri, fullPath, result, location, async, ms, error}`, a data record
 `{id, site, key, container, state, builds, created, updated, value, error, via, provider, listeners}` and an action record
 `{seq, site, key, input, state, started, ms, result, error}`; a `site` is a key of the tree's `sites`.
-Since 0.8.0 a data record's `via` is `build` (fespalier built the provider) or `watch` (the app's own provider,
+Since 0.8.1 a data record's `via` is `build` (fespalier built the provider) or `watch` (the app's own provider,
 seen through a view; its `provider` is the provider's text and its `listeners` is null), and `holders` answers
 `{found, alive, listeners, others, holders: [{kind, since, keepFor}]}`: `kind` is `view`, `section`, `prefetch`
 or `link`, `keepFor` is milliseconds (null for until closed), `alive` is null when it can't be known, and
@@ -5139,7 +5153,7 @@ its layout and pages, with a `not_found.dart` at two levels (which takes the tea
 query parameter, enum segments, query parameters and catch-alls (`shop/$category`, `browse/$$categories`), and
 `AppRoutes.dataAt` / `match` and the prefetch handle in `test/data_at_test.dart`.
 
-`examples/telemetry` (since 0.8.0) is the route lifecycle and OpenTelemetry: three tabs, an order page with a
+`examples/telemetry` (since 0.8.1) is the route lifecycle and OpenTelemetry: three tabs, an order page with a
 `data.dart`, an `action.dart` and an `observe.dart`, a guarded and deferred settings page, `telemetry: true`,
 and a `main.dart` that wires `otel_zone` (on go_router 17, which `otel_zone` requires). Its tests read the
 hooks' log and the spans from an in-memory exporter.
@@ -5154,7 +5168,7 @@ refund, and the quote beside it, `data.dart`, loads again after a success), and
 `teams/$teamId/action.dart` adds a member to the section, whose data reloads for the layout and the
 page. `test/action_test.dart` holds a refund pending on a `Completer`, so nothing waits for time.
 
-Since 0.8.0 it also has a form and an optimistic update: `(account)/nickname/` is a `HookConsumerWidget` on
+Since 0.8.1 it also has a form and an optimistic update: `(account)/nickname/` is a `HookConsumerWidget` on
 `NicknameRoute.useForm` (a `form()`, `validate()` and `optimistic()` beside its `action()`: errors per field,
 a save button that disables itself, a title that shows the new nickname at once and ends on the server's
 spelling, and fields that follow a reload unless the user changed them), and `teams/$teamId/action.dart` has an
@@ -5180,7 +5194,7 @@ route (`/photos/:id`), a bottom sheet (`/photos/sort`), a full-screen dialog
 (`/photos/upload`) and an app-owned sheet with a URL (`/photos/share`, `present.dart`, with a page
 on top of it at `/photos/share/terms`) opening over it. Some of its routes have a `meta.dart` (`PageMeta`), which
 its root layout reads through the route manifest to set the page title, and its tests join a
-review-code check on `AppRoutes.all`. It sets `scroll_restoration: true` (since 0.8.0): `/feed` has two
+review-code check on `AppRoutes.all`. It sets `scroll_restoration: true` (since 0.8.1): `/feed` has two
 lists under `PageStorageKey`s, and its tests play the browser's back and forward.
 
 `examples/tabs` also keeps its manifest in a library of its own (`output_manifest:
@@ -5312,10 +5326,16 @@ bumps a version by hand, edits `.release-please-manifest.json`, or runs a workfl
    - regenerates the `.sha256` files and renders `fsp.rb` (Homebrew) and `fsp.json` (Scoop) from
      the verified archives (`scripts/packaging.py`), attaches all of it to the draft Release,
      publishes it (only now is it public and the latest release), and deletes the staging draft;
-   - pushes `fsp.rb` and `fsp.json` to `vaam-apps/homebrew-tap` and `vaam-apps/scoop-bucket`.
+   - if the repository variable `HOMEBREW_TAP` is set (`owner/repo`), pushes `fsp.rb` to that Homebrew
+     tap, and if `SCOOP_BUCKET` is set, pushes `fsp.json` to that Scoop bucket. Each is its own job
+     and optional: unset, it is skipped and the release is complete, with `fsp.rb` and `fsp.json`
+     still attached as assets.
      A git dependency on the new tag therefore carries the pins, and `dart run fespalier` refuses
      any download that does not match them (a checksum served next to the binary can be replaced
      together with it; one in the package cannot).
+
+0.8.0 was tagged but never published (its binaries were built before the last change); the wave it
+carried ships as 0.8.1.
 
 Between releases, `main` still carries the last release's pins, and on an open release PR, before
 its pin commit, the pubspec is ahead of them; the launcher then falls back to the release's
@@ -5334,7 +5354,27 @@ smoke test; it publishes nothing.
 **Repository settings** (not enforceable from a workflow): squash merging only, with the
 squash commit title set to the pull request title and the message to the commit messages;
 merge commits and rebase merges off. The release-please GitHub App must be installed on this
-repository, and on `homebrew-tap` and `scoop-bucket` for the last job.
+repository, and on the tap and the bucket if you set `HOMEBREW_TAP` or `SCOOP_BUCKET`.
+
+**The Homebrew tap and the Scoop bucket are optional.** A release publishes without them, with
+`fsp.rb` and `fsp.json` attached as assets. Each is its own job in the `Release` workflow, gated
+on a repository variable holding `owner/repo`, so either alone works:
+
+- `HOMEBREW_TAP` = `fespalier/homebrew-tap`. The job writes `Formula/fsp.rb`. The `homebrew-`
+  prefix is what lets `brew tap fespalier/tap` and `brew install fespalier/tap/fsp` find it.
+- `SCOOP_BUCKET` = `fespalier/scoop-bucket`. The job writes `bucket/fsp.json`. The manifest's
+  `checkver` and `autoupdate` let Scoop's own tooling keep the bucket current too.
+
+To set them up, once: create the two repositories, install the release-please App on them with
+`contents: write`, and set the variables under _Settings_, _Secrets and variables_, _Actions_,
+_Variables_ here. The repositories may be brand new with only a README: the job checks out the
+repository's **default branch** (`main` for a new repository; it never assumes `master`: it
+pushes back to whichever branch the checkout is on), creates `Formula/` or `bucket/` when it is
+missing, and commits `fsp X.Y.Z`. A repository with no commit at all cannot be checked out, so
+give it that README first. If the variable is set but the App is not installed on the
+repository, the job fails at the token step after the release is already published; install
+the App and re-run that job. A release that went out before the variables were set can be copied
+by hand from its `fsp.rb` and `fsp.json` assets. Unset, the job is skipped.
 
 **By hand, per release** (the editor plugins are versioned on their own and not part of the
 release PR):
@@ -5349,11 +5389,6 @@ release PR):
 - **VS Code extension.** Not published to a marketplace: build the `.vsix` from source (see
   `editors/vscode/README.md`). Bump `version` in `editors/vscode/package.json` first if you
   distribute a build.
-
-**One-time setup** for the package managers: create the repositories `vaam-apps/homebrew-tap`
-(with a `Formula/` folder; the `homebrew-` prefix is what lets `brew install
-vaam-apps/tap/fsp` find it) and `vaam-apps/scoop-bucket` (with a `bucket/` folder; the
-manifest's `checkver` and `autoupdate` let Scoop's own tooling keep it current too).
 
 ### Testing
 
@@ -5406,7 +5441,7 @@ synchronous guard shows the page at once. If a widget
 hangs on to its own `WidgetRef` (to call `prefetch` from a test, say), take it from an
 element: `tester.element(find.byType(AppLayout)) as WidgetRef`.
 
-**The app around the router** (since 0.8.0). `app:` is a `Widget Function(GoRouter router)` that builds
+**The app around the router** (since 0.8.1). `app:` is a `Widget Function(GoRouter router)` that builds
 what goes around the router in place of the plain `MaterialApp.router`. With the
 [generated `main()`](#main-appdart-startupdart-and-splashdart), `app: AppMain.app` boots a page in
 `lib/app/app.dart`'s theme, localizations and `builder:`, as it runs. `startup()` does not run in
@@ -5428,7 +5463,7 @@ call `tester.takeException()` before you look at the splash. A test that runs `A
 itself (to check a `zone()`) pumps afterwards; `examples/features/test/startup_test.dart` does
 all of these.
 
-`pumpRouter` also takes `app:` (since 0.8.0), a function from the router to the app widget around it
+`pumpRouter` also takes `app:` (since 0.8.1), a function from the router to the app widget around it
 (the default is `MaterialApp.router(routerConfig: router)`), and `package:fespalier/testing.dart` exports
 riverpod's `Override`. `findRoutePage(pattern)` finds a page by its `semantics_ids` identifier, and
 `smokeTestRoute` is what [`fsp test`](#route-smoke-tests-fsp-test) runs for each route; the shop's generated

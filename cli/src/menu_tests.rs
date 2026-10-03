@@ -93,7 +93,7 @@ fn the_menu_imports_the_runtime_and_the_nav_files() {
             "import 'package:fespalier/nav.dart';",
             "import 'app/nav.dart' as _i1;",
             "import 'app/a/nav.dart' as _i3;",
-            "/// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.0).",
+            "/// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.1).",
             "static List<NavItem> watch(WidgetRef ref, {String? under}) =>\n      watchNav(ref, tree, AppRoutes.matchUrl, _trails, under: under);",
             "static List<NavItem> breadcrumbs(WidgetRef ref) =>\n      watchNavTrail(ref, AppRoutes.matchUrl, _trails);",
         ],

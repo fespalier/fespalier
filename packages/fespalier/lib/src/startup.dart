@@ -9,7 +9,7 @@ import 'package:hooks_riverpod/misc.dart' show Override;
 
 /// Runs the app's `startup()` and shows `splash.dart` meanwhile, then builds a `ProviderScope`
 /// with the overrides it returned around [app] and the router [router] makes. What the
-/// generated `AppMain.root()` returns (since 0.8.0).
+/// generated `AppMain.root()` returns (since 0.8.1).
 ///
 /// Sync stays sync: a `startup()` that does not return a `Future` is done before the first
 /// frame, which is the app. A `Future` costs a frame, so with a [splash] it is shown meanwhile;

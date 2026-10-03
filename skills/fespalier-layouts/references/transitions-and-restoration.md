@@ -44,7 +44,7 @@ key:
 | `sheet(key, child, {...})`                    | opens as a modal bottom sheet over the previous page                |
 | `fullscreenDialog(key, child, {heroes})`      | a Material page that slides up, with a close button in its `AppBar` |
 
-`heroes:` (0.8.0) is covered under "Shared elements (heroes)" below; `dialog` and `sheet` have none.
+`heroes:` (0.8.1) is covered under "Shared elements (heroes)" below; `dialog` and `sheet` have none.
 
 Routes with **no** `transition.dart` above them keep go_router's default for your
 app type: the platform transition under a Material or Cupertino app, **none**
@@ -232,7 +232,7 @@ as `barrierDismissible`, `isScrollControlled`, `showDragHandle` and `enableDrag`
 
 ## Shared elements (heroes)
 
-Since 0.8.0 a shared element is one line on each side, and nothing is generated (`app.g.dart` is
+Since 0.8.1 a shared element is one line on each side, and nothing is generated (`app.g.dart` is
 unchanged):
 
 ```dart
@@ -273,7 +273,7 @@ ProductRoute(id: product.id).hero('avatar', child: CircleAvatar(radius: 40, chil
 
 Not built: generated per-route hero names (use an enum), and a lint for a name used on one side only.
 
-## Scroll restoration on back and forward (since 0.8.0)
+## Scroll restoration on back and forward (since 0.8.1)
 
 Flutter builds a page from nothing when the browser's back or forward button brings it
 back, so a long list starts at the top. `scroll_restoration: true` in the pubspec's

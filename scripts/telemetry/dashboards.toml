@@ -1,4 +1,4 @@
-# The one spec for fespalier's four dashboards (since 0.8.0): App health, Screens, Actions and Errors.
+# The one spec for fespalier's four dashboards (since 0.8.1): App health, Screens, Actions and Errors.
 # `just telemetry-dashboards` turns it into the OpenObserve (v8) JSON and the Grafana JSON under
 # cli/templates/telemetry/, and into the collector's dimension list and the columns the importer
 # creates. Never edit those by hand.

@@ -16,7 +16,7 @@ export 'package:hooks_riverpod/misc.dart' show ProviderListenable;
 
 export 'src/action.dart';
 export 'src/action_form.dart';
-// The cache of a data.dart's value for the next start (since 0.8.0).
+// The cache of a data.dart's value for the next start (since 0.8.1).
 export 'src/data_cache.dart'
     show
         CachedData,
@@ -28,7 +28,7 @@ export 'src/data_cache.dart'
 export 'src/data_view.dart';
 export 'src/deferred.dart';
 // DevTools support (since 0.7.0): what a generated app.g.dart registers and attaches
-// (`watchData` since 0.8.0).
+// (`watchData` since 0.8.1).
 export 'src/devtools/devtools.dart'
     show
         devToolsAttach,
@@ -38,12 +38,12 @@ export 'src/devtools/devtools.dart'
         traceGuard,
         watchData;
 export 'src/extra_codec.dart';
-// Data freshness (since 0.8.0): `staleTime`, refetch on resume and reconnect.
+// Data freshness (since 0.8.1): `staleTime`, refetch on resume and reconnect.
 export 'src/freshness.dart';
 export 'src/guards.dart';
 export 'src/heroes.dart';
 export 'src/layout_page.dart';
-// Route lifecycle (since 0.8.0): what a generated app.g.dart builds from observe.dart files.
+// Route lifecycle (since 0.8.1): what a generated app.g.dart builds from observe.dart files.
 export 'src/lifecycle.dart' show RouteHooks, observeAttach;
 export 'src/location.dart';
 export 'src/not_found.dart';
@@ -58,7 +58,7 @@ export 'src/scroll_memory.dart';
 export 'src/segments.dart';
 export 'src/selected_data.dart';
 export 'src/tab_options.dart';
-// Telemetry (since 0.8.0): a sink an adapter implements, and what a generated app.g.dart passes.
+// Telemetry (since 0.8.1): a sink an adapter implements, and what a generated app.g.dart passes.
 export 'src/telemetry.dart'
     show
         FespalierTelemetry,

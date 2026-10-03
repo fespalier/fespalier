@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fespalier's dashboard importer for OpenObserve (since 0.8.0).
+"""fespalier's dashboard importer for OpenObserve (since 0.8.1).
 
 Runs once per `fsp telemetry`, in the `dashboards` container of the stack (Python's standard
 library only). OpenObserve does not read dashboard files, so this script:

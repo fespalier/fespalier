@@ -1,4 +1,4 @@
-// What `fsp test` runs for each route (since 0.8.0): `smokeTestRoute` waits, on the fake clock,
+// What `fsp test` runs for each route (since 0.8.1): `smokeTestRoute` waits, on the fake clock,
 // until the page is on screen, and says where the router is when it never comes.
 import 'dart:async';
 

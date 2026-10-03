@@ -1,10 +1,10 @@
 <idea-plugin>
     <id>com.vaamapps.fespalier</id>
     <name>fespalier</name>
-    <vendor url="https://github.com/vaam-apps/fespalier">Vaam</vendor>
+    <vendor url="https://github.com/fespalier/fespalier">Vaam</vendor>
 
     <description><![CDATA[
-    <p>Shows what <a href="https://github.com/vaam-apps/fespalier">fespalier</a> finds in your
+    <p>Shows what <a href="https://github.com/fespalier/fespalier">fespalier</a> finds in your
     Flutter route tree (<code>lib/app/</code>) as inline errors and warnings, and runs
     <code>fsp gen</code> from the Tools menu.</p>
     <ul>

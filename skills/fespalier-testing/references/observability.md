@@ -1,4 +1,4 @@
-# Observability: dashboards on your computer with `fsp telemetry` (since 0.8.0)
+# Observability: dashboards on your computer with `fsp telemetry` (since 0.8.1)
 
 fespalier reports spans for navigations, guards, `redirect.dart` files, `data.dart` loads, actions
 and deferred loads (the telemetry conventions, contract v1). `fsp telemetry` starts the place to look
@@ -9,7 +9,7 @@ route is slow, which guard redirects, and which `data.dart` fails. It is not a t
 asserts behaviour (`pumpRouter`), and a production collector is the app's own.
 
 The README section
-[Dashboards on your computer](https://github.com/vaam-apps/fespalier#dashboards-on-your-computer-fsp-telemetry)
+[Dashboards on your computer](https://github.com/fespalier/fespalier#dashboards-on-your-computer-fsp-telemetry)
 is the user documentation; the messages are in `fespalier-troubleshooting`,
 `references/diagnostics-telemetry.md`.
 
@@ -38,7 +38,7 @@ flutter run               # any device
 | `--lan`      | Binds the OTLP ports to every interface for this run; writes `dart-defines.json`               |
 | `--stop`     | Stops the stack, keeps the data                                                                |
 | `--reset`    | Stops it and deletes the data (the OpenObserve and Grafana volumes)                            |
-| `--report`   | Prints how each app is doing in plain words and exits (the stack must be running; since 0.8.0) |
+| `--report`   | Prints how each app is doing in plain words and exits (the stack must be running; since 0.8.1) |
 | `--dir <D>`  | Another folder than `~/.fespalier/telemetry`                                                   |
 | `--no-start` | Writes the files and prints `docker compose up -d`; runs no Docker                             |
 
@@ -95,7 +95,7 @@ Guards, `data.dart` and deferred pages are on **Screens**, not on dashboards of 
 thinks "this screen is slow". Clicking a row of an OpenObserve table (a tile in Grafana) opens the dashboard that
 explains it, with the App and the time range kept.
 
-### What the colours mean (since 0.8.0)
+### What the colours mean (since 0.8.1)
 
 A tile is green (good), amber (needs attention) or red (bad), by one table of limits for both backends and for the
 dashed lines and table cells too. They are defaults for a mobile app; the README's "Reading the colours" has the
@@ -119,7 +119,7 @@ few to judge_). Colour is not the only signal: OpenObserve's _Verdicts, in words
 Panels for retries, cache hits, optimistic rollbacks and submits stopped by validation exist only when
 the telemetry conventions emit those attributes (they are not in contract v1).
 
-## A summary without a browser: `--report` (since 0.8.0)
+## A summary without a browser: `--report` (since 0.8.1)
 
 `fsp telemetry --report` prints, for each app that sent spans in the last hour, one line per App health question
 (`✓ good`, `! needs attention`, `✗ bad`, `… too few to judge`, with the value), then the slowest screen, what fails
@@ -165,7 +165,7 @@ for `.env`, to the stack folder; the folder also runs as it is with `docker comp
 | `compose.yaml`, `env.example`                                | The four services (`collector`, `openobserve`, `dashboards`, `grafana` behind a profile) and `.env`'s defaults |
 | `collector/config.yaml`                                      | OTLP in (with CORS), spans and logs out to OpenObserve, span metrics and error counts for Grafana              |
 | `openobserve/import.py`                                      | The one-shot importer: waits, creates the streams' columns and the `fespalier` folder, loads the dashboards    |
-| `openobserve/report.py`                                      | What `fsp telemetry --report` runs in the importer's container (since 0.8.0)                                   |
+| `openobserve/report.py`                                      | What `fsp telemetry --report` runs in the importer's container (since 0.8.1)                                   |
 | `openobserve/dashboards/*.json`, `grafana/dashboards/*.json` | The four dashboards, **generated** from `scripts/telemetry/dashboards.toml`                                    |
 | `openobserve/fields.json`                                    | The columns the importer creates, **generated**                                                                |
 | `grafana/provisioning/**`                                    | Grafana's data source (OpenObserve's PromQL API) and dashboard provider                                        |

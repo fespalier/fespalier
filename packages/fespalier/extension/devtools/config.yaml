@@ -1,5 +1,5 @@
 name: fespalier
-issueTracker: https://github.com/vaam-apps/fespalier/issues
+issueTracker: https://github.com/fespalier/fespalier/issues
 version: 0.8.0 # x-release-please-version
 materialIconCodePoint: "0xe044" # Icons.account_tree
 requiresConnection: true

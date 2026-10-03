@@ -13,7 +13,7 @@ import 'package:hooks_riverpod/misc.dart' show AsyncNotifierProviderFamily;
 
 import 'freshness.dart';
 
-/// How a data.dart's value is saved for the next start (since 0.8.0):
+/// How a data.dart's value is saved for the next start (since 0.8.1):
 /// `final dataCache = DataCache<Product>.json(toJson: ..., fromJson: ...);`.
 ///
 /// Nothing is saved unless the app gives a [dataCacheStorage]. It is built on Riverpod 3's
@@ -50,7 +50,7 @@ final class DataCache<T> {
   final String? version;
 }
 
-/// Where `dataCache` values are saved (since 0.8.0). Null (the default) saves nothing.
+/// Where `dataCache` values are saved (since 0.8.1). Null (the default) saves nothing.
 ///
 /// Override it in the app's `ProviderScope`:
 /// `dataCacheStorage.overrideWithValue(MemoryDataStorage())`, or a
@@ -65,7 +65,7 @@ final dataCacheStorage = Provider<FutureOr<Storage<String, String>?>>(
   (ref) => null,
 );
 
-/// A `Storage<String, String>` in memory (since 0.8.0): values survive a page being
+/// A `Storage<String, String>` in memory (since 0.8.1): values survive a page being
 /// disposed and opened again, not a restart. For the web, examples and tests.
 ///
 /// Share one between two `pumpRouter` calls to simulate a restart. Its methods are
@@ -227,7 +227,7 @@ final class _NoStorage extends Storage<String, String> {
   void deleteOutOfDate() {}
 }
 
-/// The provider fespalier makes of a data() function with a `dataCache` (since 0.8.0): the
+/// The provider fespalier makes of a data() function with a `dataCache` (since 0.8.1): the
 /// function's value, saved with [dataCacheStorage] and shown at the next start while the
 /// fresh one loads (`AsyncValue.isFromCache` is then true).
 ///
@@ -320,7 +320,7 @@ final class CachedData<T> extends AsyncNotifier<T> {
   }
 }
 
-/// The provider of a data() function without keys, with a `dataCache` (since 0.8.0).
+/// The provider of a data() function without keys, with a `dataCache` (since 0.8.1).
 /// What the generated code calls; `T` is inferred from [fetch].
 ///
 /// [name] is the data.dart's folder relative to the app folder (`products/$id`), which
@@ -336,7 +336,7 @@ AsyncNotifierProvider<CachedData<T>, T> cachedData<T>(
   retry: retry,
 );
 
-/// The family of a data() function with keys, with a `dataCache` (since 0.8.0). What the
+/// The family of a data() function with keys, with a `dataCache` (since 0.8.1). What the
 /// generated code calls; `T` and `K` are inferred from [fetch].
 ///
 /// [keyParts] lists the key's parts in path order (`[id]`, `[k.shop, k.id]`); each is

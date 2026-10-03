@@ -21,7 +21,7 @@ Future<void> addMember(
     ref.read(rosterProvider).add(teamId, input);
 
 /// What the team shows while `addMember()` runs: the member is on the page from the first frame
-/// (since 0.8.0). A failure takes it back; a success keeps it until the team has loaded again,
+/// (since 0.8.1). A failure takes it back; a success keeps it until the team has loaded again,
 /// so the list never loses her in between. Its type, `Team`, is what the section's data.dart
 /// gives, which is how it finds the data to patch.
 Team addMemberOptimistic(Team team, String input) =>

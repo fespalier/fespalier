@@ -1,4 +1,4 @@
-//! The generated entry point (since 0.8.0): `lib/app.main.g.dart` from the root files `app.dart`,
+//! The generated entry point (since 0.8.1): `lib/app.main.g.dart` from the root files `app.dart`,
 //! `startup.dart` and `splash.dart`, and `fespalier: main:`.
 
 use std::fs;

@@ -1,4 +1,4 @@
-//! The generated entry point (since 0.8.0): `lib/app.main.g.dart`, class `AppMain`, written from
+//! The generated entry point (since 0.8.1): `lib/app.main.g.dart`, class `AppMain`, written from
 //! the three files at the root of the app folder, `app.dart`, `startup.dart` and `splash.dart`,
 //! and read by `lib/main.dart` as `Future<void> main() => AppMain.run();`.
 //!

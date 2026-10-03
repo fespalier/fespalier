@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fespalier's report in plain words (`fsp telemetry --report`, since 0.8.0).
+"""fespalier's report in plain words (`fsp telemetry --report`, since 0.8.1).
 
 Runs in the `dashboards` container of the stack (Python's standard library only), against the
 running OpenObserve. For each app that sent fespalier spans in the last hour it prints how the app

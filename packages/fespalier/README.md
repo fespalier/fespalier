@@ -23,7 +23,7 @@ Add it as a git dependency:
 dependencies:
   fespalier:
     git:
-      url: https://github.com/vaam-apps/fespalier
+      url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.8.0
 ```
@@ -33,21 +33,21 @@ Needs Dart 3.8 and Flutter 3.32 or newer (go_router 18 needs Flutter 3.44). Work
 go_router 17 and 18. You also need the `fsp` CLI: install it, or run it without installing as
 `dart run fespalier <command>` (it downloads the release that matches this package's version
 on first use). The main README's
-[Getting started](https://github.com/vaam-apps/fespalier#getting-started) covers both, plus
+[Getting started](https://github.com/fespalier/fespalier#getting-started) covers both, plus
 `fsp init`, `main.dart`, CI and web notes.
 
 ## Learn more
 
-See the [main README](https://github.com/vaam-apps/fespalier#readme) for the
+See the [main README](https://github.com/fespalier/fespalier#readme) for the
 file conventions, the `fsp` CLI and full examples.
 
-The package carries fespalier's [DevTools extension](https://github.com/vaam-apps/fespalier#devtools-extension)
+The package carries fespalier's [DevTools extension](https://github.com/fespalier/fespalier#devtools-extension)
 (since 0.7.0): a `fespalier` tab with the route tree, the router's location, stack and history. It is not
 compiled into release builds.
 
-Since 0.8.0 an [`observe.dart`](https://github.com/vaam-apps/fespalier#route-lifecycle-observedart)
+Since 0.8.1 an [`observe.dart`](https://github.com/fespalier/fespalier#route-lifecycle-observedart)
 runs hooks when a page is entered, focused and left, and `fespalier: telemetry: true` makes the app
 report its navigations, guards, data loads, actions and deferred loads to a
-[`FespalierTelemetry`](https://github.com/vaam-apps/fespalier#telemetry) sink. `package:fespalier_otel`
+[`FespalierTelemetry`](https://github.com/fespalier/fespalier#telemetry) sink. `package:fespalier_otel`
 turns them into OpenTelemetry spans on the SDK that `otel_zone` starts. Off, the generated code and the
 release build are unchanged.

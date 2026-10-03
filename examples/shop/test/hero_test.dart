@@ -1,4 +1,4 @@
-// The product avatar flies from its row to the product's page (since 0.8.0): one
+// The product avatar flies from its row to the product's page (since 0.8.1): one
 // `ProductRoute(id: ...).hero('avatar', child: ...)` on each side.
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';

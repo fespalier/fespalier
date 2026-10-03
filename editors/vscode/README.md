@@ -15,7 +15,7 @@ diagnostics: nothing is re-implemented in the editor.
 
 ## Requirements
 
-`fsp` on your `PATH` ([install it](https://github.com/vaam-apps/fespalier#getting-started)),
+`fsp` on your `PATH` ([install it](https://github.com/fespalier/fespalier#getting-started)),
 or a project that has the `fespalier` package, in which case the extension runs
 `dart run fespalier`, which downloads the matching `fsp` on first use.
 

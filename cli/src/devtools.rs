@@ -26,7 +26,7 @@
 //! the runtime: `traceGuard(state, 'g5@6', …)` around a guard or a `redirect.dart` (`r32`),
 //! `traceData(ref, 'd37', key, …)` around the body of a `data.dart` provider (not around one that
 //! returns or selects a provider: `"traced": false`), and `site: 'a37_0'` on an action's provider.
-//! Since 0.8.0 the views name the site too: every `DataView` and `SectionView` watches with
+//! Since 0.8.1 the views name the site too: every `DataView` and `SectionView` watches with
 //! `watchData(ref, 'd37', …)`, which is `ref.watch` that also tells DevTools who holds the
 //! provider (and, for an untraced site, the state the view got). `mount()` hands
 //! `_devToolsProviders` to `devToolsRegister`: each `data.dart`'s provider by its site (a selector

@@ -1,6 +1,6 @@
 ---
 name: fespalier-layouts
-description: "Layouts and shells in fespalier — layout.dart (a ShellRoute around a folder and everything below it), (group) layouts, tab layouts on a StatefulNavigationShell with tabs, tabOptions and a custom container, nested tabs, transition.dart and how a layout's shell animates, dialogs and sheets as routes, state restoration ids, scroll restoration on the browser's back and forward, and adaptive patterns (rail versus bar, drawer versus side list), and, since 0.8.0, menus and breadcrumbs generated from nav.dart files (a drawer, a tab bar, a breadcrumb row that respects guards). Load before adding or changing a layout.dart, a tab bar, a menu, a nav.dart, a transition.dart or restoration, or when a layout wraps the wrong pages, a tab loses its state, or a ListTile asserts about its Material."
+description: "Layouts and shells in fespalier — layout.dart (a ShellRoute around a folder and everything below it), (group) layouts, tab layouts on a StatefulNavigationShell with tabs, tabOptions and a custom container, nested tabs, transition.dart and how a layout's shell animates, dialogs and sheets as routes, state restoration ids, scroll restoration on the browser's back and forward, and adaptive patterns (rail versus bar, drawer versus side list), and, since 0.8.1, menus and breadcrumbs generated from nav.dart files (a drawer, a tab bar, a breadcrumb row that respects guards). Load before adding or changing a layout.dart, a tab bar, a menu, a nav.dart, a transition.dart or restoration, or when a layout wraps the wrong pages, a tab loses its state, or a ListTile asserts about its Material."
 ---
 
 # fespalier-layouts
@@ -9,7 +9,7 @@ description: "Layouts and shells in fespalier — layout.dart (a ShellRoute arou
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
-> [Versions](https://github.com/vaam-apps/fespalier/blob/main/skills/README.md#versions).
+> [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
 ## `layout.dart`
 
@@ -94,13 +94,13 @@ animates it). `Transitions` has `fade`, `slide`, `none`, `material`, `cupertino`
 `dialog`, `sheet` and `fullscreenDialog`. A dialog or sheet route must sit **below
 a page** or it opens over an empty screen. Restoration needs
 `restorationScopeId` on both `MaterialApp` and `AppRoutes.router(...)`; a `Page` you
-build yourself must pass `restorationId: key.value`. Since 0.8.0 a shared element is
+build yourself must pass `restorationId: key.value`. Since 0.8.1 a shared element is
 `Route(...).hero('name', child: ...)` on each side (a `RouteHero`, which stays out of
 flights in a hidden tab), and `heroes: const Heroes(onBackGesture: true)` on a `Transitions.*`
 call sets how they fly; nothing flies into a dialog or sheet. All in
 [`references/transitions-and-restoration.md`](references/transitions-and-restoration.md).
 
-## Menus and breadcrumbs (`nav.dart`, since 0.8.0)
+## Menus and breadcrumbs (`nav.dart`, since 0.8.1)
 
 A `nav.dart` (`const nav = Nav(label: 'Products', order: 1);` and an optional
 `String label(BuildContext context, {...segments})`) in a folder makes it a menu entry, and `fsp gen`
@@ -111,7 +111,7 @@ that would run for them: a sync answer is in the first frame, a `Future` shows t
 and the app-without-nav.dart guarantee are in
 [`references/menus-and-breadcrumbs.md`](references/menus-and-breadcrumbs.md).
 
-**Scroll restoration** (since 0.8.0): `scroll_restoration: true` in the pubspec's `fespalier:` section
+**Scroll restoration** (since 0.8.1): `scroll_restoration: true` in the pubspec's `fespalier:` section
 wraps each page in `RouteScrollMemory`; the browser's back and forward then give a scrollable its
 offset back, **only if it has a `PageStorageKey`**, and a `go` starts at the top. Same page.
 
@@ -136,7 +136,7 @@ drawer-versus-side-list plain layout that highlights the current route through
 | Dialog opens over a blank screen on a deep link   | The dialog route has no parent page above it in the tree                                  |
 | A menu entry is missing                           | Its folder needs segments the location lacks, `inMenu: false`, or a guard refuses it      |
 | Restored app forgets a page's local state         | Custom `Page` without `restorationId: key.value`, or renamed folders                      |
-| A list starts at the top after the browser's back | `scroll_restoration` is off, or the scrollable has no `PageStorageKey` (since 0.8.0)      |
+| A list starts at the top after the browser's back | `scroll_restoration` is off, or the scrollable has no `PageStorageKey` (since 0.8.1)      |
 
 For an `fsp` error message, see
 [`fespalier-troubleshooting`](../fespalier-troubleshooting/).

@@ -102,7 +102,7 @@ loading view carries none, boot with `settle: false` and `pump` once.
 - **`maestro:` needs `semantics_ids: true`**, and a stale `app.g.dart` has no identifiers: run `fsp gen`
   after changing the key.
 
-## In CI (since 0.8.0)
+## In CI (since 0.8.1)
 
 fespalier's own CI replays the shop's flows without Maestro: the `web-routes` job builds `examples/shop`
 for the web, serves it, and a pinned Playwright opens each flow's `openLink` in Chromium, with every
@@ -119,7 +119,7 @@ and keep it out of the required checks: fespalier's `maestro-web.yml` runs it we
 ## Not built, and not verified
 
 - **Verified:** the identifier in widget tests (`find.bySemanticsIdentifier`), the flows as golden files,
-  and (since 0.8.0) on the web, that each committed flow's link opens its route in Chromium and the
+  and (since 0.8.1) on the web, that each committed flow's link opens its route in Chromium and the
   identifier is in the DOM (`web-routes`). **Not verified:** the same on iOS. A flow that times out on a
   page you can see: check that first.
 - **Not built:** a `link:` identifier on `RouteLink`, `samples` in `meta.dart`, a flow for a layout, a

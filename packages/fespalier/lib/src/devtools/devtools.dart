@@ -12,7 +12,7 @@
 /// provider or an action returns (the very object goes through, and a synchronous one stays
 /// synchronous): every path runs inside a `try`, and a bug here is printed once and dropped.
 ///
-/// Who holds a provider (since 0.8.0): the views, the prefetch handles and the `RouteLink`
+/// Who holds a provider (since 0.8.1): the views, the prefetch handles and the `RouteLink`
 /// preloads of fespalier itself are recorded, weakly, and listed when DevTools asks
 /// (`ext.fespalier.holders`). Riverpod does not export who else listens to a provider, so for one
 /// fespalier built the others are counted (`onAddListener`, `onRemoveListener`), and for one the
@@ -96,7 +96,7 @@ bool _reported = false;
 /// match a location. The generated `mount()` calls it under `if (kFespalierDevTools)`.
 ///
 /// [tree] is a tear-off of a function that returns the tree, so a hot reload hands DevTools the
-/// new one. [matchUrl] is `AppRoutes.matchUrl`. [providers] (since 0.8.0) is a tear-off of a
+/// new one. [matchUrl] is `AppRoutes.matchUrl`. [providers] (since 0.8.1) is a tear-off of a
 /// function that returns each `data.dart`'s provider (the family object, for one keyed by the
 /// URL) by its site; it is called once, when DevTools first needs to know whose provider a
 /// prefetch was made for, and is null for an app with no `data.dart`.
@@ -319,7 +319,7 @@ bool _skipped = false;
 /// A guard that throws before it returns never gets here, so it is not shown; go_router gets the
 /// error as it always did.
 ///
-/// [telemetry] (since 0.8.0) is the call site as telemetry names it: the generated file passes
+/// [telemetry] (since 0.8.1) is the call site as telemetry names it: the generated file passes
 /// one `const` for each guard in an app made with `telemetry: true`, and none otherwise, so an
 /// app without it never reaches the telemetry code.
 @pragma('vm:prefer-inline')
@@ -611,9 +611,9 @@ String _buildKey(int container, String site, Shown? key) =>
 ///
 /// It reads no provider and listens to nothing: a `Future` gets a side `then` that only records
 /// how it ended, a `Stream` is not touched, and [ref] gets an `onDispose` callback and, since
-/// 0.8.0, an `onAddListener` and an `onRemoveListener` one, which count the provider's listeners.
+/// 0.8.1, an `onAddListener` and an `onRemoveListener` one, which count the provider's listeners.
 ///
-/// [telemetry] (since 0.8.0) is the call site as telemetry names it, passed only by an app made
+/// [telemetry] (since 0.8.1) is the call site as telemetry names it, passed only by an app made
 /// with `telemetry: true`.
 @pragma('vm:prefer-inline')
 @pragma('dart2js:tryInline')
@@ -758,7 +758,7 @@ void _forgetDisposed() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Who holds a provider (since 0.8.0)
+// Who holds a provider (since 0.8.1)
 
 /// What the generated `DataView` and `SectionView` watch their data with: `ref.watch(provider)`,
 /// returned as it is, so a value that is there stays there (no `Future`, no microtask). [site] is
@@ -1398,7 +1398,7 @@ _DataEntry? _entryById(int id) {
 
 /// Asks the provider behind the data record `id` to build again: `ref.invalidateSelf()` on the
 /// `Ref` its last build was given, which is held weakly and used only when it is still mounted;
-/// for an app's own provider (since 0.8.0), `invalidate` on the container a view saw it in, when
+/// for an app's own provider (since 0.8.1), `invalidate` on the container a view saw it in, when
 /// it is still alive there.
 Map<String, Object?> _invalidate(Map<String, String> params) {
   final entry = _entryById(_idParam(params));
@@ -1422,7 +1422,7 @@ Map<String, Object?> _invalidate(Map<String, String> params) {
   return {'protocol': devToolsProtocol, 'ok': ok};
 }
 
-/// Who holds the provider of the data record `id` now (since 0.8.0): worked out when asked, so
+/// Who holds the provider of the data record `id` now (since 0.8.1): worked out when asked, so
 /// that it is right after a view was unmounted. A view's holder is not dropped when Riverpod
 /// removes its listener (that happens before the element is unmounted), but here.
 Map<String, Object?> _holdersResponse(Map<String, String> params) {

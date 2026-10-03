@@ -146,12 +146,12 @@ pub struct Data {
     pub keys: Vec<String>,
     /// Keyed by a named record `(a: .., b: ..)` rather than a bare value.
     pub record: bool,
-    /// The `freshness` that applies (since 0.8.0): the import index of the library that
+    /// The `freshness` that applies (since 0.8.1): the import index of the library that
     /// declares it, and that file relative to the app folder (the data.dart itself, or the
     /// nearest route.dart at or above it). Only for a `data()` function that doesn't return a
     /// Stream.
     pub freshness: Option<(usize, String)>,
-    /// The data.dart declares `dataCache` (since 0.8.0); only for such a `data()` function.
+    /// The data.dart declares `dataCache` (since 0.8.1); only for such a `data()` function.
     pub cache: bool,
 }
 
@@ -171,7 +171,7 @@ const BAD_FRESHNESS: &str = "`freshness` must be a `Freshness(...)`: write `cons
 /// What `dataCache` must be (E6).
 const BAD_DATA_CACHE: &str = "`dataCache` must be a `DataCache(...)` or `DataCache.json(...)`: write `final dataCache = DataCache<Product>.json(toJson: ..., fromJson: ...);`";
 
-/// Whether a variable's initializer is a call of the constructor `name` (since 0.8.0):
+/// Whether a variable's initializer is a call of the constructor `name` (since 0.8.1):
 /// `Freshness(`, `const Freshness(`, `prefix.Freshness(`, `DataCache<T>.json(`. The source has
 /// no whitespace (see `Variable::value`), so a `const` in front reads as `constFreshness(`.
 fn is_ctor(v: &dart::Variable, name: &str) -> bool {
@@ -223,11 +223,11 @@ pub struct Action {
     pub input: ExtraType,
     /// The routes (or sections) whose `data.dart` a success invalidates, outermost first.
     pub invalidates: Vec<usize>,
-    /// Its `form()` (since 0.8.0): the typed fields of the input, and what they start from.
+    /// Its `form()` (since 0.8.1): the typed fields of the input, and what they start from.
     pub form: Option<Form>,
-    /// The name of its `validate()` (since 0.8.0), run before the action.
+    /// The name of its `validate()` (since 0.8.1), run before the action.
     pub validate: Option<String>,
-    /// Its `optimistic()` (since 0.8.0).
+    /// Its `optimistic()` (since 0.8.1).
     pub optimistic: Option<Optimistic>,
     /// The function, for diagnostics.
     pub span: Span,
@@ -294,7 +294,7 @@ pub struct ActionNames {
     pub run: String,
     /// The hook: `useAction`, or `useApprove`.
     pub hook: String,
-    /// The hook of its form (since 0.8.0): `useForm`, or `useApproveForm`.
+    /// The hook of its form (since 0.8.1): `useForm`, or `useApproveForm`.
     pub form_hook: String,
 }
 
@@ -457,7 +457,7 @@ pub struct BranchOptions {
     pub initial_location: Option<String>,
 }
 
-/// A folder's `nav.dart` (since 0.8.0): `const nav = Nav(label: 'Products', order: 1);` and,
+/// A folder's `nav.dart` (since 0.8.1): `const nav = Nav(label: 'Products', order: 1);` and,
 /// optionally, `String label(BuildContext context, {required int id})`.
 #[derive(Debug, Clone)]
 pub struct NavDecl {
@@ -812,7 +812,7 @@ struct Inherited {
     remount: Remount,
     /// The nearest route.dart's `deferred`, else the config's.
     deferred: bool,
-    /// The nearest route.dart with a `freshness` (since 0.8.0), relative to the app folder.
+    /// The nearest route.dart with a `freshness` (since 0.8.1), relative to the app folder.
     freshness: Option<String>,
     /// The folders above whose observe.dart applies to every page below, outermost first.
     observers: Vec<usize>,
@@ -946,7 +946,7 @@ struct Resolver<'a> {
     /// What each `action.dart` says to invalidate (`const invalidates = [...]`), by route id:
     /// the names it lists, resolved once every route is known. `None` is the default set.
     listed: Vec<(usize, Option<Vec<Named>>)>,
-    /// The route.dart files with a valid `freshness`, and where (since 0.8.0).
+    /// The route.dart files with a valid `freshness`, and where (since 0.8.1).
     freshness_declared: Vec<(String, Span)>,
     /// Those that apply to a data.dart below.
     freshness_used: BTreeSet<String>,
@@ -2125,7 +2125,7 @@ impl Resolver<'_> {
         v.boolean
     }
 
-    /// `const freshness = Freshness(...)` in a folder's route.dart (since 0.8.0): the default
+    /// `const freshness = Freshness(...)` in a folder's route.dart (since 0.8.1): the default
     /// of every `data()` function at and below this folder that loads once. The nearest one wins.
     /// fsp doesn't read the value: the generated file refers to it, and Dart type-checks it.
     /// Returns the file when it is valid.
@@ -2149,7 +2149,7 @@ impl Resolver<'_> {
         Some(file.to_string())
     }
 
-    /// `freshness` and `dataCache` of a data.dart (since 0.8.0). Both are variables fsp only
+    /// `freshness` and `dataCache` of a data.dart (since 0.8.1). Both are variables fsp only
     /// looks at by name: the generated file refers to them (`_i3.freshness`), and the Dart
     /// analyzer checks their types. They apply to a `data()` function that loads once; for any
     /// other form each says what to do instead. Returns whether a valid `freshness` and a
@@ -2202,7 +2202,7 @@ impl Resolver<'_> {
         (applies[0], applies[1])
     }
 
-    /// A route.dart's `freshness` that no data.dart below uses (since 0.8.0) does nothing.
+    /// A route.dart's `freshness` that no data.dart below uses (since 0.8.1) does nothing.
     fn unused_freshness(&mut self) {
         let declared = std::mem::take(&mut self.freshness_declared);
         for (file, span) in declared {
@@ -2933,7 +2933,7 @@ impl Resolver<'_> {
             .filter(|f| !f.name.starts_with('_') && (f.name == "action" || takes_ref(f)))
             .collect();
         // A function called `approveForm` beside `approve` is its companion, never an action
-        // (since 0.8.0), even when it takes a `Ref` (which is then reported on it).
+        // (since 0.8.1), even when it takes a `Ref` (which is then reported on it).
         let functions: Vec<&Function> = candidates
             .iter()
             .copied()
@@ -3058,7 +3058,7 @@ impl Resolver<'_> {
     }
 
     /// Reads and checks the `form()`, `validate()` and `optimistic()` beside the action `f`
-    /// (since 0.8.0). One that doesn't fit is reported and left out; the action still works.
+    /// (since 0.8.1). One that doesn't fit is reported and left out; the action still works.
     fn companions(&mut self, at: &Companions, f: &Function, input: &Ty, a: &mut Action) {
         let find = |role: Companion| {
             let name = forms::companion(&f.name, role);

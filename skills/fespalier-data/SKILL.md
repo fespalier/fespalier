@@ -1,6 +1,6 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.0: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.0 its forms: form(), validate() and optimistic()). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 its forms: form(), validate() and optimistic()). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
@@ -9,7 +9,7 @@ description: "How fespalier routes load data — data.dart and its three forms (
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
-> [Versions](https://github.com/vaam-apps/fespalier/blob/main/skills/README.md#versions).
+> [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
 `data.dart` is what a route loads. Beside a `page.dart` it feeds that page: the
 page is **only built once the data has arrived**, `loading.dart` shows meanwhile
@@ -71,7 +71,7 @@ is generated for it. Two `data.dart` files yielding the same type for one
 parameter are an error: name the parameter `data` (the nearest) or change a type.
 See [`references/sections.md`](references/sections.md).
 
-## Freshness and the cache (since 0.8.0)
+## Freshness and the cache (since 0.8.1)
 
 Opt in, per `data.dart` or per folder; an app that declares neither generates what 0.7.0 did.
 
@@ -160,7 +160,7 @@ await RefundRoute.submit(ref, id: 1, input: input);  // a callback or a test: th
 [`references/actions.md`](references/actions.md) has the rules, the generated members,
 what is invalidated and a test that compiles.
 
-## Forms and optimistic updates (since 0.8.0)
+## Forms and optimistic updates (since 0.8.1)
 
 Not a file kind: `form()`, `validate()` and `optimistic()` are _companion functions_ in the
 `action.dart` of their action (`approveForm`, `approveValidate`, `approveOptimistic` beside
@@ -194,12 +194,12 @@ sample that compiles, with its test.
 
 The `fespalier` tab's **Data** tab lists each provider fespalier makes from a `data.dart`: its state
 (`loading`, `data`, `error`, `stream`, `disposed`), builds, listeners, key and value, with an **Invalidate**
-button and, since 0.8.0, a **Holders** button that lists who keeps the provider (the page, a section, a
+button and, since 0.8.1, a **Holders** button that lists who keeps the provider (the page, a section, a
 `prefetch` / `preload` handle, a `RouteLink` preload) and counts the other listeners. **Actions** lists the
 runs of the `action.dart` functions. The generated provider body is wrapped in `traceData`, which returns the
 function's own result (a value stays a value, a `Future` stays the `Future`), and every view watches with
 `watchData(ref, 'd37', provider)`, which is `ref.watch`. A `data.dart` that returns or selects a provider is
-followed since 0.8.0 as an `app provider`, through the state the views got; its other listeners are not
+followed since 0.8.1 as an `app provider`, through the state the views got; its other listeners are not
 visible (`fespalier-troubleshooting`, its DevTools page).
 
 ## Common symptoms
@@ -215,6 +215,6 @@ visible (`fespalier-troubleshooting`, its DevTools page).
 | A page doesn't refresh after a write               | The data is another route's: list it in `invalidates` (`references/actions.md`)                                               |
 | A stale value stays on screen                      | Nothing read it: `freshness` loads on a read, a resume or a reconnect, never by a timer (`references/freshness-and-cache.md`) |
 | Offline start shows `error.dart`                   | No `dataCache`/`dataCacheStorage`, or nothing was saved yet or it passed `maxAge`                                             |
-| The form forgot what I typed (0.8.0)               | The data loaded again while the fields were untouched: only fields the user changed are kept                                  |
+| The form forgot what I typed (0.8.1)               | The data loaded again while the fields were untouched: only fields the user changed are kept                                  |
 | The page flashes the old value after a save        | `optimistic()` patches another type than the page shows, or the data is not in `invalidates`                                  |
 | An fsp error on `data.dart` or `action.dart`       | `fespalier-troubleshooting`                                                                                                   |

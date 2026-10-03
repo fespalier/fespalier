@@ -45,7 +45,7 @@ matches the package your `pubspec.lock` resolved.
 1. **Never edit `lib/app.g.dart`.** Its first line says so. Change `lib/app/`
    and regenerate; an edit is lost on the next run.
 2. **Regenerate after every change under `lib/app/`** (`fsp gen`, or leave
-   `fsp watch` running next to `flutter run`). Also after editing an enum that a
+   `fsp dev` running, or `fsp watch` next to `flutter run`). Also after editing an enum that a
    segment names (it lives outside `lib/app/`; `fsp watch` sees `lib/` too, as of
    0.3.0), and **after bumping the `fespalier` package** — the upgrade notes of
    0.1.1 through 0.3.0 each say "regenerate".
@@ -137,6 +137,9 @@ cargo install --git https://github.com/fespalier/fespalier --tag v0.8.0 fespalie
 fsp init                                   # starter layout/page/not_found/transition, then gen
 fsp gen                                    # check lib/app/, write lib/app.g.dart
 fsp watch                                  # regenerate on every change
+fsp dev [-- <flutter run args>]            # the app, regenerated and hot restarted on every save (0.9.0)
+fsp build <target> [-- <args>]             # fsp gen, then flutter build <target>, with the hooks of `tasks: build:` (0.9.0)
+fsp run [task]                             # a task of `tasks:` in pubspec.yaml, or the list of them (0.9.0)
 fsp check                                  # CI: non-zero on errors, writes nothing
 fsp routes [--json | --graph [dot | json]]  # the route table, or the tree as Mermaid / DOT / JSON
 fsp links [--check]                        # App Links, Universal Links, sitemap from the routes (0.5.0)

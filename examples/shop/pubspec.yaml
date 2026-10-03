@@ -39,3 +39,10 @@ fespalier:
     samples:
       greet/$name: Ada
       products/$id: 1
+  # `fsp size` reads build/web after `flutter build web`; `just web-chunks` checks these budgets
+  # (README, "Web chunk sizes (`fsp size`)"). The measured sizes are 2.27 MB, 5,259 B and 5,982 B.
+  size:
+    main: 3 MB
+    routes:
+      /checkout: 8 KB
+      /products/:id: 8 KB

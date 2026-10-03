@@ -94,7 +94,10 @@ animates it). `Transitions` has `fade`, `slide`, `none`, `material`, `cupertino`
 `dialog`, `sheet` and `fullscreenDialog`. A dialog or sheet route must sit **below
 a page** or it opens over an empty screen. Restoration needs
 `restorationScopeId` on both `MaterialApp` and `AppRoutes.router(...)`; a `Page` you
-build yourself must pass `restorationId: key.value`. All in
+build yourself must pass `restorationId: key.value`. Since 0.8.0 a shared element is
+`Route(...).hero('name', child: ...)` on each side (a `RouteHero`, which stays out of
+flights in a hidden tab), and `heroes: const Heroes(onBackGesture: true)` on a `Transitions.*`
+call sets how they fly; nothing flies into a dialog or sheet. All in
 [`references/transitions-and-restoration.md`](references/transitions-and-restoration.md).
 
 ## Adaptive

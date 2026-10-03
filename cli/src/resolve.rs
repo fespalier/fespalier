@@ -469,6 +469,10 @@ pub struct App {
     /// The type of each of those as the generated file spells it (`List<_i3.Category>`) → as the
     /// app does (`List<Category>`): what the manifest and `fsp routes` show.
     pub type_names: HashMap<String, String>,
+    /// The constant names of each enum segment's or query parameter's type, keyed as the
+    /// generated file spells it (`_i3.Category`). Nothing emitted reads it: the `unknown_path`
+    /// lint does.
+    pub enum_values: HashMap<String, Vec<String>>,
 }
 
 /// The app folder's `extra_codec.dart`, which exports `extraCodec`.
@@ -2104,6 +2108,11 @@ impl Resolver<'_> {
         if let Lookup::Found(found) = lookup {
             let import = self.import(file);
             let spelled = extra::extra_type(whole, src, file, import, tag);
+            if let Some(b) = enums::enum_base(&spelled.ty) {
+                self.app
+                    .enum_values
+                    .insert(b.to_string(), found.values.clone());
+            }
             let key = whole.replacen(base, &found.key(), 1);
             let decl = Some(found.decl.clone());
             return Some(Typed {
@@ -3459,6 +3468,20 @@ pub fn pattern(url: &[Seg]) -> String {
         })
         .collect();
     format!("/{}", parts.join("/"))
+}
+
+/// How specific each URL segment is, for ordering routes the way `AppRoutes.matchUrl` (and
+/// `go_router`) tries them: a static segment is 0, a `:param` 1, a catch-all 2. Compared
+/// lexicographically, so the most specific route comes first.
+pub fn match_rank(url: &[Seg]) -> Vec<u8> {
+    url.iter()
+        .filter_map(|s| match s {
+            Seg::Static(_) => Some(0),
+            Seg::Dynamic(_) => Some(1),
+            Seg::CatchAll(..) => Some(2),
+            Seg::Group(_) => None,
+        })
+        .collect()
 }
 
 /// The semantics identifier of the route at `url`: `route:/products/:id`. It depends only on the

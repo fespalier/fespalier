@@ -11,7 +11,11 @@ mountable `lib/app.g.dart`. It's built on go_router, Riverpod and flutter_hooks,
 with no build_runner.
 
 ```text
+lib/main.dart            Future<void> main() => AppMain.run();           (the whole main(), since 0.8.0)
 lib/app/
+  app.dart               App({required GoRouter router})              the MaterialApp.router around the router (root only, optional)
+  startup.dart           Future<List<Override>> startup()             before the app: overrides, observers, a zone (root only, optional)
+  splash.dart            Splash({Object? error, VoidCallback? retry})   while startup() runs, and when it fails (root only, optional)
   layout.dart            AppLayout({required Widget child})           → ShellRoute
   page.dart              HomePage()                                   → /
   loading.dart           RootLoading()                                  (inherited)
@@ -51,7 +55,10 @@ lib/app/
 ```
 
 ```dart
-// the whole app entry point
+// the whole app entry point (since 0.8.0): lib/main.dart runs the main() fsp generates
+Future<void> main() => AppMain.run();
+
+// or by hand
 MaterialApp.router(routerConfig: AppRoutes.router());
 
 // or inside an existing GoRouter (brownfield)
@@ -158,8 +165,10 @@ fsp init
 ```
 
 It creates `lib/app/layout.dart`, `page.dart`, `not_found.dart` (`not-found.dart` with
-[`file_style: kebab`](#file-names)) and `transition.dart` (every
-route animates with the Material transition), and writes `lib/app.g.dart`. It never
+[`file_style: kebab`](#file-names)), `transition.dart` (every
+route animates with the Material transition) and, since 0.8.0, `app.dart` (the `MaterialApp.router`
+around the router; not with [`main: manual`](#main-appdart-startupdart-and-splashdart)), and writes
+`lib/app.g.dart` and, from `app.dart`, `lib/app.main.g.dart`. It never
 overwrites a file that exists: those are reported as `skip`.
 It then prints what is left to do (the dependency block above, if `pubspec.yaml` doesn't
 have it yet, and this `main.dart`). `not_found.dart` is optional: without it, unknown
@@ -167,22 +176,23 @@ paths get a plain "Nothing at /path" view. Other folders can have their own (see
 [Not-found views](#not-found-views)).
 
 ```dart
-import 'package:fespalier/fespalier.dart';
-import 'package:flutter/material.dart';
-import 'package:my_app/app.g.dart';
+import 'package:my_app/app.main.g.dart';
 
-void main() => runApp(
-      ProviderScope(
-        child: MaterialApp.router(routerConfig: AppRoutes.router()),
-      ),
-    );
+Future<void> main() => AppMain.run();
 ```
+
+`AppMain` is generated from `lib/app/app.dart` (and `startup.dart` and `splash.dart`, if you
+add them): it starts the app inside a `ProviderScope`, builds the router once and runs
+`runApp`. See [`main()`: app.dart, startup.dart and splash.dart](#main-appdart-startupdart-and-splashdart).
+Before 0.8.0 `fsp init` printed a `main()` that built the `ProviderScope` and the
+`MaterialApp.router` itself, and that still works: it is what `main: manual` keeps.
 
 A plain `flutter create` (not `flutter create --empty`) also wrote `test/widget_test.dart`,
 which refers to the `MyApp` you just replaced, so `flutter analyze` fails on it. Delete it,
 or rewrite it (see [Testing](#testing)).
 
-Already have a `GoRouter`? Mount the tree inside it instead. `at` is the URL prefix:
+Already have a `GoRouter`? Mount the tree inside it instead, and set `main: manual` so that `fsp`
+writes no `main()` of its own. `at` is the URL prefix:
 
 ```dart
 GoRouter(
@@ -287,6 +297,7 @@ fespalier:
   #   out: links                  # default
   semantics_ids: false # `true` (since 0.7.0): every page wears `Semantics(identifier: 'route:/...')`, for Maestro
   scroll_restoration: false # `true` (since 0.8.0): the browser's back and forward bring a page's scroll offsets back
+  main: auto # `generated` | `manual` (since 0.8.0): whether `fsp` writes the main() in lib/app.main.g.dart
   # maestro:                      # no default: what `fsp maestro` writes (see below)
   #   url: http://localhost:8080  # the web; or `app_id: com.example.shop` for Android and iOS
   #   link: http://localhost:8080/#
@@ -343,6 +354,13 @@ browser's back and forward button hand back (see [Scroll restoration](#scroll-re
 bool is an error.
 `size:` (since 0.8.0) is what [`fsp size`](#web-chunk-sizes-fsp-size) checks the web build against; only that command checks its values.
 `test:` (since 0.8.0) is what [`fsp test`](#route-smoke-tests-fsp-test) reads, and only that command checks it.
+
+`main` (since 0.8.0) is `auto`, `generated` or `manual`: whether `fsp` writes [`lib/app.main.g.dart`](#main-appdart-startupdart-and-splashdart),
+with `AppMain`. `auto` writes it when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart`,
+`generated` always, `manual` never (and then those three files are not read). Any other value is an error that lists
+the three: ``unknown variant `always`, expected one of `auto`, `generated`, `manual` ``. The file sits beside
+`output`, with `.main.g.dart` in place of `.g.dart` (`lib/router/routes.g.dart` makes `lib/router/routes.main.g.dart`);
+there is no key for the path, and `output_manifest` cannot be it.
 The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
 
@@ -351,7 +369,8 @@ found by its name, like the other files.
 - **Web URLs.** Flutter web uses hash URLs (`/#/products/1`) unless you switch to path
   URLs. Add `flutter_web_plugins: {sdk: flutter}` to `dependencies` and call
   `usePathUrlStrategy()` (from `package:flutter_web_plugins/url_strategy.dart`) before
-  `runApp`. Your web server must also serve `index.html` for unknown paths.
+  `runApp`, or, with the generated `main()` (since 0.8.0), as the first line of `startup()`: the
+  router is only built after it. Your web server must also serve `index.html` for unknown paths.
 - **go_router 18 and Material.** go_router 18 checks for `MaterialApp` from
   `package:material_ui`, not the one in `package:flutter/material.dart`. With Flutter's
   `MaterialApp`, it treats your app as a plain widgets app: routes without a
@@ -396,6 +415,9 @@ widget class" and lists them. Make helpers private (`_Name`) rather than lean on
 | `not_found.dart`   | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `uri`                                                                                                                                                         |
 | `meta.dart`        | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data                                                                                                                                           |
 | `extra_codec.dart` | at the root of the app folder only: a top-level `extraCodec`, the `Codec<Object?, Object?>` the router saves an [`extra`](#restoring-extra-on-the-web) with                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data                                                                                                                                           |
+| `app.dart`         | at the root of the app folder only (since 0.8.0): a widget (any kind) that gets the `router` and builds the `MaterialApp.router` around it; optionally `GoRouter router()` too. [`AppMain.app`](#main-appdart-startupdart-and-splashdart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `router` (a `GoRouter`); other parameters must be optional                                                                                                    |
+| `startup.dart`     | at the root of the app folder only (since 0.8.0): `startup()` (before the app; may return the `Override`s), `zone()`, `providerObservers`, `routerObservers`, `retry()`; at least one                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | nothing: `startup()` takes no parameters                                                                                                                      |
+| `splash.dart`      | at the root of the app folder only (since 0.8.0): a widget shown while an async `startup()` runs, and when it fails                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `error`, `stackTrace`, `retry` (each nullable: null while `startup()` runs)                                                                                   |
 | `route.dart`       | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`; and/or `const paths = {'fr': 'produits'};` in a static folder: [its other spellings per locale](#localized-paths); and/or `const nest = false;` beside a `page.dart` or `redirect.dart`: [its route is a sibling of the page above, not a child](#a-sibling-with-a-compound-path); and/or `const linkable = false;` (since 0.5.0): [`fsp links`](#deep-links-and-a-sitemap-fsp-links) leaves this folder's routes and those below it out, [the nearest one winning](#case-and-trailing-slashes); and/or `const remount = Remount.onSegments;` (since 0.6.0): [when the pages in this folder and below get a fresh state because their URL changed](#remounting-a-page-remount), the nearest one winning over the pubspec's `remount`; and/or `const deferred = true;` (since 0.7.0): [the pages in this folder and below load their code on demand](#deferred-routes-a-pages-code-on-demand), the nearest one winning over the pubspec's `deferred`; and/or `const freshness = Freshness(staleTime: Duration(minutes: 5));` (since 0.8.0): [the default for when the data.dart functions in this folder and below load again](#freshness-staletime-resume-and-reconnect), the nearest one winning, a data.dart's own over all. Read from the source, never imported | nothing: it is data                                                                                                                                           |
 | `nav.dart`         | in any folder (since 0.8.0): `const nav = Nav(label: 'Products', order: 1);` — how the folder shows in the generated [menus and breadcrumbs](#menus-and-breadcrumbs-navdart) (`AppMenu`) — and optionally `String label(BuildContext context, {…})`, the label shown, localized. Read from the source (its `order` and the segments `label()` asks for); a folder with no page is a heading                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data; `label()` takes a `BuildContext` and the segments of its folder and above (named, `required`)                                            |
 
@@ -3242,6 +3264,180 @@ Ids come from folder names, so renaming a folder drops what was saved under the 
 a page's `RestorableInt` and a page's `extra` with `tester.restartAndRestore()`. Build the router in a
 `State`, not a `final`, in such a test: a router remembers where it went.
 
+### `main()`: app.dart, startup.dart and splash.dart
+
+Since 0.8.0 the framework can own `main()`. You write what is yours, in up to three files at the
+**root** of the app folder (a copy below it is ignored, with a warning), and `fsp` writes
+`lib/app.main.g.dart`, whose `AppMain` runs them. `lib/main.dart` stays yours, and is one line:
+
+```dart
+// lib/main.dart
+import 'package:my_app/app.main.g.dart';
+
+Future<void> main() => AppMain.run();
+```
+
+```text
+lib/app/
+  app.dart       the widget around the router: MaterialApp.router, theme, title, locales
+  startup.dart   what runs before the app: startup(), zone(), providerObservers, routerObservers, retry()
+  splash.dart    shown while an async startup() runs, and when it fails
+```
+
+All three are optional. With none of them, `main: auto` (the default) writes nothing and your own
+`main()` keeps working; any one of them makes `fsp` write `lib/app.main.g.dart`. `app.g.dart` is
+the same bytes whether or not they exist.
+
+**`app.dart`** is a view file: one public widget class (of any kind: a `ConsumerWidget` to read a
+theme-mode provider is the point) or a function `Widget app({required GoRouter router})`. It
+gets the router as a parameter named `router`, or the one typed `GoRouter` (`RouterConfig<Object>`
+works too); every other parameter has to be optional:
+
+```dart
+// lib/app/app.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+class App extends StatelessWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+  @override
+  Widget build(BuildContext context) => MaterialApp.router(
+    title: 'Shop',
+    theme: ThemeData(colorSchemeSeed: Colors.teal),
+    routerConfig: router,
+  );
+}
+
+/// Optional: how the router is built. Called once, after startup(). Call AppRoutes.router().
+GoRouter router() => AppRoutes.router(restorationScopeId: 'router');
+```
+
+Without `router()` the router is `AppRoutes.router()`, with the `routerObservers` of
+startup.dart if it has any. Without an `app.dart` (with `main: generated`) the app is
+`MaterialApp.router(routerConfig: router)`.
+
+**`startup.dart`** exports, by name, any of:
+
+| Export                                | What it is                                                                                                                                                                  |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `startup()`                           | No parameters. Returns `void`, `Future<void>` or `FutureOr<void>`; or the providers to override: `List<Override>`, `Future<List<Override>>`, `FutureOr<List<Override>>`     |
+| `zone(Future<void> Function() body)`  | Wraps **all** of `main()`: the binding, `startup()` and `runApp` run inside `body`. Returns `Future<void>` or `FutureOr<void>`; call `body()` in it                         |
+| `providerObservers`                   | A list (a variable or a getter) of `ProviderObserver`s for the `ProviderScope`; read after `startup()`                                                                      |
+| `routerObservers`                     | A list of `NavigatorObserver`s for the router; read after `startup()`. Not with a `router()` in app.dart: pass them there                                                   |
+| `retry(int retryCount, Object error)` | `Duration?`: the `ProviderScope`'s retry policy                                                                                                                             |
+
+```dart
+// lib/app/startup.dart
+import 'dart:async';
+
+import 'package:fespalier/startup.dart'; // Override, ProviderObserver, NavigatorObserver
+import 'package:flutter_web_plugins/url_strategy.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Runs once, before the app. The providers it returns are overridden in the app's ProviderScope.
+Future<List<Override>> startup() async {
+  usePathUrlStrategy(); // web: before the router reads the URL, which happens after startup()
+  final prefs = await SharedPreferences.getInstance();
+  return [prefsProvider.overrideWithValue(prefs)];
+}
+
+/// Optional: wraps all of main().
+Future<void> zone(Future<void> Function() body) async {
+  await runZonedGuarded(body, (error, stack) => reportCrash(error, stack));
+}
+
+/// Optional: read after startup().
+List<ProviderObserver> get providerObservers => [];
+List<NavigatorObserver> get routerObservers => [];
+Duration? retry(int retryCount, Object error) => null;
+```
+
+At least one of them has to be there. `startup()` runs **before the router exists**: the router is
+built once, after `startup()`, and disposed with the app. That is also why `usePathUrlStrategy()`
+belongs in `startup()` (checked in a release web build with a 300 ms async `startup()`: a deep link
+`/items/2?qty=3` opened the item page, and tapping a link put `/about` in the address bar, with no `#`).
+
+**`splash.dart`** is a view file too (a class or `Widget splash({...})`), built **before** the
+app: there is no `Theme`, `Localizations` or `ProviderScope` above it, only a text direction
+(from the platform locale), so use plain widgets. It can ask for `error`, `stackTrace` and
+`retry`, by name; each is nullable, because they are null while `startup()` runs and set only after
+a failure (`retry` runs `startup()` again):
+
+```dart
+// lib/app/splash.dart
+import 'package:flutter/widgets.dart';
+
+class Splash extends StatelessWidget {
+  const Splash({super.key, this.error, this.retry});
+
+  final Object? error;
+  final VoidCallback? retry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: error == null
+        ? const Text('Starting…')
+        : GestureDetector(
+            onTap: retry,
+            child: Text("Couldn't start: $error. Tap to try again"),
+          ),
+  );
+}
+```
+
+**Sync stays sync.** A `startup()` that returns no `Future` (a `void`, a `List<Override>`) is done
+before the first frame, and the first frame is the app. A `Future` costs a frame: with a `splash.dart`
+it is shown meanwhile; without one, the first frame is deferred
+(`WidgetsBinding.deferFirstFrame`), so the platform's native splash (the Android and iOS launch screen,
+the web's loading page) stays until the app is ready. No timer is involved. A `startup()` that
+throws is reported with `FlutterError.reportError` (so `FlutterError.onError`, and anything listening
+to it, sees it) and shows the splash with `error` and `retry`, or, without a `splash.dart`, a plain
+"Couldn't start the app." with the error (in debug builds) and "Try again".
+
+**`zone()` has to work on the web.** It runs on every platform, so a zone implementation that
+needs `dart:io` or an isolate (a crash reporter's `runGuarded`, say) must behave on the web as well.
+The telemetry SDK `otel_zone` is one that does not yet: its `runGuarded` never runs its body in a
+browser, which leaves the app blank. Until that is fixed, write
+`Future<void> zone(Future<void> Function() body) => kIsWeb ? body() : observability.runGuarded(body);`
+(`kIsWeb` is in `package:flutter/foundation.dart`).
+
+**`main:` in the pubspec** (see [Config](#getting-started)) is `auto`, `generated` or `manual`.
+With `manual`, `fsp` writes no `main()` and reads none of the three files (each one that is
+there gets a warning saying so): use it for an app that keeps its own `main()` or its own
+`GoRouter`, or when a file called `app.dart` at the root of the app folder is something else.
+
+**What is generated.** `AppMain` has three members:
+
+- `AppMain.run()`: what `lib/main.dart` calls. Inside `zone()` (if any): the binding, the code of the
+  [deferred routes](#deferred-routes-a-pages-code-on-demand) (loaded before the first frame, off the web,
+  as a hand-written `main()` did with `AppRoutes.loadDeferred()`), then `runApp(root())`.
+- `AppMain.root({router})`: the widget `runApp` gets, a `StartupGate` from `package:fespalier/startup.dart`:
+  `startup()`, `splash.dart`, then a `ProviderScope` with the overrides, observers and retry around
+  `app.dart`. `router` builds the router (default: app.dart's `router()`, else `AppRoutes.router`).
+- `AppMain.app(router)`: `app.dart`'s widget around a router, for tests (see [Testing](#testing)).
+
+**From a 0.7 app.** Nothing changes until you opt in. To move the code of a hand-written `main()`:
+
+| Today, in `lib/main.dart`                                                 | 0.8.0                                                                                         |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `MaterialApp.router(title:, theme:, builder:, routerConfig: _router)`     | the same widget in `lib/app/app.dart`, with `routerConfig: router`                            |
+| `final _router = AppRoutes.router(restorationScopeId: …, observers: …)`   | `GoRouter router() => AppRoutes.router(…)` in app.dart, or `routerObservers` in startup.dart  |
+| `await Firebase.initializeApp(…)`, `usePathUrlStrategy()` before `runApp` | `startup()`                                                                                   |
+| `ProviderScope(overrides: [x.overrideWithValue(v)])`                      | `startup()` returns `[x.overrideWithValue(v)]`                                                |
+| `ProviderScope(retry: …, observers: …)`                                   | `retry()` and `providerObservers` in startup.dart                                             |
+| `runZonedGuarded(…)`                                                      | `zone()` in startup.dart                                                                      |
+| `if (!kIsWeb) await AppRoutes.loadDeferred();`                            | generated: delete it                                                                          |
+| `void main() => runApp(…)`                                                | `Future<void> main() => AppMain.run();`                                                       |
+
+A bad root file is an error with the way out in its message: an `app.dart` without a `router`
+parameter says "the app's widget gets the router: add `required this.router` (a `GoRouter`) … If this
+file is not the app around the router, move it out of the app folder's root or set `main: manual`".
+`examples/minimal`, `shop` and `features` use the generated `main()` (`features` has all three
+files and a `zone()`), and `examples/tabs` keeps a `main()` of its own.
+
 ### Scroll restoration
 
 Since 0.8.0. Flutter builds a page from nothing when the browser's back or forward button brings it
@@ -3503,7 +3699,8 @@ pubspec. `fsp check` writes and compares nothing, so it never runs `dart`.
 What the commands print:
 
 - `fsp gen`: `✓ 12 routes → lib/app.g.dart`, or `✓ 12 routes, lib/app.g.dart unchanged`
-  when the output didn't change (with `output_manifest`, both files are named).
+  when the output didn't change (with `output_manifest`, or a [generated `main()`](#main-appdart-startupdart-and-splashdart)
+  since 0.8.0, every file is named: `✓ 12 routes → lib/app.g.dart, lib/app.main.g.dart`).
 - `fsp check`: `✓ 12 routes, no errors`.
 - `fsp watch`: the `gen` line once at startup, then a line each time a save changes
   `lib/app.g.dart`. An edit that doesn't (a widget's `build` method, say) prints nothing.
@@ -4637,8 +4834,8 @@ testWidgets('shows a product', (tester) async {
 });
 ```
 
-`pumpRouter(tester, router, {overrides, container, settle, retry, disposeRouter})` wraps the router in a
-`ProviderScope` and Flutter's `MaterialApp.router`, and returns the `ProviderContainer`
+`pumpRouter(tester, router, {overrides, container, settle, retry, disposeRouter, app})` wraps the router in a
+`ProviderScope` and Flutter's `MaterialApp.router` (or the widget `app` builds, see below), and returns the `ProviderContainer`
 (for `container.read(...)`). `settle` (on by default) pumps until nothing is scheduled: turn
 it off to look at a loading view, then `pump` the time you want. Pass your own `container`
 instead of `overrides` to share one with code outside the widget tree; it's yours to
@@ -4661,6 +4858,28 @@ synchronously from a guard when you can (see [Guards](#guards)): any `Future`, e
 synchronous guard shows the page at once. If a widget
 hangs on to its own `WidgetRef` (to call `prefetch` from a test, say), take it from an
 element: `tester.element(find.byType(AppLayout)) as WidgetRef`.
+
+**The app around the router** (since 0.8.0). `app:` is a `Widget Function(GoRouter router)` that builds
+what goes around the router in place of the plain `MaterialApp.router`. With the
+[generated `main()`](#main-appdart-startupdart-and-splashdart), `app: AppMain.app` boots a page in
+`lib/app/app.dart`'s theme, localizations and `builder:`, as it runs. `startup()` does not run in
+`pumpRouter`: pass what it would override as `overrides`. To boot everything, startup and splash
+included, pump `AppMain.root()`:
+
+```dart
+testWidgets('starts, then shows the home page', (tester) async {
+  await pumpRouter(tester, AppRoutes.router(initialLocation: '/about'), app: AppMain.app);
+
+  // or the whole boot: splash.dart while startup() runs, then the app
+  await tester.pumpWidget(AppMain.root(router: () => AppRoutes.router(initialLocation: '/about')));
+  await tester.pumpAndSettle(); // a startup() that awaits a fake settles here; real I/O needs tester.runAsync
+});
+```
+
+A `startup()` that throws is reported to `FlutterError.onError`, which a widget test fails on:
+call `tester.takeException()` before you look at the splash. A test that runs `AppMain.run()`
+itself (to check a `zone()`) pumps afterwards; `examples/features/test/startup_test.dart` does
+all of these.
 
 `pumpRouter` also takes `app:` (since 0.8.0), a function from the router to the app widget around it
 (the default is `MaterialApp.router(routerConfig: router)`), and `package:fespalier/testing.dart` exports
@@ -4776,12 +4995,12 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 977 tests (919 unit, 45 CLI integration, 13 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 1025 tests (967 unit, 45 CLI integration, 13 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
-  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), string paths that match no route (the lint, its matching, mount point and ignore comments), `fsp size` (dart2js's table of deferred parts read from a real build's `main.dart.js`, own and shared bytes, the stale-build checks and the `size:` budgets), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
+  scaffolding, the generated `main()` (which files make it, every shape of `lib/app.main.g.dart`, every diagnostic of the three root files), the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), string paths that match no route (the lint, its matching, mount point and ignore comments), `fsp size` (dart2js's table of deferred parts read from a real build's `main.dart.js`, own and shared bytes, the stale-build checks and the `size:` budgets), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 1225 Flutter tests (the package 657, the DevTools extension 189, `shop` 77, `features` 254, `tabs` 40, `minimal` 8); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 1244 Flutter tests (the package 670, the DevTools extension 189, `shop` 78, `features` 258, `tabs` 40, `minimal` 9); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

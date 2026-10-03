@@ -17,6 +17,7 @@
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
 //!   semantics_ids: false    # default; true gives each page `Semantics(identifier: 'route:/...')`, for Maestro
 //!   scroll_restoration: false # default; true keeps a page's scroll positions for the browser's back and forward
+//!   main: auto              # default; `generated` always writes lib/app.main.g.dart, `manual` never (see `entry.rs`)
 //!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
 //!     domains: [shop.example.com]
 //!     scheme: myshop
@@ -145,6 +146,19 @@ impl Remount {
     }
 }
 
+/// Whether `fsp gen` writes the generated `main()` (`lib/app.main.g.dart`, class `AppMain`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MainMode {
+    /// Written when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart`.
+    #[default]
+    Auto,
+    /// Always written; without an `app.dart` the app is `MaterialApp.router(routerConfig: router)`.
+    Generated,
+    /// Never written, and the three root files are not read.
+    Manual,
+}
+
 /// How a lint reports: not at all, as a warning, or as an error.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -230,6 +244,8 @@ pub struct Config {
     /// The `test:` section, as written. Only `fsp test` reads it, and it checks the values
     /// then ([`TestConfig::validate`]), so a mistake in it never stops `fsp gen`.
     pub test: Option<TestConfig>,
+    /// `main:`: whether the generated `main()` is written (see [`MainMode`]).
+    pub main: MainMode,
 }
 
 impl Default for Config {
@@ -256,6 +272,7 @@ impl Default for Config {
             maestro: None,
             size: None,
             test: None,
+            main: MainMode::Auto,
         }
     }
 }
@@ -299,6 +316,7 @@ struct RawConfig {
     maestro: Option<MaestroConfig>,
     size: Option<SizeConfig>,
     test: Option<TestConfig>,
+    main: Option<MainMode>,
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -1003,6 +1021,17 @@ impl Config {
         }
     }
 
+    /// Where the generated `main()` goes: `output` with its `.g.dart` (or `.dart`) suffix
+    /// replaced by `.main.g.dart`, in the same folder. `lib/app.g.dart` is `lib/app.main.g.dart`.
+    pub fn output_main(&self) -> String {
+        let stem = self
+            .output
+            .strip_suffix(".g.dart")
+            .or_else(|| self.output.strip_suffix(".dart"))
+            .unwrap_or(&self.output);
+        format!("{stem}.main.g.dart")
+    }
+
     /// The output path relative to `lib/`, as a `package:` import spells it.
     pub fn output_in_lib(&self) -> &str {
         self.output.strip_prefix("lib/").unwrap_or(&self.output)
@@ -1045,6 +1074,7 @@ impl Pubspec {
             config.maestro = c.maestro;
             config.size = c.size;
             config.test = c.test;
+            config.main = c.main.unwrap_or_default();
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }
@@ -1065,6 +1095,12 @@ impl Pubspec {
                     );
                 }
                 config.output_manifest = Some(path);
+            }
+            if config.output_manifest.as_deref() == Some(config.output_main().as_str()) {
+                bail!(
+                    "`fespalier.output_manifest` is `{}`, the file the generated main() goes in (`output` with `.main.g.dart`); pick another name",
+                    config.output_main()
+                );
             }
             for key in c.meta_unique.unwrap_or_default() {
                 let ident = key

@@ -3,6 +3,7 @@ mod dart;
 mod devtools;
 mod diag;
 mod emit;
+mod entry;
 mod enums;
 mod extra;
 mod format;
@@ -250,19 +251,22 @@ fn gen_core(
     let mut diags = diag::Diags::default();
     let tree = scan::scan(&app_dir, &mut diags)?;
     let scan_diags = format!("{diags:?}");
+    let writes_main = entry::wanted(&tree, cfg);
     let libs = enums::Libs::for_app(&app_dir, cfg);
     let (run, reads) = if let Some(kept) = session.last.reuse(&tree, &scan_diags, &libs) {
         kept
     } else {
-        let (code, app) = analyze_tree(&tree, cfg, &libs, &mut diags);
+        let (code, main, app) = analyze_tree(&tree, cfg, &libs, &mut diags);
         let routes = app.routes.iter().filter(|r| r.is_route()).count();
-        // The manifest is a second file when `output_manifest:` asks for one. `check`
-        // renders it too, but writes and compares nothing.
+        // The manifest is a second file when `output_manifest:` asks for one, and the generated
+        // main() a third when there is one to write. `check` renders them too, but writes and
+        // compares nothing.
         let mut files = vec![];
         let mut table = lint::Table::default();
         if !diags.has_errors() {
             files.push((cfg.output.clone(), code));
             files.extend(cfg.output_manifest.clone().zip(manifest::emit(&app, cfg)));
+            files.extend(main.map(|code| (cfg.output_main(), code)));
             table = lint::Table::new(&app);
         }
         (
@@ -287,9 +291,12 @@ fn gen_core(
     everything.0.extend(lints.0.iter().cloned());
     show(&app_dir, &everything);
     if run.diags.has_errors() {
-        let left = match &cfg.output_manifest {
-            Some(m) => format!("{} and {m}", cfg.output),
-            None => cfg.output.clone(),
+        let mut outputs = outputs(cfg, writes_main);
+        let last = outputs.pop().unwrap_or_default();
+        let left = if outputs.is_empty() {
+            last
+        } else {
+            format!("{} and {last}", outputs.join(", "))
         };
         bail!(
             "{} error(s); {left} left unchanged",
@@ -317,10 +324,7 @@ fn gen_core(
             wrote = true;
         }
     }
-    let output = match &cfg.output_manifest {
-        Some(m) => format!("{}, {m}", cfg.output),
-        None => cfg.output.clone(),
-    };
+    let output = outputs(cfg, writes_main).join(", ");
     // A lint error fails the command but not the output: the generated file does not depend on
     // it, and `watch` must not stop regenerating for a typo in some other file.
     if lints.has_errors() {
@@ -339,6 +343,17 @@ fn gen_core(
     })
 }
 
+/// The files `gen` writes, as the user spells them: the output, the manifest library when
+/// `output_manifest:` asks for one, and the generated `main()` when `with_main`.
+fn outputs(cfg: &Config, with_main: bool) -> Vec<String> {
+    let mut all = vec![cfg.output.clone()];
+    all.extend(cfg.output_manifest.clone());
+    if with_main {
+        all.push(cfg.output_main());
+    }
+    all
+}
+
 pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize)> {
     let (code, diags, app) = analyze(app_dir, cfg)?;
     let routes = app.routes.iter().filter(|r| r.is_route()).count();
@@ -347,11 +362,20 @@ pub fn build(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, usize
 
 /// Like [`build`], but keeps the resolved app (for `fsp routes`).
 pub fn analyze(app_dir: &Path, cfg: &Config) -> Result<(String, diag::Diags, resolve::App)> {
+    let (code, _, diags, app) = analyze_with_main(app_dir, cfg)?;
+    Ok((code, diags, app))
+}
+
+/// [`analyze`] that also returns the generated `main()` (`lib/app.main.g.dart`), when there is one.
+pub fn analyze_with_main(
+    app_dir: &Path,
+    cfg: &Config,
+) -> Result<(String, Option<String>, diag::Diags, resolve::App)> {
     let mut diags = diag::Diags::default();
     let tree = scan::scan(app_dir, &mut diags)?;
     let libs = enums::Libs::for_app(app_dir, cfg);
-    let (code, app) = analyze_tree(&tree, cfg, &libs, &mut diags);
-    Ok((code, diags, app))
+    let (code, main, app) = analyze_tree(&tree, cfg, &libs, &mut diags);
+    Ok((code, main, diags, app))
 }
 
 /// Everything after the scan: resolve, check the manifest, emit. A function of the tree, the
@@ -362,7 +386,7 @@ fn analyze_tree(
     cfg: &Config,
     libs: &enums::Libs,
     diags: &mut diag::Diags,
-) -> (String, resolve::App) {
+) -> (String, Option<String>, resolve::App) {
     let _warm = parse_cache::prewarm(tree);
     let app = resolve::resolve(
         tree,
@@ -374,7 +398,8 @@ fn analyze_tree(
     );
     manifest::check(&app, cfg, diags);
     let code = emit::emit(&app, cfg, diags);
-    (code, app)
+    let main = entry::emit(tree, &app, cfg, &entry::MainHooks::default(), diags);
+    (code, main, app)
 }
 
 /// Whether a filesystem event can change what the app folder generates.
@@ -411,11 +436,16 @@ struct Shown {
 fn watch(project: &Path) -> Result<()> {
     let cfg = Config::load(project)?;
     let app_dir = project.join(&cfg.app_dir);
-    let outputs: Vec<PathBuf> = [Some(&cfg.output), cfg.output_manifest.as_ref()]
-        .into_iter()
-        .flatten()
-        .map(|o| project.join(o))
-        .collect();
+    let main_output = cfg.output_main();
+    let outputs: Vec<PathBuf> = [
+        Some(&cfg.output),
+        cfg.output_manifest.as_ref(),
+        Some(&main_output),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|o| project.join(o))
+    .collect();
     let mut shown = Shown::default();
     // A save changes one file: keep the parse results of the others between runs, and the
     // last run's result and formatted text (see session.rs).
@@ -491,6 +521,8 @@ mod cli_tests;
 mod deferred_tests;
 #[cfg(test)]
 mod devtools_tests;
+#[cfg(test)]
+mod entry_tests;
 #[cfg(test)]
 mod enum_tests;
 #[cfg(test)]

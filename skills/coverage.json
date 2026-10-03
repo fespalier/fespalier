@@ -104,7 +104,17 @@
         "editors/vscode",
         "editors/intellij",
         "cli/templates/new/action.dart.jinja",
-        "cli/src/devtools.rs"
+        "cli/src/devtools.rs",
+        "kind:app.dart",
+        "kind:startup.dart",
+        "kind:splash.dart",
+        "config:main",
+        "README.md#`main()`: app.dart, startup.dart and splash.dart",
+        "packages/fespalier/lib/startup.dart",
+        "packages/fespalier/lib/src/startup.dart",
+        "cli/src/entry.rs",
+        "cli/templates/main.g.dart.jinja",
+        "cli/templates/init/app.dart.jinja"
       ]
     },
     "fespalier-routing": {

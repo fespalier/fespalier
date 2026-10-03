@@ -1,0 +1,22 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// The app around the router: theme, title, locales. The generated main() builds it
+/// (lib/app.main.g.dart) and gives it the router.
+class App extends StatelessWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+{# `dart format` puts a short call on one line and a long one (a long package name) one argument per line. #}
+  @override
+{% if package | length <= 22 %}
+  Widget build(BuildContext context) =>
+      MaterialApp.router(title: '{{ package }}', routerConfig: router);
+{% else %}
+  Widget build(BuildContext context) => MaterialApp.router(
+    title: '{{ package }}',
+    routerConfig: router,
+  );
+{% endif %}
+}

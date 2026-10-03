@@ -35,7 +35,7 @@ testWidgets('shows a product', (tester) async {
 });
 ```
 
-- **`pumpRouter(tester, router, {overrides, container, settle, retry, disposeRouter})`** wraps the router
+- **`pumpRouter(tester, router, {overrides, container, settle, retry, disposeRouter, app})`** wraps the router
   in a `ProviderScope` and Flutter's `MaterialApp.router`, pumps, and returns the
   `ProviderContainer` (for `container.read(...)`).
   - `settle` (default **on**) pumps until nothing is scheduled; turn it off to look at a
@@ -50,6 +50,16 @@ testWidgets('shows a product', (tester) async {
     `addTearDown(router.dispose)` before the call passes `disposeRouter: false` (since 0.6.0):
     those teardowns run after `pumpRouter`'s, and a second `dispose` throws.
     Build one router per test.
+  - **`app:` (since 0.8.0)** is a `Widget Function(GoRouter router)` that builds what goes around the router
+    in place of the plain `MaterialApp.router`. With the generated `main()`
+    (the `fespalier` skill's `app-main` page) pass `app: AppMain.app`: a page is then tested in
+    `lib/app/app.dart`'s theme, localizations and `builder:`. **`startup()` does not run** in `pumpRouter`:
+    pass what it would override as `overrides`. To boot all of it, pump `AppMain.root()` yourself
+    (`await tester.pumpWidget(AppMain.root(router: () => AppRoutes.router(initialLocation: '/x')))`, then
+    `pumpAndSettle`; a `startup()` that awaits real I/O needs `tester.runAsync`). The router is disposed
+    with the tree. **A `startup()` that throws is reported to `FlutterError.onError`, which fails the test
+    until `tester.takeException()` takes it**; then the splash with `error` and `retry` is on screen.
+    `AppMain.run()` can be awaited in a test to check a `zone()`; pump afterwards.
   - **Deferred routes (since 0.7.0).** A route with `const deferred = true;` has its `page.dart`
     imported `deferred as`, whose `loadLibrary()` completes only on the real event loop, which a
     widget test's `pump` never runs. `pumpRouter` therefore loads every deferred route's code first,

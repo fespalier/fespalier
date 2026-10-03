@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.7 to 0.8 (hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -56,6 +56,11 @@ Bump to `v0.8.0`, regenerate, and look at these:
 5. **New, opt in:** `Freshness` (`staleTime`, `refetchOnResume`, `refetchOnReconnect`), `DataCache` with
    `dataCacheStorage` and `MemoryDataStorage`, `package:fespalier/persist.dart`, and the `fresh` and `cached` tags of
    `fsp routes`. A route that opts in keeps its page when a reload fails (the freshness page of [`fespalier-data`](../fespalier-data/)).
+6. **A `lib/app/app.dart`, `startup.dart` or `splash.dart` at the root that is something else** is the one thing that can
+   break: `fsp` reads them now (`main: auto`) and errors with "the app's widget gets the router: ...". Move the file into
+   `_components/`, or set `main: manual`. Moving a hand-written `main()` to the generated `AppMain` is optional; the
+   table is in [`references/upgrading-0-7-to-0-8.md`](references/upgrading-0-7-to-0-8.md). An app with none of the
+   three gets no new file (`lib/app.main.g.dart` is written only when one exists, or with `main: generated`).
 
 ## 0.4 to 0.5: what to check
 

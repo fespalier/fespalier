@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shop/api.dart';
 import 'package:shop/app.g.dart';
+import 'package:shop/app.main.g.dart';
 import 'package:shop/app/products/loading.dart';
 import 'package:shop/cart.dart';
 
@@ -33,6 +34,16 @@ Future<ProviderContainer> boot(
 }
 
 void main() {
+  testWidgets('AppMain.root() is the app as main() runs it', (tester) async {
+    // The generated main() loads the deferred code before runApp; a test does it likewise.
+    await tester.runAsync(AppRoutes.loadDeferred);
+    await tester.pumpWidget(AppMain.root());
+    await tester.pumpAndSettle();
+    expect(find.text('Browse products'), findsOneWidget);
+    // app.dart: the title and the teal theme.
+    expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).title, 'Shop');
+  });
+
   testWidgets('home renders inside the root layout', (tester) async {
     await boot(tester, '/');
     expect(find.text('Shop'), findsOneWidget);

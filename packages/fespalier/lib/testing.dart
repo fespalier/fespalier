@@ -65,11 +65,14 @@ void _dispose(GoRouter router) {
 /// own calls `await tester.runAsync(AppRoutes.loadDeferred)` before it. An app without
 /// deferred routes is booted exactly as before.
 ///
-/// [app] builds the app around the router (since 0.8.0); the default is
-/// `MaterialApp.router(routerConfig: router)`. Give it for an app that needs its theme,
-/// localizations or an inherited widget of its own.
+/// [app] builds the widget around the router (since 0.8.0); the default is
+/// `MaterialApp.router(routerConfig: router)`. Pass the app's own, `app: AppMain.app` (the
+/// generated `lib/app.main.g.dart`, whose `app` builds `lib/app/app.dart`), and a page is tested
+/// with the theme, the localizations and the `builder:` it has when it runs. `startup()` does
+/// not run here: pass what it would override as [overrides]. To boot all of it, startup
+/// included, pump `AppMain.root()` yourself.
 ///
-/// This app is Flutter's `MaterialApp`. With go_router 18, which looks for
+/// The default app is Flutter's `MaterialApp`. With go_router 18, which looks for
 /// `package:material_ui`'s instead, routes without a `transition.dart` don't
 /// animate in tests, and go_router's own error screen is unstyled (see the README).
 Future<ProviderContainer> pumpRouter(

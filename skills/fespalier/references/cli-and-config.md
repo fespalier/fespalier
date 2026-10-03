@@ -8,25 +8,27 @@ Every command takes `--project <dir>`; the default is the nearest folder, at or
 above the current one, with a `pubspec.yaml` (none: `no pubspec.yaml here or
 above; pass --project`).
 
-| Command                                     | What it does                                                                                                                                                                                                         |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fsp init`                                  | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do                                         |
-| `fsp gen [--format] [--json]`               | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                             |
-| `fsp check [--json]`                        | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                      |
-| `fsp watch`                                 | `gen` once, then again on every relevant change; keep it next to `flutter run`                                                                                                                                       |
-| `fsp routes [--json]`                       | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                        |
-| `fsp links [--check]`                       | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                              |
-| `fsp maestro [--check]`                     | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0) |
-| `fsp size [--build DIR] [--json] [--check]` | Reports the web build's JavaScript per deferred route (own, shared and total bytes, read from dart2js's table in `main.dart.js`); `--check` exits 1 when a budget in the `size:` config is exceeded (since 0.8.0)    |
-| `fsp test [--check]`                        | Writes one widget smoke test per route into `test/routes/routes_test.dart` (`pumpRouter`, wait on the fake clock for the page) from the route tree and the optional `test:` config (since 0.8.0); see below          |
-| `fsp routes --graph [FORMAT]`               | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default), a Graphviz `digraph` (`dot`), since 0.5.0, or JSON (`json`, since 0.7.0)                                                                 |
-| `fsp new <path> [flags]`                    | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                                                           |
+| Command                                     | What it does                                                                                                                                                                                                                                                                           |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fsp init`                                  | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` and, since 0.8.0, `app.dart` (not with `main: manual`) under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do (the `main.dart` that runs `AppMain`, since 0.8.0) |
+| `fsp gen [--format] [--json]`               | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                                                                                               |
+| `fsp check [--json]`                        | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                                                                                        |
+| `fsp watch`                                 | `gen` once, then again on every relevant change; keep it next to `flutter run`                                                                                                                                                                                                         |
+| `fsp routes [--json]`                       | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                                                                                          |
+| `fsp links [--check]`                       | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                                                                                                |
+| `fsp maestro [--check]`                     | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0)                                                                   |
+| `fsp size [--build DIR] [--json] [--check]` | Reports the web build's JavaScript per deferred route (own, shared and total bytes, read from dart2js's table in `main.dart.js`); `--check` exits 1 when a budget in the `size:` config is exceeded (since 0.8.0)                                                                      |
+| `fsp test [--check]`                        | Writes one widget smoke test per route into `test/routes/routes_test.dart` (`pumpRouter`, wait on the fake clock for the page) from the route tree and the optional `test:` config (since 0.8.0); see below                                                                            |
+| `fsp routes --graph [FORMAT]`               | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default), a Graphviz `digraph` (`dot`), since 0.5.0, or JSON (`json`, since 0.7.0)                                                                                                                                   |
+| `fsp new <path> [flags]`                    | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                                                                                                                             |
 
 What they print, to stderr unless noted:
 
 - `gen`: `✓ 12 routes → lib/app.g.dart`, or `✓ 12 routes, lib/app.g.dart unchanged`
-  (with `output_manifest`, both files are named). On errors:
-  `N error(s); lib/app.g.dart left unchanged` and exit code 1.
+  (with `output_manifest`, or a generated `main()` since 0.8.0, every file is named:
+  `✓ 12 routes → lib/app.g.dart, lib/app.main.g.dart`). On errors:
+  `N error(s); lib/app.g.dart left unchanged` and exit code 1 (with several files,
+  `N error(s); lib/app.g.dart and lib/app.main.g.dart left unchanged`).
 - `check`: `✓ 12 routes, no errors`.
 - `gen`, `check` and `watch` also read the **string paths** in `lib/` and warn about one that
   matches no route (since 0.7.0):
@@ -365,6 +367,7 @@ fespalier:
   meta: optional
   semantics_ids: false      # since 0.7.0
   scroll_restoration: false # since 0.8.0
+  main: auto                # since 0.8.0; `generated` | `manual`
   # meta_unique: [code]
   # output_manifest: lib/app.routes.g.dart
   # links: {domains: [shop.example.com]}   # see `fsp links` above
@@ -394,10 +397,12 @@ fespalier:
 | `semantics_ids`      | `true` / `false`                                 | Since 0.7.0. `true` wraps each page in `Semantics(identifier: 'route:<pattern>')` and makes `mount()` call `ensureWebSemantics()`; `fsp maestro` needs it. See `fsp maestro` above                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `scroll_restoration` | `true` / `false`                                 | Since 0.8.0. `true` wraps each page's view in `RouteScrollMemory`, a `PageStorage` per history entry that the browser's back and forward hand back: a scrollable under a `PageStorageKey` returns to its offset, a `go` starts at the top. Off, `app.g.dart` is unchanged. See `fespalier-layouts`. Not a bool: `invalid pubspec.yaml: fespalier.scroll_restoration: invalid type: string "sometimes", expected a boolean at line 3 column 23`                                                                                                                                            |
 | `maestro`            | a map (keys above)                               | What `fsp maestro` writes flows for; only that command checks the values (since 0.7.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `main`               | `auto` / `generated` / `manual`                  | Since 0.8.0. Whether `fsp` writes `lib/app.main.g.dart` (`AppMain`). `auto` (default): when the app root has an `app.dart`, `startup.dart` or `splash.dart`; `generated`: always; `manual`: never, and those three are not read (one warning each). Another value: ``unknown variant `always`, expected one of `auto`, `generated`, `manual` ``. See [`app-main.md`](app-main.md)                                                                                                                                                                                                         |
 | `size`               | a map (keys above)                               | What `fsp size` checks the web build against; only that command checks the values (since 0.8.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `test`               | a map (keys above)                               | What `fsp test` writes a smoke test file for; only that command checks the values (since 0.8.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
-There is no key for `extraCodec`: `lib/app/extra_codec.dart` is found by name.
+There is no key for `extraCodec`: `lib/app/extra_codec.dart` is found by name. Nor for the generated `main()`'s path:
+it is `output` with `.main.g.dart` in place of `.g.dart` (`lib/app.main.g.dart`), and `output_manifest` may not be it.
 
 ## In CI
 
@@ -429,7 +434,7 @@ file to exist.
 
 - **Web.** Flutter web uses hash URLs unless you switch:
   `flutter_web_plugins: {sdk: flutter}` plus `usePathUrlStrategy()` before
-  `runApp`, and a server that serves `index.html` for unknown paths.
+  `runApp` (with the generated `main()`: the first line of `startup()`), and a server that serves `index.html` for unknown paths.
 - **go_router 18 and `MaterialApp`.** go_router 18 looks for `MaterialApp` from
   `package:material_ui`, not Flutter's, so with Flutter's `MaterialApp` routes
   **without a `transition.dart` do not animate** and its own error screen is

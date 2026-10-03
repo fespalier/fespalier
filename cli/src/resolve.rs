@@ -995,6 +995,16 @@ impl Resolver<'_> {
             let msg = "extra_codec.dart is only read at the root of the app folder, so this one is ignored";
             self.diags.warn(&node.rel(Kind::ExtraCodec), None, msg);
         }
+        // The files of the generated main() (`entry.rs`): the app folder's own.
+        for kind in [Kind::App, Kind::Startup, Kind::Splash] {
+            if !node.dir.is_empty() && node.files.contains_key(&kind) {
+                let msg = format!(
+                    "{} is only read at the root of the app folder, so this one is ignored",
+                    kind.file()
+                );
+                self.diags.warn(&node.rel(kind), None, msg);
+            }
+        }
 
         // page.dart names the route; data.dart feeds it.
         let page_file = node.rel(Kind::Page);
@@ -2253,69 +2263,7 @@ impl Resolver<'_> {
     /// The one public widget class a view file exports, or the top-level function named
     /// after the file (`Widget page(...)`) that builds the widget instead.
     fn widget_class(&mut self, m: &Module, file: &str, kind: Kind) -> Option<Class> {
-        let public: Vec<&Class> = m.classes.iter().filter(|c| c.is_public()).collect();
-        let widgets: Vec<&Class> = public
-            .iter()
-            .copied()
-            .filter(|c| {
-                c.superclass
-                    .as_deref()
-                    .is_some_and(|s| s.ends_with("Widget"))
-            })
-            .collect();
-        let fns: Vec<&Function> = m
-            .functions
-            .iter()
-            .filter(|f| view_fn_names(kind).contains(&f.name.as_str()))
-            .collect();
-        if let Some(f) = fns.first() {
-            if let Some(other) = fns.get(1) {
-                let msg = format!(
-                    "both `{}()` and `{}()` are here; keep one",
-                    f.name, other.name
-                );
-                self.diags.error(file, Some(&other.span), msg);
-                return None;
-            }
-            if !widgets.is_empty() {
-                let names: Vec<&str> = widgets.iter().map(|c| c.name.as_str()).collect();
-                let msg = format!(
-                    "found the widget class {} and the function `{}()`; a view file has one or the other. Keep the class, or move it to its own file and build it from the function",
-                    names.join(", "),
-                    f.name
-                );
-                self.diags.error(file, Some(&f.span), msg);
-                return None;
-            }
-            let ret = f.ret.as_ref().map(|t| t.text.as_str());
-            if ret.is_some_and(|t| t == "void" || t.starts_with("Future")) {
-                let msg = format!(
-                    "`{}()` must return a Widget, not {}",
-                    f.name,
-                    ret.unwrap_or_default()
-                );
-                self.diags.error(file, Some(&f.span), msg);
-                return None;
-            }
-            return Some(f.as_view());
-        }
-        match (public.as_slice(), widgets.as_slice()) {
-            ([one], _) | (_, [one]) => Some((*one).clone()),
-            ([], _) => {
-                self.diags
-                    .error(file, None, "expected a public widget class");
-                None
-            }
-            (many, _) => {
-                let names: Vec<&str> = many.iter().map(|c| c.name.as_str()).collect();
-                self.diags.error(
-                    file,
-                    Some(&many[1].span),
-                    format!("expected one public widget class, found {}; make the others private (`_Name`)", names.join(", ")),
-                );
-                None
-            }
-        }
+        view_class(self.diags, m, file, kind)
     }
 
     /// Works out every constructor argument of `class` for this use of it.
@@ -4284,6 +4232,77 @@ fn route_name(class: &str) -> String {
     class.to_string()
 }
 
+/// The one public widget class a view file exports, or the top-level function named
+/// after the file (`Widget page(...)`) that builds the widget instead. Shared with the root
+/// files `app.dart` and `splash.dart` (`entry.rs`).
+pub fn view_class(diags: &mut Diags, m: &Module, file: &str, kind: Kind) -> Option<Class> {
+    let public: Vec<&Class> = m.classes.iter().filter(|c| c.is_public()).collect();
+    let widgets: Vec<&Class> = public
+        .iter()
+        .copied()
+        .filter(|c| {
+            c.superclass
+                .as_deref()
+                .is_some_and(|s| s.ends_with("Widget"))
+        })
+        .collect();
+    let fns: Vec<&Function> = m
+        .functions
+        .iter()
+        .filter(|f| view_fn_names(kind).contains(&f.name.as_str()))
+        .collect();
+    if let Some(f) = fns.first() {
+        if let Some(other) = fns.get(1) {
+            let msg = format!(
+                "both `{}()` and `{}()` are here; keep one",
+                f.name, other.name
+            );
+            diags.error(file, Some(&other.span), msg);
+            return None;
+        }
+        if !widgets.is_empty() {
+            let names: Vec<&str> = widgets.iter().map(|c| c.name.as_str()).collect();
+            let msg = format!(
+                "found the widget class {} and the function `{}()`; a view file has one or the other. Keep the class, or move it to its own file and build it from the function",
+                names.join(", "),
+                f.name
+            );
+            diags.error(file, Some(&f.span), msg);
+            return None;
+        }
+        let ret = f.ret.as_ref().map(|t| t.text.as_str());
+        if ret.is_some_and(|t| t == "void" || t.starts_with("Future")) {
+            let msg = format!(
+                "`{}()` must return a Widget, not {}",
+                f.name,
+                ret.unwrap_or_default()
+            );
+            diags.error(file, Some(&f.span), msg);
+            return None;
+        }
+        return Some(f.as_view());
+    }
+    match (public.as_slice(), widgets.as_slice()) {
+        ([one], _) | (_, [one]) => Some((*one).clone()),
+        ([], _) => {
+            diags.error(file, None, "expected a public widget class");
+            None
+        }
+        (many, _) => {
+            let names: Vec<&str> = many.iter().map(|c| c.name.as_str()).collect();
+            diags.error(
+                file,
+                Some(&many[1].span),
+                format!(
+                    "expected one public widget class, found {}; make the others private (`_Name`)",
+                    names.join(", ")
+                ),
+            );
+            None
+        }
+    }
+}
+
 /// The names a view file's function can have: the file's own, and for a multi-word
 /// kind its lowerCamelCase spelling too (`not_found` or `notFound`).
 fn view_fn_names(kind: Kind) -> &'static [&'static str] {
@@ -4293,6 +4312,8 @@ fn view_fn_names(kind: Kind) -> &'static [&'static str] {
         Kind::Error => &["error"],
         Kind::Layout => &["layout"],
         Kind::NotFound => &["not_found", "notFound"],
+        Kind::App => &["app"],
+        Kind::Splash => &["splash"],
         _ => &[],
     }
 }

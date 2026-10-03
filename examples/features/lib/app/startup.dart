@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:features/auth.dart';
+import 'package:fespalier/fespalier.dart' show dataCacheStorage;
 import 'package:fespalier/startup.dart';
 import 'package:fespalier_flags/fespalier_flags.dart';
+import 'package:fespalier_storage/fespalier_storage.dart';
 
 /// What the app asked this file for, in order. The tests read it to check when each runs.
 final List<String> startupLog = [];
@@ -44,6 +46,8 @@ Future<List<Override>> startup() async {
     flagSource.overrideWithValue(
       const ConstFlags({'labs': bool.fromEnvironment('FEATURES_LABS')}),
     ),
+    // fespalier_storage: the team's dataCache in shared preferences (null if they could not open: nothing saved).
+    dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
   ];
 }
 

@@ -22,6 +22,10 @@ Since 0.9.0 `features` also carries the state packages. **`/labs`** is behind a 
 off, `startup.dart` reads `--dart-define=FEATURES_LABS=true`, and `test/flags_test.dart` turns the flag on and off with a
 `FakeFlags` while the menu is open and while the app is on `/labs`. Read it with `fespalier-guards`
 (`references/feature-flags.md`).
+**The team is kept in shared preferences** (`fespalier_storage`): `teams/$teamId/data.dart` has a `dataCache`, `startup.dart`
+opens a `PrefsDataStorage`, and `test/offline_test.dart` restarts the app over the same in-memory store (`fakePrefsStore`):
+the first frame of the second start is the saved team, a start that cannot load it shows the saved one, and `clear()` is a
+sign-out. Read it with `fespalier-data` (`references/storage-backends.md`).
 
 The examples nest `material_ui`'s `MaterialApp` around `MaterialApp.router` in their tests
 so they pass on both go_router 17 and 18; with the root `transition.dart` that `fsp init`

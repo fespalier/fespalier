@@ -9,6 +9,7 @@ import 'package:features/app/startup.dart';
 import 'package:features/auth.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
+import 'package:fespalier_storage/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -32,6 +33,8 @@ bool signedIn(WidgetTester tester) => ProviderScope.containerOf(
 
 void main() {
   setUp(startupLog.clear);
+  // startup() opens shared preferences for the team's dataCache: an in-memory store for each test.
+  setUp(fakePrefsStore);
   tearDown(() => sessionStore = const SessionStore());
 
   testWidgets('run(): the zone, then startup in it, then the observers', (

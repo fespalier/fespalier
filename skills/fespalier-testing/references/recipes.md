@@ -316,6 +316,35 @@ expect(currentLocation(tester), '/');
 [flagSource.overrideWithValue(FakeFlags({'labs': true}))]` makes a flagged route render instead of being skipped.
 - Without an override every flag is its fallback, so tests written before a flag existed see it off.
 
+## A cache on disk and its restart (since 0.9.0)
+
+With `package:fespalier_storage`, `fakePrefsStore()` makes shared_preferences an in-memory store for the test and
+`memoryBox()` a Hive box in memory (no file, no plugin). Two `open()`s in one test share the store: that is a restart. The
+page, `startup()` and these tests are a compiling starter in
+[`fespalier-data`](../../fespalier-data/references/storage-backends.md), whose `test/offline_test.dart` has all of the
+following as running samples.
+
+```dart
+setUp(fakePrefsStore); // also before a test that boots AppMain.run() or AppMain.root(): startup() opens a storage
+
+await pumpRouter(tester, AppRoutes.router(initialLocation: '/products/1'),
+    overrides: [dataCacheStorage.overrideWithValue(await PrefsDataStorage.open())]);
+await tester.pumpWidget(const SizedBox()); // the restart
+await pumpRouter(tester, AppRoutes.router(initialLocation: '/products/1'),
+    overrides: [dataCacheStorage.overrideWithValue(await PrefsDataStorage.open())], settle: false);
+expect(find.text('Product 1'), findsOneWidget); // the first frame: the saved value, not loading.dart
+```
+
+- **`open()` with no `fakePrefsStore()` is `null`** (a debug line says `Bad state: The SharedPreferencesAsyncPlatform
+instance must be set.`): nothing is saved and a restart test shows `loading.dart`.
+- `HiveDataStorage.open()` needs `path_provider`, which a widget test lacks (`null`, `MissingPluginException`): use
+  `HiveDataStorage(await memoryBox())` and `addTearDown(box.close)`. A platform channel call of your own needs
+  `tester.runAsync`.
+- A `ProviderContainer` of your own disposes on a zero-duration timer: `await tester.pump(const Duration(milliseconds: 1))`
+  before the test ends.
+- `await tester.pump(const Duration(days: 3))` expires an entry under the fake clock (the storage reads `clock.now()`).
+- `storage.clear()` is what a sign-out does; the next start shows nothing.
+
 ## DPoP proofs (since 0.9.0)
 
 With `package:fespalier_sign_keypair`, a test needs no secure element: `DpopProof(signer: FakeDpopSigner())` is a proof

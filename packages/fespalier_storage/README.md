@@ -1,6 +1,6 @@
 # fespalier_storage
 
-Storages for the [`dataCache`](https://github.com/fespalier/fespalier#a-cache-that-survives-a-restart-datacache) of
+Storages for the [`dataCache`](https://github.com/fespalier/fespalier#a-cache-on-disk-fespalier_storage) of
 [fespalier](https://github.com/fespalier/fespalier) (since 0.9.0): `PrefsDataStorage` on shared_preferences and
 `HiveDataStorage` on hive_ce. A route's `data.dart` with a `dataCache` is saved when it loads, and at the next start the
 saved value is **on the first frame** while the fresh one loads. Both keep to a size budget, evict the entries written

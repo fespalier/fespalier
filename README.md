@@ -2650,62 +2650,12 @@ ProviderScope(
 
 - `MemoryDataStorage` keeps values while the app runs: a page that is disposed and opened again
   shows its last value at once. For the web, examples and tests; it does not survive a restart.
-- A `Storage<String, String>` on disk survives one. `riverpod_sqflite`'s `JsonSqFliteStorage`
-  plugs in as it is. To write your own, import `package:fespalier/persist.dart` (it re-exports
-  `Storage`, `PersistedData`, `StorageOptions` and `StorageCacheTime`, so the app needn't depend
-  on `hooks_riverpod` directly). One over `shared_preferences`, whose synchronous `getString`
-  shows the saved value on the **first frame**:
-
-```dart
-// lib/prefs_storage.dart
-import 'dart:convert';
-
-import 'package:fespalier/persist.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-final class PrefsStorage extends Storage<String, String> {
-  PrefsStorage(this._prefs);
-
-  final SharedPreferencesWithCache _prefs;
-
-  @override
-  PersistedData<String>? read(String key) {
-    final saved = _prefs.getString(key);
-    if (saved == null) return null;
-    final json = jsonDecode(saved) as Map<String, Object?>;
-    final expireAt = json['expireAt'] as String?;
-    return PersistedData(
-      json['data']! as String,
-      destroyKey: json['destroyKey'] as String?,
-      expireAt: expireAt == null ? null : DateTime.parse(expireAt),
-    );
-  }
-
-  @override
-  Future<void> write(String key, String value, StorageOptions options) {
-    final age = options.cacheTime.duration;
-    return _prefs.setString(
-      key,
-      jsonEncode({
-        'data': value,
-        'destroyKey': options.destroyKey,
-        'expireAt': age == null
-            ? null
-            : DateTime.now().toUtc().add(age).toIso8601String(),
-      }),
-    );
-  }
-
-  @override
-  Future<void> delete(String key) => _prefs.remove(key);
-
-  @override
-  void deleteOutOfDate() {} // read() of an expired value is dropped by Riverpod
-}
-
-// main(): final prefs = await SharedPreferencesWithCache.create(cacheOptions: const SharedPreferencesWithCacheOptions());
-//         … dataCacheStorage.overrideWithValue(PrefsStorage(prefs))
-```
+- A `Storage<String, String>` on disk survives one. `fespalier_storage` (since 0.9.0,
+  [below](#a-cache-on-disk-fespalier_storage)) is a tested one on shared_preferences or Hive, with a size
+  budget; `riverpod_sqflite`'s `JsonSqFliteStorage` plugs in as it is. To write your own, import
+  `package:fespalier/persist.dart` (it re-exports `Storage`, `PersistedData`, `StorageOptions` and
+  `StorageCacheTime`, so the app needn't depend on `hooks_riverpod` directly); `read` returns a
+  `PersistedData<String>?`.
 
 A storage whose `read` is synchronous gives the saved value on the first frame. A `Future<Storage>`
 is fine too: there is one `loading.dart` frame, then the saved value.
@@ -2758,6 +2708,130 @@ expect(find.text('Coffee beans, 500 g'), findsOneWidget); // the saved product, 
 `MemoryDataStorage` is synchronous, so a test leaves no pending future, and
 `await tester.pump(const Duration(days: 3))` expires a value under the fake clock. `examples/shop`
 has the two tests (`test/freshness_test.dart`).
+
+#### A cache on disk: fespalier_storage
+
+Since 0.9.0. `package:fespalier_storage` is a tested `Storage<String, String>` for the [`dataCache`](#a-cache-that-survives-a-restart-datacache)
+above, on **shared_preferences** (`PrefsDataStorage`) or **Hive** (`HiveDataStorage`), with a size budget. A route's
+value is saved when it loads, and at the next start it is **on the first frame** while the fresh one loads. fespalier's
+core depends on neither plugin, the generated code is the same bytes, and an app that does not depend on this package
+pays nothing for it.
+
+Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if they are
+the same repository dependency, as for [`fespalier_flags`](#feature-flags-fespalier_flags)):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1
+  fespalier_storage:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_storage
+      ref: v0.8.1
+```
+
+<!-- x-release-please-end -->
+
+It needs Dart 3.8 and Flutter 3.32 or newer. Open a storage in `startup()` and give it to `dataCacheStorage`:
+
+```dart
+// lib/app/startup.dart
+Future<List<Override>> startup() async => [
+  dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
+];
+```
+
+`open()` is awaited there, so the first frame is the app: `startup()` costs one frame behind `splash.dart` (or the native
+splash), and no more. `read()` is then a synchronous map lookup and a header parse, so Riverpod's `persist` gives the saved
+value to the first `build`. A `startup()` that prefers no extra frame can pass the `Future` itself
+(`dataCacheStorage.overrideWithValue(PrefsDataStorage.open())`): one `loading.dart` frame, then the saved value. `open()`
+returns `null` (and prints a debug line) when the store cannot open, and `dataCacheStorage` takes `null` as "save
+nothing": a cache never stops an app from starting.
+
+| What                 | `PrefsDataStorage`                                                                      | `HiveDataStorage`                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Backend              | `SharedPreferencesWithCache`; localStorage on the web                                   | a `hive_ce` `Box<String>`; IndexedDB on the web                                       |
+| Reads                | synchronous                                                                             | synchronous once the box is open                                                      |
+| Default budget       | 1,000,000 characters, 200 entries                                                       | 4,000,000 characters, 1,000 entries                                                   |
+| Plugins              | `shared_preferences` (most apps have it)                                                | none: `hive_ce` is pure Dart; `path_provider` for the cache directory                 |
+| Where on disk        | the platform's preferences, beside the app's own keys                                   | `getApplicationCacheDirectory()` (OS-purgeable, not backed up), none on the web       |
+| Pick it when         | a few small values; on the web localStorage is about 5 MB per origin, shared            | more or larger values; opening reads the whole box, so `maxSize` also bounds startup  |
+
+**The budget.** `maxSize` is in `String.length` units (UTF-16 code units, what browsers count localStorage in), keys and
+headers included, and `maxEntries` is a count. Over either, the entries **written longest ago** go first, ties by key
+(deterministic: a function of the store and `clock.now()`, with no timer and no background sweep). A route's value is
+written each time it is fetched fresh, so what is read is rewritten; reads never write. A value too large for `maxSize`
+is not saved: it fails with `DataEntryTooLarge`, which fespalier prints after `could not save`, and the route works.
+Expired and unreadable entries are deleted once, when the storage is made. A web `localStorage` that is full is a
+`QuotaExceededError` on the write: the entry is dropped and fespalier prints "could not save"; keep `maxSize` well below,
+or use Hive.
+
+**Versioning, corrupt entries, sign-out.**
+
+- `DataCache(version: '2')` is Riverpod's `destroyKey`: stored in the entry's header and compared on read, so another
+  version is deleted, not decoded. The format of the storage itself is versioned by the entry's first line, `fsc1`; a
+  later format is read as unreadable, which for a cache means "dropped and loaded again". To drop everything on an app
+  update, call `clear()` (the app knows its build number); there is no storage-wide version key.
+- **An unreadable entry** (not written by this storage, a truncated one, a value of another type under its key) is dropped
+  at start and counted, and at a read it is a `FormatException` that fespalier prints (`dropped it`) and deletes. Hive
+  also truncates a corrupt frame when it opens a box.
+- **`clear()` is what a sign-out does**: the next start shows nothing from the previous user. It deletes every entry
+  this storage saved, indexed or not, and nothing else. Values in memory are the app's to invalidate (watch
+  [`authUserId`](#the-session) in a `data.dart` that belongs to the user).
+- **One writer per store.** A background isolate that writes the same store makes the in-memory index stale until the
+  next start; the index is never saved, so it cannot disagree with the store across a crash.
+
+In debug (`debugPrint`, nothing in a release build), next to fespalier's two lines above:
+
+- `fespalier_storage: dropped <n> saved entries that could not be read`, at start
+- `fespalier_storage: could not open shared preferences, so nothing is saved: <error>` and
+  `fespalier_storage: could not open the Hive box <name>, so nothing is saved: <error>`, when `open()` returns `null`
+- a value over the budget, after fespalier's `could not save:`:
+  `fespalier_storage: the value saved under <key> is <size> characters, more than maxSize (<maxSize>), so it was not saved`
+
+A budget of 0 or less throws an `ArgumentError` (`Invalid argument (maxSize): must be more than 0: 0`), and so does a
+`SharedPreferencesWithCache` with an allowList given to `PrefsDataStorage(prefs)`: the keys of a `dataCache` are not known
+in advance, so use `PrefsDataStorage.open()`. The messages are in the
+[troubleshooting skill](skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md).
+
+**Testing.** `package:fespalier_storage/testing.dart` has `fakePrefsStore([values])`, which makes shared_preferences an
+in-memory store for the test, and `memoryBox()`, a Hive box in memory (no file, no plugin) for
+`HiveDataStorage(await memoryBox())`. Two `open()`s in one test share the store: that is a restart.
+
+```dart
+setUp(fakePrefsStore); // also before a test that boots AppMain.run() or AppMain.root(): startup() opens a storage
+
+testWidgets('the saved team is on the first frame of the next start', (tester) async {
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/teams/acme/members'),
+    overrides: [dataCacheStorage.overrideWithValue(await PrefsDataStorage.open())],
+  );
+  await tester.pumpWidget(const SizedBox()); // the restart
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/teams/acme/members'),
+    overrides: [dataCacheStorage.overrideWithValue(await PrefsDataStorage.open())],
+    settle: false, // one frame, no more
+  );
+  expect(find.text('Team ACME'), findsOneWidget); // the saved team, not loading.dart
+});
+```
+
+Without `fakePrefsStore()`, `open()` finds no platform and returns `null` (a debug line says
+`Bad state: The SharedPreferencesAsyncPlatform instance must be set.`): the cache is silently off. `examples/features`
+carries it: `teams/$teamId/data.dart` has a `dataCache`, `startup.dart` opens a `PrefsDataStorage`, and
+`test/offline_test.dart` is this test.
+
+**Not built.** A storage-wide version key; a byte-exact size (units are `String.length`); multi-isolate safety;
+encryption (open your own Hive box with a cipher and pass it to `HiveDataStorage(box)`). `riverpod_sqflite` still plugs in as
+it is.
 
 ### Typed helpers on the route
 
@@ -5944,6 +6018,11 @@ Since 0.9.0 `examples/features` has `/labs`, a route behind a feature flag ([`fe
 run with `--dart-define=FEATURES_LABS=true` to see it. `test/flags_test.dart` turns the flag on and off with a
 `FakeFlags` while the menu is open and while the app is on `/labs`.
 
+Since 0.9.0 it also keeps its team in shared preferences ([`fespalier_storage`](#a-cache-on-disk-fespalier_storage)):
+`teams/$teamId/data.dart` has a `dataCache`, `startup.dart` opens a `PrefsDataStorage`, and `test/offline_test.dart`
+restarts the app over the same store: the first frame of the second start is the saved team, not `loading.dart`, and a
+start that cannot load it shows the saved one.
+
 `examples/tabs` also keeps its manifest in a library of its own (`output_manifest:
 lib/app.routes.g.dart`, with `Review` metas that `lib/main.dart` never imports), and its tests
 restore the selected tab, a background tab's stack and a page's state after a simulated
@@ -5976,6 +6055,7 @@ packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, 
 packages/fespalier_auth/   signed-in routes: session provider, guards, authenticated client, OpenID Connect
 packages/fespalier_sign_keypair/   DPoP proofs for fespalier_auth, signed by a device key (Secure Enclave, AndroidKeyStore)
 packages/fespalier_flags/   feature flags: FlagSource, flag() providers that guards watch, flagGuard (since 0.9.0)
+packages/fespalier_storage/   dataCache storages on shared_preferences and Hive, with a size budget (since 0.9.0)
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed

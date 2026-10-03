@@ -225,7 +225,10 @@
         "packages/fespalier/lib/persist.dart",
         "packages/fespalier/lib/src/action_form.dart",
         "packages/fespalier/lib/src/optimistic.dart",
-        "cli/src/forms.rs"
+        "cli/src/forms.rs",
+        "README.md#A cache on disk: fespalier_storage",
+        "packages/fespalier_storage/README.md",
+        "packages/fespalier_storage/lib/fespalier_storage.dart"
       ]
     },
     "fespalier-layouts": {
@@ -292,6 +295,7 @@
         "packages/fespalier_sign_keypair/lib/testing.dart",
         "README.md#Testing flagged routes",
         "packages/fespalier_flags/lib/testing.dart",
+        "packages/fespalier_storage/lib/testing.dart",
         "README.md#Maestro flows (`fsp maestro`)",
         "config:semantics_ids",
         "packages/fespalier/lib/src/web_semantics.dart",

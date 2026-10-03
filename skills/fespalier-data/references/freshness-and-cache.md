@@ -191,10 +191,14 @@ final connectivityOverride = reconnectSignal.overrideWith(
   shape: values of another version are dropped, not decoded.
 - **Nothing is saved until the app gives a storage**: `dataCacheStorage` is `null` by default. Override it in the
   `ProviderScope`: `dataCacheStorage.overrideWithValue(MemoryDataStorage())` (in memory: a page opened again shows its
-  last value; no restart), or a `Storage<String, String>` on disk (`riverpod_sqflite`'s `JsonSqFliteStorage` plugs in
-  as it is). To write one, `import 'package:fespalier/persist.dart';` (it re-exports Riverpod's `Storage`,
-  `PersistedData`, `StorageOptions` and `StorageCacheTime`). A storage whose `read` is synchronous gives the saved
-  value on the **first frame**; a `Future<Storage>` costs one `loading.dart` frame.
+  last value; no restart), or a `Storage<String, String>` on disk. **`fespalier_storage` (since 0.9.0) is one**: `PrefsDataStorage`
+  on shared_preferences or `HiveDataStorage` on hive_ce, with a size budget and eviction, in
+  [`storage-backends.md`](storage-backends.md). `riverpod_sqflite`'s `JsonSqFliteStorage` plugs in as it is. To write
+  your own, `import 'package:fespalier/persist.dart';` (it re-exports Riverpod's `Storage`, `PersistedData`,
+  `StorageOptions` and `StorageCacheTime`). A storage whose `read` is synchronous gives the saved value on the
+  **first frame**; a `Future<Storage>` costs one `loading.dart` frame. Before 0.9.0 the docs showed a hand-written
+  `PrefsStorage` over `SharedPreferencesWithCache` here; the package is that, tested, with a budget, eviction, an
+  unreadable-entry rule and `open()` that never throws.
 - **Built on Riverpod 3's experimental offline persistence** (`persist()`), in one runtime file
   (`packages/fespalier/lib/src/data_cache.dart`). A Riverpod 3.x minor could change that API.
 - **The state at a start** is `AsyncLoading(value: saved)` with `isFromCache == true` and the fetch already running.
@@ -316,3 +320,5 @@ void main() {
 - A reload starts on a frame and its value shows on the next: `pump()` a few times, or `pumpAndSettle` when nothing waits
   on a real delay.
 - `await tester.pump(const Duration(days: 3))` expires a `MemoryDataStorage` value under the fake clock.
+- A restart on disk (since 0.9.0): `fakePrefsStore()` in `setUp`, then two `PrefsDataStorage.open()`s in one test
+  (`storage-backends.md`).

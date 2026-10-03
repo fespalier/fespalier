@@ -14,6 +14,9 @@ dependencies:
   # Feature flags (since 0.9.0): /labs is behind one (lib/flags.dart).
   fespalier_flags:
     path: ../../packages/fespalier_flags
+  # A saved team (shared preferences) for the next start (since 0.9.0): teams/$teamId/data.dart.
+  fespalier_storage:
+    path: ../../packages/fespalier_storage
 
 dev_dependencies:
   flutter_lints: ^6.0.0
@@ -23,7 +26,7 @@ dev_dependencies:
   # flutter's; the tests nest both so they pass on either.
   material_ui: ^1.0.0
 
-# fespalier_flags depends on fespalier by git, as an app does; here both are the checkout's.
+# fespalier_flags and fespalier_storage depend on fespalier by git, as an app does; here both are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier

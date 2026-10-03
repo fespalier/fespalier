@@ -2928,13 +2928,22 @@ not read.
 setting, every [localized spelling](#localized-paths) (mixed spellings too), non-ASCII paths and `%`
 escapes decoded, and a trailing slash or `//` ignored. A `redirect.dart` is a route; a
 `not_found.dart` is not. The query and the fragment are not looked at (`go_router` ignores
-parameters it doesn't know). Segment **types are not checked**: `/products/abc` matches
-`products/$id` although `id` is an `int` (it reaches the route, which shows not-found by itself, the
-way [an unparsable segment](#segment-types) does). A path that interpolates is checked up to its first
-`$`: `'/products/$id'` is fine and `'/prodcts/$id'` is flagged (`no route starts with ...`), but
-nothing after a `$` is, since the value can be empty or hold a `/`. A path that is not an app path is
-skipped: a relative one (`'details'`), a URL (`'https://...'`), one that starts with an interpolation
-(`'$base/x'`), one with a `..` or a malformed `%` escape.
+parameters it doesn't know). Since 0.8.0 segment **types are checked** too, the way the route
+parses them: `/products/abc` reaches `products/$id`, and with `{required int id}` that route shows
+not-found, so it is reported (``` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found [unknown_path] ```).
+As in `AppRoutes.match`, the first route that fits the path decides: a later route that would take
+the text is never tried. `int`, `double`, `num`, `bool`, `DateTime` (its start only) and
+[enum](#enum-segments) segments are checked, and each part of a typed
+[catch-all](#typed-catch-alls). An enum's message lists its values and suggests the nearest. A part
+with a space or other non-ASCII whitespace is not judged (Dart trims it before parsing). The message
+names the route by its canonical pattern, also for a [localized](#localized-paths) spelling. An app
+with `unknown_path: error` that passed on 0.7.0 can fail on 0.8.0 for a path that always showed
+not-found. A path that interpolates is checked up to its first `$`: `'/products/$id'` is fine and
+`'/prodcts/$id'` is flagged (`no route starts with ...`), and the complete segments before the `$`
+are checked by type too (`'/products/abc/$tab'` is reported), but nothing after a `$` is, since the
+value can be empty or hold a `/`. A path that is not an app path is skipped: a relative one
+(`'details'`), a URL (`'https://...'`), one that starts with an interpolation (`'$base/x'`), one
+with a `..` or a malformed `%` escape.
 
 **Which files.** Every Dart file under `lib/` (the app folder included), except the generated ones
 (`*.g.dart`, the `output` and `output_manifest`) and folders that start with a `.`. Not `test/`,

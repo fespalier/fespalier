@@ -19,6 +19,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+ctrlc = { version = "3.5", features = ["termination"] }
 codespan-reporting = "0.13"
 heck = "0.5"
 minijinja = { version = "2", features = ["loader"] }
@@ -28,6 +29,10 @@ serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml_ng = "0.10.0"
 tree-sitter = "0.26"
 tree-sitter-dart = "0.2"
+
+# `killpg` for `fsp dev`: the crate `ctrlc` already pulls in on Unix, at the same version.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", default-features = false, features = ["signal"] }
 
 [dev-dependencies]
 tempfile = "3"

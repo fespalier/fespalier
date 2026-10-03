@@ -7,7 +7,7 @@
 )]
 
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
@@ -2261,4 +2261,768 @@ fn telemetry_stop_and_reset_run_down_with_the_grafana_profile() {
         err,
         "docker compose down failed (exit 4); its output is above\n"
     );
+}
+
+// --- fsp dev, fsp build and fsp run ------------------------------------------------------------
+//
+// A stand-in `flutter` (a shell script) speaks the daemon protocol of `flutter run --machine`,
+// so these run the real `fsp` against it. Nothing sleeps to wait for something: each test polls
+// the log it is waiting on, with a limit.
+
+/// A folder with a stand-in `flutter` in `bin/`. It logs its arguments to `$FAKE_LOG`; `devices`
+/// prints `$FAKE_DEVICES` (one Android emulator by default), `build` exits `$FAKE_BUILD_EXIT`,
+/// and `run` answers the daemon protocol: `app.restart` is logged (`app.restart fullRestart=...`)
+/// and answered, `app.stop` is logged and ends it. With `$FAKE_RUN_EXIT` set it exits at once.
+#[cfg(unix)]
+fn fake_flutter(root: &Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = root.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let path = bin.join("flutter");
+    fs::write(
+        &path,
+        r#"#!/bin/sh
+echo "$*" >> "$FAKE_LOG"
+ONE='[{"name":"Fake","id":"fake-1","isSupported":true,"targetPlatform":"android-arm64","emulator":true}]'
+case "$1" in
+  devices) printf '%s\n' "${FAKE_DEVICES:-$ONE}"; exit 0 ;;
+  build) exit "${FAKE_BUILD_EXIT:-0}" ;;
+  run) ;;
+  *) exit 9 ;;
+esac
+echo '[{"event":"daemon.connected","params":{"version":"0.6.1","pid":1}}]'
+echo '[{"event":"app.start","params":{"appId":"a1","deviceId":"fake-1","directory":"'"$PWD"'","supportsRestart":true,"launchMode":"run","mode":"debug"}}]'
+echo '[{"event":"app.debugPort","params":{"appId":"a1","port":1,"wsUri":"ws://127.0.0.1:1/x=/ws"}}]'
+echo '[{"event":"app.devTools","params":{"appId":"a1","uri":"http://127.0.0.1:2/?uri=ws://127.0.0.1:1/x=/ws"}}]'
+echo '[{"event":"app.started","params":{"appId":"a1"}}]'
+echo '[{"event":"app.log","params":{"appId":"a1","log":"hello from the app"}}]'
+[ -n "$FAKE_RUN_EXIT" ] && exit "$FAKE_RUN_EXIT"
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+  case "$line" in
+    *'"app.restart"'*)
+      full=false
+      case "$line" in *'"fullRestart":true'*) full=true ;; esac
+      echo "app.restart fullRestart=$full" >> "$FAKE_LOG"
+      echo "[{\"id\":$id,\"result\":{\"code\":0,\"message\":\"Reloaded 1 of 9 libraries\"}}]" ;;
+    *'"app.stop"'*)
+      echo "app.stop" >> "$FAKE_LOG"
+      echo "[{\"id\":$id,\"result\":true}]"
+      echo '[{"event":"app.stop","params":{"appId":"a1"}}]'
+      exit 0 ;;
+  esac
+done
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    bin
+}
+
+/// `PATH` with the stand-in first.
+#[cfg(unix)]
+fn path_with(bin: &Path) -> String {
+    format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    )
+}
+
+/// A project with a pubspec that has a `fespalier:` section of `tasks_yaml` (indented under
+/// `tasks:`), and a stand-in flutter. Returns the project folder (the stand-in's folder is in it).
+#[cfg(unix)]
+fn dev_project(tasks_yaml: &str) -> tempfile::TempDir {
+    let dir = project();
+    if !tasks_yaml.is_empty() {
+        fs::write(
+            dir.path().join("pubspec.yaml"),
+            format!("name: demo\nfespalier:\n  tasks:\n{tasks_yaml}"),
+        )
+        .unwrap();
+    }
+    fake_flutter(dir.path());
+    dir
+}
+
+/// A running `fsp dev --no-tui`: stdin is a pipe, stderr a file.
+#[cfg(unix)]
+struct Dev {
+    child: Child,
+    stdin: Option<std::process::ChildStdin>,
+    err: std::path::PathBuf,
+    log: std::path::PathBuf,
+}
+
+#[cfg(unix)]
+impl Dev {
+    fn start(root: &Path, args: &[&str]) -> Dev {
+        Dev::start_with(root, args, &[], true)
+    }
+
+    fn start_with(root: &Path, args: &[&str], env: &[(&str, &str)], keep_stdin: bool) -> Dev {
+        let err = root.join("dev.err");
+        let log = root.join("flutter.log");
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .arg("dev")
+            .arg("--no-tui")
+            .args(args)
+            .env("PATH", path_with(&root.join("bin")))
+            .env("FAKE_LOG", &log)
+            .envs(env.iter().copied())
+            .env_remove("NO_COLOR")
+            .current_dir(root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(fs::File::create(&err).unwrap())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take();
+        Dev {
+            child,
+            stdin: if keep_stdin { stdin } else { None },
+            err,
+            log,
+        }
+    }
+
+    fn err(&self) -> String {
+        fs::read_to_string(&self.err).unwrap_or_default()
+    }
+
+    fn flog(&self) -> String {
+        fs::read_to_string(&self.log).unwrap_or_default()
+    }
+
+    fn wait_until(&self, what: &str, mut done: impl FnMut() -> bool) {
+        let end = Instant::now() + Duration::from_secs(30);
+        while !done() {
+            assert!(
+                Instant::now() < end,
+                "timed out waiting for {what}\n--- fsp dev:\n{}\n--- flutter log:\n{}",
+                self.err(),
+                self.flog()
+            );
+            sleep(Duration::from_millis(20));
+        }
+    }
+
+    fn wait_err(&self, needle: &str) {
+        self.wait_until(&format!("`{needle}` on stderr"), || {
+            self.err().contains(needle)
+        });
+    }
+
+    fn wait_log(&self, needle: &str) {
+        self.wait_until(&format!("`{needle}` in the flutter log"), || {
+            self.flog().contains(needle)
+        });
+    }
+
+    /// Waits for fsp to be running the app and watching: ready for a change on disk.
+    fn wait_ready(&self) {
+        self.wait_err("[fsp] app running on");
+        self.wait_err("[fsp] watching lib/app/");
+    }
+
+    fn send(&mut self, line: &str) {
+        let stdin = self.stdin.as_mut().expect("stdin is open");
+        stdin.write_all(format!("{line}\n").as_bytes()).unwrap();
+        stdin.flush().unwrap();
+    }
+
+    fn signal(&self, name: &str) {
+        let status = Command::new("kill")
+            .arg(format!("-{name}"))
+            .arg(self.child.id().to_string())
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
+
+    /// The exit code, once fsp has exited.
+    fn wait_exit(&mut self) -> Option<i32> {
+        let end = Instant::now() + Duration::from_secs(30);
+        loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                return status.code();
+            }
+            assert!(
+                Instant::now() < end,
+                "fsp dev did not exit\n--- fsp dev:\n{}\n--- flutter log:\n{}",
+                self.err(),
+                self.flog()
+            );
+            sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for Dev {
+    fn drop(&mut self) {
+        if self.child.try_wait().ok().flatten().is_none() {
+            // Let it stop what it started; a test that failed must not leave processes behind.
+            let _ = Command::new("kill")
+                .arg(self.child.id().to_string())
+                .status();
+            let end = Instant::now() + Duration::from_secs(15);
+            while self.child.try_wait().ok().flatten().is_none() && Instant::now() < end {
+                sleep(Duration::from_millis(20));
+            }
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+/// The lines of a log that start with `prefix`.
+#[cfg(unix)]
+fn log_calls(log: &str, prefix: &str) -> Vec<String> {
+    log.lines()
+        .filter(|l| l.starts_with(prefix))
+        .map(str::to_string)
+        .collect()
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_with_no_config_runs_flutter_and_follows_the_files() {
+    let dir = dev_project("");
+    let root = dir.path();
+    let mut d = Dev::start(root, &[]);
+    d.wait_ready();
+    d.wait_err("[flutter] hello from the app");
+    // It asked flutter for the devices, then ran it on the one device.
+    let log = d.flog();
+    let devices = log.lines().position(|l| l == "devices --machine").unwrap();
+    let run = log
+        .lines()
+        .position(|l| l == "run --machine -d fake-1")
+        .unwrap();
+    assert!(devices < run, "{log}");
+    let err = d.err();
+    assert!(err.contains("[fsp] app running on Fake (fake-1)"), "{err}");
+    assert!(err.contains("[fsp] DevTools: http://127.0.0.1:2/"), "{err}");
+    assert!(
+        err.contains("[fsp] keys: r reload · R restart · q quit (type the letter, then Enter)"),
+        "{err}"
+    );
+
+    // A new route changes app.g.dart: a hot restart.
+    fs::create_dir_all(root.join("lib/app/about")).unwrap();
+    fs::write(root.join("lib/app/about/page.dart"), page("AboutPage")).unwrap();
+    d.wait_log("app.restart fullRestart=true");
+    d.wait_err("[fsp] ✓ hot restart in");
+    assert!(
+        d.err()
+            .contains("[fsp] hot restart: lib/app.g.dart changed")
+    );
+
+    // A change to a page's body leaves app.g.dart alone: a hot reload.
+    fs::write(
+        root.join("lib/app/page.dart"),
+        format!("{}\n// a change\n", page("HomePage")),
+    )
+    .unwrap();
+    d.wait_log("app.restart fullRestart=false");
+    d.wait_err("[fsp] ✓ hot reload in");
+    assert!(d.err().contains("(Reloaded 1 of 9 libraries)"));
+
+    // A key typed as a line.
+    d.send("r");
+    d.wait_until("a second reload", || {
+        log_calls(&d.flog(), "app.restart fullRestart=false").len() == 2
+    });
+
+    d.send("q");
+    d.wait_log("app.stop");
+    assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
+    assert!(d.err().contains("stopping flutter…"));
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_passes_what_follows_the_dashes_to_flutter_and_skips_the_device_listing() {
+    let dir = dev_project("");
+    let mut d = Dev::start(dir.path(), &["--", "-d", "chrome", "--flavor", "x"]);
+    d.wait_err("[fsp] app running on");
+    let log = d.flog();
+    assert!(log_calls(&log, "devices").is_empty(), "{log}");
+    assert_eq!(
+        log_calls(&log, "run"),
+        ["run --machine -d chrome --flavor x"],
+        "{log}"
+    );
+    d.send("q");
+    assert_eq!(d.wait_exit(), Some(0));
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_with_two_devices_and_no_terminal_says_which_flag_to_use() {
+    let dir = dev_project("");
+    let two = r#"[{"name":"macOS","id":"macos","isSupported":true,"targetPlatform":"darwin"},{"name":"Chrome","id":"chrome","isSupported":true,"targetPlatform":"web-javascript"}]"#;
+    let mut d = Dev::start_with(dir.path(), &[], &[("FAKE_DEVICES", two)], true);
+    assert_eq!(d.wait_exit(), Some(1));
+    let err = d.err();
+    assert!(
+        err.contains(
+            "more than one device: pick one with `fsp dev -- -d <id>` (ids: macos, chrome)"
+        ),
+        "{err}"
+    );
+    assert!(log_calls(&d.flog(), "run").is_empty(), "{}", d.flog());
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_with_no_supported_device_says_so() {
+    let dir = dev_project("");
+    let none =
+        r#"[{"name":"Linux","id":"linux","isSupported":false,"targetPlatform":"linux-x64"}]"#;
+    let mut d = Dev::start_with(dir.path(), &[], &[("FAKE_DEVICES", none)], true);
+    assert_eq!(d.wait_exit(), Some(1));
+    assert!(
+        d.err().contains("no device to run on: `flutter devices` lists none that this project supports. Start an emulator or a simulator, connect a phone, or enable a platform with `flutter create --platforms=web .`"),
+        "{}",
+        d.err()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failing_before_step_stops_dev_with_its_exit_code() {
+    let dir = dev_project("    dev:\n      before: exit 3\n");
+    let mut d = Dev::start(dir.path(), &[]);
+    assert_eq!(d.wait_exit(), Some(3));
+    let err = d.err();
+    assert!(err.contains("› exit 3\n"), "{err}");
+    assert!(
+        err.contains("`before` step 1 of `dev` failed (exit 3): exit 3"),
+        "{err}"
+    );
+    assert!(
+        log_calls(&d.flog(), "run").is_empty(),
+        "flutter was started"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn before_steps_run_in_order_and_with_the_tasks_env() {
+    let dir = dev_project(
+        "    dev:\n      env:\n        GREETING: hello\n      before:\n        - echo \"one $GREETING\" >> order.txt\n        - [sh, -c, 'echo two >> order.txt']\n",
+    );
+    let mut d = Dev::start(dir.path(), &["--", "-d", "x"]);
+    d.wait_err("[fsp] app running on");
+    d.send("q");
+    assert_eq!(d.wait_exit(), Some(0));
+    assert_eq!(
+        fs::read_to_string(dir.path().join("order.txt")).unwrap(),
+        "one hello\ntwo\n"
+    );
+    let err = d.err();
+    assert!(
+        err.contains("› echo \"one $GREETING\" >> order.txt\n"),
+        "{err}"
+    );
+    assert!(err.contains("› sh -c 'echo two >> order.txt'\n"), "{err}");
+}
+
+/// A `with` command is stopped with fsp, and so is what it started: the group is stopped, not
+/// only the shell.
+#[cfg(unix)]
+#[test]
+fn a_with_command_and_what_it_started_stop_with_dev() {
+    let dir = dev_project(
+        "    dev:\n      with:\n        ticker: 'sleep 300 & echo $! > ticker.pid; echo hello; wait'\n",
+    );
+    let mut d = Dev::start(dir.path(), &["--", "-d", "x"]);
+    d.wait_err("[ticker] hello");
+    d.wait_ready();
+    let pid = fs::read_to_string(dir.path().join("ticker.pid"))
+        .unwrap()
+        .trim()
+        .to_string();
+    let alive = |pid: &str| {
+        Command::new("kill")
+            .args(["-0", pid])
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    };
+    assert!(alive(&pid), "the process is not running to begin with");
+    d.send("q");
+    assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
+    d.wait_until("the process the command started to be gone", || {
+        !alive(&pid)
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn a_with_command_that_exits_is_reported_and_dev_keeps_running() {
+    let dir = dev_project("    dev:\n      with:\n        once: 'echo bye; exit 4'\n");
+    let mut d = Dev::start(dir.path(), &["--", "-d", "x"]);
+    d.wait_err("[fsp] [once] exited (exit 4); fsp dev keeps running");
+    d.wait_err("[once] bye");
+    d.wait_err("[fsp] app running on");
+    d.send("q");
+    assert_eq!(d.wait_exit(), Some(0));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_sigterm_stops_flutter_first_and_exits_130() {
+    let dir = dev_project("");
+    let mut d = Dev::start(dir.path(), &[]);
+    d.wait_ready();
+    d.signal("TERM");
+    d.wait_log("app.stop");
+    assert_eq!(d.wait_exit(), Some(130), "{}", d.err());
+}
+
+#[cfg(unix)]
+#[test]
+fn flutter_exiting_by_itself_ends_dev_with_its_code_and_skips_after() {
+    let dir = dev_project("    dev:\n      after: touch after.marker\n");
+    let mut d = Dev::start_with(
+        dir.path(),
+        &["--", "-d", "x"],
+        &[("FAKE_RUN_EXIT", "1")],
+        true,
+    );
+    assert_eq!(d.wait_exit(), Some(1), "{}", d.err());
+    assert!(
+        d.err().contains("flutter run exited (exit 1)"),
+        "{}",
+        d.err()
+    );
+    assert!(!dir.path().join("after.marker").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn after_runs_when_dev_is_stopped_by_the_user() {
+    let dir = dev_project("    dev:\n      after: echo done >> after.marker\n");
+    let mut d = Dev::start(dir.path(), &["--", "-d", "x"]);
+    d.wait_err("[fsp] app running on");
+    d.send("q");
+    assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
+    assert_eq!(
+        fs::read_to_string(dir.path().join("after.marker")).unwrap(),
+        "done\n"
+    );
+    assert!(
+        d.err().contains("› echo done >> after.marker"),
+        "{}",
+        d.err()
+    );
+}
+
+/// An end of input (a closed pipe, `</dev/null`, an IDE's run panel) does not quit.
+#[cfg(unix)]
+#[test]
+fn dev_keeps_running_when_stdin_ends() {
+    let dir = dev_project("");
+    let mut d = Dev::start_with(dir.path(), &[], &[], false);
+    d.wait_ready();
+    fs::create_dir_all(dir.path().join("lib/app/about")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/about/page.dart"),
+        page("AboutPage"),
+    )
+    .unwrap();
+    d.wait_log("app.restart fullRestart=true");
+    d.wait_err("[fsp] ✓ hot restart in");
+    d.signal("TERM");
+    assert_eq!(d.wait_exit(), Some(130), "{}", d.err());
+}
+
+#[cfg(unix)]
+#[test]
+fn an_initial_generation_error_with_no_output_stops_dev() {
+    let dir = dev_project("");
+    fs::write(
+        dir.path().join("lib/app/page.dart"),
+        "// no widget in here\n",
+    )
+    .unwrap();
+    let mut d = Dev::start(dir.path(), &[]);
+    assert_eq!(d.wait_exit(), Some(1));
+    let err = d.err();
+    assert!(
+        err.contains(
+            "fsp dev needs lib/app.g.dart: fix the errors above, then run `fsp dev` again"
+        ),
+        "{err}"
+    );
+    assert!(d.flog().is_empty(), "flutter was started: {}", d.flog());
+}
+
+#[cfg(unix)]
+#[test]
+fn an_initial_generation_error_with_an_output_warns_and_goes_on() {
+    let dir = dev_project("");
+    // The first run writes the output ...
+    let mut first = Dev::start(dir.path(), &["--", "-d", "x"]);
+    first.wait_ready();
+    first.send("q");
+    assert_eq!(first.wait_exit(), Some(0));
+    assert!(dir.path().join("lib/app.g.dart").is_file());
+    // ... which a later run keeps when the app has an error.
+    fs::write(
+        dir.path().join("lib/app/page.dart"),
+        "// no widget in here\n",
+    )
+    .unwrap();
+    let mut d = Dev::start(dir.path(), &["--", "-d", "x"]);
+    d.wait_err("[fsp] app running on");
+    let err = d.err();
+    assert!(
+        err.contains("warning: lib/app.g.dart is out of date until the errors above are fixed; fsp dev keeps watching"),
+        "{err}"
+    );
+    d.send("q");
+    assert_eq!(d.wait_exit(), Some(0));
+}
+
+// --- `fsp run` and `fsp build` -----------------------------------------------------------------
+
+/// Runs `fsp` with the stand-in flutter first on PATH; returns the exit code, stdout and stderr.
+#[cfg(unix)]
+fn fsp_task(root: &Path, args: &[&str], env: &[(&str, &str)]) -> (Option<i32>, String, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_fsp"))
+        .args(args)
+        .env("PATH", path_with(&root.join("bin")))
+        .env("FAKE_LOG", root.join("flutter.log"))
+        .envs(env.iter().copied())
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    (
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+#[cfg(unix)]
+#[test]
+fn run_lists_the_tasks_on_stdout() {
+    let dir = dev_project("    codegen: dart run build_runner build -d\n");
+    let (code, out, _) = fsp_task(dir.path(), &["run"], &[]);
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        out,
+        "dev      flutter run   (fsp dev)\nbuild    flutter build (fsp build <target>)\ncodegen  dart run build_runner build -d\n"
+    );
+    // With no section at all: the built-ins.
+    let dir = dev_project("");
+    let (code, out, _) = fsp_task(dir.path(), &["run"], &[]);
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        out,
+        "dev    flutter run   (fsp dev)\nbuild  flutter build (fsp build <target>)\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn run_runs_a_task_with_the_args_and_passes_its_exit_code_on() {
+    let dir = dev_project(
+        "    codegen: [sh, -c, 'echo \"$@\" > codegen.out; echo \"$GREETING\" >> codegen.out; exit 4', sh]\n    greet:\n      run: echo\n      env:\n        GREETING: hi\n",
+    );
+    let (code, out, err) = fsp_task(dir.path(), &["run", "codegen", "--", "--x", "a b"], &[]);
+    assert_eq!(code, Some(4), "{err}");
+    assert!(out.is_empty() && err.is_empty(), "{out}{err}");
+    assert_eq!(
+        fs::read_to_string(dir.path().join("codegen.out")).unwrap(),
+        "--x a b\n\n"
+    );
+    // A shell string gets the args appended as quoted words, and the task's env.
+    let (code, out, _) = fsp_task(dir.path(), &["run", "greet", "--", "a b", "$HOME"], &[]);
+    assert_eq!(code, Some(0));
+    assert_eq!(out, "a b $HOME\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn run_says_what_is_wrong_with_the_name() {
+    let dir = dev_project("    codegen: echo hi\n");
+    let (code, _, err) = fsp_task(dir.path(), &["run", "nope"], &[]);
+    assert_eq!(code, Some(1));
+    assert_eq!(
+        err,
+        "no task `nope` in `fespalier: tasks:` of pubspec.yaml; the tasks are: dev, build, codegen\n"
+    );
+    let dir = dev_project("");
+    let (code, _, err) = fsp_task(dir.path(), &["run", "nope"], &[]);
+    assert_eq!(code, Some(1));
+    assert_eq!(
+        err,
+        "no task `nope` in `fespalier: tasks:` of pubspec.yaml; there are none yet (README, \"Tasks: commands around `flutter run`\")\n"
+    );
+    let (code, _, err) = fsp_task(dir.path(), &["run", "dev"], &[]);
+    assert_eq!(code, Some(1));
+    assert_eq!(
+        err,
+        "`dev` is the task `fsp dev` runs, with the watcher, the device and hot reload: run `fsp dev`\n"
+    );
+    let (code, _, err) = fsp_task(dir.path(), &["run", "build"], &[]);
+    assert_eq!(code, Some(1));
+    assert_eq!(
+        err,
+        "`build` is the task `fsp build <target>` runs, after `fsp gen`: run `fsp build web` (or apk, ipa, macos, ...)\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_mistake_in_tasks_is_reported_by_run_and_not_by_gen() {
+    let dir = dev_project("    codegen: 5\n");
+    let (code, _, err) = fsp_task(dir.path(), &["run", "codegen"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.starts_with("`fespalier.tasks.codegen` must be a command (a string, or a list of words) or a map with `run`, `before`, `with`, `after`, `env` and `hot_reload`, got `5`"),
+        "{err}"
+    );
+    let (code, _, err) = fsp_task(dir.path(), &["gen"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn build_generates_first_then_runs_before_flutter_build_and_after() {
+    let dir = dev_project(
+        "    build:\n      before: echo before >> \"$FAKE_LOG\"\n      after: echo after >> \"$FAKE_LOG\"\n",
+    );
+    let (code, _, err) = fsp_task(dir.path(), &["build", "web", "--", "--release"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    // The output is written first (`gen`'s own line), then the steps and flutter.
+    assert!(err.starts_with("✓ 1 route → lib/app.g.dart\n"), "{err}");
+    assert!(dir.path().join("lib/app.g.dart").is_file());
+    let log = fs::read_to_string(dir.path().join("flutter.log")).unwrap();
+    assert_eq!(log, "before\nbuild web --release\nafter\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn build_passes_a_failure_on_and_skips_after() {
+    let dir = dev_project("    build:\n      after: echo after >> \"$FAKE_LOG\"\n");
+    let (code, _, _) = fsp_task(dir.path(), &["build", "apk"], &[("FAKE_BUILD_EXIT", "2")]);
+    assert_eq!(code, Some(2));
+    let log = fs::read_to_string(dir.path().join("flutter.log")).unwrap();
+    assert_eq!(log, "build apk\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn build_sets_the_target_for_its_commands() {
+    let dir = dev_project("    build:\n      before: echo \"$FSP_BUILD_TARGET\" > target.out\n");
+    let (code, _, err) = fsp_task(dir.path(), &["build", "ipa"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(
+        fs::read_to_string(dir.path().join("target.out")).unwrap(),
+        "ipa\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn build_stops_when_the_generation_fails() {
+    let dir = dev_project("");
+    fs::write(dir.path().join("lib/app/page.dart"), "// no widget\n").unwrap();
+    let (code, _, err) = fsp_task(dir.path(), &["build", "web"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.contains("1 error(s); lib/app.g.dart left unchanged"),
+        "{err}"
+    );
+    assert!(!dir.path().join("flutter.log").exists(), "flutter was run");
+}
+
+#[cfg(unix)]
+#[test]
+fn fsp_in_a_command_is_this_fsp() {
+    let dir = dev_project("    check:\n      before: fsp check\n      run: [fsp, routes]\n");
+    let (code, out, err) = fsp_task(dir.path(), &["run", "check"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        err.contains("› fsp check\n") && err.contains("✓ 1 route, no errors"),
+        "{err}"
+    );
+    assert!(out.contains('/'), "{out}");
+}
+
+#[cfg(unix)]
+#[test]
+fn dry_runs_print_the_plan_and_run_nothing() {
+    let dir = dev_project(
+        "    dev:\n      before: dart run build_runner build -d\n      with:\n        build_runner: dart run build_runner watch -d\n      env:\n        API_URL: http://localhost:8080\n    codegen:\n      run: dart run build_runner build -d\n      after: echo done\n",
+    );
+    let root = dir.path().display().to_string();
+    let (code, out, err) = fsp_task(dir.path(), &["dev", "--dry-run", "--", "-d", "chrome"], &[]);
+    assert_eq!(code, Some(0));
+    assert!(out.is_empty());
+    assert_eq!(
+        err,
+        format!(
+            "\
+fsp dev in {root}
+  gen     lib/app.g.dart, kept current while it runs
+  before  dart run build_runner build -d
+  with    build_runner: dart run build_runner watch -d
+  run     flutter run --machine -d chrome
+  after   (nothing)
+  env     API_URL=http://localhost:8080
+  hot reload after a save; hot restart when lib/app.g.dart changes
+"
+        )
+    );
+    let (code, _, err) = fsp_task(
+        dir.path(),
+        &["build", "web", "--dry-run", "--", "--release"],
+        &[],
+    );
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        err,
+        format!(
+            "\
+fsp build web in {root}
+  gen     lib/app.g.dart
+  before  (nothing)
+  with    (nothing)
+  run     flutter build web --release
+  after   (nothing)
+  env     (nothing)
+"
+        )
+    );
+    let (code, _, err) = fsp_task(
+        dir.path(),
+        &["run", "codegen", "--dry-run", "--", "--x"],
+        &[],
+    );
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        err,
+        format!(
+            "\
+fsp run codegen in {root}
+  before  (nothing)
+  with    (nothing)
+  run     dart run build_runner build -d --x
+  after   echo done
+  env     (nothing)
+"
+        )
+    );
+    // Nothing ran: no flutter, no output written.
+    assert!(!dir.path().join("flutter.log").exists());
+    assert!(!dir.path().join("lib/app.g.dart").exists());
 }

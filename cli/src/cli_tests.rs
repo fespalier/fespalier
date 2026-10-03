@@ -232,3 +232,89 @@ fn new_observe_scaffolds_a_working_observe_dart() {
     // It is not written over: the file is yours once it exists.
     assert!(scaffold::new_route(dir.path(), &a).is_err());
 }
+
+// --- `fsp init` and the commented `tasks:` example (since 0.9.0) -------------------------------
+
+fn pubspec_of(dir: &std::path::Path) -> String {
+    fs::read_to_string(dir.join("pubspec.yaml")).unwrap()
+}
+
+/// `fsp init` appends a block that is only comments, once, and what the pubspec means does not
+/// change.
+#[test]
+fn init_appends_a_commented_tasks_example_once() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("pubspec.yaml"),
+        "name: demo\nversion: 1.0.0",
+    )
+    .unwrap();
+    let before = crate::config::Pubspec::load(dir.path()).unwrap();
+    crate::init::run(dir.path()).unwrap();
+    let after_first = pubspec_of(dir.path());
+    assert!(
+        after_first.starts_with(
+            "name: demo\nversion: 1.0.0\n\n# fsp dev reads tasks: from here (since 0.9.0;"
+        ),
+        "{after_first}"
+    );
+    assert!(
+        after_first.ends_with("#     codegen: dart run build_runner build -d # fsp run codegen\n")
+    );
+    let after = crate::config::Pubspec::load(dir.path()).unwrap();
+    assert_eq!(before.name, after.name);
+    assert_eq!(before.config, after.config);
+    // The next run finds the marker and leaves the file alone.
+    crate::init::run(dir.path()).unwrap();
+    assert_eq!(pubspec_of(dir.path()), after_first);
+}
+
+/// A second `fespalier:` key would be a duplicate, so with one there the example is not added.
+#[test]
+fn init_leaves_a_pubspec_with_a_fespalier_section_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let yaml = "name: demo\nfespalier:\n  format: false\n";
+    fs::write(dir.path().join("pubspec.yaml"), yaml).unwrap();
+    crate::init::run(dir.path()).unwrap();
+    assert_eq!(pubspec_of(dir.path()), yaml);
+}
+
+/// Uncommenting the block gives a pubspec that parses and whose tasks are valid.
+#[test]
+fn the_tasks_example_is_valid_once_uncommented() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("pubspec.yaml"), "name: demo\n").unwrap();
+    crate::init::run(dir.path()).unwrap();
+    let text = pubspec_of(dir.path());
+    let (head, block) = text
+        .split_once(crate::init::TASKS_MARKER)
+        .expect("the marker");
+    let block = block.split_once('\n').unwrap().1;
+    let uncommented: String = block
+        .lines()
+        .map(|l| {
+            format!(
+                "{}\n",
+                l.strip_prefix("# ")
+                    .or_else(|| l.strip_prefix('#'))
+                    .unwrap_or(l)
+            )
+        })
+        .collect();
+    let yaml = format!("{}\n{uncommented}", head.trim_end());
+    let pubspec = crate::config::Pubspec::parse(&yaml).unwrap();
+    let tasks = crate::tasks::Tasks::from_config(&pubspec.config).unwrap();
+    let dev = tasks.dev();
+    assert_eq!(dev.before.len(), 1);
+    assert_eq!(dev.with.len(), 1);
+    assert_eq!(dev.with[0].0, "build_runner");
+    assert_eq!(tasks.names(), ["dev", "build", "codegen"]);
+}
+
+/// The template is comments only, after one blank line.
+#[test]
+fn the_init_template_is_comments_only() {
+    let block = crate::templates::render("init/pubspec_tasks.yaml", ());
+    assert!(block.starts_with('\n') && block.ends_with('\n'));
+    assert!(block.lines().skip(1).all(|l| l.starts_with('#')), "{block}");
+}

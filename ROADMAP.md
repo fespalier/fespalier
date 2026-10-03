@@ -7,18 +7,11 @@ it ships.
 
 ## In progress (0.9.0)
 
-`fsp dev`, `fsp build` and `fsp run` (tasks in `pubspec.yaml`, a terminal UI) are merged and ship
-in 0.9.0. Next, as Flutter packages next to `fespalier_otel`:
+`fsp dev`, `fsp build` and `fsp run` (tasks in `pubspec.yaml`, a terminal UI), and the Flutter
+packages `fespalier_auth` (sessions, guards, OpenID Connect and Keycloak, `dio`) and
+`fespalier_sign_keypair` (DPoP, device-bound tokens) ship in 0.9.0. Next, as a Flutter
+package next to `fespalier_otel`:
 
-- **`fespalier_auth`.** One session provider (restoring, signed out, signed in) restored in
-  `startup.dart`, guard helpers (`requireSignedIn`, `requireRole`, `redirectIfSignedIn`) that return
-  to the typed location after sign-in, tokens in secure storage, and a refresh that happens on
-  demand and is shared by every waiting request (no timers). A pure-Dart OpenID Connect backend with
-  PKCE and Keycloak defaults, an authenticated `http` client and an optional `dio` integration;
-  Firebase, Supabase and password sign-in as recipes.
-- **`fespalier_sign_keypair`.** Device-bound sign-in with vaam-apps/flutter-sign-keypair: a key
-  that never leaves the Secure Enclave or AndroidKeyStore, and DPoP (RFC 9449) proofs on every
-  request, which Keycloak 26.4 accepts.
 - **`fespalier_image`.** A widget that requests the image size its layout needs, from a configured
   set of widths, through a URL builder for imgproxy and EmgR, Cloudinary, imgix, Thumbor, a template
   or a list of sized URLs. No signing key in the app. `RouteLink` can warm the destination's image.

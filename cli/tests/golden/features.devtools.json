@@ -1100,7 +1100,7 @@
       "section": null,
       "traced": true
     },
-    "d71": {
+    "d72": {
       "kind": "data",
       "file": "wiki/$$article/data.dart",
       "route": "WikiRoute",
@@ -1143,17 +1143,17 @@
       "route": "ShopRoute",
       "pattern": "/shops/:shop"
     },
-    "g69@69": {
-      "kind": "guard",
-      "file": "vault/guard.dart",
-      "route": "VaultRoute",
-      "pattern": "/vault"
-    },
     "g6@6": {
       "kind": "guard",
       "file": "(members)/admin/guard.dart",
       "route": "AdminRoute",
       "pattern": "/admin"
+    },
+    "g70@70": {
+      "kind": "guard",
+      "file": "vault/guard.dart",
+      "route": "VaultRoute",
+      "pattern": "/vault"
     },
     "r33": {
       "kind": "redirect",

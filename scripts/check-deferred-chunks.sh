@@ -86,12 +86,12 @@ done
 # `fsp size` on the same build: within budget, and the same attribution as the marker strings.
 fsp_project=(--project "$work/examples/$name")
 "$fsp" size "${fsp_project[@]}" --check || status=1
-"$fsp" size "${fsp_project[@]}" --json >"$work/size.jsonl"
+"$fsp" size "${fsp_project[@]}" --json > "$work/size.jsonl"
 for arg in "$@"; do
   pattern="${arg%%=*}"
   marker="${arg#*=}"
   for file in $(grep -lF -- "$marker" "${parts[@]}" | xargs -n1 basename); do
-    if ! python3 - "$work/size.jsonl" "$pattern" "$file" <<'PY'
+    if ! python3 - "$work/size.jsonl" "$pattern" "$file" << 'PY'; then
 import json
 import sys
 
@@ -101,7 +101,6 @@ with open(path, encoding="utf-8") as lines:
 route = next((r for r in rows if r["kind"] == "route" and r["pattern"] == pattern), None)
 sys.exit(0 if route is not None and file in route["parts"] else 1)
 PY
-    then
       echo "FAIL: '$marker' is in $file, which $pattern does not load according to fsp size" >&2
       status=1
     else

@@ -350,6 +350,34 @@ fn deferred_follows_a_route_dart() {
 }
 
 #[test]
+fn freshness_follows_a_route_dart() {
+    let mut sim = Sim::new(&app(60), NO_CONFIG, 10);
+    sim.same("the first run");
+    sim.write(
+        "s1/route.dart",
+        "const freshness = Freshness(staleTime: Duration(minutes: 1));",
+    );
+    let r = sim.same("a route.dart with a freshness");
+    assert!(
+        r.ok && r.wrote && r.outputs[0].as_ref().unwrap().contains("freshData(ref, _i"),
+        "{r:?}"
+    );
+    sim.write(
+        "s1/route.dart",
+        "const freshness = Freshness(staleTime: Duration(minutes: 5));",
+    );
+    assert!(sim.same("another duration").ok);
+    sim.write("s1/route.dart", "const freshness = Duration(minutes: 5);");
+    assert!(!sim.same("a freshness that isn't a Freshness").ok);
+    sim.remove("s1/route.dart");
+    let r = sim.same("removing it");
+    assert!(
+        r.ok && !r.outputs[0].as_ref().unwrap().contains("freshData"),
+        "{r:?}"
+    );
+}
+
+#[test]
 fn route_dart_extra_codec_and_extra_on_layouts_follow() {
     let mut sim = Sim::new(&app(60), NO_CONFIG, 10);
     sim.same("the first run");

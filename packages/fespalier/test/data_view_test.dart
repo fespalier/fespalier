@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/persist.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -433,6 +434,132 @@ void main() {
       expect(find.text('page 1'), findsOneWidget);
       await ms(tester, 20);
       expect(find.text('page 2'), findsOneWidget);
+    });
+  });
+
+  group('keepDataOnError and a value from the cache (since 0.8.0)', () {
+    Widget keepView(
+      FutureProvider<int> provider, {
+      bool keepDataOnError = true,
+      bool keepPrevious = true,
+    }) => MaterialApp(
+      home: DataView<int>(
+        watch: (ref) => ref.watch(provider),
+        refresh: (ref) => ref.invalidate(provider),
+        data: (d) => Text('data $d'),
+        loading: () => const Text('loading'),
+        error: (e, st, retry) => Text('error $e'),
+        keepPrevious: keepPrevious,
+        keepDataOnError: keepDataOnError,
+      ),
+    );
+
+    testWidgets('a failed reload keeps the page on its data', (tester) async {
+      final flaky = Flaky(0);
+      var fail = false;
+      final p = FutureProvider.autoDispose((ref) async {
+        final value = await flaky();
+        if (fail) throw Exception('offline');
+        return value;
+      });
+      await tester.pumpWidget(
+        ProviderScope(retry: (_, _) => null, child: keepView(p)),
+      );
+      await ms(tester, 20);
+      expect(find.text('data 1'), findsOneWidget);
+      fail = true;
+      ProviderScope.containerOf(
+        tester.element(find.byType(DataView<int>)),
+      ).invalidate(p);
+      await ms(tester, 20);
+      expect(find.text('data 1'), findsOneWidget);
+      expect(find.textContaining('error'), findsNothing);
+    });
+
+    testWidgets('and shows the error when there is nothing to show', (
+      tester,
+    ) async {
+      final flaky = Flaky(1);
+      final p = FutureProvider.autoDispose((ref) => flaky());
+      await tester.pumpWidget(
+        ProviderScope(retry: (_, _) => null, child: keepView(p)),
+      );
+      await ms(tester, 20);
+      expect(find.text('error Exception: boom 1'), findsOneWidget);
+    });
+
+    testWidgets('without it a failed reload shows the error', (tester) async {
+      final flaky = Flaky(0);
+      var fail = false;
+      final p = FutureProvider.autoDispose((ref) async {
+        final value = await flaky();
+        if (fail) throw Exception('offline');
+        return value;
+      });
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: (_, _) => null,
+          child: keepView(p, keepDataOnError: false),
+        ),
+      );
+      await ms(tester, 20);
+      fail = true;
+      ProviderScope.containerOf(
+        tester.element(find.byType(DataView<int>)),
+      ).invalidate(p);
+      await ms(tester, 20);
+      expect(find.text('error Exception: offline'), findsOneWidget);
+    });
+
+    testWidgets('a value restored from the cache shows with keepPrevious: false, '
+        'a reload without one still loads', (tester) async {
+      final storage = MemoryDataStorage()
+        ..write('fespalier:n', '41', const StorageOptions());
+      final gate = Completer<int>();
+      final cached = cachedData<int>(
+        (ref) => gate.future,
+        cache: DataCache<int>(encode: (v) => '$v', decode: int.parse),
+        name: 'n',
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: (_, _) => null,
+          overrides: [dataCacheStorage.overrideWithValue(storage)],
+          child: MaterialApp(
+            home: DataView<int>(
+              watch: (ref) => ref.watch(cached),
+              refresh: (ref) => ref.invalidate(cached),
+              data: (d) => Text('data $d'),
+              loading: () => const Text('loading'),
+              error: (e, st, retry) => Text('error $e'),
+              keepPrevious: false,
+              keepDataOnError: true,
+            ),
+          ),
+        ),
+      );
+      expect(find.text('data 41'), findsOneWidget);
+      gate.complete(42);
+      await ms(tester, 20);
+      expect(find.text('data 42'), findsOneWidget);
+
+      // No cache involved: keepPrevious false still shows loading on a refresh.
+      final flaky = Flaky(0);
+      final p = FutureProvider.autoDispose((ref) => flaky());
+      await tester.pumpWidget(
+        ProviderScope(
+          key: UniqueKey(),
+          retry: (_, _) => null,
+          child: keepView(p, keepPrevious: false),
+        ),
+      );
+      await ms(tester, 20);
+      ProviderScope.containerOf(
+        tester.element(find.byType(DataView<int>)),
+      ).invalidate(p);
+      await ms(tester, 1);
+      expect(find.text('loading'), findsOneWidget);
+      await ms(tester, 20);
     });
   });
 }

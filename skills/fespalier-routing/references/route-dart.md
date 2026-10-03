@@ -1,7 +1,7 @@
-# `route.dart`: case, trailing slashes, localized paths, `nest`, `linkable`, `remount` and `deferred`
+# `route.dart`: case, trailing slashes, localized paths, `nest`, `linkable`, `remount`, `deferred` and `freshness`
 
-As of v0.4.0 (`linkable` since 0.5.0, `remount` since 0.6.0, `deferred` since 0.7.0). A `route.dart`
-holds up to six declarations, and `fsp` reads them **from the source**; it never imports or runs the file, so
+As of v0.4.0 (`linkable` since 0.5.0, `remount` since 0.6.0, `deferred` since 0.7.0, `freshness` since 0.8.0).
+A `route.dart` holds up to seven declarations, and `fsp` reads them **from the source**; it never imports or runs the file, so
 each must be a literal:
 
 ```dart
@@ -11,13 +11,20 @@ const nest = false;                          // this folder's route only (0.4.0)
 const linkable = false;                      // this folder and below, for `fsp links` (0.5.0)
 const remount = Remount.onSegments;          // this folder and below: when a page starts again (0.6.0)
 const deferred = true;                       // this folder and below: pages load their code on demand (0.7.0)
+const freshness = Freshness(staleTime: Duration(minutes: 5)); // this folder and below: when data loads again (0.8.0)
 ```
 
 A `route.dart` adds and removes no route, and may hold any one of them alone.
-`caseSensitive`, `paths`, `linkable`, `remount` and `deferred` need no page beside it; `nest` does. One
-with none of the six is an error (since 0.7.0 its text names all six; on 0.6.0 it names five, without
-`deferred`, on 0.5.0 four and on 0.4.0 the first two):
-``expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;` ``.
+`caseSensitive`, `paths`, `linkable`, `remount`, `deferred` and `freshness` need no page beside it; `nest` does. One
+with none of the seven is an error (since 0.8.0 its text names all seven; on 0.7.0 it names six, without
+`freshness`, on 0.6.0 five, on 0.5.0 four and on 0.4.0 the first two):
+``expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;`, `const deferred = true;` or `const freshness = Freshness(staleTime: Duration(minutes: 5));` ``.
+
+`freshness` (since 0.8.0) is the one that is not a literal: it is a `Freshness(...)` call that `fsp` never runs and
+Dart type-checks. It is the default of every function-form `data()` at and below the folder (a section's included);
+the nearest `route.dart` wins and a `data.dart`'s own `freshness` wins over all. A selector, a provider form and a
+`Stream` below are skipped silently, and one that covers no `data.dart` is a warning. `dataCache` is not allowed
+here. See `fespalier-data`, `references/freshness-and-cache.md`.
 
 ## Trailing slashes
 
@@ -550,6 +557,9 @@ byte-identical code.**
 - **Tests.** `pumpRouter` loads the deferred code first (in `runAsync`), so a deferred page is in the
   first settled frame. A test that pumps its own router calls
   `await tester.runAsync(AppRoutes.loadDeferred);` first (`fespalier-testing`).
+- **What each chunk costs** (since 0.8.0): `fsp size` after `flutter build web` reports each deferred
+  route's own and shared bytes and holds them to budgets (`size:` in the pubspec); see `fespalier`,
+  `references/cli-and-config.md`.
 - **Not built:** deferring a layout, a `const preload = true;`, a cap on parallel loads, and
   `deferred: auto`. Don't defer the landing page.
 - **Errors** (texts in `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`): a

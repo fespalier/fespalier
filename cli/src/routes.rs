@@ -12,7 +12,7 @@
 //!  "folder","presentation","groups":[…],"layouts":[…],
 //!  "tabs":[{"layout","index","branch"}],"data_keys":[…]|null,"meta":"…"|null,
 //!  "catch_all":{"name","optional"}|null,"remount":"on_segments","deferred":true,
-//!  "paths":{"fr":"/produits/:id"},"nav":{"file","label"|null,"order"}}
+//!  "paths":{"fr":"/produits/:id"},"freshness":"…","cache":true,"nav":{"file","label"|null,"order"}}
 //! ```
 //!
 //! `file` and `meta` are relative to the project root (`meta` is the route's
@@ -22,7 +22,7 @@
 //! import prefix its file gave it); `remount` (since 0.6.0) is when the route's page gets a fresh state
 //! because its URL changed, `on_segments` or `on_location` (its folder's `route.dart`, else the pubspec's), and is only there
 //! for a route that has one; `deferred` (since 0.7.0) is `true` for a route whose page.dart is imported `deferred as` (its
-//! folder's `route.dart`, else the pubspec's), and is only there for such a route; `paths` is the route's path in each locale its folders spell it in, and only there for a route with a localized segment; `presentation` is `page`, `redirect`, `root` (on the root navigator, from a
+//! folder's `route.dart`, else the pubspec's), and is only there for such a route; `paths` is the route's path in each locale its folders spell it in, and only there for a route with a localized segment; `freshness` (since 0.8.0) is the file whose `Freshness` applies to the route's own data.dart (that data.dart, or the nearest `route.dart` above it), relative to the project root like `file`, and only there for such a route; `cache` (since 0.8.0) is `true` for a route whose own data.dart has a `dataCache`, and only there for such a route; `presentation` is `page`, `redirect`, `root` (on the root navigator, from a
 //! `navigator.dart`) or `custom` (a `present.dart` builds its page). `nav` (since 0.8.0) is
 //! the route's folder's `nav.dart` (relative to the project root; `label` is null when it is not a string literal),
 //! and is only there for a route whose folder has one.
@@ -108,6 +108,13 @@ pub fn json_lines(app: &App, app_dir: &str) -> Vec<String> {
             // Only for a route whose page.dart is deferred, so the rows of an app without any are as they were.
             if r.defers_page() {
                 row["deferred"] = true.into();
+            }
+            // Only for a route whose data has a `freshness` or a `dataCache` (since 0.8.0), so the rows of an app without any are as they were.
+            if let Some((_, file)) = r.data.as_ref().and_then(|d| d.freshness.as_ref()) {
+                row["freshness"] = format!("{app_dir}/{file}").into();
+            }
+            if r.data.as_ref().is_some_and(|d| d.cache) {
+                row["cache"] = true.into();
             }
             // Only for a route with a localized segment, so the rows of an app without any are as they were.
             if !i.paths.is_empty() {

@@ -54,6 +54,9 @@ struct FileCx {
     /// The route tree as JSON (`fsp routes --graph json`), as a Dart string literal: what
     /// `mount()` hands to DevTools, under `kFespalierDevTools`.
     devtools_tree: String,
+    /// What `_devToolsProviders` lists: each `data.dart`'s provider (or family) as the generated
+    /// code names it, and its DevTools site. Empty for an app with no `data.dart` to list.
+    devtools_providers: Vec<DevToolsProviderCx>,
     /// Whether the root matches paths by case: what the mount point is compared with.
     case_sensitive: bool,
     /// `keep_previous` from the config: the `DataViews`' `keepPrevious`.
@@ -64,6 +67,8 @@ struct FileCx {
     /// `semantics_ids` from the config: pages wear `Semantics(identifier:)`, and `mount()`
     /// turns the semantics tree on on the web.
     semantics_ids: bool,
+    /// `scroll_restoration` from the config: each page's view is wrapped in `RouteScrollMemory`.
+    scroll_restoration: bool,
     /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
     /// (`_keep`) that tells a parameter left out from one passed as `null`.
     copy_with: bool,
@@ -281,9 +286,18 @@ fn transition_cx(
     }
 }
 
+/// One line of `_devToolsProviders`: `_data13: 'd13'`.
+#[derive(Serialize)]
+struct DevToolsProviderCx {
+    expr: String,
+    site: String,
+}
+
 #[derive(Serialize)]
 struct ViewDataCx {
     provider: String,
+    /// The file's key in the DevTools tree (`d37`): what `watchData` is told.
+    site: String,
     /// A statement that invalidates it: `ref.invalidate(p)`, or through the runtime
     /// helper when `data.dart` selects a provider (see `invalidateSelected`).
     invalidate: String,
@@ -291,6 +305,9 @@ struct ViewDataCx {
     error: String,
     /// `_lib6`, for a deferred page: `DataView` loads its code in parallel with the data.
     library: Option<String>,
+    /// The data has a `freshness` or a `dataCache` (since 0.8.0): a failed reload keeps the
+    /// page on its value.
+    keep_data_on_error: bool,
 }
 
 #[derive(Serialize)]
@@ -461,6 +478,23 @@ struct ProviderCx {
     /// What the family is keyed by, as `traceData` is told: the key's parameter, `k` for a
     /// record of keys, or `null` with no keys.
     key_expr: String,
+    /// `_i13.freshness` (since 0.8.0): the provider wraps its value in `freshData`.
+    freshness: Option<String>,
+    /// The data.dart's `dataCache` (since 0.8.0): the provider is `cachedData[Family]`.
+    cache: Option<CacheCx>,
+}
+
+#[derive(Serialize)]
+struct CacheCx {
+    /// `_i13.dataCache`
+    expr: String,
+    /// The data.dart's folder relative to the app folder, as a Dart string literal.
+    name: String,
+    /// The family's key parameter as `create` takes it (`int id`, `({String shop, int id}) k`);
+    /// none without keys.
+    key_param: Option<String>,
+    /// The key's parts in path order: `[id]`, `[k.shop, k.id]`.
+    key_parts: String,
 }
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
@@ -542,11 +576,13 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
             .as_ref()
             .map(|c| format!("_i{}.extraCodec", c.import)),
         devtools_tree: dart_str(&devtools::compact(app, cfg)),
+        devtools_providers: devtools_providers(app),
         case_sensitive: app.routes[0].case_sensitive,
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
         semantics_ids: cfg.semantics_ids,
         menu: menu::build(app, diags),
+        scroll_restoration: cfg.scroll_restoration,
     };
     templates::render("app.g.dart", &cx)
 }
@@ -1043,11 +1079,13 @@ fn layout_cx(
             let (loading, error) = fallbacks(r);
             ViewDataCx {
                 provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+                site: devtools::site_data(id),
                 invalidate: invalidate_expr(app, id, r, d),
                 loading,
                 error,
                 // Layouts are never deferred.
                 library: None,
+                keep_data_on_error: keeps_data_on_error(d),
             }
         }),
         not_found: not_found_call(r),
@@ -1085,7 +1123,8 @@ fn with_sections(
             format!("{}(state).", ParamsFn::Layout(sid).name())
         };
         format!(
-            "SectionView(\n  watch: (ref) => ref.watch({}{}),\n  data: (s{sid}) => {},\n)",
+            "SectionView(\n  watch: (ref) => watchData(ref, '{}', {}{}),\n  data: (s{sid}) => {},\n)",
+            devtools::site_data(sid),
             provider_expr(sid, d),
             key_expr(app, r, d, &prefix),
             acc.replace('\n', "\n  ")
@@ -1312,10 +1351,12 @@ fn page_route(
     let library = r.defers_page().then(|| format!("_lib{id}"));
     let data = r.data.as_ref().map(|d| ViewDataCx {
         provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+        site: devtools::site_data(id),
         invalidate: invalidate_expr(app, id, r, d),
         loading: loading.clone(),
         error: error.clone(),
         library: library.clone(),
+        keep_data_on_error: keeps_data_on_error(d),
     });
     // A deferred page's class can't be named in a constant expression.
     let page_call = if library.is_some() {
@@ -1799,12 +1840,35 @@ fn invalidate_expr(app: &App, id: usize, r: &Route, d: &Data) -> String {
     )
 }
 
+/// The providers `_devToolsProviders` lists, in folder order: what `devToolsRegister` uses to
+/// find the record of a provider that was prefetched before any page watched it. A selector with
+/// keys is a closure (`_data14(v.id)` makes the provider), so it is left out: the runtime learns
+/// its family when a view first watches it.
+fn devtools_providers(app: &App) -> Vec<DevToolsProviderCx> {
+    app.routes
+        .iter()
+        .enumerate()
+        .filter_map(|(id, r)| r.data.as_ref().map(|d| (id, d)))
+        .filter(|(_, d)| !d.selector || d.keys.is_empty())
+        .map(|(id, d)| DevToolsProviderCx {
+            expr: provider_expr(id, d),
+            site: devtools::site_data(id),
+        })
+        .collect()
+}
+
 fn provider_expr(id: usize, d: &Data) -> String {
     if d.provider {
         format!("_i{}.data", d.import)
     } else {
         format!("_data{id}")
     }
+}
+
+/// A route whose data has a `freshness` or a `dataCache` keeps its page on the value it had when
+/// a reload fails (since 0.8.0).
+fn keeps_data_on_error(d: &Data) -> bool {
+    d.freshness.is_some() || d.cache
 }
 
 /// The names of a route's catch-all segments.
@@ -1949,6 +2013,8 @@ fn action_keys(a: &Action) -> Data {
         ty: String::new(),
         keys: a.keys.clone(),
         record: a.keys.len() > 1,
+        freshness: None,
+        cache: false,
     }
 }
 
@@ -2043,16 +2109,7 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
         let Some(name) = r.name.as_ref().filter(|_| r.is_route()) else {
             continue;
         };
-        let ranks: Vec<u8> = r
-            .url
-            .iter()
-            .filter_map(|s| match s {
-                Seg::Static(_) => Some(0),
-                Seg::Dynamic(_) => Some(1),
-                Seg::CatchAll(..) => Some(2),
-                Seg::Group(_) => None,
-            })
-            .collect();
+        let ranks = resolve::match_rank(&r.url);
         let parts: Vec<String> = r
             .url
             .iter()
@@ -2425,6 +2482,7 @@ fn key_params(app: &App, r: &Route, d: &Data) -> (String, Vec<String>) {
 fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx> {
     let d = r.data.as_ref().filter(|d| !d.provider)?;
     let (keys, args) = key_params(app, r, d);
+    let keys_decl = keys.clone();
     let (params, mut call_args) = if d.selector {
         (keys, vec![])
     } else {
@@ -2452,7 +2510,31 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
         selector: d.selector,
         site: devtools::site_data(id),
         key_expr: key_value(app, r, d),
+        freshness: d
+            .freshness
+            .as_ref()
+            .map(|(import, _)| format!("_i{import}.freshness")),
+        cache: d.cache.then(|| CacheCx {
+            expr: format!("_i{}.dataCache", d.import),
+            name: dart_str(&r.dir),
+            key_param: (!keys_decl.is_empty()).then(|| keys_decl.clone()),
+            key_parts: key_parts(app, r, d),
+        }),
     })
+}
+
+/// The parts a cached provider's key is saved by, in path order: `[id]`, `[k.shop, k.id]`.
+fn key_parts(app: &App, r: &Route, d: &Data) -> String {
+    let names: Vec<String> = data_params(app, r)
+        .into_iter()
+        .filter(|(n, _)| d.keys.contains(n))
+        .map(|(n, _)| n)
+        .collect();
+    let parts: Vec<String> = match (names.as_slice(), d.record) {
+        ([n], false) => vec![n.clone()],
+        (many, _) => many.iter().map(|n| format!("k.{n}")).collect(),
+    };
+    format!("[{}]", parts.join(", "))
 }
 
 /// The Dart expression that is a `data()` provider's key inside its `create` function, as
@@ -2526,6 +2608,12 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     }
     if r.data.is_some() {
         tags.push("data");
+    }
+    if r.data.as_ref().is_some_and(|d| d.freshness.is_some()) {
+        tags.push("fresh");
+    }
+    if r.data.as_ref().is_some_and(|d| d.cache) {
+        tags.push("cached");
     }
     if !r.actions.is_empty() {
         tags.push("action");

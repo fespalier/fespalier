@@ -85,8 +85,18 @@ fn reads_enums_and_exports() {
     let m = dart::parse(
         "import 'a.dart';\nexport 'b.dart' show B;\nexport \"c.dart\";\nenum Category { shoes, hats }\nenum Mode with M implements I { a(1), b(2); const Mode(this.n); final int n; }\nclass NotAnEnum {}\nenum _Private { x }\n",
     );
-    assert_eq!(m.enums, ["Category", "Mode", "_Private"]);
+    let names: Vec<&str> = m.enums.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, ["Category", "Mode", "_Private"]);
     assert_eq!(m.exports, ["b.dart", "c.dart"]);
+}
+
+#[test]
+fn reads_the_constants_of_an_enum() {
+    let m = dart::parse(
+        "enum Category { shoes, hats }\nenum Size { s(1), m(2); const Size(this.n); final int n; }\n",
+    );
+    assert_eq!(m.enums[0].values, ["shoes", "hats"]);
+    assert_eq!(m.enums[1].values, ["s", "m"]);
 }
 
 #[test]

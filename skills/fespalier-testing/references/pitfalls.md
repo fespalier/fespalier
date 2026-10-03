@@ -3,6 +3,9 @@
 As of v0.4.0, observed against go_router 18.0.2, hooks_riverpod 3.4.3 and Flutter
 3.47. Each one was hit while writing these skills.
 
+The traps of the route smoke tests `fsp test` writes (since 0.8.0: a periodic timer in a fake, a failure that
+names where the router ended) are in [`route-smoke-tests.md`](route-smoke-tests.md).
+
 ## `pumpRouter` and `currentLocation`
 
 ```dart
@@ -147,6 +150,24 @@ router.routerDelegate.currentConfiguration.last.matchedLocation   // '/products/
   runs `/products`' `data.dart` underneath. If your fakes delay, pump long enough
   for both, or `pumpAndSettle`.
 
+## Aging data and the cache (since 0.8.0)
+
+- `await tester.pump(const Duration(minutes: 6))` makes data with a `freshness` stale: `clock.now()` is
+  `testWidgets`' fake clock, and nothing starts a timer. A stale value loads again when something **reads** it,
+  so open the page, resume or fire a signal after pumping.
+- A resume is `tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive)` then `.resumed` (or
+  `container.read(appResumeSignal.notifier).fire()`); a reconnect is
+  `container.read(reconnectSignal.notifier).fire()`. A `ProviderContainer` test with no binding that builds a
+  `refetchOnResume` provider throws: use `testWidgets` or override
+  `appResumeSignal.overrideWith(RefetchSignal.new)`.
+- A reload starts on a frame and its value shows on the next: `pump()` a few times. A fake that delays needs
+  `pump(duration)` past it, as always.
+- Nothing is saved without a `dataCacheStorage` override. For a restart, give two `pumpRouter` calls the same
+  `MemoryDataStorage()` (and a `tester.pumpWidget(const SizedBox())` between them so the second boots afresh).
+  It is synchronous, so no future is left pending, and `pump(const Duration(days: 3))` expires a value.
+- An action's invalidation and a plain `ref.invalidate` load at once, `staleTime` or not.
+  See `fespalier-data`, `references/freshness-and-cache.md`.
+
 ## Hovering a `RouteLink`
 
 A `RouteLink` with `preload: Preload.intent` starts loading on a **mouse** hover, a
@@ -190,6 +211,64 @@ An unescaped `$id` in an import is a Dart string-interpolation error
 ```dart
 import 'package:my_app/app/products/\$id/page.dart';
 ```
+
+## Playing the browser's back button (scroll restoration, since 0.8.0)
+
+A widget test plays back and forward with a `pushRouteInformation` platform message, and
+`scroll_restoration` only restores when that message carries **the history state the app gave
+the platform**: a location alone is a link from outside, which starts at the top. Record
+the state from `routeInformationUpdated` and send it back:
+
+```dart
+// test/scroll_test.dart
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// What the app reported to the platform for each location, as the browser keeps it.
+Map<String, Object?> history(WidgetTester tester) {
+  final entries = <String, Object?>{};
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.navigation,
+    (call) async {
+      if (call.method == 'routeInformationUpdated') {
+        final args = call.arguments as Map<Object?, Object?>;
+        entries[args['uri']! as String] = args['state'];
+      }
+      return null;
+    },
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.navigation,
+      null,
+    ),
+  );
+  return entries;
+}
+
+Future<void> browserGoesTo(
+  WidgetTester tester,
+  Map<String, Object?> entries,
+  String location,
+) async {
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    'flutter/navigation',
+    const JSONMethodCodec().encodeMethodCall(
+      MethodCall('pushRouteInformation', {
+        'location': location,
+        'state': entries[location],
+      }),
+    ),
+    (_) {},
+  );
+  await tester.pumpAndSettle();
+}
+```
+
+Install the recorder **before** `pumpRouter`. Scroll with `tester.drag` and compare
+`ScrollableState.position.pixels` before and after. A router remembers where it went, so
+use a fresh one per test. `examples/features/test/scroll_restoration_test.dart` is the
+full version.
 
 ## State restoration needs your own app
 

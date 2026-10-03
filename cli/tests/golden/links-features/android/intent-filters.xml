@@ -24,6 +24,7 @@
     <data android:path="/docs" />
     <data android:pathPrefix="/docs/" />
     <data android:path="/docs/new" />
+    <data android:path="/feed" />
     <data android:path="/files" />
     <data android:pathPrefix="/files/" />
     <data android:path="/guide" />
@@ -96,6 +97,7 @@
     <data android:path="/docs" />
     <data android:pathPrefix="/docs/" />
     <data android:path="/docs/new" />
+    <data android:path="/feed" />
     <data android:path="/files" />
     <data android:pathPrefix="/files/" />
     <data android:path="/guide" />
@@ -169,6 +171,7 @@
     <data android:path="/docs" />
     <data android:pathPrefix="/docs/" />
     <data android:path="/docs/new" />
+    <data android:path="/feed" />
     <data android:path="/files" />
     <data android:pathPrefix="/files/" />
     <data android:path="/guide" />

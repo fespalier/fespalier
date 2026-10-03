@@ -75,6 +75,10 @@
             "caseSensitive": false
           },
           {
+            "/": "/feed",
+            "caseSensitive": false
+          },
+          {
             "/": "/files"
           },
           {

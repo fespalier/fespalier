@@ -76,8 +76,9 @@ then `[possible values: mermaid, dot, json]`; before 0.7.0 only the first two).
 localized route, `redirect`, `children`), a `shell` (a `layout.dart`, with its `items`) or `tabs` (with `branches`);
 `file` and `folder` are relative to the app folder. `sites` names each guard (`g5@6`), `redirect.dart`
 (`r32`), `data.dart` (`d37`, with `traced: false` when the file returns or selects a provider) and action
-(`a37_0`) by the string the generated code uses. It is what the DevTools extension reads, and `app.g.dart` embeds
-it (see the DevTools page of `fespalier-troubleshooting`).
+(`a37_0`) by the string the generated code uses (since 0.8.0 the views name it too: `watchData(ref, 'd37', …)`,
+and `app.g.dart` lists the providers by site in `_devToolsProviders`). It is what the DevTools extension reads, and
+`app.g.dart` embeds it (see the DevTools page of `fespalier-troubleshooting`).
 
 ### `fsp links` (since 0.5.0)
 

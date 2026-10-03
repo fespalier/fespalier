@@ -3237,7 +3237,11 @@ from. It answers:
 - **Is this data loading or cached?** The _Data_ tab lists the provider of every `data.dart` that was
   built: its file and route, the key (the segments and query it is keyed by), its state (`loading`,
   `data`, `error`, `stream` or `disposed`), how often it was built, when, and what it holds. **Invalidate**
-  builds one again.
+  builds one again. Since 0.8.0 a provider fespalier built also shows how many listeners it has, and
+  **Holders** lists who keeps it: the page's view, a section's view, a `prefetch` / `preload` handle (and
+  for how long), a `RouteLink` preload, and how many other listeners there are (`ref.watch` or `listen`
+  in your code, or another provider). A `data.dart` that returns or selects the app's own provider is
+  shown too, marked `app provider`, with the state the page saw (since 0.8.0).
 - **What did that action do?** The _Actions_ tab lists the runs of the `action.dart` functions, newest
   first: the function, its key and input, `running`, `done` or `error`, how long it took and what it
   returned or threw.
@@ -3267,17 +3271,22 @@ if (kFespalierDevTools) devToolsAttach(router);
 **What it costs.** Nothing in a release build: `kFespalierDevTools` is a `const` that is false there, the
 generated `app.g.dart` calls the extension's code only under `if (kFespalierDevTools)`, and
 the compiler removes the service extensions, the route tree and the code that serves them. The calls
-that follow the guards and the data are wrappers that return what they are given
-(`traceGuard(state, 'g5@6', guard(...))`, `traceData(ref, 'd37', id, data(...))`); in a release build they
-are the identity and the compiler inlines them away. CI builds an app with a guard, a `data.dart` and an
+that follow the guards, the data and the views are wrappers that return what they are given
+(`traceGuard(state, 'g5@6', guard(...))`, `traceData(ref, 'd37', id, data(...))`,
+`watchData(ref, 'd37', provider)`); in a release build they are the identity (`watchData` is exactly
+`ref.watch`) and the compiler inlines them away. CI builds an app with a guard, a `data.dart` and an
 action for profile and for release and checks that the release build has none of it. What stays in a
 release build is one short string per action (its site, an argument of the generated action provider).
 
-In a debug or profile build it adds one listener to the router's delegate, one `onDispose` callback per
-build of a `data.dart` provider, and lists of what happened that stop at 100 locations, 200 guard
-decisions, 100 action runs, and the providers that are alive plus the last 50 disposed. There is no
+In a debug or profile build it adds one listener to the router's delegate, an `onDispose`, an
+`onAddListener` and an `onRemoveListener` callback per build of a `data.dart` provider (the last two count
+its listeners; since 0.8.0), and lists of what happened that stop at 100 locations, 200 guard
+decisions, 100 action runs, and the providers that are alive plus the last 50 disposed. The views, the
+prefetch handles and the `RouteLink` preloads it lists as holders are held weakly. There is no
 timer, no frame, no read of a provider, no listener on a provider, and nothing that answers unless
-DevTools asks. **A guard or a data function that answers at once still does:** the wrapper returns the very
+DevTools asks. (`ProviderContainer.exists`, which reads nothing, is asked of a container for an app's own
+provider only when DevTools asks for a snapshot or for holders, and before the 101st live one is recorded.
+`_devToolsProviders` in `app.g.dart` is a function that is called once, when DevTools first needs it.) **A guard or a data function that answers at once still does:** the wrapper returns the very
 object it was given, so a synchronous guard stays synchronous, a `Future` is the `Future` go_router or
 Riverpod awaits, and the only thing added to one is a side `then` that records how it ended and handles
 its own errors. A `Stream` is not listened to. A bug in any of it is printed once and dropped; it never
@@ -3295,13 +3304,18 @@ changes what a navigation, a guard, a provider or an action does.
 - The route class a location is matched to is the class's `runtimeType` name. A profile build on the web
   minifies class names, so the tab finds the route by its path template instead, which a
   [localized path](#localized-paths) may not match.
-- A `data.dart` that returns or selects a provider of its own is listed under _Data_ as not traced, and
-  not followed: fespalier does not wrap what it does not make. The same goes for a guard or a data
-  function that throws before it returns anything: go_router or Riverpod get the error as they always
-  did, and the tab shows nothing for it.
-- **Who holds a provider** (the page, a `PrefetchHandle`, a `RouteLink` preload, something else) is not
-  shown: Riverpod does not export what that needs. Use Riverpod's own DevTools tab for the listeners.
-  fespalier does not add a `ProviderObserver` either: it does not own your `ProviderScope`.
+- An app provider (a `data.dart` that returns or selects one) is seen through fespalier's views: its
+  state is what the last page or section that watched it got, it has no build count, and its other
+  listeners are not visible. A `.select(...)` can't be invalidated or checked for being alive. Until a
+  page, a section or a preload watches it, its file is listed under _Not watched yet_ (since 0.8.0). The
+  same goes for a guard or a data function that throws before it returns anything: go_router or Riverpod
+  get the error as they always did, and the tab shows nothing for it.
+- **Holders** are the ones fespalier creates (views, prefetches, `RouteLink` preloads); anything else is
+  counted, for a provider fespalier built, as other listeners, and not named. Riverpod 3.4 does not
+  export who listens to a provider (`ProviderElement` and its dependents are internal); its own DevTools
+  tab reads them through internals. fespalier does not add a `ProviderObserver` either: it does not own
+  your `ProviderScope`. A prefetch made before any page watched a selector's provider with parameters is
+  attached when a page first does.
 - A provider that returns a `Stream` shows the state `stream` and no value: nothing listens to it on the
   tab's behalf.
 - **Open in IDE** posts a `navigate` event on the `ToolEvent` stream with a `package:` URI of the file, the
@@ -3327,6 +3341,7 @@ which imports nothing.
 | `ext.fespalier.clear`      | `what` (`history`, `guards`, `actions` or `all`)                         | `{"ok": true}`; what was named is emptied and the event counter goes on                   |
 | `ext.fespalier.invalidate` | `id` (a data record's)                                                   | `{"ok": true}` when that provider was alive and was invalidated, `{"ok": false}` when not |
 | `ext.fespalier.open`       | `file` (one of the tree's, relative to the app folder)                   | `{"ok": true}` once the IDE was asked, with a `package:` URI                              |
+| `ext.fespalier.holders`    | `id` (a data record's)                                                   | who holds that provider now (since 0.8.0): `{found, alive, listeners, others, holders}`   |
 
 | Event                  | Posted when                                                                          | Carries                                     |
 | ---------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------- |
@@ -3337,11 +3352,16 @@ which imports nothing.
 | `fespalier:action`     | an action starts and when it ends                                                    | the number and the `record` of the run      |
 
 `hello`'s `features` lists what the app can answer: `navigation`, `match`, `navigate`, `guards`, `data`,
-`actions` and `open`. The `snapshot` has a `guards`, a `data` and an `actions` list, and a navigation record
+`actions`, `open`, `holders` and `watched` (the last two since 0.8.0). The `snapshot` has a `guards`, a `data` and an `actions` list, and a navigation record
 names the `guards` behind it; a reader that finds one of the features missing finds those empty. A guard record is
 `{seq, at, site, uri, fullPath, result, location, async, ms, error}`, a data record
-`{id, site, key, container, state, builds, created, updated, value, error}` and an action record
+`{id, site, key, container, state, builds, created, updated, value, error, via, provider, listeners}` and an action record
 `{seq, site, key, input, state, started, ms, result, error}`; a `site` is a key of the tree's `sites`.
+Since 0.8.0 a data record's `via` is `build` (fespalier built the provider) or `watch` (the app's own provider,
+seen through a view; its `provider` is the provider's text and its `listeners` is null), and `holders` answers
+`{found, alive, listeners, others, holders: [{kind, since, keepFor}]}`: `kind` is `view`, `section`, `prefetch`
+or `link`, `keepFor` is milliseconds (null for until closed), `alive` is null when it can't be known, and
+`others` is `listeners` minus the holders. `found` is false for an id that is not tracked.
 
 An error is a JSON-RPC error with the code `-32602` for a missing or bad parameter and `-32000` otherwise,
 and its detail says what was wrong. Events are posted only while a tool listens.
@@ -3450,7 +3470,7 @@ what its source builds to, then runs `devtools_extensions validate`
 result). It also scaffolds every file kind
 with `fsp new` and `fsp init`, checks the result with `flutter analyze` and `dart format`,
 gives that app a guarded route with a `data.dart` and an `action.dart`, builds it for profile and for release
-and checks that the release build holds none of the DevTools code (the `traceGuard` and `traceData`
+and checks that the release build holds none of the DevTools code (the `traceGuard`, `traceData` and `watchData`
 wrappers included), runs `dart run fespalier` against a
 freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
 rendering, checksum pinning and release staging (`python3 scripts/test_packaging.py`,

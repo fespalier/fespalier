@@ -84,7 +84,7 @@ abstract final class AppRoutes {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
     DeferredLibrary.register(deferred);
-    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return [
       StatefulShellRoute.indexedStack(
         pageBuilder: (context, state, navigationShell) => layoutPage(
@@ -114,7 +114,7 @@ abstract final class AppRoutes {
                     builder: (context, state) => buildWithParams(
                       () => _params4(state),
                       (v) => DataView(
-                        watch: (ref) => ref.watch(_data4(v.id)),
+                        watch: (ref) => watchData(ref, 'd4', _data4(v.id)),
                         refresh: (ref) => ref.invalidate(_data4(v.id)),
                         data: (d) => _i7.OrderPage(id: v.id, data: d),
                         loading: () => const DefaultLoading(),
@@ -456,6 +456,11 @@ final _action4_0 = actionFamily(
   site: 'a4_0',
   telemetry: const TelemetrySite('(tabs)/orders/\$id/action.dart', route: '/orders/:id', name: 'action'),
 );
+
+/// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
+Map<Object, String> _devToolsProviders() => {
+      _data4: 'd4',
+    };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release

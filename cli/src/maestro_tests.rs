@@ -404,7 +404,9 @@ fn the_top_level_unknown_key_message_lists_semantics_ids_telemetry_and_maestro()
     );
     assert!(
         e.contains("unknown field `maestr`")
-            && e.contains("`links`, `lints`, `semantics_ids`, `scroll_restoration`, `telemetry`, `maestro`"),
+            && e.contains(
+                "`links`, `lints`, `semantics_ids`, `scroll_restoration`, `telemetry`, `maestro`"
+            ),
         "{e}"
     );
 }

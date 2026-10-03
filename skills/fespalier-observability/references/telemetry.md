@@ -195,7 +195,10 @@ Since 0.9.0 a navigation that `navigateFrom` marked has ` source=notification` a
 (`#1 start navigate /orders/42 source=notification`; unmarked lines do not change), and
 `RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and `#n within exit` around what runs
 inside `data()` or an action, so a line the code under test adds to `recording.log` shows it ran within its
-operation. Two sinks next to each other, and a sink of your own that makes its operation current:
+operation. An `image` operation (since 0.9.0, `fespalier_image`) is `#4 start image emgr w=640 preload`, then
+`#4 end image ok async` or `#5 end image error async status=404`: the builder's name and the width, never the URL.
+Image spans follow the installed sink and need no `telemetry: true`, like `auth` spans.
+Two sinks next to each other, and a sink of your own that makes its operation current:
 
 ```dart
 // test/sinks_test.dart

@@ -940,6 +940,10 @@
                       "auth": {
                         "text": "Session (sign-in, refresh, sign-out)",
                         "index": 6
+                      },
+                      "image": {
+                        "text": "Image load",
+                        "index": 7
                       }
                     }
                   }

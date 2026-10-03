@@ -3044,6 +3044,7 @@ everywhere else, and a click that goes through go_router either way.
 RouteLink(
   to: ProductRoute(id: p.id),     // any typed route; or `uri: Uri.parse('/products/2')`
   preload: Preload.intent,        // none (default) | intent | visible
+  onPreload: (context) => ...,    // runs when the preload starts: what else the page needs (since 0.9.0)
   method: LinkMethod.go,          // go (default) | push | replace
   builder: (context, follow) => ListTile(title: Text(p.name), onTap: follow),
 )
@@ -3119,6 +3120,27 @@ releasing its handle drops the data only.
 
 The same call is there without a widget, for your own queue: `ProductRoute(id: 2).preload(ref)`
 and `AppRoutes.preload(ref, uri)` return one `PrefetchHandle`; close it when the lease ends.
+
+**`onPreload`** (since 0.9.0) is for what the page needs that is not a provider, such as the image it shows,
+at the size it shows it. It runs with the link's `BuildContext` right after the link starts `route.preload(ref)`:
+for `Preload.intent` on the first intent (and on the next one after a failed preload), for `Preload.visible`
+each time the link comes back on screen. It is not called when the link preloads nothing (`Preload.none`,
+or a `uri:` link no `RouteLinkScope.match` matches). It must return at once, and what it throws is reported
+with `FlutterError.reportError` (library `fespalier`, `while running onPreload of a RouteLink to
+/products/3`) while the preload goes on. The page's size is known only where there is a `BuildContext`,
+which is why this is a callback of the link and not part of `route.preload(ref)`:
+
+```dart
+RouteLink(
+  to: ProductRoute(id: p.id),
+  preload: Preload.intent,
+  // The page shows the photo pagePhotoSize wide: warm that size, not the row's.
+  onPreload: (context) => ResponsiveImage.precache(context, p.image, width: pagePhotoSize, aspectRatio: 1),
+  builder: (context, follow) => ListTile(title: Text(p.name), onTap: follow),
+)
+```
+
+See [Precaching an image behind a link](#precaching-an-image-behind-a-link).
 
 `RouteLink` needs the app's `ProviderScope` above it, like every fespalier page, even when it
 preloads nothing. It depends on `package:url_launcher` (only its `Link`; nothing is launched,
@@ -5350,11 +5372,13 @@ redirects, async guards, the build of the new page and its first-frame loads.
 | `action`              | `action {file}#{name}`                                                 | `ActionNotifier.call` (since 0.9.0 the span is the current one while the function runs)                                                     | the result is there, or its `Future` settles                                                                      | the current context (usually none)               |
 | `deferred`            | `deferred {file}`                                                      | `DeferredLibrary.load()` starts a load (not one that joins a load in flight)                                                                | the load completes or fails                                                                                       | the pending `navigate`, else the current context |
 | `auth`                | `auth {operation}`, e.g. `auth refresh` (since 0.9.0)                  | `restoreAuth`, `signIn` or `adopt`, a refresh, `signOut` (`fespalier_auth`)                                                                 | the outcome is known                                                                                              | the current context (usually none)               |
+| `image`               | `image {cdn}`, e.g. `image emgr` (since 0.9.0)                         | a network image starts loading (`fespalier_image`: a widget or a precache; not a cache hit, and not a load already in flight)               | the image is decoded, or the load fails                                                                           | the navigation in progress, if there is one      |
 
 A span's status is `Error` (with the exception's text) exactly when its outcome attribute is `error`; a
 `not_found` navigation is not an error, and neither is an `auth` span that ends `rejected` or `cancelled`.
 An `auth` span that ends `error` has the status and `error.type`, but never the exception's text, which
-can name a host.
+can name a host. An `image` span that ends `error` has the status and, when the load carries one,
+`fespalier.image.status`; the exception's text is never recorded, since it holds the URL.
 
 **Events.** On one `navigate` span the order is every `leave`, most recently entered first, then one
 `enter` or `focus`. The page events fire whether or not the app has an `observe.dart`.
@@ -5370,7 +5394,7 @@ can name a host.
 
 | Key                   | Type   | Values and meaning                                                                                                                                                                                      |
 | --------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fespalier.operation` | string | `navigate`, `guard`, `redirect`, `data`, `action`, `deferred` or `auth`                                                                                                                                 |
+| `fespalier.operation` | string | `navigate`, `guard`, `redirect`, `data`, `action`, `deferred`, `auth` or `image`                                                                                                                        |
 | `fespalier.route`     | string | the route pattern, as `fsp routes` prints it and `AppManifest.byPath` keys it: `/`, `/products/:id`, `/docs/*rest`. Absent when not found. For a section's data or action, the section folder's pattern |
 | `fespalier.file`      | string | the app file, relative to the app folder, as spelled on disk: `products/$id/data.dart`. Absent on `navigate`                                                                                            |
 | `fespalier.async`     | bool   | whether the operation returned a `Future` (`guard`, `redirect`, `data`, `action`, `auth`)                                                                                                               |
@@ -5412,6 +5436,17 @@ attributes only add):
 | `fespalier.auth.trigger`   | string | refresh only: `expired` (before a request), `unauthorized` (after a 401) or `forced`                                                                                                                                                                                                                 |
 | `fespalier.auth.dpop`      | bool   | the backend binds its tokens with DPoP                                                                                                                                                                                                                                                               |
 
+**On an `image` span** (since 0.9.0; `fespalier_image`; no new contract version, as a new operation and its
+attributes only add):
+
+| Key                       | Type   | Values and meaning                                                                                                                  |
+| ------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `fespalier.image.cdn`     | string | the URL builder's name: `imgproxy`, `emgr`, `cloudinary`, `imgix`, `thumbor`, `template`, `srcset`, `direct`, or a builder's own    |
+| `fespalier.image.width`   | int    | the width asked for, in physical pixels (a bucket)                                                                                  |
+| `fespalier.image.preload` | bool   | a precache started the load, not a widget                                                                                           |
+| `fespalier.image.result`  | string | `ok` or `error`                                                                                                                     |
+| `fespalier.image.status`  | int    | the HTTP status of a failed load, when the error carries one                                                                        |
+
 **Metrics.** fespalier emits none: `otel_zone` turns metrics off on purpose (a periodic reader is a timer
 that keeps the radio busy), and rates and latencies are on the wire as spans already. Derive metrics in the
 collector with the `spanmetrics` connector, with `fespalier.operation`, `fespalier.route`,
@@ -5422,11 +5457,14 @@ and `fespalier.file` as dimensions, next to the resource's `service.name`, `serv
 validation are not recorded in 0.8.1. The `fespalier.auth.*` attributes are not dimensions of the
 collector `fsp telemetry` starts yet (since 0.9.0): its dashboards label an `auth` span as a
 session operation, and nothing more. Nor is `fespalier.navigation.source` (since 0.9.0): the bundled stack
-keeps it as a span column, with no panel and no spanmetrics dimension of its own yet.
+keeps it as a span column, with no panel and no spanmetrics dimension of its own yet. The same goes for
+`fespalier.image.*` (since 0.9.0): span columns, no panel, no dimension; a failed image load is on the
+Errors dashboard under "Image load".
 
 **Never recorded.** Segment and query values (unless `recordLocations: true`), family keys, `extra`, action
 inputs and results, data values and guard inputs; and, from `fespalier_auth`, tokens, user ids, claims, user
-names, e-mails, issuer and endpoint URLs, DPoP proofs and key thumbprints. What is recorded is a route pattern, a file path, a
+names, e-mails, issuer and endpoint URLs, DPoP proofs and key thumbprints; and, from `fespalier_image`, an image's
+URL, source and signature. What is recorded is a route pattern, a file path, a
 function name or an enum-like value, all fixed when the app is built, and exception text, which
 `otel_zone` scrubs (`redact`) as it scrubs every span string.
 
@@ -5456,7 +5494,9 @@ Each operation is `#n`, which ties its `start` line to its `end` line and names 
 under (`parent=#2`). A navigation that `navigateFrom` marked has `source=notification` at the end of its
 start line (since 0.9.0), and `RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and
 `#n within exit` around what runs inside a `data()` or an action, so a test can see a call run within its
-operation. To see real spans, initialise the SDK in `setUpAll` with `SimpleSpanProcessor` and
+operation. An `image` operation (since 0.9.0) is `#4 start image emgr w=640 preload` and, when it ends,
+`#4 end image ok async` or `#5 end image error async status=404`: the builder's name and the width, never the
+URL. To see real spans, initialise the SDK in `setUpAll` with `SimpleSpanProcessor` and
 `InMemorySpanExporter` from `package:dartastic_opentelemetry/testing.dart`, install `FespalierOtel()`, and
 read the exporter after a `pump()`: a span is exported when it ends. `OTel.initialize` runs once per
 isolate, so once per test file. `examples/telemetry/test/` does both.
@@ -6017,6 +6057,34 @@ String signImgproxy(List<int> key, List<int> salt, String path) => base64Url
     .replaceAll('=', '');
 ```
 
+### Precaching an image behind a link
+
+Since 0.9.0. A page that shows an image at one size, behind a link that shows it at another, should have the
+page's image warm when the link is followed. `ResponsiveImage.precache(context, source, width:, aspectRatio:)`
+computes the very URL a `ResponsiveImage` of that size will ask for, with the CDN of `context`
+(`imageCdnProvider`), and loads it into Flutter's image cache; `RouteLink(onPreload:)` calls it when the link
+starts a preload ([Links: `RouteLink`](#links-routelink)):
+
+```dart
+// lib/app/products/page.dart: in the row of each product
+RouteLink(
+  to: ProductRoute(id: p.id),
+  preload: Preload.intent,
+  // The page shows the photo pagePhotoSize wide: warm that size, not the row's.
+  onPreload: (context) => ResponsiveImage.precache(context, p.image, width: pagePhotoSize, aspectRatio: 1),
+  builder: (context, follow) => ListTile(...),
+)
+```
+
+Imperative uses need nothing new: call `ResponsiveImage.precache(context, ...)` before `route.go(context)`. It
+completes when the image is loaded or has failed (a failure is dropped: the widget shows its own error), and
+without a `width` it uses the view's width. The page's size is known only where there is a `BuildContext`
+(`MediaQuery`), not in `route.preload(ref)`. Buckets absorb a few points of padding, so the precache's URL
+equals the page's whenever both use the same constant for the photo's size, as `examples/shop` does
+(`pagePhotoSize`, used by the page and by the row's `onPreload`); a precache at another bucket than the page's
+is a wasted download. A misconfigured builder is reported as `ImageUrlError` with the context
+`while precaching the image "products/3.jpg"`, and the call returns at once.
+
 ### Images in heroes
 
 A hero flight rebuilds the destination's child at every rectangle of the flight. A widget that measures its
@@ -6107,6 +6175,26 @@ builder. Put the override in `pumpRouter(overrides:)` and in `test/routes/setup.
 ([Route smoke tests](#route-smoke-tests-fsp-test)), or every test that reaches a page with an image goes through the fake `HttpClient`.
 A `FakeImages`' providers are equal for one URL of one instance and never equal to another's, so an image
 cached by an earlier test is not reused. `cdn.resolve(...)` tests a size rule without a widget.
+
+### Image loads in telemetry
+
+Since 0.9.0. With a telemetry sink installed, each network load is an `image` operation:
+`TelemetryOp.image` through `FespalierTelemetry.begin` and `finish`, and a span `image {cdn}` (for example
+`image emgr`) with `fespalier.image.cdn`, `fespalier.image.width` (the bucket), `fespalier.image.preload`
+(a precache started it), `fespalier.image.result` and, for a failed load that carries one,
+`fespalier.image.status` ([Telemetry conventions](#telemetry-conventions)). One span per load that starts: a
+cache hit and a load already in flight make none, and an image in a hero flight starts no load. A load that
+starts while a page is being reached is a child of that navigation. **The URL, the source, the signature
+and the error's text are never recorded** (the exception's message holds the URL): only the builder's name, the
+bucket, the HTTP status and the outcome. Image spans need no `telemetry: true`: they follow the installed
+sink, like the auth spans. `RecordingTelemetry` writes them as `#4 start image emgr w=640 preload` and
+`#4 end image ok async`, or `#5 end image error async status=404`.
+
+A load that fails (an offline phone) is a failure like any other, so the Errors dashboard of `fsp telemetry`
+lists it under the kind "Image load"; filter on `fespalier_operation <> 'image'` if they drown the rest.
+
+An exhaustive `switch` over `TelemetryOp` in a sink of your own needs a case for `image` (since 0.9.0, next to
+`auth`): the new value is a source break for such a switch.
 
 ### What images cost
 
@@ -6287,6 +6375,13 @@ flutter create . --platforms=android,ios,web   # adds platform folders only
 flutter pub get
 flutter run
 ```
+
+Since 0.9.0 the product photos come from an [EmgR](https://github.com/vaam-apps/image-resizer) on this
+computer, unsigned: `examples/shop/lib/images.dart` says how to run it (`ALLOW_UNSIGNED_REQUESTS=true`, and
+`ALLOWED_SOURCES` set to the photos' origin) and which `--dart-define`s point it elsewhere. Without a server each
+photo fails and shows the product's initial. Hovering a row precaches the photo at the size its page shows
+([Precaching an image behind a link](#precaching-an-image-behind-a-link)), and the photo flies to the page as
+an [image hero](#images-in-heroes). Its tests use `FakeImages`.
 
 Try `/products/13`: it fails once, so you see `error.dart` and **Retry**. Try `/products/abc`
 (the int parse fails → `not_found.dart`), `/checkout` with an empty cart (the guard redirects

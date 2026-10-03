@@ -1,6 +1,6 @@
 ---
 name: fespalier-images
-description: "Responsive CDN images in a fespalier app with fespalier_image (since 0.9.0) — ResponsiveImage (the width bucket from the box and the device pixel ratio, aspectRatio, the latch, placeholders and errors), imageCdnProvider in startup(), the URL builders (imgproxy and EmgR, Cloudinary, imgix, Thumbor, a template, a srcset), signing without a key in the app, precaching an image, hero flights, the web and CORS, caching and FakeImages in tests. Load before showing a network image, configuring an image CDN, signing image URLs, or when an image flickers, loads twice, is blurry or fails on the web."
+description: "Responsive CDN images in a fespalier app with fespalier_image (since 0.9.0) — ResponsiveImage (the width bucket from the box and the device pixel ratio, aspectRatio, the latch, placeholders and errors), imageCdnProvider in startup(), the URL builders (imgproxy and EmgR, Cloudinary, imgix, Thumbor, a template, a srcset), signing without a key in the app, precaching behind a RouteLink, hero flights, the web and CORS, caching, FakeImages in tests and image spans. Load before showing a network image, configuring an image CDN, signing image URLs, or when an image flickers, loads twice, is blurry or fails on the web."
 ---
 
 # fespalier-images
@@ -100,10 +100,7 @@ question, and `references/integration.md` precache, heroes, the web, caching, te
 2. **Give the shape with `aspectRatio`** (a design constant: 1, 4/3, 16/9), or a `width` and a `height`. The
    server then crops, and the CDN caches one URL per bucket. Without it the request is width-only and `fit`
    crops on the device. A ratio measured from the box would make a URL per pixel of padding.
-3. **Precache at the page's size, with a shared constant.** `ResponsiveImage.precache(context, p.image, width:
-pagePhotoSize, aspectRatio: 1)` before the page is reached: the page then has its image in its first frame.
-   Buckets absorb a few points of padding; a constant that both sides use makes the two URLs equal.
-   ([`references/integration.md`](references/integration.md).)
+3. **Precache at the page's size, with a shared constant.** In the link, `onPreload: (context) => ResponsiveImage.precache(context, p.image, width: pagePhotoSize, aspectRatio: 1)`: the page then has its image in its first frame. Buckets absorb a few points of padding; a constant that both sides use makes the two URLs equal. (`onPreload` is since 0.9.0; without a link, call `precache` before `route.go(context)`. [`references/integration.md`](references/integration.md).)
 4. **`route.imageHero(name, child: ResponsiveImage(...))` for a hero**, on both pages (or
    `Heroes(shuttle: ResponsiveImage.flightShuttle)` in `transition.dart`). Without the flight shuttle
    Flutter's default measures the image at every size of the flight.
@@ -116,9 +113,7 @@ pagePhotoSize, aspectRatio: 1)` before the page is reached: the page then has it
 
 ## The traps
 
-- **An unconfigured app fetches `products/3.jpg` as a URL**, fails as a network error, and prints once in a
-  debug build `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it is fetched
-as it is. Override imageCdnProvider in startup() (README, "Images").` The fix is the `startup()` override.
+- **An unconfigured app fetches `products/3.jpg` as a URL**, fails as a network error, and prints once in a debug build: `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it is fetched as it is. Override imageCdnProvider in startup() (README, "Images").` The fix is the `startup()` override.
 - **It chooses once and only grows.** An animated box (`AnimatedSize`, a hero) asks for one width; a smaller
   box never asks again. For a box that really should get a sharper image as it grows, `growWithBox: true`.
   "It loads twice" is a box that grew with `growWithBox`, or a precache at another width than the page
@@ -136,6 +131,9 @@ as it is. Override imageCdnProvider in startup() (README, "Images").` The fix is
   has them right; the plain constructor is imgproxy's.
 - **A `403` from EmgR** is `unsigned` against a server that has not allowed it, or a signature over another
   path than the URL's (the signer gets the path after the signature, leading `/` included).
+- **Telemetry never has the URL.** Image spans (since 0.9.0) carry the builder's name, the width, whether a
+  precache started the load and the HTTP status of a failure, never the URL, the source or a signature. A sink
+  that switches exhaustively over `TelemetryOp` needs an `image` case.
 - **No disk cache** off the web by default: `dart:io` has no HTTP cache, so a restart downloads again.
   `providerFactory` takes `CachedNetworkImageProvider.new` (the app adds the dependency).
 
@@ -152,5 +150,7 @@ endpoint belongs in `data.dart`); no `fsp` lint for a raw `Image.network` and no
 `packages/fespalier_image/`: `lib/src/responsive_image.dart` (the widget, `precache`, the flight shuttle),
 `cdn.dart` (`ImageCdn`, `imageCdnProvider`), `buckets.dart`, `request.dart`, `builder.dart` and
 `builders/` (one file per CDN), `variants.dart` (the loaded-variant registry), `heroes.dart`
-(`imageHero`), and `lib/testing.dart` (`FakeImages`). The tests pin each builder's URL against the providers'
-published examples (`test/builders_test.dart`, `signing_test.dart`).
+(`imageHero`), `telemetry.dart` (the image span), and `lib/testing.dart` (`FakeImages`). The tests pin each
+builder's URL against the providers' published examples (`test/builders_test.dart`, `signing_test.dart`).
+`examples/shop` shows the product photos through EmgR, with a precache behind each row's link and an image
+hero.

@@ -162,6 +162,17 @@ final class FespalierOtel extends FespalierTelemetry {
             FespalierConventions.authDpop: start.authDpop,
           },
         ),
+        // Only the builder's name, the bucket and whether a precache started it: never the URL, the
+        // source or a signature.
+        TelemetryOp.image => (
+          'image ${start.imageCdn}',
+          <String, Object>{
+            FespalierConventions.operation: FespalierConventions.opImage,
+            FespalierConventions.imageCdn: ?start.imageCdn,
+            FespalierConventions.imageWidth: ?start.imageWidth,
+            FespalierConventions.imagePreload: start.imagePreload,
+          },
+        ),
       };
       final parent = start.parent;
       final span = tracer.startSpan(
@@ -204,8 +215,9 @@ final class FespalierOtel extends FespalierTelemetry {
       final error = end.error;
       if (end.outcome == TelemetryOutcome.error &&
           error != null &&
-          token.op == TelemetryOp.auth) {
-        // An auth error's text may name a host or an endpoint: the class is all that is kept.
+          (token.op == TelemetryOp.auth || token.op == TelemetryOp.image)) {
+        // An auth error's text may name a host or an endpoint, an image error's the URL: the class
+        // is all that is kept.
         span.setStringAttribute<String>(
           FespalierConventions.errorType,
           error.runtimeType.toString(),
@@ -274,6 +286,15 @@ final class FespalierOtel extends FespalierTelemetry {
           end.outcome,
         );
         span.setBoolAttribute(FespalierConventions.isAsync, end.isAsync);
+      case TelemetryOp.image:
+        span.setStringAttribute<String>(
+          FespalierConventions.imageResult,
+          end.outcome,
+        );
+        final status = end.imageStatus;
+        if (status != null) {
+          span.setIntAttribute(FespalierConventions.imageStatus, status);
+        }
     }
   }
 

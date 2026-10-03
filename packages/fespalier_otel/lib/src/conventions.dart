@@ -48,6 +48,9 @@ abstract final class FespalierConventions {
   /// fespalier_auth restored, signed in, refreshed or signed out a session (since 0.9.0).
   static const String opAuth = 'auth';
 
+  /// An image loaded from the network (`package:fespalier_image`, since 0.9.0).
+  static const String opImage = 'image';
+
   // Span names: the operation, then what it is about.
 
   /// A navigation that matched no route is named `navigate (not found)`.
@@ -198,7 +201,8 @@ abstract final class FespalierConventions {
   /// How the load ended.
   static const String deferredResult = 'fespalier.deferred.result';
 
-  // The values of `fespalier.action.result` and `fespalier.deferred.result`.
+  // The values of `fespalier.action.result`, `fespalier.deferred.result` and
+  // `fespalier.image.result`.
 
   /// It worked.
   static const String resultOk = 'ok';
@@ -268,6 +272,25 @@ abstract final class FespalierConventions {
 
   /// The app asked for a refresh.
   static const String authTriggerForced = 'forced';
+
+  // Attributes of an `image` span (since 0.9.0). Never recorded: the image's URL, its source, a
+  // signature, the error's text.
+
+  /// The URL builder: `imgproxy`, `emgr`, `cloudinary`, `imgix`, `thumbor`, `template`, `srcset`,
+  /// `direct`.
+  static const String imageCdn = 'fespalier.image.cdn';
+
+  /// The width asked for, in physical pixels (a bucket).
+  static const String imageWidth = 'fespalier.image.width';
+
+  /// Whether a precache started the load.
+  static const String imagePreload = 'fespalier.image.preload';
+
+  /// How the load ended: `ok` or `error`.
+  static const String imageResult = 'fespalier.image.result';
+
+  /// The HTTP status of a failed load, when known.
+  static const String imageStatus = 'fespalier.image.status';
 
   // Events on the `navigate` span.
 

@@ -21,6 +21,25 @@ navigation, the web, the cache and a test.
 
 ## Precache at the size the page shows
 
+Behind a `RouteLink` (`onPreload` is since 0.9.0), where the link starts its preload:
+
+```dart
+RouteLink(
+  to: ProductRoute(id: p.id),
+  preload: Preload.intent,
+  // The page shows the photo pagePhotoSize wide: warm that size, not the row's.
+  onPreload: (context) => ResponsiveImage.precache(context, p.image, width: pagePhotoSize, aspectRatio: 1),
+  builder: (context, follow) => ListTile(title: Text(p.name), onTap: follow),
+)
+```
+
+`onPreload` runs with the link's `BuildContext` right after `route.preload(ref)` started: for `Preload.intent` on
+the first intent (and on the next one after a failed preload), for `Preload.visible` each time the link comes back
+on screen. It is **not** called when the link preloads nothing (`Preload.none`, or a `uri:` link no
+`RouteLinkScope.match` matches). It must return at once; what it throws is reported with
+`FlutterError.reportError` (library `fespalier`, context `while running onPreload of a RouteLink to /products/3`)
+and the preload goes on. Imperatively, call `precache` before the navigation:
+
 ```dart
 await ResponsiveImage.precache(context, product.image, width: pagePhotoSize, aspectRatio: 1);
 ProductRoute(id: product.id).go(context);
@@ -188,3 +207,17 @@ A pending load is `FakeImages()` without an image: `expect(fakes.isPending(url),
 `fakes.complete(url, image)` and `await tester.pump()`, or `fakes.fail(url)` for the error view. Tests that
 reach an image without the override go through flutter_test's fake `HttpClient` (every request is a 400, with
 its own warning) and, with no CDN, print the "not a URL" message.
+
+## Telemetry
+
+With a sink installed, each network load is an `image` operation (since 0.9.0): `TelemetryOp.image` through
+`FespalierTelemetry.begin` and `finish`, a span `image {cdn}` such as `image emgr`, with `fespalier.image.cdn`,
+`fespalier.image.width` (the bucket), `fespalier.image.preload`, `fespalier.image.result` (`ok` or `error`) and
+`fespalier.image.status` (a failed load that carries an HTTP status). One span per load that starts: a cache hit and
+a load already in flight make none, and an image in a hero flight starts no load. A load that starts while a page
+is being reached is a child of that navigation. **Never the URL, the source, the signature or the error's text**
+(the exception's message holds the URL). It needs no `telemetry: true`: image spans follow the installed sink.
+`RecordingTelemetry` writes `#4 start image emgr w=640 preload`, `#4 end image ok async` and
+`#5 end image error async status=404`. A sink of your own that switches exhaustively over `TelemetryOp` needs
+an `image` case (0.9.0): [`fespalier-migration`](../../fespalier-migration/SKILL.md). The conventions are in
+[`fespalier-observability`](../../fespalier-observability/references/conventions.md).

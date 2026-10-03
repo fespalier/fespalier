@@ -97,7 +97,18 @@ abstract class FespalierTelemetry {
   /// `fespalier_auth` (since 0.9.0): fespalier's own call sites use the internal functions of this
   /// library. Returns what the sink's [start] returned, to hand to [finish]; null when no sink
   /// is installed (the whole cost is one null check) or when the sink threw (printed once).
-  static Object? begin(TelemetryStart start) => telemetryBegin(start);
+  ///
+  /// With [underNavigation], an operation that has no [TelemetryStart.parent] is made the child of
+  /// the navigation that is in progress, if there is one (`fespalier_image` does: an image that
+  /// starts loading while a page is being reached is part of that navigation).
+  static Object? begin(TelemetryStart start, {bool underNavigation = false}) {
+    final navigation = _pendingNavigation;
+    return telemetryBegin(
+      underNavigation && start.parent == null && navigation != null
+          ? start._withParent(navigation)
+          : start,
+    );
+  }
 
   /// Ends the operation [token] came from (what [begin] returned), for an adapter package
   /// (since 0.9.0). Does nothing without a sink; a sink that throws is printed once and dropped.
@@ -156,6 +167,9 @@ enum TelemetryOp {
 
   /// `fespalier_auth` (since 0.9.0) restored, signed in, refreshed or signed out a session.
   auth,
+
+  /// An image loaded from the network (`package:fespalier_image`, since 0.9.0).
+  image,
 }
 
 /// What started. [op] says which fields are set.
@@ -174,6 +188,9 @@ final class TelemetryStart {
     this.authTrigger,
     this.authDpop = false,
     this.source,
+    this.imageCdn,
+    this.imageWidth,
+    this.imagePreload = false,
   });
 
   /// Which kind of operation started.
@@ -215,6 +232,16 @@ final class TelemetryStart {
   /// [NavigationSource] value (since 0.9.0); null otherwise.
   final String? source;
 
+  /// image (since 0.9.0): the URL builder's `name` (`emgr`, `imgproxy`, `cloudinary`, ...), never
+  /// the URL.
+  final String? imageCdn;
+
+  /// image: the width asked for, in physical pixels (a bucket).
+  final int? imageWidth;
+
+  /// image: a precache started the load, not a widget.
+  final bool imagePreload;
+
   /// This start with [parent] as its parent, every other field copied. A field added to this
   /// class must be added here too: `telemetry_combine_test.dart` ("combine copies every field of
   /// a start") sets every field and fails when one is lost.
@@ -231,6 +258,9 @@ final class TelemetryStart {
     authTrigger: authTrigger,
     authDpop: authDpop,
     source: source,
+    imageCdn: imageCdn,
+    imageWidth: imageWidth,
+    imagePreload: imagePreload,
   );
 }
 
@@ -361,6 +391,7 @@ final class TelemetryEnd {
     this.kind,
     this.redirected = false,
     this.depth = 0,
+    this.imageStatus,
   });
 
   /// One of the [TelemetryOutcome] values.
@@ -393,6 +424,9 @@ final class TelemetryEnd {
 
   /// navigate: how many pushed pages the stack holds after the commit.
   final int depth;
+
+  /// image (since 0.9.0): the HTTP status of a failed load, when the error carries one.
+  final int? imageStatus;
 }
 
 /// What happened to a page.

@@ -11,6 +11,7 @@ import 'builders/common.dart';
 import 'builders/direct.dart';
 import 'cdn.dart';
 import 'request.dart';
+import 'telemetry.dart';
 import 'variants.dart';
 import 'warnings.dart';
 
@@ -153,6 +154,15 @@ class ResponsiveImage extends ConsumerStatefulWidget {
     if (resolved == null) return SynchronousFuture<void>(null);
     final provider = cdn.providerFor(resolved);
     ImageVariants.register(resolved, cdn.providerFactory, provider);
+    if (imageTelemetryOn) {
+      traceImageLoad(
+        provider,
+        createLocalImageConfiguration(context),
+        cdn: resolved.builder.name,
+        width: resolved.request.width,
+        preload: true,
+      );
+    }
     return precacheImage(
       provider,
       context,
@@ -299,7 +309,12 @@ class _ResponsiveImageState extends ConsumerState<ResponsiveImage> {
   /// Chooses what to fetch for a box [logical] logical pixels wide: at the first layout, from
   /// scratch after the inputs changed, and afterwards only a wider one, when the view changed or
   /// [ResponsiveImage.growWithBox] is on. In a hero flight it chooses once and never loads.
-  void _choose(ImageCdn cdn, double logical, {required bool flight}) {
+  void _choose(
+    BuildContext context,
+    ImageCdn cdn,
+    double logical, {
+    required bool flight,
+  }) {
     final grow = _decided && !flight && (widget.growWithBox || _viewChanged);
     if (!flight) _viewChanged = false;
     if (_decided && !grow) return;
@@ -345,6 +360,16 @@ class _ResponsiveImageState extends ConsumerState<ResponsiveImage> {
     _chosen = resolved;
     _provider = provider;
     ImageVariants.register(resolved, cdn.providerFactory, provider);
+    // An image in flight loads nothing, so there is no load to trace.
+    if (!flight && imageTelemetryOn) {
+      traceImageLoad(
+        provider,
+        createLocalImageConfiguration(context),
+        cdn: resolved.builder.name,
+        width: resolved.request.width,
+        preload: false,
+      );
+    }
   }
 
   @override
@@ -362,12 +387,12 @@ class _ResponsiveImageState extends ConsumerState<ResponsiveImage> {
     final flight = ResponsiveImageFlight.of(context);
     final width = widget.width;
     if (width != null) {
-      _choose(cdn, width, flight: flight);
+      _choose(context, cdn, width, flight: flight);
       return _box(_visual(context, cdn, flight));
     }
     return LayoutBuilder(
       builder: (context, constraints) {
-        _choose(cdn, _measure(constraints), flight: flight);
+        _choose(context, cdn, _measure(constraints), flight: flight);
         return _box(_visual(context, cdn, flight));
       },
     );

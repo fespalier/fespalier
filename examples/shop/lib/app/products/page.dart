@@ -57,6 +57,14 @@ class ProductsPage extends ConsumerWidget {
                       to: ProductRoute(id: p.id),
                       preload: Preload.intent,
                       builder: (context, follow) => ListTile(
+                        // The same line is on the product's page: the avatar
+                        // flies from the row to there (since 0.8.0). It
+                        // needs the page's data in its first frame, which the
+                        // preload above provides.
+                        leading: ProductRoute(id: p.id).hero(
+                          'avatar',
+                          child: CircleAvatar(child: Text(p.name[0])),
+                        ),
                         title: Text(p.name),
                         trailing: Text('€${p.price.toStringAsFixed(2)}'),
                         onTap: follow,

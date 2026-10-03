@@ -1,6 +1,7 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:shop/api.dart';
+import 'package:shop/app.g.dart';
 import 'package:shop/cart.dart';
 
 class ProductPage extends HookConsumerWidget {
@@ -16,6 +17,13 @@ class ProductPage extends HookConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // The row's avatar on the list flies here: both sides name the same
+          // route and the same element.
+          ProductRoute(id: product.id).hero(
+            'avatar',
+            child: CircleAvatar(radius: 40, child: Text(product.name[0])),
+          ),
+          const SizedBox(height: 16),
           Text(product.name, style: Theme.of(context).textTheme.headlineSmall),
           Text('€${product.price.toStringAsFixed(2)}'),
           const SizedBox(height: 24),

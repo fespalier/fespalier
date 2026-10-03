@@ -12,20 +12,27 @@
 //   /settings          SettingsRoute     settings/page.dart  (transition)
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/nav.dart';
 import 'package:flutter/widgets.dart';
 
 import 'app/transition.dart' as _i0;
 import 'app/(tabs)/layout.dart' as _i1;
 import 'app/(tabs)/(home)/page.dart' as _i2;
-import 'app/(tabs)/library/layout.dart' as _i3;
-import 'app/(tabs)/library/authors/page.dart' as _i4;
-import 'app/(tabs)/library/books/page.dart' as _i5;
-import 'app/(tabs)/profile/page.dart' as _i6;
-import 'app/(tabs)/profile/edit/page.dart' as _i7;
-import 'app/(tabs)/profile/security/page.dart' as _i8;
-import 'app/(tabs)/search/page.dart' as _i9;
-import 'app/settings/page.dart' as _i10;
-import 'app/extra_codec.dart' as _i11;
+import 'app/(tabs)/(home)/nav.dart' as _i3;
+import 'app/(tabs)/library/layout.dart' as _i4;
+import 'app/(tabs)/library/nav.dart' as _i5;
+import 'app/(tabs)/library/authors/page.dart' as _i6;
+import 'app/(tabs)/library/authors/nav.dart' as _i7;
+import 'app/(tabs)/library/books/page.dart' as _i8;
+import 'app/(tabs)/library/books/nav.dart' as _i9;
+import 'app/(tabs)/profile/page.dart' as _i10;
+import 'app/(tabs)/profile/nav.dart' as _i11;
+import 'app/(tabs)/profile/edit/page.dart' as _i12;
+import 'app/(tabs)/profile/security/page.dart' as _i13;
+import 'app/(tabs)/search/page.dart' as _i14;
+import 'app/(tabs)/search/nav.dart' as _i15;
+import 'app/settings/page.dart' as _i16;
+import 'app/extra_codec.dart' as _i17;
 import 'package:flutter/material.dart' show ProfileDraft;
 import 'package:tabs/profile_draft.dart' show ProfileDraft;
 
@@ -62,7 +69,7 @@ abstract final class AppRoutes {
       observers: observers,
       restorationScopeId: restorationScopeId,
       // extra_codec.dart: what a page's `extra` is saved as, so it survives a reload on the web.
-      extraCodec: _i11.extraCodec,
+      extraCodec: _i17.extraCodec,
       navigatorKey: rootNavigatorKey,
       routes: routes,
       errorBuilder: (context, state) => notFound(state.uri),
@@ -112,7 +119,7 @@ abstract final class AppRoutes {
                 path: joinLocation(at, '/:_l0(search|recherche)'),
                 pageBuilder: (context, state) => _i0.transition(
                   state.pageKey,
-                  const _i9.SearchPage(),
+                  const _i14.SearchPage(),
                 ),
               ),
             ],
@@ -124,7 +131,7 @@ abstract final class AppRoutes {
                 path: joinLocation(at, '/profile'),
                 pageBuilder: (context, state) => _i0.transition(
                   state.pageKey,
-                  const _i6.ProfilePage(),
+                  const _i10.ProfilePage(),
                 ),
                 routes: [
                   GoRoute(
@@ -132,14 +139,14 @@ abstract final class AppRoutes {
                     parentNavigatorKey: rootNavigatorKey,
                     pageBuilder: (context, state) => _i0.transition(
                       state.pageKey,
-                      _i7.EditProfilePage(extra: extraOf(state)),
+                      _i12.EditProfilePage(extra: extraOf(state)),
                     ),
                   ),
                   GoRoute(
                     path: 'security',
                     pageBuilder: (context, state) => _i0.transition(
                       state.pageKey,
-                      const _i8.SecurityPage(),
+                      const _i13.SecurityPage(),
                     ),
                   ),
                 ],
@@ -153,7 +160,7 @@ abstract final class AppRoutes {
               StatefulShellRoute.indexedStack(
                 pageBuilder: (context, state, navigationShell) => _i0.transition(
                   const ValueKey<String>('layout:(tabs)/library/'),
-                  _i3.LibraryLayout(navigationShell: navigationShell),
+                  _i4.LibraryLayout(navigationShell: navigationShell),
                 ),
                 branches: [
                   StatefulShellBranch(
@@ -163,7 +170,7 @@ abstract final class AppRoutes {
                         path: joinLocation(at, '/library/books'),
                         pageBuilder: (context, state) => _i0.transition(
                           state.pageKey,
-                          const _i5.BooksPage(),
+                          const _i8.BooksPage(),
                         ),
                       ),
                     ],
@@ -175,7 +182,7 @@ abstract final class AppRoutes {
                         path: joinLocation(at, '/library/authors'),
                         pageBuilder: (context, state) => _i0.transition(
                           state.pageKey,
-                          const _i4.AuthorsPage(),
+                          const _i6.AuthorsPage(),
                         ),
                       ),
                     ],
@@ -194,7 +201,7 @@ abstract final class AppRoutes {
         path: joinLocation(at, '/settings'),
         pageBuilder: (context, state) => _i0.transition(
           state.pageKey,
-          const _i10.SettingsPage(),
+          const _i16.SettingsPage(),
         ),
       ),
     ];
@@ -375,6 +382,84 @@ final class SettingsRoute extends TypedLocation {
   /// Like [of], or null when the route around [context] is another one.
   static SettingsRoute? maybeOf(BuildContext context) => maybeRouteOf<SettingsRoute>(context, AppRoutes.matchUrl);
 }
+
+/// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.1).
+abstract final class AppMenu {
+  /// Every nav.dart, nested as their folders are (the app folder's own entry, and a tab layout's
+  /// own page, sit beside the entries below them), each level by `order`, then by folder.
+  static const List<NavNode> tree = [_nav2, _nav9, _nav6, _nav3];
+
+  /// The entries of [tree] at the location around [ref]'s widget, or the topmost ones at or below
+  /// the folder [under] (`'(tabs)'`, `r'teams/$teamId'`): with their routes built from the
+  /// location, whether each is selected, and what their guards answer now. Entries that need
+  /// segments the location doesn't have, `inMenu: false` ones and refused ones (`NavRefused.hide`)
+  /// are left out. Watch it in `build`, in a layout or a page.
+  static List<NavItem> watch(WidgetRef ref, {String? under}) =>
+      watchNav(ref, tree, AppRoutes.matchUrl, _trails, under: under);
+
+  /// The entries from the top of [tree] down to the page at the current location: breadcrumbs.
+  /// Guards are not asked (the location is past them). Empty where no nav.dart covers the page.
+  static List<NavItem> breadcrumbs(WidgetRef ref) =>
+      watchNavTrail(ref, AppRoutes.matchUrl, _trails);
+
+  static const Map<Type, List<NavNode>> _trails = {
+    HomeRoute: [_nav2],
+    AuthorsRoute: [_nav3, _nav4],
+    BooksRoute: [_nav3, _nav5],
+    ProfileRoute: [_nav6],
+    EditProfileRoute: [_nav6],
+    SecurityRoute: [_nav6],
+    SearchRoute: [_nav9],
+  };
+}
+
+const _nav2 = NavNode(
+  folder: '(tabs)/(home)',
+  nav: _i3.nav,
+  route: _navRoute2,
+  tabs: {'(tabs)': 0},
+);
+
+const _nav3 = NavNode(
+  folder: '(tabs)/library',
+  nav: _i5.nav,
+  tabs: {'(tabs)': 3},
+  children: [_nav5, _nav4],
+);
+
+const _nav4 = NavNode(
+  folder: '(tabs)/library/authors',
+  nav: _i7.nav,
+  route: _navRoute4,
+  tabs: {'(tabs)/library': 1},
+);
+
+const _nav5 = NavNode(
+  folder: '(tabs)/library/books',
+  nav: _i9.nav,
+  route: _navRoute5,
+  tabs: {'(tabs)/library': 0},
+);
+
+const _nav6 = NavNode(
+  folder: '(tabs)/profile',
+  nav: _i11.nav,
+  route: _navRoute6,
+  tabs: {'(tabs)': 2},
+);
+
+const _nav9 = NavNode(
+  folder: '(tabs)/search',
+  nav: _i15.nav,
+  route: _navRoute9,
+  tabs: {'(tabs)': 1},
+);
+
+TypedLocation _navRoute2(Map<String, Object?> p) => const HomeRoute();
+TypedLocation _navRoute4(Map<String, Object?> p) => const AuthorsRoute();
+TypedLocation _navRoute5(Map<String, Object?> p) => const BooksRoute();
+TypedLocation _navRoute6(Map<String, Object?> p) => const ProfileRoute();
+TypedLocation _navRoute9(Map<String, Object?> p) => const SearchRoute();
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release

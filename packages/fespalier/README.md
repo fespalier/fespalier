@@ -57,3 +57,7 @@ Since 0.9.0 `package:fespalier_auth` sits next to it, a repository dependency at
 guards, token storage, lazy single-flight refresh and an authenticated HTTP client. It changes neither the
 generated code nor a release build that does not use it.
 `package:fespalier_sign_keypair` adds [device-bound tokens](https://github.com/fespalier/fespalier#device-bound-tokens-dpop-with-fespalier_sign_keypair) (DPoP, signed by a key in the Secure Enclave or the AndroidKeyStore) to it.
+
+Since 0.9.0 `package:fespalier_adaptive` draws the `nav.dart` menu as a [navigation bar, a rail or a drawer](https://github.com/fespalier/fespalier#a-bar-a-rail-or-a-drawer-fespalier_adaptive)
+by window width, around a tab layout or a plain one, with no third-party dependency. It changes neither the generated
+code nor a release build that does not use it.

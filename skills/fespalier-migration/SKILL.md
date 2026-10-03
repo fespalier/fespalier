@@ -61,6 +61,20 @@ Bump to `v0.8.0`, regenerate, and look at these:
    `_components/`, or set `main: manual`. Moving a hand-written `main()` to the generated `AppMain` is optional; the
    table is in [`references/upgrading-0-7-to-0-8.md`](references/upgrading-0-7-to-0-8.md). An app with none of the
    three gets no new file (`lib/app.main.g.dart` is written only when one exists, or with `main: generated`).
+7. **New, opt-in:** `observe.dart` (`onEnter`, `onFocus`, `onLeave` per page), the `telemetry` key,
+   `package:fespalier_otel`, `RecordingTelemetry` and `fsp new --observe`. See
+   [`fespalier-observability`](../fespalier-observability/SKILL.md).
+8. **`fsp new` with nothing to create** now lists `--observe`: `nothing to create: ... also pass --action,
+--layout, --loading, --error, --not-found, --guard, --observe or --transition`.
+9. **A new tag on `fsp routes`**: a page with an `observe.dart` at or above it is tagged `observe` (and
+   `--json` `tags` and the route tree's `markers` gain the value); consumers that match tags
+   exactly should accept it.
+10. **`otel_zone` pins go_router 17** (through `otel_go_router`). fespalier accepts 17 and 18; add
+    `dependency_overrides: go_router: ^18.0.0` to stay on 18.
+11. **`DeferredLibrary` has an optional `route`** (the generator sets it with `telemetry: true`), and
+    `traceGuard` and `traceData` take an optional `telemetry:`; nothing to do unless you call them yourself.
+    An app with no `observe.dart` and no `telemetry: true` gets none of items 7 to 11 in `app.g.dart`:
+    no `TelemetrySite`, no `AppRoutes.attach`, no `observe:` (the generator's `no_companions` test pins it).
 
 ## 0.4 to 0.5: what to check
 

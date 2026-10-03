@@ -18,6 +18,7 @@
 //!   semantics_ids: false    # default; true gives each page `Semantics(identifier: 'route:/...')`, for Maestro
 //!   scroll_restoration: false # default; true keeps a page's scroll positions for the browser's back and forward
 //!   main: auto              # default; `generated` always writes lib/app.main.g.dart, `manual` never (see `entry.rs`)
+//!   telemetry: false        # default; true reports navigations, guards, data, actions and deferred loads to FespalierTelemetry
 //!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
 //!     domains: [shop.example.com]
 //!     scheme: myshop
@@ -228,6 +229,10 @@ pub struct Config {
     /// `PageStorage` bucket per history entry and hands it back only when the browser brings
     /// that entry back (since 0.8.0).
     pub scroll_restoration: bool,
+    /// `telemetry`: the generated file passes each guard, data provider, action and deferred
+    /// library a `const TelemetrySite`, and `AppRoutes.attach` follows the router's navigations.
+    /// Off, the file is exactly what it was without the key.
+    pub telemetry: bool,
     /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
     pub file_style: FileStyle,
     /// The `links:` section, as written. Only `fsp links` reads it, and it checks the values
@@ -266,6 +271,7 @@ impl Default for Config {
             push_updates_url: false,
             semantics_ids: false,
             scroll_restoration: false,
+            telemetry: false,
             file_style: FileStyle::Snake,
             links: None,
             lints: Lints::default(),
@@ -313,6 +319,7 @@ struct RawConfig {
     lints: Option<LintsConfig>,
     semantics_ids: Option<bool>,
     scroll_restoration: Option<bool>,
+    telemetry: Option<bool>,
     maestro: Option<MaestroConfig>,
     size: Option<SizeConfig>,
     test: Option<TestConfig>,
@@ -1071,6 +1078,7 @@ impl Pubspec {
             config.lints.unknown_path = c.lints.and_then(|l| l.unknown_path).unwrap_or_default();
             config.semantics_ids = c.semantics_ids.unwrap_or(false);
             config.scroll_restoration = c.scroll_restoration.unwrap_or(false);
+            config.telemetry = c.telemetry.unwrap_or(false);
             config.maestro = c.maestro;
             config.size = c.size;
             config.test = c.test;

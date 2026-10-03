@@ -76,6 +76,14 @@ struct FileCx {
     copy_with: bool,
     /// `AppMenu`, when some folder has a nav.dart (since 0.8.0).
     menu: Option<MenuCx>,
+    /// Some page has observe.dart hooks: `AppRoutes.attach` runs them, through `_observeAt`.
+    observe: bool,
+    /// `telemetry` from the config: guards, data, actions and deferred libraries are told where
+    /// they are, and `AppRoutes.attach` follows the router.
+    telemetry: bool,
+    /// The generated `AppRoutes.attach` exists: for observe.dart hooks (and, with `telemetry`,
+    /// for telemetry). Without either, `router()` attaches DevTools as it always did.
+    attach: bool,
 }
 
 /// One `import` of the generated file.
@@ -97,6 +105,8 @@ struct DeferredLibCx {
     file: String,
     /// The same, as a doc comment shows it.
     path: String,
+    /// The route's pattern, as a Dart string literal: `DeferredLibrary(route:)` with `telemetry`.
+    route: String,
 }
 
 /// A `GoRoute`; a `ShellRoute` when `layout` is set; a `StatefulShellRoute` when
@@ -212,6 +222,10 @@ struct CallCx {
     /// For a guard: the folder it is in. `None` for a `redirect.dart`.
     #[serde(skip)]
     guard: Option<usize>,
+    /// The guard's or redirect's file and the pattern of the route it guards, as Dart string
+    /// literals: what `telemetry:` names.
+    site_file: String,
+    site_route: String,
 }
 
 /// A layout's builder body: `page` is the layout widget, which a section's `data`
@@ -359,6 +373,10 @@ struct ActionCx {
     call: String,
     /// The function's key in the DevTools tree (`a37_0`), for the provider's `site:`.
     site: String,
+    /// The action's file and the pattern of its route or section, as Dart string literals:
+    /// what `telemetry:` names.
+    site_file: String,
+    site_route: String,
     /// The parameters of what the provider invalidates after a success: `int id`, or nothing.
     key_param: String,
     /// `_i5.validate`: the `validate()` beside the action, run before it (since 0.8.0).
@@ -426,6 +444,8 @@ struct MatcherCx {
     data: String,
     /// Whether the route's path matches by case (its `route.dart`, else the config).
     case_sensitive: bool,
+    /// `, observe: (s, m) {...}` for a page with observe.dart hooks above it, else empty.
+    observe: String,
 }
 
 /// The typed handle of a section's data.dart: `AccountSection.watch(ref, ...)`.
@@ -466,6 +486,8 @@ enum ParamsFn {
     Layout(usize),
     /// What one folder's guard reads from the URL.
     Guard(usize),
+    /// What one folder's observe.dart reads from the URL.
+    Observe(usize),
 }
 
 impl ParamsFn {
@@ -474,6 +496,7 @@ impl ParamsFn {
             ParamsFn::Route(id) => format!("_params{id}"),
             ParamsFn::Layout(id) => format!("_layout{id}"),
             ParamsFn::Guard(id) => format!("_guard{id}"),
+            ParamsFn::Observe(id) => format!("_observe{id}"),
         }
     }
 }
@@ -527,6 +550,10 @@ struct ProviderCx {
     freshness: Option<String>,
     /// The data.dart's `dataCache` (since 0.8.0): the provider is `cachedData[Family]`.
     cache: Option<CacheCx>,
+    /// The data.dart and the pattern of its route or section, as Dart string literals: what
+    /// `telemetry:` names.
+    site_file: String,
+    site_route: String,
 }
 
 #[derive(Serialize)]
@@ -571,6 +598,10 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         .enumerate()
         .filter_map(|(id, r)| typed_route(app, id, r))
         .collect();
+    let has_observe = app
+        .routes
+        .iter()
+        .any(|r| r.page.is_some() && !r.observers.is_empty());
     let cx = FileCx {
         app_dir: cfg.app_dir.clone(),
         table: table(app),
@@ -595,6 +626,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
                 import: r.page.as_ref().expect("a deferred route has a page").import,
                 file: dart_str(&rel(r, Kind::Page)),
                 path: rel(r, Kind::Page),
+                route: dart_str(&resolve::pattern(&r.url)),
             })
             .collect(),
         manifest,
@@ -624,6 +656,9 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         devtools_tree: dart_str(&devtools::compact(app, cfg)),
         devtools_providers: devtools_providers(app),
         case_sensitive: app.routes[0].case_sensitive,
+        observe: has_observe,
+        telemetry: cfg.telemetry,
+        attach: has_observe || cfg.telemetry,
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
         semantics_ids: cfg.semantics_ids,
@@ -835,6 +870,8 @@ fn in_builder(b: &Bind) -> String {
         Bind::StackTrace => "st".into(),
         Bind::Retry => "retry".into(),
         Bind::Uri => "uri".into(),
+        // Only an observe.dart hook takes this; `observe_closure` spells it.
+        Bind::Route => "m.route".into(),
         Bind::PageKey => "state.pageKey".into(),
         Bind::State => "state".into(),
         Bind::IsShell => "false".into(),
@@ -1280,6 +1317,7 @@ fn redirects_of(
             &devtools::site_guard(g, id),
             Some(g),
             seg_fn,
+            (rel(&app.routes[g], Kind::Guard), resolve::pattern(&r.url)),
         ));
     }
     for (hook, name, site, guard) in [
@@ -1288,7 +1326,13 @@ fn redirects_of(
     ] {
         if let Some(h) = hook {
             let own = seg_fn.clone().filter(|_| !h.keys().is_empty());
-            out.push(hook_call(h, name, &site, guard, own));
+            let kind = if name == "guard" {
+                Kind::Guard
+            } else {
+                Kind::Redirect
+            };
+            let at = (rel(r, kind), resolve::pattern(&r.url));
+            out.push(hook_call(h, name, &site, guard, own, at));
         }
     }
     out
@@ -1305,6 +1349,7 @@ fn hook_call(
     site: &str,
     guard: Option<usize>,
     seg_fn: Option<String>,
+    where_is: (String, String),
 ) -> CallCx {
     let mut args = vec![];
     match h.first {
@@ -1319,6 +1364,7 @@ fn hook_call(
         _ => format!("{}: {}", a.name, in_hook(&a.bind)),
     }));
     let call = format!("_i{}.{name}({})", h.import, args.join(", "));
+    let (file, route) = where_is;
     let call = match (h.first, name) {
         (HookFirst::Ref, "guard") => format!("refGuard(context, '{site}', (ref) => {call})"),
         (HookFirst::Ref, _) => format!("refRedirect(context, (ref) => {call})"),
@@ -1329,6 +1375,8 @@ fn hook_call(
         call,
         site: site.to_string(),
         guard,
+        site_file: dart_str(&file),
+        site_route: dart_str(&route),
     }
 }
 
@@ -2281,6 +2329,8 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
                 hook: names.hook,
                 top: format!("_action{id}_{i}"),
                 site: devtools::site_action(id, i),
+                site_file: dart_str(&rel(r, Kind::Action)),
+                site_route: dart_str(&resolve::pattern(&r.url)),
                 factory: if keyed { "actionFamily" } else { "actionProvider" },
                 run_params: if keyed {
                     format!("Ref ref, {key_ty}, {input}")
@@ -2352,9 +2402,11 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
             .iter()
             .map(|(n, _)| format!("{}: p.{n}", dart_str(n)))
             .collect();
+        let observe = observe_closure(app, r, fns);
         all.push((
             ranks,
             MatcherCx {
+                observe,
                 pattern: format!("[{}]", parts.join(", ")),
                 lines,
                 route,
@@ -2375,6 +2427,63 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
     }
     all.sort_by(|a, b| a.0.cmp(&b.0));
     all.into_iter().map(|(_, m)| m).collect()
+}
+
+/// The `observe:` argument of a page's `RouteMatcher`: the hooks of every observe.dart at and
+/// above its folder, outermost first, each bound to what its parameters ask for (parsed
+/// segments, `s.uri`, the typed route `m.route`). Empty for a route with none.
+fn observe_closure(app: &App, r: &Route, fns: &mut BTreeSet<ParamsFn>) -> String {
+    if r.page.is_none() || r.observers.is_empty() {
+        return String::new();
+    }
+    let mut statements = vec![];
+    let mut hooks = vec![];
+    for &g in &r.observers {
+        let o = app.routes[g]
+            .observe
+            .as_ref()
+            .expect("a folder in `observers` has an observe.dart");
+        let var = format!("o{g}");
+        if !o.keys().is_empty() {
+            fns.insert(ParamsFn::Observe(g));
+            statements.push(format!("final {var} = {}(s);", ParamsFn::Observe(g).name()));
+        }
+        let fields: Vec<String> = o
+            .hooks
+            .iter()
+            .map(|h| {
+                let mut args = vec![];
+                if h.takes_ref {
+                    args.push("ref".to_string());
+                }
+                args.extend(h.args.iter().map(|a| match a.bind {
+                    Bind::Uri => format!("{}: s.uri", a.name),
+                    Bind::Route => format!("{}: m.route", a.name),
+                    _ => format!("{}: {var}.{}", a.name, a.name),
+                }));
+                format!(
+                    "{}: ({}) => _i{}.{}({})",
+                    h.name,
+                    if h.takes_ref { "ref" } else { "_" },
+                    o.import,
+                    h.name,
+                    args.join(", ")
+                )
+            })
+            .collect();
+        hooks.push(format!(
+            "RouteHooks({}, {}),",
+            dart_str(&rel(&app.routes[g], Kind::Observe)),
+            fields.join(", ")
+        ));
+    }
+    statements.push("return [".to_string());
+    statements.extend(hooks);
+    statements.push("];".to_string());
+    format!(
+        ", observe: (s, m) {{\n      {}\n    }}",
+        statements.join("\n      ")
+    )
 }
 
 /// The providers of a route's data, outermost first: the `data.dart` of each section above
@@ -2559,9 +2668,29 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
             p.retain(|(n, _)| keys.contains(n));
             p
         }
+        ParamsFn::Observe(id) => {
+            let r = &app.routes[id];
+            let keys = r
+                .observe
+                .as_ref()
+                .map(resolve::Observe::keys)
+                .unwrap_or_default();
+            let query = if r.is_route() {
+                &r.query
+            } else {
+                &r.observe_query
+            };
+            let mut p = app.typed_segs(r);
+            p.extend(query.iter().cloned());
+            p.retain(|(n, _)| keys.contains(n));
+            p
+        }
     };
     let owner = match f {
-        ParamsFn::Route(id) | ParamsFn::Layout(id) | ParamsFn::Guard(id) => &app.routes[id],
+        ParamsFn::Route(id)
+        | ParamsFn::Layout(id)
+        | ParamsFn::Guard(id)
+        | ParamsFn::Observe(id) => &app.routes[id],
     };
     let catch_all = |n: &str| {
         owner
@@ -2730,6 +2859,8 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
             key_param: (!keys_decl.is_empty()).then(|| keys_decl.clone()),
             key_parts: key_parts(app, r, d),
         }),
+        site_file: dart_str(&rel(r, Kind::Data)),
+        site_route: dart_str(&resolve::pattern(&r.url)),
     })
 }
 
@@ -2832,6 +2963,9 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     }
     if r.guard.is_some() {
         tags.push("guard");
+    }
+    if r.page.is_some() && !r.observers.is_empty() {
+        tags.push("observe");
     }
     if r.layout.is_some() {
         tags.push("layout");

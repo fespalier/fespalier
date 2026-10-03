@@ -70,6 +70,8 @@ pub enum Bind {
     /// A segment above a `not_found.dart`, as the URL spells it: a `String`, because the
     /// ones that failed to parse are the reason the file is shown.
     Raw(String),
+    /// An observe.dart hook's `TypedLocation route`: the typed route of the page the hook runs for.
+    Route,
 }
 
 #[derive(Debug, Clone)]
@@ -405,6 +407,39 @@ impl Guard {
     }
 }
 
+/// The hooks of an `observe.dart`: any of `onEnter`, `onLeave` and `onFocus`.
+#[derive(Debug, Clone)]
+pub struct Observe {
+    pub import: usize,
+    pub hooks: Vec<ObserveHook>,
+}
+
+/// One function of an `observe.dart` and the arguments to call it with.
+#[derive(Debug, Clone)]
+pub struct ObserveHook {
+    /// `onEnter`, `onLeave` or `onFocus`.
+    pub name: &'static str,
+    /// Whether it takes a leading `Ref`.
+    pub takes_ref: bool,
+    /// Segments, then query parameters, then `uri`, then `route`.
+    pub args: Vec<Arg>,
+}
+
+impl Observe {
+    /// The segments and query parameters its hooks read from the URL, each once.
+    pub fn keys(&self) -> Vec<String> {
+        let mut out: Vec<String> = vec![];
+        for h in &self.hooks {
+            for a in &h.args {
+                if matches!(a.bind, Bind::Segment(_) | Bind::Query(_)) && !out.contains(&a.name) {
+                    out.push(a.name.clone());
+                }
+            }
+        }
+        out
+    }
+}
+
 /// One tab of a tab layout.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Branch {
@@ -461,6 +496,11 @@ pub struct Route {
     pub error: Option<Widget>,
     pub layout: Option<Widget>,
     pub guard: Option<Guard>,
+    /// This folder's own `observe.dart`, when it has a valid one.
+    pub observe: Option<Observe>,
+    /// The folders (route ids) whose observe.dart applies to this page, outermost first: this
+    /// folder's own last. Only for pages: a redirect.dart route never stays on screen.
+    pub observers: Vec<usize>,
     /// A `redirect.dart` in place of a page: the route only redirects.
     pub redirect: Option<Guard>,
     /// The nearest transition.dart at or above this folder; only for pages, and
@@ -486,6 +526,8 @@ pub struct Route {
     pub layout_query: Vec<(String, String)>,
     /// Query parameters a guard asks for when its folder has no route of its own.
     pub guard_query: Vec<(String, String)>,
+    /// Query parameters an observe.dart asks for when its folder has no route of its own.
+    pub observe_query: Vec<(String, String)>,
     /// Set when the layout asks for a `StatefulNavigationShell`: its tabs, in order.
     pub tabs: Option<Vec<Branch>>,
     /// The options of each tab, in the same order as `tabs`.
@@ -665,6 +707,8 @@ enum Scope {
     Layout(usize),
     /// A guard in a folder that has no page or redirect to hang its query on.
     Guard(usize),
+    /// An observe.dart in such a folder.
+    Observe(usize),
 }
 
 /// `int?` → a nullable int, `List<String>` → every `?x=` value.
@@ -770,6 +814,8 @@ struct Inherited {
     deferred: bool,
     /// The nearest route.dart with a `freshness` (since 0.8.0), relative to the app folder.
     freshness: Option<String>,
+    /// The folders above whose observe.dart applies to every page below, outermost first.
+    observers: Vec<usize>,
 }
 
 /// What a `nest = false` takes a route out of: the page above it, and the folders between.
@@ -862,6 +908,7 @@ pub fn resolve(
             Scope::Route(id) => r.app.routes[id].query.push((name, ty)),
             Scope::Layout(id) => r.app.routes[id].layout_query.push((name, ty)),
             Scope::Guard(id) => r.app.routes[id].guard_query.push((name, ty)),
+            Scope::Observe(id) => r.app.routes[id].observe_query.push((name, ty)),
         }
     }
     r.settle_actions();
@@ -935,6 +982,8 @@ impl Resolver<'_> {
             error: None,
             layout: None,
             guard: None,
+            observe: None,
+            observers: vec![],
             redirect: None,
             transition: None,
             present: None,
@@ -945,6 +994,7 @@ impl Resolver<'_> {
             query: vec![],
             layout_query: vec![],
             guard_query: vec![],
+            observe_query: vec![],
             tabs: None,
             not_found: None,
             tab_options: vec![],
@@ -1175,6 +1225,7 @@ impl Resolver<'_> {
             remount,
             deferred,
             freshness: freshness.clone(),
+            observers: up.observers.clone(),
         };
         // A page is what a route below can leave; so is the layout of a folder between.
         let layout_file = node
@@ -1299,6 +1350,12 @@ impl Resolver<'_> {
         let guard = modules
             .get(&Kind::Guard)
             .and_then(|m| self.guard(m, node, &segs, id));
+        let observe = modules
+            .get(&Kind::Observe)
+            .and_then(|m| self.observe(m, node, &segs, id));
+        if observe.is_some() {
+            here.observers.push(id);
+        }
         // redirect.dart is a route of its own, named after its path.
         let mut redirect = None;
         if let Some(m) = modules.get(&Kind::Redirect) {
@@ -1418,6 +1475,10 @@ impl Resolver<'_> {
             .clone()
             .filter(|_| has_page && present.is_none());
         let shell_transition = here.transition.clone().filter(|_| layout.is_some());
+        self.app.routes[id].observe = observe;
+        if has_page {
+            self.app.routes[id].observers = here.observers.clone();
+        }
         let r = &mut self.app.routes[id];
         (
             r.segs,
@@ -1486,10 +1547,16 @@ impl Resolver<'_> {
             let msg = "guard.dart guards no routes: there is no page.dart or redirect.dart at or below this folder";
             self.diags.warn(&node.rel(Kind::Guard), None, msg);
         }
+        if self.app.routes[id].observe.is_some() && !self.page_at_or_below(id, &children) {
+            let msg =
+                "observe.dart observes no pages: there is no page.dart at or below this folder";
+            self.diags.warn(&node.rel(Kind::Observe), None, msg);
+        }
         // A lone nav.dart is a heading nothing hangs from: the menu check says so (W-N9).
         let bare = !node.files.contains_key(&Kind::Page)
             && !node.files.contains_key(&Kind::Guard)
-            && !node.files.contains_key(&Kind::Nav);
+            && !node.files.contains_key(&Kind::Nav)
+            && !node.files.contains_key(&Kind::Observe);
         if !any_route && node.children.is_empty() && !node.dir.is_empty() && bare {
             self.diags.warn(
                 &node.dir,
@@ -3535,6 +3602,107 @@ impl Resolver<'_> {
         })
     }
 
+    /// Whether the folder `id` (whose own children are `children`) or any folder below it has a
+    /// page.dart.
+    fn page_at_or_below(&self, id: usize, children: &[usize]) -> bool {
+        self.app.routes[id].page.is_some()
+            || children.iter().any(|&c| {
+                let r = &self.app.routes[c];
+                self.page_at_or_below(c, &r.children)
+            })
+    }
+
+    /// `void onEnter(Ref ref, {...})`, `onLeave` and `onFocus` in an observe.dart: run for every
+    /// page at and below its folder (see `lifecycle.dart` for when).
+    fn observe(
+        &mut self,
+        m: &Module,
+        node: &Node,
+        segs: &[(String, usize)],
+        route: usize,
+    ) -> Option<Observe> {
+        let file = node.rel(Kind::Observe);
+        let found: Vec<(&'static str, &dart::Function)> = ["onEnter", "onLeave", "onFocus"]
+            .into_iter()
+            .filter_map(|n| m.functions.iter().find(|f| f.name == n).map(|f| (n, f)))
+            .collect();
+        if found.is_empty() {
+            self.diags.error(
+                &file,
+                None,
+                "expected `void onEnter(Ref ref, {...})`, `void onLeave(...)` or `void onFocus(...)`",
+            );
+            return None;
+        }
+        // Like a guard's: query parameters belong to the folder's own route when it has one.
+        let has_route =
+            node.files.contains_key(&Kind::Page) || node.files.contains_key(&Kind::Redirect);
+        let scope = if has_route {
+            Scope::Route(route)
+        } else {
+            Scope::Observe(route)
+        };
+        let mut hooks = vec![];
+        for (name, f) in found {
+            let what = format!("{name}()");
+            if !f.ret.as_ref().is_some_and(|r| r.is("void")) {
+                let msg = format!(
+                    "{what} must return `void`: an observe.dart hook runs synchronously, at the end of the frame that shows the page"
+                );
+                self.diags.error(&file, Some(&f.span), msg);
+            }
+            let first = HookFirst::of(f);
+            if first == HookFirst::Container {
+                let msg = format!(
+                    "{what} takes `Ref ref` first, or no provider at all; `ProviderContainer` is the older form of guards, not of hooks"
+                );
+                self.diags.error(&file, Some(&f.span), msg);
+            } else if takes_widget_ref(f) {
+                self.diags.error(
+                    &file,
+                    Some(&f.span),
+                    "an observe.dart hook runs outside the widget tree: take `Ref`",
+                );
+            }
+            let skip = first.skip().max(usize::from(takes_widget_ref(f)));
+            let mut rest = vec![];
+            let mut typed_route = None;
+            for p in f.params.iter().skip(skip) {
+                if p.name == "extra" {
+                    let msg = format!(
+                        "{what} can't take `extra`: a hook runs after the navigation, when the page's `extra` is not kept"
+                    );
+                    self.diags.error(&file, Some(&p.span), msg);
+                } else if p.ty.as_ref().is_some_and(|t| t.is("TypedLocation")) {
+                    if p.name == "route" && p.named {
+                        typed_route = Some(Arg {
+                            name: "route".into(),
+                            named: true,
+                            bind: Bind::Route,
+                        });
+                    } else {
+                        self.diags.error(
+                            &file,
+                            Some(&p.span),
+                            "the typed route of the page is `TypedLocation route`; name the parameter `route`",
+                        );
+                    }
+                } else {
+                    rest.push(p);
+                }
+            }
+            let mut args = self.hook_args(&file, rest.into_iter(), segs, scope, &what);
+            args.extend(typed_route);
+            hooks.push(ObserveHook {
+                name,
+                takes_ref: first == HookFirst::Ref,
+                args,
+            });
+        }
+        let import = self.import(&file);
+        Some(Observe { import, hooks })
+    }
+
     /// `String redirect({...})` in a folder in place of page.dart.
     fn redirect(
         &mut self,
@@ -4024,6 +4192,7 @@ fn bare_type(text: &str) -> &str {
 fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
     let (gets, accepts): (&str, &[&str]) = match bind {
         Bind::Uri => ("the requested Uri", &["Uri"]),
+        Bind::Route => ("the page's typed route", &["TypedLocation"]),
         Bind::Child => ("the page as a Widget", &["Widget"]),
         Bind::Shell => (
             "the StatefulNavigationShell",

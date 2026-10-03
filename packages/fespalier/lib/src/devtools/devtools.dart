@@ -36,9 +36,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart'
         WidgetRef;
 import 'package:hooks_riverpod/misc.dart' show ProviderBase, ProviderListenable;
 
+import '../navigation_kind.dart';
 import '../route_data.dart' show PrefetchHandle, SectionView;
 import '../route_match.dart' show UrlMatch;
 import '../segments.dart' show GuardResult;
+import '../telemetry.dart'
+    show TelemetrySite, telemetryDataTrace, telemetryGuardTrace;
 import 'protocol.dart';
 
 /// Whether fespalier's DevTools support is compiled in: false in release builds, and in any
@@ -80,7 +83,7 @@ int _seq = 0;
 int _event = 0;
 
 /// What the router's configuration was at the last commit.
-({int depth, String base, String leaf, String? top})? _last;
+NavSnapshot? _last;
 
 /// Whether the service extensions are registered. `registerExtension` throws a second time, and
 /// a name is registered once per isolate, so this outlives [debugDevToolsReset].
@@ -168,57 +171,19 @@ void _report(Object error) {
 // ---------------------------------------------------------------------------------------------
 // What the router did
 
-/// The pushed pages in [matches], oldest first (a pushed page inside a shell is in the shell's
-/// matches).
-void _pushed(List<RouteMatchBase> matches, List<ImperativeRouteMatch> out) {
-  for (final m in matches) {
-    if (m is ImperativeRouteMatch) {
-      out.add(m);
-    } else if (m is ShellRouteMatch) {
-      _pushed(m.matches, out);
-    }
-  }
-}
-
-/// Where [config] is: the list of the page on top (what [GoRouterState] of that page reads),
-/// which is [config] itself when nothing was pushed.
-RouteMatchList _active(
-  RouteMatchList config,
-  List<ImperativeRouteMatch> pushed,
-) => pushed.isEmpty ? config : pushed.last.matches;
-
 void _record(RouteMatchList config) {
   if (config.isEmpty && config.error == null) return;
   final pushed = <ImperativeRouteMatch>[];
-  _pushed(config.matches, pushed);
-  final active = _active(config, pushed);
+  pushedMatches(config.matches, pushed);
+  final active = activeMatches(config, pushed);
   final depth = pushed.length;
-  final top = pushed.isEmpty ? null : pushed.last.pageKey.value;
-  final base = config.uri.toString();
-  final leaf = active.uri.toString();
-  final before = _last;
-  final String kind;
-  if (before == null) {
-    kind = NavigationKind.initial;
-  } else if (depth > before.depth) {
-    kind = NavigationKind.push;
-  } else if (depth < before.depth) {
-    // Dropping the pushed pages for another location is a `go`, not a pop.
-    kind = base == before.base ? NavigationKind.pop : NavigationKind.go;
-  } else if (depth > 0 && (top != before.top || leaf != before.leaf)) {
-    // `GoRouter.replace` keeps the page's key and changes what it shows.
-    kind = NavigationKind.replace;
-  } else if (base == before.base && leaf == before.leaf) {
-    kind = NavigationKind.refresh;
-  } else {
-    kind = NavigationKind.go;
-  }
-  _last = (depth: depth, base: base, leaf: leaf, top: top);
+  final (:kind, :now) = classifyNavigation(config, _last);
+  _last = now;
   final record = NavigationRecord(
     seq: ++_seq,
     at: DateTime.now().millisecondsSinceEpoch,
     kind: kind,
-    uri: leaf,
+    uri: now.leaf,
     fullPath: active.fullPath,
     depth: depth,
     guards: List.of(_pending),
@@ -295,8 +260,8 @@ String _join(String parent, String child) {
 
 LocationRecord _location(RouteMatchList config) {
   final pushed = <ImperativeRouteMatch>[];
-  _pushed(config.matches, pushed);
-  final active = _active(config, pushed);
+  pushedMatches(config.matches, pushed);
+  final active = activeMatches(config, pushed);
   UrlMatch? match;
   try {
     match = _matchUrl?.call(active.uri);
@@ -353,10 +318,20 @@ bool _skipped = false;
 ///
 /// A guard that throws before it returns never gets here, so it is not shown; go_router gets the
 /// error as it always did.
+///
+/// [telemetry] (since 0.8.0) is the call site as telemetry names it: the generated file passes
+/// one `const` for each guard in an app made with `telemetry: true`, and none otherwise, so an
+/// app without it never reaches the telemetry code.
 @pragma('vm:prefer-inline')
 @pragma('dart2js:tryInline')
-GuardResult traceGuard(GoRouterState state, String site, GuardResult result) {
+GuardResult traceGuard(
+  GoRouterState state,
+  String site,
+  GuardResult result, {
+  TelemetrySite? telemetry,
+}) {
   if (kFespalierDevTools) _traceGuard(state, site, result);
+  if (telemetry != null) telemetryGuardTrace(state, site, telemetry, result);
   return result;
 }
 
@@ -637,10 +612,22 @@ String _buildKey(int container, String site, Shown? key) =>
 /// It reads no provider and listens to nothing: a `Future` gets a side `then` that only records
 /// how it ended, a `Stream` is not touched, and [ref] gets an `onDispose` callback and, since
 /// 0.8.0, an `onAddListener` and an `onRemoveListener` one, which count the provider's listeners.
+///
+/// [telemetry] (since 0.8.0) is the call site as telemetry names it, passed only by an app made
+/// with `telemetry: true`.
 @pragma('vm:prefer-inline')
 @pragma('dart2js:tryInline')
-T traceData<T>(Ref ref, String site, Object? key, T result) {
+T traceData<T>(
+  Ref ref,
+  String site,
+  Object? key,
+  T result, {
+  TelemetrySite? telemetry,
+}) {
   if (kFespalierDevTools) _traceData(ref, site, key, result);
+  if (telemetry != null) {
+    telemetryDataTrace(ref, telemetry, key != null, result);
+  }
   return result;
 }
 

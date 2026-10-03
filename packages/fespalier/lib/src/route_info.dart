@@ -176,8 +176,13 @@ class RouteInfo<M> {
 /// go_router has no path for it (an error page).
 /// (An optional catch-all's route without the catch-all has no `?` here: use
 /// [lookupRoute].)
-String? routeTemplate(GoRouterState state, [String base = '/']) {
-  var path = state.fullPath;
+String? routeTemplate(GoRouterState state, [String base = '/']) =>
+    pathTemplate(state.fullPath, base);
+
+/// [routeTemplate] for a go_router path ([fullPath], a route's full path with the mount point
+/// in it) instead of a state. Not exported.
+String? pathTemplate(String? fullPath, [String base = '/']) {
+  var path = fullPath;
   if (path == null) return null;
   final prefix = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
   if (prefix.isNotEmpty && (path == prefix || path.startsWith('$prefix/'))) {

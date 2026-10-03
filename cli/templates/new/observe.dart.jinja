@@ -1,0 +1,12 @@
+{% from "new/_macros.dart" import hook %}
+import 'package:fespalier/fespalier.dart';
+
+/// Runs at the end of the first frame that shows {{ pattern }}, once the page is the one on
+/// screen. Take `Uri uri` or `TypedLocation route` too, to know where it is.
+{{ hook("onEnter", params) }}
+
+/// Runs when the page is on top again (a page above it was popped, or its tab was shown).
+{{ hook("onFocus", params) }}
+
+/// Runs once the page is gone: popped, replaced or navigated away from.
+{{ hook("onLeave", params) }}

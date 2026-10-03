@@ -35,6 +35,10 @@ testWidgets('shows a product', (tester) async {
 });
 ```
 
+- **Hooks and telemetry (since 0.8.0).** An `observe.dart` hook fires at the end of the first frame that
+  shows a change, so `await tester.pump()` before asserting what it did; `RecordingTelemetry` is a
+  `FespalierTelemetry` that keeps lines for a test (`FespalierTelemetry.install` in `setUp`, `install(null)`
+  in `tearDown`). Both are in [`fespalier-observability`](../fespalier-observability/SKILL.md).
 - **`pumpRouter(tester, router, {overrides, container, settle, retry, disposeRouter, app})`** wraps the router
   in a `ProviderScope` and Flutter's `MaterialApp.router`, pumps, and returns the
   `ProviderContainer` (for `container.read(...)`).

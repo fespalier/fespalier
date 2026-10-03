@@ -284,6 +284,25 @@
         "README.md#Getting started",
         "command:init"
       ]
+    },
+    "fespalier-observability": {
+      "covers": [
+        "README.md#Route lifecycle: `observe.dart`",
+        "README.md#Telemetry",
+        "README.md#Turning it on",
+        "README.md#OpenTelemetry with otel_zone",
+        "README.md#Telemetry conventions",
+        "README.md#Testing telemetry",
+        "README.md#What it costs",
+        "kind:observe.dart",
+        "config:telemetry",
+        "packages/fespalier/lib/src/lifecycle.dart",
+        "packages/fespalier/lib/src/telemetry.dart",
+        "packages/fespalier/lib/src/navigation_kind.dart",
+        "packages/fespalier/lib/src/version.dart",
+        "cli/templates/new/observe.dart.jinja",
+        "examples/telemetry"
+      ]
     }
   },
   "exempt": [

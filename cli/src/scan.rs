@@ -37,10 +37,12 @@ pub enum Kind {
     Startup,
     /// The app folder's own `splash.dart`: shown while `startup()` runs (root only, since 0.8.0).
     Splash,
+    /// `observe.dart`: hooks that run when a page is entered, focused and left.
+    Observe,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 19] = [
+    pub const ALL: [Kind; 20] = [
         Kind::Page,
         Kind::Data,
         Kind::Action,
@@ -60,6 +62,7 @@ impl Kind {
         Kind::App,
         Kind::Startup,
         Kind::Splash,
+        Kind::Observe,
     ];
 
     pub fn file(self) -> &'static str {
@@ -83,6 +86,7 @@ impl Kind {
             Kind::App => "app.dart",
             Kind::Startup => "startup.dart",
             Kind::Splash => "splash.dart",
+            Kind::Observe => "observe.dart",
         }
     }
 

@@ -460,6 +460,7 @@ fn args(route: &str) -> NewArgs {
         guard: false,
         transition: false,
         nav: false,
+        observe: false,
     }
 }
 

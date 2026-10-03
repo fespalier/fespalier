@@ -556,6 +556,8 @@ mod navigator_tests;
 #[cfg(test)]
 mod nest_tests;
 #[cfg(test)]
+mod observe_tests;
+#[cfg(test)]
 mod paths_tests;
 #[cfg(test)]
 mod refresh_tests;
@@ -579,6 +581,8 @@ mod size_tests;
 mod smoke_tests;
 #[cfg(test)]
 mod synth;
+#[cfg(test)]
+mod telemetry_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

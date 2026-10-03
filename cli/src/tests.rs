@@ -123,7 +123,7 @@ fn views_built_without_arguments_are_const_when_their_constructor_is() {
 
 #[test]
 fn committed_output_is_up_to_date() {
-    for name in ["shop", "features", "tabs", "minimal"] {
+    for name in ["shop", "features", "tabs", "minimal", "telemetry"] {
         // The examples' own pubspec.yaml: `output_manifest:` and `meta:` change what is written.
         let cfg = Config::load(&examples(name)).unwrap();
         let (code, main, diags, app) =
@@ -183,7 +183,7 @@ fn committed_output_is_up_to_date() {
 /// `examples/shop` has a string path that matches and a silenced one that does not.
 #[test]
 fn examples_have_no_unknown_paths() {
-    for name in ["shop", "features", "tabs", "minimal"] {
+    for name in ["shop", "features", "tabs", "minimal", "telemetry"] {
         let cfg = Config::load(&examples(name)).unwrap();
         let (_, diags, app) = crate::analyze(&examples(name).join("lib/app"), &cfg).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
@@ -942,6 +942,7 @@ fn scaffold_then_generate() {
         guard: true,
         transition: false,
         nav: false,
+        observe: false,
     };
     scaffold::new_route(dir.path(), &args("orders/[orderId]", true)).unwrap();
     let data = fs::read_to_string(dir.path().join("lib/app/orders/$orderId/data.dart")).unwrap();
@@ -1359,6 +1360,7 @@ fn scaffold_writes_a_transition() {
         guard: false,
         transition: true,
         nav: false,
+        observe: false,
     };
     scaffold::new_route(dir.path(), &args).unwrap();
     let t = fs::read_to_string(dir.path().join("lib/app/docs/transition.dart")).unwrap();
@@ -1933,6 +1935,7 @@ fn scaffold_honours_app_dir() {
         guard: false,
         transition: false,
         nav: false,
+        observe: false,
     };
     scaffold::new_route(dir.path(), &args).unwrap();
     assert!(dir.path().join("lib/pages/docs/$slug/page.dart").exists());

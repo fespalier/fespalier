@@ -1080,6 +1080,10 @@ fn no_companions_generate_what_0_7_0_did() {
             "useActionForm",
             "validate:",
             "useForm",
+            // Nor telemetry or observe.dart hooks (since 0.8.0): neither is opted into.
+            "TelemetrySite",
+            "AppRoutes.attach",
+            "_observeAt",
         ],
     );
 }

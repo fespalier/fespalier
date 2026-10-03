@@ -47,6 +47,9 @@ pub struct NewArgs {
     /// Write nav.dart: how this folder shows in the generated menus (`AppMenu`)
     #[arg(long)]
     pub nav: bool,
+    /// Write observe.dart: hooks that run when a page is entered, focused and left
+    #[arg(long)]
+    pub observe: bool,
 }
 
 /// What `fsp new` parses: the route flags plus `--no-page`.
@@ -74,6 +77,10 @@ struct Cx {
     label: String,
     /// `/orders/$orderId`, interpolated in data.dart's placeholder.
     path: String,
+    /// `/orders/:orderId`: the pattern the route is known by.
+    pattern: String,
+    /// The named parameters of observe.dart's hooks: the segments.
+    params: Vec<String>,
     /// nav.dart's label: `Orders` for `orders`, `Gift cards` for `gift-cards`.
     nav_label: String,
     /// `const nav = Nav(label: '...');` is longer than 80 columns: one argument per line.
@@ -227,6 +234,8 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         path: format!("/{rel}"),
         nav_wide: format!("const nav = Nav(label: '{}');", nav_label(segs.last())).len() > 80,
         nav_label: nav_label(segs.last()),
+        pattern: resolve::pattern(&segs),
+        params: seg_cx.iter().map(|s| s.param.clone()).collect(),
         stem,
         action_params: seg_cx
             .iter()
@@ -256,6 +265,7 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         ("guard", a.guard),
         ("transition", a.transition),
         ("nav", a.nav),
+        ("observe", a.observe),
     ];
     if !wanted.iter().any(|(_, on)| *on) {
         let why = if is_group {
@@ -264,7 +274,7 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
             "--no-page skips the page"
         };
         bail!(
-            "nothing to create: {why}; also pass --action, --layout, --loading, --error, --not-found, --guard or --transition"
+            "nothing to create: {why}; also pass --action, --layout, --loading, --error, --not-found, --guard, --observe or --transition"
         );
     }
     let dir = app_dir.join(&rel);

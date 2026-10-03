@@ -82,6 +82,9 @@ pub fn markers(r: &Route, root: bool, guarded: bool) -> Vec<&'static str> {
     if guarded {
         out.push("guard");
     }
+    if r.page.is_some() && !r.observers.is_empty() {
+        out.push("observe");
+    }
     if r.present.is_some() {
         out.push("present");
     }

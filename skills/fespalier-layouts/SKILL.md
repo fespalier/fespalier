@@ -97,7 +97,8 @@ a page** or it opens over an empty screen. Restoration needs
 build yourself must pass `restorationId: key.value`. Since 0.8.1 a shared element is
 `Route(...).hero('name', child: ...)` on each side (a `RouteHero`, which stays out of
 flights in a hidden tab), and `heroes: const Heroes(onBackGesture: true)` on a `Transitions.*`
-call sets how they fly; nothing flies into a dialog or sheet. All in
+call sets how they fly; nothing flies into a dialog or sheet. A hero that holds a network image uses
+`route.imageHero(...)` (since 0.9.0, `fespalier_image`: [`fespalier-images`](../fespalier-images/SKILL.md)). All in
 [`references/transitions-and-restoration.md`](references/transitions-and-restoration.md).
 
 ## Menus and breadcrumbs (`nav.dart`, since 0.8.1)

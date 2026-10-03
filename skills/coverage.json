@@ -376,6 +376,47 @@
         "README.md#Spans around data() and actions",
         "README.md#Where a navigation came from: navigateFrom"
       ]
+    },
+    "fespalier-images": {
+      "covers": [
+        "README.md#Images",
+        "README.md#Installing `fespalier_image`",
+        "README.md#The image CDN: `imageCdnProvider`",
+        "README.md#Buckets: the widths an image is fetched at",
+        "README.md#`ResponsiveImage`",
+        "README.md#URL builders",
+        "README.md#imgproxy and EmgR",
+        "README.md#Cloudinary",
+        "README.md#imgix",
+        "README.md#Thumbor",
+        "README.md#A URL template",
+        "README.md#Already sized: a srcset",
+        "README.md#Signed image URLs",
+        "README.md#Images in heroes",
+        "README.md#Images on the web",
+        "README.md#Caching images",
+        "README.md#Testing images",
+        "README.md#What images cost",
+        "packages/fespalier_image/README.md",
+        "packages/fespalier_image/lib/fespalier_image.dart",
+        "packages/fespalier_image/lib/testing.dart",
+        "packages/fespalier_image/lib/src/cdn.dart",
+        "packages/fespalier_image/lib/src/buckets.dart",
+        "packages/fespalier_image/lib/src/builder.dart",
+        "packages/fespalier_image/lib/src/heroes.dart",
+        "packages/fespalier_image/lib/src/request.dart",
+        "packages/fespalier_image/lib/src/responsive_image.dart",
+        "packages/fespalier_image/lib/src/variants.dart",
+        "packages/fespalier_image/lib/src/warnings.dart",
+        "packages/fespalier_image/lib/src/builders/cloudinary.dart",
+        "packages/fespalier_image/lib/src/builders/common.dart",
+        "packages/fespalier_image/lib/src/builders/direct.dart",
+        "packages/fespalier_image/lib/src/builders/imgix.dart",
+        "packages/fespalier_image/lib/src/builders/imgproxy.dart",
+        "packages/fespalier_image/lib/src/builders/srcset.dart",
+        "packages/fespalier_image/lib/src/builders/template.dart",
+        "packages/fespalier_image/lib/src/builders/thumbor.dart"
+      ]
     }
   },
   "exempt": [

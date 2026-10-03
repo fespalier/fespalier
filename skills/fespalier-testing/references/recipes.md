@@ -285,6 +285,28 @@ await tester.pumpAndSettle();
 fakeAuth(signedInAs: ...)` makes every guarded route render (otherwise a guarded route is skipped).
 - `RecordingTelemetry` sees the `auth` spans: `#2 start auth refresh backend=fake trigger=expired`.
 
+## Network images (since 0.9.0)
+
+With `package:fespalier_image`, a test that shows an image needs `FakeImages`, or it goes through flutter_test's fake
+`HttpClient` (every request a 400, with its own warning) and, with no CDN configured, prints the "not a URL" message.
+`FakeImages(image: await createTestImage())` (made once, in `setUpAll`) completes every load in the frame that asks for it;
+without `image:` a load waits for `fakes.complete(url, image)` or `fakes.fail(url)`. `fakes.cdn(yourCdn)` is your real CDN
+loading through the fakes, so `fakes.requested` holds the exact URLs of your builder. Put the override in
+`pumpRouter(overrides:)` **and** in `test/routes/setup.dart`'s `overrides(pattern)`.
+
+```dart
+final fakes = FakeImages(image: image);
+await pumpRouter(
+  tester,
+  AppRoutes.router(initialLocation: '/products'),
+  overrides: [imageCdnProvider.overrideWithValue(fakes.cdn(shopImages))],
+);
+expect(fakes.requested, hasLength(3)); // one URL per row, at the row's bucket
+```
+
+`cdn.resolve(source, logicalWidth: ..., devicePixelRatio: ...)` answers the size rule without a widget. A compiling
+sample, and the rest (precache, heroes), is in [`fespalier-images`](../../fespalier-images/references/integration.md).
+
 ## DPoP proofs (since 0.9.0)
 
 With `package:fespalier_sign_keypair`, a test needs no secure element: `DpopProof(signer: FakeDpopSigner())` is a proof

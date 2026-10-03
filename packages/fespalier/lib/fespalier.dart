@@ -29,6 +29,7 @@ export 'src/devtools/devtools.dart'
         watchData;
 export 'src/extra_codec.dart';
 export 'src/guards.dart';
+export 'src/heroes.dart';
 export 'src/layout_page.dart';
 export 'src/location.dart';
 export 'src/not_found.dart';

@@ -10,7 +10,7 @@ before changing how it behaves.
 
 | Path | What it is |
 | --- | --- |
-| `cli/` | The generator, Rust crate `fespalier`, binary `fsp`. Pipeline: `scan.rs` (the file tree) → `dart.rs` (tree-sitter reads each Dart file) → `resolve.rs` (binds parameters, checks how the files fit) → `emit.rs` and `manifest.rs` (write the output through `templates/`). Also `scaffold.rs` (`fsp new`), `init.rs`, `session.rs` and `parse_cache.rs` (incremental `fsp watch`), `locale.rs`, `enums.rs`, `extra.rs`. Unit tests sit next to the code as `*_tests.rs`; `cli/tests/` spawns the binary. |
+| `cli/` | The generator, Rust crate `fespalier`, binary `fsp`. Pipeline: `scan.rs` (the file tree) → `dart.rs` (tree-sitter reads each Dart file) → `resolve.rs` (binds parameters, checks how the files fit) → `emit.rs` and `manifest.rs` (write the output through `templates/`). Also `smoke.rs` (`fsp test`) and `samples.rs` (the `samples:` it shares with `fsp maestro`), `scaffold.rs` (`fsp new`), `init.rs`, `size.rs` (`fsp size`, the web build's JavaScript per deferred route), `session.rs` and `parse_cache.rs` (incremental `fsp watch`), `locale.rs`, `enums.rs`, `extra.rs`. Unit tests sit next to the code as `*_tests.rs`; `cli/tests/` spawns the binary. |
 | `cli/templates/` | minijinja templates: `app.g.dart.jinja`, the manifest, and the files `fsp new` / `fsp init` write (`new/`, `init/`). |
 | `packages/fespalier/` | The Dart runtime (`DataView`, `DeferredLibrary` and `DeferredView`, segment parsing, `TypedLocation`, `testing.dart`) and `bin/fespalier.dart`, the `dart run fespalier` launcher that downloads the matching `fsp`. `lib/src/devtools/` is the app side of the DevTools extension (`protocol.dart` is the wire format and imports nothing; `devtools.dart` is behind `kFespalierDevTools`, false in release). Not published to a registry: apps use it as a git dependency at a release tag. |
 | `packages/fespalier/extension/devtools/` | What DevTools loads: `config.yaml` (its `version:` is release-please's) and `build/`, the extension's release build, **committed and generated** by `scripts/build-devtools-extension.sh`. Never edit a file in `build/`. |
@@ -18,9 +18,10 @@ before changing how it behaves.
 | `examples/{minimal,shop,features,tabs}/` | Runnable apps with widget tests. Each commits its `lib/app.g.dart` (`tabs` also a manifest library); a test fails when one is stale. |
 | `editors/vscode/`, `editors/intellij/` | Editor plugins (TypeScript, Kotlin) that show `fsp --json` diagnostics. |
 | `skills/` | Agent skills for **apps that use fespalier** (one directory per skill, `SKILL.md` plus `references/`), with `skills/coverage.json`, the map from README sections, file kinds, config keys and commands to the skill that covers each. `skills/README.md` is their guide. Not published. |
-| `scripts/` | Python and shell helpers for releases (Homebrew/Scoop rendering, checksum pinning, staged-asset verification) and their tests, `check-const-lints.sh`, and `check-deferred-chunks.sh` (the web build behind `just web-chunks`); `scripts/skills/` holds the skills' coverage gate and sample builder (Node). |
+| `scripts/` | Python and shell helpers for releases (Homebrew/Scoop rendering, checksum pinning, staged-asset verification) and their tests, `check-const-lints.sh`, `web-copy.sh` (sourced: the throwaway web copy of an example), `check-deferred-chunks.sh` (the web build behind `just web-chunks`) and `check-web-routes.sh` (behind `just web-routes`); `scripts/skills/` holds the skills' coverage gate and sample builder (Node). |
 | `ci/commit-message-parse/` | The squash-message parser the `pr-title` workflow runs; a standalone npm project pinned to release-please's grammar. |
-| `.github/workflows/` | `ci.yml` (the gate), `quality.yml` (org lint and trivy), `pr-title.yml`, `issue-governance.yml`, and the release workflows. |
+| `ci/web-routes/` | The Playwright replay of the shop's Maestro flows (`check.mjs`); a standalone npm project whose lockfile pins Playwright, and so its Chromium. |
+| `.github/workflows/` | `ci.yml` (the gate), `maestro-web.yml` (weekly real Maestro, not a gate), `quality.yml` (org lint and trivy), `pr-title.yml`, `issue-governance.yml`, and the release workflows. |
 
 ## Commands
 
@@ -30,15 +31,16 @@ before changing how it behaves.
 | `just lint` | `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` in `cli/` |
 | `just test` | The generator's tests in `cli/` (unit, CLI, version checks) |
 | `just deny` | `cargo deny check` (licences, advisories, sources; `cli/deny.toml`) |
-| `just check-examples` | `fsp check` on every example, and `fsp maestro --check` on `examples/shop` (its committed `.maestro/routes/`) |
+| `just check-examples` | `fsp check` on every example, and on `examples/shop` `fsp maestro --check` (its committed `.maestro/routes/`) and `fsp test --check` (its committed `test/routes/routes_test.dart`) |
 | `just flutter` | In the package, the DevTools extension and every example: `flutter pub get`, `dart format --set-exit-if-changed`, `flutter analyze`, `flutter test`; in each example also `scripts/check-const-lints.sh` (the const lints on a copy of the generated files, which `ignore_for_file` hides) |
 | `just devtools` | The committed DevTools extension build is what `packages/fespalier_devtools` builds to (a fresh build compared byte for byte, in a temporary folder), and `devtools_extensions validate` accepts it. Needs Flutter |
 | `just devtools-build` | Rebuild `packages/fespalier/extension/devtools/build` (and refresh the protocol copy). Run it and commit the result after touching `packages/fespalier_devtools/`, `lib/src/devtools/protocol.dart` or `FLUTTER_VERSION` |
 | `just packaging` | The Python tests for Homebrew/Scoop rendering, checksum pinning and release staging |
 | `just skills` | The skills' coverage gate: every README section, file kind, config key and `fsp` command is claimed by a skill, every claim still exists, and frontmatter, stamps and links are valid |
-| `just web-chunks` | `flutter build web --release` of `examples/shop` in a temporary copy, and a check that each deferred page is a `main.dart.js_N.part.js` of its own (about a minute, web artifacts; CI's `web` job runs it, `just ci` does not) |
+| `just web-chunks` | `flutter build web --release` of `examples/shop` in a temporary copy, a check that each deferred page is a `main.dart.js_N.part.js` of its own, then `fsp size --check` against the budgets in the shop's `size:` (cross-checked with the marker strings). It builds `fsp` too (a few minutes, web artifacts; CI's `web` job runs it, `just ci` does not) |
+| `just web-routes` | `flutter build web --release --no-web-resources-cdn` of `examples/shop` in a temporary copy, served locally, and Playwright (`ci/web-routes/`, exact versions in its lockfile) replays each committed `.maestro/routes` flow in Chromium with every non-local request blocked: the link must show the flow's `id:` (`flt-semantics-identifier`) in time. Needs Flutter and Node, about two minutes; CI's `web-routes` job (the one to require) runs it, `just ci` does not. `.github/workflows/maestro-web.yml` runs real Maestro (sha256-pinned) weekly, not required |
 | `just skill-samples [file.md ...]` | Builds the skills' code samples in a scratch app with this checkout's `fsp` (`gen`, `analyze`, `test`). Slow; not in `just ci` or CI, so run it when you touch a sample |
-| `just gen-examples` | Regenerate every example's committed `lib/app.g.dart`, and `examples/shop`'s `.maestro/routes/` |
+| `just gen-examples` | Regenerate every example's committed `lib/app.g.dart`, and `examples/shop`'s `.maestro/routes/` and `test/routes/routes_test.dart` |
 | `just fmt` | `cargo fmt` and `dart format` over everything |
 | `just vscode`, `just intellij` | The editor plugins (need Node / JDK 21; CI runs them, `just ci` does not) |
 

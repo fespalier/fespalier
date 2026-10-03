@@ -236,7 +236,6 @@ fn a_path_that_matches_a_route_is_fine() {
         "'/products'",
         "'/products/'",
         "'/products/2'",
-        "'/products/abc'",
         "'/products/2/reviews'",
         "'/docs/a'",
         "'/docs/a/b/c'",
@@ -400,6 +399,219 @@ fn the_suggestion_is_the_nearest_spelling() {
             unmatched("/xyz"),
             "no route matches `/products/2/reviw`, so it shows not-found; did you mean `/products/2/reviews`? [unknown_path]".to_string(),
         ]
+    );
+}
+
+/// The messages for `exprs` given to `context.go`, on top of `std_app()` plus `extra` routes.
+fn with_routes(pubspec: &str, extra: Vec<(String, String)>, exprs: &[&str]) -> Vec<String> {
+    let mut app = std_app();
+    app.extend(extra);
+    let dir = make(pubspec, &app, &[("lib/screens/s.dart", &gos(exprs))]);
+    messages(dir.path())
+}
+
+fn wrong(path: &str, pattern: &str, part: &str, reason: &str) -> String {
+    format!(
+        "`{path}` reaches {pattern}, but `{part}` {reason}, so it shows not-found [unknown_path]"
+    )
+}
+
+#[test]
+fn segment_types_are_checked() {
+    assert_eq!(
+        of_paths("", &["'/products/abc'"]),
+        [
+            "`/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found [unknown_path]"
+        ]
+    );
+    // What `int.tryParse` reads, a `String` segment, and a text that is not judged.
+    let fine = [
+        "'/products/+2'",
+        "'/products/0x1F'",
+        "'/products/%EF%BB%BF2'",
+        "'/products/2%20'",
+        "'/orders/abc'",
+        "'/docs/a/b'",
+    ];
+    assert_eq!(of_paths("", &fine), Vec::<String>::new());
+    // The query is not read, the fragment neither.
+    assert_eq!(
+        of_paths("", &["'/products/2?id=abc#x'"]),
+        Vec::<String>::new()
+    );
+    // A hole after the `?` still judges the path before it, and shows the literal as written.
+    assert_eq!(
+        of_paths("", &["'/products/abc?q=$x'"]),
+        [
+            "`/products/abc?q=$x` reaches /products/:id, but `abc` is not an int, so it shows not-found [unknown_path]"
+        ]
+    );
+}
+
+#[test]
+fn catch_all_parts_are_checked() {
+    let extra = vec![
+        f(
+            "compare/$$ids/page.dart",
+            typed("Compare", "ids", "List<int>"),
+        ),
+        f("nums/$$$rest/page.dart", typed("Nums", "rest", "List<int>")),
+    ];
+    assert_eq!(
+        with_routes(
+            "",
+            extra,
+            &["'/compare/3/x'", "'/compare/3/7'", "'/nums'", "'/nums/1/2'"]
+        ),
+        [
+            "`/compare/3/x` reaches /compare/*ids, but its part `x` is not an int, so it shows not-found [unknown_path]"
+        ]
+    );
+}
+
+#[test]
+fn enum_segments_list_values_and_suggest() {
+    let page = "import 'package:demo/models/category.dart';\nclass ShopPage extends StatelessWidget { const ShopPage({super.key, required this.category}); final Category category; }";
+    let enum_file = "enum Category { shoes, hats }\n";
+    let many = "enum Category { a, b, c, d, e, f, g, h }\n";
+    let run = |pubspec: &str, decl: &str, exprs: &[&str]| {
+        let dir = make(
+            pubspec,
+            &[f("shop/$category/page.dart", page.to_string())],
+            &[
+                ("lib/models/category.dart", decl),
+                ("lib/screens/s.dart", &gos(exprs)),
+            ],
+        );
+        messages(dir.path())
+    };
+    assert_eq!(
+        run(
+            "",
+            enum_file,
+            &["'/shop/socks'", "'/shop/shoos'", "'/shop/hats'"]
+        ),
+        [
+            "`/shop/socks` reaches /shop/:category, but `socks` is not a value of Category (shoes, hats), so it shows not-found [unknown_path]",
+            "`/shop/shoos` reaches /shop/:category, but `shoos` is not a value of Category (shoes, hats), so it shows not-found; did you mean `/shop/shoes`? [unknown_path]",
+        ]
+    );
+    // Names are exact when the route is case-sensitive; with case off, any case is a value.
+    assert_eq!(run("", enum_file, &["'/shop/SHOES'"]).len(), 1);
+    assert_eq!(
+        run(
+            "fespalier:\n  case_sensitive: false\n",
+            enum_file,
+            &["'/shop/SHOES'", "'/shop/Hats'", "'/shop/ShoEs'"]
+        ),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        run("", many, &["'/shop/z'"]),
+        [
+            "`/shop/z` reaches /shop/:category, but `z` is not a value of Category (a, b, c, d, e, f, ...), so it shows not-found [unknown_path]"
+        ]
+    );
+}
+
+#[test]
+fn the_first_fitting_route_decides() {
+    // `a/$id` ranks before `$slug/x`, which would take `/a/x`; the runtime does not try the next
+    // route when the first one's segment does not parse.
+    let extra = vec![
+        f("a/$id/page.dart", typed("A", "id", "int")),
+        f("$slug/x/page.dart", typed("Slug", "slug", "String")),
+    ];
+    assert_eq!(
+        with_routes("", extra, &["'/a/x'", "'/a/2'", "'/b/x'"]),
+        [wrong("/a/x", "/a/:id", "x", "is not an int")]
+    );
+    // A static sibling takes `new` before `:id` does.
+    let extra = vec![
+        f("a/$id/page.dart", typed("A", "id", "int")),
+        f("a/new/page.dart", page("New")),
+    ];
+    assert_eq!(
+        with_routes("", extra, &["'/a/new'", "'/a/zz'"]),
+        [wrong("/a/zz", "/a/:id", "zz", "is not an int")]
+    );
+    // A root catch-all ranks after `products/:id`.
+    let app = vec![
+        f("$$rest/page.dart", typed("Rest", "rest", "List<String>")),
+        f("products/$id/page.dart", typed("Product", "id", "int")),
+    ];
+    let src = gos(&["'/products/abc'", "'/other/x'", "'/products/2'"]);
+    let dir = make("", &app, &[("lib/screens/s.dart", &src)]);
+    assert_eq!(
+        messages(dir.path()),
+        [wrong(
+            "/products/abc",
+            "/products/:id",
+            "abc",
+            "is not an int"
+        )]
+    );
+}
+
+#[test]
+fn prefix_types_are_checked() {
+    assert_eq!(
+        of_paths(
+            "",
+            &[
+                "'/products/abc/$tab'",
+                "'/products/$id'",
+                "'/products/2/$tab'",
+                "'/products/abc$x'",
+            ]
+        ),
+        [
+            "no route starts with `/products/abc/`: `abc` is not an int at /products/:id, so `/products/abc/$tab` shows not-found whatever it interpolates [unknown_path]"
+        ]
+    );
+    let extra = vec![f(
+        "compare/$$ids/page.dart",
+        typed("Compare", "ids", "List<int>"),
+    )];
+    assert_eq!(
+        with_routes("", extra, &["'/compare/3/x/$y'", "'/compare/3/$y'"]),
+        [
+            "no route starts with `/compare/3/x/`: its part `x` is not an int at /compare/*ids, so `/compare/3/x/$y` shows not-found whatever it interpolates [unknown_path]"
+        ]
+    );
+}
+
+#[test]
+fn a_redirect_route_is_type_checked_too() {
+    let extra = vec![f(
+        "legacy/$id/redirect.dart",
+        "String redirect(Ref ref, {required int id}) => '/products/$id';".into(),
+    )];
+    assert_eq!(
+        with_routes("", extra, &["'/legacy/abc'", "'/legacy/3'"]),
+        [wrong("/legacy/abc", "/legacy/:id", "abc", "is not an int")]
+    );
+}
+
+#[test]
+fn type_findings_are_silenced_and_levelled() {
+    let src = r"void f(BuildContext context) {
+  // fsp:ignore unknown_path
+  context.go('/products/abc');
+  context.go('/products/def');
+}
+";
+    let dir = make(
+        "fespalier:\n  lints:\n    unknown_path: error\n",
+        &std_app(),
+        &[("lib/screens/s.dart", src)],
+    );
+    assert_eq!(
+        shown(dir.path()),
+        [format!(
+            "✗ lib/screens/s.dart:4  {}",
+            wrong("/products/def", "/products/:id", "def", "is not an int")
+        )]
     );
 }
 

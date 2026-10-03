@@ -33,16 +33,18 @@ is never remounted.
 `Transitions` has ready-made ones; each gives the page a `restorationId` from its
 key:
 
-| Helper                                | What it does                                                        |
-| ------------------------------------- | ------------------------------------------------------------------- |
-| `fade(key, child, {duration})`        | cross-fades (250 ms by default)                                     |
-| `slide(key, child, {from, duration})` | slides in from an `AxisDirection` edge (default `right`, 300 ms)    |
-| `none(key, child)`                    | swaps instantly                                                     |
-| `material(key, child)`                | the platform-default Material transition                            |
-| `cupertino(key, child)`               | the iOS slide plus edge-swipe back                                  |
-| `dialog(key, child, {...})`           | opens as a Material dialog over the previous page                   |
-| `sheet(key, child, {...})`            | opens as a modal bottom sheet over the previous page                |
-| `fullscreenDialog(key, child)`        | a Material page that slides up, with a close button in its `AppBar` |
+| Helper                                        | What it does                                                        |
+| --------------------------------------------- | ------------------------------------------------------------------- |
+| `fade(key, child, {duration, heroes})`        | cross-fades (250 ms by default)                                     |
+| `slide(key, child, {from, duration, heroes})` | slides in from an `AxisDirection` edge (default `right`, 300 ms)    |
+| `none(key, child, {heroes})`                  | swaps instantly                                                     |
+| `material(key, child, {heroes})`              | the platform-default Material transition                            |
+| `cupertino(key, child, {heroes})`             | the iOS slide plus edge-swipe back                                  |
+| `dialog(key, child, {...})`                   | opens as a Material dialog over the previous page                   |
+| `sheet(key, child, {...})`                    | opens as a modal bottom sheet over the previous page                |
+| `fullscreenDialog(key, child, {heroes})`      | a Material page that slides up, with a close button in its `AppBar` |
+
+`heroes:` (0.8.0) is covered under "Shared elements (heroes)" below; `dialog` and `sheet` have none.
 
 Routes with **no** `transition.dart` above them keep go_router's default for your
 app type: the platform transition under a Material or Cupertino app, **none**
@@ -227,6 +229,49 @@ as `barrierDismissible`, `isScrollControlled`, `showDragHandle` and `enableDrag`
   delegate) above the router.
 - The route's `transition.dart` **also covers routes below it**, so give a dialog
   route its own folder.
+
+## Shared elements (heroes)
+
+Since 0.8.0 a shared element is one line on each side, and nothing is generated (`app.g.dart` is
+unchanged):
+
+```dart
+// in the row of each product (products/page.dart)
+leading: ProductRoute(id: p.id).hero('avatar', child: CircleAvatar(child: Text(p.name[0]))),
+
+// in the product's own page (products/$id/page.dart)
+ProductRoute(id: product.id).hero('avatar', child: CircleAvatar(radius: 40, child: Text(product.name[0]))),
+```
+
+- **The tag** is `route.heroTag(name)`, a `RouteHeroTag(path, name)`: the location up to the `?`
+  (mount prefix included) and the name (any object; an app `enum` keeps it typo-proof). Both pages
+  must name the **same route and the same name**. `hero` is an extension (`RouteHeroes`) on the typed
+  routes, so a route with a query parameter called `hero` still compiles; it shadows the extension.
+- **`RouteHero`** is a `Hero` that is out of flights while its tab is not shown (`TickerMode` off,
+  which go_router's tab container and `examples/tabs` set). Two tabs may show one tag, and a route on
+  the root navigator over the tab bar flies from the shown tab. A plain `Hero` there throws "There are
+  multiple heroes that share the same tag within a subtree". A **custom tab `container`** that hides
+  tabs with `Offstage` alone gets that assertion back: wrap the hidden tabs in
+  `TickerMode(enabled: false)`.
+- **The style** goes in `transition.dart`:
+  `Transitions.cupertino(key, child, heroes: const Heroes(onBackGesture: true))`. `Heroes` has `onBackGesture` (heroes follow the back swipe;
+  Flutter checks **both** pages, so set it in the root `transition.dart`), `path`
+  (`HeroFlightPath.platform`, `arc` or `straight`) and `shuttle`. `heroes:` wraps the page in a
+  `RouteHeroScope`, which a `RouteHero`'s own `onBackGesture:`, `path:` and `shuttle:` override; the
+  nearest `transition.dart` that passes it wins, and one that doesn't leaves the tree as it was. A
+  `present.dart` page or a `Page` of your own wraps its child in `RouteHeroScope(heroes: ...)`.
+- **What does not fly.** A `dialog` or `sheet` (and a `present.dart` that builds a `PopupRoute`):
+  Flutter flies heroes between page routes only, so use `fullscreenDialog`, `material` or a
+  `PageRoute`. A tab switch (`goBranch`) pushes no route. A remounted page is a new route: a tag
+  made from a segment differs between the two pages, a constant one flies. A page with `data.dart`
+  or a deferred one flies only when it is in the destination's first frame, so
+  `RouteLink(preload: Preload.intent)` or `route.preload`; otherwise `loading.dart` shows and
+  nothing flies.
+- **Two of one tag on one page** is Flutter's assertion: rename one, or wrap it in
+  `HeroMode(enabled: false)`. An enum of names declared in a deferred `page.dart` would make the
+  list page import it eagerly: put it in a file of its own.
+
+Not built: generated per-route hero names (use an enum), and a lint for a name used on one side only.
 
 ## State restoration
 

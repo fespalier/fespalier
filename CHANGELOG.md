@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/vaam-apps/fespalier/compare/v0.6.0...v0.7.0) (2026-10-02)
+
+
+### Features
+
+* a DevTools extension that shows the route tree, the location and the stack ([#29](https://github.com/vaam-apps/fespalier/issues/29)) ([#46](https://github.com/vaam-apps/fespalier/issues/46)) ([08e06a4](https://github.com/vaam-apps/fespalier/commit/08e06a47d6daba9f71bee8ff299fb37f3190eee0))
+* deferred routes load a page's code on demand, and preload loads it ahead ([#24](https://github.com/vaam-apps/fespalier/issues/24)) ([#44](https://github.com/vaam-apps/fespalier/issues/44)) ([2bf9b2f](https://github.com/vaam-apps/fespalier/commit/2bf9b2f8a1b0561fd7034110f256281a556e0972))
+* fsp maestro writes a Maestro smoke flow per route, and semantics_ids gives pages stable ids ([#27](https://github.com/vaam-apps/fespalier/issues/27)) ([#43](https://github.com/vaam-apps/fespalier/issues/43)) ([0794c29](https://github.com/vaam-apps/fespalier/commit/0794c2916c91473ce275592a0a0ed236008247d6))
+* fsp warns about string paths that match no route ([#28](https://github.com/vaam-apps/fespalier/issues/28)) ([#42](https://github.com/vaam-apps/fespalier/issues/42)) ([15a4bf9](https://github.com/vaam-apps/fespalier/commit/15a4bf9693f682f4ed531f996ecbd6ca775badf1))
+* **runtime:** RouteInfo.sibling ([#47](https://github.com/vaam-apps/fespalier/issues/47)) ([36cd410](https://github.com/vaam-apps/fespalier/commit/36cd4106694312965851e970149b4d9b032a9cb1))
+* **runtime:** TypedLocation.pushReplacement ([#45](https://github.com/vaam-apps/fespalier/issues/45)) ([673307d](https://github.com/vaam-apps/fespalier/commit/673307d5736e6e11896193b40d85f4f0edaea801))
+* the DevTools extension shows guard decisions, data states and action runs ([#29](https://github.com/vaam-apps/fespalier/issues/29)) ([#49](https://github.com/vaam-apps/fespalier/issues/49)) ([db79b59](https://github.com/vaam-apps/fespalier/commit/db79b59ce4d008177b0c616eb1d6b12874469497))
+
 ## [0.6.0](https://github.com/vaam-apps/fespalier/compare/v0.5.0...v0.6.0) (2026-10-02)
 
 

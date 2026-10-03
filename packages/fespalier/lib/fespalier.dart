@@ -15,6 +15,7 @@ export 'package:hooks_riverpod/hooks_riverpod.dart';
 export 'package:hooks_riverpod/misc.dart' show ProviderListenable;
 
 export 'src/action.dart';
+export 'src/action_form.dart';
 export 'src/data_view.dart';
 export 'src/deferred.dart';
 // DevTools support (since 0.7.0): what a generated app.g.dart registers and attaches.
@@ -30,6 +31,7 @@ export 'src/guards.dart';
 export 'src/layout_page.dart';
 export 'src/location.dart';
 export 'src/not_found.dart';
+export 'src/optimistic.dart';
 export 'src/remount.dart';
 export 'src/route_info.dart';
 export 'src/route_link.dart';

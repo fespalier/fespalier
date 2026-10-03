@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'deferred.dart';
+import 'optimistic.dart' show OptimisticLayer;
 
 /// Glue emitted around every route that has a `data.dart`:
 /// watch the provider, then pick page / loading / error.
@@ -30,6 +31,7 @@ class DataView<T> extends ConsumerWidget {
     required this.error,
     this.keepPrevious = true,
     this.library,
+    this.optimistic,
   });
 
   /// Reads the provider's state; called on every build.
@@ -57,18 +59,30 @@ class DataView<T> extends ConsumerWidget {
   /// [DeferredView] for good, so the page's `State` survives the load.
   final DeferredLibrary? library;
 
+  /// What the page shows of the value while a write that patches it is in flight: the
+  /// `optimistic()` of an action, through the layer the generated file watches here (since
+  /// 0.8.0). Null when no action patches this data.
+  final OptimisticLayer<T> Function(WidgetRef ref)? optimistic;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lib = library;
     lib?.preload();
-    return watch(ref).when(
-      skipLoadingOnReload: keepPrevious,
-      skipLoadingOnRefresh: keepPrevious,
+    final value = watch(ref);
+    final layer = optimistic?.call(ref);
+    final page = layer == null || layer.isEmpty
+        ? data
+        : (T d) => data(layer.apply(d));
+    // After a write that patched it, the data loads again under its patch: no loading.dart.
+    final keep = keepPrevious || (layer?.settling(value.value) ?? false);
+    return value.when(
+      skipLoadingOnReload: keep,
+      skipLoadingOnRefresh: keep,
       data: lib == null
-          ? data
+          ? page
           : (d) => DeferredView(
               library: lib,
-              page: () => data(d),
+              page: () => page(d),
               loading: loading,
               error: error,
             ),

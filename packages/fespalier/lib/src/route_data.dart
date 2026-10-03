@@ -5,6 +5,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart'
     show AsyncProviderListenable, ProviderListenable;
 
+import 'optimistic.dart' show OptimisticLayer;
+
 /// A prefetched provider, kept alive until [close] (or until the `keepFor` you gave
 /// it passes, or the widget whose `ref` started it is disposed: since 0.5.0 that also
 /// cancels the `keepFor` timer and closes the handle).
@@ -145,7 +147,12 @@ extension DataRef on WidgetRef {
 /// soon as it has a value.
 class SectionView<T> extends ConsumerWidget {
   /// Creates a view of the section data [watch] reads, built by [data] once it has a value.
-  const SectionView({super.key, required this.watch, required this.data});
+  const SectionView({
+    super.key,
+    required this.watch,
+    required this.data,
+    this.optimistic,
+  });
 
   /// Reads the section's provider; called on every build.
   final AsyncValue<T> Function(WidgetRef ref) watch;
@@ -153,9 +160,16 @@ class SectionView<T> extends ConsumerWidget {
   /// Builds the view from the section data.
   final Widget Function(T data) data;
 
+  /// What the page shows of the section data while a write that patches it is in flight, as
+  /// [DataView.optimistic] (since 0.8.0).
+  final OptimisticLayer<T> Function(WidgetRef ref)? optimistic;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final value = watch(ref);
-    return value.hasValue ? data(value.value as T) : const SizedBox.shrink();
+    if (!value.hasValue) return const SizedBox.shrink();
+    final d = value.value as T;
+    final layer = optimistic?.call(ref);
+    return data(layer == null ? d : layer.apply(d));
   }
 }

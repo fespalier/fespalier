@@ -31,13 +31,15 @@ const firstFeatures = [
   DevToolsFeatures.navigate,
 ];
 
-/// What the app lists now.
+/// What the app lists now (0.8.0: with the holders and the app's own providers).
 const allFeatures = [
   ...firstFeatures,
   DevToolsFeatures.guards,
   DevToolsFeatures.data,
   DevToolsFeatures.actions,
   DevToolsFeatures.open,
+  DevToolsFeatures.holders,
+  DevToolsFeatures.watched,
 ];
 
 typedef Handler =

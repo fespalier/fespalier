@@ -41,6 +41,9 @@ DataRecord dataRecord(
   int? updated,
   Shown? value = const Shown('Refund', 'Refund(2)'),
   String? error,
+  String via = DataVia.build,
+  Shown? provider,
+  int? listeners,
 }) => DataRecord(
   id: id,
   site: site,
@@ -52,6 +55,9 @@ DataRecord dataRecord(
   updated: updated ?? created + 500,
   value: value,
   error: error,
+  via: via,
+  provider: provider,
+  listeners: listeners,
 );
 
 /// An action run. The default is `a37_0` of the features example, called with an input.

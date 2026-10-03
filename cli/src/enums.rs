@@ -25,6 +25,8 @@ pub struct Found {
     pub name: String,
     /// The file that declares it, relative to the project: `lib/models/category.dart`.
     pub decl: String,
+    /// The enum's constants, in declaration order.
+    pub values: Vec<String>,
 }
 
 impl Found {
@@ -115,10 +117,11 @@ impl Libs {
             return Lookup::Private;
         }
         let from = format!("{}/{file}", self.app_dir);
-        let found = |decl: String| {
+        let found = |(decl, values): (String, Vec<String>)| {
             Lookup::Found(Found {
                 name: name.to_string(),
                 decl,
+                values,
             })
         };
         // The file as it was scanned, which is what the tree holds, whatever is on disk.
@@ -128,8 +131,10 @@ impl Libs {
             .entry(from.clone())
             .or_insert_with(|| Some(Rc::new(crate::parse_cache::parse(src))))
             .clone();
-        if prefix.is_none() && own.is_some_and(|m| m.enums.iter().any(|e| e == name)) {
-            return found(from);
+        if prefix.is_none()
+            && let Some(values) = own.as_deref().and_then(|m| constants(m, name))
+        {
+            return found((from, values));
         }
         let mut seen = HashSet::new();
         for import in extra::imports(src)
@@ -147,13 +152,18 @@ impl Libs {
     }
 
     /// The file at `path` or one of the files it exports (and theirs), whichever declares the enum.
-    fn declared_in(&self, path: &str, name: &str, seen: &mut HashSet<String>) -> Option<String> {
+    fn declared_in(
+        &self,
+        path: &str,
+        name: &str,
+        seen: &mut HashSet<String>,
+    ) -> Option<(String, Vec<String>)> {
         if !seen.insert(path.to_string()) {
             return None;
         }
         let module = self.module(path)?;
-        if module.enums.iter().any(|e| e == name) {
-            return Some(path.to_string());
+        if let Some(values) = constants(&module, name) {
+            return Some((path.to_string(), values));
         }
         module
             .exports
@@ -204,6 +214,18 @@ impl Libs {
         }
         Some(parts.join("/"))
     }
+}
+
+/// The constants of the enum `name` that `module` declares, `None` when it declares none. A file
+/// the grammar could not read fully gives an empty list: the constants it found may not be all
+/// of them, and a list that is not whole must not be used to judge a value.
+fn constants(module: &Module, name: &str) -> Option<Vec<String>> {
+    let e = module.enums.iter().find(|e| e.name == name)?;
+    Some(if module.parse_error.is_some() {
+        vec![]
+    } else {
+        e.values.clone()
+    })
 }
 
 /// `m.Category` → (`m`, `Category`).

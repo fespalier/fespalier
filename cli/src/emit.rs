@@ -53,6 +53,9 @@ struct FileCx {
     /// The route tree as JSON (`fsp routes --graph json`), as a Dart string literal: what
     /// `mount()` hands to DevTools, under `kFespalierDevTools`.
     devtools_tree: String,
+    /// What `_devToolsProviders` lists: each `data.dart`'s provider (or family) as the generated
+    /// code names it, and its DevTools site. Empty for an app with no `data.dart` to list.
+    devtools_providers: Vec<DevToolsProviderCx>,
     /// Whether the root matches paths by case: what the mount point is compared with.
     case_sensitive: bool,
     /// `keep_previous` from the config: the `DataViews`' `keepPrevious`.
@@ -280,9 +283,18 @@ fn transition_cx(
     }
 }
 
+/// One line of `_devToolsProviders`: `_data13: 'd13'`.
+#[derive(Serialize)]
+struct DevToolsProviderCx {
+    expr: String,
+    site: String,
+}
+
 #[derive(Serialize)]
 struct ViewDataCx {
     provider: String,
+    /// The file's key in the DevTools tree (`d37`): what `watchData` is told.
+    site: String,
     /// A statement that invalidates it: `ref.invalidate(p)`, or through the runtime
     /// helper when `data.dart` selects a provider (see `invalidateSelected`).
     invalidate: String,
@@ -541,6 +553,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
             .as_ref()
             .map(|c| format!("_i{}.extraCodec", c.import)),
         devtools_tree: dart_str(&devtools::compact(app, cfg)),
+        devtools_providers: devtools_providers(app),
         case_sensitive: app.routes[0].case_sensitive,
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
@@ -1042,6 +1055,7 @@ fn layout_cx(
             let (loading, error) = fallbacks(r);
             ViewDataCx {
                 provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+                site: devtools::site_data(id),
                 invalidate: invalidate_expr(app, id, r, d),
                 loading,
                 error,
@@ -1084,7 +1098,8 @@ fn with_sections(
             format!("{}(state).", ParamsFn::Layout(sid).name())
         };
         format!(
-            "SectionView(\n  watch: (ref) => ref.watch({}{}),\n  data: (s{sid}) => {},\n)",
+            "SectionView(\n  watch: (ref) => watchData(ref, '{}', {}{}),\n  data: (s{sid}) => {},\n)",
+            devtools::site_data(sid),
             provider_expr(sid, d),
             key_expr(app, r, d, &prefix),
             acc.replace('\n', "\n  ")
@@ -1311,6 +1326,7 @@ fn page_route(
     let library = r.defers_page().then(|| format!("_lib{id}"));
     let data = r.data.as_ref().map(|d| ViewDataCx {
         provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+        site: devtools::site_data(id),
         invalidate: invalidate_expr(app, id, r, d),
         loading: loading.clone(),
         error: error.clone(),
@@ -1798,6 +1814,23 @@ fn invalidate_expr(app: &App, id: usize, r: &Route, d: &Data) -> String {
     )
 }
 
+/// The providers `_devToolsProviders` lists, in folder order: what `devToolsRegister` uses to
+/// find the record of a provider that was prefetched before any page watched it. A selector with
+/// keys is a closure (`_data14(v.id)` makes the provider), so it is left out: the runtime learns
+/// its family when a view first watches it.
+fn devtools_providers(app: &App) -> Vec<DevToolsProviderCx> {
+    app.routes
+        .iter()
+        .enumerate()
+        .filter_map(|(id, r)| r.data.as_ref().map(|d| (id, d)))
+        .filter(|(_, d)| !d.selector || d.keys.is_empty())
+        .map(|(id, d)| DevToolsProviderCx {
+            expr: provider_expr(id, d),
+            site: devtools::site_data(id),
+        })
+        .collect()
+}
+
 fn provider_expr(id: usize, d: &Data) -> String {
     if d.provider {
         format!("_i{}.data", d.import)
@@ -2042,16 +2075,7 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
         let Some(name) = r.name.as_ref().filter(|_| r.is_route()) else {
             continue;
         };
-        let ranks: Vec<u8> = r
-            .url
-            .iter()
-            .filter_map(|s| match s {
-                Seg::Static(_) => Some(0),
-                Seg::Dynamic(_) => Some(1),
-                Seg::CatchAll(..) => Some(2),
-                Seg::Group(_) => None,
-            })
-            .collect();
+        let ranks = resolve::match_rank(&r.url);
         let parts: Vec<String> = r
             .url
             .iter()

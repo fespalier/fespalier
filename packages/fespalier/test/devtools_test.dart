@@ -156,6 +156,8 @@ void main() {
         DevToolsFeatures.data,
         DevToolsFeatures.actions,
         DevToolsFeatures.open,
+        DevToolsFeatures.holders,
+        DevToolsFeatures.watched,
       ]);
     });
 

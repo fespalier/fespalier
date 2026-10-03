@@ -102,10 +102,25 @@ loading view carries none, boot with `settle: false` and `pump` once.
 - **`maestro:` needs `semantics_ids: true`**, and a stale `app.g.dart` has no identifiers: run `fsp gen`
   after changing the key.
 
+## In CI (since 0.8.0)
+
+fespalier's own CI replays the shop's flows without Maestro: the `web-routes` job builds `examples/shop`
+for the web, serves it, and a pinned Playwright opens each flow's `openLink` in Chromium, with every
+request that is not to the local server blocked, and waits for the flow's `id:` as the DOM attribute
+`flt-semantics-identifier` (`scripts/check-web-routes.sh`, `ci/web-routes/`, `just web-routes`). Copy
+those two for an app's own CI when Maestro's web driver is too brittle to gate on.
+
+To run Maestro itself, build with `flutter build web --release --no-web-resources-cdn` (CanvasKit is
+bundled, no CDN), serve it at the flows' `url`, and run `maestro test --headless .maestro/routes`. Maestro
+2.7.0 or later reads `id:` from `flt-semantics-identifier`. Its web driver follows Chrome and has broken on
+Chrome upgrades (fixes in its 2.1.0, 2.2.0 and 2.9.0), so pin the version, check the download's sha256,
+and keep it out of the required checks: fespalier's `maestro-web.yml` runs it weekly and on demand only.
+
 ## Not built, and not verified
 
-- **Not verified:** that Maestro's `id:` selector matches Flutter's `Semantics(identifier:)` on the web and on
-  iOS. This repository runs no Maestro; the identifier is tested with `find.bySemanticsIdentifier`, the
-  flows as golden files. A flow that times out on a page you can see: check that first.
+- **Verified:** the identifier in widget tests (`find.bySemanticsIdentifier`), the flows as golden files,
+  and (since 0.8.0) on the web, that each committed flow's link opens its route in Chromium and the
+  identifier is in the DOM (`web-routes`). **Not verified:** the same on iOS. A flow that times out on a
+  page you can see: check that first.
 - **Not built:** a `link:` identifier on `RouteLink`, `samples` in `meta.dart`, a flow for a layout, a
-  not-found view, a query parameter or a localized spelling, and a Maestro run in this repository's CI.
+  not-found view, a query parameter or a localized spelling.

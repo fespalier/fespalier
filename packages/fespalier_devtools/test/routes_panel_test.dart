@@ -223,17 +223,15 @@ void main() {
       );
     });
 
-    testWidgets('say a data.dart that returns a provider is not followed', (
-      tester,
-    ) async {
-      await pumpApp(tester, FakeFespalierClient());
-      await openTab(tester, 'Routes');
-      await select(tester, 'CatalogRoute', '/catalog');
-      expect(
-        find.textContaining('(returns or selects a provider)'),
-        findsOneWidget,
-      );
-    });
+    testWidgets(
+      'marks a data.dart that returns or selects a provider as an app provider',
+      (tester) async {
+        await pumpApp(tester, FakeFespalierClient());
+        await openTab(tester, 'Routes');
+        await select(tester, 'CatalogRoute', '/catalog');
+        expect(find.textContaining('(app provider)'), findsOneWidget);
+      },
+    );
 
     testWidgets('Go goes to a route that has no path parameter', (
       tester,

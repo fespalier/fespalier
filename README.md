@@ -295,6 +295,17 @@ fespalier:
   #   timeout: 20000              # default, in milliseconds
   #   samples:
   #     products/$id: 1
+  # size:                         # no default: what `fsp size` checks the web build against (since 0.8.0)
+  #   main: 3 MB                  # main.dart.js
+  #   routes:
+  #     /checkout: 8 KB           # a deferred route's own and shared chunks
+  # test:                         # no default, and `fsp test` works without it: see below
+  #   out: test/routes            # default; `test`, `integration_test` or a folder below one
+  #   setup: test/routes/setup.dart   # default: <out>/setup.dart, used when it exists
+  #   timeout: 30000              # default, in milliseconds of the test's fake clock
+  #   samples:                    # default: the `maestro:` ones
+  #     products/$id: 1
+  #   skip: [/admin]              # patterns as `fsp routes` prints them
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
@@ -330,6 +341,8 @@ changes the generated file, the second is read, and checked, only by `fsp maestr
 `scroll_restoration` (since 0.8.0) is `true` or `false`: whether each page is wrapped in a `PageStorage` that the
 browser's back and forward button hand back (see [Scroll restoration](#scroll-restoration)). A value that isn't a
 bool is an error.
+`size:` (since 0.8.0) is what [`fsp size`](#web-chunk-sizes-fsp-size) checks the web build against; only that command checks its values.
+`test:` (since 0.8.0) is what [`fsp test`](#route-smoke-tests-fsp-test) reads, and only that command checks it.
 The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
 
@@ -1098,7 +1111,9 @@ before. The three parameters are positional, and their **types are fixed** (`Bui
 `StatefulNavigationShell`, `List<Widget>`; the names are yours): a wrong type, a missing or an
 extra parameter, or a return type that isn't `Widget` is an error at the parameter. `children`
 holds one navigator per tab in the layout's tab order, and the container must keep them all in the
-tree (`Offstage`, `Opacity` or a `Stack`, as `IndexedStack` does) or the tabs lose their state.
+tree (`Offstage`, `Opacity` or a `Stack`, as `IndexedStack` does) or the tabs lose their state,
+and wrap the ones it doesn't show in `TickerMode(enabled: false)`, as go_router's does: that is how a
+[shared element](#shared-elements-heroes) (since 0.8.0) knows its tab is hidden.
 A `container` in a layout that isn't a tab layout is ignored with a warning. `examples/tabs`
 cross-fades, and its tests check that a tab's state survives.
 
@@ -1266,7 +1281,8 @@ app-wide default; any folder or `(group)` folder can override it for its own rou
 The function returns a `Page`, and takes the page's key as `LocalKey key`, the page
 itself as `Widget child`, and optionally `GoRouterState state`. `Transitions` has
 ready-made ones: `fade`, `slide`, `none`, `material`, `cupertino`, and `dialog`, `sheet`
-and `fullscreenDialog` (below).
+and `fullscreenDialog` (below). Every one but `dialog` and `sheet` takes `heroes:`
+([shared elements](#shared-elements-heroes), since 0.8.0).
 
 ```dart
 // lib/app/transition.dart: every route fades in, unless a folder overrides it
@@ -1332,6 +1348,75 @@ and the barrier pop the route, and `dialog` and `sheet` take options such as
 Routes with no `transition.dart` above them keep go_router's default for your app type:
 the platform transition under a Material or Cupertino app, none otherwise (see the go_router
 18 note in [Getting started](#getting-started)). Scaffold one with `fsp new … --transition`.
+
+#### Shared elements (heroes)
+
+Since 0.8.0, a shared element that flies from a list to a detail page is one line on each side:
+`route.hero(name, child: ...)` on every typed route.
+
+```dart
+// lib/app/products/page.dart: in the row of each product
+leading: ProductRoute(id: p.id).hero('avatar', child: CircleAvatar(child: Text(p.name[0]))),
+
+// lib/app/products/$id/page.dart
+ProductRoute(id: product.id).hero('avatar', child: CircleAvatar(radius: 40, child: Text(product.name[0]))),
+```
+
+The tag is the route's path (its location without the query, mount prefix included) and the name,
+so both sides agree when they name the same route and the same element, and `ProductsRoute()` and
+`ProductsRoute(sort: Sort.name)` share theirs. `hero` is an extension (`RouteHeroes`) of the typed
+routes, not a member, so a route with a query parameter called `hero` still compiles (it shadows the
+extension; `RouteHeroes(route).hero(...)` still reaches it). `route.heroTag(name)` is the tag alone
+(a `RouteHeroTag`), for a `Hero` of your own. A name is any object: an app's own `enum` keeps it
+typo-proof. Nothing is generated: `app.g.dart` doesn't change.
+
+`hero` builds a `RouteHero`, which is Flutter's `Hero` with one difference: it stays out of flights
+while its tab is not shown (`TickerMode` is off for it, as go_router's tab container and
+`examples/tabs`' set it on the tabs they hide). Two tabs can then show the same tag, and a route on
+the [root navigator](#the-root-navigator-navigatordart) that opens over the tab bar flies from the
+tab that is shown. With a plain `Hero`, that is Flutter's _"There are multiple heroes that share the
+same tag within a subtree"_ assertion in debug.
+
+**The flight style** is declared in `transition.dart`: `Transitions.fade`, `slide`, `none`,
+`material`, `cupertino` and `fullscreenDialog` take `heroes:`, a `Heroes` with three options.
+
+```dart
+// lib/app/transition.dart: iOS-style pages, and heroes that follow the back swipe
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.cupertino(key, child, heroes: const Heroes(onBackGesture: true));
+```
+
+| `Heroes` option | What it does                                                                                                          |
+| --------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `onBackGesture` | heroes also fly while the user swipes back (`Hero.transitionOnUserGestures`); `false` by default                      |
+| `path`          | `HeroFlightPath.platform` (the navigator's: an arc in a Material app, a line in a Cupertino one), `arc` or `straight` |
+| `shuttle`       | what is shown while flying (`Hero.flightShuttleBuilder`); the destination's child by default                          |
+
+`heroes:` wraps the page's child in a `RouteHeroScope`, which every `RouteHero` below it reads; the
+nearest `transition.dart` that passes `heroes:` decides, and one that doesn't leaves the tree as it was
+before 0.8.0. A layout's shell takes it too, so the scope covers every page inside the layout. A
+`RouteHero`'s own `onBackGesture:`, `path:` and `shuttle:` override it for that hero. A
+[`present.dart`](#presentdart-a-page-of-your-own) page, or a `Page` of your own, wraps its child in a
+`RouteHeroScope(heroes: ..., child: ...)` itself.
+
+What flies, and what doesn't:
+
+| Situation                                                                                                                                              | What happens                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| List to detail in one navigator (the app, a `layout.dart`, a tab)                                                                                      | flies on push and on pop                                                                                                                                                                                     |
+| A route on the root navigator (`navigator.dart`, a `present.dart` that builds a `PageRoute`, a route outside the layout) over a page in a shell or tab | flies from the tab that is shown                                                                                                                                                                             |
+| A hero in a tab that is not shown                                                                                                                      | out of flights. A custom tab [`container`](#tab-layouts) must wrap the tabs it doesn't show in `TickerMode(enabled: false)`, as go_router's and `examples/tabs`' do                                          |
+| Switching tabs (`goBranch`)                                                                                                                            | nothing flies: no route is pushed, the `container` is the tab animation                                                                                                                                      |
+| `Transitions.dialog`, `sheet`, or a `present.dart` that builds a `PopupRoute`                                                                          | nothing flies: Flutter flies heroes between page routes only. Use `fullscreenDialog`, `material` or a `PageRoute`                                                                                            |
+| A [remounted](#remounting-a-page-remount) page                                                                                                         | it is a new route: a tag made from the segments differs between the two pages, so nothing flies, while a tag that is the same on both pages flies                                                            |
+| A page with [`data.dart`](#datadart-a-function-a-selector-or-a-provider) or a [deferred](#deferred-routes-a-pages-code-on-demand) one                  | flies when the page is in the destination's first frame: [preload it](#preloading-the-data-behind-a-link) (`RouteLink(preload: Preload.intent)`, `route.preload`), or `loading.dart` shows and nothing flies |
+| A back swipe or predictive back                                                                                                                        | flies only with `onBackGesture: true` on **both** pages (Flutter checks each side): set it in the root `transition.dart`                                                                                     |
+| One tag twice on one page                                                                                                                              | Flutter's assertion: give the second one another name, or wrap it in `HeroMode(enabled: false)`                                                                                                              |
+
+A hero name declared in a deferred `page.dart` would make the list page import that page and load
+it eagerly (and the [deferred](#deferred-routes-a-pages-code-on-demand) type rule applies to enums),
+so keep an enum of names in a file of its own. `examples/shop` (the product avatar, list to detail)
+and `examples/tabs` (the profile avatar, over the tab bar) use it.
 
 ### The root navigator (`navigator.dart`)
 
@@ -2355,8 +2440,9 @@ Future<void> main() async {
 
 Android deferred components (a Play Store feature) are not tried: `loadDeferred` would download all of
 them. `--wasm` compiles, and whether it splits is not verified; correctness doesn't depend on it.
-`examples/shop` defers `/checkout` and `/products/:id`, and `just web-chunks` builds it for the web
-and checks that their strings are in chunks of their own.
+`examples/shop` defers `/checkout` and `/products/:id`, and `just web-chunks` builds it for the web,
+checks that their strings are in chunks of their own, and holds the build to the budgets in its
+pubspec with [`fsp size`](#web-chunk-sizes-fsp-size), which reports what each chunk costs per route.
 
 **A type declared in a deferred `page.dart` is an error.** The generated file names the types of
 segments, query parameters and `extra` outside the page, and Dart can't use a deferred library's
@@ -2699,6 +2785,10 @@ fsp links               # App Links, Universal Links, assetlinks.json and a site
 fsp links --check       # CI: non-zero exit when those files are stale
 fsp maestro             # Maestro smoke flows, one per route (since 0.7.0)
 fsp maestro --check     # CI: non-zero exit when those flows are stale
+fsp size                # the web build's JavaScript per deferred route (since 0.8.0)
+fsp size --check        # CI: non-zero exit when a budget in `size:` is exceeded
+fsp test                # a widget smoke test per route, in test/routes/ (since 0.8.0)
+fsp test --check        # CI: non-zero exit when that file is stale
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --action --loading --error --layout --guard --transition
@@ -3019,13 +3109,22 @@ not read.
 setting, every [localized spelling](#localized-paths) (mixed spellings too), non-ASCII paths and `%`
 escapes decoded, and a trailing slash or `//` ignored. A `redirect.dart` is a route; a
 `not_found.dart` is not. The query and the fragment are not looked at (`go_router` ignores
-parameters it doesn't know). Segment **types are not checked**: `/products/abc` matches
-`products/$id` although `id` is an `int` (it reaches the route, which shows not-found by itself, the
-way [an unparsable segment](#segment-types) does). A path that interpolates is checked up to its first
-`$`: `'/products/$id'` is fine and `'/prodcts/$id'` is flagged (`no route starts with ...`), but
-nothing after a `$` is, since the value can be empty or hold a `/`. A path that is not an app path is
-skipped: a relative one (`'details'`), a URL (`'https://...'`), one that starts with an interpolation
-(`'$base/x'`), one with a `..` or a malformed `%` escape.
+parameters it doesn't know). Since 0.8.0 segment **types are checked** too, the way the route
+parses them: `/products/abc` reaches `products/$id`, and with `{required int id}` that route shows
+not-found, so it is reported (``` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found [unknown_path] ```).
+As in `AppRoutes.match`, the first route that fits the path decides: a later route that would take
+the text is never tried. `int`, `double`, `num`, `bool`, `DateTime` (its start only) and
+[enum](#enum-segments) segments are checked, and each part of a typed
+[catch-all](#typed-catch-alls). An enum's message lists its values and suggests the nearest. A part
+with a space or other non-ASCII whitespace is not judged (Dart trims it before parsing). The message
+names the route by its canonical pattern, also for a [localized](#localized-paths) spelling. An app
+with `unknown_path: error` that passed on 0.7.0 can fail on 0.8.0 for a path that always showed
+not-found. A path that interpolates is checked up to its first `$`: `'/products/$id'` is fine and
+`'/prodcts/$id'` is flagged (`no route starts with ...`), and the complete segments before the `$`
+are checked by type too (`'/products/abc/$tab'` is reported), but nothing after a `$` is, since the
+value can be empty or hold a `/`. A path that is not an app path is skipped: a relative one
+(`'details'`), a URL (`'https://...'`), one that starts with an interpolation (`'$base/x'`), one
+with a `..` or a malformed `%` escape.
 
 **Which files.** Every Dart file under `lib/` (the app folder included), except the generated ones
 (`*.g.dart`, the `output` and `output_manifest`) and folders that start with a `.`. Not `test/`,
@@ -3212,7 +3311,8 @@ top-level flows of the folder it is given, and skips subfolders unless a `config
 - **The web.** Maestro's web support is in beta. Serve the app at the `url`
   (`flutter run -d web-server --web-port 8080`, or a static server for `flutter build web`; with the
   path strategy it must serve `index.html` for unknown paths) and run the flows. `openLink` navigates
-  the browser, which reloads a Flutter web app.
+  the browser, which reloads a Flutter web app. Maestro 2.7.0 or later reads `id:` from
+  `flt-semantics-identifier`, the attribute Flutter's web engine writes for `Semantics(identifier:)`.
 - **Android and iOS.** The app must open the link: Android needs the intent filters, iOS the
   associated domains or the URL scheme, which [`fsp links`](#deep-links-and-a-sitemap-fsp-links) writes
   (paste them in, as it says). iOS may ask "Open in ...?" before a custom scheme opens the app; the
@@ -3222,26 +3322,292 @@ top-level flows of the folder it is given, and skips subfolders unless a `config
   On the web `openLink` reloads the app, so the sign-in has to survive a reload (a stored token, not
   in-memory state), or the guard will send the flow back to the login page.
 
-**In CI**, as documentation (this repository runs no Maestro): build and serve the web app, then
-run the flows and `fsp maestro --check`.
+**In CI.** Since 0.8.0 this repository's `web-routes` job builds `examples/shop` for the web (a release
+build with `--no-web-resources-cdn`, in a throwaway copy: the examples have no `web/` folder), serves it,
+and replays every committed flow in Chromium, with every request that is not to the local server blocked.
+It reads the very same YAML: `launchApp`, `openLink`, then it waits for the element whose
+`flt-semantics-identifier` is the flow's `id:`, within the flow's `timeout`. That is not Maestro (the
+browser is the Chromium that a pinned [Playwright](https://playwright.dev) installs, and Maestro's own
+driver is out of the picture), so it can gate a pull request: what it proves is what fespalier answers
+for (the identifier reaches the web DOM, `ensureWebSemantics()` ran, the link opens the route, its
+guards, data and deferred chunk let the page build in time). `just web-routes` runs it (Flutter and Node
+needed, about two minutes, not part of `just ci`), and `scripts/check-web-routes.sh <example>` with
+`ci/web-routes/` is a template for an app's own CI.
+
+To run Maestro itself, build and serve the web app, then run the flows and `fsp maestro --check`.
+Maestro's web driver follows Chrome and has broken on Chrome upgrades before (its changelog has
+Chrome-version fixes in 2.1.0, 2.2.0 and 2.9.0), so pin the Maestro version, check the download's sha256, and do not make it
+the only gate. This repository runs it weekly and on demand (`maestro-web.yml`, Maestro 2.11.0), and a
+red run there is not a failed pull request.
 
 ```yaml
 - run: fsp maestro --check
 - run: curl -fsSL "https://get.maestro.mobile.dev" | bash
-- run: flutter build web
+- run: flutter build web --release --no-web-resources-cdn
 - run: python3 -m http.server 8080 --directory build/web &
-- run: maestro test .maestro/routes
+- run: maestro test --headless .maestro/routes
 ```
 
 **What is not verified, and what is not built.**
 
-- Nothing here runs Maestro. The identifier is covered by widget tests (`find.bySemanticsIdentifier`)
-  and the flows by golden files. That Maestro's `id:` selector matches Flutter's
-  `Semantics(identifier:)` is what Maestro's documentation promises for Flutter; **on the web and on
-  iOS it has not been verified in this repository.** If a flow waits and times out on a page you can
-  see, check that first.
-- No `link:` identifier on `RouteLink`, no `samples` in `meta.dart`, and no web run of the examples in CI.
+- On the web, CI opens every committed flow's link in Chromium and finds the identifier (`web-routes`,
+  since 0.8.0), and a weekly job runs Maestro itself (`maestro-web`, not a gate). The identifier is also
+  covered by widget tests (`find.bySemanticsIdentifier`) and the flows by golden files. **On iOS it has
+  not been verified in this repository.** If a flow waits and times out on a page you can see, check
+  that first.
+- No `link:` identifier on `RouteLink` and no `samples` in `meta.dart`.
 - A route reached by a query parameter or a localized spelling has no flow of its own.
+
+### Web chunk sizes (`fsp size`)
+
+Since 0.8.0. A [deferred route](#deferred-routes-a-pages-code-on-demand) is a
+`main.dart.js_N.part.js` on the web, and the chunk files say nothing about which route they belong
+to. `fsp size` reads that out of the build and reports what each deferred route costs, and it can hold
+the build to byte budgets in CI. Build for the web first (`flutter build web`), then:
+
+```sh
+fsp size                # report main.dart.js and each deferred route's chunks
+fsp size --json         # the same, one JSON object per line
+fsp size --check        # CI: non-zero exit when a budget in `size:` is exceeded
+fsp size --build out    # a build in another folder (default: `build/web`, or `size.build`)
+```
+
+For `examples/shop`, which defers `/checkout` and `/products/:id` (a release build, Flutter 3.47.5):
+
+```text
+main.dart.js                                          2384299 B (2.3 MB)  budget 3.0 MB
+/checkout      CheckoutRoute  checkout/page.dart      5259 B (5.1 KB)     own 1090 B, shared 4169 B  budget 8.0 KB
+/products/:id  ProductRoute   products/$id/page.dart  5982 B (5.8 KB)     own 1813 B, shared 4169 B  budget 8.0 KB
+shared  main.dart.js_2.part.js  4169 B (4.1 KB): /checkout, /products/:id
+```
+
+```text
+✓ size: 6 routes, 2 deferred, 3 parts, within budget
+```
+
+(The summary goes to stderr, the report to stdout, so `fsp size > report.txt` keeps the report.)
+
+- **Own** is the bytes of the chunks only this route loads, **shared** the bytes of the chunks it
+  loads that other deferred routes load too, and the **total** is both: what a first visit
+  downloads when nothing else is loaded. dart2js moves code that several deferred pages use into a
+  shared chunk, so one chunk can count for several routes.
+- Routes that are not deferred have no line: their code is in `main.dart.js`, which the first line
+  reports. The summary counts them (`6 routes, 2 deferred`).
+- A chunk that no route loads is listed as `other`, with the deferred imports that do load it (code
+  of your own that uses `deferred as`).
+- **`--json`** prints one object per line on stdout: `{"kind":"main","file":"main.dart.js","bytes":…,"budget":…}`,
+  then `{"kind":"route","pattern","route","file","parts":[…],"own","shared","bytes","budget"}` for each deferred route
+  (`file` is the page, relative to the project, as in `fsp routes --json`; `parts` are
+  in dart2js's order), then `{"kind":"part","file","bytes","routes":[…]}` for every chunk (`routes` is empty for an
+  `other` one). `budget` is `null` without one.
+
+**How it knows.** dart2js writes a table of deferred parts into `main.dart.js`, in every build mode:
+
+```text
+deferredLibraryParts:{_i7:[0,1],_i14:[0,2]},deferredPartUris:["main.dart.js_2.part.js","main.dart.js_1.part.js","main.dart.js_3.part.js"],
+```
+
+The keys are the import prefixes of the generated `app.g.dart` (`import 'app/checkout/page.dart' deferred as _i7;`),
+which `fsp` assigns, and each value lists indexes into `deferredPartUris` (not the file
+numbering: index 0 is `_2`). `fsp size` knows each deferred route's prefix from the same tree that wrote
+the file, and adds up the sizes of the part files on disk. It needs no flag and no special build: it reads
+the build you deploy.
+
+**A budget** goes in the `fespalier:` section of `pubspec.yaml`:
+
+```yaml
+fespalier:
+  size:
+    build: build/web      # default; the `flutter build web` output, inside the project
+    main: 3 MB            # main.dart.js
+    route: 64 KB          # each deferred route's total (own + shared)
+    routes:               # per route, by pattern as `fsp routes` prints it; wins over `route`
+      /checkout: 8 KB
+```
+
+A size is a number of bytes (an integer of at least 1), or a number with a unit: `B`, `KB` (1,024
+bytes) or `MB` (1,048,576 bytes), spelled in capitals, with or without a space, and with a fraction if you
+like: `3 MB`, `1.5 MB`, `64KB`, `900 B`. A budget on a route that is not deferred is an error (budget
+that code with `main`). `fsp size --check` reports as above and exits non-zero when anything is over
+(`2 over budget: /checkout, /products/:id`), and also when there is no budget to check. In CI:
+
+```yaml
+- run: flutter build web --release
+- run: fsp size --check
+```
+
+dart2js's output is deterministic for one Flutter version and one version of your code, so a budget is
+a ceiling that holds. A Flutter upgrade moves `main.dart.js` by kilobytes: keep about 30 % headroom on
+`main` and raise the budgets deliberately, in the commit that bumps Flutter. This repository does it
+(`just web-chunks`, the `web` job: it builds `examples/shop`, runs `fsp size --check` against the budgets in its
+pubspec, and cross-checks the attribution with strings that only each deferred page contains).
+
+**A stale build is caught.** The table is keyed by the routes as they were when you built, so a build
+older than your routes would be reported against the wrong ones. `fsp size` fails when the keys of the
+table are not exactly the prefixes the routes defer now (a deferred route added, removed or moved), and it
+warns when `lib/app.g.dart` is newer than `main.dart.js`:
+
+```text
+warning: build/web/main.dart.js is older than lib/app.g.dart; if the routes changed since, run `flutter build web` again
+```
+
+Every message `fsp size` can print is quoted in the `fespalier-troubleshooting` skill.
+
+**Limits.**
+
+- Sizes are bytes on disk, **not compressed**: a server's gzip or brotli makes each chunk
+  several times smaller, in about the same proportion for all of them. Use the numbers to compare
+  chunks and to notice growth, not as a download size.
+- It reads the JavaScript build (`flutter build web`). A `--wasm` build also writes a
+  `main.dart.js` (the fallback), which is what is read; the `.wasm` file is not looked at.
+- A load id is the import prefix, and two deferred libraries with the same prefix in one app
+  would be told apart by dart2js, not by `fsp size`. The routes' own prefixes are the only ones it
+  matches, which is exact for an app whose deferred imports are the generated ones.
+- For what is _in_ a chunk, `flutter build web --dump-info` writes `main.dart.js.info.json` (tens of
+  megabytes) that a tool like `dart pub global run dart2js_info` reads. `fsp size` does not
+  use it.
+
+**Not built:** gzip sizes (`--gzip`), and a mode that reads `main.dart.js.info.json` when it is there,
+which would be exact whatever the prefixes are.
+
+`cli/src/size.rs` is the code, `cli/src/size_tests.rs` its tests, and `cli/tests/fixtures/shop-build/main.dart.js`
+the excerpt of a real build they read.
+
+### Route smoke tests (`fsp test`)
+
+Since 0.8.0. `fsp test` writes a widget smoke test for every route, into one file,
+`test/routes/routes_test.dart`. Each test opens the route at a sample URL with `pumpRouter`, waits until
+its page is on screen, and expects exactly one. It proves what a [Maestro flow](#maestro-flows-fsp-maestro)
+proves (the route exists, its guards let it through, its data loaded, its page was built) in
+`flutter test`, on the VM, with no device and no browser. `fsp test` does not run Flutter: it writes the
+file, or with `--check` compares it, as `fsp maestro` does.
+
+The shop example carries it: `examples/shop/test/routes/routes_test.dart` is what `fsp test` wrote, and
+`just check-examples` fails when it is stale. This is its first test:
+
+```dart
+testWidgets(
+  '/products/:id at /products/1',
+  (tester) => smokeTestRoute(
+    tester,
+    '/products/:id',
+    AppRoutes.router(
+      initialLocation: '/products/1',
+    ),
+    overrides: setup.overrides(
+      '/products/:id',
+    ),
+  ),
+);
+```
+
+**What a test does.** `smokeTestRoute` (in `package:fespalier/testing.dart`) runs these steps:
+
+1. `pumpRouter(..., settle: false)`, which also loads the code of every deferred route first.
+2. It pumps 100 ms of the test's **fake** clock at a time until the page is on screen. A `data.dart`
+   fake that answers after a delay is waited out, and nothing waits on the real clock.
+3. It fails after `timeout` (30 s of fake time by default) with
+   `The page of /items is not on screen after 30000 ms of fake time: the router is at /sign-in. A guard that redirects, a data.dart that fails or never completes, or an exception while building (above) keeps it away.`
+   A guard that redirects, a `data.dart` that fails or never completes, or an exception while building
+   the page (Flutter prints it above) is what keeps the page away; the location says where the router
+   ended.
+4. It expects exactly one page, takes the tree down, and runs the clock `timeout` on, so a fake's pending
+   one-shot timer fires with no widget left to react and the test does not end with "A Timer is still
+   pending". A _periodic_ timer in a fake still fails the test, which is the right signal.
+
+**How the page is found.** With [`semantics_ids: true`](#maestro-flows-fsp-maestro) the test looks for the
+page's `Semantics(identifier: 'route:<pattern>')` with `findRoutePage(pattern)`; it needs no semantics tree,
+and a page underneath another is off screen and not found. Without it, a class page is found by its type
+(`find.byType`), and the test file imports the page's library; a function page has no type to find, so it is
+skipped (printed below). To find a page some other way in a hand-written test, pass `page:` to
+`smokeTestRoute`.
+
+**The file and who owns it.** The file's first line is
+``// Written by `fsp test` from lib/app/: don't edit it, run `fsp test` again.`` and `fsp test` writes only
+that file. It never overwrites a file of that name that does not start with the marker: it fails and says so
+(move your file, or set `out`). The output is a function of the tree and the pubspec (route-table order, no
+dates), so `fsp test --check` writes nothing and exits non-zero when the file is missing or out of date.
+The second line is `// dart format off`. The file is laid out to need no formatting: a call is split one argument
+to a line, each with a trailing comma, which is what `dart format` leaves alone under an SDK older than 3.7
+(the short style, which does not read the marker); under 3.7 and later the marker holds the formatter off.
+Either way `dart format --set-exit-if-changed` is clean on it, in every style.
+
+**`test:`** has these keys, all optional. `fsp test` works with no `test:` section at all:
+
+```yaml
+fespalier:
+  test:
+    out: test/routes               # default; `test`, `integration_test` or a folder below one
+    setup: test/routes/setup.dart  # default: <out>/setup.dart, used when it exists
+    timeout: 30000                 # default; milliseconds of the fake clock a test waits for its page, 1000 to 600000
+    samples:                       # default: `maestro.samples`; same format
+      products/$id: 1
+    skip: [/admin]                 # patterns as `fsp routes` prints them
+```
+
+**Samples** are the values of the dynamic folders, in the format of
+[`maestro.samples`](#maestro-flows-fsp-maestro). When `test.samples` is not there, `maestro.samples` is
+used: only that key of `maestro:` is read, so a `maestro:` section that `fsp maestro` would refuse does not
+stop `fsp test`. With neither, a route with a dynamic segment is skipped. A sample is percent-encoded and
+checked against the segment's type, with the same messages as Maestro's, naming `fespalier.test.samples`
+or `fespalier.maestro.samples`, whichever is in use.
+
+**The setup file** is yours: `test/routes/setup.dart` by default, or `test.setup`. `fsp test` only reads
+which of two top-level functions it exports, and imports it as `setup` into the test file:
+
+```dart
+// test/routes/setup.dart
+import 'package:fespalier/testing.dart';
+
+/// Called once per test, so every test gets fresh fakes.
+List<Override> overrides(String pattern) => [
+  apiProvider.overrideWithValue(FakeApi()),
+  // checkout/guard.dart sends an empty cart back to /cart: this one has a line.
+  if (pattern == '/checkout') cartProvider.overrideWith(_FullCart.new),
+];
+
+/// Optional: the app around the router, for an app that needs its theme or localizations.
+Widget app(GoRouter router) => MaterialApp.router(routerConfig: router, theme: appTheme);
+```
+
+- `List<Override> overrides(String pattern)` is called once per test with the route's pattern. It
+  returns the providers that test boots with (`package:fespalier/testing.dart` exports riverpod's
+  `Override` since 0.8.0), and it can vary by route: a signed-in user for a guarded route.
+- `Widget app(GoRouter router)` builds the app around the router; the default is
+  `MaterialApp.router(routerConfig: router)`. `pumpRouter` takes the same `app:` since 0.8.0.
+- Each takes exactly one required positional parameter. A setup file with neither, or with one that takes
+  another shape, is an error that says what to write.
+- A route with a `guard.dart` at or above it is skipped when there is no `overrides`, because the guard would
+  most likely redirect. With `overrides` it gets a test, and a guard that still redirects fails it, naming
+  where the router ended.
+
+**Which routes get a test.** Each is checked in this order, and the first that applies wins. Every skip is
+printed on every run (and listed in the test file's header), and none of them fails `--check`.
+
+| Route                                             | Result  | Printed                                                                                                                             |
+| ------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| A `redirect.dart` route                           | skipped | `skipped /old: a redirect, with no page to see`                                                                                     |
+| Listed in `test.skip`                             | skipped | ``skipped /admin: listed in `fespalier.test.skip` ``                                                                                |
+| A `$x` or `$$x` segment with no sample            | skipped | ``skipped /products/:id: no sample for products/$id in `fespalier.test.samples` ``                                                  |
+| A `guard.dart` at or above it, and no `overrides` | skipped | ``skipped /checkout: guarded by checkout/guard.dart; give test/routes/setup.dart an `overrides(String pattern)` that gets past it`` |
+| A function page, and no `semantics_ids`           | skipped | ``skipped /fn: a function page; set `semantics_ids: true` so its test can find it``                                                 |
+
+A route with `const linkable = false;` is tested: the test runs in the process, not through a link. Each
+route is opened at its canonical path. The success lines are `✓ test: 6 routes in test/routes/routes_test.dart`
+(with `; 1 route skipped` when there are skips, and `(unchanged)` when nothing was written) and, for
+`--check`, `✓ test: test/routes/routes_test.dart is up to date (6 routes)`.
+
+**In CI**, next to `fsp check`:
+
+```yaml
+- run: fsp test --check
+- run: flutter test
+```
+
+**Not built.** Query parameters and localized spellings (a route is opened at its canonical path), one
+file per route (`flutter test` compiles each test file on its own, so fifty files cost minutes), running
+Flutter from `fsp`, and tests of `not_found.dart`. The values of `test:` are checked only by `fsp test`,
+so a mistake there never stops `fsp gen`.
 
 ### Performance
 
@@ -3328,7 +3694,11 @@ from. It answers:
 - **Is this data loading or cached?** The _Data_ tab lists the provider of every `data.dart` that was
   built: its file and route, the key (the segments and query it is keyed by), its state (`loading`,
   `data`, `error`, `stream` or `disposed`), how often it was built, when, and what it holds. **Invalidate**
-  builds one again.
+  builds one again. Since 0.8.0 a provider fespalier built also shows how many listeners it has, and
+  **Holders** lists who keeps it: the page's view, a section's view, a `prefetch` / `preload` handle (and
+  for how long), a `RouteLink` preload, and how many other listeners there are (`ref.watch` or `listen`
+  in your code, or another provider). A `data.dart` that returns or selects the app's own provider is
+  shown too, marked `app provider`, with the state the page saw (since 0.8.0).
 - **What did that action do?** The _Actions_ tab lists the runs of the `action.dart` functions, newest
   first: the function, its key and input, `running`, `done` or `error`, how long it took and what it
   returned or threw.
@@ -3358,17 +3728,22 @@ if (kFespalierDevTools) devToolsAttach(router);
 **What it costs.** Nothing in a release build: `kFespalierDevTools` is a `const` that is false there, the
 generated `app.g.dart` calls the extension's code only under `if (kFespalierDevTools)`, and
 the compiler removes the service extensions, the route tree and the code that serves them. The calls
-that follow the guards and the data are wrappers that return what they are given
-(`traceGuard(state, 'g5@6', guard(...))`, `traceData(ref, 'd37', id, data(...))`); in a release build they
-are the identity and the compiler inlines them away. CI builds an app with a guard, a `data.dart` and an
+that follow the guards, the data and the views are wrappers that return what they are given
+(`traceGuard(state, 'g5@6', guard(...))`, `traceData(ref, 'd37', id, data(...))`,
+`watchData(ref, 'd37', provider)`); in a release build they are the identity (`watchData` is exactly
+`ref.watch`) and the compiler inlines them away. CI builds an app with a guard, a `data.dart` and an
 action for profile and for release and checks that the release build has none of it. What stays in a
 release build is one short string per action (its site, an argument of the generated action provider).
 
-In a debug or profile build it adds one listener to the router's delegate, one `onDispose` callback per
-build of a `data.dart` provider, and lists of what happened that stop at 100 locations, 200 guard
-decisions, 100 action runs, and the providers that are alive plus the last 50 disposed. There is no
+In a debug or profile build it adds one listener to the router's delegate, an `onDispose`, an
+`onAddListener` and an `onRemoveListener` callback per build of a `data.dart` provider (the last two count
+its listeners; since 0.8.0), and lists of what happened that stop at 100 locations, 200 guard
+decisions, 100 action runs, and the providers that are alive plus the last 50 disposed. The views, the
+prefetch handles and the `RouteLink` preloads it lists as holders are held weakly. There is no
 timer, no frame, no read of a provider, no listener on a provider, and nothing that answers unless
-DevTools asks. **A guard or a data function that answers at once still does:** the wrapper returns the very
+DevTools asks. (`ProviderContainer.exists`, which reads nothing, is asked of a container for an app's own
+provider only when DevTools asks for a snapshot or for holders, and before the 101st live one is recorded.
+`_devToolsProviders` in `app.g.dart` is a function that is called once, when DevTools first needs it.) **A guard or a data function that answers at once still does:** the wrapper returns the very
 object it was given, so a synchronous guard stays synchronous, a `Future` is the `Future` go_router or
 Riverpod awaits, and the only thing added to one is a side `then` that records how it ended and handles
 its own errors. A `Stream` is not listened to. A bug in any of it is printed once and dropped; it never
@@ -3386,13 +3761,18 @@ changes what a navigation, a guard, a provider or an action does.
 - The route class a location is matched to is the class's `runtimeType` name. A profile build on the web
   minifies class names, so the tab finds the route by its path template instead, which a
   [localized path](#localized-paths) may not match.
-- A `data.dart` that returns or selects a provider of its own is listed under _Data_ as not traced, and
-  not followed: fespalier does not wrap what it does not make. The same goes for a guard or a data
-  function that throws before it returns anything: go_router or Riverpod get the error as they always
-  did, and the tab shows nothing for it.
-- **Who holds a provider** (the page, a `PrefetchHandle`, a `RouteLink` preload, something else) is not
-  shown: Riverpod does not export what that needs. Use Riverpod's own DevTools tab for the listeners.
-  fespalier does not add a `ProviderObserver` either: it does not own your `ProviderScope`.
+- An app provider (a `data.dart` that returns or selects one) is seen through fespalier's views: its
+  state is what the last page or section that watched it got, it has no build count, and its other
+  listeners are not visible. A `.select(...)` can't be invalidated or checked for being alive. Until a
+  page, a section or a preload watches it, its file is listed under _Not watched yet_ (since 0.8.0). The
+  same goes for a guard or a data function that throws before it returns anything: go_router or Riverpod
+  get the error as they always did, and the tab shows nothing for it.
+- **Holders** are the ones fespalier creates (views, prefetches, `RouteLink` preloads); anything else is
+  counted, for a provider fespalier built, as other listeners, and not named. Riverpod 3.4 does not
+  export who listens to a provider (`ProviderElement` and its dependents are internal); its own DevTools
+  tab reads them through internals. fespalier does not add a `ProviderObserver` either: it does not own
+  your `ProviderScope`. A prefetch made before any page watched a selector's provider with parameters is
+  attached when a page first does.
 - A provider that returns a `Stream` shows the state `stream` and no value: nothing listens to it on the
   tab's behalf.
 - **Open in IDE** posts a `navigate` event on the `ToolEvent` stream with a `package:` URI of the file, the
@@ -3418,6 +3798,7 @@ which imports nothing.
 | `ext.fespalier.clear`      | `what` (`history`, `guards`, `actions` or `all`)                         | `{"ok": true}`; what was named is emptied and the event counter goes on                   |
 | `ext.fespalier.invalidate` | `id` (a data record's)                                                   | `{"ok": true}` when that provider was alive and was invalidated, `{"ok": false}` when not |
 | `ext.fespalier.open`       | `file` (one of the tree's, relative to the app folder)                   | `{"ok": true}` once the IDE was asked, with a `package:` URI                              |
+| `ext.fespalier.holders`    | `id` (a data record's)                                                   | who holds that provider now (since 0.8.0): `{found, alive, listeners, others, holders}`   |
 
 | Event                  | Posted when                                                                          | Carries                                     |
 | ---------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------- |
@@ -3428,11 +3809,16 @@ which imports nothing.
 | `fespalier:action`     | an action starts and when it ends                                                    | the number and the `record` of the run      |
 
 `hello`'s `features` lists what the app can answer: `navigation`, `match`, `navigate`, `guards`, `data`,
-`actions` and `open`. The `snapshot` has a `guards`, a `data` and an `actions` list, and a navigation record
+`actions`, `open`, `holders` and `watched` (the last two since 0.8.0). The `snapshot` has a `guards`, a `data` and an `actions` list, and a navigation record
 names the `guards` behind it; a reader that finds one of the features missing finds those empty. A guard record is
 `{seq, at, site, uri, fullPath, result, location, async, ms, error}`, a data record
-`{id, site, key, container, state, builds, created, updated, value, error}` and an action record
+`{id, site, key, container, state, builds, created, updated, value, error, via, provider, listeners}` and an action record
 `{seq, site, key, input, state, started, ms, result, error}`; a `site` is a key of the tree's `sites`.
+Since 0.8.0 a data record's `via` is `build` (fespalier built the provider) or `watch` (the app's own provider,
+seen through a view; its `provider` is the provider's text and its `listeners` is null), and `holders` answers
+`{found, alive, listeners, others, holders: [{kind, since, keepFor}]}`: `kind` is `view`, `section`, `prefetch`
+or `link`, `keepFor` is milliseconds (null for until closed), `alive` is null when it can't be known, and
+`others` is `listeners` minus the holders. `found` is false for an id that is not tracked.
 
 An error is a JSON-RPC error with the code `-32602` for a missing or bad parameter and `-32000` otherwise,
 and its detail says what was wrong. Events are posted only while a tool listens.
@@ -3526,6 +3912,7 @@ skills/              agent skills: how to write lib/app/ and read fsp's errors (
 just ci          # everything CI runs on the code, locally (needs Flutter, Node, just, cargo-deny)
 just --list      # the individual steps: fmt, lint, test, deny, examples, flutter, devtools, packaging, skills
 just devtools-build   # rebuild the DevTools extension after touching its source (see below)
+just web-routes  # the shop's Maestro flows open their routes in Chromium (needs Flutter and Node; not in `just ci`)
 ```
 
 [AGENTS.md](AGENTS.md) is the contributor and agent guide: the layout, the gate commands,
@@ -3542,7 +3929,7 @@ what its source builds to, then runs `devtools_extensions validate`
 result). It also scaffolds every file kind
 with `fsp new` and `fsp init`, checks the result with `flutter analyze` and `dart format`,
 gives that app a guarded route with a `data.dart` and an `action.dart`, builds it for profile and for release
-and checks that the release build holds none of the DevTools code (the `traceGuard` and `traceData`
+and checks that the release build holds none of the DevTools code (the `traceGuard`, `traceData` and `watchData`
 wrappers included), runs `dart run fespalier` against a
 freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebrew and Scoop
 rendering, checksum pinning and release staging (`python3 scripts/test_packaging.py`,
@@ -3560,6 +3947,12 @@ or a version no newer than the package's). You do not bump any of them: release-
 (see [Releasing](#releasing)). After changing the emitter or a
 template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
 a committed `app.g.dart` is stale.
+
+Two more jobs build `examples/shop` for the web in a throwaway copy (`scripts/web-copy.sh`), outside
+`just ci`: `web` checks that each deferred page is a chunk of its own (`just web-chunks`), and
+`web-routes` replays the committed Maestro flows in a pinned Chromium, with every request that is
+not to the local server blocked (`just web-routes`; `ci/web-routes/`). `maestro-web.yml` runs real
+Maestro on the same build weekly; it is not a required check.
 
 ### Releasing
 
@@ -3697,6 +4090,12 @@ synchronous guard shows the page at once. If a widget
 hangs on to its own `WidgetRef` (to call `prefetch` from a test, say), take it from an
 element: `tester.element(find.byType(AppLayout)) as WidgetRef`.
 
+`pumpRouter` also takes `app:` (since 0.8.0), a function from the router to the app widget around it
+(the default is `MaterialApp.router(routerConfig: router)`), and `package:fespalier/testing.dart` exports
+riverpod's `Override`. `findRoutePage(pattern)` finds a page by its `semantics_ids` identifier, and
+`smokeTestRoute` is what [`fsp test`](#route-smoke-tests-fsp-test) runs for each route; the shop's generated
+smoke tests are checked by `just check-examples`.
+
 `pumpRouter` loads the code of every [deferred route](#deferred-routes-a-pages-code-on-demand) first, on the real event loop
 (since 0.7.0): a widget test's `pump` never runs `loadLibrary()`, so without that a deferred page would
 show `loading.dart` for ever. A test that pumps a router of its own calls
@@ -3795,12 +4194,12 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 812 tests (759 unit, 41 CLI integration, 12 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 889 tests (831 unit, 45 CLI integration, 13 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
-  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), scroll restoration (what is wrapped, the config key), string paths that match no route (the lint, its matching, mount point and ignore comments), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
+  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), string paths that match no route (the lint, its matching, mount point and ignore comments), `fsp size` (dart2js's table of deferred parts read from a real build's `main.dart.js`, own and shared bytes, the stale-build checks and the `size:` budgets), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 1006 Flutter tests (the package 491, the DevTools extension 178, `shop` 64, `features` 226, `tabs` 39, `minimal` 8); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 1073 Flutter tests (the package 541, the DevTools extension 189, `shop` 72, `features` 223, `tabs` 40, `minimal` 8); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

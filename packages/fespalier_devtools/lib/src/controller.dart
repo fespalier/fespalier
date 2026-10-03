@@ -385,6 +385,22 @@ class FespalierController extends ChangeNotifier {
     }
   });
 
+  /// Who holds the provider of the data record [id] now (since 0.8.0), or null when the app does
+  /// not list [DevToolsFeatures.holders] (it is older) or the call failed, which is in
+  /// [actionError].
+  Future<HoldersRecord?> holders(int id) async {
+    if (!supports(DevToolsFeatures.holders)) return null;
+    try {
+      return HoldersRecord.fromJson(
+        await client.call(DevToolsMethods.holders, {'id': '$id'}),
+      );
+    } on Object catch (e) {
+      _actionError = '$e';
+      if (!_disposed) notifyListeners();
+      return null;
+    }
+  }
+
   /// Asks the IDE, through the app, to open [file] (relative to the app folder, as the tree's
   /// files are). Whether anything opens depends on the IDE listening for it; a failure of the
   /// call is in [actionError].

@@ -1,0 +1,14 @@
+{
+  "name": "fespalier-web-routes",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Replays the committed `fsp maestro` flows in Chromium against a release web build.",
+  "scripts": {
+    "check": "node check.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.63.0",
+    "yaml": "2.9.1"
+  }
+}

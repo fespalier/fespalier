@@ -3,6 +3,9 @@
 As of v0.4.0, observed against go_router 18.0.2, hooks_riverpod 3.4.3 and Flutter
 3.47. Each one was hit while writing these skills.
 
+The traps of the route smoke tests `fsp test` writes (since 0.8.0: a periodic timer in a fake, a failure that
+names where the router ended) are in [`route-smoke-tests.md`](route-smoke-tests.md).
+
 ## `pumpRouter` and `currentLocation`
 
 ```dart

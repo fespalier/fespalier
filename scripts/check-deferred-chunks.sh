@@ -5,7 +5,7 @@
 # and checks that dart2js split the deferred pages out: there is at least one
 # `main.dart.js_N.part.js`, and each marker (a string only a deferred page contains) is in a part
 # file and not in `main.dart.js`. The examples stay platform-free: the `web/` folder that
-# `flutter create` adds lives in the copy, which is removed on exit.
+# `flutter create` adds lives in the copy (scripts/web-copy.sh), which is removed on exit.
 #
 # It then runs `fsp size` on the build: `fsp size --check` (the budgets in the example's `size:`
 # section of pubspec.yaml), and `fsp size --json` to confirm that each marker's part file is one
@@ -31,31 +31,18 @@ for arg in "${@:2}"; do
   esac
 done
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-example="$(cd "$1" && pwd)"
+# shellcheck source=web-copy.sh
+source "$(dirname "${BASH_SOURCE[0]}")/web-copy.sh"
+web_copy "$1"
 shift
 
-work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
-
-# The generator, built inside cli/ (cargo reads rust-toolchain.toml only from there).
+# The generator, built inside cli/ (cargo reads rust-toolchain.toml only from there). The
+# throwaway copy and its cleanup come from web_copy (scripts/web-copy.sh).
 (cd "$root/cli" && cargo build --quiet)
 target="$(cd "$root/cli" && cargo metadata --no-deps --format-version 1 |
   python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')"
 fsp="$target/debug/fsp"
 
-# The example refers to the package by `path: ../../packages/fespalier`: keep that layout.
-name="$(basename "$example")"
-mkdir -p "$work/examples" "$work/packages"
-cp -R "$example" "$work/examples/$name"
-cp -R "$root/packages/fespalier" "$work/packages/fespalier"
-rm -rf \
-  "$work/examples/$name/build" "$work/examples/$name/.dart_tool" \
-  "$work/packages/fespalier/build" "$work/packages/fespalier/.dart_tool"
-
-cd "$work/examples/$name"
-flutter create --platforms web --no-pub .
-flutter pub get
 flutter build web --release
 
 out=build/web
@@ -84,7 +71,7 @@ for arg in "$@"; do
 done
 
 # `fsp size` on the same build: within budget, and the same attribution as the marker strings.
-fsp_project=(--project "$work/examples/$name")
+fsp_project=(--project "$copy")
 "$fsp" size "${fsp_project[@]}" --check || status=1
 "$fsp" size "${fsp_project[@]}" --json > "$work/size.jsonl"
 for arg in "$@"; do

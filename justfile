@@ -129,8 +129,16 @@ intellij:
 web-chunks:
     scripts/check-deferred-chunks.sh examples/shop '/checkout=Place order' '/products/:id=Add to cart'
 
+# The committed Maestro flows of examples/shop open their routes in Chromium (Playwright, pinned in
+# ci/web-routes/package-lock.json) against a release web build; every non-local request is blocked.
+# Needs Flutter and Node; about two minutes, and not part of `just ci` (CI runs it as `web-routes`)
+web-routes:
+    cd ci/web-routes && npm ci && npx --no-install playwright install chromium
+    scripts/check-web-routes.sh examples/shop
+
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
-# are `just vscode` and `just intellij`, and the web build of the deferred pages is `just web-chunks`.
+# are `just vscode` and `just intellij`, and the web builds are `just web-chunks` (the deferred
+# pages) and `just web-routes` (the Maestro flows).
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging and skills jobs
 ci: lint test deny check-examples flutter devtools packaging skills

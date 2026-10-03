@@ -254,7 +254,11 @@
         "packages/fespalier/lib/src/platform_page.dart",
         "packages/fespalier/lib/src/tab_options.dart",
         "packages/fespalier/lib/src/transitions.dart",
-        "packages/fespalier/lib/src/scroll_memory.dart"
+        "packages/fespalier/lib/src/scroll_memory.dart",
+        "README.md#A bar, a rail or a drawer: fespalier_adaptive",
+        "packages/fespalier_adaptive/README.md",
+        "packages/fespalier_adaptive/lib/fespalier_adaptive.dart",
+        "packages/fespalier_adaptive/lib/material.dart"
       ]
     },
     "fespalier-guards": {
@@ -385,7 +389,10 @@
         "packages/fespalier/lib/src/navigation_kind.dart",
         "packages/fespalier/lib/src/version.dart",
         "cli/templates/new/observe.dart.jinja",
-        "examples/telemetry"
+        "examples/telemetry",
+        "README.md#Several sinks: combine and add",
+        "README.md#Spans around data() and actions",
+        "README.md#Where a navigation came from: navigateFrom"
       ]
     }
   },

@@ -1084,6 +1084,16 @@ fn no_companions_generate_what_0_7_0_did() {
             "TelemetrySite",
             "AppRoutes.attach",
             "_observeAt",
+            // The data provider is `traceData(..., data(...))` as it always was, not the
+            // `traceDataCall(..., () => data(...))` that only `telemetry: true` writes (0.9.0).
+            "traceDataCall",
+        ],
+    );
+    has(
+        &c,
+        &[
+            "(Ref ref, int id) => traceData(ref, 'd2', id, _i1.data(ref, id: id)),",
+            "(Ref ref, String teamId) => traceData(ref, 'd4', teamId, _i4.data(ref, teamId: teamId)),",
         ],
     );
 }

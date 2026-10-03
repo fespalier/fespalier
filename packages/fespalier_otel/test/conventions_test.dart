@@ -1,6 +1,7 @@
 // The telemetry conventions, contract version 1 (README, "Telemetry conventions"): every name
 // below is a string literal on purpose. A dashboard is built on these, so renaming one must
 // fail here before it can ship; adding one is allowed (add its line).
+import 'package:fespalier/fespalier.dart' show NavigationSource;
 import 'package:fespalier_otel/fespalier_otel.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -104,6 +105,29 @@ void main() {
       ],
       ['expired', 'unauthorized', 'forced'],
     );
+  });
+
+  test('where a navigation came from (since 0.9.0)', () {
+    expect(
+      FespalierConventions.navigationSource,
+      'fespalier.navigation.source',
+    );
+    expect(
+      [
+        FespalierConventions.sourceNotification,
+        FespalierConventions.sourceShortcut,
+        FespalierConventions.sourceWidget,
+        FespalierConventions.sourceLink,
+      ],
+      ['notification', 'shortcut', 'widget', 'link'],
+    );
+    // The contract's values are fespalier's NavigationSource, one for one.
+    expect(NavigationSource.values, [
+      FespalierConventions.sourceNotification,
+      FespalierConventions.sourceShortcut,
+      FespalierConventions.sourceWidget,
+      FespalierConventions.sourceLink,
+    ]);
   });
 
   test('the events', () {

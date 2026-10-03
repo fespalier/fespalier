@@ -18,11 +18,11 @@
 //     since 0.9.0). Every other block is a fragment and is not built.
 //   - A page with a block that imports `package:fespalier_<name>/` (since 0.9.0), for
 //     every `packages/fespalier_<name>/pubspec.yaml` of this checkout (fespalier_auth,
-//     fespalier_sign_keypair, fespalier_flags, ...: generic, so a new companion package
-//     needs no edit here), gets that package as a path dependency of this checkout, and
-//     a `dependency_overrides:` block pointing `fespalier` and the companions at it: the
-//     companions pin fespalier by repository tag, which a path dependency of the app
-//     cannot be resolved against.
+//     fespalier_sign_keypair, fespalier_adaptive, fespalier_flags, ...: generic, so a new
+//     companion package needs no edit here), gets that package as a path dependency of
+//     this checkout, and a `dependency_overrides:` block pointing `fespalier` and the
+//     companions at it: the companions pin fespalier by repository tag, which a path
+//     dependency of the app cannot be resolved against.
 //   - The scratch app is a copy of the fespalier checkout's `examples/minimal`
 //     (the checkout is never modified): renamed `my_app` (the package name the
 //     skills' imports use), depending on the checkout's packages/fespalier by

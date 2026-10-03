@@ -1,6 +1,6 @@
 ---
 name: fespalier-testing
-description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in (fakeAuth from fespalier_auth, since 0.9.0), flagged routes (FakeFlags from fespalier_flags, since 0.9.0), a restart over a disk cache (fakePrefsStore and memoryBox from fespalier_storage, since 0.9.0), reconnects and offline banners (FakeConnectivity from fespalier_connectivity, since 0.9.0), pure tests of locations, dataAt and match, a generated smoke test per route (fsp test, setup.dart, smokeTestRoute), Maestro on a device or the web (semantics_ids, fsp maestro), local telemetry dashboards (fsp telemetry, OpenObserve, Grafana), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
+description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in (fakeAuth from fespalier_auth, since 0.9.0), flagged routes (FakeFlags from fespalier_flags, since 0.9.0), a restart over a disk cache (fakePrefsStore and memoryBox from fespalier_storage, since 0.9.0), reconnects and offline banners (FakeConnectivity from fespalier_connectivity, since 0.9.0), the window size of an adaptive layout (fespalier_adaptive, since 0.9.0), pure tests of locations, dataAt and match, a generated smoke test per route (fsp test, setup.dart, smokeTestRoute), Maestro on a device or the web (semantics_ids, fsp maestro), local telemetry dashboards (fsp telemetry, OpenObserve, Grafana), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
 ---
 
 # fespalier-testing
@@ -55,6 +55,10 @@ dev.fluttercommunity.plus/connectivity_status`). See `references/recipes.md` and
 - **DPoP proofs (since 0.9.0).** With `package:fespalier_sign_keypair`, `FakeDpopSigner` (from
   `package:fespalier_sign_keypair/testing.dart`) is a software key from a fixed scalar (the same on every run, no
   platform), and `verifyDpopProof` is what a fake server checks every proof with. See "DPoP proofs" in
+  [`references/recipes.md`](references/recipes.md).
+- **Window size (since 0.9.0).** With `package:fespalier_adaptive`, Flutter's default 800 x 600 test window is a
+  **rail**; set `tester.view.physicalSize` (and `devicePixelRatio = 1`, and `addTearDown(tester.view.reset)`) for a
+  bar (under 600) or a drawer (1200 and up). See "An adaptive layout" in
   [`references/recipes.md`](references/recipes.md).
 - **Hooks and telemetry (since 0.8.1).** An `observe.dart` hook fires at the end of the first frame that
   shows a change, so `await tester.pump()` before asserting what it did; `RecordingTelemetry` is a

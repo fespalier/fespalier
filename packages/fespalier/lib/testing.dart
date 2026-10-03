@@ -144,19 +144,31 @@ String currentLocation(WidgetTester tester) {
 ///
 /// ```text
 /// #n start OP WHAT [keyed] [parent=#m]
+/// #n start navigate LOCATION [source=S]
 /// #n start auth STEP backend=NAME [trigger=T] [dpop]
 /// #n end OP OUTCOME [async] [-> LOCATION] [error=TEXT]
 /// #n end navigate OUTCOME [route=P] [kind=K] [from=P] [redirected] [depth=N] [at=LOCATION]
 /// #n page enter|focus|leave PATTERN
+/// #n within enter|exit
 /// ```
 ///
 /// WHAT is the requested location (navigate), the file (guard, redirect, data), `file#name`
 /// (action) or `file route=PATTERN` (deferred); `keyed` is data from a family. An auth line
 /// (since 0.9.0) names the step (`restore`, `sign_in`, `refresh`, `sign_out`), the backend, what
-/// asked for a refresh, and `dpop` when the backend binds its tokens.
+/// asked for a refresh, and `dpop` when the backend binds its tokens. A navigate line has
+/// ` source=S` (since 0.9.0) when [navigateFrom] marked it: `notification`, `shortcut`, `widget`
+/// or `link`; the lines of a navigation nobody marked do not change.
+///
+/// With [recordWithin] (since 0.9.0) the recorder also writes `within enter` and `within exit`
+/// around what runs inside a `data()` or an action ([FespalierTelemetry.within]), so a test can
+/// see that a call ran within its operation: add a line to [log] from the code under test, and
+/// the order says it. It is off by default, so a log written before 0.9.0 reads the same.
 final class RecordingTelemetry extends FespalierTelemetry {
-  /// Creates a recorder with an empty [log].
-  RecordingTelemetry();
+  /// Creates a recorder with an empty [log]. [recordWithin] adds the `within` lines.
+  RecordingTelemetry({this.recordWithin = false});
+
+  /// Whether `within enter` and `within exit` lines are written (since 0.9.0).
+  final bool recordWithin;
 
   /// What happened, in order.
   final List<String> log = [];
@@ -169,7 +181,9 @@ final class RecordingTelemetry extends FespalierTelemetry {
     final id = ++_last;
     _ops[id] = start.op;
     final what = switch (start.op) {
-      TelemetryOp.navigate => start.uri?.toString() ?? '(commit)',
+      TelemetryOp.navigate =>
+        '${start.uri ?? '(commit)'}'
+            '${start.source == null ? '' : ' source=${start.source}'}',
       TelemetryOp.action => '${start.site?.file}#${start.site?.name}',
       TelemetryOp.deferred => '${start.file} route=${start.route}',
       TelemetryOp.auth =>
@@ -207,6 +221,20 @@ final class RecordingTelemetry extends FespalierTelemetry {
   @override
   void page(Object? navigation, TelemetryPage page) {
     log.add('#$navigation page ${page.kind.name} ${page.route}');
+  }
+
+  @override
+  void within(Object? token, Object? Function() body) {
+    if (!recordWithin) {
+      body();
+      return;
+    }
+    log.add('#$token within enter');
+    try {
+      body();
+    } finally {
+      log.add('#$token within exit');
+    }
   }
 }
 

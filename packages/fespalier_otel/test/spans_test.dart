@@ -39,6 +39,8 @@ final Set<String> seenEventKeys = {};
 
 void remember() {
   for (final span in exporter.spans) {
+    // The spans of an HTTP client the tests simulate are not fespalier's.
+    if (span.instrumentationScope.name != 'fespalier') continue;
     // A span's name is its operation, then what it is about (a route, a file).
     seenSpans.add(span.name.split(' ').first);
     if (span.name == 'navigate (not found)') seenSpans.add(span.name);
@@ -61,6 +63,15 @@ final item = FutureProvider.autoDispose.family<String, int>(
     Future<String>.microtask(() => 'item $id'),
     telemetry: dataSite,
   ),
+);
+
+/// A data load that makes an HTTP-like request after an await, as `data()` does with a client.
+final itemWithRequest = FutureProvider.autoDispose.family<String, int>(
+  (ref, id) => traceDataCall(ref, 'd2', id, () async {
+    await Future<void>.delayed(Duration.zero);
+    OTel.tracerProvider().getTracer('http').startSpan('GET /items/$id').end();
+    return 'item $id';
+  }, telemetry: dataSite),
 );
 
 Widget page(String label) => Scaffold(body: Text(label));
@@ -265,6 +276,194 @@ void main() {
       expect(superseded, hasLength(1));
       answer.complete(null);
       await tester.pumpAndSettle();
+    });
+  });
+
+  group('where a navigation came from (since 0.9.0)', () {
+    testWidgets('a go in navigateFrom has the source, a later one has none', (
+      tester,
+    ) async {
+      final r = router();
+      await pumpRouter(tester, r);
+      exporter.clear();
+      navigateFrom(NavigationSource.notification, () => r.go('/items/7'));
+      await tester.pumpAndSettle();
+      expect(
+        a(only('navigate /items/:id'), 'fespalier.navigation.source'),
+        'notification',
+      );
+      exporter.clear();
+      r.go('/other');
+      await tester.pumpAndSettle();
+      expect(a(only('navigate /other'), 'fespalier.navigation.source'), isNull);
+    });
+
+    testWidgets('a cold start from a link is initial, with its source', (
+      tester,
+    ) async {
+      final r = navigateFrom(
+        NavigationSource.link,
+        () => router(initial: '/items/2'),
+      );
+      await pumpRouter(tester, r);
+      final nav = only('navigate /items/:id');
+      expect(a(nav, 'fespalier.navigation.kind'), 'initial');
+      expect(a(nav, 'fespalier.navigation.source'), 'link');
+    });
+
+    testWidgets('only a navigation has it', (tester) async {
+      checkout = () => '/login';
+      final r = router();
+      await pumpRouter(tester, r);
+      exporter.clear();
+      navigateFrom(NavigationSource.shortcut, () => r.go('/checkout'));
+      await tester.pumpAndSettle();
+      for (final span in exporter.spans) {
+        final isNavigate = span.name.startsWith('navigate');
+        expect(
+          a(span, 'fespalier.navigation.source'),
+          isNavigate ? 'shortcut' : isNull,
+          reason: span.name,
+        );
+      }
+    });
+  });
+
+  group('data and actions are the current span (since 0.9.0)', () {
+    /// What an HTTP client's instrumentation (`otel_http`, `otel_dio`) does: a span under whatever
+    /// span is current, made with the SDK's own tracer.
+    Span http(String name) {
+      final span = OTel.tracerProvider().getTracer('http').startSpan(name);
+      span.end();
+      return exporter.findSpansByName(name).single;
+    }
+
+    test('a span made inside data(), after an await, is its child', () async {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final provider = FutureProvider.autoDispose<String>(
+        (ref) => traceDataCall(ref, 'd1', 7, () async {
+          await Future<void>.delayed(Duration.zero);
+          http('GET /items/7');
+          return 'item 7';
+        }, telemetry: dataSite),
+      );
+      expect(await c.read(provider.future), 'item 7');
+      final data = only('data items/\$id/data.dart');
+      final request = only('GET /items/7');
+      expect(request.parentSpanContext?.spanId, data.spanContext.spanId);
+      expect(request.spanContext.traceId, data.spanContext.traceId);
+      expect(data.attributes.getString('fespalier.data.state'), 'data');
+    });
+
+    test('and one made in the sync part of data() is too', () {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final provider = Provider.autoDispose<String>(
+        (ref) => traceDataCall(ref, 'd1', null, () {
+          http('GET /sync');
+          return 'value';
+        }, telemetry: dataSite),
+      );
+      expect(c.read(provider), 'value');
+      expect(
+        only('GET /sync').parentSpanContext?.spanId,
+        only('data items/\$id/data.dart').spanContext.spanId,
+      );
+    });
+
+    test('nothing stays current after the call', () async {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final provider = FutureProvider.autoDispose<String>(
+        (ref) => traceDataCall(
+          ref,
+          'd1',
+          null,
+          () async => 'x',
+          telemetry: dataSite,
+        ),
+      );
+      await c.read(provider.future);
+      http('GET /after');
+      expect(only('GET /after').parentSpanContext?.spanId.isValid, isNot(true));
+    });
+
+    test('a span made in an action, after an await, is its child', () async {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final rename = actionProvider<String, String>(
+        (ref, input) async {
+          await Future<void>.delayed(Duration.zero);
+          http('POST /items');
+          return input;
+        },
+        invalidates: () => const [],
+        telemetry: actionSite,
+      );
+      c.listen(rename, (_, _) {});
+      await c.read(rename.notifier).call('a');
+      expect(
+        only('POST /items').parentSpanContext?.spanId,
+        only('action items/\$id/action.dart#rename').spanContext.spanId,
+      );
+    });
+
+    test('a failed data() is an error span, and the error is Riverpod\'s', () {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final provider = Provider.autoDispose<String>(
+        (ref) => traceDataCall<String>(
+          ref,
+          'd1',
+          null,
+          () => throw StateError('sync'),
+          telemetry: dataSite,
+        ),
+      );
+      expect(() => c.read(provider), throwsA(isA<Object>()));
+      final data = only('data items/\$id/data.dart');
+      expect(data.status, SpanStatusCode.Error);
+      expect(data.attributes.getString('fespalier.data.state'), 'error');
+      expect(data.attributes.getBool('fespalier.async'), false);
+    });
+
+    testWidgets('next to another sink the data span still has its own '
+        'navigation as parent, and the request is its child', (tester) async {
+      final rec = RecordingTelemetry();
+      FespalierTelemetry.install(
+        FespalierTelemetry.combine([rec, FespalierOtel()]),
+      );
+      final r = GoRouter(
+        initialLocation: '/home',
+        routes: [
+          GoRoute(path: '/home', builder: (_, _) => page('home')),
+          GoRoute(
+            path: '/items/:id',
+            builder: (context, s) => Consumer(
+              builder: (context, ref, _) {
+                ref.watch(itemWithRequest(int.parse(s.pathParameters['id']!)));
+                return page('item');
+              },
+            ),
+          ),
+        ],
+      );
+      telemetryAttach(r, base: () => '/');
+      await pumpRouter(tester, r);
+      exporter.clear();
+      r.go('/items/5');
+      await tester.pumpAndSettle();
+      final nav = only('navigate /items/:id');
+      final data = only('data items/\$id/data.dart');
+      final request = only('GET /items/5');
+      expect(data.parentSpanContext?.spanId, nav.spanContext.spanId);
+      expect(request.parentSpanContext?.spanId, data.spanContext.spanId);
+      // The other sink was handed its own token as the parent, not ours.
+      expect(
+        rec.log,
+        contains('#3 start data items/\$id/data.dart keyed parent=#2'),
+      );
     });
   });
 
@@ -535,6 +734,7 @@ void main() {
       'fespalier.navigation.from',
       'fespalier.navigation.redirected',
       'fespalier.navigation.depth',
+      'fespalier.navigation.source',
       'url.path',
       'url.query',
       'fespalier.guard.decision',

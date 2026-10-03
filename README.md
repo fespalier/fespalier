@@ -1189,7 +1189,9 @@ a tab (`/profile/edit`), use [`navigator.dart`](#the-root-navigator-navigatordar
 know: go_router opens a tab on its first route, which can't have a `:segment` in its own
 path, so a tab made only of dynamic routes, or a tab layout placed directly in a
 `$folder`, is an error (put the layout in a `(group)` below that folder instead); and `tabs` in a tab layout must be string literals, so name another list of destinations
-something else. See `examples/tabs`.
+something else. See `examples/tabs`. Since 0.9.0, `package:fespalier_adaptive` can draw the bar from
+the menu, as a bar, a rail or a drawer by window width: see
+[A bar, a rail or a drawer](#a-bar-a-rail-or-a-drawer-fespalier_adaptive).
 
 **Nested tab layouts.** A tab layout can sit inside a tab of another one: put a
 `layout.dart` that takes a `StatefulNavigationShell` in a folder that is a branch of the
@@ -1381,6 +1383,162 @@ Not built: more than one menu per app (use `under:` and `inMenu`), labels from `
 `fsp new orders --nav` writes a `nav.dart` for a folder, `fsp routes --json` has a `nav` key on
 the routes whose folder has one (`file`, `label` when it is a string literal, `order`), and
 `examples/features` has a menu, a team sub-menu and breadcrumbs, with tests for each guard case.
+
+#### A bar, a rail or a drawer: fespalier_adaptive
+
+Since 0.9.0. The menu is one list, and what changes with the screen is the component that shows it.
+`package:fespalier_adaptive` draws `AppMenu.watch` as a `NavigationBar` on a phone, a `NavigationRail` on a
+tablet and a permanent `NavigationDrawer` on a wide window, around a layout's body. The bar is no longer a
+second list of destinations that can drift from the routes, and guards hide or disable entries as they do in
+any menu. It is a package of its own: no `fsp` change, no `fespalier:` key, the same `app.g.dart`, no
+third-party dependency, and an app that does not depend on it is unchanged. Add it next to fespalier, with
+the same `url` and the same `ref` (pub resolves the two to one package only if they are the same repository
+dependency; [Installing fespalier_auth](#installing-fespalier_auth) quotes what it says when they differ):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1
+  fespalier_adaptive:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_adaptive
+      ref: v0.8.1
+```
+
+<!-- x-release-please-end -->
+
+It needs Dart 3.8 and Flutter 3.32 or newer. The tab layout of [Tab layouts](#tab-layouts), with a `nav.dart`
+in each tab's folder for its label and icon, becomes:
+
+```dart
+// lib/app/(tabs)/layout.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_adaptive/material.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+class TabsLayout extends StatelessWidget {
+  const TabsLayout({super.key, required this.navigationShell});
+  final StatefulNavigationShell navigationShell;
+
+  @override
+  Widget build(BuildContext context) => AdaptiveNavScaffold(
+    shell: navigationShell,
+    // under: the tab layout's folder, so each entry knows which tab it is
+    menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),
+    breakpoints: const NavBreakpoints(rail: 840),
+  );
+}
+```
+
+`tabs`, `tabOptions` and `container` stay as they are. A plain layout (one that takes a `Widget child`)
+passes `child: child` instead of `shell:`, and exactly one of the two is asserted. `examples/tabs` is this,
+with its six `nav.dart` files and tests that resize the window.
+
+**Breakpoints.** The component follows the window's width in logical pixels
+(`MediaQuery.sizeOf(context).width`):
+
+| Width             | Component                                                  | `NavMode` |
+| ----------------- | ---------------------------------------------------------- | --------- |
+| under 600         | `NavigationBar` at the bottom                              | `bar`     |
+| 600 to 1199       | `NavigationRail` at the start, every label shown           | `rail`    |
+| 1200 and wider    | a permanent `NavigationDrawer`, with the nested entries    | `drawer`  |
+
+Those are `NavBreakpoints(rail: 600, drawer: 1200)`, Material 3's compact, medium and large window size
+classes (`WindowSizeClass.of(width)` names all five). Both are configurable, and `null` means never:
+`NavBreakpoints.noDrawer`, or `NavBreakpoints(rail: 840)`, which `examples/tabs` uses so that a bar serves up
+to small tablets in portrait (and so that Flutter's default 800 × 600 test window keeps the bar). A `drawer`
+below the `rail` is an assertion. A layout inside a split view that needs the width of its own box builds an
+`AdaptiveNav` itself, under a `LayoutBuilder` (below).
+
+**Which entries.**
+
+- The bar and the rail list the top-level entries that go somewhere: an entry with a route or, in a tab layout,
+  an entry that is a tab, even a heading. Library in `examples/tabs` is a folder with no `page.dart`, and it is
+  the fourth destination. A heading that is not a tab is replaced by the entries below it.
+- The drawer lists every entry that goes somewhere, depth first. A heading is the title of a section over the
+  entries below it (Books and Authors under Library), and a route's own children stay in its section, so a
+  tree of three levels or more is flattened under one level of headings.
+- **Pass `under:` the tab layout's folder.** That is what gives each entry its `tab`: the selected destination
+  is the one whose `tab` is the shell's current index (the drawer's: the deepest selected entry with a route),
+  tapping a tab is `goBranch`, and tapping the current one goes back to its first page. Any other entry is
+  `item.go(context)`. Without `under:` no entry has a tab, so the entries go by the page: a heading is no
+  destination and the current tab does not reset.
+- **Guards** are whatever `AppMenu.watch` answers. A `NavRefused.hide` entry is absent, and the destinations
+  are mapped through their tab, so a tap never lands on the wrong page after another entry went away. A
+  `NavRefused.disable` entry is listed and turned off, and a `pending` one is on. The menu runs your guards
+  while the layout is on screen, which is always: keep them cheap, as [Guards](#guards) says.
+
+**The phone's bar is hidden on a page no entry covers.** A `NavigationBar` cannot show "nothing selected": it
+asserts a selected index. When no destination is the current tab (a plain layout: none is selected), or there
+are fewer than two destinations, the bar is not built and the body is shown alone. A debug build says so once:
+
+```text
+fespalier_adaptive: no menu entry is the current tab (3) of the tab layout, so the navigation bar is hidden. Give the tab's folder a nav.dart (not inMenu: false), and pass AppMenu.watch(ref, under: <the tab layout's folder>).
+```
+
+The fix is in the source of the layout: give the page's folder (the tab's) a `nav.dart`, put the page below an
+entry, or render the menu yourself with an `AdaptiveNavBuilder`. A rail and a drawer have no such limit: they
+show the page with no destination selected.
+
+**State.** The body (the shell or the child) sits at one place in the tree in every mode, so a tab keeps its
+stack and its state when the window is resized or a tablet is rotated. Nothing animates and nothing runs in
+between: no timer, no listener, the width is read when the layout builds.
+
+**Slots.** `icon:` builds each destination's icon (wrap it in a `Badge`), `leading:` and `trailing:` go above
+and below the destinations of the rail and the drawer (a logo, a button) and are not shown with the bar, and
+`floatingActionButton:` is the scaffold's, asked in every mode: return `null` where the button went into
+`leading`.
+
+```dart
+AdaptiveNavScaffold(
+  shell: navigationShell,
+  menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),
+  icon: (context, item, selected) => Badge(
+    isLabelVisible: item.folder.endsWith('inbox'),
+    child: defaultNavIcon(context, item, selected),
+  ),
+  leading: (context, nav) => const FlutterLogo(),
+)
+```
+
+**Your own widgets.** `AdaptiveNavBuilder` hands the model, an `AdaptiveNav` (`destinations`, `sections`,
+`selectedIndex`, `visible`, `enabled(i)` and `select(context, i)`), to a builder you write: chips, Cupertino
+widgets, or `package:material_ui`'s. The Library layout of `examples/tabs` draws its two inner tabs as chips
+this way.
+
+```dart
+AdaptiveNavBuilder(
+  menu: (ref) => AppMenu.watch(ref, under: '(tabs)/library'),
+  shell: navigationShell,
+  builder: (context, nav) => Row(children: [
+    for (final (i, item) in nav.destinations.indexed)
+      ChoiceChip(
+        label: Text(item.label(context)),
+        selected: nav.selectedIndex == i,
+        onSelected: (_) => nav.select(context, i),
+      ),
+  ]),
+)
+```
+
+`package:fespalier_adaptive/fespalier_adaptive.dart` (the model, `NavBreakpoints`, `AdaptiveNavBuilder`) imports
+no Material. `package:fespalier_adaptive/material.dart` (the scaffold, and a re-export of the model) draws
+Flutter's Material widgets, which do not read `package:material_ui`'s theme (see
+[go_router 18 and Material](#getting-started)): an app on `material_ui` renders the model itself, or copies the
+scaffold, one file, with the other import. The scaffold builds on Flutter 3.32: it leaves out
+`NavigationDrawer.header` and `footer` (3.35), and puts `leading` and `trailing` among the drawer's children.
+
+**Testing.** A test sizes the window with `tester.view.physicalSize` (and `devicePixelRatio = 1`, and
+`addTearDown(tester.view.reset)`). Flutter's default test window is 800 × 600 logical pixels, which is a rail
+with the default breakpoints and a bar with `rail: 840`. `examples/tabs/test/adaptive_test.dart` checks each
+component by width and that a tab keeps its state across a resize.
 
 ### Guards
 
@@ -5440,8 +5598,10 @@ fespalier:
 `fsp gen` then passes a `const TelemetrySite('products/$id/data.dart', route: '/products/:id')` to each
 guard, `data.dart` provider and action, gives each deferred library its page's pattern, and has
 `AppRoutes.attach` follow the router (`AppRoutes.router()` calls it; an app that mounts the tree in a
-`GoRouter` of its own calls `AppRoutes.attach(router)` once with that router). A value that is not a bool
-is an error. Without the key, the generated file is exactly what it was before 0.8.1.
+`GoRouter` of its own calls `AppRoutes.attach(router)` once with that router). Since 0.9.0 each data
+provider also calls `data()` inside a closure, `traceDataCall(ref, 'd4', id, () => data(ref, id: id), ...)`,
+so a sink can [run it inside the span](#spans-around-data-and-actions). A value that is not a bool is an
+error. Without the key, the generated file is exactly what it was before 0.8.1.
 
 At run time nothing is reported until the app installs a sink, before `runApp` and before the router is
 built, so the first navigation is reported too:
@@ -5452,7 +5612,8 @@ FespalierTelemetry.install(sink); // null uninstalls
 
 A sink is called synchronously from the router, a provider or an action: it must return at once, must not
 throw (fespalier catches what it throws and prints `fespalier telemetry: <error> (not shown again)`
-once), and must not navigate or read a provider.
+once), and must not navigate or read a provider. There is one slot: a second `install` replaces the
+first. To report to several sinks, [combine them](#several-sinks-combine-and-add) (since 0.9.0).
 
 ### OpenTelemetry with otel_zone
 
@@ -5533,6 +5694,124 @@ its body, so the app stays blank: it builds a `ReceivePort` first, which `dart:i
 there. `start()` itself works on the web. Until `otel_zone` guards that call, run the body as it is on the
 web, as `guarded` above does; the error hooks `runGuarded` installs are then not installed there.
 
+### Several sinks: combine and add
+
+Since 0.9.0. `install` holds one sink, so OpenTelemetry for the traces, Sentry for the crashes and an
+analytics SDK for the screens would replace one another. `FespalierTelemetry.combine` makes one sink of
+several, which tells each of them everything, in the order of the list:
+
+```dart
+FespalierTelemetry.install(
+  FespalierTelemetry.combine([
+    FespalierOtel(isReady: () => observability.isReady),
+    AnalyticsTelemetry(),
+  ]),
+);
+```
+
+`FespalierTelemetry.add(sink)` is `install(combine([?current, sink]))`: it puts a sink next to the
+installed one. Use it where two places each install a sink, such as a package's setup and the app's own
+`startup()`, so that neither replaces the other. `install` still replaces everything and `install(null)`
+removes everything. A second `install` that was meant to add is the usual mistake: use `add`.
+
+- **Each sink has its own tokens.** The token a sink returns from `start` is what that sink, and only
+  that sink, gets back at `end`, at `page`, in `within`, and as the `TelemetryStart.parent` of what runs
+  during one of its navigations. A sink never sees another sink's token, so one sink's spans cannot become
+  another sink's parents, and `FespalierOtel` keeps its navigation as the parent of its guard, data and
+  deferred spans behind a `combine`.
+- **Each sink is isolated.** A sink that throws does not stop the others or the app: its error is printed
+  once, per sink, as `fespalier telemetry: <error> in <Sink> (not shown again)`, and it is called again at
+  the next operation. A sink that has no token for an operation (it returned null from `start`) is still
+  told the end, with null.
+- **Nesting.** A combined sink in the list is flattened, `combine([])` reports nothing and
+  `combine([sink])` is `sink`. For [`within`](#spans-around-data-and-actions) the first sink is the
+  outermost.
+
+### Spans around data() and actions
+
+Since 0.9.0. A sink can make the span of a data load or an action the **current** one while `data()` or
+the action runs, so that the spans an HTTP client makes inside it (after an `await` too) are its children
+instead of the roots of traces of their own. fespalier calls `FespalierTelemetry.within` around them:
+
+```dart
+/// Runs [body] inside the operation [token] came from. The default calls [body].
+void within(Object? token, Object? Function() body) => body();
+```
+
+`FespalierOtel` overrides it with `Context.current.withSpan(span).runSync(body)`, so what Dartastic's
+`otel_http` and `otel_dio` instrument inside a `data()` or an action takes that span as its parent. A sink
+of your own overrides it the same way. The rules:
+
+- Call `body` once, synchronously, before you return. It returns what the operation returned (null when
+  it threw, which `end` says), so you may observe it: hand a `Future` to a vendor API that ends a span
+  when it settles. It never throws; fespalier rethrows what the operation threw after your method
+  returns.
+- fespalier returns the operation's **own** result, the very object, whatever `within` does: a value
+  stays a value (a sync `data()` is never made a `Future`, and no microtask is scheduled), and a `Future`
+  is the one Riverpod awaits. A sink cannot replace it. `body` runs exactly once, even for a sink that
+  never calls it, calls it twice or throws.
+- Run `body` in a zone you make with zone values only (`runZoned(body, zoneValues: {...})`). **Never give
+  that zone an error handler** (`runZonedGuarded`, `onError:`, a `ZoneSpecification` with
+  `handleUncaughtError`): a `Future` that fails in another error zone never reaches Riverpod, and the
+  page would stay on its loading view. fespalier refuses such a zone at run time: it runs `body` in the
+  caller's zone instead and prints, once, `fespalier telemetry: <Sink>.within changed the error zone, so
+  data() and actions run outside it (use runZoned with zoneValues, not runZonedGuarded) (not shown
+  again)`.
+- Behind a `combine`, each sink's `within` runs the next one's, so every sink's scope wraps `data()`, and
+  each sees what it returned.
+- Guards and deferred loads do not get `within`: a guard must stay cheap and a deferred load runs no app
+  code.
+
+`FespalierTelemetry.run(token, body)` is the same thing for an adapter package that starts operations of
+its own with `FespalierTelemetry.begin`: `body` runs once, synchronously, and what it returns or throws
+comes back. With no sink, or a null token, it is `body()`.
+
+Since 0.9.0 the generated data provider of an app made with `telemetry: true` is
+`traceDataCall(ref, 'd4', id, () => data(ref, id: id), telemetry: ...)`, and the data span starts
+**before** `data()` runs. What that changes for an app that already had telemetry:
+
+- `app.g.dart` gains the closure on each data provider (regenerate with `fsp gen`): one closure per
+  provider build, with no `Future` and no microtask. An app without `telemetry: true` keeps
+  `traceData(...)`, and its file does not change.
+- A `data` span's duration now includes the synchronous part of `data()`.
+- A `data()` that throws before it returns now has a `data` span, with `fespalier.data.state = error`
+  and `fespalier.async = false`; before 0.9.0 it had none.
+- `FespalierOtel` makes data and action spans current, so the HTTP spans of `otel_http` and `otel_dio` are
+  their children. A sink of your own that already had a member named `within` with another signature must
+  rename it.
+
+### Where a navigation came from: navigateFrom
+
+Since 0.9.0. A navigation that starts from a tap on a notification, a home-screen shortcut or widget, or a
+link a bridge handed over looks like any other `go` to fespalier. `navigateFrom` marks it:
+
+```dart
+// The app is running: a tap on a notification.
+navigateFrom(NavigationSource.notification, () => router.go('/orders/42'));
+
+// A cold start from the same tap: the router's initial location is the launch.
+final router = navigateFrom(
+  NavigationSource.notification,
+  () => AppRoutes.router(initialLocation: '/orders/42'),
+);
+```
+
+`NavigationSource` has `notification`, `shortcut`, `widget` and `link`. Telemetry reports the mark as
+`TelemetryStart.source` and, in `FespalierOtel`, as the attribute `fespalier.navigation.source` of the
+`navigate` span; a navigation the app's own code started has none. Nothing else changes: guards run as
+for any link, and `fespalier.navigation.kind` still says how the stack changed (a cold start is `initial`,
+a warm one `go` or `push`).
+
+- The closure runs once, synchronously, and what it returns is returned. The mark is taken by the **first**
+  navigation the closure starts and is dropped when the closure returns, so it cannot reach a later one.
+  A closure that starts no navigation, or goes where the router already is, leaves nothing behind.
+- fespalier never sets it by itself: a platform deep link and the browser's back button look the same to
+  it as any other navigation. The bridge that knows (a notification handler) calls `navigateFrom`.
+- A source that is not one of the four values is an `AssertionError` in debug: ``navigateFrom: `banner`
+  is not a NavigationSource value (notification, shortcut, widget or link)``.
+- `RecordingTelemetry` writes it as `source=notification` on the start line of the navigation, and only
+  when it is set.
+
 ### Telemetry conventions
 
 This section is **contract version 1**: dashboards and alerts are built on it. Within version 1 a change
@@ -5568,8 +5847,8 @@ redirects, async guards, the build of the new page and its first-frame loads.
 | `navigate`            | `navigate {route}`; `navigate (not found)`; `navigate` when superseded | a location is requested (`go`, `push`, `replace`, a tab switch, a deep link), a pop or a guard's refresh commits, or the router is attached | the end of the first frame rendered after the commit, or when a newer navigation starts before this one committed | none (a root span)                               |
 | `guard`               | `guard {file}`, e.g. `guard (members)/guard.dart`                      | the guard returned                                                                                                                          | the answer is known (sync: at once; async: when its `Future` settles)                                             | the pending `navigate`, else the current context |
 | `redirect`            | `redirect {file}`                                                      | as `guard`                                                                                                                                  | as `guard`                                                                                                        | as `guard`                                       |
-| `data`                | `data {file}`, e.g. `data products/$id/data.dart`                      | the provider of a `data.dart` runs `data()`                                                                                                 | the value is there, its `Future` settles, or the provider is disposed first; a `Stream` ends at once              | the pending `navigate`, else the current context |
-| `action`              | `action {file}#{name}`                                                 | `ActionNotifier.call`                                                                                                                       | the result is there, or its `Future` settles                                                                      | the current context (usually none)               |
+| `data`                | `data {file}`, e.g. `data products/$id/data.dart`                      | the provider of a `data.dart` runs `data()` (since 0.9.0: before it runs, and the span is the current one while it runs)                    | the value is there, its `Future` settles, or the provider is disposed first; a `Stream` ends at once              | the pending `navigate`, else the current context |
+| `action`              | `action {file}#{name}`                                                 | `ActionNotifier.call` (since 0.9.0 the span is the current one while the function runs)                                                     | the result is there, or its `Future` settles                                                                      | the current context (usually none)               |
 | `deferred`            | `deferred {file}`                                                      | `DeferredLibrary.load()` starts a load (not one that joins a load in flight)                                                                | the load completes or fails                                                                                       | the pending `navigate`, else the current context |
 | `auth`                | `auth {operation}`, e.g. `auth refresh` (since 0.9.0)                  | `restoreAuth`, `signIn` or `adopt`, a refresh, `signOut` (`fespalier_auth`)                                                                 | the outcome is known                                                                                              | the current context (usually none)               |
 
@@ -5600,14 +5879,15 @@ can name a host.
 
 **On a `navigate` span:**
 
-| Key (`navigate`)                  | Type   | Values and meaning                                                                                                 |
-| --------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
-| `fespalier.navigation.kind`       | string | `initial`, `go`, `push`, `pop`, `replace` or `refresh` (the classification DevTools shows); absent when superseded |
-| `fespalier.navigation.outcome`    | string | `ok`, `not_found` or `superseded`                                                                                  |
-| `fespalier.navigation.from`       | string | the pattern of the page that was on top before (absent at the start)                                               |
-| `fespalier.navigation.redirected` | bool   | the committed path differs from the requested one: a guard or a `redirect.dart` sent it elsewhere                  |
-| `fespalier.navigation.depth`      | int    | how many pushed pages the stack holds after the commit (0 for a plain `go`)                                        |
-| `url.path`, `url.query`           | string | semconv: the committed location, mount prefix included. Only with `recordLocations: true`                          |
+| Key (`navigate`)                  | Type   | Values and meaning                                                                                                                                                                                        |
+| --------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fespalier.navigation.kind`       | string | `initial`, `go`, `push`, `pop`, `replace` or `refresh` (the classification DevTools shows); absent when superseded                                                                                        |
+| `fespalier.navigation.outcome`    | string | `ok`, `not_found` or `superseded`                                                                                                                                                                         |
+| `fespalier.navigation.from`       | string | the pattern of the page that was on top before (absent at the start)                                                                                                                                      |
+| `fespalier.navigation.redirected` | bool   | the committed path differs from the requested one: a guard or a `redirect.dart` sent it elsewhere                                                                                                         |
+| `fespalier.navigation.depth`      | int    | how many pushed pages the stack holds after the commit (0 for a plain `go`)                                                                                                                               |
+| `fespalier.navigation.source`     | string | since 0.9.0: where it came from when the app's own code did not start it: `notification`, `shortcut`, `widget` or `link` ([`navigateFrom`](#where-a-navigation-came-from-navigatefrom)); absent otherwise |
+| `url.path`, `url.query`           | string | semconv: the committed location, mount prefix included. Only with `recordLocations: true`                                                                                                                 |
 
 **On the other spans and events:**
 
@@ -5642,7 +5922,8 @@ and `fespalier.file` as dimensions, next to the resource's `service.name`, `serv
 `fespalier.version`. A data attempt, a data source, an action rolled back and an action rejected by
 validation are not recorded in 0.8.1. The `fespalier.auth.*` attributes are not dimensions of the
 collector `fsp telemetry` starts yet (since 0.9.0): its dashboards label an `auth` span as a
-session operation, and nothing more.
+session operation, and nothing more. Nor is `fespalier.navigation.source` (since 0.9.0): the bundled stack
+keeps it as a span column, with no panel and no spanmetrics dimension of its own yet.
 
 **Never recorded.** Segment and query values (unless `recordLocations: true`), family keys, `extra`, action
 inputs and results, data values and guard inputs; and, from `fespalier_auth`, tokens, user ids, claims, user
@@ -5673,7 +5954,10 @@ testWidgets('opens an order', (tester) async {
 ```
 
 Each operation is `#n`, which ties its `start` line to its `end` line and names the navigation it ran
-under (`parent=#2`). To see real spans, initialise the SDK in `setUpAll` with `SimpleSpanProcessor` and
+under (`parent=#2`). A navigation that `navigateFrom` marked has `source=notification` at the end of its
+start line (since 0.9.0), and `RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and
+`#n within exit` around what runs inside a `data()` or an action, so a test can see a call run within its
+operation. To see real spans, initialise the SDK in `setUpAll` with `SimpleSpanProcessor` and
 `InMemorySpanExporter` from `package:dartastic_opentelemetry/testing.dart`, install `FespalierOtel()`, and
 read the exporter after a `pump()`: a span is exported when it ends. `OTel.initialize` runs once per
 isolate, so once per test file. `examples/telemetry/test/` does both.
@@ -5690,7 +5974,8 @@ its start and its end in the same call stack, an async one through a side listen
 they were given. What does schedule microtasks is the OpenTelemetry SDK itself, whose span processors are
 `async` methods: they run when a span starts or ends, never in the path of a value the app gets. A
 backgrounded app draws no frames, so a navigation made in the background ends its span at the next frame
-after the app resumes.
+after the app resumes. Since 0.9.0 a telemetry app's data providers call `data()` through
+`traceDataCall`, which costs one closure per provider build (an app without `telemetry: true` has none).
 
 ### Dashboards on your computer: `fsp telemetry`
 
@@ -6093,7 +6378,10 @@ pages, and a Library tab that is a tab layout of its own, with two inner tabs), 
 counter that survives switching tabs, `tabOptions`, a cross-fading `container`, a Search tab that also answers `/recherche` (`route.dart` with `paths`), a full-screen route
 outside them (`/settings`), one that stays under `/profile` but renders on the root navigator
 (`/profile/edit`, `navigator.dart`), and a Cupertino `transition.dart` that also moves the tab layout
-itself aside when one of those opens over it.
+itself aside when one of those opens over it. Since 0.9.0 its bar is the menu: six `nav.dart` files, drawn
+by [`fespalier_adaptive`](#a-bar-a-rail-or-a-drawer-fespalier_adaptive) as a bar, a rail or a drawer by window
+width (the Library tab's two inner tabs are chips from an `AdaptiveNavBuilder`), and its tests resize the
+window and check that a tab keeps its state.
 
 `examples/features` also has a guard in a page-less `(members)` group (with a login page that
 returns to where you were), a second guard below it that runs after the first, two
@@ -6155,6 +6443,7 @@ packages/fespalier_sign_keypair/   DPoP proofs for fespalier_auth, signed by a d
 packages/fespalier_flags/   feature flags: FlagSource, flag() providers that guards watch, flagGuard (since 0.9.0)
 packages/fespalier_storage/   dataCache storages on shared_preferences and Hive, with a size budget (since 0.9.0)
 packages/fespalier_connectivity/   reconnectSignal from connectivity_plus, and hasNetwork for offline banners (since 0.9.0)
+packages/fespalier_adaptive/   nav.dart menus as a bar, a rail or a drawer by window width
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed

@@ -61,6 +61,39 @@ void main() {
     });
   });
 
+  group('within, before the SDK is up (since 0.9.0)', () {
+    // Still before any OTel.initialize in this file.
+    test('with no SDK, within is the call, and the very result comes back', () {
+      FespalierTelemetry.install(FespalierOtel());
+      var runs = 0;
+      FespalierOtel().within('not one of ours', () => ++runs);
+      FespalierOtel().within(null, () => ++runs);
+      expect(runs, 2);
+      // No span was made, so there is no token, and run() is the call.
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.data),
+      );
+      expect(token, isNull);
+      final value = Object();
+      expect(
+        identical(FespalierTelemetry.run(token, () => value), value),
+        isTrue,
+      );
+    });
+
+    test('sync data through traceDataCall stays a value', () {
+      FespalierTelemetry.install(FespalierOtel());
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final value = Object();
+      final p = Provider<Object>(
+        (ref) => traceDataCall(ref, 'd1', null, () => value, telemetry: site),
+      );
+      expect(identical(c.read(p), value), isTrue);
+      expect(exporter.spans, isEmpty);
+    });
+  });
+
   group('with the SDK up', () {
     setUpAll(() async {
       await OTel.initialize(
@@ -113,6 +146,76 @@ void main() {
       expect(identical(c.read(p), value), isTrue);
       expect(exporter.spanNames, ['data a/guard.dart']);
     });
+
+    test('sync data through traceDataCall stays a value, in its span', () {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final value = Object();
+      var runs = 0;
+      final p = Provider<Object>(
+        (ref) => traceDataCall(ref, 'd1', null, () {
+          runs++;
+          return value;
+        }, telemetry: site),
+      );
+      expect(identical(c.read(p), value), isTrue);
+      expect(runs, 1);
+      expect(exporter.spanNames, ['data a/guard.dart']);
+    });
+
+    test('a Future through traceDataCall is the very Future', () async {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final later = Future<int>.value(1);
+      final p = Provider<Future<int>>(
+        (ref) => traceDataCall(ref, 'd1', null, () => later, telemetry: site),
+      );
+      expect(identical(c.read(p), later), isTrue);
+      await later;
+    });
+
+    test('within makes the span current for the body, once, and no longer', () {
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.data, site: site),
+      );
+      var runs = 0;
+      String? inside;
+      FespalierTelemetry.run(token, () {
+        runs++;
+        inside = Context.current.spanContext?.spanId.toString();
+      });
+      expect(runs, 1);
+      expect(Context.current.spanContext?.spanId.isValid ?? false, isFalse);
+      FespalierTelemetry.finish(token, const TelemetryEnd('data'));
+      expect(
+        inside,
+        exporter
+            .findSpansByName('data a/guard.dart')
+            .single
+            .spanContext
+            .spanId
+            .toString(),
+      );
+    });
+
+    test(
+      'a body that throws comes back as it was, and the span is current',
+      () {
+        final token = FespalierTelemetry.begin(
+          const TelemetryStart(TelemetryOp.data, site: site),
+        );
+        final error = StateError('data failed');
+        expect(
+          () => FespalierTelemetry.run<void>(token, () => throw error),
+          throwsA(same(error)),
+        );
+        FespalierTelemetry.finish(
+          token,
+          TelemetryEnd(TelemetryOutcome.error, error: error),
+        );
+        expect(exporter.spanNames, ['data a/guard.dart']);
+      },
+    );
 
     test('an adapter that is not ready emits nothing', () {
       FespalierTelemetry.install(FespalierOtel(isReady: () => false));

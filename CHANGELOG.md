@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.8.0](https://github.com/vaam-apps/fespalier/compare/v0.7.0...v0.8.0) (2026-10-03)
+
+
+### Features
+
+* a generated main() from app.dart, startup.dart and splash.dart ([#62](https://github.com/vaam-apps/fespalier/issues/62)) ([90694ba](https://github.com/vaam-apps/fespalier/commit/90694baf4bfd22f749c681e837fcb23da29b7206))
+* data freshness, refetch on resume and reconnect, and a persistent data cache ([#58](https://github.com/vaam-apps/fespalier/issues/58)) ([16776ce](https://github.com/vaam-apps/fespalier/commit/16776cebaf65e1804bb825964741d2244eca9743))
+* DevTools shows who holds a provider and traces data that returns one ([#56](https://github.com/vaam-apps/fespalier/issues/56)) ([b797607](https://github.com/vaam-apps/fespalier/commit/b797607000ba65b9bd9427c799b3d0a0350b6c09))
+* forms on action.dart with typed fields, validation and optimistic updates ([#60](https://github.com/vaam-apps/fespalier/issues/60)) ([502df50](https://github.com/vaam-apps/fespalier/commit/502df5021bd05773a269cf5bdff7d071828e5abd))
+* fsp size reports the web build per deferred route, with budgets ([#51](https://github.com/vaam-apps/fespalier/issues/51)) ([9af2059](https://github.com/vaam-apps/fespalier/commit/9af2059da04a825d140cd4255b3d42dfba5088cf))
+* fsp telemetry, a local OpenTelemetry stack with ready-made dashboards ([#61](https://github.com/vaam-apps/fespalier/issues/61)) ([6a20a28](https://github.com/vaam-apps/fespalier/commit/6a20a28b8da0cebe8e0671a07b62546b6c8d4076))
+* fsp test generates a widget smoke test per route ([#55](https://github.com/vaam-apps/fespalier/issues/55)) ([3bb6c06](https://github.com/vaam-apps/fespalier/commit/3bb6c06597e1c865b3a2dcfe0f3615dcd566d276))
+* navigation menus generated from the route tree ([#59](https://github.com/vaam-apps/fespalier/issues/59)) ([1211d03](https://github.com/vaam-apps/fespalier/commit/1211d03d2bf5dfa3238d89cfe1a083008559f939))
+* observe.dart lifecycle hooks and OpenTelemetry instrumentation ([#63](https://github.com/vaam-apps/fespalier/issues/63)) ([a0605b2](https://github.com/vaam-apps/fespalier/commit/a0605b2bf7f9e6b9f6f1b13b5acfb6141aea8490))
+* scroll restoration per route ([#57](https://github.com/vaam-apps/fespalier/issues/57)) ([81dc0a0](https://github.com/vaam-apps/fespalier/commit/81dc0a0698ed358f1212489b614bf2f3ea02a92a))
+* shared-element transitions with typed route heroes ([#53](https://github.com/vaam-apps/fespalier/issues/53)) ([ab3e264](https://github.com/vaam-apps/fespalier/commit/ab3e264a6306b5877886fab3f479e36f4f311784))
+* unknown_path checks a literal path's segment types ([#50](https://github.com/vaam-apps/fespalier/issues/50)) ([0d2ea11](https://github.com/vaam-apps/fespalier/commit/0d2ea112a2fbadb3db6e3d04ba6f2fe51c8aa126))
+
+
+### Continuous Integration
+
+* replay the shop's Maestro flows in Chromium on every PR ([#54](https://github.com/vaam-apps/fespalier/issues/54)) ([ecb4a41](https://github.com/vaam-apps/fespalier/commit/ecb4a41d9a8e85fe97782f12a6c3bce027a931b7))
+
 ## [0.7.0](https://github.com/vaam-apps/fespalier/compare/v0.6.0...v0.7.0) (2026-10-02)
 
 

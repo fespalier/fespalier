@@ -106,7 +106,7 @@ dependencies:
     git:
       url: https://github.com/vaam-apps/fespalier
       path: packages/fespalier
-      ref: v0.7.0
+      ref: v0.8.0
 ```
 
 <!-- x-release-please-end -->
@@ -128,7 +128,7 @@ Get `fsp` one of these ways (details in
 ```sh
 curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
 dart run fespalier <command>      # installs nothing: downloads the matching release, SHA-256 pinned
-cargo install --git https://github.com/vaam-apps/fespalier --tag v0.7.0 fespalier
+cargo install --git https://github.com/vaam-apps/fespalier --tag v0.8.0 fespalier
 ```
 
 <!-- x-release-please-end -->

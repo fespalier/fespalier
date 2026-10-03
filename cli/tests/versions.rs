@@ -151,6 +151,31 @@ fn the_dart_package_has_the_cli_version() {
 }
 
 #[test]
+fn the_runtime_knows_its_version() {
+    // `fespalierVersion` is what the telemetry adapter reports as `fespalier.version`. It is
+    // release-please's like the pubspec's, so it is annotated and listed in the config.
+    let cargo = env!("CARGO_PKG_VERSION");
+    let file = "packages/fespalier/lib/src/version.dart";
+    let text = read(file);
+    let (i, line) = text
+        .lines()
+        .enumerate()
+        .find(|(_, l)| l.starts_with("const String fespalierVersion = '"))
+        .unwrap_or_else(|| panic!("{file} has no `const String fespalierVersion = '…';` line"));
+    let value = line
+        .trim_start_matches("const String fespalierVersion = '")
+        .split('\'')
+        .next()
+        .unwrap();
+    assert_eq!(value, cargo, "{file}:{} must equal cli/Cargo.toml", i + 1);
+    assert!(
+        annotated_lines(&text).contains(&(i + 1)),
+        "{file}:{}: the version is not annotated",
+        i + 1
+    );
+}
+
+#[test]
 fn the_devtools_extension_has_the_cli_version() {
     // `config.yaml` is what DevTools shows as the extension's version. It is release-please's like
     // the pubspec's, so it is annotated, and listed in release-please-config.json (checked below).

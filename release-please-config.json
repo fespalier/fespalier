@@ -73,6 +73,10 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier/lib/src/version.dart"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier/extension/devtools/config.yaml"
         },
         {

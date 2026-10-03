@@ -33,6 +33,12 @@
 //!     timeout: 20000        # default, in milliseconds
 //!     samples:              # the value of each dynamic folder
 //!       products/$id: 1
+//!   size:                   # default: none; what `fsp size` checks (see `size.rs`)
+//!     build: build/web      # default; the `flutter build web` output
+//!     main: 3 MB            # main.dart.js
+//!     route: 64 KB          # each deferred route's own and shared chunks together
+//!     routes:               # per route, by pattern; wins over `route`
+//!       /checkout: 8 KB
 //!   test:                   # default: none, and `fsp test` works without it (see `smoke.rs`)
 //!     out: test/routes      # default; `test`, `integration_test` or a folder below one
 //!     setup: test/routes/setup.dart   # default: <out>/setup.dart, used when it exists
@@ -65,6 +71,8 @@ pub const DEFAULT_LINKS_OUT: &str = "links";
 pub const DEFAULT_MAESTRO_OUT: &str = ".maestro/routes";
 /// How long (in milliseconds) a flow waits for the page it opened.
 pub const DEFAULT_MAESTRO_TIMEOUT: u32 = 20_000;
+/// Where `fsp size` reads the web build, relative to the project root.
+pub const DEFAULT_SIZE_BUILD: &str = "build/web";
 
 /// Where `fsp test` writes, relative to the project root.
 pub const DEFAULT_TEST_OUT: &str = "test/routes";
@@ -211,6 +219,9 @@ pub struct Config {
     /// The `maestro:` section, as written. Only `fsp maestro` reads it, and it checks the values
     /// then ([`MaestroConfig::validate`]), so a mistake in it never stops `fsp gen`.
     pub maestro: Option<MaestroConfig>,
+    /// The `size:` section, as written. Only `fsp size` reads it, and it checks the values
+    /// then ([`SizeConfig::validate`]), so a mistake in it never stops `fsp gen`.
+    pub size: Option<SizeConfig>,
     /// The `test:` section, as written. Only `fsp test` reads it, and it checks the values
     /// then ([`TestConfig::validate`]), so a mistake in it never stops `fsp gen`.
     pub test: Option<TestConfig>,
@@ -237,6 +248,7 @@ impl Default for Config {
             links: None,
             lints: Lints::default(),
             maestro: None,
+            size: None,
             test: None,
         }
     }
@@ -278,6 +290,7 @@ struct RawConfig {
     lints: Option<LintsConfig>,
     semantics_ids: Option<bool>,
     maestro: Option<MaestroConfig>,
+    size: Option<SizeConfig>,
     test: Option<TestConfig>,
 }
 
@@ -616,6 +629,111 @@ impl MaestroConfig {
     }
 }
 
+/// The `size:` section of the `fespalier:` config, as the pubspec has it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SizeConfig {
+    build: Option<String>,
+    main: Option<Value>,
+    route: Option<Value>,
+    routes: Option<BTreeMap<String, Value>>,
+}
+
+/// The `size:` section, checked: what `fsp size` reports and checks against.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Size {
+    /// Normalized, `/`-separated, relative to the project root: `build/web`.
+    pub build: String,
+    /// The budget for `main.dart.js`, in bytes.
+    pub main: Option<u64>,
+    /// The budget for each deferred route's own and shared chunks together, in bytes.
+    pub route: Option<u64>,
+    /// The budget of single routes by pattern, as the pubspec orders them; each wins over
+    /// `route`.
+    pub routes: Vec<(String, u64)>,
+}
+
+impl Size {
+    /// Whether any budget is set.
+    #[must_use]
+    pub fn has_budgets(&self) -> bool {
+        self.main.is_some() || self.route.is_some() || !self.routes.is_empty()
+    }
+}
+
+/// A value as the pubspec spells it, for a message.
+fn shown_value(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        other => serde_json::to_string(other).unwrap_or_default(),
+    }
+}
+
+/// A size in bytes: a whole number of bytes of at least 1, or a number and a unit, `B`, `KB`
+/// (1,024 bytes) or `MB` (1,048,576 bytes), with at most one space between: `3 MB`, `1.5 MB`,
+/// `64KB`, `900 B`. The unit's case matters.
+fn parse_size(v: &Value) -> Option<u64> {
+    match v {
+        Value::Number(n) => n.as_u64().filter(|n| *n >= 1),
+        Value::String(s) => {
+            let end = s.find(|c: char| !c.is_ascii_digit() && c != '.')?;
+            let (number, unit) = s.split_at(end);
+            let unit = unit.strip_prefix(' ').unwrap_or(unit);
+            let factor = match unit {
+                "B" => 1.0,
+                "KB" => 1024.0,
+                "MB" => 1_048_576.0,
+                _ => return None,
+            };
+            let (whole, fraction) = number.split_once('.').unwrap_or((number, "0"));
+            let digits = |p: &str| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit());
+            if !digits(whole) || !digits(fraction) {
+                return None;
+            }
+            let bytes = number.parse::<f64>().ok()? * factor;
+            (0.5..1e15).contains(&bytes).then(|| {
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "checked to be at least 0.5 and below 1e15 just above"
+                )]
+                let n = bytes.round() as u64;
+                n
+            })
+        }
+        _ => None,
+    }
+}
+
+impl SizeConfig {
+    /// Checks the values, naming the key at fault.
+    pub fn validate(&self) -> Result<Size> {
+        let size = |key: &str, v: &Value| -> Result<u64> {
+            parse_size(v).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "`fespalier.size.{key}` must be a size like `3 MB`, `64 KB` or `900 B` (KB is 1,024 bytes), or a number of bytes, got `{}`",
+                    shown_value(v)
+                )
+            })
+        };
+        let build = match &self.build {
+            None => DEFAULT_SIZE_BUILD.to_string(),
+            Some(raw) => project_folder("size.build", raw)?,
+        };
+        let mut routes = vec![];
+        for (pattern, v) in self.routes.iter().flatten() {
+            routes.push((pattern.clone(), size(&format!("routes.{pattern}"), v)?));
+        }
+        Ok(Size {
+            build,
+            main: self.main.as_ref().map(|v| size("main", v)).transpose()?,
+            route: self.route.as_ref().map(|v| size("route", v)).transpose()?,
+            routes,
+        })
+    }
+}
+
 /// The `test:` section of the `fespalier:` config, as the pubspec has it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -917,6 +1035,7 @@ impl Pubspec {
             config.lints.unknown_path = c.lints.and_then(|l| l.unknown_path).unwrap_or_default();
             config.semantics_ids = c.semantics_ids.unwrap_or(false);
             config.maestro = c.maestro;
+            config.size = c.size;
             config.test = c.test;
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;

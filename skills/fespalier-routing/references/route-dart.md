@@ -550,6 +550,9 @@ byte-identical code.**
 - **Tests.** `pumpRouter` loads the deferred code first (in `runAsync`), so a deferred page is in the
   first settled frame. A test that pumps its own router calls
   `await tester.runAsync(AppRoutes.loadDeferred);` first (`fespalier-testing`).
+- **What each chunk costs** (since 0.8.0): `fsp size` after `flutter build web` reports each deferred
+  route's own and shared bytes and holds them to budgets (`size:` in the pubspec); see `fespalier`,
+  `references/cli-and-config.md`.
 - **Not built:** deferring a layout, a `const preload = true;`, a cap on parallel loads, and
   `deferred: auto`. Don't defer the landing page.
 - **Errors** (texts in `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`): a

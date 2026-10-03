@@ -30,6 +30,19 @@ flutter analyze && flutter test
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
 
+## 0.7 to 0.8: what to check
+
+Bump to `v0.8.0`, regenerate (the generated file does not change for this), and look at:
+
+1. **`unknown_path` checks segment types.** The string-path lint (`lints: unknown_path`)
+   now also reports a literal path that reaches a route whose segment cannot parse it:
+   `` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found
+[unknown_path] `` (on one line). It is the same id and level, so an app with
+   `unknown_path: error` that passed on 0.7.0 can fail on 0.8.0, for a path that always
+   showed not-found. Fix the literal, use the typed route, or `// fsp:ignore unknown_path`.
+   Messages and what is checked: `fespalier-troubleshooting`, "String paths"
+   in its diagnostics reference.
+
 ## 0.4 to 0.5: what to check
 
 Bump to `v0.5.0`, regenerate, and look at these:

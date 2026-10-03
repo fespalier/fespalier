@@ -2039,16 +2039,7 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
         let Some(name) = r.name.as_ref().filter(|_| r.is_route()) else {
             continue;
         };
-        let ranks: Vec<u8> = r
-            .url
-            .iter()
-            .filter_map(|s| match s {
-                Seg::Static(_) => Some(0),
-                Seg::Dynamic(_) => Some(1),
-                Seg::CatchAll(..) => Some(2),
-                Seg::Group(_) => None,
-            })
-            .collect();
+        let ranks = resolve::match_rank(&r.url);
         let parts: Vec<String> = r
             .url
             .iter()

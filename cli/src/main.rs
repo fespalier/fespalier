@@ -16,6 +16,7 @@ mod manifest;
 mod parse_cache;
 mod resolve;
 mod routes;
+mod samples;
 mod scaffold;
 mod scan;
 mod session;

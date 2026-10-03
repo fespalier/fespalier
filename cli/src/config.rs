@@ -46,6 +46,8 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_yaml_ng::Value;
 
+pub use crate::samples::SampleValue;
+use crate::samples;
 use crate::scan::FileStyle;
 
 pub const DEFAULT_APP_DIR: &str = "lib/app";
@@ -415,13 +417,6 @@ pub enum Target {
     Web(String),
 }
 
-/// What a dynamic folder's sample is, as text: one segment, or the parts of a catch-all.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SampleValue {
-    One(String),
-    Many(Vec<String>),
-}
-
 /// The `maestro:` section, checked: what `fsp maestro` writes flows for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Maestro {
@@ -501,17 +496,12 @@ fn is_link_prefix(s: &str) -> bool {
         && !body.contains('#')
 }
 
-/// A sample as text: a string, a number or a boolean.
-fn sample_text(v: &Value) -> Option<String> {
-    match v {
-        Value::String(s) => Some(s.clone()),
-        Value::Number(n) => Some(n.to_string()),
-        Value::Bool(b) => Some(b.to_string()),
-        _ => None,
-    }
-}
-
 impl MaestroConfig {
+    /// The `samples:` as the pubspec has them (`fsp test` falls back to them).
+    pub fn raw_samples(&self) -> Option<&BTreeMap<String, Value>> {
+        self.samples.as_ref()
+    }
+
     /// Checks the values, naming the key at fault. `links` is the `links:` section, which the
     /// default `link` comes from when the flows are for an app.
     pub fn validate(&self, links: Option<&LinksConfig>) -> Result<Maestro> {
@@ -596,23 +586,7 @@ impl MaestroConfig {
                 ),
             },
         };
-        let mut samples = vec![];
-        for (key, value) in self.samples.iter().flatten() {
-            let sample = match value {
-                Value::Sequence(items) => items
-                    .iter()
-                    .map(sample_text)
-                    .collect::<Option<Vec<String>>>()
-                    .map(SampleValue::Many),
-                one => sample_text(one).map(SampleValue::One),
-            };
-            let Some(sample) = sample else {
-                bail!(
-                    "`fespalier.maestro.samples`: the value of `{key}` must be a text, a number, a boolean or a list of them"
-                );
-            };
-            samples.push((key.clone(), sample));
-        }
+        let samples = samples::parse("fespalier.maestro.samples", self.samples.as_ref())?;
         Ok(Maestro {
             https_app_link: matches!(target, Target::App(_)) && link.starts_with("https://"),
             target,

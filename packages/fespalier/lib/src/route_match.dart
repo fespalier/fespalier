@@ -118,7 +118,7 @@ final class RouteMatcher {
   /// Whether the pattern is compared case-sensitively.
   final bool caseSensitive;
 
-  /// The observe.dart hooks of this route at a location, outermost first (since 0.8.0):
+  /// The observe.dart hooks of this route at a location, outermost first (since 0.8.1):
   /// generated only for routes that have some.
   final List<RouteHooks> Function(GoRouterState state, UrlMatch match)? observe;
 }
@@ -152,7 +152,7 @@ UrlMatch? matchRoutes(
   return null;
 }
 
-/// The observe.dart hooks of the route at [uri], outermost first (since 0.8.0): what the
+/// The observe.dart hooks of the route at [uri], outermost first (since 0.8.1): what the
 /// generated `_observeAt` calls. Empty when no route fits, a segment does not parse (the
 /// not-found rule), or the route has none. Like [matchRoutes], it runs no guard and builds no
 /// widget.

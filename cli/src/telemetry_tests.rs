@@ -1,4 +1,4 @@
-//! `telemetry: true` (since 0.8.0): the generated file tells the runtime where each guard, data
+//! `telemetry: true` (since 0.8.1): the generated file tells the runtime where each guard, data
 //! provider, action and deferred library is, with a `const TelemetrySite`, and attaches
 //! telemetry to the router. Off, which is the default, the file is what it always was.
 

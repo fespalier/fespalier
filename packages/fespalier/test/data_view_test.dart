@@ -437,7 +437,7 @@ void main() {
     });
   });
 
-  group('keepDataOnError and a value from the cache (since 0.8.0)', () {
+  group('keepDataOnError and a value from the cache (since 0.8.1)', () {
     Widget keepView(
       FutureProvider<int> provider, {
       bool keepDataOnError = true,
@@ -563,7 +563,7 @@ void main() {
     });
   });
 
-  group('optimistic (since 0.8.0)', () {
+  group('optimistic (since 0.8.1)', () {
     testWidgets('the layer is applied in data:', (tester) async {
       final p = FutureProvider.autoDispose((ref) async => 1);
       final layer = optimisticLayer(p);

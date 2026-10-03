@@ -35,7 +35,7 @@ final class DeferredLibrary {
   final bool loadsInFakeAsync;
 
   /// The page's pattern (`/products/:id`), which the generator passes only in an app made with
-  /// `telemetry: true` (since 0.8.0): it is what makes a load a telemetry span.
+  /// `telemetry: true` (since 0.8.1): it is what makes a load a telemetry span.
   final String? route;
 
   static final Set<DeferredLibrary> _registered = {};

@@ -4,7 +4,7 @@ import 'package:clock/clock.dart';
 import 'package:flutter/widgets.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// When the value a `data.dart` loaded is old enough to load again (since 0.8.0).
+/// When the value a `data.dart` loaded is old enough to load again (since 0.8.1).
 ///
 /// Declared as `const freshness = Freshness(...)` in a data.dart (that data) or a
 /// route.dart (every data() function at and below that folder; the nearest wins, and a
@@ -34,7 +34,7 @@ final class Freshness {
   final bool refetchOnReconnect;
 }
 
-/// A count that goes up each time data should check its age ([fire]). Since 0.8.0.
+/// A count that goes up each time data should check its age ([fire]). Since 0.8.1.
 ///
 /// What [appResumeSignal] and [reconnectSignal] are made of. A data provider with
 /// `refetchOnResume` or `refetchOnReconnect` listens to the signal and, when it changes,
@@ -47,7 +47,7 @@ class RefetchSignal extends Notifier<int> {
   void fire() => state++;
 }
 
-/// A [RefetchSignal] that fires on `AppLifecycleListener.onResume` (since 0.8.0).
+/// A [RefetchSignal] that fires on `AppLifecycleListener.onResume` (since 0.8.1).
 ///
 /// It is created only while a provider with `refetchOnResume` listens to it, and its
 /// listener is disposed with it. It needs a `WidgetsBinding`: a test of such a provider
@@ -61,12 +61,12 @@ class AppResumeSignal extends RefetchSignal {
   }
 }
 
-/// What `Freshness(refetchOnResume: true)` listens to (since 0.8.0).
+/// What `Freshness(refetchOnResume: true)` listens to (since 0.8.1).
 final appResumeSignal = NotifierProvider.autoDispose<RefetchSignal, int>(
   AppResumeSignal.new,
 );
 
-/// What `Freshness(refetchOnReconnect: true)` listens to (since 0.8.0).
+/// What `Freshness(refetchOnReconnect: true)` listens to (since 0.8.1).
 ///
 /// Flutter has no API for "the network is back", so this never fires by itself: override
 /// it with a [RefetchSignal] whose `build` listens to your connectivity source, or call
@@ -86,7 +86,7 @@ final class _Stamp {
 }
 
 /// What the generated provider of a data.dart with a [Freshness] wraps its value in
-/// (since 0.8.0).
+/// (since 0.8.1).
 ///
 /// It returns [value] itself (a `Future` stays the `Future`, a value stays a value, a
 /// `Stream` stays the `Stream`), and registers on [ref] the checks [freshness] asks for.

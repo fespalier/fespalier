@@ -1,5 +1,5 @@
 // The profile avatar flies from the Profile tab to the settings page, which opens on the root
-// navigator, over the tab bar (since 0.8.0). `RouteHero` stays out of flights in the tabs that
+// navigator, over the tab bar (since 0.8.1). `RouteHero` stays out of flights in the tabs that
 // are not shown, so the route above the tabs flies from the one that is.
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';

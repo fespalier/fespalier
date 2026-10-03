@@ -2,7 +2,7 @@ import 'package:features/nicknames.dart';
 import 'package:fespalier/fespalier.dart';
 
 /// The input of the action, and so the fields of its form: a record type with named fields
-/// (since 0.8.0).
+/// (since 0.8.1).
 typedef NicknameFields = ({String nickname, int? age, bool newsletter});
 
 /// The form starts from the profile the page shows. The fields the user has not changed follow

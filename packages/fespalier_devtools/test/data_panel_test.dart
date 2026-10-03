@@ -273,7 +273,7 @@ void main() {
     expect(tester.binding.hasScheduledFrame, isFalse);
   });
 
-  group('holders (since 0.8.0)', () {
+  group('holders (since 0.8.1)', () {
     const appProvider = Shown('FutureProvider<Product>', 'featuredProvider');
 
     FakeFespalierClient holdersApp(

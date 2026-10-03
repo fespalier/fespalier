@@ -1,6 +1,6 @@
 # Diagnostics: `nav.dart`, menus and breadcrumbs
 
-Since 0.8.0 (`cli/src/resolve.rs`, `cli/src/menu.rs`). Each message below was produced by
+Since 0.8.1 (`cli/src/resolve.rs`, `cli/src/menu.rs`). Each message below was produced by
 `fsp check` on a tree that triggers it. `fespalier-layouts` has the rules behind them
 (`references/menus-and-breadcrumbs.md`).
 

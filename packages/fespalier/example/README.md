@@ -46,6 +46,6 @@ void main() => runApp(
 Navigate with the generated typed routes: `ProductRoute(id: 2).go(context)`.
 
 Complete, runnable apps are in
-[examples/](https://github.com/vaam-apps/fespalier/tree/main/examples): `shop`
+[examples/](https://github.com/fespalier/fespalier/tree/main/examples): `shop`
 (products, cart, a guarded checkout), `features` (every file kind) and `tabs`
 (nested tab layouts).

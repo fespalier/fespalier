@@ -1,5 +1,5 @@
 /// What kind of navigation a committed router configuration is, for DevTools and telemetry
-/// (since 0.8.0). Both read the router the same way, so the rule lives here once.
+/// (since 0.8.1). Both read the router the same way, so the rule lives here once.
 library;
 
 import 'package:go_router/go_router.dart';

@@ -58,7 +58,7 @@ class ProductsPage extends ConsumerWidget {
                       preload: Preload.intent,
                       builder: (context, follow) => ListTile(
                         // The same line is on the product's page: the avatar
-                        // flies from the row to there (since 0.8.0). It
+                        // flies from the row to there (since 0.8.1). It
                         // needs the page's data in its first frame, which the
                         // preload above provides.
                         leading: ProductRoute(id: p.id).hero(

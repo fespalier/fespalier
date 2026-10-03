@@ -471,7 +471,7 @@ void main() {
     });
 
     test(
-      'a provider wrapped in freshData (since 0.8.0) is traced the same',
+      'a provider wrapped in freshData (since 0.8.1) is traced the same',
       () async {
         final c = container();
         var runs = 0;
@@ -494,7 +494,7 @@ void main() {
     );
 
     test('and so is a cachedData provider, with a saved value in front of it '
-        '(since 0.8.0)', () async {
+        '(since 0.8.1)', () async {
       final storage = MemoryDataStorage()
         ..write('fespalier:items', '5', const StorageOptions());
       final c = ProviderContainer(

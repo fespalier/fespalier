@@ -34,7 +34,7 @@ import 'release_checksums.dart' as pinned;
 
 /// Where releases are downloaded from unless `FSP_BASE_URL` says otherwise.
 const defaultBaseUrl =
-    'https://github.com/vaam-apps/fespalier/releases/download';
+    'https://github.com/fespalier/fespalier/releases/download';
 
 /// A problem the user can act on; printed without a stack trace.
 class LauncherException implements Exception {
@@ -339,7 +339,7 @@ class Launcher {
     if (target == null) {
       throw LauncherException(
         'no fsp binary is published for ${Abi.current()}. '
-        'Build it with `cargo install --git https://github.com/vaam-apps/fespalier fespalier` '
+        'Build it with `cargo install --git https://github.com/fespalier/fespalier fespalier` '
         'and point FSP_BINARY at it.',
       );
     }

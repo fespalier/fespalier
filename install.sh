@@ -1,16 +1,16 @@
 #!/bin/sh
 # Installs the `fsp` binary (the fespalier code generator) without needing Rust.
 #
-#   curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 #
 # Environment:
 #   FSP_VERSION      release tag to install, e.g. v0.3.0 (default: latest release)
 #   FSP_INSTALL_DIR  where to put `fsp` (default: $HOME/.local/bin)
 #   FSP_BASE_URL     where releases are downloaded from
-#                    (default: https://github.com/vaam-apps/fespalier/releases/download)
+#                    (default: https://github.com/fespalier/fespalier/releases/download)
 set -eu
 
-REPO="vaam-apps/fespalier"
+REPO="fespalier/fespalier"
 RELEASES_URL="https://github.com/${REPO}/releases"
 BASE_URL="${FSP_BASE_URL:-${RELEASES_URL}/download}"
 INSTALL_DIR="${FSP_INSTALL_DIR:-${HOME:-}/.local/bin}"
@@ -42,7 +42,7 @@ case "$os" in
   Linux) os_part="unknown-linux-gnu" ;;
   Darwin) os_part="apple-darwin" ;;
   MINGW* | MSYS* | CYGWIN* | Windows_NT)
-    err "Windows is not supported by this script. In PowerShell run: irm https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.ps1 | iex (or download fsp-x86_64-pc-windows-msvc.zip from ${RELEASES_URL} and put fsp.exe on your PATH)."
+    err "Windows is not supported by this script. In PowerShell run: irm https://raw.githubusercontent.com/fespalier/fespalier/main/install.ps1 | iex (or download fsp-x86_64-pc-windows-msvc.zip from ${RELEASES_URL} and put fsp.exe on your PATH)."
     ;;
   *) err "unsupported operating system: ${os} (supported: Linux, macOS). Prebuilt binaries are listed at ${RELEASES_URL}; otherwise build from source with cargo." ;;
 esac

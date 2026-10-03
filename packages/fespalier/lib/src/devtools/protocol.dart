@@ -1,6 +1,6 @@
 /// The wire format between a running app and fespalier's DevTools extension, protocol 1
 /// (since 0.7.0): the names of the service extensions and events, and the records they carry.
-/// What 0.8.0 added (`holders`, and a data record's `via`, `provider` and `listeners`) is
+/// What 0.8.1 added (`holders`, and a data record's `via`, `provider` and `listeners`) is
 /// additive, so it is still protocol 1.
 ///
 /// This file imports nothing, so the extension (a Flutter web app that cannot import
@@ -66,7 +66,7 @@ abstract final class DevToolsMethods {
   /// `ToolEvent` stream with a `package:` URI. Listed as [DevToolsFeatures.open].
   static const String open = 'ext.fespalier.open';
 
-  /// Parameter `id` (a [DataRecord]'s), since 0.8.0. Answers a [HoldersRecord]: who holds that
+  /// Parameter `id` (a [DataRecord]'s), since 0.8.1. Answers a [HoldersRecord]: who holds that
   /// provider now, computed when asked. Listed as [DevToolsFeatures.holders].
   static const String holders = 'ext.fespalier.holders';
 }
@@ -121,11 +121,11 @@ abstract final class DevToolsFeatures {
   /// The `open` method.
   static const String open = 'open';
 
-  /// The `holders` method, and a [DataRecord]'s `listeners` (since 0.8.0).
+  /// The `holders` method, and a [DataRecord]'s `listeners` (since 0.8.1).
   static const String holders = 'holders';
 
   /// A `data.dart` that returns or selects the app's own provider is followed too: the
-  /// [DataRecord]s with `via` [DataVia.watch] (since 0.8.0).
+  /// [DataRecord]s with `via` [DataVia.watch] (since 0.8.1).
   static const String watched = 'watched';
 }
 
@@ -224,7 +224,7 @@ abstract final class DataState {
   static const String disposed = 'disposed';
 }
 
-/// The values of a [DataRecord]'s `via`: how fespalier follows the provider (since 0.8.0).
+/// The values of a [DataRecord]'s `via`: how fespalier follows the provider (since 0.8.1).
 abstract final class DataVia {
   /// fespalier built the provider (the function form of `data.dart`) and sees each build.
   static const String build = 'build';
@@ -234,7 +234,7 @@ abstract final class DataVia {
   static const String watch = 'watch';
 }
 
-/// The values of a [HolderRecord]'s `kind` (since 0.8.0): what keeps a provider alive that
+/// The values of a [HolderRecord]'s `kind` (since 0.8.1): what keeps a provider alive that
 /// fespalier made.
 abstract final class HolderKind {
   /// The route's `DataView`.
@@ -841,15 +841,15 @@ final class DataRecord {
   /// What the `Future` failed with, for `error`.
   final String? error;
 
-  /// A [DataVia] (since 0.8.0); an older app's record is [DataVia.build].
+  /// A [DataVia] (since 0.8.1); an older app's record is [DataVia.build].
   final String via;
 
   /// The provider the app's own `data.dart` returned or selected, as its `toString` spells it,
-  /// for [DataVia.watch]; null otherwise (since 0.8.0).
+  /// for [DataVia.watch]; null otherwise (since 0.8.1).
   final Shown? provider;
 
   /// How many listeners the provider has now, for [DataVia.build]; null for [DataVia.watch], and
-  /// for an app older than 0.8.0 (since 0.8.0).
+  /// for an app older than 0.8.1 (since 0.8.1).
   final int? listeners;
 
   /// A part of a [SnapshotRecord] and of the `data` event.
@@ -877,7 +877,7 @@ final class DataRecord {
   int get hashCode => _hash(toJson());
 }
 
-/// One holder of a provider that fespalier knows (since 0.8.0).
+/// One holder of a provider that fespalier knows (since 0.8.1).
 final class HolderRecord {
   /// A holder of [kind] (a [HolderKind]).
   const HolderRecord({required this.kind, required this.since, this.keepFor});
@@ -914,7 +914,7 @@ final class HolderRecord {
   int get hashCode => _hash(toJson());
 }
 
-/// What `holders` answers (since 0.8.0): who keeps the provider of a [DataRecord] alive now.
+/// What `holders` answers (since 0.8.1): who keeps the provider of a [DataRecord] alive now.
 final class HoldersRecord {
   /// The answer for the record [id].
   const HoldersRecord({

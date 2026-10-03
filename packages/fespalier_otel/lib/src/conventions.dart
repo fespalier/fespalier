@@ -1,4 +1,4 @@
-/// The telemetry conventions, contract version 1 (since 0.8.0): every span name, event name,
+/// The telemetry conventions, contract version 1 (since 0.8.1): every span name, event name,
 /// attribute key and enum-like value `FespalierOtel` emits. The README's "Telemetry conventions"
 /// section is the published copy; `test/conventions_test.dart` holds each of these as a string
 /// literal, so a rename fails a test before it ships.
@@ -19,7 +19,7 @@ abstract final class FespalierConventions {
 
   // The resource attributes fespalier adds (the app's `service.*` come from otel_zone).
 
-  /// The fespalier release, e.g. `0.8.0`.
+  /// The fespalier release, e.g. `0.8.1`.
   static const String resourceVersion = 'fespalier.version';
 
   /// The contract version, as a string.

@@ -329,7 +329,7 @@ void main() {
     });
   });
 
-  group('holders (since 0.8.0)', () {
+  group('holders (since 0.8.1)', () {
     const answer = HoldersRecord(
       id: 7,
       found: true,

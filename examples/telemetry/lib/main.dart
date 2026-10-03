@@ -51,7 +51,7 @@ Future<void> main() => guarded(() async {
   );
 });
 
-/// `OtelZone.runGuarded` leaves a Flutter web app blank: its body never runs (since 0.8.0, known
+/// `OtelZone.runGuarded` leaves a Flutter web app blank: its body never runs (since 0.8.1, known
 /// limitation: otel_zone runGuarded on web; it builds a `ReceivePort` first). Elsewhere it is the
 /// zone that catches what nothing else does; on the web the body runs as it is.
 Future<void> guarded(Future<void> Function() body) =>

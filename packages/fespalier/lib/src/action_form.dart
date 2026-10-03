@@ -7,7 +7,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'action.dart' show ActionNotifier, ActionProvider;
 
 /// What an action, or the `validate()` beside it, throws to say which fields of its input are
-/// wrong (since 0.8.0). A form shows each message under its field, and [message] above them.
+/// wrong (since 0.8.1). A form shows each message under its field, and [message] above them.
 ///
 /// The keys are the names of the input's fields (`amount` for `({int amount, String note})`).
 final class FieldErrors implements Exception {
@@ -30,7 +30,7 @@ final class FieldErrors implements Exception {
   ].join('; ');
 }
 
-/// The messages a form shows for text it cannot read as its field's type (since 0.8.0). Pass your
+/// The messages a form shows for text it cannot read as its field's type (since 0.8.1). Pass your
 /// own, translated, to the generated `useForm`.
 final class ActionFormMessages {
   /// The English defaults, or the messages given.
@@ -52,7 +52,7 @@ final class ActionFormMessages {
 
 enum _Kind { text, integer, decimal, number }
 
-/// How the text of a text field becomes the field's value and back (since 0.8.0). The generated
+/// How the text of a text field becomes the field's value and back (since 0.8.1). The generated
 /// `useForm` picks one by the field's type; there is one per type a text field can hold.
 final class FieldCodec<V> {
   const FieldCodec._(this._kind, this._optional);
@@ -138,7 +138,7 @@ final class FieldCodec<V> {
   }
 }
 
-/// When a form shows what `validate()` says of its fields (since 0.8.0). The action's own
+/// When a form shows what `validate()` says of its fields (since 0.8.1). The action's own
 /// [FieldErrors] show when it fails, whichever this is.
 enum ActionFormValidation {
   /// Nothing until the first submit, then every field as it changes. The default.
@@ -148,7 +148,7 @@ enum ActionFormValidation {
   onChange,
 }
 
-/// One field of an action's form (since 0.8.0): its typed [value], the [error] to show and whether
+/// One field of an action's form (since 0.8.1): its typed [value], the [error] to show and whether
 /// it [isDirty]. A field of another type than text binds through [value] and [didChange]
 /// (`Checkbox(value: f.express.value, onChanged: f.express.didChange)`).
 base class ActionField<V> {
@@ -211,7 +211,7 @@ base class ActionField<V> {
 }
 
 /// A field of an action's form typed as `String`, `int`, `double` or `num` (or nullable), with the
-/// [controller] of the `TextField` that edits it (since 0.8.0).
+/// [controller] of the `TextField` that edits it (since 0.8.1).
 final class ActionTextField<V> extends ActionField<V> {
   ActionTextField._(
     ActionForm<Object?, Object?, Record> form,
@@ -314,7 +314,7 @@ final class ActionFormFields<I> {
   );
 }
 
-/// The form of an action (since 0.8.0): typed [fields] that start from the route's data, the errors
+/// The form of an action (since 0.8.1): typed [fields] that start from the route's data, the errors
 /// `validate()` and the action give each, and [onSubmit], which is null while the action runs.
 ///
 /// The generated `useForm` makes one for a page and disposes it with the page; it is a

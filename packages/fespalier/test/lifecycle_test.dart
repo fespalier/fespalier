@@ -1,4 +1,4 @@
-// The observe.dart hooks (since 0.8.0): `observeAttach` diffs the router's committed
+// The observe.dart hooks (since 0.8.1): `observeAttach` diffs the router's committed
 // configuration at the end of the first frame that shows a change. A page instance is entered
 // the first time it is the page the user sees, focused when it is on top again, and left when
 // it is on no navigator any more. The routers here are hand-built, with the hooks the

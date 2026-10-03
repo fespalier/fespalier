@@ -26,7 +26,7 @@ editor, and runs `fsp gen` from the Tools menu. It is a thin layer over the gene
 - IntelliJ IDEA or Android Studio on platform 252 (2025.2) or later. The plugin depends only
   on the platform. Highlighting Dart files needs the Dart plugin (Android Studio has it;
   install it in IDEA). `pubspec.yaml` is highlighted through the bundled YAML support.
-- `fsp` on your `PATH` ([install it](https://github.com/vaam-apps/fespalier#getting-started)),
+- `fsp` on your `PATH` ([install it](https://github.com/fespalier/fespalier#getting-started)),
   or a project that has the `fespalier` package, in which case the plugin runs
   `dart run fespalier`, which downloads the matching `fsp` on first use (that run can take a
   while; it is allowed five minutes). The IDE's shell environment is used, so a `PATH` set in

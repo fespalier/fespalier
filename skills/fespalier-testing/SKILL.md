@@ -9,7 +9,7 @@ description: "Testing an app built with fespalier — package:fespalier/testing.
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
-> [Versions](https://github.com/vaam-apps/fespalier/blob/main/skills/README.md#versions).
+> [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
 `package:fespalier/testing.dart` has two helpers. It is a **separate library**, so
 `package:fespalier/fespalier.dart` never imports `flutter_test`; the package lists
@@ -35,7 +35,7 @@ testWidgets('shows a product', (tester) async {
 });
 ```
 
-- **Hooks and telemetry (since 0.8.0).** An `observe.dart` hook fires at the end of the first frame that
+- **Hooks and telemetry (since 0.8.1).** An `observe.dart` hook fires at the end of the first frame that
   shows a change, so `await tester.pump()` before asserting what it did; `RecordingTelemetry` is a
   `FespalierTelemetry` that keeps lines for a test (`FespalierTelemetry.install` in `setUp`, `install(null)`
   in `tearDown`). Both are in [`fespalier-observability`](../fespalier-observability/SKILL.md).
@@ -54,7 +54,7 @@ testWidgets('shows a product', (tester) async {
     `addTearDown(router.dispose)` before the call passes `disposeRouter: false` (since 0.6.0):
     those teardowns run after `pumpRouter`'s, and a second `dispose` throws.
     Build one router per test.
-  - **`app:` (since 0.8.0)** is a `Widget Function(GoRouter router)` that builds what goes around the router
+  - **`app:` (since 0.8.1)** is a `Widget Function(GoRouter router)` that builds what goes around the router
     in place of the plain `MaterialApp.router`. With the generated `main()`
     (the `fespalier` skill's `app-main` page) pass `app: AppMain.app`: a page is then tested in
     `lib/app/app.dart`'s theme, localizations and `builder:`. **`startup()` does not run** in `pumpRouter`:
@@ -110,9 +110,9 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 | A `WidgetRef` (prefetch, refresh)                  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                             |
 | An action (a write, since 0.5.0)                   | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                              |
 | Restoration                                        | your own app widget building the router in `State`, `restartAndRestore()`                                                                                  |
-| Scroll restoration (0.8.0)                         | play the browser with `pushRouteInformation` **and the state the app reported**; a location alone starts at the top (`pitfalls.md`)                        |
+| Scroll restoration (0.8.1)                         | play the browser with `pushRouteInformation` **and the state the app reported**; a location alone starts at the top (`pitfalls.md`)                        |
 | A deferred route (0.7.0)                           | `pumpRouter` loads it; with your own router, `await tester.runAsync(AppRoutes.loadDeferred)` before `pumpWidget` (`pitfalls.md`)                           |
-| Aging data, a resume, a reconnect, a cache (0.8.0) | `pump(Duration)` ages by the fake clock; `handleAppLifecycleStateChanged`; `reconnectSignal.notifier.fire()`; a shared `MemoryDataStorage` (`pitfalls.md`) |
+| Aging data, a resume, a reconnect, a cache (0.8.1) | `pump(Duration)` ages by the fake clock; `handleAppLifecycleStateChanged`; `reconnectSignal.notifier.fire()`; a shared `MemoryDataStorage` (`pitfalls.md`) |
 | A `RouteLink` hover (0.5.0)                        | a mouse `createGesture`, `moveTo`, `pump`; `container.exists(XRoute.data(...))` (`pitfalls.md`)                                                            |
 
 Full compiled tests for all of these are in
@@ -129,7 +129,7 @@ waits for it. The identifier contract, the test that proves it
 `maestro test .maestro` skipping `routes/`, the web reload under a guard flow, the semantics tree
 staying on in a web build) are in [`references/maestro.md`](references/maestro.md).
 
-**A smoke test per route, for free (since 0.8.0).** `fsp test` writes
+**A smoke test per route, for free (since 0.8.1).** `fsp test` writes
 `test/routes/routes_test.dart`: one `testWidgets` per route that opens it at a sample URL with
 `pumpRouter` and waits, on the **fake** clock, until its page is on screen. Provider overrides and the app
 around the router come from a `setup.dart` you own. `package:fespalier/testing.dart` has the pieces:
@@ -137,7 +137,7 @@ around the router come from a `setup.dart` you own. `package:fespalier/testing.d
 skips, the failure message and the traps are in
 [`references/route-smoke-tests.md`](references/route-smoke-tests.md).
 
-**To watch a running app rather than assert on it** (since 0.8.0), `fsp telemetry` starts OpenObserve (and
+**To watch a running app rather than assert on it** (since 0.8.1), `fsp telemetry` starts OpenObserve (and
 Grafana with `--grafana`) in Docker with four dashboards over fespalier's spans, written as questions (App
 health, Screens, Actions, Errors; green, amber or red), and `fsp telemetry --report` prints the same answers in
 the terminal. The command, the

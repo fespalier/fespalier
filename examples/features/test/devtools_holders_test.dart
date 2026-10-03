@@ -1,4 +1,4 @@
-// DevTools shows who holds a data.dart's provider (since 0.8.0). /catalog/:productId selects the
+// DevTools shows who holds a data.dart's provider (since 0.8.1). /catalog/:productId selects the
 // app's own provider (a closure over its id), so fespalier follows it through the page's view.
 import 'package:features/app.g.dart';
 import 'package:fespalier/fespalier.dart';

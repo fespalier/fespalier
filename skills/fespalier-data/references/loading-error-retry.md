@@ -174,7 +174,7 @@ fespalier:
   keep_previous: true   # true | false
 ```
 
-## A route with a `freshness` or a `dataCache` (since 0.8.0)
+## A route with a `freshness` or a `dataCache` (since 0.8.1)
 
 Its `DataView` gets `keepDataOnError: true`: a reload that fails keeps the page on the value it had (the error is in
 `XRoute.watch(ref).error`), and `error.dart` only shows when there is nothing to show, whatever `keep_previous`

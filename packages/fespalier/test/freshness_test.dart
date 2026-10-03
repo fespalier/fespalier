@@ -1,4 +1,4 @@
-// Freshness (since 0.8.0): `freshData` ages a provider's value by `clock.now()`, which a
+// Freshness (since 0.8.1): `freshData` ages a provider's value by `clock.now()`, which a
 // widget test's fake async drives, so nothing here waits for real time or starts a timer.
 import 'dart:async';
 

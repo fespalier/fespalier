@@ -385,7 +385,7 @@ class FespalierController extends ChangeNotifier {
     }
   });
 
-  /// Who holds the provider of the data record [id] now (since 0.8.0), or null when the app does
+  /// Who holds the provider of the data record [id] now (since 0.8.1), or null when the app does
   /// not list [DevToolsFeatures.holders] (it is older) or the call failed, which is in
   /// [actionError].
   Future<HoldersRecord?> holders(int id) async {

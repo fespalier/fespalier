@@ -227,7 +227,7 @@ pub struct Config {
     pub semantics_ids: bool,
     /// `scroll_restoration`: each page is wrapped in `RouteScrollMemory`, which keeps a
     /// `PageStorage` bucket per history entry and hands it back only when the browser brings
-    /// that entry back (since 0.8.0).
+    /// that entry back (since 0.8.1).
     pub scroll_restoration: bool,
     /// `telemetry`: the generated file passes each guard, data provider, action and deferred
     /// library a `const TelemetrySite`, and `AppRoutes.attach` follows the router's navigations.

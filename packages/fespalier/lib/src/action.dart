@@ -39,7 +39,7 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
   /// has no reason to.
   ///
   /// [site] and [key] say which action this is to the DevTools extension (since 0.7.0); they
-  /// are only kept in a build that has it. [telemetry] names it to telemetry (since 0.8.0); only
+  /// are only kept in a build that has it. [telemetry] names it to telemetry (since 0.8.1); only
   /// an app made with `telemetry: true` passes one.
   ActionNotifier(
     this._run,
@@ -55,11 +55,11 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
        _validate = validate,
        _optimistic = optimistic;
 
-  /// The `validate()` beside the action (since 0.8.0): run before it, a write it refuses never
+  /// The `validate()` beside the action (since 0.8.1): run before it, a write it refuses never
   /// starts.
   final FieldErrors? Function(I input)? _validate;
 
-  /// The `optimistic()` beside the action, bound to the layer of the data it patches (since 0.8.0).
+  /// The `optimistic()` beside the action, bound to the layer of the data it patches (since 0.8.1).
   final OptimisticPatch<I>? _optimistic;
 
   final FutureOr<T> Function(Ref ref, I input) _run;
@@ -200,7 +200,7 @@ StateError _notAProvider(Object target) => StateError(
 /// The provider of an action with no keys: [run] is the function of `action.dart` and
 /// [invalidates] what a success makes stale. Called by the generated file, which passes [site],
 /// the action's key in the route tree DevTools reads (since 0.7.0), and, in an app made with
-/// `telemetry: true`, [telemetry] (since 0.8.0).
+/// `telemetry: true`, [telemetry] (since 0.8.1).
 ActionProvider<I, T> actionProvider<I, T>(
   FutureOr<T> Function(Ref ref, I input) run, {
   required Iterable<ProviderListenable<AsyncValue<Object?>>> Function()
@@ -272,7 +272,7 @@ final class ActionHandle<I, T, R> {
   bool get hasError => state.hasError;
 
   /// What the last run said of the input's fields, when it failed with [FieldErrors] (thrown by
-  /// the action or its `validate()`, since 0.8.0); null otherwise.
+  /// the action or its `validate()`, since 0.8.1); null otherwise.
   FieldErrors? get fieldErrors => switch (state) {
     AsyncError(error: final FieldErrors e) => e,
     _ => null,

@@ -1027,7 +1027,7 @@ fn zero_seven_tree() -> Vec<(&'static str, &'static str)> {
 }
 
 /// What 0.7.0 generated for these files, copied from a run of `fsp gen` at 5f7f39d: an app
-/// with no `form()`, `validate()` or `optimistic()` must still get exactly this (since 0.8.0).
+/// with no `form()`, `validate()` or `optimistic()` must still get exactly this (since 0.8.1).
 #[test]
 fn no_companions_generate_what_0_7_0_did() {
     let c = code(&zero_seven_tree());
@@ -1080,7 +1080,7 @@ fn no_companions_generate_what_0_7_0_did() {
             "useActionForm",
             "validate:",
             "useForm",
-            // Nor telemetry or observe.dart hooks (since 0.8.0): neither is opted into.
+            // Nor telemetry or observe.dart hooks (since 0.8.1): neither is opted into.
             "TelemetrySite",
             "AppRoutes.attach",
             "_observeAt",

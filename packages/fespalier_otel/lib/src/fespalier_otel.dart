@@ -1,4 +1,4 @@
-/// fespalier's telemetry as OpenTelemetry spans (since 0.8.0), on the SDK that `otel_zone` (or the
+/// fespalier's telemetry as OpenTelemetry spans (since 0.8.1), on the SDK that `otel_zone` (or the
 /// app) started.
 library;
 
@@ -15,7 +15,7 @@ import 'package:flutter/foundation.dart'
 import 'conventions.dart';
 
 /// fespalier's telemetry as OpenTelemetry spans, on the SDK that `otel_zone` (or the app) started
-/// (since 0.8.0).
+/// (since 0.8.1).
 ///
 /// ```dart
 /// FespalierTelemetry.install(FespalierOtel(isReady: () => observability.isReady));

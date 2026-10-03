@@ -12,7 +12,7 @@ class ProfilePage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             // The settings page, over the tab bar, has the same line: the
-            // avatar flies there from the tab that is shown (since 0.8.0).
+            // avatar flies there from the tab that is shown (since 0.8.1).
             const SettingsRoute().hero(
               'avatar',
               child: const CircleAvatar(child: Text('A')),

@@ -19,7 +19,7 @@ import re
 import sys
 from pathlib import Path
 
-REPO = "vaam-apps/fespalier"
+REPO = "fespalier/fespalier"
 DESCRIPTION = "File-tree routing for Flutter: the fsp code generator"
 LICENSE = "MIT"
 

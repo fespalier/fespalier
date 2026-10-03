@@ -1,4 +1,4 @@
-//! `form()`, `validate()` and `optimistic()` beside an action (since 0.8.0): the companions the
+//! `form()`, `validate()` and `optimistic()` beside an action (since 0.8.1): the companions the
 //! resolver finds by name, the `useForm` hook and the optimistic layers they generate, and every
 //! diagnostic. (The actions themselves are in `action_tests.rs`.)
 
@@ -61,7 +61,7 @@ fn companions_are_not_actions() {
         &[
             "static final useForm = (WidgetRef ref, {required Profile data, ActionFormValidation validation = ActionFormValidation.afterSubmit, bool resetOnSuccess = false, ActionFormMessages messages = const ActionFormMessages()}) => useActionForm(ref, action, data: data, initial: () => _i2.form(data), fields: (ActionFormFields<_i2.NicknameFields> f) => (nickname: f.text('nickname', (v) => v.nickname, FieldCodec.text), age: f.text('age', (v) => v.age, FieldCodec.optionalInteger), newsletter: f.value('newsletter', (v) => v.newsletter)), input: (f) => (nickname: f.nickname.value, age: f.age.value, newsletter: f.newsletter.value), validate: _i2.validate, validation: validation, resetOnSuccess: resetOnSuccess, messages: messages);\n}\n",
             "final _optimistic1 = optimisticLayer(_data1);",
-            "/// What reads of nickname/data.dart show while a write that patches it is in flight (`optimistic()` of nickname/action.dart). Since 0.8.0.",
+            "/// What reads of nickname/data.dart show while a write that patches it is in flight (`optimistic()` of nickname/action.dart). Since 0.8.1.",
             "final _action1_0 = actionProvider(\n  (Ref ref, _i2.NicknameFields input) => _i2.action(ref, input: input),\n  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_data1],\n  validate: _i2.validate,\n  optimistic: () => _optimistic1.patch(_i2.optimistic),\n  site: 'a1_0',\n);",
             // The read sites go through the layer.
             "optimistic: (ref) => ref.watch(_optimistic1),",

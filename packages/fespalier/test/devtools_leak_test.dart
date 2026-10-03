@@ -1,6 +1,6 @@
 // DevTools support holds a router weakly and adds one listener to its delegate: an app that turns
 // leak tracking on sees nothing of it left behind once the router is disposed. The views and
-// handles it records as holders of a provider (since 0.8.0) are held weakly too.
+// handles it records as holders of a provider (since 0.8.1) are held weakly too.
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/src/devtools/devtools.dart';
 import 'package:fespalier/testing.dart';

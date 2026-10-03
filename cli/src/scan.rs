@@ -31,11 +31,11 @@ pub enum Kind {
     ExtraCodec,
     /// `nav.dart`: how a folder shows in the generated menus (`AppMenu`).
     Nav,
-    /// The app folder's own `app.dart`: the widget around the router (root only, since 0.8.0).
+    /// The app folder's own `app.dart`: the widget around the router (root only, since 0.8.1).
     App,
-    /// The app folder's own `startup.dart`: what runs before the app (root only, since 0.8.0).
+    /// The app folder's own `startup.dart`: what runs before the app (root only, since 0.8.1).
     Startup,
-    /// The app folder's own `splash.dart`: shown while `startup()` runs (root only, since 0.8.0).
+    /// The app folder's own `splash.dart`: shown while `startup()` runs (root only, since 0.8.1).
     Splash,
     /// `observe.dart`: hooks that run when a page is entered, focused and left.
     Observe,

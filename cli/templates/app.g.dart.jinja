@@ -13,7 +13,7 @@
 {%- if a.form %}
 
 
-  /// The form of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}, for `build` in a `HookConsumerWidget`: a typed field per field of its input, starting from `{{ a.form.function }}({{ "data" if a.form.has_data }})`; `onSubmit` checks the fields{{ " and `" ~ a.form.validate ~ "()`" if a.form.validate }}, then runs it, and is null while it runs. Since 0.8.0.
+  /// The form of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}, for `build` in a `HookConsumerWidget`: a typed field per field of its input, starting from `{{ a.form.function }}({{ "data" if a.form.has_data }})`; `onSubmit` checks the fields{{ " and `" ~ a.form.validate ~ "()`" if a.form.validate }}, then runs it, and is null while it runs. Since 0.8.1.
   static final {{ a.form.hook }} = (WidgetRef ref, {{ a.form.params }}) => useActionForm(ref, {{ a.provider }}{{ a.key }}, {{ a.form.args }});
 {%- endif %}
 {%- endmacro %}
@@ -398,7 +398,7 @@ abstract final class {{ r.name }} {
   static final data = {{ r.expr }};
 
 {% if r.optimistic %}
-  /// Watches {{ r.file }}, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference. Since 0.8.0.
+  /// Watches {{ r.file }}, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference. Since 0.8.1.
   static final watch = (WidgetRef ref{{ r.args }}) => ref.watchOptimistic(data{{ r.key }}, {{ r.optimistic }});
 {% else %}
   /// Watches {{ r.file }}: an `AsyncValue`, typed by inference.
@@ -506,7 +506,7 @@ final class {{ r.name }}Route extends TypedLocation {
 {% if r.data %}
 
 {% if r.data.optimistic %}
-  /// Watches {{ r.data.file }}, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference (static, so it can name the keys). Since 0.8.0.
+  /// Watches {{ r.data.file }}, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference (static, so it can name the keys). Since 0.8.1.
   static final watch = (WidgetRef ref{{ r.data.args }}) => ref.watchOptimistic(data{{ r.data.key }}, {{ r.data.optimistic }});
 {% else %}
   /// Watches {{ r.data.file }}: an `AsyncValue`, typed by inference (static, so it can name the keys).
@@ -671,7 +671,7 @@ final {{ a.top }} = {{ a.factory }}(
 {% endfor %}
 {% if menu %}
 
-/// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.0).
+/// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.1).
 abstract final class AppMenu {
   /// Every nav.dart, nested as their folders are (the app folder's own entry, and a tab layout's
   /// own page, sit beside the entries below them), each level by `order`, then by folder.

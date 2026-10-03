@@ -8,7 +8,7 @@ import 'package:go_router/go_router.dart';
 const int _kMaxEntries = 64;
 
 /// What `scroll_restoration: true` (the pubspec's `fespalier:` section) wraps every page in
-/// (since 0.8.0): a `PageStorage` for the page's history entry.
+/// (since 0.8.1): a `PageStorage` for the page's history entry.
 ///
 /// Flutter keeps a scrollable's offset in the nearest `PageStorage`, but only when the
 /// scrollable (or a widget above it) has a `PageStorageKey`. A page built for a `go`, a `push`, a

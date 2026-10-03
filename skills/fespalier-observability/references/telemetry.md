@@ -1,6 +1,6 @@
 # Telemetry and OpenTelemetry
 
-Since 0.8.0. The README's [Telemetry](https://github.com/vaam-apps/fespalier#telemetry) section is the user
+Since 0.8.1. The README's [Telemetry](https://github.com/fespalier/fespalier#telemetry) section is the user
 documentation; this page is what an agent needs to set it up and to say why nothing shows.
 
 ## The pieces
@@ -29,9 +29,9 @@ documentation; this page is what an agent needs to set it up and to say why noth
 ```yaml
 dependencies:
   fespalier:
-    git: { url: https://github.com/vaam-apps/fespalier, path: packages/fespalier, ref: v0.8.0 }
+    git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier, ref: v0.8.1 }
   fespalier_otel:
-    git: { url: https://github.com/vaam-apps/fespalier, path: packages/fespalier_otel, ref: v0.8.0 }
+    git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier_otel, ref: v0.8.1 }
 ```
 
 Use the **same `url` spelling (no `.git`) and the same `ref`** for both, or pub fails with `Because ...
@@ -78,7 +78,7 @@ define.
 
 ### Known limitation: `otel_zone` `runGuarded` on web
 
-Since 0.8.0: on the web `OtelZone.runGuarded` **never runs its body** and the app stays blank (it builds a
+Since 0.8.1: on the web `OtelZone.runGuarded` **never runs its body** and the app stays blank (it builds a
 `ReceivePort`, which `dart:isolate` does not support there; nothing is printed). `start()` works on the
 web, and spans and logs are exported. Run the body as it is on the web (the `guarded` helper above); the
 error hooks `runGuarded` installs are then not installed there. `OtelZoneConfig` and everything else is

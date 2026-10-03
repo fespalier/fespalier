@@ -1,4 +1,4 @@
-// Data freshness and the data cache (since 0.8.0) on products/$id/data.dart: a `staleTime` of a
+// Data freshness and the data cache (since 0.8.1) on products/$id/data.dart: a `staleTime` of a
 // minute, a refetch on resume, and a `dataCache`. No test waits for real time: the fake clock of
 // `testWidgets` ages the data, and a `MemoryDataStorage` shared by two `pumpRouter` calls stands
 // in for a restart.

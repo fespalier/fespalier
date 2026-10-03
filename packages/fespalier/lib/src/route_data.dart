@@ -166,7 +166,7 @@ class SectionView<T> extends ConsumerWidget {
   final Widget Function(T data) data;
 
   /// What the page shows of the section data while a write that patches it is in flight, as
-  /// [DataView.optimistic] (since 0.8.0).
+  /// [DataView.optimistic] (since 0.8.1).
   final OptimisticLayer<T> Function(WidgetRef ref)? optimistic;
 
   @override

@@ -1,6 +1,6 @@
 # The generated `main()`: `app.dart`, `startup.dart`, `splash.dart`
 
-Since 0.8.0. Three optional files at the **root** of the app folder make `fsp` write
+Since 0.8.1. Three optional files at the **root** of the app folder make `fsp` write
 `lib/app.main.g.dart`, whose `AppMain` is the app's `main()`. `lib/main.dart` stays the
 app's own and is one line:
 

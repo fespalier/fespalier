@@ -9,7 +9,7 @@ description: "How a fespalier folder tree becomes URLs and typed routes — stat
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
-> [Versions](https://github.com/vaam-apps/fespalier/blob/main/skills/README.md#versions).
+> [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
 The folder **is** the URL. A `page.dart` (or a `redirect.dart`) serves its
 folder's path; every other kind decorates it. Start with

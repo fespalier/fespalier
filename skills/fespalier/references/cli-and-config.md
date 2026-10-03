@@ -11,23 +11,23 @@ above; pass --project`).
 | Command                                     | What it does                                                                                                                                                                                                                                                                                                   |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------                         |
-| `fsp init`                                  | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` and, since 0.8.0, `app.dart` (not with `main: manual`) under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do (the `main.dart` that runs `AppMain`, since 0.8.0)                         |
+| `fsp init`                                  | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` and, since 0.8.1, `app.dart` (not with `main: manual`) under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do (the `main.dart` that runs `AppMain`, since 0.8.1)                         |
 | `fsp gen [--format] [--json]`               | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                                                                                                                       |
 | `fsp check [--json]`                        | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                                                                                                                |
 | `fsp watch`                                 | `gen` once, then again on every relevant change; keep it next to `flutter run`                                                                                                                                                                                                                                 |
 | `fsp routes [--json]`                       | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                                                                                                                  |
 | `fsp links [--check]`                       | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                                                                                                                        |
 | `fsp maestro [--check]`                     | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0)                                                                                           |
-| `fsp telemetry [flags]`                     | Starts a local OpenTelemetry stack with fespalier's four dashboards in Docker: a collector, OpenObserve, and Grafana with `--grafana`. Needs no project and no pubspec key; writes `~/.fespalier/telemetry`. Flags: `--grafana`, `--lan`, `--stop`, `--reset`, `--report`, `--dir`, `--no-start` (since 0.8.0) |
-| `fsp size [--build DIR] [--json] [--check]` | Reports the web build's JavaScript per deferred route (own, shared and total bytes, read from dart2js's table in `main.dart.js`); `--check` exits 1 when a budget in the `size:` config is exceeded (since 0.8.0)                                                                                              |
-| `fsp test [--check]`                        | Writes one widget smoke test per route into `test/routes/routes_test.dart` (`pumpRouter`, wait on the fake clock for the page) from the route tree and the optional `test:` config (since 0.8.0); see below                                                                                                    |
+| `fsp telemetry [flags]`                     | Starts a local OpenTelemetry stack with fespalier's four dashboards in Docker: a collector, OpenObserve, and Grafana with `--grafana`. Needs no project and no pubspec key; writes `~/.fespalier/telemetry`. Flags: `--grafana`, `--lan`, `--stop`, `--reset`, `--report`, `--dir`, `--no-start` (since 0.8.1) |
+| `fsp size [--build DIR] [--json] [--check]` | Reports the web build's JavaScript per deferred route (own, shared and total bytes, read from dart2js's table in `main.dart.js`); `--check` exits 1 when a budget in the `size:` config is exceeded (since 0.8.1)                                                                                              |
+| `fsp test [--check]`                        | Writes one widget smoke test per route into `test/routes/routes_test.dart` (`pumpRouter`, wait on the fake clock for the page) from the route tree and the optional `test:` config (since 0.8.1); see below                                                                                                    |
 | `fsp routes --graph [FORMAT]`               | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default), a Graphviz `digraph` (`dot`), since 0.5.0, or JSON (`json`, since 0.7.0)                                                                                                                                                           |
 | `fsp new <path> [flags]`                    | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                                                                                                                                                     |
 
 What they print, to stderr unless noted:
 
 - `gen`: `✓ 12 routes → lib/app.g.dart`, or `✓ 12 routes, lib/app.g.dart unchanged`
-  (with `output_manifest`, or a generated `main()` since 0.8.0, every file is named:
+  (with `output_manifest`, or a generated `main()` since 0.8.1, every file is named:
   `✓ 12 routes → lib/app.g.dart, lib/app.main.g.dart`). On errors:
   `N error(s); lib/app.g.dart left unchanged` and exit code 1 (with several files,
   `N error(s); lib/app.g.dart and lib/app.main.g.dart left unchanged`).
@@ -51,7 +51,7 @@ What they print, to stderr unless noted:
   `redirect`, `data`, `action` (since 0.5.0), `guard`, `layout`, `present` or `transition`, `root`,
   `sibling` (a [`nest = false`](../../fespalier-routing/references/route-dart.md) route,
   since 0.4.0), `remount` (a page that starts again when its URL changes, since 0.6.0) and `deferred` (a page whose code loads on demand,
-  since 0.7.0), in that order; `fresh` (its data has a `freshness`) and `cached` (a `dataCache`), since 0.8.0, follow `data`. `routes --json` prints, per line, in
+  since 0.7.0), in that order; `fresh` (its data has a `freshness`) and `cached` (a `dataCache`), since 0.8.1, follow `data`. `routes --json` prints, per line, in
   this order: `pattern`, `route`, `file`, `tags`, `params` (`{name, type, in}`
   with `in` of `path` or `query`), `folder`, `presentation` (`page`, `redirect`,
   `root`, `custom`), `groups`, `layouts`, `tabs`, `data_keys`, `meta`,
@@ -82,7 +82,7 @@ then `[possible values: mermaid, dot, json]`; before 0.7.0 only the first two).
 localized route, `redirect`, `children`), a `shell` (a `layout.dart`, with its `items`) or `tabs` (with `branches`);
 `file` and `folder` are relative to the app folder. `sites` names each guard (`g5@6`), `redirect.dart`
 (`r32`), `data.dart` (`d37`, with `traced: false` when the file returns or selects a provider) and action
-(`a37_0`) by the string the generated code uses (since 0.8.0 the views name it too: `watchData(ref, 'd37', …)`,
+(`a37_0`) by the string the generated code uses (since 0.8.1 the views name it too: `watchData(ref, 'd37', …)`,
 and `app.g.dart` lists the providers by site in `_devToolsProviders`). It is what the DevTools extension reads, and
 `app.g.dart` embeds it (see the DevTools page of `fespalier-troubleshooting`).
 
@@ -186,7 +186,7 @@ page to see`); with `app_id`, a `const linkable = false;` route is skipped; a ro
 - **Running them:** `maestro test .maestro/routes`, **not** `maestro test .maestro` (Maestro runs only the
   top-level flows of the folder it is given, and a `config.yaml` has to list subfolders in `flows:`).
 - **Verified here:** the identifier in widget tests (`find.bySemanticsIdentifier`) and the flows as
-  golden files; since 0.8.0 also, on the web, that CI opens every committed flow's link in Chromium and
+  golden files; since 0.8.1 also, on the web, that CI opens every committed flow's link in Chromium and
   finds the identifier (`web-routes`; a weekly `maestro-web` job runs Maestro itself and is not a gate).
   **Not verified:** the same on iOS.
 - **Not built:** a `link:` identifier on `RouteLink`, `samples` in `meta.dart`, a flow for a layout,
@@ -195,7 +195,7 @@ page to see`); with `app_id`, a `const linkable = false;` route is skipped; a ro
   messages are in `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`. The
   recipe for testing the identifier is in `fespalier-testing`, `references/maestro.md`.
 
-### `fsp size` (since 0.8.0)
+### `fsp size` (since 0.8.1)
 
 Reports the **web build's JavaScript per deferred route**, and checks byte budgets. Run it after
 `flutter build web` (`--release`, or any mode: the table it reads is in all of them).
@@ -249,7 +249,7 @@ fespalier:
   `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`. This repository runs it in the
   `web` job (`just web-chunks`) against `examples/shop`'s budgets.
 
-### `fsp test` (since 0.8.0)
+### `fsp test` (since 0.8.1)
 
 Writes one widget smoke test per route, all in **one file**, `test/routes/routes_test.dart` (`flutter test`
 compiles each test file on its own, so a file per route would cost minutes). It does not run Flutter:
@@ -273,7 +273,7 @@ fespalier:
   (called once per test, so fakes are fresh; it can vary by route) and `Widget app(GoRouter router)` (the app
   around the router, default `MaterialApp.router(routerConfig: router)`). `fsp test` only parses it to see
   which exists. Each takes exactly one required positional parameter. `Override` comes from
-  `package:fespalier/testing.dart` (since 0.8.0).
+  `package:fespalier/testing.dart` (since 0.8.1).
 - **Samples** are `test.samples`, else `maestro.samples`, else none; nothing else of `maestro:` is read, so a
   `maestro:` section `fsp maestro` refuses does not stop `fsp test`.
 - **Skipped, and printed on every run** (never a failure, also in `--check`): a redirect, a route in `skip`,
@@ -297,12 +297,12 @@ fsp new 'products/[id]' --name Product --data --action --loading --error --layou
 fsp new '(account)' --layout        # a group: no page.dart
 fsp new 'kyc/shop/name' --function --name KycShopName
 fsp new 'shop' --not-found
-fsp new 'orders' --nav                # nav.dart: how the folder shows in the menus (since 0.8.0)
+fsp new 'orders' --nav                # nav.dart: how the folder shows in the menus (since 0.8.1)
 fsp new 'docs/[...rest]'            # $$rest; 'docs/[[...rest]]' is $$$rest
 ```
 
 Flags: `--name`, `--function`, `--data`, `--action` (`action.dart`, since 0.5.0),
-`--loading`, `--error`, `--layout`, `--not-found`, `--guard`, `--observe` (`observe.dart`, since 0.8.0), `--transition`, `--no-page`. A `(group)` target gets no
+`--loading`, `--error`, `--layout`, `--not-found`, `--guard`, `--observe` (`observe.dart`, since 0.8.1), `--transition`, `--no-page`. A `(group)` target gets no
 `page.dart`, and with nothing left to write it fails with `nothing to create`.
 `--name` is the class-name stem (default: from the path, `ProductsId`), and with
 `--function` the `routeName` (UpperCamelCase). **Every new segment is a
@@ -315,7 +315,7 @@ After `fsp new '(account)' --layout`, `gen` warns `folder has no page.dart and
 no routes below it; skipped` until a route exists inside the group. That is
 expected.
 
-### `fsp telemetry` (since 0.8.0)
+### `fsp telemetry` (since 0.8.1)
 
 Starts a local stack that receives fespalier's telemetry and shows it in four dashboards; it needs
 Docker with Compose 2.20 or later and a running daemon, and **no project**: run it anywhere. It
@@ -332,13 +332,15 @@ dashboards, the app's endpoint (`FespalierOtel.endpoint()`) and the traps are in
 
 ## Installing `fsp`
 
-| Way                                                                                      | Notes                                                                                                        |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh \| sh` | Linux and macOS. `~/.local/bin`, SHA-256 checked. `FSP_VERSION=v<x.y.z>`, `FSP_INSTALL_DIR`, `FSP_BASE_URL`  |
-| `irm https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.ps1 \| iex`      | Windows. `%LOCALAPPDATA%\fespalier\bin`; same three variables, set as `$env:...`                             |
-| `cargo install --git https://github.com/vaam-apps/fespalier --tag v<x.y.z> fespalier`    | Any platform with Rust                                                                                       |
-| `brew install vaam-apps/tap/fsp`, `scoop bucket add vaam-apps ... && scoop install fsp`  | Only **once the maintainers have set up the tap and bucket** (README, "Releasing"): do not assume they exist |
-| `dart run fespalier <command>`                                                           | Installs nothing; see below                                                                                  |
+| Way                                                                                         | Notes                                                                                                                                              |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh \| sh`    | Linux and macOS. `~/.local/bin`, SHA-256 checked. `FSP_VERSION=v<x.y.z>`, `FSP_INSTALL_DIR`, `FSP_BASE_URL`                                        |
+| `irm https://raw.githubusercontent.com/fespalier/fespalier/main/install.ps1 \| iex`         | Windows. `%LOCALAPPDATA%\fespalier\bin`; same three variables, set as `$env:...`                                                                   |
+| `cargo install --git https://github.com/fespalier/fespalier --tag v<x.y.z> fespalier`       | Any platform with Rust                                                                                                                             |
+| `scoop bucket add fespalier https://github.com/fespalier/scoop-bucket && scoop install fsp` | Windows. The latest release, once it has pushed to the bucket (README, "Releasing")                                                                |
+| `scoop install https://github.com/fespalier/fespalier/releases/latest/download/fsp.json`    | Windows, from the release's own manifest: no bucket needed                                                                                         |
+| `brew tap fespalier/tap && brew install fsp` (or `brew install fespalier/tap/fsp`)          | macOS and Linux. The latest release, once it has pushed to the tap. `brew install ./fsp.rb` or a URL is refused: use the install script until then |
+| `dart run fespalier <command>`                                                              | Installs nothing; see below                                                                                                                        |
 
 ### `dart run fespalier`
 
@@ -383,16 +385,16 @@ fespalier:
   file_style: snake
   meta: optional
   semantics_ids: false      # since 0.7.0
-  scroll_restoration: false # since 0.8.0
-  telemetry: false          # since 0.8.0
-  main: auto                # since 0.8.0; `generated` | `manual`
+  scroll_restoration: false # since 0.8.1
+  telemetry: false          # since 0.8.1
+  main: auto                # since 0.8.1; `generated` | `manual`
   # meta_unique: [code]
   # output_manifest: lib/app.routes.g.dart
   # links: {domains: [shop.example.com]}   # see `fsp links` above
   lints: {unknown_path: warning}   # since 0.7.0; `error` | `off`
   # maestro: {url: http://localhost:8080}  # see `fsp maestro` above
-  # size: {main: 3 MB, routes: {/checkout: 8 KB}}  # since 0.8.0; see `fsp size` above
-  # test: {timeout: 30000}                # since 0.8.0; see `fsp test` above
+  # size: {main: 3 MB, routes: {/checkout: 8 KB}}  # since 0.8.1; see `fsp size` above
+  # test: {timeout: 30000}                # since 0.8.1; see `fsp test` above
 ```
 
 | Key                  | Values                                           | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -413,12 +415,12 @@ fespalier:
 | `links`              | a map (keys above)                               | What `fsp links` writes; only that command checks the values (since 0.5.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `lints`              | a map: `unknown_path: off` / `warning` / `error` | Since 0.7.0. How a **string path that matches no route** is reported (default `warning`; `off` skips the check). `error` makes `check` exit 1 with ``1 error(s) in string paths (`lints: unknown_path: error`)`` and `gen` and `watch` too, after writing the output (`...; lib/app.g.dart is up to date`). A bad value: ``invalid pubspec.yaml: fespalier.lints.unknown_path: unknown variant `warn`, expected one of `off`, `warning`, `error` ``; a key of its own: ``invalid pubspec.yaml: fespalier.lints: unknown field `nope`, expected `unknown_path` ``. See `fespalier-routing` |
 | `semantics_ids`      | `true` / `false`                                 | Since 0.7.0. `true` wraps each page in `Semantics(identifier: 'route:<pattern>')` and makes `mount()` call `ensureWebSemantics()`; `fsp maestro` needs it. See `fsp maestro` above                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `telemetry`          | `true` / `false`                                 | Since 0.8.0. `true` makes `app.g.dart` pass a `const TelemetrySite` to each guard, data provider, action and deferred page and follow the router (`telemetryAttach`); nothing is reported until the app installs a sink. A value that is not a bool is an error. See `fespalier-observability`                                                                                                                                                                                                                                                                                            |
-| `scroll_restoration` | `true` / `false`                                 | Since 0.8.0. `true` wraps each page's view in `RouteScrollMemory`, a `PageStorage` per history entry that the browser's back and forward hand back: a scrollable under a `PageStorageKey` returns to its offset, a `go` starts at the top. Off, `app.g.dart` is unchanged. See `fespalier-layouts`. Not a bool: `invalid pubspec.yaml: fespalier.scroll_restoration: invalid type: string "sometimes", expected a boolean at line 3 column 23`                                                                                                                                            |
+| `telemetry`          | `true` / `false`                                 | Since 0.8.1. `true` makes `app.g.dart` pass a `const TelemetrySite` to each guard, data provider, action and deferred page and follow the router (`telemetryAttach`); nothing is reported until the app installs a sink. A value that is not a bool is an error. See `fespalier-observability`                                                                                                                                                                                                                                                                                            |
+| `scroll_restoration` | `true` / `false`                                 | Since 0.8.1. `true` wraps each page's view in `RouteScrollMemory`, a `PageStorage` per history entry that the browser's back and forward hand back: a scrollable under a `PageStorageKey` returns to its offset, a `go` starts at the top. Off, `app.g.dart` is unchanged. See `fespalier-layouts`. Not a bool: `invalid pubspec.yaml: fespalier.scroll_restoration: invalid type: string "sometimes", expected a boolean at line 3 column 23`                                                                                                                                            |
 | `maestro`            | a map (keys above)                               | What `fsp maestro` writes flows for; only that command checks the values (since 0.7.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `main`               | `auto` / `generated` / `manual`                  | Since 0.8.0. Whether `fsp` writes `lib/app.main.g.dart` (`AppMain`). `auto` (default): when the app root has an `app.dart`, `startup.dart` or `splash.dart`; `generated`: always; `manual`: never, and those three are not read (one warning each). Another value: ``unknown variant `always`, expected one of `auto`, `generated`, `manual` ``. See [`app-main.md`](app-main.md)                                                                                                                                                                                                         |
-| `size`               | a map (keys above)                               | What `fsp size` checks the web build against; only that command checks the values (since 0.8.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `test`               | a map (keys above)                               | What `fsp test` writes a smoke test file for; only that command checks the values (since 0.8.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `main`               | `auto` / `generated` / `manual`                  | Since 0.8.1. Whether `fsp` writes `lib/app.main.g.dart` (`AppMain`). `auto` (default): when the app root has an `app.dart`, `startup.dart` or `splash.dart`; `generated`: always; `manual`: never, and those three are not read (one warning each). Another value: ``unknown variant `always`, expected one of `auto`, `generated`, `manual` ``. See [`app-main.md`](app-main.md)                                                                                                                                                                                                         |
+| `size`               | a map (keys above)                               | What `fsp size` checks the web build against; only that command checks the values (since 0.8.1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `test`               | a map (keys above)                               | What `fsp test` writes a smoke test file for; only that command checks the values (since 0.8.1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 There is no key for `extraCodec`: `lib/app/extra_codec.dart` is found by name. Nor for the generated `main()`'s path:
 it is `output` with `.main.g.dart` in place of `.g.dart` (`lib/app.main.g.dart`), and `output_manifest` may not be it.
@@ -428,7 +430,7 @@ it is `output` with `.main.g.dart` in place of `.g.dart` (`lib/app.main.g.dart`)
 Committed-output mode (the default), either with `fsp` installed or without:
 
 ```yaml
-- run: curl -fsSL https://raw.githubusercontent.com/vaam-apps/fespalier/main/install.sh | sh
+- run: curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 - run: fsp check
 # or, with nothing to install, after `flutter pub get`:

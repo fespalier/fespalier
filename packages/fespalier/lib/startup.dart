@@ -1,4 +1,4 @@
-/// What a generated `lib/app.main.g.dart` uses, and what a startup.dart imports (since 0.8.0).
+/// What a generated `lib/app.main.g.dart` uses, and what a startup.dart imports (since 0.8.1).
 ///
 /// A separate library, so `package:fespalier/fespalier.dart` gains no names an app might
 /// already have. [StartupGate] is what `AppMain.root()` returns; `Override`, `ProviderObserver`

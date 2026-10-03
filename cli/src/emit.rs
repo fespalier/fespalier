@@ -45,7 +45,7 @@ struct FileCx {
     matchers: Vec<MatcherCx>,
     params_fns: Vec<ParamsFnCx>,
     providers: Vec<ProviderCx>,
-    /// The optimistic layer of each data.dart an `optimistic()` patches (since 0.8.0).
+    /// The optimistic layer of each data.dart an `optimistic()` patches (since 0.8.1).
     layers: Vec<LayerCx>,
     /// The route manifest, unless `output_manifest:` moves it to its own library.
     manifest: Option<ManifestCx>,
@@ -74,7 +74,7 @@ struct FileCx {
     /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
     /// (`_keep`) that tells a parameter left out from one passed as `null`.
     copy_with: bool,
-    /// `AppMenu`, when some folder has a nav.dart (since 0.8.0).
+    /// `AppMenu`, when some folder has a nav.dart (since 0.8.1).
     menu: Option<MenuCx>,
     /// Some page has observe.dart hooks: `AppRoutes.attach` runs them, through `_observeAt`.
     observe: bool,
@@ -324,7 +324,7 @@ struct ViewDataCx {
     /// The optimistic layer an `optimistic()` patches this data through (`_optimistic3(v.id)`),
     /// for the `DataView` to apply.
     optimistic: Option<String>,
-    /// The data has a `freshness` or a `dataCache` (since 0.8.0): a failed reload keeps the
+    /// The data has a `freshness` or a `dataCache` (since 0.8.1): a failed reload keeps the
     /// page on its value.
     keep_data_on_error: bool,
 }
@@ -379,12 +379,12 @@ struct ActionCx {
     site_route: String,
     /// The parameters of what the provider invalidates after a success: `int id`, or nothing.
     key_param: String,
-    /// `_i5.validate`: the `validate()` beside the action, run before it (since 0.8.0).
+    /// `_i5.validate`: the `validate()` beside the action, run before it (since 0.8.1).
     validate: Option<String>,
     /// `() => _optimistic3.patch(_i5.optimistic)`: binds the `optimistic()` beside the action to
-    /// the layer it patches (since 0.8.0).
+    /// the layer it patches (since 0.8.1).
     optimistic: Option<String>,
-    /// The `useForm` hook, when the action has a `form()` (since 0.8.0).
+    /// The `useForm` hook, when the action has a `form()` (since 0.8.1).
     form: Option<FormCx>,
     /// The providers a success invalidates.
     invalidates: String,
@@ -546,9 +546,9 @@ struct ProviderCx {
     /// What the family is keyed by, as `traceData` is told: the key's parameter, `k` for a
     /// record of keys, or `null` with no keys.
     key_expr: String,
-    /// `_i13.freshness` (since 0.8.0): the provider wraps its value in `freshData`.
+    /// `_i13.freshness` (since 0.8.1): the provider wraps its value in `freshData`.
     freshness: Option<String>,
-    /// The data.dart's `dataCache` (since 0.8.0): the provider is `cachedData[Family]`.
+    /// The data.dart's `dataCache` (since 0.8.1): the provider is `cachedData[Family]`.
     cache: Option<CacheCx>,
     /// The data.dart and the pattern of its route or section, as Dart string literals: what
     /// `telemetry:` names.
@@ -1999,7 +1999,7 @@ fn layers(app: &App) -> Vec<LayerCx> {
                 name: layer_name(t),
                 def,
                 doc: format!(
-                    "What reads of {} show while a write that patches it is in flight ({}). Since 0.8.0.",
+                    "What reads of {} show while a write that patches it is in flight ({}). Since 0.8.1.",
                     rel(target, Kind::Data),
                     by.join(", ")
                 ),
@@ -2100,7 +2100,7 @@ fn provider_expr(id: usize, d: &Data) -> String {
 }
 
 /// A route whose data has a `freshness` or a `dataCache` keeps its page on the value it had when
-/// a reload fails (since 0.8.0).
+/// a reload fails (since 0.8.1).
 fn keeps_data_on_error(d: &Data) -> bool {
     d.freshness.is_some() || d.cache
 }

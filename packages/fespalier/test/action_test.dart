@@ -725,7 +725,7 @@ void main() {
     });
   });
 
-  group('validate and optimistic (since 0.8.0)', () {
+  group('validate and optimistic (since 0.8.1)', () {
     test(
       'validate refuses a write before it starts, with no loading state',
       () {

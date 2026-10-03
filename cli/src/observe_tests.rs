@@ -1,4 +1,4 @@
-//! `observe.dart` (since 0.8.0): `onEnter`, `onLeave` and `onFocus` for every page at and below
+//! `observe.dart` (since 0.8.1): `onEnter`, `onLeave` and `onFocus` for every page at and below
 //! a folder. The generator binds their parameters like a guard's, hands the runtime the hooks of
 //! each page in `RouteMatcher.observe`, and attaches them in `AppRoutes.attach`.
 

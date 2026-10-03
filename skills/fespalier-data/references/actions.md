@@ -129,7 +129,7 @@ class RefundPage extends HookConsumerWidget {
 ```
 
 - **Which functions are actions.** Every public top-level function whose first parameter
-  is a positional `Ref`, **except the companions** (since 0.8.0): `form`, `validate` and
+  is a positional `Ref`, **except the companions** (since 0.8.1): `form`, `validate` and
   `optimistic` beside `action`, or `approveForm`, `approveValidate` and `approveOptimistic`
   beside `approve`, are the form, the validation and the optimistic patch of that action
   ([`forms-and-optimistic.md`](forms-and-optimistic.md)), never actions, even with a `Ref` (that is
@@ -156,7 +156,7 @@ instance member would have to name `Refund`, which the generated file can't):
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
 | `RefundRoute.action(1)`                    | The provider (a `NotifierProvider` family), keyed by the keys. State: `AsyncValue<Refund?>`                           |
 | `RefundRoute.submit(ref, id: 1, input: x)` | Runs it once: the `Future<Refund>`, **throws** what the action threw                                                  |
-| `RefundRoute.useAction(ref, id: 1)`        | For `build`: a handle with `state`, `isPending`, `hasError`, `fieldErrors` (since 0.8.0), `reset()` and `call(input)` |
+| `RefundRoute.useAction(ref, id: 1)`        | For `build`: a handle with `state`, `isPending`, `hasError`, `fieldErrors` (since 0.8.1), `reset()` and `call(input)` |
 
 A function not called `action` names its members after itself: `approve` gives
 `approveAction(keys)`, `approve(ref, ...)` and `useApprove(ref, ...)`. A section's
@@ -263,7 +263,7 @@ timer is needed (`fespalier-testing`).
   inside the action.
 - **A `StateError` from an action.** It names the provider it can't invalidate;
   it should not happen with generated code, so report it.
-- **`submit` throws `FieldErrors` without calling the server** (since 0.8.0) when a
+- **`submit` throws `FieldErrors` without calling the server** (since 0.8.1) when a
   `validate()` beside the action refuses the input; `handle.call` returns `null` and the
   `FieldErrors` is in `state` and `handle.fieldErrors`.
 - **Double submissions.** Not prevented by the library: disable the button while

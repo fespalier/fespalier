@@ -15,7 +15,7 @@ import packaging  # noqa: E402
 
 # A distinct fake SHA-256 per archive, so a swapped one shows up.
 FAKE = {t: f"{i:x}".rjust(64, "0") for i, t in enumerate(packaging.ALL_ARCHIVES, start=10)}
-BASE = "https://github.com/vaam-apps/fespalier/releases/download/v1.2.3"
+BASE = "https://github.com/fespalier/fespalier/releases/download/v1.2.3"
 
 
 class Formula(unittest.TestCase):
@@ -58,7 +58,7 @@ class Scoop(unittest.TestCase):
         auto = m["autoupdate"]["architecture"]["64bit"]
         self.assertEqual(
             auto["url"],
-            "https://github.com/vaam-apps/fespalier/releases/download/v$version/fsp-x86_64-pc-windows-msvc.zip",
+            "https://github.com/fespalier/fespalier/releases/download/v$version/fsp-x86_64-pc-windows-msvc.zip",
         )
 
 

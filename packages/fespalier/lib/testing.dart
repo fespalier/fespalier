@@ -24,7 +24,7 @@ import 'src/deferred.dart';
 import 'src/telemetry.dart';
 
 /// Riverpod's `Override`, the type of the list `overrides` and `pumpRouter(overrides:)` take
-/// (since 0.8.0): the setup file of `fsp test` returns a `List<Override>` and imports it from
+/// (since 0.8.1): the setup file of `fsp test` returns a `List<Override>` and imports it from
 /// here.
 export 'package:hooks_riverpod/misc.dart' show Override;
 
@@ -66,7 +66,7 @@ void _dispose(GoRouter router) {
 /// own calls `await tester.runAsync(AppRoutes.loadDeferred)` before it. An app without
 /// deferred routes is booted exactly as before.
 ///
-/// [app] builds the widget around the router (since 0.8.0); the default is
+/// [app] builds the widget around the router (since 0.8.1); the default is
 /// `MaterialApp.router(routerConfig: router)`. Pass the app's own, `app: AppMain.app` (the
 /// generated `lib/app.main.g.dart`, whose `app` builds `lib/app/app.dart`), and a page is tested
 /// with the theme, the localizations and the `builder:` it has when it runs. `startup()` does
@@ -126,7 +126,7 @@ String currentLocation(WidgetTester tester) {
   return router.routeInformationProvider.value.uri.toString();
 }
 
-/// A [FespalierTelemetry] that keeps what it is told, as lines a test can compare (since 0.8.0).
+/// A [FespalierTelemetry] that keeps what it is told, as lines a test can compare (since 0.8.1).
 ///
 /// Install it with `FespalierTelemetry.install(recording)` in `setUp` and
 /// `FespalierTelemetry.install(null)` in `tearDown`. Each operation has a number, `#3`, which
@@ -205,13 +205,13 @@ final class RecordingTelemetry extends FespalierTelemetry {
 
 /// The page of the route whose pattern is [pattern] (`/products/:id`), found by the
 /// `Semantics(identifier: 'route:<pattern>')` that `semantics_ids: true` gives it. Needs no
-/// semantics tree; a page off screen (underneath another) is skipped (since 0.8.0).
+/// semantics tree; a page off screen (underneath another) is skipped (since 0.8.1).
 Finder findRoutePage(String pattern) => find.byWidgetPredicate(
   (w) => w is Semantics && w.properties.identifier == 'route:$pattern',
   description: 'the page of $pattern',
 );
 
-/// What `fsp test` runs for each route (since 0.8.0): boots [router] with [pumpRouter] (and
+/// What `fsp test` runs for each route (since 0.8.1): boots [router] with [pumpRouter] (and
 /// [overrides], [app]), pumps on the fake clock until [page] (by default
 /// `findRoutePage(pattern)`) is on screen, expects exactly one, then takes the tree down and
 /// runs the clock [timeout] on so a fake's pending delay doesn't fail the test.

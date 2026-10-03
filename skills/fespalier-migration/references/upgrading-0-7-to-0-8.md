@@ -1,7 +1,9 @@
 # Upgrading from fespalier 0.7 to 0.8
 
-As of v0.8.0 (the generated `main()`; see `fespalier` `references/app-main.md`). The package
+As of v0.8.1 (the generated `main()`; see `fespalier` `references/app-main.md`). The package
 and `fsp` move together: bump both, regenerate, commit.
+
+0.8.0 was tagged but never published (its binaries were built before the last change); use 0.8.1.
 
 ## What changes without you doing anything
 
@@ -9,7 +11,7 @@ No behaviour. An app with no `app.dart`, `startup.dart` or `splash.dart` at the 
 folder gets **no new file** (`lib/app.main.g.dart` is written only when one of them exists, or with
 `main: generated`). Its `lib/app.g.dart` still changes in the DevTools support only: a data route's
 view watches through `watchData(...)` and a `_devToolsProviders()` map is added (item 3 of the list
-in `fespalier-migration`). Every other new feature of 0.8.0 is opt-in.
+in `fespalier-migration`). Every other new feature of 0.8.1 is opt-in.
 
 ## The one thing that can break: a root file that is something else
 
@@ -32,7 +34,7 @@ warning now (`app.dart is only read at the root of the app folder, so this one i
 Optional. `fsp init` (or `main: generated`) writes `lib/app/app.dart`; the printed `main.dart` is
 `Future<void> main() => AppMain.run();`.
 
-| Today, in `lib/main.dart`                                                 | 0.8.0                                                                                        |
+| Today, in `lib/main.dart`                                                 | 0.8.1                                                                                        |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `MaterialApp.router(title:, theme:, builder:, routerConfig: _router)`     | the same widget in `lib/app/app.dart`, with `routerConfig: router`                           |
 | `final _router = AppRoutes.router(restorationScopeId: …, observers: …)`   | `GoRouter router() => AppRoutes.router(…)` in app.dart, or `routerObservers` in startup.dart |
@@ -47,11 +49,11 @@ Two changes of behaviour to expect when you do: the router is built **after** `s
 the top of `main.dart` as a `final`), and an async `startup()` shows `splash.dart` (or keeps the native
 splash) instead of a frame you built by hand.
 
-Tests: `pumpRouter(tester, router, app: AppMain.app)` (since 0.8.0) boots a page in `app.dart`'s
+Tests: `pumpRouter(tester, router, app: AppMain.app)` (since 0.8.1) boots a page in `app.dart`'s
 theme and localizations; `startup()` does not run there, so pass its overrides as `overrides`.
 Pump `AppMain.root()` to boot everything.
 
-## Also new in 0.8.0
+## Also new in 0.8.1
 
 - `fsp gen` names every file it writes: `✓ 12 routes → lib/app.g.dart, lib/app.main.g.dart`.
 - `fsp init` writes `app.dart` (not with `main: manual`).

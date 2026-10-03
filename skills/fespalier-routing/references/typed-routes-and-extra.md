@@ -61,15 +61,15 @@ with a code frame in the file it is in. The messages, and what each means, are i
   `AppRoutes.match`/`dataAt`/`preload`, a path in a variable or built with `+`.
 - **Matching** is `AppRoutes.match`'s: segments, catch-alls, case by the route's own setting,
   every localized spelling, decoded `%` escapes. `redirect.dart` is a route, `not_found.dart`
-  is not. The query and fragment are ignored. **Since 0.8.0 segment types are checked** too:
+  is not. The query and fragment are ignored. **Since 0.8.1 segment types are checked** too:
   `` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found [unknown_path] ``.
   The first route that fits decides (a later one is never tried, as in `AppRoutes.match`).
   `int`, `double`, `num`, `bool`, `DateTime` (its start only), enums (the message lists the
   values and suggests the nearest) and each part of a typed catch-all are checked; a part
   with whitespace or non-ASCII is not judged. An app with `unknown_path: error` can fail on
-  0.8.0 for a path that always showed not-found.
+  0.8.1 for a path that always showed not-found.
 - **Interpolation:** only what comes before the first `$` is checked, up to the last complete
-  segment: `'/products/$id'` is fine, `'/prodcts/$id'` is flagged (and, since 0.8.0,
+  segment: `'/products/$id'` is fine, `'/prodcts/$id'` is flagged (and, since 0.8.1,
   `'/products/abc/$tab'`, by type), `'/products/$id/revews'` is
   **not** (a value can hold a `/`). A relative path, a URL and one that starts with `$` are skipped.
 - **Files:** every `.dart` file under `lib/` except `*.g.dart`, the generated outputs and

@@ -21,7 +21,7 @@ Widget _withHeroes(Heroes? heroes, Widget child) =>
 /// page keeps in a `RestorationMixin` survive state restoration. A `Page` you
 /// build yourself should pass `restorationId: key.value` too.
 ///
-/// The pages (every one but [dialog] and [sheet]) take `heroes:` (since 0.8.0): how the
+/// The pages (every one but [dialog] and [sheet]) take `heroes:` (since 0.8.1): how the
 /// `RouteHero`s below them fly, see [Heroes]. A `Page` of your own wraps its child in a
 /// [RouteHeroScope] to give the same. Flutter flies heroes between page routes only, so a
 /// [dialog] or a [sheet] has no `heroes:`: nothing flies into them.

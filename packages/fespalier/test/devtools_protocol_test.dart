@@ -259,7 +259,7 @@ void main() {
       expect(decoded.listeners, 3);
     });
 
-    test('a data record of a runtime before 0.8.0 is a built one, with no '
+    test('a data record of a runtime before 0.8.1 is a built one, with no '
         'listeners', () {
       final record = DataRecord.fromJson({
         'id': 1,

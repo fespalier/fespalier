@@ -3,9 +3,9 @@ description: OpenTelemetry spans for fespalier's navigations, guards, data loads
 version: 0.8.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
-homepage: https://github.com/vaam-apps/fespalier
-repository: https://github.com/vaam-apps/fespalier/tree/main/packages/fespalier_otel
-issue_tracker: https://github.com/vaam-apps/fespalier/issues
+homepage: https://github.com/fespalier/fespalier
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_otel
+issue_tracker: https://github.com/fespalier/fespalier/issues
 
 environment:
   sdk: ^3.8.0
@@ -18,7 +18,7 @@ dependencies:
   # one package: a path dependency would resolve "at <sha>" and conflict with the app's tag.
   fespalier:
     git:
-      url: https://github.com/vaam-apps/fespalier
+      url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.8.0 # x-release-please-version
   # The SDK otel_zone starts, with otel_zone's own lower bound: the 1.1 beta line is the current

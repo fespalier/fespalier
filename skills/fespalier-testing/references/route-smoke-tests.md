@@ -1,7 +1,7 @@
 # Route smoke tests: `fsp test`, `setup.dart` and `smokeTestRoute`
 
-As of 0.8.0 (`cli/src/smoke.rs`, `cli/src/samples.rs`, `packages/fespalier/lib/testing.dart`). Everything here is
-new in 0.8.0: an app on an older fespalier has no `fsp test`, no `smokeTestRoute` and no `pumpRouter(app:)`.
+As of 0.8.1 (`cli/src/smoke.rs`, `cli/src/samples.rs`, `packages/fespalier/lib/testing.dart`). Everything here is
+new in 0.8.1: an app on an older fespalier has no `fsp test`, no `smokeTestRoute` and no `pumpRouter(app:)`.
 
 `fsp test` writes **one file**, `test/routes/routes_test.dart`, with a widget test per route. It proves what a
 Maestro flow proves (the route exists, its guards let it through, its data loaded, its page was built) in

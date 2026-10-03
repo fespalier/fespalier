@@ -1,6 +1,6 @@
 ---
 name: fespalier-observability
-description: "Observing a fespalier app (since 0.8.0) — observe.dart (onEnter, onFocus and onLeave hooks for analytics, logging and titles: which pages they run for, in which order, when they fire after the frame, parked tabs, the Ref a hook gets, errors), the telemetry config key and FespalierTelemetry, the fespalier_otel adapter on otel_zone and OpenTelemetry (install, wiring, FespalierOtel.endpoint, the web limitation of runGuarded), the telemetry conventions (contract version 1: every span, event and attribute name), RecordingTelemetry for tests, and what telemetry costs. Load before adding an observe.dart, turning on telemetry, wiring otel_zone, building a dashboard on the spans, or when a hook never fires, fires twice or throws."
+description: "Observing a fespalier app (since 0.8.1) — observe.dart (onEnter, onFocus and onLeave hooks for analytics, logging and titles: which pages they run for, in which order, when they fire after the frame, parked tabs, the Ref a hook gets, errors), the telemetry config key and FespalierTelemetry, the fespalier_otel adapter on otel_zone and OpenTelemetry (install, wiring, FespalierOtel.endpoint, the web limitation of runGuarded), the telemetry conventions (contract version 1: every span, event and attribute name), RecordingTelemetry for tests, and what telemetry costs. Load before adding an observe.dart, turning on telemetry, wiring otel_zone, building a dashboard on the spans, or when a hook never fires, fires twice or throws."
 ---
 
 # fespalier-observability
@@ -9,9 +9,9 @@ description: "Observing a fespalier app (since 0.8.0) — observe.dart (onEnter,
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
-> [Versions](https://github.com/vaam-apps/fespalier/blob/main/skills/README.md#versions).
+> [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
-Two features, both **since 0.8.0** and both opt-in: **route lifecycle hooks** (`observe.dart`) and
+Two features, both **since 0.8.1** and both opt-in: **route lifecycle hooks** (`observe.dart`) and
 **telemetry** (what fespalier reports to a `FespalierTelemetry` sink, and `fespalier_otel`, the sink that
 makes OpenTelemetry spans). They share one watch on the router, so a page event means the same thing in
 both. An app that uses neither generates the same `app.g.dart` as before and ships none of it.
@@ -43,7 +43,7 @@ tabs, pushes, redirects), the `Ref` a hook gets, errors, and the traps.
 ```yaml
 # pubspec.yaml
 fespalier:
-  telemetry: true # since 0.8.0; run `fsp gen` after
+  telemetry: true # since 0.8.1; run `fsp gen` after
 ```
 
 Then, in `main.dart`, **before the router is built**: `FespalierTelemetry.install(sink)`. With
@@ -77,7 +77,7 @@ or removing is version 2.
 - **`otel_zone` forces go_router 17** in an app that uses it (`otel_go_router` caps it); fespalier accepts
   17 and 18.
 - **`OtelZone.runGuarded` leaves a Flutter web app blank.** Run the body as it is on the web
-  (`kIsWeb ? body() : observability.runGuarded(body)`). Since 0.8.0, known limitation.
+  (`kIsWeb ? body() : observability.runGuarded(body)`). Since 0.8.1, known limitation.
 
 ## Where the code is
 

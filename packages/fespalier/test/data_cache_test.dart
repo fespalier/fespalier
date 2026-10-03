@@ -1,4 +1,4 @@
-// The data cache (since 0.8.0): `cachedData` saves a data() value through Riverpod's
+// The data cache (since 0.8.1): `cachedData` saves a data() value through Riverpod's
 // experimental `persist`, behind a guard. This file is the tripwire for that API: a
 // Riverpod minor that changes it fails here, and `lib/src/data_cache.dart` is the one file to fix.
 import 'dart:async';

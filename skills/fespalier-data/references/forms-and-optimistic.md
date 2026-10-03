@@ -1,6 +1,6 @@
 # Forms and optimistic updates on `action.dart`
 
-Since 0.8.0 (`cli/src/forms.rs` for the names, `packages/fespalier/lib/src/action_form.dart` and
+Since 0.8.1 (`cli/src/forms.rs` for the names, `packages/fespalier/lib/src/action_form.dart` and
 `optimistic.dart` for the runtime). There is **no `form.dart`**: `form()`, `validate()` and
 `optimistic()` are _companion functions_ in the `action.dart` of the action they belong to.
 An app on 0.7.0 or earlier has none of this; one that writes no companion generates exactly what

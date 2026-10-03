@@ -17,7 +17,7 @@ import 'optimistic.dart' show OptimisticLayer;
 /// `loading` shows whenever the provider is loading.
 ///
 /// A route whose data.dart has a `freshness` or a `dataCache` sets [keepDataOnError] (since
-/// 0.8.0): a reload that fails (a stale value loaded again, a start offline) keeps the page on
+/// 0.8.1): a reload that fails (a stale value loaded again, a start offline) keeps the page on
 /// its value, and `error` only shows when there is nothing to show. A value restored from the
 /// cache (`isFromCache`) shows while the fresh one loads, whatever [keepPrevious] says.
 ///
@@ -61,7 +61,7 @@ class DataView<T> extends ConsumerWidget {
   final bool keepPrevious;
 
   /// Whether a failed reload keeps showing the value it had (set for a route whose data.dart
-  /// has a `freshness` or a `dataCache`, since 0.8.0): [error] then only shows when there is
+  /// has a `freshness` or a `dataCache`, since 0.8.1): [error] then only shows when there is
   /// no value.
   final bool keepDataOnError;
 
@@ -72,7 +72,7 @@ class DataView<T> extends ConsumerWidget {
 
   /// What the page shows of the value while a write that patches it is in flight: the
   /// `optimistic()` of an action, through the layer the generated file watches here (since
-  /// 0.8.0). Null when no action patches this data.
+  /// 0.8.1). Null when no action patches this data.
   final OptimisticLayer<T> Function(WidgetRef ref)? optimistic;
 
   @override
@@ -88,7 +88,7 @@ class DataView<T> extends ConsumerWidget {
     final keep = keepPrevious || (layer?.settling(value.value) ?? false);
     return value.when(
       // A value Riverpod's offline persistence restored (isFromCache) is shown while the
-      // fresh one loads, whatever keep_previous says (since 0.8.0).
+      // fresh one loads, whatever keep_previous says (since 0.8.1).
       skipLoadingOnReload: keep || value.isFromCache,
       skipLoadingOnRefresh: keep,
       skipError: keepDataOnError,

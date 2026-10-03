@@ -9,7 +9,7 @@ description: "Moving to fespalier and between its versions — upgrading an app 
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
-> [Versions](https://github.com/vaam-apps/fespalier/blob/main/skills/README.md#versions).
+> [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
 ## The one rule of upgrading
 
@@ -32,13 +32,13 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 ## 0.7 to 0.8: what to check
 
-Bump to `v0.8.0`, regenerate, and look at these:
+Bump to `v0.8.1`, regenerate, and look at these:
 
 1. **`unknown_path` checks segment types.** The string-path lint (`lints: unknown_path`)
    now also reports a literal path that reaches a route whose segment cannot parse it:
    `` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found
 [unknown_path] `` (on one line). It is the same id and level, so an app with
-   `unknown_path: error` that passed on 0.7.0 can fail on 0.8.0, for a path that always
+   `unknown_path: error` that passed on 0.7.0 can fail on 0.8.1, for a path that always
    showed not-found. Fix the literal, use the typed route, or `// fsp:ignore unknown_path`.
    Messages and what is checked: `fespalier-troubleshooting`, "String paths"
    in its diagnostics reference.

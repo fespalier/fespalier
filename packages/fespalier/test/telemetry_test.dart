@@ -1,4 +1,4 @@
-// Telemetry (since 0.8.0): what `FespalierTelemetry` is told while a hand-built router (with the
+// Telemetry (since 0.8.1): what `FespalierTelemetry` is told while a hand-built router (with the
 // call sites the generated file would pass) navigates, guards, loads data, runs an action and
 // loads a deferred page. A `RecordingTelemetry` keeps it as lines.
 import 'dart:async';

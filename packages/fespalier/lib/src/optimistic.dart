@@ -18,7 +18,7 @@ final class _Entry<T> {
   bool holdsOver(Object? value) => !committed || identical(basis, value);
 }
 
-/// The patches of the writes in flight over one `data.dart` value (since 0.8.0): what the page
+/// The patches of the writes in flight over one `data.dart` value (since 0.8.1): what the page
 /// shows of it while an action with an `optimistic()` runs.
 ///
 /// A write's patch applies from the moment it starts. A failure removes it, so the page shows the

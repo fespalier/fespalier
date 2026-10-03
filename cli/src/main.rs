@@ -26,6 +26,7 @@ mod segtype;
 mod session;
 mod size;
 mod smoke;
+mod telemetry_stack;
 mod templates;
 
 use std::path::{Path, PathBuf};
@@ -112,13 +113,21 @@ enum Cmd {
     Init,
     /// Scaffold a route: `fsp new products/[id] --data --loading --error`
     New(scaffold::NewCmd),
+    /// Start a local OpenTelemetry stack with fespalier's dashboards: a collector, OpenObserve, and Grafana with --grafana (needs Docker)
+    Telemetry(telemetry_stack::TelemetryCmd),
 }
 
 fn main() {
     let cli = Cli::parse();
     let result = (|| {
+        // The stack is per user, not per app: it needs no project.
+        if let Cmd::Telemetry(cmd) = &cli.cmd {
+            let project = find_project(cli.project.clone()).ok();
+            return telemetry_stack::run(cmd, project.as_deref());
+        }
         let project = find_project(cli.project)?;
         match cli.cmd {
+            Cmd::Telemetry(_) => unreachable!("handled before the project is looked up"),
             Cmd::Gen { format, json } => {
                 let mut cfg = Config::load(&project)?;
                 cfg.format |= format;

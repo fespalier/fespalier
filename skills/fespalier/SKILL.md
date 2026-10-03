@@ -143,6 +143,7 @@ fsp links [--check]                        # App Links, Universal Links, sitemap
 fsp maestro [--check]                      # Maestro smoke flows, one per route (0.7.0)
 fsp size [--json] [--check]                # the web build's JavaScript per deferred route, and budgets (0.8.0)
 fsp test [--check]                         # a widget smoke test per route, test/routes/routes_test.dart (0.8.0)
+fsp telemetry [--grafana | --lan | --stop | --reset]   # a local OpenTelemetry stack and dashboards, in Docker (0.8.0)
 fsp new 'orders/[id]' --data --loading     # scaffold a route, then gen
 ```
 

@@ -93,6 +93,21 @@ devtools-build:
 devtools:
     scripts/build-devtools-extension.sh --check
 
+# The telemetry stack (cli/templates/telemetry): generated dashboards are fresh, queries use only the telemetry conventions,
+# the JSON has the shape OpenObserve and Grafana need, compose.yaml pins its images, and the importer runs against a fake
+# OpenObserve. `docker compose config` checks the compose file where Compose is installed (CI requires it)
+telemetry:
+    python3 scripts/test_telemetry.py
+
+# Regenerate the OpenObserve and Grafana dashboards, fields.json and the collector's dimensions from scripts/telemetry/dashboards.toml
+telemetry-dashboards:
+    python3 scripts/telemetry/build_dashboards.py
+
+# Run the stack in Docker, send a seeded session and run every panel's query on both backends (needs Docker and about 1.9 GB of
+# images; CI runs it as the `telemetry-smoke` job, `just ci` does not)
+telemetry-smoke:
+    python3 scripts/telemetry/smoke.py
+
 # The Homebrew/Scoop rendering, checksum pinning and release staging tests
 packaging:
     python3 scripts/test_packaging.py
@@ -140,8 +155,8 @@ web-routes:
     scripts/check-web-routes.sh examples/shop
 
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
-# are `just vscode` and `just intellij`, and the web builds are `just web-chunks` (the deferred
-# pages) and `just web-routes` (the Maestro flows).
+# are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
+# `just web-routes` (the Maestro flows), and the stack in Docker is `just telemetry-smoke`.
 #
-# The gate: CI's Rust, Flutter, DevTools, packaging and skills jobs
-ci: lint test deny check-examples flutter devtools packaging skills
+# The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs
+ci: lint test deny check-examples flutter devtools packaging telemetry skills

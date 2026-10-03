@@ -409,6 +409,41 @@ jobs:
       - name: Stage, fetch, attach and publish release assets (fake GitHub API)
         run: python3 scripts/test_release_assets.py
 
+  telemetry:
+    name: Telemetry stack files and dashboards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The generated dashboards are fresh (`just telemetry-dashboards` writes them), every query
+      # uses only the telemetry conventions, compose.yaml pins its images and `docker compose config`
+      # accepts it (the runner has Compose, so a missing one fails here instead of skipping), and
+      # the dashboard importer runs against a fake OpenObserve. Nothing is started.
+      - name: Dashboards fresh, queries on the conventions, importer, compose file
+        env:
+          FSP_REQUIRE_DOCKER: "1"
+        run: python3 scripts/test_telemetry.py
+
+  telemetry-smoke:
+    name: Telemetry stack runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Pulls the pinned images (about 1.9 GB with Grafana), starts the stack, sends a seeded session
+      # through the collector, and runs every dashboard panel's query in OpenObserve and Grafana:
+      # no errors, and the SQL counts equal the PromQL counts equal the seed's. `just telemetry-smoke`.
+      - name: Start the stack, send spans, run every panel's query on both backends
+        run: python3 scripts/telemetry/smoke.py
+
   skills:
     name: Skills match the code
     runs-on: ubuntu-latest

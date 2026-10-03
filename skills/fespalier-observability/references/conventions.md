@@ -51,7 +51,7 @@ enter, focus events     fespalier.route
   action input and result, data values, guard inputs. Exception text is scrubbed by `otel_zone`.
 - **Superseded** navigations never committed: no kind, no route, no `redirected` or `depth`. Leave them
   out of latency panels.
-- **Not emitted** (so a panel that needs one has nothing): a data attempt (Riverpod does not tell a
+- **Not emitted** (so no dashboard panel charts one): a data attempt (Riverpod does not tell a
   provider its retry count), a data source (network or cache), an action rolled back, an action rejected
   by validation.
 - **Metrics**: none. Derive them in the collector with the `spanmetrics` connector, using these

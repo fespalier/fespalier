@@ -3631,6 +3631,8 @@ fsp size                # the web build's JavaScript per deferred route (since 0
 fsp size --check        # CI: non-zero exit when a budget in `size:` is exceeded
 fsp test                # a widget smoke test per route, in test/routes/ (since 0.8.0)
 fsp test --check        # CI: non-zero exit when that file is stale
+fsp telemetry           # a local OpenTelemetry stack with fespalier's dashboards (since 0.8.0; needs Docker)
+fsp telemetry --grafana # ...and Grafana, with the same dashboards
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --action --loading --error --layout --guard --transition
@@ -4768,6 +4770,122 @@ they were given. What does schedule microtasks is the OpenTelemetry SDK itself, 
 backgrounded app draws no frames, so a navigation made in the background ends its span at the next frame
 after the app resumes.
 
+### Dashboards on your computer: `fsp telemetry`
+
+Since 0.8.0. fespalier's telemetry (spans for navigations, guards, `data.dart` loads, actions and deferred loads) is only useful when someone looks at it. `fsp telemetry` starts a stack on your computer that receives it and shows six ready-made dashboards: an OpenTelemetry collector, [OpenObserve](https://openobserve.ai), and, with `--grafana`, [Grafana](https://grafana.com) with the same dashboards. It needs [Docker](https://docs.docker.com/get-docker/) with Compose 2.20 or later, and runs in any folder, with or without a project: the stack belongs to you, not to one app.
+
+```sh
+fsp telemetry            # the first run pulls about 1.2 GB of images; later runs take a few seconds
+flutter run              # any device: an emulator, a simulator, desktop, Chrome
+```
+
+```text
+✓ telemetry stack running: 6 dashboards in OpenObserve, folder fespalier
+  OpenObserve  http://localhost:5080  dev@fespalier.local / Fespalier-local-1
+  OTLP         http://localhost:4318 (HTTP), localhost:4317 (gRPC)
+  The app      FespalierOtel.endpoint() reaches it from an emulator, a simulator, desktop and the web
+```
+
+Printing the password is deliberate: the stack is local, the password is the documented default, and the web UIs listen on `127.0.0.1` only.
+
+#### The app side
+
+The only telemetry-specific value in the app is where it sends to. `FespalierOtel.endpoint()` (in `package:fespalier_otel`) is that value for a development build:
+
+```dart
+final observability = OtelZone(
+  OtelZoneConfig(serviceName: 'shop', endpoint: FespalierOtel.endpoint()),
+);
+```
+
+It returns, in this order:
+
+1. what `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` (or `--dart-define-from-file`) says, when it says anything;
+2. `''` in a release build, so `otel_zone` leaves telemetry off and a store build never sends to a developer's laptop;
+3. `http://10.0.2.2:4318` on Android (not the web), the emulator's name for its host;
+4. `http://localhost:4318` everywhere else: the iOS simulator, desktop and the web.
+
+| Where the app runs      | What reaches the stack                                                                                               |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Android emulator        | Nothing to do: `10.0.2.2`.                                                                                           |
+| iOS simulator           | Nothing to do: `localhost`.                                                                                          |
+| Desktop                 | Nothing to do: `localhost`.                                                                                          |
+| Chrome                  | Nothing to do: `localhost`, with CORS ([The web](#the-web-and-otel_zone)).                                           |
+| A phone on your Wi-Fi   | `fsp telemetry --lan`, then `flutter run --dart-define-from-file=~/.fespalier/telemetry/dart-defines.json`.          |
+| An Android phone on USB | `adb reverse tcp:4318 tcp:4318`, then `flutter run --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`. |
+
+The port in `endpoint()` is 4318. If you changed `FSP_OTLP_HTTP_PORT`, pass the define.
+
+#### The six dashboards
+
+Each has an **App** variable (the resource's `service.name`, so apps are told apart in one stack) and shows the last hour. They are in OpenObserve's folder `fespalier`, and in Grafana's.
+
+| Dashboard                    | Answers                                                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fespalier · Navigation`     | How many route views, how long to the first frame per route (p50, p95), which navigations were redirected, which found no route.            |
+| `fespalier · Guards`         | What guards and `redirect.dart` files decided (pass, redirect, error, skipped), how long async ones kept the user waiting, and which threw. |
+| `fespalier · Data`           | `data.dart` loads: volume, failures, load time per file, loads abandoned before they settled, and how many stayed synchronous.              |
+| `fespalier · Actions`        | `action.dart` writes: runs, failures and latency per action.                                                                                |
+| `fespalier · Deferred loads` | How long a deferred page's code takes to arrive, and which loads failed.                                                                    |
+| `fespalier · Errors`         | Failed guards, loads, actions and deferred loads by error type and route, uncaught errors, and native crashes and ANRs.                     |
+
+Every query uses only the names of the [telemetry conventions](#telemetry-conventions), which `scripts/telemetry/build_dashboards.py` reads from `packages/fespalier_otel/lib/src/conventions.dart`, and a test (`scripts/test_telemetry.py`) fails when a query names anything else. Nothing is charted that fespalier does not emit.
+
+#### The flags
+
+| Command                     | What it does                                                                                                                                                                     |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fsp telemetry`             | Writes the stack's files, runs `docker compose up -d`, waits for the dashboard importer to finish, and prints the addresses.                                                     |
+| `fsp telemetry --grafana`   | Also starts Grafana at `http://localhost:3000` (`admin` and the password in `.env`; anonymous visitors can view).                                                                |
+| `fsp telemetry --lan`       | For phones: binds the OTLP ports (4317 and 4318) to every interface, for this run, and writes `dart-defines.json` with this computer's address. The web UIs stay on `127.0.0.1`. |
+| `fsp telemetry --stop`      | Stops the stack and keeps its data.                                                                                                                                              |
+| `fsp telemetry --reset`     | Stops the stack and deletes its data (the OpenObserve and Grafana volumes). Use it after changing the OpenObserve password.                                                      |
+| `fsp telemetry --dir <DIR>` | Uses `<DIR>` instead of `~/.fespalier/telemetry` (or `FSP_TELEMETRY_DIR`).                                                                                                       |
+| `fsp telemetry --no-start`  | Writes the files and prints the command that starts them; does not run Docker.                                                                                                   |
+
+Run from inside an app (or with `--project`), a start also checks that app: when its `fespalier:` section has `telemetry` off, which is the default, `fsp telemetry` prints ``⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (README, "Telemetry")`` after the import and before the summary, and still exits 0. It says nothing outside a project, and not for `--no-start`, `--stop` or `--reset`.
+
+The files go to one folder per user, `~/.fespalier/telemetry` (`%USERPROFILE%` on Windows), not into the app: `flutter clean` cannot delete them, and the Docker project name is fixed (`fespalier-telemetry`), so every app on your computer shares one stack. Running `fsp telemetry` again rewrites any file that differs (an upgrade of `fsp` upgrades the stack) and never touches `.env`.
+
+**Settings** go in `.env` in that folder, written from `env.example` on the first run and never overwritten. Every value has the same default in `compose.yaml`, so the stack also runs with no `.env` at all, as `docker compose up -d` in that folder:
+
+| Key                                        | Default                                                          |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| `FSP_O2_EMAIL`, `FSP_O2_PASSWORD`          | `dev@fespalier.local`, `Fespalier-local-1`                       |
+| `FSP_GRAFANA_PASSWORD`                     | `Fespalier-local-1`                                              |
+| `FSP_OTLP_HTTP_PORT`, `FSP_OTLP_GRPC_PORT` | `4318`, `4317`                                                   |
+| `FSP_O2_PORT`, `FSP_GRAFANA_PORT`          | `5080`, `3000`                                                   |
+| `FSP_OTLP_BIND`                            | `127.0.0.1` (`--lan` sets `0.0.0.0` for one run)                 |
+| `FSP_OTLP_CORS_ORIGIN`                     | `http://localhost`: one more browser origin allowed to send OTLP |
+| `FSP_O2_WAIT`                              | `180`: seconds the dashboard importer waits for OpenObserve      |
+
+OpenObserve refuses a weak root password and restarts forever: it needs 8 to 128 characters with a lowercase letter, an uppercase letter, a digit and a symbol. The root user is created on the first start only, so change the password in `.env` and then run `fsp telemetry --reset`. A port that is taken is `FSP_O2_PORT` and the like in `.env`.
+
+#### The web and `otel_zone`
+
+A web app posts OTLP/HTTP to the collector from another origin (`http://localhost:<port>` to `http://localhost:4318`), which needs CORS: the collector allows `http://localhost:*` and `http://127.0.0.1:*`, plus `FSP_OTLP_CORS_ORIGIN`. A page served over `https` cannot post to `http://localhost` (mixed content); use `flutter run -d chrome` in development.
+
+**`otel_zone`'s `runGuarded` does not run its body on the web** (checked with `otel_zone` v0.5.0): inside the zone, before the body, it opens a `ReceivePort` from `dart:isolate`, which the web does not have, and the zone's own handler swallows the error. The app stays blank and nothing is printed. `start()` itself works on the web. Until `otel_zone` guards that call, do not use the zone on the web:
+
+```dart
+Future<void> zone(Future<void> Function() body) =>
+    kIsWeb ? body() : observability.runGuarded(body);
+```
+
+#### OpenObserve and Grafana show the same numbers
+
+One spec, `scripts/telemetry/dashboards.toml`, generates both: `fsp` embeds the results, and CI fails when they are stale. OpenObserve's panels are SQL over the raw spans and logs; Grafana's are PromQL over metrics that the collector derives from the same spans (and Grafana reads them from OpenObserve, so there is no Prometheus, Tempo or Loki). **Counts are identical**, which the smoke test asserts. These differ:
+
+- Grafana's percentiles are interpolated within histogram buckets (1, 2, 5, 10, 16, 33, 50, 100, 250, 500 ms, 1, 2.5, 5, 10 s); OpenObserve's are computed from the raw durations.
+- Span metrics are stamped when the collector receives a span. A batch that a phone replays later counts at the time it arrives in Grafana, and at its own time in OpenObserve.
+- Grafana has no error messages or trace ids: its _Recent failures_ is a count table with a link to OpenObserve, and _Recent uncaught errors_ exists in OpenObserve only.
+
+#### Your own copy
+
+`fsp telemetry --no-start --dir ops/telemetry` writes the stack where you want it, for a team that wants to commit or change it. The folder `cli/templates/telemetry/` in the fespalier repository is the same stack and runs as it is (`docker compose up -d` in it). A dashboard that someone edited in OpenObserve is left alone when a new `fsp` brings a new version (the importer says so; delete the dashboard to get ours back), and Grafana's are read-only (provisioned): save a copy to change one. The collector file's `span_metrics` and `count` blocks are what to copy into a production collector.
+
+Images are pinned by tag and digest (collector `0.161.0`, OpenObserve `v1.0.4`, Grafana `13.2.3`), for `amd64` and `arm64`.
+
 ## DevTools extension
 
 Since 0.7.0, fespalier has an extension for [Flutter DevTools](https://docs.flutter.dev/tools/devtools): a
@@ -5009,6 +5127,10 @@ editors/vscode/      the VS Code extension (TypeScript): fsp diagnostics in the 
 editors/intellij/    the IntelliJ / Android Studio plugin (Kotlin): fsp diagnostics in the editor
 scripts/             packaging.py renders the Homebrew formula and Scoop manifest for a release;
                      pin_checksums.py writes the release's checksums into the Dart package
+scripts/telemetry/   the dashboards' one spec (dashboards.toml) and build_dashboards.py, which writes
+                     the OpenObserve and Grafana JSON; seed.py and smoke.py run the stack in Docker
+cli/templates/telemetry/   the stack `fsp telemetry` writes (compose file, collector, importer,
+                     dashboards); runs as it is with `docker compose up -d`
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
@@ -5024,7 +5146,9 @@ skills/              agent skills: how to write lib/app/ and read fsp's errors (
 
 ```sh
 just ci          # everything CI runs on the code, locally (needs Flutter, Node, just, cargo-deny)
-just --list      # the individual steps: fmt, lint, test, deny, examples, flutter, devtools, packaging, skills
+just --list      # the individual steps: fmt, lint, test, deny, examples, flutter, devtools, packaging, telemetry, skills
+just telemetry-dashboards   # regenerate the dashboards after editing scripts/telemetry/dashboards.toml
+just telemetry-smoke        # run the telemetry stack in Docker and check every dashboard query (needs Docker)
 just devtools-build   # rebuild the DevTools extension after touching its source (see below)
 just web-routes  # the shop's Maestro flows open their routes in Chromium (needs Flutter and Node; not in `just ci`)
 ```
@@ -5049,6 +5173,12 @@ freshly built `fsp`, compiles and tests the VS Code extension, tests the Homebre
 rendering, checksum pinning and release staging (`python3 scripts/test_packaging.py`,
 `python3 scripts/test_pin_checksums.py`, `python3 scripts/test_verify_staged.py`,
 `python3 scripts/test_release_assets.py`),
+checks the telemetry stack's files and dashboards (`python3 scripts/test_telemetry.py`: the generated dashboards are
+fresh, every query uses only the telemetry conventions, `compose.yaml` pins its images, and the dashboard importer runs
+against a fake OpenObserve; the `telemetry-smoke` job runs the whole stack in Docker, sends a seeded session and runs every
+panel's query in OpenObserve and Grafana, `just telemetry-smoke`; after touching `scripts/telemetry/dashboards.toml` run
+`just telemetry-dashboards`, and to bump an image pin edit the tag, resolve the digest with
+`docker buildx imagetools inspect <image>:<tag>` and run `just telemetry-smoke`),
 checks that the agent skills in `skills/` cover every README section, file kind, config key and
 `fsp` command (`node scripts/skills/verify-coverage.mjs`; see [skills/README.md](skills/README.md)),
 and checks that the version agrees everywhere it is spelled out
@@ -5342,7 +5472,7 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 1058 tests (997 unit, 46 CLI integration, 15 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 1084 tests (1010 unit, 59 CLI integration, 15 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
   scaffolding, the generated `main()` (which files make it, every shape of `lib/app.main.g.dart`, every diagnostic of the three root files), the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), string paths that match no route (the lint, its matching, mount point and ignore comments), `fsp size` (dart2js's table of deferred parts read from a real build's `main.dart.js`, own and shared bytes, the stale-build checks and the `size:` budgets), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.

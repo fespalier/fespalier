@@ -3,4 +3,4 @@ allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
 # Proper nouns that doc_markdown would otherwise want in backticks.
-doc-valid-idents = ["GoRouter", "GitHub", "IntelliJ", "VS", "FlutterFlow", "DevTools", ".."]
+doc-valid-idents = ["GoRouter", "GitHub", "IntelliJ", "VS", "FlutterFlow", "DevTools", "OpenObserve", "OpenTelemetry", "FSP_TELEMETRY_DIR", ".."]

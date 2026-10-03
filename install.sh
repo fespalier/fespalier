@@ -16,8 +16,11 @@ BASE_URL="${FSP_BASE_URL:-${RELEASES_URL}/download}"
 INSTALL_DIR="${FSP_INSTALL_DIR:-${HOME:-}/.local/bin}"
 
 say() { printf '%s\n' "$*"; }
-err() { printf 'error: %s\n' "$*" >&2; exit 1; }
-have() { command -v "$1" >/dev/null 2>&1; }
+err() {
+  printf 'error: %s\n' "$*" >&2
+  exit 1
+}
+have() { command -v "$1" > /dev/null 2>&1; }
 
 if [ -z "${FSP_INSTALL_DIR:-}" ] && [ -z "${HOME:-}" ]; then
   err "HOME is not set; set FSP_INSTALL_DIR to say where to install fsp"
@@ -66,11 +69,11 @@ version="${FSP_VERSION:-}"
 if [ -z "$version" ]; then
   # /releases/latest redirects to /releases/tag/<tag>
   if have curl; then
-    latest_url=$(curl -fsSL -o /dev/null -w '%{url_effective}' "${RELEASES_URL}/latest") \
-      || err "could not look up the latest release; set FSP_VERSION (e.g. v0.3.0)"
+    latest_url=$(curl -fsSL -o /dev/null -w '%{url_effective}' "${RELEASES_URL}/latest") ||
+      err "could not look up the latest release; set FSP_VERSION (e.g. v0.3.0)"
   elif have wget; then
-    latest_url=$(wget -q -S --spider "${RELEASES_URL}/latest" 2>&1 | sed -n 's/^ *[Ll]ocation: *//p' | tail -n 1 | tr -d '\r') \
-      || true
+    latest_url=$(wget -q -S --spider "${RELEASES_URL}/latest" 2>&1 | sed -n 's/^ *[Ll]ocation: *//p' | tail -n 1 | tr -d '\r') ||
+      true
   else
     err "need curl or wget to download files"
   fi
@@ -87,14 +90,14 @@ esac
 
 # --- download and verify ----------------------------------------------------
 archive="fsp-${target}.tar.gz"
-tmp=$(mktemp -d 2>/dev/null || mktemp -d -t fsp-install)
+tmp=$(mktemp -d 2> /dev/null || mktemp -d -t fsp-install)
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
 say "Installing fsp ${version} (${target})"
-download "${BASE_URL}/${version}/${archive}" "${tmp}/${archive}" \
-  || err "could not download ${BASE_URL}/${version}/${archive} (does release ${version} exist?)"
-download "${BASE_URL}/${version}/${archive}.sha256" "${tmp}/${archive}.sha256" \
-  || err "could not download ${BASE_URL}/${version}/${archive}.sha256"
+download "${BASE_URL}/${version}/${archive}" "${tmp}/${archive}" ||
+  err "could not download ${BASE_URL}/${version}/${archive} (does release ${version} exist?)"
+download "${BASE_URL}/${version}/${archive}.sha256" "${tmp}/${archive}.sha256" ||
+  err "could not download ${BASE_URL}/${version}/${archive}.sha256"
 
 expected=$(awk '{print $1; exit}' "${tmp}/${archive}.sha256")
 [ -n "$expected" ] || err "checksum file for ${archive} is empty"

@@ -85,6 +85,49 @@ flutter:
         case "$d" in examples/*) scripts/check-const-lints.sh "$d" ;; esac
     done
 
+# What CI's `floor` job runs: the package, its companions that claim Flutter 3.32 and examples/minimal.
+floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth examples/minimal"
+
+# Needs a Flutter 3.32 SDK, whose minor must match FLUTTER_FLOOR_VERSION in ci.yml:
+# `git clone --depth 1 -b 3.32.8 https://github.com/flutter/flutter ~/flutter-3.32`. Each pubspec.lock
+# is put back as it was afterwards (and the test assets removed), so a later `just flutter` is not left
+# on the lowest versions or on assets that another Flutter compiled.
+#
+# The declared floor as CI's `floor` job runs it, `just floor <sdk dir>` or FLUTTER_FLOOR=<sdk dir>: pub downgrade, analyze, test (not part of `just ci`)
+floor sdk=env("FLUTTER_FLOOR", ""):
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sdk="{{ sdk }}"
+    if [ -z "$sdk" ] || [ ! -x "$sdk/bin/flutter" ]; then
+        echo "just floor needs a Flutter 3.32 SDK: just floor <dir>, or FLUTTER_FLOOR=<dir> (see 'just --list')" >&2
+        exit 2
+    fi
+    want="$(sed -n 's/^  FLUTTER_FLOOR_VERSION: *\([0-9]*\.[0-9]*\)\..*/\1/p' .github/workflows/ci.yml)"
+    have="$("$sdk/bin/flutter" --version --machine 2>/dev/null | sed -n 's/.*"frameworkVersion": *"\([0-9]*\.[0-9]*\)\..*/\1/p' | head -n 1)"
+    if [ -z "$want" ] || [ "$have" != "$want" ]; then
+        echo "just floor: $sdk is Flutter '${have:-?}', ci.yml's FLUTTER_FLOOR_VERSION is '${want:-?}'.x" >&2
+        exit 2
+    fi
+    export PATH="$sdk/bin:$PATH"
+    saved="$(mktemp -d)"
+    restore() {
+        for d in {{ floor_dirs }}; do
+            rm -f "$d/pubspec.lock"
+            # The 3.32 test assets (compiled shaders) do not load under another Flutter.
+            rm -rf "$d/build/unit_test_assets"
+            if [ -f "$saved/${d//\//_}" ]; then mv "$saved/${d//\//_}" "$d/pubspec.lock"; fi
+        done
+        rm -rf "$saved"
+    }
+    trap restore EXIT
+    for d in {{ floor_dirs }}; do
+        if [ -f "$d/pubspec.lock" ]; then cp "$d/pubspec.lock" "$saved/${d//\//_}"; fi
+    done
+    for d in {{ floor_dirs }}; do
+        echo "==> $d (Flutter $have, lowest dependencies)"
+        (cd "$d" && flutter pub downgrade && flutter analyze && flutter test)
+    done
+
 # Rebuild the DevTools extension into packages/fespalier/extension/devtools/build (needs Flutter)
 devtools-build:
     scripts/build-devtools-extension.sh
@@ -170,8 +213,8 @@ dev-e2e:
 
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
 # are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
-# `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, and the README
-# screenshots are `just telemetry-screenshots` (not in CI at all).
+# `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, the Flutter 3.32
+# floor is `just floor`, and the README screenshots are `just telemetry-screenshots` (not in CI at all).
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs
 ci: lint test deny check-examples flutter devtools packaging telemetry skills

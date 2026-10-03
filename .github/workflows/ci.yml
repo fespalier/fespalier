@@ -15,6 +15,11 @@ env:
   # The Flutter the examples and the package are built and tested with (Dart 3.13.4). Exact, so a
   # new stable release cannot turn CI red on its own; bump it here, deliberately.
   FLUTTER_VERSION: 3.47.5
+  # The oldest Flutter the package declares (`flutter: ">=3.32.0"` in its pubspec, "Flutter 3.32 or
+  # newer" in the READMEs): the `floor` job builds and tests on it, and `just floor` reads its minor
+  # from here. Exact, like FLUTTER_VERSION: the last 3.32 patch release. cli/tests/versions.rs checks
+  # that the minor still matches what the pubspecs and READMEs claim.
+  FLUTTER_FLOOR_VERSION: 3.32.8
 
 jobs:
   cli:
@@ -112,6 +117,52 @@ jobs:
         env:
           WORKSPACE: ${{ github.workspace }}
         run: '"$WORKSPACE/scripts/check-const-lints.sh" .'
+
+  # The declared floor. Everything above runs on FLUTTER_VERSION, so "Flutter 3.32 or newer" was never
+  # exercised: a call to an API newer than 3.32 compiled and passed here. This runs the package and
+  # the companions that claim 3.32 on FLUTTER_FLOOR_VERSION with every dependency at its lowest
+  # allowed version (`flutter pub downgrade`, so a constraint nobody tested fails here, as
+  # `hooks_riverpod: ^3.2.1` did), then analyzes and tests them.
+  # examples/minimal is the one app that goes through the same. `just floor` runs it locally.
+  #
+  # Left out on purpose:
+  # - packages/fespalier_sign_keypair: flutter_sign_keypair needs Flutter 3.44 (Dart 3.12), so it
+  #   does not resolve on 3.32 and the package declares that floor itself.
+  # - packages/fespalier_devtools: a web app, not a package; its release build is committed and
+  #   compared byte for byte on FLUTTER_VERSION (the `devtools` job), and its lockfile is committed
+  #   on purpose, which `pub downgrade` would rewrite.
+  # - the other examples: they are not floor claims; `minimal` is the app-level check.
+  floor:
+    name: Floor (Flutter 3.32, lowest dependencies)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        dir:
+          - packages/fespalier
+          - packages/fespalier_otel
+          - packages/fespalier_auth
+          - examples/minimal
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}
+          cache: true
+      - run: flutter --version
+      - run: flutter pub downgrade
+      # No `dart format` here: its output depends on the SDK, and the `dart` job checks it.
+      - run: flutter analyze
+      - run: flutter test
 
   devtools:
     name: DevTools extension (built output is current)

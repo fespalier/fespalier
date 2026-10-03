@@ -16,6 +16,7 @@
 //!   push_updates_url: false # default; true puts a `push`ed route's URL in the browser's address bar
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
 //!   semantics_ids: false    # default; true gives each page `Semantics(identifier: 'route:/...')`, for Maestro
+//!   telemetry: false        # default; true reports navigations, guards, data, actions and deferred loads to FespalierTelemetry
 //!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
 //!     domains: [shop.example.com]
 //!     scheme: myshop
@@ -187,6 +188,10 @@ pub struct Config {
     /// `AppRoutes.mount()` turns the semantics tree on on the web, so a driver that reads the
     /// screen from the outside (Maestro) finds the page.
     pub semantics_ids: bool,
+    /// `telemetry`: the generated file passes each guard, data provider, action and deferred
+    /// library a `const TelemetrySite`, and `AppRoutes.attach` follows the router's navigations.
+    /// Off, the file is exactly what it was without the key.
+    pub telemetry: bool,
     /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
     pub file_style: FileStyle,
     /// The `links:` section, as written. Only `fsp links` reads it, and it checks the values
@@ -216,6 +221,7 @@ impl Default for Config {
             keep_previous: true,
             push_updates_url: false,
             semantics_ids: false,
+            telemetry: false,
             file_style: FileStyle::Snake,
             links: None,
             lints: Lints::default(),
@@ -259,6 +265,7 @@ struct RawConfig {
     links: Option<LinksConfig>,
     lints: Option<LintsConfig>,
     semantics_ids: Option<bool>,
+    telemetry: Option<bool>,
     maestro: Option<MaestroConfig>,
 }
 
@@ -831,6 +838,7 @@ impl Pubspec {
             config.links = c.links;
             config.lints.unknown_path = c.lints.and_then(|l| l.unknown_path).unwrap_or_default();
             config.semantics_ids = c.semantics_ids.unwrap_or(false);
+            config.telemetry = c.telemetry.unwrap_or(false);
             config.maestro = c.maestro;
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;

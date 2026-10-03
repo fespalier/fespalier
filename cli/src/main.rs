@@ -510,6 +510,8 @@ mod semantics_tests;
 #[cfg(test)]
 mod synth;
 #[cfg(test)]
+mod telemetry_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod url_state_tests;

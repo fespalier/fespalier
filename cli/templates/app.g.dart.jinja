@@ -49,7 +49,7 @@ guardWithParams(
 )
 {%- endmacro %}
 {% macro redirect_call(c) -%}
-traceGuard(state, '{{ c.site }}', {{ guard_with_segments(c.seg_fn, c.call) if c.seg_fn else c.call }})
+traceGuard(state, '{{ c.site }}', {{ guard_with_segments(c.seg_fn, c.call) if c.seg_fn else c.call }}{{ ", telemetry: const TelemetrySite(" ~ c.site_file ~ ", route: " ~ c.site_route ~ ")" if telemetry }})
 {%- endmacro %}
 {% macro layout_call(l) -%}
 {{ (with_segments(l.seg_fn, view(l), l.not_found) if l.seg_fn else view(l)) | indent(2) }}
@@ -221,12 +221,15 @@ abstract final class AppRoutes {
     return router;
   }
 
-  /// Lets DevTools{{ " and the observe.dart hooks" if observe }} follow [router]: [router] calls it, and an app that mounts the
+  /// Lets {{ "DevTools, the observe.dart hooks and telemetry" if observe and telemetry else ("DevTools and the observe.dart hooks" if observe else "DevTools and telemetry") }} follow [router]: [router] calls it, and an app that mounts the
   /// tree in a GoRouter of its own calls it once with that router.
   static void attach(GoRouter router) {
     if (kFespalierDevTools) devToolsAttach(router);
 {% if observe %}
     observeAttach(router, _observeAt);
+{% endif %}
+{% if telemetry %}
+    telemetryAttach(router, base: () => _base);
 {% endif %}
   }
 {% else %}
@@ -536,7 +539,7 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 {% for l in deferred_libs %}
 
 /// {{ l.path }}, imported `deferred as`: loaded the first time the page is built, or ahead of time.
-final {{ l.name }} = DeferredLibrary(_i{{ l.import }}.loadLibrary, {{ l.file }});
+final {{ l.name }} = DeferredLibrary(_i{{ l.import }}.loadLibrary, {{ l.file }}{{ ", route: " ~ l.route if telemetry }});
 {% endfor %}
 {% for p in providers %}
 {% if p.selector and p.family %}
@@ -550,7 +553,7 @@ final _data{{ p.id }} = {{ p.call }};
 {% else %}
 
 final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
-  ({{ p.params }}) => traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}),
+  ({{ p.params }}) => traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}{{ ", telemetry: const TelemetrySite(" ~ p.site_file ~ ", route: " ~ p.site_route ~ ")" if telemetry }}),
 {% if p.no_retry %}
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
@@ -570,6 +573,9 @@ final {{ a.top }} = {{ a.factory }}(
   invalidates: () => {{ a.invalidates }},
 {% endif %}
   site: '{{ a.site }}',
+{% if telemetry %}
+  telemetry: const TelemetrySite({{ a.site_file }}, route: {{ a.site_route }}, name: '{{ a.name }}'),
+{% endif %}
 );
 {% endfor %}
 {% endfor %}
@@ -585,6 +591,9 @@ final {{ a.top }} = {{ a.factory }}(
   invalidates: () => {{ a.invalidates }},
 {% endif %}
   site: '{{ a.site }}',
+{% if telemetry %}
+  telemetry: const TelemetrySite({{ a.site_file }}, route: {{ a.site_route }}, name: '{{ a.name }}'),
+{% endif %}
 );
 {% endfor %}
 {% endfor %}

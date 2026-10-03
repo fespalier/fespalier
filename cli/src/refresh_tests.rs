@@ -275,7 +275,7 @@ fn a_list_query_parameter_keys_data_by_value() {
         &[
             // The family key holds a QueryList; data() gets it as the List it is.
             "(Ref ref, ({String? q, QueryList<String> tags}) k) => traceData(ref, 'd1', k, _i0.data(ref, q: k.q, tags: k.tags)),",
-            "watch: (ref) => ref.watch(_data1((q: v.q, tags: QueryList(v.tags)))),",
+            "watch: (ref) => watchData(ref, 'd1', _data1((q: v.q, tags: QueryList(v.tags)))),",
             "data: (d) => _i1.SearchPage(results: d, q: v.q, tags: v.tags),",
             "/// search/data.dart as a Riverpod provider keyed by `(q, tags)`.",
             // The typed helpers take the plain list (empty by default) and wrap it.
@@ -319,7 +319,7 @@ fn a_lone_list_key_and_other_element_types() {
         &c,
         &[
             "(Ref ref, QueryList<int> ids) => traceData(ref, 'd1', ids, _i0.data(ref, ids: ids)),",
-            "ref.watch(_data1(QueryList(v.ids)))",
+            "watchData(ref, 'd1', _data1(QueryList(v.ids)))",
             "/// a/data.dart as a Riverpod provider keyed by `ids`.",
             "static final watch = (WidgetRef ref, {List<int> ids = const []}) => ref.watch(data(QueryList(ids)));",
         ],

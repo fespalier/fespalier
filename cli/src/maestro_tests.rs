@@ -397,14 +397,16 @@ fn an_unknown_key_is_an_error_everywhere_and_a_bad_value_only_for_maestro() {
 }
 
 #[test]
-fn the_top_level_unknown_key_message_lists_semantics_ids_and_maestro() {
+fn the_top_level_unknown_key_message_lists_semantics_ids_telemetry_and_maestro() {
     let e = format!(
         "{:#}",
         Pubspec::parse("name: demo\nfespalier:\n  maestr: {}\n").unwrap_err()
     );
     assert!(
         e.contains("unknown field `maestr`")
-            && e.contains("`links`, `lints`, `semantics_ids`, `maestro`"),
+            && e.contains(
+                "`links`, `lints`, `semantics_ids`, `scroll_restoration`, `telemetry`, `maestro`"
+            ),
         "{e}"
     );
 }

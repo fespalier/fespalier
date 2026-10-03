@@ -51,6 +51,8 @@ below its folder**, and the folder needs no `page.dart`: put the guard in a
   boots with no blank first frame; **any** `Future`, even a completed one, costs a
   frame. Return a `Future` only when you await something.
 - A `guard.dart` with no route at or below its folder is a **warning**.
+- **To redirect, use a guard, not an `onEnter`** (since 0.8.0): an `observe.dart` hook runs after the
+  navigation committed and cannot veto it. See [`fespalier-observability`](../fespalier-observability/SKILL.md).
 - **A guard is not access control**: the server must still authorise the data.
 
 ## Keep the login page outside the guard
@@ -114,6 +116,12 @@ never stays on screen.
   async guard, or `skipped` when a segment did not parse; a redirect chain is one history entry.
   The generated `redirect:` wraps each call in `traceGuard`, which returns the guard's own result, so
   a sync guard stays sync (`fespalier-troubleshooting`, its DevTools page).
+
+- **A menu runs your guards too (since 0.8.0).** `AppMenu.watch(ref)` (generated from `nav.dart`
+  files) asks the guards that run for each guarded entry, with the entry's own location, to list,
+  switch off or hide it. It follows a `Ref` guard's `ref.watch`es, shows an entry pending while an
+  async guard is out, and reads a `ProviderContainer c` guard once. Keep guards cheap and free of
+  side effects (`fespalier-layouts`, its page on menus and breadcrumbs).
 
 ## Where to read more
 

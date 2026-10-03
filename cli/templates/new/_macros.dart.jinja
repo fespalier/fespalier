@@ -36,6 +36,17 @@
 {#- A top-level function `head(positional, {named})tail => expression;`: on one line when it
     fits, else the expression on the next line, else (the signature itself is too long) one
     parameter per line, the expression after the closing parenthesis. -#}
+{#- A top-level `void name(Ref ref, {named}) {}` hook, laid out as `dart format` does: one line when
+    it fits, else one parameter per line. -#}
+{% macro hook(name, named) -%}
+{% set one = "void " ~ name ~ "(Ref ref" ~ (", {" ~ named|join(", ") ~ "}" if named else "") ~ ") {}" -%}
+{% if one|length <= 80 -%}
+{{ one }}
+{%- else -%}
+{{ "void " ~ name ~ "(\n  Ref ref" ~ (", {\n" if named else "\n") }}{% for p in named %}{{ "  " ~ p ~ ",\n" }}{% endfor %}{{ "}" if named }}{{ ") {}" }}
+{%- endif -%}
+{% endmacro %}
+
 {% macro func(head, positional, named, tail, expression) -%}
 {% set inner = positional|join(", ") ~ (", " if positional and named else "") ~ ("{" ~ named|join(", ") ~ "}" if named else "") -%}
 {% set sig = head ~ "(" ~ inner ~ ")" ~ tail -%}

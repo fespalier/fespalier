@@ -146,6 +146,34 @@ fn new_group_layout_needs_no_page() {
 }
 
 #[test]
+fn new_observe_writes_the_hooks_and_the_generated_file_attaches_them() {
+    let dir = project();
+    let (ok, err) = fsp(dir.path(), &["new", "orders/[id]", "--observe"]);
+    assert!(ok, "{err}");
+    assert!(
+        err.contains("  new   lib/app/orders/$id/observe.dart"),
+        "{err}"
+    );
+    let observe = fs::read_to_string(dir.path().join("lib/app/orders/$id/observe.dart")).unwrap();
+    assert!(
+        observe.contains("void onEnter(Ref ref, {required String id}) {}"),
+        "{observe}"
+    );
+    let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    assert!(
+        code.contains("observeAttach(router, _observeAt);"),
+        "{code}"
+    );
+    // `fsp new` with nothing to write names every flag, this one included.
+    let (ok, err) = fsp(dir.path(), &["new", "(oops)"]);
+    assert!(!ok);
+    assert!(
+        err.contains("nothing to create: a (group) folder has no page; also pass --action, --layout, --loading, --error, --not-found, --guard, --observe or --transition"),
+        "{err}"
+    );
+}
+
+#[test]
 fn new_names_the_files_it_left_behind_when_gen_fails() {
     let dir = project();
     // A bare group has nothing to scaffold.
@@ -721,7 +749,7 @@ fn check_reports_a_bad_deferred_with_a_failing_exit() {
     fs::write(&route, "const nothing = 1;").unwrap();
     let (ok, err) = fsp(dir.path(), &["check"]);
     assert!(
-        !ok && err.contains("expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;`"),
+        !ok && err.contains("expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;`, `const deferred = true;` or `const freshness = Freshness(staleTime: Duration(minutes: 5));`"),
         "{err}"
     );
     // The key in pubspec.yaml is serde's to check.
@@ -1481,6 +1509,256 @@ fn maestro_reports_config_and_route_errors_with_a_failing_exit() {
     let (ok, _, err) = fsp_full(dir.path(), &["maestro"], &[]);
     assert!(!ok && err.ends_with("1 error(s); no flows\n"), "{err}");
     assert!(!dir.path().join(".maestro").exists());
+}
+
+/// A build of `examples/shop`: a trimmed `main.dart.js` from a real release build (it holds the
+/// table of deferred parts) and part files of the lengths that build had.
+fn shop_build(shared_part: usize) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/shop-build/main.dart.js"),
+        dir.path().join("main.dart.js"),
+    )
+    .unwrap();
+    for (n, len) in [(1, 1090), (2, shared_part), (3, 1813)] {
+        fs::write(
+            dir.path().join(format!("main.dart.js_{n}.part.js")),
+            vec![b'x'; len],
+        )
+        .unwrap();
+    }
+    dir
+}
+
+fn shop() -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../examples/shop")
+        .display()
+        .to_string()
+}
+
+#[test]
+fn size_reports_each_deferred_route_and_check_follows_the_budgets() {
+    let (shop, cwd) = (shop(), tempfile::tempdir().unwrap());
+    let build = shop_build(4169);
+    let build_dir = build.path().display().to_string();
+    let within = |more: &[&str]| {
+        let mut a = vec!["size", "--project", &shop, "--build", &build_dir];
+        a.extend(more);
+        fsp_full(cwd.path(), &a, &[])
+    };
+
+    let (ok, out, err) = within(&[]);
+    assert!(ok, "{err}");
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 4, "{out}");
+    assert!(lines[0].starts_with("main.dart.js  ") && lines[0].ends_with("budget 3.0 MB"));
+    assert!(lines[1].starts_with("/checkout      CheckoutRoute  checkout/page.dart  "));
+    assert!(lines[1].contains("own 1090 B, shared 4169 B"));
+    assert_eq!(
+        lines[3],
+        "shared  main.dart.js_2.part.js  4169 B (4.1 KB): /checkout, /products/:id"
+    );
+    assert_eq!(
+        err,
+        "✓ size: 6 routes, 2 deferred, 3 parts, within budget\n"
+    );
+
+    let (ok, out, err) = within(&["--json", "--check"]);
+    assert!(ok, "{err}");
+    let kinds: Vec<String> = out
+        .lines()
+        .map(|l| {
+            let v: serde_json::Value = serde_json::from_str(l).unwrap();
+            v["kind"].as_str().unwrap().to_string()
+        })
+        .collect();
+    assert_eq!(kinds, ["main", "route", "route", "part", "part", "part"]);
+    assert!(err.ends_with("within budget\n"), "{err}");
+
+    // A bigger shared part puts both routes over their 8 KB.
+    let big = shop_build(10_000);
+    let big_dir = big.path().display().to_string();
+    let over = |more: &[&str]| {
+        let mut a = vec!["size", "--project", &shop, "--build", &big_dir];
+        a.extend(more);
+        fsp_full(cwd.path(), &a, &[])
+    };
+    let (ok, out, err) = over(&[]);
+    assert!(ok, "{err}");
+    assert!(out.contains("OVER budget 8.0 KB by 2898 B"), "{out}");
+    assert!(out.contains("OVER budget 8.0 KB by 3621 B"), "{out}");
+    assert_eq!(err, "✓ size: 6 routes, 2 deferred, 3 parts\n");
+    let (ok, out, err) = over(&["--check"]);
+    assert!(!ok);
+    assert!(out.contains("OVER budget 8.0 KB by 2898 B"), "{out}");
+    assert_eq!(err, "2 over budget: /checkout, /products/:id\n");
+}
+
+#[test]
+fn size_check_needs_budgets_and_a_build() {
+    let dir = project();
+    let (ok, out, err) = fsp_full(dir.path(), &["size", "--check"], &[]);
+    assert!(!ok && out.is_empty());
+    assert_eq!(
+        err,
+        "`fsp size --check` checks the budgets in `fespalier.size` (`main`, `route`, `routes`), and there are none\n"
+    );
+    let (ok, out, err) = fsp_full(dir.path(), &["size"], &[]);
+    assert!(!ok && out.is_empty());
+    assert_eq!(
+        err,
+        "no main.dart.js in build/web: run `flutter build web` first (`fsp size` reads the JavaScript build)\n"
+    );
+}
+
+// --- fsp test ---------------------------------------------------------------
+
+#[test]
+fn test_writes_the_file_and_check_follows_it() {
+    let dir = project();
+    fs::create_dir_all(dir.path().join("lib/app/cart")).unwrap();
+    fs::write(dir.path().join("lib/app/cart/page.dart"), page("CartPage")).unwrap();
+    fs::create_dir_all(dir.path().join("lib/app/members")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/members/page.dart"),
+        page("MembersPage"),
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("lib/app/members/guard.dart"),
+        "String? guard(Ref ref) => null;",
+    )
+    .unwrap();
+    let file = dir.path().join("test/routes/routes_test.dart");
+
+    // Not written yet: `--check` says so and writes nothing.
+    let (ok, out, err) = fsp_full(dir.path(), &["test", "--check"], &[]);
+    assert!(!ok && out.is_empty(), "{err}");
+    assert!(
+        err.ends_with("  skipped /members: guarded by members/guard.dart; give test/routes/setup.dart an `overrides(String pattern)` that gets past it\ntest/routes/routes_test.dart is missing; run `fsp test`\n"),
+        "{err}"
+    );
+    assert!(!dir.path().join("test").exists());
+
+    let (ok, out, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert!(ok && out.is_empty(), "{err}");
+    assert_eq!(
+        err,
+        "  skipped /members: guarded by members/guard.dart; give test/routes/setup.dart an `overrides(String pattern)` that gets past it\n  wrote test/routes/routes_test.dart\n✓ test: 2 routes in test/routes/routes_test.dart; 1 route skipped\n"
+    );
+    let written = fs::read_to_string(&file).unwrap();
+    assert!(
+        written.starts_with("// Written by `fsp test` from lib/app/: don't edit it, run `fsp test` again.\n// dart format off\n"),
+        "{written}"
+    );
+    assert!(written.contains("'/cart at /cart'"), "{written}");
+    assert!(
+        written.contains("page: find.byType(\n        _i1.CartPage,\n      ),"),
+        "{written}"
+    );
+    assert!(!written.contains("'/members at"), "{written}");
+
+    let (ok, _, err) = fsp_full(dir.path(), &["test", "--check"], &[]);
+    assert!(
+        ok && err.ends_with("✓ test: test/routes/routes_test.dart is up to date (2 routes)\n"),
+        "{err}"
+    );
+    let (ok, _, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert!(
+        ok && !err.contains("wrote")
+            && err.ends_with(
+                "✓ test: 2 routes in test/routes/routes_test.dart (unchanged); 1 route skipped\n"
+            ),
+        "{err}"
+    );
+
+    // A new page makes the file stale, and only `fsp test` brings it back.
+    fs::create_dir_all(dir.path().join("lib/app/about")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/about/page.dart"),
+        page("AboutPage"),
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["test", "--check"], &[]);
+    assert!(
+        !ok && err.ends_with("test/routes/routes_test.dart is out of date; run `fsp test`\n"),
+        "{err}"
+    );
+    assert_eq!(fs::read_to_string(&file).unwrap(), written);
+    assert!(fsp_full(dir.path(), &["test"], &[]).0);
+    assert!(fsp_full(dir.path(), &["test", "--check"], &[]).0);
+
+    // A setup with `overrides` gets a guarded route its test.
+    fs::write(
+        dir.path().join("test/routes/setup.dart"),
+        "List<Override> overrides(String pattern) => [];\n",
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert!(
+        ok && !err.contains("skipped")
+            && err.ends_with("✓ test: 4 routes in test/routes/routes_test.dart\n"),
+        "{err}"
+    );
+    let with_setup = fs::read_to_string(&file).unwrap();
+    assert!(
+        with_setup.contains("import 'setup.dart' as setup;")
+            && with_setup.contains("  // Guarded by members/guard.dart.\n"),
+        "{with_setup}"
+    );
+}
+
+#[test]
+fn test_reports_config_and_file_errors_with_a_failing_exit() {
+    let dir = project();
+    let pubspec = dir.path().join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    let file = dir.path().join("test/routes/routes_test.dart");
+
+    fs::write(
+        &pubspec,
+        format!("{base}fespalier:\n  test:\n    timeout: 5\n"),
+    )
+    .unwrap();
+    let (ok, out, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert!(!ok && out.is_empty(), "{err}");
+    assert_eq!(
+        err,
+        "`fespalier.test.timeout` is in milliseconds of the test's fake clock, from 1000 to 600000, got `5`\n"
+    );
+
+    fs::write(
+        &pubspec,
+        format!("{base}fespalier:\n  test:\n    folder: test\n"),
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert!(
+        !ok && err.contains(
+            "unknown field `folder`, expected one of `out`, `setup`, `timeout`, `samples`, `skip`"
+        ),
+        "{err}"
+    );
+    // The section is only read by `fsp test`: `fsp gen` and `fsp check` don't see it.
+    fs::write(
+        &pubspec,
+        format!("{base}fespalier:\n  test:\n    timeout: 5\n"),
+    )
+    .unwrap();
+    assert!(fsp_full(dir.path(), &["check"], &[]).0);
+
+    // A file of that name that `fsp test` did not write is never overwritten.
+    fs::write(&pubspec, &base).unwrap();
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, "void main() {}\n").unwrap();
+    let (ok, _, err) = fsp_full(dir.path(), &["test"], &[]);
+    assert_eq!(
+        err,
+        "test/routes/routes_test.dart was not written by `fsp test` (its first line isn't ``// Written by `fsp test` ``); move it, or set `fespalier.test.out` to another folder\n"
+    );
+    assert!(!ok);
+    assert_eq!(fs::read_to_string(&file).unwrap(), "void main() {}\n");
 }
 
 // ---- fsp telemetry ----------------------------------------------------------------------------

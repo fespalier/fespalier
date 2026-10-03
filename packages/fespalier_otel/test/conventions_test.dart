@@ -1,0 +1,121 @@
+// The telemetry conventions, contract version 1 (README, "Telemetry conventions"): every name
+// below is a string literal on purpose. A dashboard is built on these, so renaming one must
+// fail here before it can ship; adding one is allowed (add its line).
+import 'package:fespalier_otel/fespalier_otel.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('the version of the contract is 1', () {
+    expect(FespalierConventions.version, '1');
+    expect(FespalierConventions.scope, 'fespalier');
+  });
+
+  test('the resource attributes', () {
+    expect(FespalierConventions.resourceVersion, 'fespalier.version');
+    expect(
+      FespalierConventions.resourceTelemetryVersion,
+      'fespalier.telemetry.version',
+    );
+    expect(FespalierOtel.resourceAttributes.keys, [
+      'fespalier.version',
+      'fespalier.telemetry.version',
+    ]);
+    expect(
+      FespalierOtel.resourceAttributes['fespalier.telemetry.version'],
+      '1',
+    );
+    expect(
+      FespalierOtel.resourceAttributes['fespalier.version'],
+      matches(RegExp(r'^\d+\.\d+\.\d+')),
+    );
+  });
+
+  test('the operations', () {
+    expect(FespalierConventions.opNavigate, 'navigate');
+    expect(FespalierConventions.opGuard, 'guard');
+    expect(FespalierConventions.opRedirect, 'redirect');
+    expect(FespalierConventions.opData, 'data');
+    expect(FespalierConventions.opAction, 'action');
+    expect(FespalierConventions.opDeferred, 'deferred');
+    expect(FespalierConventions.spanNavigateNotFound, 'navigate (not found)');
+  });
+
+  test('the attribute keys', () {
+    expect(FespalierConventions.operation, 'fespalier.operation');
+    expect(FespalierConventions.route, 'fespalier.route');
+    expect(FespalierConventions.file, 'fespalier.file');
+    expect(FespalierConventions.isAsync, 'fespalier.async');
+    expect(FespalierConventions.errorType, 'error.type');
+    expect(FespalierConventions.navigationKind, 'fespalier.navigation.kind');
+    expect(
+      FespalierConventions.navigationOutcome,
+      'fespalier.navigation.outcome',
+    );
+    expect(FespalierConventions.navigationFrom, 'fespalier.navigation.from');
+    expect(
+      FespalierConventions.navigationRedirected,
+      'fespalier.navigation.redirected',
+    );
+    expect(FespalierConventions.navigationDepth, 'fespalier.navigation.depth');
+    expect(FespalierConventions.urlPath, 'url.path');
+    expect(FespalierConventions.urlQuery, 'url.query');
+    expect(FespalierConventions.guardDecision, 'fespalier.guard.decision');
+    expect(FespalierConventions.guardLocation, 'fespalier.guard.location');
+    expect(FespalierConventions.dataState, 'fespalier.data.state');
+    expect(FespalierConventions.dataKeyed, 'fespalier.data.keyed');
+    expect(FespalierConventions.actionName, 'fespalier.action.name');
+    expect(FespalierConventions.actionResult, 'fespalier.action.result');
+    expect(FespalierConventions.deferredResult, 'fespalier.deferred.result');
+    expect(FespalierConventions.pageDuration, 'fespalier.page.duration_ms');
+  });
+
+  test('the events', () {
+    expect(FespalierConventions.eventEnter, 'fespalier.page.enter');
+    expect(FespalierConventions.eventFocus, 'fespalier.page.focus');
+    expect(FespalierConventions.eventLeave, 'fespalier.page.leave');
+  });
+
+  test('the values of the enum-like attributes', () {
+    expect(
+      [
+        FespalierConventions.kindInitial,
+        FespalierConventions.kindGo,
+        FespalierConventions.kindPush,
+        FespalierConventions.kindPop,
+        FespalierConventions.kindReplace,
+        FespalierConventions.kindRefresh,
+      ],
+      ['initial', 'go', 'push', 'pop', 'replace', 'refresh'],
+    );
+    expect(
+      [
+        FespalierConventions.outcomeOk,
+        FespalierConventions.outcomeNotFound,
+        FespalierConventions.outcomeSuperseded,
+      ],
+      ['ok', 'not_found', 'superseded'],
+    );
+    expect(
+      [
+        FespalierConventions.decisionPass,
+        FespalierConventions.decisionRedirect,
+        FespalierConventions.decisionError,
+        FespalierConventions.decisionSkipped,
+      ],
+      ['pass', 'redirect', 'error', 'skipped'],
+    );
+    expect(
+      [
+        FespalierConventions.stateData,
+        FespalierConventions.stateError,
+        FespalierConventions.stateStream,
+        FespalierConventions.stateDisposed,
+      ],
+      ['data', 'error', 'stream', 'disposed'],
+    );
+    expect(
+      [FespalierConventions.resultOk, FespalierConventions.resultError],
+      ['ok', 'error'],
+    );
+  });
+}

@@ -1,6 +1,9 @@
 /// The providers of the `data.dart` files: each one's state (loading, data, error), how often it
-/// was built, when, and what it holds, with a button to build it again.
+/// was built, when, and what it holds, with a button to build it again and, since 0.8.0, one that
+/// lists who holds it.
 library;
+
+import 'dart:async';
 
 import 'package:devtools_app_shared/ui.dart';
 import 'package:flutter/material.dart';
@@ -48,9 +51,11 @@ class _DataPanelState extends State<DataPanel> {
         for (final d in all.reversed)
           if (_showDisposed || d.state != DataState.disposed) d,
       ];
+      // The app's own providers, seen only once a page, a section or a preload watched them.
+      final watched = {for (final d in all) d.site};
       final untraced = [
         for (final s in tree?.sites.values ?? const <Site>[])
-          if (s.kind == 'data' && !s.traced) s,
+          if (s.kind == 'data' && !s.traced && !watched.contains(s.id)) s,
       ];
       final disposed = all.where((d) => d.state == DataState.disposed).length;
       return Column(
@@ -92,6 +97,9 @@ class _DataPanelState extends State<DataPanel> {
                     site: tree?.sites[d.site],
                     refreshedAt: _controller.refreshedAt,
                     onInvalidate: () => _controller.invalidate(d.id),
+                    loadHolders: _controller.supports(DevToolsFeatures.holders)
+                        ? () => _controller.holders(d.id)
+                        : null,
                   ),
                 if (untraced.isNotEmpty) _Untraced(sites: untraced, tree: tree),
               ],
@@ -103,16 +111,19 @@ class _DataPanelState extends State<DataPanel> {
   );
 }
 
-/// One provider: its file and route, state, builds, times and value.
-class DataRecordRow extends StatelessWidget {
+/// One provider: its file and route, state, builds (or, for the app's own provider, which one),
+/// listeners, times and value; with a button that lists who holds it.
+class DataRecordRow extends StatefulWidget {
   /// A row for [record], whose `data.dart` is [site] in the tree (null when it is not there).
-  /// [refreshedAt] is what the age of the last change is counted to.
+  /// [refreshedAt] is what the age of the last change is counted to. [loadHolders] asks the app
+  /// who holds the provider; without it (an app older than 0.8.0) there is no Holders button.
   const DataRecordRow({
     super.key,
     required this.record,
     this.site,
     this.refreshedAt,
     required this.onInvalidate,
+    this.loadHolders,
   });
 
   /// The provider.
@@ -127,17 +138,52 @@ class DataRecordRow extends StatelessWidget {
   /// Builds the provider again.
   final VoidCallback onInvalidate;
 
+  /// Asks who holds the provider now; null when the app cannot say.
+  final Future<HoldersRecord?> Function()? loadHolders;
+
+  @override
+  State<DataRecordRow> createState() => _DataRecordRowState();
+}
+
+class _DataRecordRowState extends State<DataRecordRow> {
+  var _open = false;
+  HoldersRecord? _holders;
+  var _asked = 0;
+
+  Future<void> _fetch() async {
+    final load = widget.loadHolders;
+    if (load == null) return;
+    final ask = ++_asked;
+    final answer = await load();
+    // A later question, or a row that is gone, makes this answer stale.
+    if (!mounted || ask != _asked) return;
+    setState(() => _holders = answer);
+  }
+
+  @override
+  void didUpdateWidget(DataRecordRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The list stays right while it is open: it is asked again at each refresh and each change.
+    if (_open &&
+        (oldWidget.refreshedAt != widget.refreshedAt ||
+            oldWidget.record != widget.record)) {
+      unawaited(_fetch());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final record = widget.record;
     final style = Theme.of(context).textTheme.bodySmall;
-    final site = this.site;
+    final site = widget.site;
     final updated = DateTime.fromMillisecondsSinceEpoch(record.updated);
-    final age = refreshedAt?.difference(updated);
+    final age = widget.refreshedAt?.difference(updated);
     final label = site == null
         ? record.site
         : site.section != null
         ? '${site.file} (section ${site.section})'
         : site.file;
+    final own = record.via == DataVia.watch;
     return Padding(
       key: Key('data-${record.id}'),
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -152,15 +198,35 @@ class DataRecordRow extends StatelessWidget {
               Mono(label, bold: true, selectable: false),
               if (site?.route != null) Text(site!.route!),
               KindChip(record.state, tone: dataTone(record.state)),
-              Text('builds ${record.builds}', style: style),
+              if (own)
+                const KindChip('app provider')
+              else
+                Text('builds ${record.builds}', style: style),
+              if (record.listeners != null)
+                Text('listeners ${record.listeners}', style: style),
               DevToolsButton(
                 key: Key('invalidate-${record.id}'),
                 label: 'Invalidate',
-                tooltip: 'Build this provider again',
+                tooltip: own
+                    ? "Invalidate this provider (the app's own)"
+                    : 'Build this provider again',
                 onPressed: record.state == DataState.disposed
                     ? null
-                    : onInvalidate,
+                    : widget.onInvalidate,
               ),
+              if (widget.loadHolders != null)
+                DevToolsButton(
+                  key: Key('holders-${record.id}'),
+                  label: 'Holders',
+                  tooltip: 'Who keeps this provider alive',
+                  onPressed: () {
+                    setState(() {
+                      _open = !_open;
+                      if (!_open) _holders = null;
+                    });
+                    if (_open) unawaited(_fetch());
+                  },
+                ),
             ],
           ),
           Padding(
@@ -169,6 +235,8 @@ class DataRecordRow extends StatelessWidget {
               spacing: 12,
               runSpacing: 2,
               children: [
+                if (own && record.provider != null)
+                  Mono(record.provider!.text, selectable: false),
                 if (record.key != null)
                   Text('key ${record.key!.text}', style: style),
                 Text('container ${record.container}', style: style),
@@ -193,13 +261,55 @@ class DataRecordRow extends StatelessWidget {
               ],
             ),
           ),
+          if (_open && _holders != null)
+            Padding(
+              key: Key('holders-list-${record.id}'),
+              padding: const EdgeInsets.only(left: 8, top: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final line in holderLines(record, _holders!))
+                    Text(line, style: style),
+                ],
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-/// The `data.dart` files fespalier cannot follow: they return or select a provider of their own.
+/// The lines the Holders button lists for [record] and what the app answered.
+List<String> holderLines(DataRecord record, HoldersRecord answer) {
+  if (!answer.found) return const ['This provider is no longer tracked.'];
+  String kept(int? keepFor) {
+    if (keepFor == null) return 'kept until closed';
+    final seconds = keepFor % 1000 == 0
+        ? '${keepFor ~/ 1000}'
+        : (keepFor / 1000).toStringAsFixed(1);
+    return 'kept $seconds s';
+  }
+
+  return [
+    for (final h in answer.holders)
+      switch (h.kind) {
+        HolderKind.view => 'page view (since ${formatClock(h.since)})',
+        HolderKind.section => 'section view (since ${formatClock(h.since)})',
+        HolderKind.prefetch => 'prefetch handle, ${kept(h.keepFor)}',
+        HolderKind.link => 'RouteLink preload, ${kept(h.keepFor)}',
+        _ => '${h.kind} (since ${formatClock(h.since)})',
+      },
+    if ((answer.others ?? 0) > 0)
+      '${answer.others} other listener${answer.others == 1 ? '' : 's'}: '
+          'ref.watch or listen in your code, or another provider',
+    if (record.via == DataVia.watch)
+      "Other listeners of an app provider are not visible here: see Riverpod's DevTools tab",
+    if (answer.alive == false) 'disposed',
+  ];
+}
+
+/// The `data.dart` files that return or select a provider of their own and that no page, section
+/// or preload has watched yet: fespalier follows it from then on.
 class _Untraced extends StatelessWidget {
   const _Untraced({required this.sites, required this.tree});
 
@@ -211,10 +321,11 @@ class _Untraced extends StatelessWidget {
     key: const Key('untraced'),
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const SectionTitle('Not traced'),
+      const SectionTitle('Not watched yet'),
       Text(
-        'These data.dart files return or select a provider of their own, so '
-        'fespalier cannot see it: use the Riverpod DevTools tab for them.',
+        'These data.dart files return or select a provider of their own. '
+        'fespalier follows it once a page, a section or a preload watches it; '
+        "until then, see Riverpod's DevTools tab.",
         style: Theme.of(context).textTheme.bodySmall,
       ),
       for (final s in sites)

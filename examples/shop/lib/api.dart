@@ -3,9 +3,18 @@ import 'package:fespalier/fespalier.dart';
 class Product {
   const Product(this.id, this.name, this.price);
 
+  /// What `dataCache` in products/$id/data.dart saves, and reads back at the next start.
+  factory Product.fromJson(Map<String, Object?> json) => Product(
+        json['id']! as int,
+        json['name']! as String,
+        (json['price']! as num).toDouble(),
+      );
+
   final int id;
   final String name;
   final double price;
+
+  Map<String, Object?> toJson() => {'id': id, 'name': name, 'price': price};
 }
 
 class ProductNotFound implements Exception {

@@ -6,7 +6,7 @@ use std::fs;
 use crate::build;
 use crate::config::Config;
 
-fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
+pub(crate) fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("pubspec.yaml"), "name: demo\n").unwrap();
     for (rel, body) in files {
@@ -17,7 +17,7 @@ fn project(files: &[(&str, &str)]) -> tempfile::TempDir {
     dir
 }
 
-fn diags(files: &[(&str, &str)]) -> Vec<String> {
+pub(crate) fn diags(files: &[(&str, &str)]) -> Vec<String> {
     let dir = project(files);
     let (_, diags, _) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
     diags
@@ -28,7 +28,7 @@ fn diags(files: &[(&str, &str)]) -> Vec<String> {
 }
 
 /// Just the errors: a warning isn't one.
-fn errors(files: &[(&str, &str)]) -> String {
+pub(crate) fn errors(files: &[(&str, &str)]) -> String {
     diags(files)
         .into_iter()
         .filter(|d| d.starts_with('✗'))
@@ -36,7 +36,7 @@ fn errors(files: &[(&str, &str)]) -> String {
         .join("\n")
 }
 
-fn code(files: &[(&str, &str)]) -> String {
+pub(crate) fn code(files: &[(&str, &str)]) -> String {
     let dir = project(files);
     let (code, diags, _) = build(&dir.path().join("lib/app"), &Config::default()).unwrap();
     // A page that doesn't take its data is a warning the examples here don't care about.
@@ -50,25 +50,26 @@ fn code(files: &[(&str, &str)]) -> String {
     code
 }
 
-fn has(code: &str, needles: &[&str]) {
+pub(crate) fn has(code: &str, needles: &[&str]) {
     for n in needles {
         assert!(code.contains(n), "missing `{n}` in:\n{code}");
     }
 }
 
-fn lacks(code: &str, needles: &[&str]) {
+pub(crate) fn lacks(code: &str, needles: &[&str]) {
     for n in needles {
         assert!(!code.contains(n), "unexpected `{n}` in:\n{code}");
     }
 }
 
-fn widget(class: &str, fields: &str, params: &str) -> String {
+pub(crate) fn widget(class: &str, fields: &str, params: &str) -> String {
     format!(
         "class {class} extends StatelessWidget {{ const {class}({{super.key{params}}}); {fields} }}"
     )
 }
 
-const HOME: &str = "class HomePage extends StatelessWidget { const HomePage({super.key}); }";
+pub(crate) const HOME: &str =
+    "class HomePage extends StatelessWidget { const HomePage({super.key}); }";
 
 /// `orders/$id/` with a page, and the files given beside it.
 fn order(files: &[(&'static str, &'static str)]) -> Vec<(&'static str, &'static str)> {
@@ -991,4 +992,98 @@ fn a_section_handle_name_clash_is_reported_with_an_action_only_section_too() {
 fn a_well_formed_project_with_actions_has_no_diagnostics() {
     // The code and the examples are what really check this; this keeps the success paths honest.
     assert!(diags(&order(&[("orders/$id/action.dart", REFUND)])).is_empty());
+}
+
+/// A tree with an order route (data, a `refund` action) and a team section (data, an action).
+fn zero_seven_tree() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("page.dart", HOME),
+        (
+            "orders/$id/page.dart",
+            "class OrderPage extends StatelessWidget { const OrderPage({super.key, required this.id, required this.order}); final int id; final Order order; }",
+        ),
+        (
+            "orders/$id/data.dart",
+            "Future<Order> data(Ref ref, {required int id}) async => x;",
+        ),
+        ("orders/$id/action.dart", REFUND),
+        (
+            "teams/$teamId/data.dart",
+            "Future<Team> data(Ref ref, {required String teamId}) async => x;",
+        ),
+        (
+            "teams/$teamId/layout.dart",
+            "class TeamLayout extends StatelessWidget { const TeamLayout({super.key, required this.child, required this.team}); final Widget child; final Team team; }",
+        ),
+        (
+            "teams/$teamId/members/page.dart",
+            "class MembersPage extends StatelessWidget { const MembersPage({super.key, required this.team, required this.teamId}); final Team team; final String teamId; }",
+        ),
+        (
+            "teams/$teamId/action.dart",
+            "Future<void> addMember(Ref ref, {required String teamId, required String input}) async {}",
+        ),
+    ]
+}
+
+/// What 0.7.0 generated for these files, copied from a run of `fsp gen` at 5f7f39d: an app
+/// with no `form()`, `validate()` or `optimistic()` must still get exactly this (since 0.8.0).
+#[test]
+fn no_companions_generate_what_0_7_0_did() {
+    let c = code(&zero_seven_tree());
+    has(
+        &c,
+        &[
+            // The three members of an action, on the route and on the section handle.
+            "  static final action = _action2_0;\n",
+            "  static final submit = (WidgetRef ref, {required int id, required RefundInput input}) => ref.runAction(action(id), input);\n",
+            "  static final useAction = (WidgetRef ref, {required int id}) => ref.watchAction(action(id));\n}\n",
+            "  static final addMemberAction = _action4_0;\n",
+            "  static final addMember = (WidgetRef ref, {required String teamId, required String input}) => ref.runAction(addMemberAction(teamId), input);\n",
+            "  static final useAddMember = (WidgetRef ref, {required String teamId}) => ref.watchAction(addMemberAction(teamId));\n}\n",
+            // The typed `watch` of the data an action invalidates.
+            "  static final watch = (WidgetRef ref, {required int id}) => ref.watch(data(id));\n",
+            "  static final watch = (WidgetRef ref, {required String teamId}) => ref.watch(data(teamId));\n",
+            // The two provider definitions, whole.
+            "/// `action()` of orders/$id/action.dart: its state, and what it invalidates after a success.\n\
+             final _action2_0 = actionFamily(\n\
+             \x20 (Ref ref, int id, RefundInput input) => _i2.action(ref, id: id, input: input),\n\
+             \x20 invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_data2(id)],\n\
+             \x20 site: 'a2_0',\n\
+             );\n",
+            "/// `addMember()` of teams/$teamId/action.dart: its state, and what it invalidates after a success.\n\
+             final _action4_0 = actionFamily(\n\
+             \x20 (Ref ref, String teamId, String input) => _i5.addMember(ref, teamId: teamId, input: input),\n\
+             \x20 invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_data4(teamId)],\n\
+             \x20 site: 'a4_0',\n\
+             );\n",
+            // The read sites: `DataView` and `SectionView` as they were.
+            "(v) => DataView(\n\
+             \x20               watch: (ref) => watchData(ref, 'd2', _data2(v.id)),\n\
+             \x20               refresh: (ref) => ref.invalidate(_data2(v.id)),\n\
+             \x20               data: (d) => _i3.OrderPage(id: v.id, order: d),\n\
+             \x20               loading: () => const DefaultLoading(),\n\
+             \x20               error: (e, st, retry) => DefaultError(error: e, retry: retry),\n\
+             \x20               keepPrevious: true,\n\
+             \x20             ),\n",
+            "(v) => SectionView(\n\
+             \x20                   watch: (ref) => watchData(ref, 'd4', _data4(v.teamId)),\n\
+             \x20                   data: (s4) => _i7.MembersPage(team: s4, teamId: v.teamId),\n\
+             \x20                 ),\n",
+        ],
+    );
+    lacks(
+        &c,
+        &[
+            "optimistic",
+            "Optimistic",
+            "useActionForm",
+            "validate:",
+            "useForm",
+            // Nor telemetry or observe.dart hooks (since 0.8.0): neither is opted into.
+            "TelemetrySite",
+            "AppRoutes.attach",
+            "_observeAt",
+        ],
+    );
 }

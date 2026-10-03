@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart' hide RouteMatch;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show ProviderListenable;
 
+import 'lifecycle.dart' show RouteHooks;
 import 'location.dart';
 import 'route_info.dart';
 import 'segments.dart';
@@ -101,7 +102,12 @@ final class RouteMatch {
 /// [caseSensitive] is the route's own setting (its folder's `route.dart`, else the config).
 final class RouteMatcher {
   /// Creates a matcher for [pattern] that [build]s a [UrlMatch].
-  const RouteMatcher(this.pattern, this.build, {this.caseSensitive = true});
+  const RouteMatcher(
+    this.pattern,
+    this.build, {
+    this.caseSensitive = true,
+    this.observe,
+  });
 
   /// The URL's path segments; `:name` ones are parameters.
   final List<String> pattern;
@@ -111,6 +117,10 @@ final class RouteMatcher {
 
   /// Whether the pattern is compared case-sensitively.
   final bool caseSensitive;
+
+  /// The observe.dart hooks of this route at a location, outermost first (since 0.8.0):
+  /// generated only for routes that have some.
+  final List<RouteHooks> Function(GoRouterState state, UrlMatch match)? observe;
 }
 
 /// What the generated `AppRoutes.matchUrl` calls: the first of [routes] whose pattern
@@ -140,6 +150,32 @@ UrlMatch? matchRoutes(
     }
   }
   return null;
+}
+
+/// The observe.dart hooks of the route at [uri], outermost first (since 0.8.0): what the
+/// generated `_observeAt` calls. Empty when no route fits, a segment does not parse (the
+/// not-found rule), or the route has none. Like [matchRoutes], it runs no guard and builds no
+/// widget.
+List<RouteHooks> observeRoutes(
+  Uri uri,
+  String base,
+  List<RouteMatcher> routes, {
+  bool caseSensitive = true,
+}) {
+  final path = pathBelow(uri, base, caseSensitive: caseSensitive);
+  if (path == null) return const [];
+  for (final route in routes) {
+    final params = _capture(route.pattern, path, route.caseSensitive);
+    if (params == null) continue;
+    final state = _UrlState(uri, params, _fullPath(base, route.pattern));
+    try {
+      final match = route.build(state);
+      return route.observe?.call(state, match) ?? const [];
+    } on BadSegment {
+      return const [];
+    }
+  }
+  return const [];
 }
 
 /// Whether [segment] is the static pattern part [part]: a part is one spelling

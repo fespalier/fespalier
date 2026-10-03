@@ -151,6 +151,67 @@ fn the_dart_package_has_the_cli_version() {
 }
 
 #[test]
+fn the_runtime_knows_its_version() {
+    // `fespalierVersion` is what the telemetry adapter reports as `fespalier.version`. It is
+    // release-please's like the pubspec's, so it is annotated and listed in the config.
+    let cargo = env!("CARGO_PKG_VERSION");
+    let file = "packages/fespalier/lib/src/version.dart";
+    let text = read(file);
+    let (i, line) = text
+        .lines()
+        .enumerate()
+        .find(|(_, l)| l.starts_with("const String fespalierVersion = '"))
+        .unwrap_or_else(|| panic!("{file} has no `const String fespalierVersion = '…';` line"));
+    let value = line
+        .trim_start_matches("const String fespalierVersion = '")
+        .split('\'')
+        .next()
+        .unwrap();
+    assert_eq!(value, cargo, "{file}:{} must equal cli/Cargo.toml", i + 1);
+    assert!(
+        annotated_lines(&text).contains(&(i + 1)),
+        "{file}:{}: the version is not annotated",
+        i + 1
+    );
+}
+
+#[test]
+fn the_otel_adapter_has_the_cli_version() {
+    // The adapter is released with fespalier: its own version, and the tag of the fespalier it
+    // depends on (the same repository dependency an app writes, so the two resolve to one package).
+    let cargo = env!("CARGO_PKG_VERSION");
+    let file = "packages/fespalier_otel/pubspec.yaml";
+    let text = read(file);
+    assert_eq!(
+        pubspec_version(&text),
+        cargo,
+        "{file} `version:` must equal cli/Cargo.toml"
+    );
+    let annotated = annotated_lines(&text);
+    let version_line = text
+        .lines()
+        .position(|l| l.starts_with("version:"))
+        .expect("the adapter has a version")
+        + 1;
+    assert!(
+        annotated.contains(&version_line),
+        "{file}:{version_line}: the version is not annotated"
+    );
+    let refs = versions_after(&text, "ref: v");
+    assert!(
+        !refs.is_empty(),
+        "{file} no longer pins fespalier with a `ref: v…`"
+    );
+    for (line, v) in refs {
+        assert_eq!(v, cargo, "{file}:{line}: `ref: v{v}`");
+        assert!(
+            annotated.contains(&line),
+            "{file}:{line}: the ref is not annotated"
+        );
+    }
+}
+
+#[test]
 fn the_devtools_extension_has_the_cli_version() {
     // `config.yaml` is what DevTools shows as the extension's version. It is release-please's like
     // the pubspec's, so it is annotated, and listed in release-please-config.json (checked below).
@@ -233,7 +294,11 @@ fn fsp_init_prints_a_ref_for_this_version() {
 #[test]
 fn the_readmes_pin_this_version() {
     let cargo = env!("CARGO_PKG_VERSION");
-    for file in ["README.md", "packages/fespalier/README.md"] {
+    for file in [
+        "README.md",
+        "packages/fespalier/README.md",
+        "packages/fespalier_otel/README.md",
+    ] {
         let text = read(file);
         for marker in MARKERS {
             for (line, v) in versions_after(&text, marker) {
@@ -260,6 +325,8 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         "cli/src/init.rs",
         "README.md",
         "packages/fespalier/README.md",
+        "packages/fespalier_otel/pubspec.yaml",
+        "packages/fespalier_otel/README.md",
         // the agent skills' install pins (skills/README.md, "Versions")
         "skills/fespalier/SKILL.md",
         "skills/fespalier-migration/references/go-router-adoption.md",
@@ -418,6 +485,27 @@ fn the_launcher_reads_its_version_from_the_package() {
     assert!(
         read("packages/fespalier/bin/fespalier.dart").contains("Launcher.forThisMachine"),
         "bin/fespalier.dart must use the launcher"
+    );
+}
+
+/// The value of the `FLUTTER_VERSION:` line of a workflow's top-level `env:`.
+fn flutter_version(workflow: &str) -> String {
+    let text = read(workflow);
+    text.lines()
+        .find_map(|l| l.trim().strip_prefix("FLUTTER_VERSION:"))
+        .map(|v| v.split('#').next().unwrap_or("").trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| panic!("{workflow} has no `FLUTTER_VERSION:` line"))
+}
+
+#[test]
+fn the_weekly_maestro_workflow_builds_with_the_flutter_of_ci() {
+    // `maestro-web.yml` builds the same web app as ci.yml's `web-routes` job: a Flutter bump in
+    // one file only would make the weekly run test something CI does not.
+    assert_eq!(
+        flutter_version(".github/workflows/maestro-web.yml"),
+        flutter_version(".github/workflows/ci.yml"),
+        "FLUTTER_VERSION differs between maestro-web.yml (left) and ci.yml (right)"
     );
 }
 

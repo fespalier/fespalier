@@ -12,10 +12,13 @@
 //!   remount: never          # default; on_segments or on_location give a page a fresh state when its URL changes (a route.dart sets it per folder)
 //!   deferred: false         # default; true loads each page's code on demand on the web (a route.dart sets it per folder)
 //!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
-//!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
+//!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads (not while an optimistic() write settles)
 //!   push_updates_url: false # default; true puts a `push`ed route's URL in the browser's address bar
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
 //!   semantics_ids: false    # default; true gives each page `Semantics(identifier: 'route:/...')`, for Maestro
+//!   scroll_restoration: false # default; true keeps a page's scroll positions for the browser's back and forward
+//!   main: auto              # default; `generated` always writes lib/app.main.g.dart, `manual` never (see `entry.rs`)
+//!   telemetry: false        # default; true reports navigations, guards, data, actions and deferred loads to FespalierTelemetry
 //!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
 //!     domains: [shop.example.com]
 //!     scheme: myshop
@@ -33,6 +36,19 @@
 //!     timeout: 20000        # default, in milliseconds
 //!     samples:              # the value of each dynamic folder
 //!       products/$id: 1
+//!   size:                   # default: none; what `fsp size` checks (see `size.rs`)
+//!     build: build/web      # default; the `flutter build web` output
+//!     main: 3 MB            # main.dart.js
+//!     route: 64 KB          # each deferred route's own and shared chunks together
+//!     routes:               # per route, by pattern; wins over `route`
+//!       /checkout: 8 KB
+//!   test:                   # default: none, and `fsp test` works without it (see `smoke.rs`)
+//!     out: test/routes      # default; `test`, `integration_test` or a folder below one
+//!     setup: test/routes/setup.dart   # default: <out>/setup.dart, used when it exists
+//!     timeout: 30000        # default, in milliseconds of the test's fake clock
+//!     samples:              # default: the maestro ones
+//!       products/$id: 1
+//!     skip: [/admin]        # patterns as `fsp routes` prints them
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -46,6 +62,8 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_yaml_ng::Value;
 
+use crate::samples;
+pub use crate::samples::SampleValue;
 use crate::scan::FileStyle;
 
 pub const DEFAULT_APP_DIR: &str = "lib/app";
@@ -56,6 +74,13 @@ pub const DEFAULT_LINKS_OUT: &str = "links";
 pub const DEFAULT_MAESTRO_OUT: &str = ".maestro/routes";
 /// How long (in milliseconds) a flow waits for the page it opened.
 pub const DEFAULT_MAESTRO_TIMEOUT: u32 = 20_000;
+/// Where `fsp size` reads the web build, relative to the project root.
+pub const DEFAULT_SIZE_BUILD: &str = "build/web";
+
+/// Where `fsp test` writes, relative to the project root.
+pub const DEFAULT_TEST_OUT: &str = "test/routes";
+/// How long (in milliseconds of a test's fake clock) a smoke test waits for its page.
+pub const DEFAULT_TEST_TIMEOUT: u32 = 30_000;
 
 /// What the providers fespalier generates for `data()` functions do when they fail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -120,6 +145,19 @@ impl Remount {
             .into_iter()
             .find(|r| r.dart() == *which)
     }
+}
+
+/// Whether `fsp gen` writes the generated `main()` (`lib/app.main.g.dart`, class `AppMain`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MainMode {
+    /// Written when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart`.
+    #[default]
+    Auto,
+    /// Always written; without an `app.dart` the app is `MaterialApp.router(routerConfig: router)`.
+    Generated,
+    /// Never written, and the three root files are not read.
+    Manual,
 }
 
 /// How a lint reports: not at all, as a warning, or as an error.
@@ -187,6 +225,14 @@ pub struct Config {
     /// `AppRoutes.mount()` turns the semantics tree on on the web, so a driver that reads the
     /// screen from the outside (Maestro) finds the page.
     pub semantics_ids: bool,
+    /// `scroll_restoration`: each page is wrapped in `RouteScrollMemory`, which keeps a
+    /// `PageStorage` bucket per history entry and hands it back only when the browser brings
+    /// that entry back (since 0.8.0).
+    pub scroll_restoration: bool,
+    /// `telemetry`: the generated file passes each guard, data provider, action and deferred
+    /// library a `const TelemetrySite`, and `AppRoutes.attach` follows the router's navigations.
+    /// Off, the file is exactly what it was without the key.
+    pub telemetry: bool,
     /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
     pub file_style: FileStyle,
     /// The `links:` section, as written. Only `fsp links` reads it, and it checks the values
@@ -197,6 +243,14 @@ pub struct Config {
     /// The `maestro:` section, as written. Only `fsp maestro` reads it, and it checks the values
     /// then ([`MaestroConfig::validate`]), so a mistake in it never stops `fsp gen`.
     pub maestro: Option<MaestroConfig>,
+    /// The `size:` section, as written. Only `fsp size` reads it, and it checks the values
+    /// then ([`SizeConfig::validate`]), so a mistake in it never stops `fsp gen`.
+    pub size: Option<SizeConfig>,
+    /// The `test:` section, as written. Only `fsp test` reads it, and it checks the values
+    /// then ([`TestConfig::validate`]), so a mistake in it never stops `fsp gen`.
+    pub test: Option<TestConfig>,
+    /// `main:`: whether the generated `main()` is written (see [`MainMode`]).
+    pub main: MainMode,
 }
 
 impl Default for Config {
@@ -216,10 +270,15 @@ impl Default for Config {
             keep_previous: true,
             push_updates_url: false,
             semantics_ids: false,
+            scroll_restoration: false,
+            telemetry: false,
             file_style: FileStyle::Snake,
             links: None,
             lints: Lints::default(),
             maestro: None,
+            size: None,
+            test: None,
+            main: MainMode::Auto,
         }
     }
 }
@@ -259,7 +318,12 @@ struct RawConfig {
     links: Option<LinksConfig>,
     lints: Option<LintsConfig>,
     semantics_ids: Option<bool>,
+    scroll_restoration: Option<bool>,
+    telemetry: Option<bool>,
     maestro: Option<MaestroConfig>,
+    size: Option<SizeConfig>,
+    test: Option<TestConfig>,
+    main: Option<MainMode>,
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -415,13 +479,6 @@ pub enum Target {
     Web(String),
 }
 
-/// What a dynamic folder's sample is, as text: one segment, or the parts of a catch-all.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SampleValue {
-    One(String),
-    Many(Vec<String>),
-}
-
 /// The `maestro:` section, checked: what `fsp maestro` writes flows for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Maestro {
@@ -501,17 +558,12 @@ fn is_link_prefix(s: &str) -> bool {
         && !body.contains('#')
 }
 
-/// A sample as text: a string, a number or a boolean.
-fn sample_text(v: &Value) -> Option<String> {
-    match v {
-        Value::String(s) => Some(s.clone()),
-        Value::Number(n) => Some(n.to_string()),
-        Value::Bool(b) => Some(b.to_string()),
-        _ => None,
-    }
-}
-
 impl MaestroConfig {
+    /// The `samples:` as the pubspec has them (`fsp test` falls back to them).
+    pub fn raw_samples(&self) -> Option<&BTreeMap<String, Value>> {
+        self.samples.as_ref()
+    }
+
     /// Checks the values, naming the key at fault. `links` is the `links:` section, which the
     /// default `link` comes from when the flows are for an app.
     pub fn validate(&self, links: Option<&LinksConfig>) -> Result<Maestro> {
@@ -596,23 +648,7 @@ impl MaestroConfig {
                 ),
             },
         };
-        let mut samples = vec![];
-        for (key, value) in self.samples.iter().flatten() {
-            let sample = match value {
-                Value::Sequence(items) => items
-                    .iter()
-                    .map(sample_text)
-                    .collect::<Option<Vec<String>>>()
-                    .map(SampleValue::Many),
-                one => sample_text(one).map(SampleValue::One),
-            };
-            let Some(sample) = sample else {
-                bail!(
-                    "`fespalier.maestro.samples`: the value of `{key}` must be a text, a number, a boolean or a list of them"
-                );
-            };
-            samples.push((key.clone(), sample));
-        }
+        let samples = samples::parse("fespalier.maestro.samples", self.samples.as_ref())?;
         Ok(Maestro {
             https_app_link: matches!(target, Target::App(_)) && link.starts_with("https://"),
             target,
@@ -621,6 +657,205 @@ impl MaestroConfig {
             guard_flow,
             timeout,
             samples,
+        })
+    }
+}
+
+/// The `size:` section of the `fespalier:` config, as the pubspec has it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SizeConfig {
+    build: Option<String>,
+    main: Option<Value>,
+    route: Option<Value>,
+    routes: Option<BTreeMap<String, Value>>,
+}
+
+/// The `size:` section, checked: what `fsp size` reports and checks against.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Size {
+    /// Normalized, `/`-separated, relative to the project root: `build/web`.
+    pub build: String,
+    /// The budget for `main.dart.js`, in bytes.
+    pub main: Option<u64>,
+    /// The budget for each deferred route's own and shared chunks together, in bytes.
+    pub route: Option<u64>,
+    /// The budget of single routes by pattern, as the pubspec orders them; each wins over
+    /// `route`.
+    pub routes: Vec<(String, u64)>,
+}
+
+impl Size {
+    /// Whether any budget is set.
+    #[must_use]
+    pub fn has_budgets(&self) -> bool {
+        self.main.is_some() || self.route.is_some() || !self.routes.is_empty()
+    }
+}
+
+/// A value as the pubspec spells it, for a message.
+fn shown_value(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        other => serde_json::to_string(other).unwrap_or_default(),
+    }
+}
+
+/// A size in bytes: a whole number of bytes of at least 1, or a number and a unit, `B`, `KB`
+/// (1,024 bytes) or `MB` (1,048,576 bytes), with at most one space between: `3 MB`, `1.5 MB`,
+/// `64KB`, `900 B`. The unit's case matters.
+fn parse_size(v: &Value) -> Option<u64> {
+    match v {
+        Value::Number(n) => n.as_u64().filter(|n| *n >= 1),
+        Value::String(s) => {
+            let end = s.find(|c: char| !c.is_ascii_digit() && c != '.')?;
+            let (number, unit) = s.split_at(end);
+            let unit = unit.strip_prefix(' ').unwrap_or(unit);
+            let factor = match unit {
+                "B" => 1.0,
+                "KB" => 1024.0,
+                "MB" => 1_048_576.0,
+                _ => return None,
+            };
+            let (whole, fraction) = number.split_once('.').unwrap_or((number, "0"));
+            let digits = |p: &str| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit());
+            if !digits(whole) || !digits(fraction) {
+                return None;
+            }
+            let bytes = number.parse::<f64>().ok()? * factor;
+            (0.5..1e15).contains(&bytes).then(|| {
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "checked to be at least 0.5 and below 1e15 just above"
+                )]
+                let n = bytes.round() as u64;
+                n
+            })
+        }
+        _ => None,
+    }
+}
+
+impl SizeConfig {
+    /// Checks the values, naming the key at fault.
+    pub fn validate(&self) -> Result<Size> {
+        let size = |key: &str, v: &Value| -> Result<u64> {
+            parse_size(v).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "`fespalier.size.{key}` must be a size like `3 MB`, `64 KB` or `900 B` (KB is 1,024 bytes), or a number of bytes, got `{}`",
+                    shown_value(v)
+                )
+            })
+        };
+        let build = match &self.build {
+            None => DEFAULT_SIZE_BUILD.to_string(),
+            Some(raw) => project_folder("size.build", raw)?,
+        };
+        let mut routes = vec![];
+        for (pattern, v) in self.routes.iter().flatten() {
+            routes.push((pattern.clone(), size(&format!("routes.{pattern}"), v)?));
+        }
+        Ok(Size {
+            build,
+            main: self.main.as_ref().map(|v| size("main", v)).transpose()?,
+            route: self.route.as_ref().map(|v| size("route", v)).transpose()?,
+            routes,
+        })
+    }
+}
+
+/// The `test:` section of the `fespalier:` config, as the pubspec has it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TestConfig {
+    out: Option<String>,
+    setup: Option<String>,
+    timeout: Option<i64>,
+    samples: Option<BTreeMap<String, Value>>,
+    skip: Option<Vec<String>>,
+}
+
+/// The `test:` section, checked: what `fsp test` writes a test file for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Test {
+    /// Normalized, `/`-separated, relative to the project root, `test`, `integration_test` or a
+    /// folder below one.
+    pub out: String,
+    /// The setup file as the pubspec names it: normalized and relative to the project root.
+    /// `None` is the default, `<out>/setup.dart`, which is used when it exists.
+    pub setup: Option<String>,
+    /// How long a test waits for its page, in milliseconds of its fake clock.
+    pub timeout: u32,
+    /// The patterns (as `fsp routes` prints them) that get no test.
+    pub skip: Vec<String>,
+}
+
+impl Test {
+    /// The setup file, as a path relative to the project root: the configured one, or else
+    /// `<out>/setup.dart`.
+    pub fn setup_path(&self) -> String {
+        self.setup
+            .clone()
+            .unwrap_or_else(|| format!("{}/setup.dart", self.out))
+    }
+}
+
+impl TestConfig {
+    /// The samples as written (`fsp test` falls back to the maestro ones when there are none).
+    pub fn raw_samples(&self) -> Option<&BTreeMap<String, Value>> {
+        self.samples.as_ref()
+    }
+
+    /// Checks the values, naming the key at fault. The samples are checked by the command, with
+    /// the routes they are for.
+    pub fn validate(&self) -> Result<Test> {
+        let out = match &self.out {
+            None => DEFAULT_TEST_OUT.to_string(),
+            Some(raw) => {
+                let out = project_folder("test.out", raw)?;
+                if !matches!(out.split('/').next(), Some("test" | "integration_test")) {
+                    bail!(
+                        "`fespalier.test.out` must be `test`, `integration_test` or a folder below one of them, where `flutter test` finds tests, got `{raw}`"
+                    );
+                }
+                out
+            }
+        };
+        let setup = match &self.setup {
+            None => None,
+            Some(raw) => {
+                let file = project_path(raw).filter(|p| {
+                    let name = p.rsplit('/').next().unwrap_or_default();
+                    name.strip_suffix(".dart")
+                        .is_some_and(|stem| !stem.is_empty())
+                });
+                match file {
+                    Some(p) => Some(p),
+                    None => bail!(
+                        "`fespalier.test.setup` must be a .dart file inside the project (relative, no `..`), got `{raw}`"
+                    ),
+                }
+            }
+        };
+        let timeout = match self.timeout {
+            None => DEFAULT_TEST_TIMEOUT,
+            Some(n) => match u32::try_from(n)
+                .ok()
+                .filter(|n| (1000..=600_000).contains(n))
+            {
+                Some(n) => n,
+                None => bail!(
+                    "`fespalier.test.timeout` is in milliseconds of the test's fake clock, from 1000 to 600000, got `{n}`"
+                ),
+            },
+        };
+        Ok(Test {
+            out,
+            setup,
+            timeout,
+            skip: self.skip.clone().unwrap_or_default(),
         })
     }
 }
@@ -793,6 +1028,17 @@ impl Config {
         }
     }
 
+    /// Where the generated `main()` goes: `output` with its `.g.dart` (or `.dart`) suffix
+    /// replaced by `.main.g.dart`, in the same folder. `lib/app.g.dart` is `lib/app.main.g.dart`.
+    pub fn output_main(&self) -> String {
+        let stem = self
+            .output
+            .strip_suffix(".g.dart")
+            .or_else(|| self.output.strip_suffix(".dart"))
+            .unwrap_or(&self.output);
+        format!("{stem}.main.g.dart")
+    }
+
     /// The output path relative to `lib/`, as a `package:` import spells it.
     pub fn output_in_lib(&self) -> &str {
         self.output.strip_prefix("lib/").unwrap_or(&self.output)
@@ -831,7 +1077,12 @@ impl Pubspec {
             config.links = c.links;
             config.lints.unknown_path = c.lints.and_then(|l| l.unknown_path).unwrap_or_default();
             config.semantics_ids = c.semantics_ids.unwrap_or(false);
+            config.scroll_restoration = c.scroll_restoration.unwrap_or(false);
+            config.telemetry = c.telemetry.unwrap_or(false);
             config.maestro = c.maestro;
+            config.size = c.size;
+            config.test = c.test;
+            config.main = c.main.unwrap_or_default();
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }
@@ -852,6 +1103,12 @@ impl Pubspec {
                     );
                 }
                 config.output_manifest = Some(path);
+            }
+            if config.output_manifest.as_deref() == Some(config.output_main().as_str()) {
+                bail!(
+                    "`fespalier.output_manifest` is `{}`, the file the generated main() goes in (`output` with `.main.g.dart`); pick another name",
+                    config.output_main()
+                );
             }
             for key in c.meta_unique.unwrap_or_default() {
                 let ident = key

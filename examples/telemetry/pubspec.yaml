@@ -1,0 +1,43 @@
+name: telemetry
+description: fespalier example — route lifecycle (observe.dart) and OpenTelemetry spans through otel_zone.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+  fespalier_otel:
+    path: ../../packages/fespalier_otel
+  # Not on pub.dev: a git dependency, pinned to a commit (v0.5.0). It is a Flutter plugin (native
+  # crash capture on Android and iOS). It depends on otel_go_router, which declares
+  # `go_router: ^17.0.0`, so this is the one example on go_router 17.
+  otel_zone:
+    git:
+      url: https://github.com/vaam-apps/flutter-otel-zone
+      ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21
+
+dev_dependencies:
+  # The SDK's in-memory exporter, which the tests read the spans from.
+  dartastic_opentelemetry: ^1.1.0-beta.15
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# fespalier_otel depends on fespalier by git, as an app does; here both are the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+
+# Read by the `fsp` generator. `telemetry` makes app.g.dart tell FespalierTelemetry where each
+# guard, data.dart, action and deferred page is, and follow the router's navigations. It reports
+# nothing until main.dart installs a sink (FespalierTelemetry.install).
+fespalier:
+  telemetry: true
+
+flutter:
+  uses-material-design: true

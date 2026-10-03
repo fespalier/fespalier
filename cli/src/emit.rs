@@ -9,7 +9,7 @@
     reason = "the resolver checked a route's `data` and `page` before emission; these expects state that invariant"
 )]
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::Serialize;
 
@@ -20,6 +20,7 @@ use crate::diag::Diags;
 use crate::enums;
 use crate::locale::{self, Localized};
 use crate::manifest::{self, ManifestCx};
+use crate::menu::{self, MenuCx};
 use crate::resolve::{
     self, Action, ActionNames, App, Bind, Branch, Data, Flow, Guard, HookFirst, Route, Transition,
 };
@@ -44,6 +45,8 @@ struct FileCx {
     matchers: Vec<MatcherCx>,
     params_fns: Vec<ParamsFnCx>,
     providers: Vec<ProviderCx>,
+    /// The optimistic layer of each data.dart an `optimistic()` patches (since 0.8.0).
+    layers: Vec<LayerCx>,
     /// The route manifest, unless `output_manifest:` moves it to its own library.
     manifest: Option<ManifestCx>,
     /// `import '...' show Product;` lines for the types of typed `extra`s.
@@ -53,6 +56,9 @@ struct FileCx {
     /// The route tree as JSON (`fsp routes --graph json`), as a Dart string literal: what
     /// `mount()` hands to DevTools, under `kFespalierDevTools`.
     devtools_tree: String,
+    /// What `_devToolsProviders` lists: each `data.dart`'s provider (or family) as the generated
+    /// code names it, and its DevTools site. Empty for an app with no `data.dart` to list.
+    devtools_providers: Vec<DevToolsProviderCx>,
     /// Whether the root matches paths by case: what the mount point is compared with.
     case_sensitive: bool,
     /// `keep_previous` from the config: the `DataViews`' `keepPrevious`.
@@ -63,9 +69,21 @@ struct FileCx {
     /// `semantics_ids` from the config: pages wear `Semantics(identifier:)`, and `mount()`
     /// turns the semantics tree on on the web.
     semantics_ids: bool,
+    /// `scroll_restoration` from the config: each page's view is wrapped in `RouteScrollMemory`.
+    scroll_restoration: bool,
     /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
     /// (`_keep`) that tells a parameter left out from one passed as `null`.
     copy_with: bool,
+    /// `AppMenu`, when some folder has a nav.dart (since 0.8.0).
+    menu: Option<MenuCx>,
+    /// Some page has observe.dart hooks: `AppRoutes.attach` runs them, through `_observeAt`.
+    observe: bool,
+    /// `telemetry` from the config: guards, data, actions and deferred libraries are told where
+    /// they are, and `AppRoutes.attach` follows the router.
+    telemetry: bool,
+    /// The generated `AppRoutes.attach` exists: for observe.dart hooks (and, with `telemetry`,
+    /// for telemetry). Without either, `router()` attaches DevTools as it always did.
+    attach: bool,
 }
 
 /// One `import` of the generated file.
@@ -87,6 +105,8 @@ struct DeferredLibCx {
     file: String,
     /// The same, as a doc comment shows it.
     path: String,
+    /// The route's pattern, as a Dart string literal: `DeferredLibrary(route:)` with `telemetry`.
+    route: String,
 }
 
 /// A `GoRoute`; a `ShellRoute` when `layout` is set; a `StatefulShellRoute` when
@@ -202,6 +222,10 @@ struct CallCx {
     /// For a guard: the folder it is in. `None` for a `redirect.dart`.
     #[serde(skip)]
     guard: Option<usize>,
+    /// The guard's or redirect's file and the pattern of the route it guards, as Dart string
+    /// literals: what `telemetry:` names.
+    site_file: String,
+    site_route: String,
 }
 
 /// A layout's builder body: `page` is the layout widget, which a section's `data`
@@ -278,9 +302,18 @@ fn transition_cx(
     }
 }
 
+/// One line of `_devToolsProviders`: `_data13: 'd13'`.
+#[derive(Serialize)]
+struct DevToolsProviderCx {
+    expr: String,
+    site: String,
+}
+
 #[derive(Serialize)]
 struct ViewDataCx {
     provider: String,
+    /// The file's key in the DevTools tree (`d37`): what `watchData` is told.
+    site: String,
     /// A statement that invalidates it: `ref.invalidate(p)`, or through the runtime
     /// helper when `data.dart` selects a provider (see `invalidateSelected`).
     invalidate: String,
@@ -288,6 +321,12 @@ struct ViewDataCx {
     error: String,
     /// `_lib6`, for a deferred page: `DataView` loads its code in parallel with the data.
     library: Option<String>,
+    /// The optimistic layer an `optimistic()` patches this data through (`_optimistic3(v.id)`),
+    /// for the `DataView` to apply.
+    optimistic: Option<String>,
+    /// The data has a `freshness` or a `dataCache` (since 0.8.0): a failed reload keeps the
+    /// page on its value.
+    keep_data_on_error: bool,
 }
 
 #[derive(Serialize)]
@@ -334,8 +373,19 @@ struct ActionCx {
     call: String,
     /// The function's key in the DevTools tree (`a37_0`), for the provider's `site:`.
     site: String,
+    /// The action's file and the pattern of its route or section, as Dart string literals:
+    /// what `telemetry:` names.
+    site_file: String,
+    site_route: String,
     /// The parameters of what the provider invalidates after a success: `int id`, or nothing.
     key_param: String,
+    /// `_i5.validate`: the `validate()` beside the action, run before it (since 0.8.0).
+    validate: Option<String>,
+    /// `() => _optimistic3.patch(_i5.optimistic)`: binds the `optimistic()` beside the action to
+    /// the layer it patches (since 0.8.0).
+    optimistic: Option<String>,
+    /// The `useForm` hook, when the action has a `form()` (since 0.8.0).
+    form: Option<FormCx>,
     /// The providers a success invalidates.
     invalidates: String,
     /// `{required int id, required _i5.Input input}`: the named parameters of the one-shot helper.
@@ -375,6 +425,8 @@ struct TypedDataCx {
     /// `, {required int id, int? page}`: the keys as named parameters of the static
     /// `watch` and `read`, whose types are inferred from the provider.
     args: String,
+    /// `_optimistic3(id)`: the layer of the patches over this data, which `watch` applies.
+    optimistic: Option<String>,
 }
 
 /// One route as `AppRoutes.matchUrl` tries it.
@@ -392,6 +444,8 @@ struct MatcherCx {
     data: String,
     /// Whether the route's path matches by case (its `route.dart`, else the config).
     case_sensitive: bool,
+    /// `, observe: (s, m) {...}` for a page with observe.dart hooks above it, else empty.
+    observe: String,
 }
 
 /// The typed handle of a section's data.dart: `AccountSection.watch(ref, ...)`.
@@ -411,6 +465,9 @@ struct SectionCx {
     prefetch_args: String,
     /// Whether the section has a data.dart: its members are only there for one.
     has_data: bool,
+    /// `_optimistic3(teamId)`: the layer of the patches over the section's data, which `watch`
+    /// applies.
+    optimistic: Option<String>,
     actions: Vec<ActionCx>,
 }
 
@@ -429,6 +486,8 @@ enum ParamsFn {
     Layout(usize),
     /// What one folder's guard reads from the URL.
     Guard(usize),
+    /// What one folder's observe.dart reads from the URL.
+    Observe(usize),
 }
 
 impl ParamsFn {
@@ -437,8 +496,37 @@ impl ParamsFn {
             ParamsFn::Route(id) => format!("_params{id}"),
             ParamsFn::Layout(id) => format!("_layout{id}"),
             ParamsFn::Guard(id) => format!("_guard{id}"),
+            ParamsFn::Observe(id) => format!("_observe{id}"),
         }
     }
+}
+
+/// The form hook of an action with a `form()`.
+#[derive(Serialize)]
+struct FormCx {
+    /// The member: `useForm`, or `useApproveForm`.
+    hook: String,
+    /// The `form()` function's name, as the comment says it.
+    function: String,
+    /// Whether `form()` takes the data the page passes.
+    has_data: bool,
+    /// The name of the `validate()` beside it, as the comment says it.
+    validate: Option<String>,
+    /// `{required int id, required Profile data, ActionFormValidation validation = ...}`.
+    params: String,
+    /// The arguments of `useActionForm` after the provider.
+    args: String,
+}
+
+/// The optimistic layer of one data.dart: what reads of it apply.
+#[derive(Serialize)]
+struct LayerCx {
+    /// `_optimistic3`.
+    name: String,
+    /// `optimisticLayer(_data3)`, or `optimisticLayerFamily((int id) => _data3(id))`.
+    def: String,
+    /// What the layer is, for its comment.
+    doc: String,
 }
 
 #[derive(Serialize)]
@@ -458,6 +546,27 @@ struct ProviderCx {
     /// What the family is keyed by, as `traceData` is told: the key's parameter, `k` for a
     /// record of keys, or `null` with no keys.
     key_expr: String,
+    /// `_i13.freshness` (since 0.8.0): the provider wraps its value in `freshData`.
+    freshness: Option<String>,
+    /// The data.dart's `dataCache` (since 0.8.0): the provider is `cachedData[Family]`.
+    cache: Option<CacheCx>,
+    /// The data.dart and the pattern of its route or section, as Dart string literals: what
+    /// `telemetry:` names.
+    site_file: String,
+    site_route: String,
+}
+
+#[derive(Serialize)]
+struct CacheCx {
+    /// `_i13.dataCache`
+    expr: String,
+    /// The data.dart's folder relative to the app folder, as a Dart string literal.
+    name: String,
+    /// The family's key parameter as `create` takes it (`int id`, `({String shop, int id}) k`);
+    /// none without keys.
+    key_param: Option<String>,
+    /// The key's parts in path order: `[id]`, `[k.shop, k.id]`.
+    key_parts: String,
 }
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
@@ -489,6 +598,10 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         .enumerate()
         .filter_map(|(id, r)| typed_route(app, id, r))
         .collect();
+    let has_observe = app
+        .routes
+        .iter()
+        .any(|r| r.page.is_some() && !r.observers.is_empty());
     let cx = FileCx {
         app_dir: cfg.app_dir.clone(),
         table: table(app),
@@ -513,6 +626,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
                 import: r.page.as_ref().expect("a deferred route has a page").import,
                 file: dart_str(&rel(r, Kind::Page)),
                 path: rel(r, Kind::Page),
+                route: dart_str(&resolve::pattern(&r.url)),
             })
             .collect(),
         manifest,
@@ -533,16 +647,23 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
             .enumerate()
             .filter_map(|(id, r)| provider(app, cfg, id, r))
             .collect(),
+        layers: layers(app),
         extra_imports: extra_imports(app, cfg),
         extra_codec: app
             .extra_codec
             .as_ref()
             .map(|c| format!("_i{}.extraCodec", c.import)),
         devtools_tree: dart_str(&devtools::compact(app, cfg)),
+        devtools_providers: devtools_providers(app),
         case_sensitive: app.routes[0].case_sensitive,
+        observe: has_observe,
+        telemetry: cfg.telemetry,
+        attach: has_observe || cfg.telemetry,
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
         semantics_ids: cfg.semantics_ids,
+        menu: menu::build(app, diags),
+        scroll_restoration: cfg.scroll_restoration,
     };
     templates::render("app.g.dart", &cx)
 }
@@ -711,6 +832,12 @@ fn check_deferred_types(app: &App, diags: &mut Diags) {
             spelled.extend(h.extra.iter().map(|e| e.ty.ty.clone()));
         }
         spelled.extend(r.actions.iter().map(|a| a.input.ty.clone()));
+        spelled.extend(
+            r.actions
+                .iter()
+                .filter_map(|a| a.form.as_ref()?.data.as_ref())
+                .map(|d| d.ty.clone()),
+        );
     }
     spelled.extend(app.enum_types.iter().map(|e| e.ty.clone()));
     let mut reported: BTreeSet<(usize, String)> = BTreeSet::new();
@@ -743,6 +870,8 @@ fn in_builder(b: &Bind) -> String {
         Bind::StackTrace => "st".into(),
         Bind::Retry => "retry".into(),
         Bind::Uri => "uri".into(),
+        // Only an observe.dart hook takes this; `observe_closure` spells it.
+        Bind::Route => "m.route".into(),
         Bind::PageKey => "state.pageKey".into(),
         Bind::State => "state".into(),
         Bind::IsShell => "false".into(),
@@ -1039,11 +1168,14 @@ fn layout_cx(
             let (loading, error) = fallbacks(r);
             ViewDataCx {
                 provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+                site: devtools::site_data(id),
                 invalidate: invalidate_expr(app, id, r, d),
                 loading,
                 error,
                 // Layouts are never deferred.
                 library: None,
+                optimistic: layer_expr(app, id, r, d, "v."),
+                keep_data_on_error: keeps_data_on_error(d),
             }
         }),
         not_found: not_found_call(r),
@@ -1080,8 +1212,11 @@ fn with_sections(
             fns.insert(ParamsFn::Layout(sid));
             format!("{}(state).", ParamsFn::Layout(sid).name())
         };
+        let optimistic = layer_expr(app, sid, r, d, &prefix)
+            .map_or(String::new(), |l| format!("  optimistic: (ref) => ref.watch({l}),\n"));
         format!(
-            "SectionView(\n  watch: (ref) => ref.watch({}{}),\n  data: (s{sid}) => {},\n)",
+            "SectionView(\n  watch: (ref) => watchData(ref, '{}', {}{}),\n  data: (s{sid}) => {},\n{optimistic})",
+            devtools::site_data(sid),
             provider_expr(sid, d),
             key_expr(app, r, d, &prefix),
             acc.replace('\n', "\n  ")
@@ -1182,6 +1317,7 @@ fn redirects_of(
             &devtools::site_guard(g, id),
             Some(g),
             seg_fn,
+            (rel(&app.routes[g], Kind::Guard), resolve::pattern(&r.url)),
         ));
     }
     for (hook, name, site, guard) in [
@@ -1190,7 +1326,13 @@ fn redirects_of(
     ] {
         if let Some(h) = hook {
             let own = seg_fn.clone().filter(|_| !h.keys().is_empty());
-            out.push(hook_call(h, name, &site, guard, own));
+            let kind = if name == "guard" {
+                Kind::Guard
+            } else {
+                Kind::Redirect
+            };
+            let at = (rel(r, kind), resolve::pattern(&r.url));
+            out.push(hook_call(h, name, &site, guard, own, at));
         }
     }
     out
@@ -1207,6 +1349,7 @@ fn hook_call(
     site: &str,
     guard: Option<usize>,
     seg_fn: Option<String>,
+    where_is: (String, String),
 ) -> CallCx {
     let mut args = vec![];
     match h.first {
@@ -1221,6 +1364,7 @@ fn hook_call(
         _ => format!("{}: {}", a.name, in_hook(&a.bind)),
     }));
     let call = format!("_i{}.{name}({})", h.import, args.join(", "));
+    let (file, route) = where_is;
     let call = match (h.first, name) {
         (HookFirst::Ref, "guard") => format!("refGuard(context, '{site}', (ref) => {call})"),
         (HookFirst::Ref, _) => format!("refRedirect(context, (ref) => {call})"),
@@ -1231,6 +1375,8 @@ fn hook_call(
         call,
         site: site.to_string(),
         guard,
+        site_file: dart_str(&file),
+        site_route: dart_str(&route),
     }
 }
 
@@ -1308,10 +1454,13 @@ fn page_route(
     let library = r.defers_page().then(|| format!("_lib{id}"));
     let data = r.data.as_ref().map(|d| ViewDataCx {
         provider: format!("{}{}", provider_expr(id, d), key_expr(app, r, d, "v.")),
+        site: devtools::site_data(id),
         invalidate: invalidate_expr(app, id, r, d),
         loading: loading.clone(),
         error: error.clone(),
         library: library.clone(),
+        optimistic: layer_expr(app, id, r, d, "v."),
+        keep_data_on_error: keeps_data_on_error(d),
     });
     // A deferred page's class can't be named in a constant expression.
     let page_call = if library.is_some() {
@@ -1795,12 +1944,165 @@ fn invalidate_expr(app: &App, id: usize, r: &Route, d: &Data) -> String {
     )
 }
 
+/// The private provider of the optimistic layer over the data.dart of route (or section) `id`.
+fn layer_name(id: usize) -> String {
+    format!("_optimistic{id}")
+}
+
+/// Whether an `optimistic()` patches the data.dart of route (or section) `id`: then its reads
+/// go through a layer.
+fn has_layer(app: &App, id: usize) -> bool {
+    app.routes
+        .iter()
+        .flat_map(|r| &r.actions)
+        .any(|a| a.optimistic.as_ref().is_some_and(|o| o.target == Some(id)))
+}
+
+/// The layer to read next to the data of `id`, when an `optimistic()` patches it: keyed the way
+/// the data is (`_optimistic3(v.id)`), `prefix` reading the keys.
+fn layer_expr(app: &App, id: usize, r: &Route, d: &Data, prefix: &str) -> Option<String> {
+    has_layer(app, id).then(|| format!("{}{}", layer_name(id), key_expr(app, r, d, prefix)))
+}
+
+/// One layer for each data.dart an `optimistic()` patches, in route order.
+fn layers(app: &App) -> Vec<LayerCx> {
+    let mut users: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+    for r in &app.routes {
+        for a in &r.actions {
+            let Some(o) = &a.optimistic else { continue };
+            let Some(t) = o.target else { continue };
+            users.entry(t).or_default().push(format!(
+                "`{}()` of {}",
+                o.function,
+                rel(r, Kind::Action)
+            ));
+        }
+    }
+    users
+        .into_iter()
+        .filter_map(|(t, by)| {
+            let target = &app.routes[t];
+            let d = target.data.as_ref()?;
+            let (param, _) = key_params(app, target, d);
+            let def = if d.keys.is_empty() {
+                format!("optimisticLayer({})", provider_expr(t, d))
+            } else {
+                // The closure's parameter is the key: a bare value, or the record `k`.
+                let bare = d.keys.len() == 1 && !d.record;
+                let key = key_expr(app, target, d, if bare { "" } else { "k." });
+                format!(
+                    "optimisticLayerFamily(({param}) => {}{key})",
+                    provider_expr(t, d)
+                )
+            };
+            Some(LayerCx {
+                name: layer_name(t),
+                def,
+                doc: format!(
+                    "What reads of {} show while a write that patches it is in flight ({}). Since 0.8.0.",
+                    rel(target, Kind::Data),
+                    by.join(", ")
+                ),
+            })
+        })
+        .collect()
+}
+
+/// The providers `_devToolsProviders` lists, in folder order: what `devToolsRegister` uses to
+/// find the record of a provider that was prefetched before any page watched it. A selector with
+/// keys is a closure (`_data14(v.id)` makes the provider), so it is left out: the runtime learns
+/// its family when a view first watches it.
+fn devtools_providers(app: &App) -> Vec<DevToolsProviderCx> {
+    app.routes
+        .iter()
+        .enumerate()
+        .filter_map(|(id, r)| r.data.as_ref().map(|d| (id, d)))
+        .filter(|(_, d)| !d.selector || d.keys.is_empty())
+        .map(|(id, d)| DevToolsProviderCx {
+            expr: provider_expr(id, d),
+            site: devtools::site_data(id),
+        })
+        .collect()
+}
+
+/// The `useForm` hook of an action: a typed field for each field of its input record.
+fn form_cx(a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx {
+    let input_ty = &a.input.ty;
+    let mut params: Vec<String> = keys.to_vec();
+    if let Some(d) = &f.data {
+        params.push(format!("required {} data", d.ty));
+    }
+    params.extend(
+        [
+            "ActionFormValidation validation = ActionFormValidation.afterSubmit",
+            "bool resetOnSuccess = false",
+            "ActionFormMessages messages = const ActionFormMessages()",
+        ]
+        .map(String::from),
+    );
+    let fields: Vec<String> = f
+        .fields
+        .iter()
+        .map(|field| {
+            let n = &field.name;
+            match field.codec {
+                Some(codec) => format!("{n}: f.text('{n}', (v) => v.{n}, FieldCodec.{codec})"),
+                None => format!("{n}: f.value('{n}', (v) => v.{n})"),
+            }
+        })
+        .collect();
+    let input: Vec<String> = f
+        .fields
+        .iter()
+        .map(|field| format!("{n}: f.{n}.value", n = field.name))
+        .collect();
+    let (data, take) = if f.data.is_some() {
+        ("data", "data")
+    } else {
+        ("null", "")
+    };
+    let mut args = vec![
+        format!("data: {data}"),
+        format!("initial: () => _i{}.{}({take})", a.import, f.function),
+        format!(
+            "fields: (ActionFormFields<{input_ty}> f) => ({})",
+            fields.join(", ")
+        ),
+        format!("input: (f) => ({})", input.join(", ")),
+    ];
+    if let Some(v) = &a.validate {
+        args.push(format!("validate: _i{}.{v}", a.import));
+    }
+    args.extend(
+        [
+            "validation: validation",
+            "resetOnSuccess: resetOnSuccess",
+            "messages: messages",
+        ]
+        .map(String::from),
+    );
+    FormCx {
+        hook: hook.to_string(),
+        function: f.function.clone(),
+        has_data: f.data.is_some(),
+        validate: a.validate.clone(),
+        params: format!("{{{}}}", params.join(", ")),
+        args: args.join(", "),
+    }
+}
+
 fn provider_expr(id: usize, d: &Data) -> String {
     if d.provider {
         format!("_i{}.data", d.import)
     } else {
         format!("_data{id}")
     }
+}
+
+/// A route whose data has a `freshness` or a `dataCache` keeps its page on the value it had when
+/// a reload fails (since 0.8.0).
+fn keeps_data_on_error(d: &Data) -> bool {
+    d.freshness.is_some() || d.cache
 }
 
 /// The names of a route's catch-all segments.
@@ -1911,6 +2213,7 @@ fn sections(app: &App, diags: &mut Diags) -> Vec<SectionCx> {
                     args: keyed_params(app, r, d),
                     prefetch_args: format!(", {{{}}}", prefetch.join(", ")),
                     has_data: true,
+                    optimistic: layer_expr(app, id, r, d, ""),
                     actions,
                 }
             }
@@ -1926,6 +2229,7 @@ fn sections(app: &App, diags: &mut Diags) -> Vec<SectionCx> {
                 args: String::new(),
                 prefetch_args: String::new(),
                 has_data: false,
+                optimistic: None,
                 actions,
             },
         };
@@ -1945,6 +2249,8 @@ fn action_keys(a: &Action) -> Data {
         ty: String::new(),
         keys: a.keys.clone(),
         record: a.keys.len() > 1,
+        freshness: None,
+        cache: false,
     }
 }
 
@@ -1973,24 +2279,42 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
             let mut params = keyed_param_list(app, r, &d);
             params.push(format!("required {input}"));
             let hook_keys = keyed_params(app, r, &d);
+            let hook_keys_list = keyed_param_list(app, r, &d);
+            // The key a target data.dart is called with, from the action's own keys.
+            let key_of = |td: &Data| match (td.keys.as_slice(), td.record) {
+                ([], _) => String::new(),
+                ([k], false) => format!("({})", at(k)),
+                (keys, _) => {
+                    let fields: Vec<String> =
+                        keys.iter().map(|k| format!("{k}: {}", at(k))).collect();
+                    format!("(({}))", fields.join(", "))
+                }
+            };
             let invalidates: Vec<String> = a
                 .invalidates
                 .iter()
                 .map(|&t| {
                     let target = &app.routes[t];
                     let td = target.data.as_ref().expect("an invalidated route has data");
-                    let key = match (td.keys.as_slice(), td.record) {
-                        ([], _) => String::new(),
-                        ([k], false) => format!("({})", at(k)),
-                        (keys, _) => {
-                            let fields: Vec<String> =
-                                keys.iter().map(|k| format!("{k}: {}", at(k))).collect();
-                            format!("(({}))", fields.join(", "))
-                        }
-                    };
-                    format!("{}{key}", provider_expr(t, td))
+                    format!("{}{}", provider_expr(t, td), key_of(td))
                 })
                 .collect();
+            let optimistic = a.optimistic.as_ref().and_then(|o| {
+                let t = o.target?;
+                let td = app.routes[t].data.as_ref()?;
+                let patch = format!(
+                    "{}{}.patch(_i{}.{})",
+                    layer_name(t),
+                    key_of(td),
+                    a.import,
+                    o.function
+                );
+                Some(if keyed {
+                    format!("({key_ty}) => {patch}")
+                } else {
+                    format!("() => {patch}")
+                })
+            });
             let list = "ProviderListenable<AsyncValue<Object?>>";
             let (run_with, watch_with, returns) = match a.flow {
                 Flow::Future => ("runAction", "watchAction", "Completes with its result, or throws what the action threw"),
@@ -2005,6 +2329,8 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
                 hook: names.hook,
                 top: format!("_action{id}_{i}"),
                 site: devtools::site_action(id, i),
+                site_file: dart_str(&rel(r, Kind::Action)),
+                site_route: dart_str(&resolve::pattern(&r.url)),
                 factory: if keyed { "actionFamily" } else { "actionProvider" },
                 run_params: if keyed {
                     format!("Ref ref, {key_ty}, {input}")
@@ -2012,6 +2338,9 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
                     format!("Ref ref, {input}")
                 },
                 call: format!("_i{}.{}({})", a.import, a.name, call_args.join(", ")),
+                validate: a.validate.as_ref().map(|v| format!("_i{}.{v}", a.import)),
+                optimistic,
+                form: a.form.as_ref().map(|f| form_cx(a, f, &names.form_hook, &hook_keys_list)),
                 key_param: key_ty,
                 invalidates: if invalidates.is_empty() {
                     format!("const <{list}>[]")
@@ -2039,16 +2368,7 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
         let Some(name) = r.name.as_ref().filter(|_| r.is_route()) else {
             continue;
         };
-        let ranks: Vec<u8> = r
-            .url
-            .iter()
-            .filter_map(|s| match s {
-                Seg::Static(_) => Some(0),
-                Seg::Dynamic(_) => Some(1),
-                Seg::CatchAll(..) => Some(2),
-                Seg::Group(_) => None,
-            })
-            .collect();
+        let ranks = resolve::match_rank(&r.url);
         let parts: Vec<String> = r
             .url
             .iter()
@@ -2082,9 +2402,11 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
             .iter()
             .map(|(n, _)| format!("{}: p.{n}", dart_str(n)))
             .collect();
+        let observe = observe_closure(app, r, fns);
         all.push((
             ranks,
             MatcherCx {
+                observe,
                 pattern: format!("[{}]", parts.join(", ")),
                 lines,
                 route,
@@ -2105,6 +2427,63 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
     }
     all.sort_by(|a, b| a.0.cmp(&b.0));
     all.into_iter().map(|(_, m)| m).collect()
+}
+
+/// The `observe:` argument of a page's `RouteMatcher`: the hooks of every observe.dart at and
+/// above its folder, outermost first, each bound to what its parameters ask for (parsed
+/// segments, `s.uri`, the typed route `m.route`). Empty for a route with none.
+fn observe_closure(app: &App, r: &Route, fns: &mut BTreeSet<ParamsFn>) -> String {
+    if r.page.is_none() || r.observers.is_empty() {
+        return String::new();
+    }
+    let mut statements = vec![];
+    let mut hooks = vec![];
+    for &g in &r.observers {
+        let o = app.routes[g]
+            .observe
+            .as_ref()
+            .expect("a folder in `observers` has an observe.dart");
+        let var = format!("o{g}");
+        if !o.keys().is_empty() {
+            fns.insert(ParamsFn::Observe(g));
+            statements.push(format!("final {var} = {}(s);", ParamsFn::Observe(g).name()));
+        }
+        let fields: Vec<String> = o
+            .hooks
+            .iter()
+            .map(|h| {
+                let mut args = vec![];
+                if h.takes_ref {
+                    args.push("ref".to_string());
+                }
+                args.extend(h.args.iter().map(|a| match a.bind {
+                    Bind::Uri => format!("{}: s.uri", a.name),
+                    Bind::Route => format!("{}: m.route", a.name),
+                    _ => format!("{}: {var}.{}", a.name, a.name),
+                }));
+                format!(
+                    "{}: ({}) => _i{}.{}({})",
+                    h.name,
+                    if h.takes_ref { "ref" } else { "_" },
+                    o.import,
+                    h.name,
+                    args.join(", ")
+                )
+            })
+            .collect();
+        hooks.push(format!(
+            "RouteHooks({}, {}),",
+            dart_str(&rel(&app.routes[g], Kind::Observe)),
+            fields.join(", ")
+        ));
+    }
+    statements.push("return [".to_string());
+    statements.extend(hooks);
+    statements.push("];".to_string());
+    format!(
+        ", observe: (s, m) {{\n      {}\n    }}",
+        statements.join("\n      ")
+    )
 }
 
 /// The providers of a route's data, outermost first: the `data.dart` of each section above
@@ -2147,6 +2526,7 @@ fn typed_route(app: &App, id: usize, r: &Route) -> Option<RouteCx> {
             selector: d.selector,
             key: key_expr(app, r, d, ""),
             args: keyed_params(app, r, d),
+            optimistic: layer_expr(app, id, r, d, ""),
         }
     });
     Some(RouteCx {
@@ -2288,9 +2668,29 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
             p.retain(|(n, _)| keys.contains(n));
             p
         }
+        ParamsFn::Observe(id) => {
+            let r = &app.routes[id];
+            let keys = r
+                .observe
+                .as_ref()
+                .map(resolve::Observe::keys)
+                .unwrap_or_default();
+            let query = if r.is_route() {
+                &r.query
+            } else {
+                &r.observe_query
+            };
+            let mut p = app.typed_segs(r);
+            p.extend(query.iter().cloned());
+            p.retain(|(n, _)| keys.contains(n));
+            p
+        }
     };
     let owner = match f {
-        ParamsFn::Route(id) | ParamsFn::Layout(id) | ParamsFn::Guard(id) => &app.routes[id],
+        ParamsFn::Route(id)
+        | ParamsFn::Layout(id)
+        | ParamsFn::Guard(id)
+        | ParamsFn::Observe(id) => &app.routes[id],
     };
     let catch_all = |n: &str| {
         owner
@@ -2421,6 +2821,7 @@ fn key_params(app: &App, r: &Route, d: &Data) -> (String, Vec<String>) {
 fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx> {
     let d = r.data.as_ref().filter(|d| !d.provider)?;
     let (keys, args) = key_params(app, r, d);
+    let keys_decl = keys.clone();
     let (params, mut call_args) = if d.selector {
         (keys, vec![])
     } else {
@@ -2448,7 +2849,33 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
         selector: d.selector,
         site: devtools::site_data(id),
         key_expr: key_value(app, r, d),
+        freshness: d
+            .freshness
+            .as_ref()
+            .map(|(import, _)| format!("_i{import}.freshness")),
+        cache: d.cache.then(|| CacheCx {
+            expr: format!("_i{}.dataCache", d.import),
+            name: dart_str(&r.dir),
+            key_param: (!keys_decl.is_empty()).then(|| keys_decl.clone()),
+            key_parts: key_parts(app, r, d),
+        }),
+        site_file: dart_str(&rel(r, Kind::Data)),
+        site_route: dart_str(&resolve::pattern(&r.url)),
     })
+}
+
+/// The parts a cached provider's key is saved by, in path order: `[id]`, `[k.shop, k.id]`.
+fn key_parts(app: &App, r: &Route, d: &Data) -> String {
+    let names: Vec<String> = data_params(app, r)
+        .into_iter()
+        .filter(|(n, _)| d.keys.contains(n))
+        .map(|(n, _)| n)
+        .collect();
+    let parts: Vec<String> = match (names.as_slice(), d.record) {
+        ([n], false) => vec![n.clone()],
+        (many, _) => many.iter().map(|n| format!("k.{n}")).collect(),
+    };
+    format!("[{}]", parts.join(", "))
 }
 
 /// The Dart expression that is a `data()` provider's key inside its `create` function, as
@@ -2477,10 +2904,12 @@ fn extra_imports(app: &App, cfg: &Config) -> Vec<String> {
     };
     let mut shown: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut aliased = BTreeSet::new();
-    let inputs = app
-        .routes
-        .iter()
-        .flat_map(|r| r.actions.iter().map(|a| &a.input));
+    // The input of each action, and the type its `form()` takes.
+    let inputs = app.routes.iter().flat_map(|r| {
+        r.actions.iter().flat_map(|a| {
+            std::iter::once(&a.input).chain(a.form.as_ref().and_then(|f| f.data.as_ref()))
+        })
+    });
     for e in app
         .routes
         .iter()
@@ -2523,11 +2952,20 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     if r.data.is_some() {
         tags.push("data");
     }
+    if r.data.as_ref().is_some_and(|d| d.freshness.is_some()) {
+        tags.push("fresh");
+    }
+    if r.data.as_ref().is_some_and(|d| d.cache) {
+        tags.push("cached");
+    }
     if !r.actions.is_empty() {
         tags.push("action");
     }
     if r.guard.is_some() {
         tags.push("guard");
+    }
+    if r.page.is_some() && !r.observers.is_empty() {
+        tags.push("observe");
     }
     if r.layout.is_some() {
         tags.push("layout");

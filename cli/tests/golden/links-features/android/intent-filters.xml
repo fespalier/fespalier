@@ -9,6 +9,7 @@
     <data android:host="shop.example.com" />
     <data android:path="/" />
     <data android:pathPattern="/..*" />
+    <data android:path="/nickname" />
     <data android:path="/profile" />
     <data android:path="/settings" />
     <data android:path="/admin" />
@@ -24,6 +25,7 @@
     <data android:path="/docs" />
     <data android:pathPrefix="/docs/" />
     <data android:path="/docs/new" />
+    <data android:path="/feed" />
     <data android:path="/files" />
     <data android:pathPrefix="/files/" />
     <data android:path="/guide" />
@@ -70,6 +72,7 @@
     <data android:pathPattern="/teams/..*/members/..*" />
     <data android:pathPattern="/teams/..*/settings" />
     <data android:path="/ticks" />
+    <data android:path="/vault" />
     <data android:pathPrefix="/wiki/" />
 </intent-filter>
 <intent-filter android:autoVerify="true">
@@ -80,6 +83,7 @@
     <data android:host="www.shop.example.com" />
     <data android:path="/" />
     <data android:pathPattern="/..*" />
+    <data android:path="/nickname" />
     <data android:path="/profile" />
     <data android:path="/settings" />
     <data android:path="/admin" />
@@ -95,6 +99,7 @@
     <data android:path="/docs" />
     <data android:pathPrefix="/docs/" />
     <data android:path="/docs/new" />
+    <data android:path="/feed" />
     <data android:path="/files" />
     <data android:pathPrefix="/files/" />
     <data android:path="/guide" />
@@ -141,6 +146,7 @@
     <data android:pathPattern="/teams/..*/members/..*" />
     <data android:pathPattern="/teams/..*/settings" />
     <data android:path="/ticks" />
+    <data android:path="/vault" />
     <data android:pathPrefix="/wiki/" />
 </intent-filter>
 <intent-filter>
@@ -152,6 +158,7 @@
     <data android:host="www.shop.example.com" />
     <data android:path="/" />
     <data android:pathPattern="/..*" />
+    <data android:path="/nickname" />
     <data android:path="/profile" />
     <data android:path="/settings" />
     <data android:path="/admin" />
@@ -167,6 +174,7 @@
     <data android:path="/docs" />
     <data android:pathPrefix="/docs/" />
     <data android:path="/docs/new" />
+    <data android:path="/feed" />
     <data android:path="/files" />
     <data android:pathPrefix="/files/" />
     <data android:path="/guide" />
@@ -213,5 +221,6 @@
     <data android:pathPattern="/teams/..*/members/..*" />
     <data android:pathPattern="/teams/..*/settings" />
     <data android:path="/ticks" />
+    <data android:path="/vault" />
     <data android:pathPrefix="/wiki/" />
 </intent-filter>

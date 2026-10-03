@@ -687,5 +687,87 @@ void main() {
       await c.read(counted.data('a').future);
       expect(counted.builds['a'], 2);
     });
+
+    testWidgets('the handle says which fields failed', (tester) async {
+      final p = actionProvider<int, int>(
+        (ref, input) => input == 0
+            ? throw const FieldErrors({'n': 'Zero'})
+            : input == 1
+            ? throw StateError('one')
+            : input,
+        invalidates: () => const [],
+      );
+      late ActionHandle<int, int, int?> handle;
+      c = ProviderContainer();
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: MaterialApp(
+            home: Probe(
+              body: (r) {
+                handle = r.watchActionSync(p);
+                return Text('${handle.fieldErrors?.fields}');
+              },
+            ),
+          ),
+        ),
+      );
+      expect(handle.fieldErrors, isNull);
+      expect(handle.call(0), isNull);
+      await tester.pump();
+      expect(handle.fieldErrors?.fields, {'n': 'Zero'});
+      expect(find.text('{n: Zero}'), findsOneWidget);
+      expect(handle.call(1), isNull);
+      await tester.pump();
+      expect(handle.hasError, isTrue);
+      expect(handle.fieldErrors, isNull);
+    });
+  });
+
+  group('validate and optimistic (since 0.8.0)', () {
+    test(
+      'validate refuses a write before it starts, with no loading state',
+      () {
+        final c = container();
+        var runs = 0;
+        final p = actionProvider<int, int>(
+          (ref, input) {
+            runs++;
+            return input;
+          },
+          invalidates: () => const [],
+          validate: (input) =>
+              input < 0 ? const FieldErrors({'n': 'Not negative'}) : null,
+        );
+        final states = <AsyncValue<int?>>[];
+        c.listen(p, (_, next) => states.add(next), fireImmediately: false);
+        expect(
+          () => c.read(p.notifier).call(-1),
+          throwsA(
+            isA<FieldErrors>().having((e) => e.fields, 'fields', {
+              'n': 'Not negative',
+            }),
+          ),
+        );
+        expect(runs, 0);
+        expect(states, hasLength(1));
+        expect(states.single.hasError, isTrue);
+        expect(states.single.isLoading, isFalse);
+        // A valid input goes through, and an empty FieldErrors counts as valid.
+        expect(c.read(p.notifier).call(2), 2);
+        expect(runs, 1);
+      },
+    );
+
+    test('an empty FieldErrors from validate lets the write run', () {
+      final c = container();
+      final p = actionProvider<int, int>(
+        (ref, input) => input,
+        invalidates: () => const [],
+        validate: (input) => const FieldErrors({}),
+      );
+      expect(c.read(p.notifier).call(1), 1);
+    });
   });
 }

@@ -11,19 +11,20 @@ user documentation.
 
 ## When to reach for it
 
-| The question                                                | Where                                                                                        |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Which file serves this URL?                                 | **Location**: the route class and its file. **Routes** (or **Match**) for a URL not open now |
-| Why is this page's parameter `null`?                        | **Location**, Parameters: name, declared type and the value the app's parser made of the URL |
-| What is on the stack, and which layout is around a page?    | **Stack**: pages, `layout …` and `tabs … · tab n` shells, `pushed` pages                     |
-| How did I get here: a `go`, a `push`, a redirect?           | **Location**, History: `initial`, `go`, `push`, `pop`, `replace`, `refresh` per commit       |
-| Does `/orders/5/refund` match, and what are its parameters? | The go-to bar's **Match**: runs no guard, builds nothing, navigates nowhere                  |
-| Which guard redirected me, or did not run?                  | **Guards**: `pass`, `redirect` (with where to), `pending`, `error`, `skipped` per decision   |
-| What led to this redirect chain?                            | **Location**, History: the badge (`2 guards`) on the entry opens the decisions behind it     |
-| Is this data loading, cached, failed or rebuilt?            | **Data**: `loading`, `data`, `error`, `stream`, `disposed`, builds, key, value               |
-| Why does a page show stale data?                            | **Data**: when it was last updated; **Invalidate** builds it again                           |
-| Did the action run, and what did it return or throw?        | **Actions**: `running`, `done`, `error`, how long, the input and the result                  |
-| Which guard, `data.dart` or action does a route have?       | **Routes**, select a row: the sites on that route, each with an **Open in IDE** button       |
+| The question                                                | Where                                                                                          |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Which file serves this URL?                                 | **Location**: the route class and its file. **Routes** (or **Match**) for a URL not open now   |
+| Why is this page's parameter `null`?                        | **Location**, Parameters: name, declared type and the value the app's parser made of the URL   |
+| What is on the stack, and which layout is around a page?    | **Stack**: pages, `layout …` and `tabs … · tab n` shells, `pushed` pages                       |
+| How did I get here: a `go`, a `push`, a redirect?           | **Location**, History: `initial`, `go`, `push`, `pop`, `replace`, `refresh` per commit         |
+| Does `/orders/5/refund` match, and what are its parameters? | The go-to bar's **Match**: runs no guard, builds nothing, navigates nowhere                    |
+| Which guard redirected me, or did not run?                  | **Guards**: `pass`, `redirect` (with where to), `pending`, `error`, `skipped` per decision     |
+| What led to this redirect chain?                            | **Location**, History: the badge (`2 guards`) on the entry opens the decisions behind it       |
+| Is this data loading, cached, failed or rebuilt?            | **Data**: `loading`, `data`, `error`, `stream`, `disposed`, builds, key, value                 |
+| Why does a page show stale data?                            | **Data**: when it was last updated; **Invalidate** builds it again                             |
+| Who keeps this provider alive? (since 0.8.0)                | **Data**, **Holders**: the page, a section, a prefetch, a `RouteLink` preload, other listeners |
+| Did the action run, and what did it return or throw?        | **Actions**: `running`, `done`, `error`, how long, the input and the result                    |
+| Which guard, `data.dart` or action does a route have?       | **Routes**, select a row: the sites on that route, each with an **Open in IDE** button         |
 
 `fsp routes --graph json` prints the same tree without an app.
 
@@ -56,18 +57,26 @@ Quoted from the extension; each is the whole text of the line.
 
 Quoted from the extension.
 
-| Text                                                                               | Meaning                                                                                                                                                               |
-| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `No guard has answered yet.`                                                       | No guard or `redirect.dart` ran since the app started or since **Clear guards**. Navigate to a guarded route                                                          |
-| `Every result is filtered out.`                                                    | Every result chip is off: turn one on                                                                                                                                 |
-| `segments did not parse`                                                           | Result `skipped`: a segment of the URL did not parse as its declared type, so the guard that reads it did not run and the page shows not-found                        |
-| `No data.dart provider was built yet.`                                             | No page has read a `data.dart` yet                                                                                                                                    |
-| `Every provider shown here was disposed: turn on "Show disposed".`                 | Every provider is disposed (nothing watches it), and disposed ones are hidden by default                                                                              |
-| `Not traced`                                                                       | The list of `data.dart` files that return or select a provider of their own: fespalier cannot see them, use Riverpod's DevTools tab                                   |
-| `that provider is not alive any more, so there is nothing to invalidate`           | **Invalidate** on a provider that was disposed, or whose `Ref` is gone                                                                                                |
-| `No action has run yet.`                                                           | No action ran since the app started or since **Clear actions**                                                                                                        |
-| `guard #3 is no longer kept`                                                       | The history entry names a guard decision the app dropped (it keeps the last 200)                                                                                      |
-| `This app does not report its guards: it uses a fespalier from before this panel.` | The app's `hello` does not list `guards` (`data` and `actions` say the same for theirs): a pinned development commit of 0.7.0 from before the panel. Update fespalier |
+| Text                                                                                   | Meaning                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `No guard has answered yet.`                                                           | No guard or `redirect.dart` ran since the app started or since **Clear guards**. Navigate to a guarded route                                                                                                                        |
+| `Every result is filtered out.`                                                        | Every result chip is off: turn one on                                                                                                                                                                                               |
+| `segments did not parse`                                                               | Result `skipped`: a segment of the URL did not parse as its declared type, so the guard that reads it did not run and the page shows not-found                                                                                      |
+| `No data.dart provider was built yet.`                                                 | No page has read a `data.dart` yet                                                                                                                                                                                                  |
+| `Every provider shown here was disposed: turn on "Show disposed".`                     | Every provider is disposed (nothing watches it), and disposed ones are hidden by default                                                                                                                                            |
+| `Not watched yet`                                                                      | Since 0.8.0 (it was `Not traced`): the `data.dart` files that return or select a provider of their own and that no page, section or preload has watched. fespalier follows one from then on; until then use Riverpod's DevTools tab |
+| `app provider`                                                                         | Since 0.8.0: a data record of the app's own provider, seen through fespalier's views. It shows the provider, no build count, and what the last page that watched it got                                                             |
+| `listeners 3`                                                                          | Since 0.8.0: how many listeners a provider fespalier built has now                                                                                                                                                                  |
+| `page view (since 12:03:04.120)`                                                       | **Holders**: the route's `DataView`. `section view (since …)` is a section's `SectionView`                                                                                                                                          |
+| `prefetch handle, kept 30 s`                                                           | **Holders**: a `PrefetchHandle` from `prefetch` / `preload`; `prefetch handle, kept until closed` has no `keepFor`. `RouteLink preload, kept 30 s` and `RouteLink preload, kept until closed` are a `RouteLink` preload             |
+| `1 other listener: ref.watch or listen in your code, or another provider`              | **Holders**: listeners that fespalier did not make (`3 other listeners: …` for more); they are counted, not named                                                                                                                   |
+| `Other listeners of an app provider are not visible here: see Riverpod's DevTools tab` | **Holders** of an app provider: Riverpod does not export who listens to it                                                                                                                                                          |
+| `disposed`                                                                             | **Holders**: the provider is not alive any more                                                                                                                                                                                     |
+| `This provider is no longer tracked.`                                                  | **Holders** for a record the app dropped (it keeps the live providers and the last 50 disposed)                                                                                                                                     |
+| `that provider is not alive any more, so there is nothing to invalidate`               | **Invalidate** on a provider that was disposed, or whose `Ref` is gone                                                                                                                                                              |
+| `No action has run yet.`                                                               | No action ran since the app started or since **Clear actions**                                                                                                                                                                      |
+| `guard #3 is no longer kept`                                                           | The history entry names a guard decision the app dropped (it keeps the last 200)                                                                                                                                                    |
+| `This app does not report its guards: it uses a fespalier from before this panel.`     | The app's `hello` does not list `guards` (`data` and `actions` say the same for theirs): a pinned development commit of 0.7.0 from before the panel. Update fespalier                                                               |
 
 ## Traps
 
@@ -78,11 +87,12 @@ Quoted from the extension.
 - **The tab is empty until the first `mount()`**, and shows no location until the router has committed one.
 - **`--dart-define=fespalier.devtools=false` turns it off in debug too**, which is also how to rule it out
   when something is flaky.
-- **`app.g.dart` calls `devToolsRegister`, `devToolsAttach`, `traceGuard` and `traceData`**, passes `site:` to
-  each action provider, and holds the tree in `_devToolsTree`. Never remove them by hand; `fsp gen` writes
-  them back. `traceGuard` and `traceData` return their last argument, the very object, so a sync guard or
-  a sync `data.dart` stays sync and a `Future` is the one go_router or Riverpod awaits; in release they
-  are inlined away.
+- **`app.g.dart` calls `devToolsRegister`, `devToolsAttach`, `traceGuard`, `traceData` and (since 0.8.0)
+  `watchData`**, passes `site:` to each action provider, and holds the tree in `_devToolsTree` and, for an
+  app with a `data.dart`, the providers by site in `_devToolsProviders`. Never remove them by hand; `fsp gen`
+  writes them back. `traceGuard` and `traceData` return their last argument, the very object, so a sync guard or
+  a sync `data.dart` stays sync and a `Future` is the one go_router or Riverpod awaits; `watchData(ref, 'd37',
+provider)` is `ref.watch(provider)` that also notes the view as a holder. In release they are inlined away.
 - **A hot reload changes the tree and sends no event**: press the refresh button. A hot restart is a new
   app and reloads by itself.
 - **The tab loads Flutter's CanvasKit from `gstatic.com`**, as a Flutter web app does by default: with no
@@ -93,9 +103,14 @@ Quoted from the extension.
   `runtimeType` name, so the tab falls back to the route's path template, which a localized path may not
   match.
 - **A `data.dart` that returns or selects a provider** is listed in `fsp routes --graph json` with
-  `"traced": false`: the Data tab lists the file under **Not traced** and does not follow it.
-- **Who holds a provider is not shown** (the page, a `PrefetchHandle`, a `RouteLink` preload): Riverpod does
-  not export what that needs. Use Riverpod's own DevTools tab. fespalier adds no `ProviderObserver`.
+  `"traced": false`. Since 0.8.0 the Data tab follows it once a page, a section or a preload watches it
+  (`app provider`): its state is what the last view that watched it got, it has no build count, its other
+  listeners are not visible, and a `.select(...)` can't be invalidated or checked for being alive. Until then
+  the file is listed under **Not watched yet**. On 0.7.0 it was listed under **Not traced** and never followed.
+- **Holders are the ones fespalier creates** (views, prefetches, `RouteLink` preloads), since 0.8.0. Any
+  other listener of a provider fespalier built is counted (`N other listeners`), not named: Riverpod 3.4 does
+  not export who listens to a provider. Use Riverpod's own DevTools tab for the graph. fespalier adds no
+  `ProviderObserver`.
 - **A guard or a data function that throws before it returns** is not shown: the wrapper only sees what
   came back. go_router or Riverpod get the error as they always did.
 - **A `Stream` provider shows the state `stream` and no value**, because nothing listens to the stream.
@@ -111,7 +126,7 @@ Quoted from the extension.
 For a tool of your own. All are `dart:developer` service extensions; every answer and event carries
 `"protocol": 1`, and a change that only adds keys stays protocol 1: ignore keys you do not know, and ask
 for what `hello`'s `features` lists (`navigation`, `match`, `navigate`, `guards`, `data`, `actions`,
-`open`).
+`open`, and since 0.8.0 `holders` and `watched`).
 
 | Method                     | Parameters                                          | Errors                                                                                                                                                                                              |
 | -------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -122,6 +137,7 @@ for what `hello`'s `features` lists (`navigation`, `match`, `navigate`, `guards`
 | `ext.fespalier.navigate`   | `mode` (`go`, `push`, `replace`, `pop`), `location` | ``unknown mode `teleport`: one of go, push, replace, pop``, `no fespalier router attached`                                                                                                          |
 | `ext.fespalier.clear`      | `what` (`history`, `guards`, `actions`, `all`)      | ``unknown `what` `x`: one of history, guards, actions, all``                                                                                                                                        |
 | `ext.fespalier.invalidate` | `id` (a data record's)                              | ``missing parameter `id` ``, ``parameter `id` is not a number: `x` ``; `{"ok": false}` for an id that is unknown, disposed or whose `Ref` is gone                                                   |
+| `ext.fespalier.holders`    | `id` (a data record's)                              | ``missing parameter `id` ``, ``parameter `id` is not a number: `x` ``; `{"found": false}` for an id that is not tracked (since 0.8.0)                                                               |
 | `ext.fespalier.open`       | `file` (one of the tree's `file`s)                  | ``missing parameter `file` ``, `` `x.dart` is not a file of the route tree ``, `no fespalier app registered`, `the app folder is not a folder of a package under lib/` (`app_dir` is not in `lib/`) |
 
 A bad parameter is the JSON-RPC code `-32602`, any other failure `-32000`. Events are

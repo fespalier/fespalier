@@ -92,8 +92,69 @@ Future<(WidgetRef, ProviderContainer)> boot(WidgetTester tester) async {
   return (tester.element(find.byType(Probe)) as WidgetRef, container);
 }
 
+/// The matchers again, the product route with two observe.dart files above it (the app's and
+/// its own folder's) and the about route with none.
+final observed = <RouteMatcher>[
+  for (final m in matchers)
+    if (m.pattern.first == 'products')
+      RouteMatcher(
+        m.pattern,
+        m.build,
+        observe: (s, match) {
+          final p = (id: Segment.asInt(s, 'id'));
+          return [
+            RouteHooks('observe.dart', onEnter: (_) {}),
+            RouteHooks(
+              'products/\$id/observe.dart',
+              onEnter: (_) => seen.add('${p.id} ${match.route.location}'),
+            ),
+          ];
+        },
+      )
+    else
+      m,
+];
+
+final List<String> seen = [];
+
 void main() {
   setUp(() => loads = 0);
+
+  group('observeRoutes', () {
+    List<RouteHooks> hooks(String location, {String base = '/'}) =>
+        observeRoutes(Uri.parse(location), base, observed);
+
+    test('are the hooks of the route at the location, outermost first', () {
+      final found = hooks('/products/42');
+      expect(found.map((h) => h.file), [
+        'observe.dart',
+        'products/\$id/observe.dart',
+      ]);
+    });
+
+    test(
+      'are empty for a route without any, for none and for a bad segment',
+      () {
+        expect(hooks('/about'), isEmpty);
+        expect(hooks('/nowhere'), isEmpty);
+        expect(hooks('/products/abc'), isEmpty);
+      },
+    );
+
+    test('see the segments parsed from the location', () {
+      seen.clear();
+      final h = hooks('/products/42').last.onEnter!;
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container.listen(Provider.autoDispose<void>(h), (_, _) {});
+      expect(seen, ['42 /products/42']);
+    });
+
+    test('take the mount point off', () {
+      expect(hooks('/shop/products/7', base: '/shop'), hasLength(2));
+      expect(hooks('/products/7', base: '/shop'), isEmpty);
+    });
+  });
 
   group('matchUrl', () {
     test('parses the segments into the typed route and the params', () {

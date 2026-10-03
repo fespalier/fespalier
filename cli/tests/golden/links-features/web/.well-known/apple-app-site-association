@@ -15,6 +15,10 @@
             "caseSensitive": false
           },
           {
+            "/": "/nickname",
+            "caseSensitive": false
+          },
+          {
             "/": "/profile",
             "caseSensitive": false
           },
@@ -72,6 +76,10 @@
           },
           {
             "/": "/docs/new",
+            "caseSensitive": false
+          },
+          {
+            "/": "/feed",
             "caseSensitive": false
           },
           {
@@ -254,6 +262,10 @@
           },
           {
             "/": "/ticks",
+            "caseSensitive": false
+          },
+          {
+            "/": "/vault",
             "caseSensitive": false
           },
           {

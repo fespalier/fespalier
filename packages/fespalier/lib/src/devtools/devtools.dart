@@ -4,12 +4,19 @@
 ///
 /// Everything here sits behind [kFespalierDevTools], a `const` that is false in release builds,
 /// so the compiler removes it (the generated `app.g.dart` calls the registration under
-/// `if (kFespalierDevTools)`, and [traceGuard] and [traceData] are identity functions whose body
-/// is that same `if`). In a debug or profile build it costs a listener on the router's delegate
-/// and bounded lists of what happened. It never starts a timer, never schedules a frame, never
-/// reads a provider, never listens to a `Stream` and never changes what a guard, a provider or
-/// an action returns (the very object goes through, and a synchronous one stays synchronous):
-/// every path runs inside a `try`, and a bug here is printed once and dropped.
+/// `if (kFespalierDevTools)`, and [traceGuard], [traceData] and [watchData] are identity
+/// functions whose body is that same `if`). In a debug or profile build it costs a listener on
+/// the router's delegate, two callbacks on each provider fespalier builds, and bounded lists of
+/// what happened. It never starts a timer, never schedules a frame, never reads a provider (nor
+/// adds a listener to one), never listens to a `Stream` and never changes what a guard, a
+/// provider or an action returns (the very object goes through, and a synchronous one stays
+/// synchronous): every path runs inside a `try`, and a bug here is printed once and dropped.
+///
+/// Who holds a provider (since 0.8.0): the views, the prefetch handles and the `RouteLink`
+/// preloads of fespalier itself are recorded, weakly, and listed when DevTools asks
+/// (`ext.fespalier.holders`). Riverpod does not export who else listens to a provider, so for one
+/// fespalier built the others are counted (`onAddListener`, `onRemoveListener`), and for one the
+/// app owns only what fespalier's own views saw is known.
 library;
 
 import 'dart:async';
@@ -17,11 +24,24 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/widgets.dart' show BuildContext, Element;
 import 'package:go_router/go_router.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart' show Ref;
+import 'package:hooks_riverpod/hooks_riverpod.dart'
+    show
+        AsyncValue,
+        AsyncValueExtensions,
+        ProviderContainer,
+        Ref,
+        UncontrolledProviderScope,
+        WidgetRef;
+import 'package:hooks_riverpod/misc.dart' show ProviderBase, ProviderListenable;
 
+import '../navigation_kind.dart';
+import '../route_data.dart' show PrefetchHandle, SectionView;
 import '../route_match.dart' show UrlMatch;
 import '../segments.dart' show GuardResult;
+import '../telemetry.dart'
+    show TelemetrySite, telemetryDataTrace, telemetryGuardTrace;
 import 'protocol.dart';
 
 /// Whether fespalier's DevTools support is compiled in: false in release builds, and in any
@@ -53,12 +73,17 @@ UrlMatch? Function(Uri uri)? _matchUrl;
 /// The router DevTools reads. Weak: the app owns it, and a disposed one must be collectable.
 WeakReference<GoRouter>? _router;
 
+/// What the generated `mount()` gave `devToolsRegister` to list the providers of the `data.dart`
+/// files, and what it listed.
+Map<Object, String> Function()? _providers;
+Map<Object, String>? _providerSites;
+
 final List<NavigationRecord> _history = [];
 int _seq = 0;
 int _event = 0;
 
 /// What the router's configuration was at the last commit.
-({int depth, String base, String leaf, String? top})? _last;
+NavSnapshot? _last;
 
 /// Whether the service extensions are registered. `registerExtension` throws a second time, and
 /// a name is registered once per isolate, so this outlives [debugDevToolsReset].
@@ -71,15 +96,22 @@ bool _reported = false;
 /// match a location. The generated `mount()` calls it under `if (kFespalierDevTools)`.
 ///
 /// [tree] is a tear-off of a function that returns the tree, so a hot reload hands DevTools the
-/// new one. [matchUrl] is `AppRoutes.matchUrl`.
+/// new one. [matchUrl] is `AppRoutes.matchUrl`. [providers] (since 0.8.0) is a tear-off of a
+/// function that returns each `data.dart`'s provider (the family object, for one keyed by the
+/// URL) by its site; it is called once, when DevTools first needs to know whose provider a
+/// prefetch was made for, and is null for an app with no `data.dart`.
 void devToolsRegister({
   required String Function() tree,
   required UrlMatch? Function(Uri uri) matchUrl,
+  Map<Object, String> Function()? providers,
 }) {
   if (!kFespalierDevTools) return;
   try {
     _tree = tree;
     _matchUrl = matchUrl;
+    _providers = providers;
+    _providerSites = null;
+    _untraced = null;
     _registerExtensions();
     _post(DevToolsEvents.registered, () => const {});
   } catch (e) {
@@ -139,57 +171,19 @@ void _report(Object error) {
 // ---------------------------------------------------------------------------------------------
 // What the router did
 
-/// The pushed pages in [matches], oldest first (a pushed page inside a shell is in the shell's
-/// matches).
-void _pushed(List<RouteMatchBase> matches, List<ImperativeRouteMatch> out) {
-  for (final m in matches) {
-    if (m is ImperativeRouteMatch) {
-      out.add(m);
-    } else if (m is ShellRouteMatch) {
-      _pushed(m.matches, out);
-    }
-  }
-}
-
-/// Where [config] is: the list of the page on top (what [GoRouterState] of that page reads),
-/// which is [config] itself when nothing was pushed.
-RouteMatchList _active(
-  RouteMatchList config,
-  List<ImperativeRouteMatch> pushed,
-) => pushed.isEmpty ? config : pushed.last.matches;
-
 void _record(RouteMatchList config) {
   if (config.isEmpty && config.error == null) return;
   final pushed = <ImperativeRouteMatch>[];
-  _pushed(config.matches, pushed);
-  final active = _active(config, pushed);
+  pushedMatches(config.matches, pushed);
+  final active = activeMatches(config, pushed);
   final depth = pushed.length;
-  final top = pushed.isEmpty ? null : pushed.last.pageKey.value;
-  final base = config.uri.toString();
-  final leaf = active.uri.toString();
-  final before = _last;
-  final String kind;
-  if (before == null) {
-    kind = NavigationKind.initial;
-  } else if (depth > before.depth) {
-    kind = NavigationKind.push;
-  } else if (depth < before.depth) {
-    // Dropping the pushed pages for another location is a `go`, not a pop.
-    kind = base == before.base ? NavigationKind.pop : NavigationKind.go;
-  } else if (depth > 0 && (top != before.top || leaf != before.leaf)) {
-    // `GoRouter.replace` keeps the page's key and changes what it shows.
-    kind = NavigationKind.replace;
-  } else if (base == before.base && leaf == before.leaf) {
-    kind = NavigationKind.refresh;
-  } else {
-    kind = NavigationKind.go;
-  }
-  _last = (depth: depth, base: base, leaf: leaf, top: top);
+  final (:kind, :now) = classifyNavigation(config, _last);
+  _last = now;
   final record = NavigationRecord(
     seq: ++_seq,
     at: DateTime.now().millisecondsSinceEpoch,
     kind: kind,
-    uri: leaf,
+    uri: now.leaf,
     fullPath: active.fullPath,
     depth: depth,
     guards: List.of(_pending),
@@ -266,8 +260,8 @@ String _join(String parent, String child) {
 
 LocationRecord _location(RouteMatchList config) {
   final pushed = <ImperativeRouteMatch>[];
-  _pushed(config.matches, pushed);
-  final active = _active(config, pushed);
+  pushedMatches(config.matches, pushed);
+  final active = activeMatches(config, pushed);
   UrlMatch? match;
   try {
     match = _matchUrl?.call(active.uri);
@@ -288,6 +282,7 @@ LocationRecord _location(RouteMatchList config) {
 }
 
 SnapshotRecord _snapshot() {
+  _refreshWatched();
   final config = _router?.target?.routerDelegate.currentConfiguration;
   final placed = config != null && !(config.isEmpty && config.error == null);
   final stack = <FrameRecord>[];
@@ -323,10 +318,20 @@ bool _skipped = false;
 ///
 /// A guard that throws before it returns never gets here, so it is not shown; go_router gets the
 /// error as it always did.
+///
+/// [telemetry] (since 0.8.0) is the call site as telemetry names it: the generated file passes
+/// one `const` for each guard in an app made with `telemetry: true`, and none otherwise, so an
+/// app without it never reaches the telemetry code.
 @pragma('vm:prefer-inline')
 @pragma('dart2js:tryInline')
-GuardResult traceGuard(GoRouterState state, String site, GuardResult result) {
+GuardResult traceGuard(
+  GoRouterState state,
+  String site,
+  GuardResult result, {
+  TelemetrySite? telemetry,
+}) {
   if (kFespalierDevTools) _traceGuard(state, site, result);
+  if (telemetry != null) telemetryGuardTrace(state, site, telemetry, result);
   return result;
 }
 
@@ -488,7 +493,42 @@ final class _Held {
   }
 }
 
-/// One provider of a `data.dart`: a container, a site and a key.
+/// What keeps a provider alive that fespalier knows: a view (by its element), or a prefetch (by
+/// its handle). Both are weak, so a holder never keeps what it names from being collected.
+final class _Holder {
+  _Holder(this.kind, this.since, {this.element, this.handle, this.keepFor});
+
+  final String kind;
+  final int since;
+  final WeakReference<BuildContext>? element;
+  final WeakReference<PrefetchHandle>? handle;
+  final int? keepFor;
+
+  /// Whether it holds nothing any more: the view is unmounted (or collected), or the handle is
+  /// closed (or collected).
+  bool get gone {
+    final e = element;
+    if (e != null) {
+      final context = e.target;
+      return context == null || !context.mounted;
+    }
+    final h = handle?.target;
+    return h == null || h.isClosed;
+  }
+
+  HolderRecord toRecord() =>
+      HolderRecord(kind: kind, since: since, keepFor: keepFor);
+}
+
+/// How many holders one record keeps (the dead ones are dropped first).
+const int _holderLimit = 100;
+
+/// How many records of the app's own providers may be live before the ones that are gone are
+/// looked for (a family keyed by a product id adds one for each product shown).
+const int _watchedLimit = 100;
+
+/// One provider of a `data.dart`: a container, a site and a key. [via] says whether fespalier
+/// built it (and saw each build) or only watched it for the app.
 final class _DataEntry {
   _DataEntry(
     this.id,
@@ -496,20 +536,37 @@ final class _DataEntry {
     this.site,
     this.key,
     this.container,
-    this.created,
-  ) : updated = created;
+    this.created, {
+    this.via = DataVia.build,
+  }) : updated = created;
 
   final int id;
-  final String mapKey;
+
+  /// A `String` for a provider fespalier built, a `(container, provider or site)` record for one
+  /// it watched.
+  final Object mapKey;
   final String site;
   final Shown? key;
   final int container;
   final int created;
+  final String via;
   int updated;
   int builds = 0;
   String state = DataState.loading;
   _Held? value;
   String? error;
+
+  /// For a built provider: how many listeners it has now.
+  int listeners = 0;
+
+  /// For a watched one: the provider as text, and weak references to it and to the container
+  /// the view saw it in (for `exists` and `invalidate`), and to the last `AsyncValue` a view got.
+  Shown? provider;
+  WeakReference<ProviderContainer>? owner;
+  WeakReference<Object>? source;
+  WeakReference<AsyncValue<Object?>>? lastSeen;
+
+  final List<_Holder> holders = [];
 
   /// The `Ref` the last build was given, for `invalidate`.
   WeakReference<Ref>? ref;
@@ -528,14 +585,24 @@ final class _DataEntry {
     updated: updated,
     value: value?.shown,
     error: error,
+    via: via,
+    provider: provider,
+    listeners: via == DataVia.build
+        ? (state == DataState.disposed ? 0 : listeners)
+        : null,
   );
 }
 
-final Map<String, _DataEntry> _data = {};
+final Map<Object, _DataEntry> _data = {};
 final List<_DataEntry> _disposed = [];
 int _dataSeq = 0;
 int _containerSeq = 0;
 Expando<int> _containerIds = Expando<int>('fespalier containers');
+
+/// The mapKey of the provider fespalier built for [site] and [key] in container number
+/// [container].
+String _buildKey(int container, String site, Shown? key) =>
+    '$container|$site|${key?.type}|${key?.text}';
 
 /// What the generated provider of a `data.dart` wraps its body in: [result] is what the body
 /// returned (`data()` of the file), and it is what [traceData] returns, the very object, so a
@@ -543,11 +610,24 @@ Expando<int> _containerIds = Expando<int>('fespalier containers');
 /// key in the tree's `sites` (`d37`), and [key] the family's key, or null.
 ///
 /// It reads no provider and listens to nothing: a `Future` gets a side `then` that only records
-/// how it ended, a `Stream` is not touched, and [ref] gets one `onDispose` callback.
+/// how it ended, a `Stream` is not touched, and [ref] gets an `onDispose` callback and, since
+/// 0.8.0, an `onAddListener` and an `onRemoveListener` one, which count the provider's listeners.
+///
+/// [telemetry] (since 0.8.0) is the call site as telemetry names it, passed only by an app made
+/// with `telemetry: true`.
 @pragma('vm:prefer-inline')
 @pragma('dart2js:tryInline')
-T traceData<T>(Ref ref, String site, Object? key, T result) {
+T traceData<T>(
+  Ref ref,
+  String site,
+  Object? key,
+  T result, {
+  TelemetrySite? telemetry,
+}) {
   if (kFespalierDevTools) _traceData(ref, site, key, result);
+  if (telemetry != null) {
+    telemetryDataTrace(ref, telemetry, key != null, result);
+  }
   return result;
 }
 
@@ -555,7 +635,7 @@ void _traceData(Ref ref, String site, Object? key, Object? result) {
   try {
     final container = _containerIds[ref.container] ??= ++_containerSeq;
     final shown = key == null ? null : Shown.of(key);
-    final mapKey = '$container|$site|${shown?.type}|${shown?.text}';
+    final mapKey = _buildKey(container, site, shown);
     final now = DateTime.now().millisecondsSinceEpoch;
     var entry = _data[mapKey];
     if (entry == null) {
@@ -627,9 +707,25 @@ void _traceData(Ref ref, String site, Object? key, Object? result) {
           ..state = DataState.disposed
           ..updated = DateTime.now().millisecondsSinceEpoch;
         _disposed.add(built);
-        while (_disposed.length > _disposedLimit) {
-          _data.remove(_disposed.removeAt(0).mapKey);
-        }
+        _trimDisposed();
+        _postData(built);
+      } catch (e) {
+        _report(e);
+      }
+    });
+    // Riverpod drops a build's callbacks when it builds again, and the count is the entry's, so
+    // it carries over an invalidation: the listeners are the same ones.
+    ref.onAddListener(() {
+      try {
+        built.listeners += 1;
+        _postData(built);
+      } catch (e) {
+        _report(e);
+      }
+    });
+    ref.onRemoveListener(() {
+      try {
+        if (built.listeners > 0) built.listeners -= 1;
         _postData(built);
       } catch (e) {
         _report(e);
@@ -646,12 +742,357 @@ void _postData(_DataEntry entry) => _post(
   () => {DevToolsEventPayload.record: entry.toRecord().toJson()},
 );
 
+/// Drops the oldest records of disposed providers beyond the limit.
+void _trimDisposed() {
+  while (_disposed.length > _disposedLimit) {
+    _data.remove(_disposed.removeAt(0).mapKey);
+  }
+}
+
 /// Forgets the records of disposed providers.
 void _forgetDisposed() {
   for (final entry in _disposed) {
     _data.remove(entry.mapKey);
   }
   _disposed.clear();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Who holds a provider (since 0.8.0)
+
+/// What the generated `DataView` and `SectionView` watch their data with: `ref.watch(provider)`,
+/// returned as it is, so a value that is there stays there (no `Future`, no microtask). [site] is
+/// the `data.dart`'s key in the tree's `sites` (`d37`).
+///
+/// In a debug or profile build it also notes that this view holds [provider] and, for a provider
+/// fespalier did not build (the app's own, which a `data.dart` returned or selected), the state
+/// the view got. It adds no listener and reads nothing else; in release it is `ref.watch`.
+@pragma('vm:prefer-inline')
+@pragma('dart2js:tryInline')
+AsyncValue<T> watchData<T>(
+  WidgetRef ref,
+  String site,
+  ProviderListenable<AsyncValue<T>> provider,
+) {
+  final value = ref.watch(provider);
+  if (kFespalierDevTools) _traceWatch(ref, site, provider, value);
+  return value;
+}
+
+/// What one view saw last: when it is the same again, there is nothing to record.
+final class _Seen {
+  _Seen(this.provider, this.value, this.entry);
+  final Object provider;
+  final Object? value;
+  final _DataEntry? entry;
+}
+
+Expando<_Seen> _seen = Expando<_Seen>('fespalier views');
+
+/// The families of the providers the views watched, by site: what `devToolsRegister`'s providers
+/// do not list (a selector with parameters is a closure).
+final Map<Object, String> _seenSites = {};
+
+/// Prefetches made before any view watched the provider, by container and provider (or site):
+/// attached to the record when the view first watches.
+final Map<Object, List<_Holder>> _loose = {};
+
+/// Whose handle a prefetch is: `devToolsAs` changes it around a `RouteLink`'s preload.
+String _holderKind = HolderKind.prefetch;
+
+/// The sites of the `data.dart` files that return or select a provider of their own.
+Set<String>? _untraced;
+
+Set<String> get _untracedSites {
+  final known = _untraced;
+  if (known != null) return known;
+  final tree = _tree;
+  if (tree == null) return const {};
+  final out = <String>{};
+  final decoded = jsonDecode(tree());
+  final sites = decoded is Map<String, Object?> ? decoded['sites'] : null;
+  if (sites is Map<String, Object?>) {
+    for (final e in sites.entries) {
+      final site = e.value;
+      if (site is Map<String, Object?> &&
+          site['kind'] == 'data' &&
+          site['traced'] == false) {
+        out.add(e.key);
+      }
+    }
+  }
+  return _untraced = out;
+}
+
+/// The site of the `data.dart` whose provider (or family) [provider] is, when known.
+String? _siteOf(Object provider) {
+  final key = provider is ProviderBase<Object?>
+      ? (provider.from ?? provider)
+      : provider;
+  final sites = _providerSites ??= _providers?.call() ?? const {};
+  return sites[key] ?? _seenSites[key];
+}
+
+/// The containers a view sees, the nearest first: each `ProviderScope` above [context]. Riverpod
+/// does not export a container's parent, so they are found from the widget tree.
+List<ProviderContainer> _containersAbove(BuildContext context) {
+  final out = <ProviderContainer>[];
+  context.visitAncestorElements((Element e) {
+    final widget = e.widget;
+    if (widget is UncontrolledProviderScope) out.add(widget.container);
+    return true;
+  });
+  return out;
+}
+
+/// The record of the provider fespalier built for [site] and [argument], in one of
+/// [containers] (nearest first): Riverpod mounts an unscoped provider in the root, even when a
+/// scope below it read it.
+_DataEntry? _findBuild(
+  List<ProviderContainer> containers,
+  String site,
+  Object? argument,
+) {
+  final key = argument == null ? null : Shown.of(argument);
+  for (final c in containers) {
+    final id = _containerIds[c];
+    if (id == null) continue;
+    final entry = _data[_buildKey(id, site, key)];
+    if (entry != null) return entry;
+  }
+  return null;
+}
+
+/// Adds [holder] to [entry], dropping the holders that are gone (and the one of the same view).
+void _hold(_DataEntry entry, _Holder holder) {
+  final context = holder.element?.target;
+  entry.holders.removeWhere(
+    (h) => h.gone || (context != null && h.element?.target == context),
+  );
+  entry.holders.add(holder);
+  if (entry.holders.length > _holderLimit) {
+    entry.holders.removeRange(0, entry.holders.length - _holderLimit);
+  }
+}
+
+void _traceWatch(
+  WidgetRef ref,
+  String site,
+  Object provider,
+  AsyncValue<Object?> value,
+) {
+  try {
+    final context = ref.context;
+    final seen = _seen[context];
+    if (seen != null &&
+        seen.provider == provider &&
+        identical(seen.value, value)) {
+      return;
+    }
+    final containers = _containersAbove(context);
+    if (containers.isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final argument = provider is ProviderBase<Object?>
+        ? provider.argument
+        : null;
+    final _DataEntry? entry;
+    if (_untracedSites.contains(site)) {
+      entry = _watchEntry(containers.first, site, provider, argument, now);
+      _setWatched(entry, value, now);
+    } else {
+      entry = _findBuild(containers, site, argument);
+    }
+    if (provider is ProviderBase<Object?>) {
+      final family = provider.from;
+      if (family != null) _seenSites[family] = site;
+    }
+    final before = seen?.entry;
+    if (before != null && !identical(before, entry)) {
+      before.holders.removeWhere((h) => h.element?.target == context);
+    }
+    if (entry != null) {
+      _hold(
+        entry,
+        _Holder(
+          context.widget is SectionView ? HolderKind.section : HolderKind.view,
+          now,
+          element: WeakReference<BuildContext>(context),
+        ),
+      );
+    }
+    _seen[context] = _Seen(provider, value, entry);
+  } catch (e) {
+    _report(e);
+  }
+}
+
+/// The record of the app's own [provider] in [container]: one for each provider, and for a
+/// listenable that is not a provider (a `.select(...)`), one for each site.
+_DataEntry _watchEntry(
+  ProviderContainer container,
+  String site,
+  Object provider,
+  Object? argument,
+  int now,
+) {
+  final id = _containerIds[container] ??= ++_containerSeq;
+  final key = (id, provider is ProviderBase<Object?> ? provider : site);
+  var entry = _data[key];
+  if (entry == null) {
+    _dropGoneWatched();
+    entry = _data[key] = _DataEntry(
+      ++_dataSeq,
+      key,
+      site,
+      argument == null ? null : Shown.of(argument),
+      id,
+      now,
+      via: DataVia.watch,
+    );
+    entry.provider = Shown.of(provider);
+    final loose = _loose.remove(key);
+    if (loose != null) entry.holders.addAll(loose);
+    _postData(entry);
+  } else {
+    _disposed.remove(entry);
+  }
+  entry
+    ..owner = WeakReference<ProviderContainer>(container)
+    ..source = WeakReference<Object>(provider);
+  return entry;
+}
+
+/// Sets the state of a watched record from what a view got, and posts it when it changed.
+void _setWatched(_DataEntry entry, AsyncValue<Object?> value, int now) {
+  final String state;
+  _Held? held;
+  String? error;
+  if (value.hasError) {
+    state = DataState.error;
+    error = _errorText(value.error ?? 'unknown error');
+  } else if (value.hasValue) {
+    state = DataState.data;
+    held = _Held(value.value);
+  } else {
+    state = DataState.loading;
+  }
+  final last = entry.lastSeen?.target;
+  final changed =
+      entry.state != state ||
+      entry.error != error ||
+      (state == DataState.data &&
+          (last == null || !identical(last.value, value.value)));
+  entry.lastSeen = WeakReference<AsyncValue<Object?>>(value);
+  if (!changed) return;
+  entry
+    ..state = state
+    ..value = held
+    ..error = error
+    ..updated = now;
+  _postData(entry);
+}
+
+/// Whether the provider of [entry] is alive in its container, which only a container can say:
+/// null when it cannot be known (a `.select(...)`, a container that is gone).
+bool? _alive(_DataEntry entry) {
+  if (entry.state == DataState.disposed) return false;
+  if (entry.via == DataVia.build) return true;
+  final container = entry.owner?.target;
+  final provider = entry.source?.target;
+  if (container == null || provider is! ProviderBase<Object?>) return null;
+  return container.exists(provider);
+}
+
+void _markDisposed(_DataEntry entry) {
+  entry
+    ..state = DataState.disposed
+    ..updated = DateTime.now().millisecondsSinceEpoch;
+  _disposed.add(entry);
+  _trimDisposed();
+  _postData(entry);
+}
+
+/// Marks the app's providers that are gone as disposed. It asks each container once (`exists`
+/// reads nothing), and runs when DevTools asks for a snapshot or for holders.
+void _refreshWatched() {
+  for (final entry in List.of(_data.values)) {
+    if (entry.via == DataVia.watch && _alive(entry) == false) {
+      _markDisposed(entry);
+    }
+  }
+}
+
+/// Before one more record of an app provider is made, looks for the ones that are gone when
+/// there are many, so a family keyed by a product id does not grow without bound.
+void _dropGoneWatched() {
+  var live = 0;
+  for (final e in _data.values) {
+    if (e.via == DataVia.watch && e.state != DataState.disposed) live++;
+  }
+  if (live >= _watchedLimit) _refreshWatched();
+}
+
+/// `RouteLink` calls this under `if (kFespalierDevTools)` around its preload, so the handles
+/// made inside are `link` holders and not `prefetch` ones. Not exported.
+T devToolsAs<T>(String kind, T Function() body) {
+  if (!kFespalierDevTools) return body();
+  final before = _holderKind;
+  _holderKind = kind;
+  try {
+    return body();
+  } finally {
+    _holderKind = before;
+  }
+}
+
+/// `prefetchData` calls this under `if (kFespalierDevTools)`, once [handle] keeps [provider]
+/// alive: DevTools lists it as a holder of the provider's record. Not exported.
+void devToolsPrefetched(
+  WidgetRef ref,
+  Object provider,
+  PrefetchHandle handle,
+  Duration? keepFor,
+) {
+  if (!kFespalierDevTools) return;
+  try {
+    if (handle.isClosed) return;
+    final containers = _containersAbove(ref.context);
+    if (containers.isEmpty) return;
+    final holder = _Holder(
+      _holderKind,
+      DateTime.now().millisecondsSinceEpoch,
+      handle: WeakReference<PrefetchHandle>(handle),
+      keepFor: keepFor == null || keepFor <= Duration.zero
+          ? null
+          : keepFor.inMilliseconds,
+    );
+    final site = _siteOf(provider);
+    final argument = provider is ProviderBase<Object?>
+        ? provider.argument
+        : null;
+    if (site != null && !_untracedSites.contains(site)) {
+      final entry = _findBuild(containers, site, argument);
+      if (entry != null) _hold(entry, holder);
+      return;
+    }
+    final id = _containerIds[containers.first] ??= ++_containerSeq;
+    final key = (
+      id,
+      provider is ProviderBase<Object?> ? provider : (site ?? provider),
+    );
+    final entry = _data[key];
+    if (entry != null) {
+      _hold(entry, holder);
+      return;
+    }
+    // No view has watched it yet: kept until one does.
+    final list = _loose.putIfAbsent(key, () => []);
+    list.removeWhere((h) => h.gone);
+    list.add(holder);
+    if (_loose.length > _holderLimit) _loose.remove(_loose.keys.first);
+  } catch (e) {
+    _report(e);
+  }
 }
 
 /// One run of an action.
@@ -806,6 +1247,7 @@ final Map<String, _Handler> _handlers = {
   DevToolsMethods.clear: _clear,
   DevToolsMethods.invalidate: _invalidate,
   DevToolsMethods.open: _open,
+  DevToolsMethods.holders: _holdersResponse,
 };
 
 Map<String, Object?> _ok() => const {'protocol': devToolsProtocol, 'ok': true};
@@ -832,6 +1274,8 @@ Map<String, Object?> _hello(Map<String, String> params) => HelloRecord(
     DevToolsFeatures.data,
     DevToolsFeatures.actions,
     DevToolsFeatures.open,
+    DevToolsFeatures.holders,
+    DevToolsFeatures.watched,
   ],
 ).toJson();
 
@@ -916,6 +1360,7 @@ Map<String, Object?> _clear(Map<String, String> params) {
       _clearGuards();
       _actions.clear();
       _forgetDisposed();
+      _loose.clear();
     default:
       throw _Failure(
         developer.ServiceExtensionResponse.invalidParams,
@@ -931,9 +1376,8 @@ void _clearGuards() {
   _pending.clear();
 }
 
-/// Asks the provider behind the data record `id` to build again: `ref.invalidateSelf()` on the
-/// `Ref` its last build was given, which is held weakly and used only when it is still mounted.
-Map<String, Object?> _invalidate(Map<String, String> params) {
+/// The number in the parameter `id`.
+int _idParam(Map<String, String> params) {
   final raw = _param(params, 'id');
   final id = int.tryParse(raw);
   if (id == null) {
@@ -942,16 +1386,73 @@ Map<String, Object?> _invalidate(Map<String, String> params) {
       'parameter `id` is not a number: `$raw`',
     );
   }
-  Ref? ref;
+  return id;
+}
+
+_DataEntry? _entryById(int id) {
   for (final entry in _data.values) {
-    if (entry.id == id) ref = entry.ref?.target;
+    if (entry.id == id) return entry;
   }
+  return null;
+}
+
+/// Asks the provider behind the data record `id` to build again: `ref.invalidateSelf()` on the
+/// `Ref` its last build was given, which is held weakly and used only when it is still mounted;
+/// for an app's own provider (since 0.8.0), `invalidate` on the container a view saw it in, when
+/// it is still alive there.
+Map<String, Object?> _invalidate(Map<String, String> params) {
+  final entry = _entryById(_idParam(params));
   var ok = false;
-  if (ref != null && ref.mounted) {
-    ref.invalidateSelf();
-    ok = true;
+  if (entry != null && entry.via == DataVia.watch) {
+    final container = entry.owner?.target;
+    final provider = entry.source?.target;
+    if (container != null &&
+        provider is ProviderBase<Object?> &&
+        container.exists(provider)) {
+      container.invalidate(provider);
+      ok = true;
+    }
+  } else {
+    final ref = entry?.ref?.target;
+    if (ref != null && ref.mounted) {
+      ref.invalidateSelf();
+      ok = true;
+    }
   }
   return {'protocol': devToolsProtocol, 'ok': ok};
+}
+
+/// Who holds the provider of the data record `id` now (since 0.8.0): worked out when asked, so
+/// that it is right after a view was unmounted. A view's holder is not dropped when Riverpod
+/// removes its listener (that happens before the element is unmounted), but here.
+Map<String, Object?> _holdersResponse(Map<String, String> params) {
+  final id = _idParam(params);
+  final entry = _entryById(id);
+  if (entry == null) return HoldersRecord(id: id, found: false).toJson();
+  entry.holders.removeWhere((h) => h.gone);
+  final alive = _alive(entry);
+  if (entry.via == DataVia.watch &&
+      alive == false &&
+      entry.state != DataState.disposed) {
+    _markDisposed(entry);
+  }
+  final built = entry.via == DataVia.build;
+  final listeners = !built
+      ? null
+      : (entry.state == DataState.disposed ? 0 : entry.listeners);
+  final others = listeners == null
+      ? null
+      : (listeners > entry.holders.length
+            ? listeners - entry.holders.length
+            : 0);
+  return HoldersRecord(
+    id: id,
+    found: true,
+    alive: alive,
+    listeners: listeners,
+    others: others,
+    holders: [for (final h in entry.holders) h.toRecord()],
+  ).toJson();
 }
 
 /// Asks the IDE to open `file` (relative to the app folder, one of the tree's) the way
@@ -1082,6 +1583,13 @@ void debugDevToolsReset() {
   _skipped = false;
   _data.clear();
   _disposed.clear();
+  _loose.clear();
+  _seenSites.clear();
+  _seen = Expando<_Seen>('fespalier views');
+  _providers = null;
+  _providerSites = null;
+  _untraced = null;
+  _holderKind = HolderKind.prefetch;
   _actions.clear();
   _dataSeq = 0;
   _containerSeq = 0;

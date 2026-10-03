@@ -73,6 +73,18 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier/lib/src/version.dart"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_otel/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_otel/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier/extension/devtools/config.yaml"
         },
         {

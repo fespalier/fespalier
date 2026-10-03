@@ -6,10 +6,10 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # The Dart package, the DevTools extension and every example: pub get, dart format, flutter analyze, flutter test.
-dart_dirs := "packages/fespalier packages/fespalier_devtools examples/shop examples/features examples/tabs examples/minimal"
+dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel examples/shop examples/features examples/tabs examples/minimal examples/telemetry"
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
-examples := "shop features tabs minimal"
+examples := "shop features tabs minimal telemetry"
 
 # List recipes
 default:
@@ -44,7 +44,7 @@ test:
 deny:
     cargo deny check
 
-# `fsp check` on every example, and `fsp maestro --check` on the shop
+# `fsp check` on every example, and `fsp maestro --check` and `fsp test --check` on the shop
 [working-directory: 'cli']
 check-examples:
     #!/usr/bin/env bash
@@ -54,8 +54,10 @@ check-examples:
     done
     # The shop's committed Maestro flows (.maestro/routes/) are what `fsp maestro` writes.
     cargo run --quiet -- maestro --check --project ../examples/shop
+    # ... and its committed smoke tests (test/routes/routes_test.dart) are what `fsp test` writes.
+    cargo run --quiet -- test --check --project ../examples/shop
 
-# Regenerate every example's committed lib/app.g.dart and the shop's .maestro/routes (after changing the emitter or a template)
+# Regenerate every example's committed lib/app.g.dart, the shop's .maestro/routes and test/routes/routes_test.dart (after changing the emitter or a template)
 [working-directory: 'cli']
 gen-examples:
     #!/usr/bin/env bash
@@ -64,8 +66,9 @@ gen-examples:
         cargo run --quiet -- gen --project "../examples/$e"
     done
     cargo run --quiet -- maestro --project ../examples/shop
+    cargo run --quiet -- test --project ../examples/shop
 
-# The package, the DevTools extension and every example: pub get, dart format (generated *.g.dart left out), analyze, test,
+# The package, the DevTools extension, the OpenTelemetry adapter and every example: pub get, dart format (generated *.g.dart left out), analyze, test,
 # and the const lints on each example's generated code (scripts/check-const-lints.sh)
 flutter:
     #!/usr/bin/env bash
@@ -138,14 +141,22 @@ intellij:
     ./gradlew buildPlugin verifyPluginStructure --no-daemon
 
 # A deferred route's page is a chunk of its own on the web: builds examples/shop for the web in
-# a temporary copy and checks the split (needs Flutter with web support; about a minute, and not
-# part of `just ci`; CI runs it as the `web` job)
+# a temporary copy, checks the split, and runs `fsp size --check` on it (the budgets in the shop's
+# `size:` section), cross-checked with the marker strings (needs Flutter with web support; about a
+# minute plus building `fsp`, and not part of `just ci`; CI runs it as the `web` job)
 web-chunks:
-    scripts/check-deferred-chunks.sh examples/shop 'Place order' 'Add to cart'
+    scripts/check-deferred-chunks.sh examples/shop '/checkout=Place order' '/products/:id=Add to cart'
+
+# The committed Maestro flows of examples/shop open their routes in Chromium (Playwright, pinned in
+# ci/web-routes/package-lock.json) against a release web build; every non-local request is blocked.
+# Needs Flutter and Node; about two minutes, and not part of `just ci` (CI runs it as `web-routes`)
+web-routes:
+    cd ci/web-routes && npm ci && npx --no-install playwright install chromium
+    scripts/check-web-routes.sh examples/shop
 
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
-# are `just vscode` and `just intellij`, the web build of the deferred pages is `just web-chunks`, and the stack in Docker is
-# `just telemetry-smoke`.
+# are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
+# `just web-routes` (the Maestro flows), and the stack in Docker is `just telemetry-smoke`.
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs
 ci: lint test deny check-examples flutter devtools packaging telemetry skills

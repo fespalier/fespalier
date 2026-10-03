@@ -4,6 +4,9 @@
     <loc>https://shop.example.com/</loc>
   </url>
   <url>
+    <loc>https://shop.example.com/nickname</loc>
+  </url>
+  <url>
     <loc>https://shop.example.com/profile</loc>
   </url>
   <url>
@@ -32,6 +35,9 @@
   </url>
   <url>
     <loc>https://shop.example.com/docs/new</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/feed</loc>
   </url>
   <url>
     <loc>https://shop.example.com/guide</loc>
@@ -116,5 +122,8 @@
   </url>
   <url>
     <loc>https://shop.example.com/ticks</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/vault</loc>
   </url>
 </urlset>

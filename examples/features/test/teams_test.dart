@@ -2,6 +2,8 @@
 // with the widget-test helpers from package:fespalier/testing.dart.
 import 'package:features/app.g.dart';
 import 'package:features/app/teams/\$teamId/data.dart' as team_data;
+import 'package:features/app/teams/\$teamId/members/page.dart';
+import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -108,5 +110,37 @@ void main() {
       await open(tester, '/no/such/path');
       expect(find.text('Nothing at /no/such/path'), findsOneWidget);
     });
+  });
+
+  group('optimistic()', () {
+    testWidgets(
+      'the new member is on the page from the next frame, with no frame between '
+      'the write and the reload that lacks her',
+      (tester) async {
+        await open(tester, '/teams/acme/members');
+        expect(find.text('Members: ann, bob'), findsOneWidget);
+        final ref = tester.element(find.byType(MembersPage)) as WidgetRef;
+
+        final run = TeamsTeamIdSection.addMember(
+          ref,
+          teamId: 'acme',
+          input: 'carol',
+        );
+        final seen = <String>[];
+        String members() =>
+            tester.widget<Text>(find.textContaining('Members: ')).data!;
+        // The section's data takes 10 ms to load: pump through it in steps.
+        for (var i = 0; i < 8; i++) {
+          await tester.pump(const Duration(milliseconds: 3));
+          seen.add(members());
+        }
+        await run;
+        expect(seen, everyElement('Members: ann, bob, carol'));
+        // Loaded again: the server's list replaced the patch, and still has her.
+        expect(team_data.teamFetches, 2);
+        expect(find.text('Members: ann, bob, carol'), findsOneWidget);
+        expect(find.text('Team ACME'), findsOneWidget);
+      },
+    );
   });
 }

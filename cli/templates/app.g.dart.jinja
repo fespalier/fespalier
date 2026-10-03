@@ -14,7 +14,7 @@
 {% macro view(b) -%}
 {% if b.data -%}
 DataView(
-  watch: (ref) => ref.watch({{ b.data.provider }}),
+  watch: (ref) => watchData(ref, '{{ b.data.site }}', {{ b.data.provider }}),
   refresh: (ref) => {{ b.data.invalidate }},
   data: (d) => {{ b.page | indent(2) }},
   loading: () => {{ b.data.loading }},
@@ -42,6 +42,12 @@ buildWithParams(
 guardWithParams(
   () => {{ seg_fn }}(state),
   (v) => {{ call }},
+)
+{%- endmacro %}
+{% macro scroll_memory(page) -%}
+RouteScrollMemory(
+  state: state,
+  child: {{ page | indent(2) }},
 )
 {%- endmacro %}
 {% macro with_transition(t, page) -%}
@@ -137,6 +143,9 @@ GoRoute(
 {% endif %}
 {% if r.page %}
 {% set page = with_segments(r.seg_fn, view(r), r.not_found) if r.seg_fn else view(r) %}
+{% if scroll_restoration %}
+{% set page = scroll_memory(page) %}
+{% endif %}
 {% if r.transition %}
   pageBuilder: (context, state) => {{ with_transition(r.transition, page) | indent(2) }},
 {% elif r.remount %}
@@ -242,7 +251,7 @@ abstract final class AppRoutes {
     // pubspec `semantics_ids`: on the web, a driver like Maestro sees nothing without the semantics tree.
     ensureWebSemantics();
 {% endif %}
-    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl{{ ", providers: _devToolsProviders" if devtools_providers }});
     return [
 {% for r in tree %}
       {{ route(r) | indent(6) }},
@@ -592,6 +601,15 @@ final {{ a.top }} = {{ a.factory }}(
 );
 {% endfor %}
 {% endfor %}
+{% if devtools_providers %}
+
+/// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
+Map<Object, String> _devToolsProviders() => {
+{% for p in devtools_providers %}
+      {{ p.expr }}: '{{ p.site }}',
+{% endfor %}
+    };
+{% endif %}
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release

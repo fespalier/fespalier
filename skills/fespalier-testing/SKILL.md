@@ -1,6 +1,6 @@
 ---
 name: fespalier-testing
-description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in, pure tests of locations, dataAt and match, Maestro on a device or the web (semantics_ids, fsp maestro), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
+description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in, pure tests of locations, dataAt and match, a generated smoke test per route (fsp test, setup.dart, smokeTestRoute), Maestro on a device or the web (semantics_ids, fsp maestro), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
 ---
 
 # fespalier-testing
@@ -96,6 +96,7 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 | A `WidgetRef` (prefetch, refresh)                  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                             |
 | An action (a write, since 0.5.0)                   | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                              |
 | Restoration                                        | your own app widget building the router in `State`, `restartAndRestore()`                                                                                  |
+| Scroll restoration (0.8.0)         | play the browser with `pushRouteInformation` **and the state the app reported**; a location alone starts at the top (`pitfalls.md`)                |
 | A deferred route (0.7.0)                           | `pumpRouter` loads it; with your own router, `await tester.runAsync(AppRoutes.loadDeferred)` before `pumpWidget` (`pitfalls.md`)                           |
 | Aging data, a resume, a reconnect, a cache (0.8.0) | `pump(Duration)` ages by the fake clock; `handleAppLifecycleStateChanged`; `reconnectSignal.notifier.fire()`; a shared `MemoryDataStorage` (`pitfalls.md`) |
 | A `RouteLink` hover (0.5.0)                        | a mouse `createGesture`, `moveTo`, `pump`; `container.exists(XRoute.data(...))` (`pitfalls.md`)                                                            |
@@ -113,6 +114,14 @@ waits for it. The identifier contract, the test that proves it
 (`find.bySemanticsIdentifier`, with the handle disposed in the test body) and the traps (hash URLs,
 `maestro test .maestro` skipping `routes/`, the web reload under a guard flow, the semantics tree
 staying on in a web build) are in [`references/maestro.md`](references/maestro.md).
+
+**A smoke test per route, for free (since 0.8.0).** `fsp test` writes
+`test/routes/routes_test.dart`: one `testWidgets` per route that opens it at a sample URL with
+`pumpRouter` and waits, on the **fake** clock, until its page is on screen. Provider overrides and the app
+around the router come from a `setup.dart` you own. `package:fespalier/testing.dart` has the pieces:
+`smokeTestRoute`, `findRoutePage(pattern)`, `pumpRouter(app:)` and an `Override` export. The setup file, the
+skips, the failure message and the traps are in
+[`references/route-smoke-tests.md`](references/route-smoke-tests.md).
 
 ## Three facts to keep in mind
 

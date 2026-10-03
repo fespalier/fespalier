@@ -58,6 +58,17 @@ List<DataRecord> dataEvents() => [
       ),
 ];
 
+/// The states the data events went through, with the events that only changed the listeners
+/// (a view or a handle came or went) left out: the same state and build in a row is one.
+List<(String, int)> dataStates() {
+  final out = <(String, int)>[];
+  for (final d in dataEvents()) {
+    final step = (d.state, d.builds);
+    if (out.isEmpty || out.last != step) out.add(step);
+  }
+  return out;
+}
+
 List<ActionRecord> actionEvents() => [
   for (final (kind, payload) in events)
     if (kind == DevToolsEvents.action)
@@ -412,7 +423,7 @@ void main() {
       expect(record.value, const Shown('String', 'hello'));
       expect(record.builds, 1);
       expect(
-        [for (final d in dataEvents()) d.state],
+        [for (final (state, _) in dataStates()) state],
         [DataState.loading, DataState.data],
       );
     });
@@ -450,16 +461,13 @@ void main() {
       expect(record.builds, 2);
       expect(record.state, DataState.data);
       expect(record.value, const Shown('int', '2'));
-      expect(
-        [for (final d in dataEvents()) (d.state, d.builds)],
-        [
-          (DataState.loading, 1),
-          (DataState.data, 1),
-          (DataState.disposed, 1),
-          (DataState.loading, 2),
-          (DataState.data, 2),
-        ],
-      );
+      expect(dataStates(), [
+        (DataState.loading, 1),
+        (DataState.data, 1),
+        (DataState.disposed, 1),
+        (DataState.loading, 2),
+        (DataState.data, 2),
+      ]);
     });
 
     test(
@@ -746,6 +754,143 @@ void main() {
       await debugDevToolsCall(DevToolsMethods.clear, {'what': ClearWhat.all});
       expect((await snapshot()).data.map((d) => d.key!.text), ['1']);
     });
+  });
+
+  group('watchData', () {
+    Widget scoped(Widget child) => ProviderScope(
+      child: MaterialApp(home: Material(child: child)),
+    );
+
+    Widget viewOf(
+      ProviderListenable<AsyncValue<String>> provider, {
+      bool traced = true,
+    }) => DataView<String>(
+      watch: (ref) =>
+          traced ? watchData(ref, 'd7', provider) : ref.watch(provider),
+      refresh: (ref) {},
+      data: (d) => Text(d),
+      loading: () => const Text('loading'),
+      error: (e, st, retry) => const Text('error'),
+    );
+
+    testWidgets('ref.watch and watchData return the very same object', (
+      tester,
+    ) async {
+      final provider = Provider.autoDispose<AsyncValue<String>>(
+        (ref) => const AsyncData('v'),
+      );
+      Object? plain;
+      Object? wrapped;
+      Object? plainSelected;
+      Object? wrappedSelected;
+      await tester.pumpWidget(
+        scoped(
+          Consumer(
+            builder: (context, ref, _) {
+              plain = ref.watch(provider);
+              wrapped = watchData(ref, 'd7', provider);
+              final selection = provider.select((AsyncValue<String> v) => v);
+              plainSelected = ref.watch(selection);
+              wrappedSelected = watchData(ref, 'd8', selection);
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      expect(identical(plain, wrapped), isTrue);
+      expect(identical(plainSelected, wrappedSelected), isTrue);
+    });
+
+    testWidgets('a value that is there is shown on the first frame', (
+      tester,
+    ) async {
+      final provider = Provider.autoDispose<AsyncValue<String>>(
+        (ref) => const AsyncData('now'),
+      );
+      await tester.pumpWidget(scoped(viewOf(provider)));
+      expect(find.text('now'), findsOneWidget);
+      expect(find.text('loading'), findsNothing);
+    });
+
+    testWidgets('it schedules no microtask, timer or frame of its own', (
+      tester,
+    ) async {
+      final provider = Provider.autoDispose<AsyncValue<String>>(
+        (ref) => const AsyncData('a'),
+      );
+      Future<(int, int, bool)> run({required bool wrapped}) async {
+        var microtasks = -1;
+        await tester.pumpWidget(
+          scoped(
+            Consumer(
+              builder: (context, ref, _) {
+                microtasks = microtasksIn(
+                  () => wrapped
+                      ? watchData(ref, 'd7', provider)
+                      : ref.watch(provider),
+                );
+                return const SizedBox();
+              },
+            ),
+          ),
+        );
+        return (
+          microtasks,
+          tester.binding.transientCallbackCount,
+          tester.binding.hasScheduledFrame,
+        );
+      }
+
+      // Whatever Riverpod and the app shell schedule, watchData adds nothing to it.
+      final plain = await run(wrapped: false);
+      await tester.pumpWidget(const SizedBox());
+      expect(await run(wrapped: true), plain);
+    });
+
+    testWidgets('with traceData it adds no listener: one while shown, none '
+        'after, as with ref.watch', (tester) async {
+      Future<(int, int)> listeners({required bool traced}) async {
+        var adds = 0;
+        var removes = 0;
+        final provider = FutureProvider.autoDispose<String>((ref) {
+          ref.onAddListener(() => adds++);
+          ref.onRemoveListener(() => removes++);
+          return traceData(ref, 'd7', null, Future.value('x'));
+        });
+        await tester.pumpWidget(scoped(viewOf(provider, traced: traced)));
+        await tester.pump();
+        final shown = adds - removes;
+        await tester.pumpWidget(scoped(const SizedBox()));
+        await tester.pump();
+        return (shown, adds - removes);
+      }
+
+      expect(await listeners(traced: false), (1, 0));
+      expect(await listeners(traced: true), (1, 0));
+    });
+
+    testWidgets('a data body that is a sync value stays sync through a view', (
+      tester,
+    ) async {
+      final provider = Provider.autoDispose<AsyncValue<String>>(
+        (ref) => AsyncData(traceData(ref, 'd7', null, 'now')),
+      );
+      await tester.pumpWidget(scoped(viewOf(provider)));
+      expect(find.text('now'), findsOneWidget);
+    });
+
+    testWidgets(
+      'with no app registered it records nothing and breaks nothing',
+      (tester) async {
+        final provider = FutureProvider.autoDispose<String>(
+          (ref) => traceData(ref, 'd7', null, Future.value('x')),
+        );
+        await tester.pumpWidget(scoped(viewOf(provider)));
+        await tester.pump();
+        expect(find.text('x'), findsOneWidget);
+        expect((await snapshot()).data.single.via, DataVia.build);
+      },
+    );
   });
 
   group('actions', () {

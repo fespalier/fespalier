@@ -34,14 +34,22 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 Bump to `v0.8.0`, regenerate, and look at these:
 
-1. **The package asks for `hooks_riverpod: ^3.2.1`** (it was `^3.0.0`): `Ref.mounted` is right for a stale ref and a
+1. **`unknown_path` checks segment types.** The string-path lint (`lints: unknown_path`)
+   now also reports a literal path that reaches a route whose segment cannot parse it:
+   `` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found
+[unknown_path] `` (on one line). It is the same id and level, so an app with
+   `unknown_path: error` that passed on 0.7.0 can fail on 0.8.0, for a path that always
+   showed not-found. Fix the literal, use the typed route, or `// fsp:ignore unknown_path`.
+   Messages and what is checked: `fespalier-troubleshooting`, "String paths"
+   in its diagnostics reference.
+2. **The package asks for `hooks_riverpod: ^3.2.1`** (it was `^3.0.0`): `Ref.mounted` is right for a stale ref and a
    paused provider resumes, which `freshness` relies on, and the experimental `persist()` that `dataCache` is built on
    is there. An app already resolves 3.4.x; one pinned lower must raise its own constraint.
-2. **Nothing else changes for an app that opts in to nothing**: its `lib/app.g.dart` is byte-identical to 0.7.0's.
-3. **`freshness` and `dataCache` are now names `fsp` reads in a `data.dart`.** A public top-level variable of that name and
+3. **Nothing else changes for an app that opts in to nothing**: its `lib/app.g.dart` is byte-identical to 0.7.0's.
+4. **`freshness` and `dataCache` are now names `fsp` reads in a `data.dart`.** A public top-level variable of that name and
    another type is an error (`` `freshness` must be a `Freshness(...)` ``); rename it. A private `_freshness` is never read.
    A `route.dart` may hold `const freshness = Freshness(...)` too (the "expected ..." error now names seven constants).
-4. **New, opt in:** `Freshness` (`staleTime`, `refetchOnResume`, `refetchOnReconnect`), `DataCache` with
+5. **New, opt in:** `Freshness` (`staleTime`, `refetchOnResume`, `refetchOnReconnect`), `DataCache` with
    `dataCacheStorage` and `MemoryDataStorage`, `package:fespalier/persist.dart`, and the `fresh` and `cached` tags of
    `fsp routes`. A route that opts in keeps its page when a reload fails (the freshness page of [`fespalier-data`](../fespalier-data/)).
 

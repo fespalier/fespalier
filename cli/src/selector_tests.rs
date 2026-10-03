@@ -73,7 +73,7 @@ fn the_return_type_makes_a_selector_and_nothing_wraps_it() {
             // The page is bound by type: T is what AsyncValue<T> holds.
             "data: (d) => _i1.ProductPage(product: d),",
             // Watched directly; invalidated through the runtime's check that it is a provider.
-            "watch: (ref) => ref.watch(_data2(v.productId)),",
+            "watch: (ref) => watchData(ref, 'd2', _data2(v.productId)),",
             "refresh: (ref) => ref.invalidateSelected(_data2(v.productId)),",
             // A closure, so its type comes from what data() returns.
             "final _data2 = (String productId) => _i0.data(productId: productId);",
@@ -138,7 +138,7 @@ fn no_keys_select_the_provider_as_it_is() {
         &[
             "final _data1 = _i0.data();",
             "static final data = _data1;",
-            "watch: (ref) => ref.watch(_data1),",
+            "watch: (ref) => watchData(ref, 'd1', _data1),",
             "refresh: (ref) => ref.invalidateSelected(_data1),",
             "static final watch = (WidgetRef ref) => ref.watch(data);",
             "Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data);",
@@ -165,7 +165,7 @@ fn several_keys_and_query_parameters_key_a_record() {
             // The same key the function form has, list wrapped for value equality; the
             // app's function gets it back as named arguments.
             "final _data4 = (({String shop, int id, int? page, QueryList<String> tags}) k) => _i0.data(shop: k.shop, id: k.id, page: k.page, tags: k.tags);",
-            "ref.watch(_data4((shop: v.shop, id: v.id, page: v.page, tags: QueryList(v.tags))))",
+            "watchData(ref, 'd4', _data4((shop: v.shop, id: v.id, page: v.page, tags: QueryList(v.tags))))",
             "/// shops/$shop/items/$id/data.dart as a Riverpod provider keyed by `(shop, id, page, tags)`.",
             "Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data((shop: shop, id: id, page: page, tags: QueryList(tags))));",
         ],
@@ -327,7 +327,7 @@ fn a_section_can_select_a_provider_too() {
             "refresh: (ref) => ref.invalidateSelected(_data2(v.teamId)),",
             // The pages below watch the same selected provider.
             "SectionView(\n",
-            "watch: (ref) => ref.watch(_data2(v.teamId)),",
+            "watch: (ref) => watchData(ref, 'd2', _data2(v.teamId)),",
         ],
     );
 }
@@ -363,7 +363,7 @@ fn a_selector_keyed_by_a_catch_all_gets_the_list_back() {
         &c,
         &[
             "final _data2 = (({String rest, int? page}) k) => _i0.data(rest: restParts(k.rest), page: k.page);",
-            "ref.watch(_data2((rest: restKey(v.rest), page: v.page)))",
+            "watchData(ref, 'd2', _data2((rest: restKey(v.rest), page: v.page)))",
             "ref.invalidateSelected(_data2((rest: restKey(v.rest), page: v.page)))",
             "Future<void> refresh(WidgetRef ref) => ref.refreshSelected(data((rest: restKey(rest), page: page)));",
         ],
@@ -380,7 +380,7 @@ fn a_selector_keyed_by_a_catch_all_gets_the_list_back() {
         &c,
         &[
             "final _data2 = (String rest) => _i0.data(rest: restParts(rest));",
-            "ref.watch(_data2(restKey(v.rest)))",
+            "watchData(ref, 'd2', _data2(restKey(v.rest)))",
         ],
     );
 }

@@ -83,7 +83,7 @@ abstract final class AppRoutes {
     DeferredLibrary.register(deferred);
     // pubspec `semantics_ids`: on the web, a driver like Maestro sees nothing without the semantics tree.
     ensureWebSemantics();
-    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return [
       ShellRoute(
         pageBuilder: (context, state, child) => _i3.transition(
@@ -125,7 +125,7 @@ abstract final class AppRoutes {
                   buildWithParams(
                     () => _params5(state),
                     (v) => DataView(
-                      watch: (ref) => ref.watch(_i10.data),
+                      watch: (ref) => watchData(ref, 'd5', _i10.data),
                       refresh: (ref) => ref.invalidate(_i10.data),
                       data: (d) => Semantics(identifier: 'route:/products', container: true, child: _i11.ProductsPage(products: d, sort: v.sort, page: v.page)),
                       loading: () => const _i12.ProductsLoading(),
@@ -143,7 +143,7 @@ abstract final class AppRoutes {
                       buildWithParams(
                         () => _params6(state),
                         (v) => DataView(
-                          watch: (ref) => ref.watch(_data6(v.id)),
+                          watch: (ref) => watchData(ref, 'd6', _data6(v.id)),
                           refresh: (ref) => ref.invalidate(_data6(v.id)),
                           data: (d) => Semantics(identifier: 'route:/products/:id', container: true, child: _i14.ProductPage(product: d)),
                           loading: () => const _i12.ProductsLoading(),
@@ -516,6 +516,12 @@ final _data6 = cachedDataFamily(
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
 );
+
+/// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
+Map<Object, String> _devToolsProviders() => {
+      _i10.data: 'd5',
+      _data6: 'd6',
+    };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release

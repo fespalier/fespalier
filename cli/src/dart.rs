@@ -24,7 +24,7 @@ pub struct Module {
     /// Top-level getters: `Codec<Object?, Object?> get extraCodec => ...;`
     pub getters: Vec<Getter>,
     /// Top-level enums: `enum Category { shoes, hats }`.
-    pub enums: Vec<String>,
+    pub enums: Vec<EnumDecl>,
     /// The libraries it re-exports: `export 'category.dart';`, as written.
     pub exports: Vec<String>,
     /// Where the grammar first gave up on the file (an ERROR or MISSING node),
@@ -32,6 +32,13 @@ pub struct Module {
     /// valid Dart the grammar is too old for; the declarations above are read
     /// on a best-effort basis.
     pub parse_error: Option<Span>,
+}
+
+/// A top-level enum and its constants, in declaration order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumDecl {
+    pub name: String,
+    pub values: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -300,7 +307,7 @@ pub fn parse(src: &str) -> Module {
             "function_declaration" => m.functions.extend(r.function(*n)),
             "top_level_variable_declaration" => m.variables.extend(r.variables(*n)),
             "getter_declaration" => m.getters.extend(r.getter(*n)),
-            "enum_declaration" => m.enums.extend(r.enum_name(*n)),
+            "enum_declaration" => m.enums.extend(r.enum_decl(*n)),
             "import_or_export" => m
                 .exports
                 .extend(first_named(*n, "library_export").and_then(|e| r.export(e))),
@@ -494,8 +501,20 @@ impl Reader<'_> {
         })
     }
 
-    fn enum_name(&self, n: Node) -> Option<String> {
-        Some(self.text(n.child_by_field_name("name")?).to_string())
+    fn enum_decl(&self, n: Node) -> Option<EnumDecl> {
+        let name = self.text(n.child_by_field_name("name")?).to_string();
+        let mut values = vec![];
+        if let Some(body) = n.child_by_field_name("body") {
+            let mut cursor = body.walk();
+            for c in body.named_children(&mut cursor) {
+                if c.kind() == "enum_constant"
+                    && let Some(v) = c.child_by_field_name("name")
+                {
+                    values.push(self.text(v).to_string());
+                }
+            }
+        }
+        Some(EnumDecl { name, values })
     }
 
     /// `export 'a.dart' show A;` → `a.dart`. A conditional export (`if (...) 'b.dart'`) is

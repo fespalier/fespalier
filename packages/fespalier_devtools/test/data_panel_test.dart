@@ -77,7 +77,7 @@ void main() {
         ),
         dataRecord(
           3,
-          site: 'd68',
+          site: 'd69',
           key: null,
           state: DataState.stream,
           value: null,
@@ -126,7 +126,7 @@ void main() {
   testWidgets('a section\'s data.dart says it is a section', (tester) async {
     await pumpApp(
       tester,
-      app([dataRecord(1, site: 'd53', key: const Shown('Null', 'null'))]),
+      app([dataRecord(1, site: 'd54', key: const Shown('Null', 'null'))]),
     );
     await openTab(tester, 'Data');
     expect(find.text('reports/data.dart (section reports)'), findsOneWidget);
@@ -135,7 +135,7 @@ void main() {
   testWidgets('Invalidate asks the app to build that provider again', (
     tester,
   ) async {
-    final client = app([dataRecord(1), dataRecord(2, site: 'd62')]);
+    final client = app([dataRecord(1), dataRecord(2, site: 'd63')]);
     await pumpApp(tester, client);
     await openTab(tester, 'Data');
     await tester.tap(find.byKey(const Key('invalidate-2')));
@@ -166,7 +166,7 @@ void main() {
         tester,
         app([
           dataRecord(1),
-          dataRecord(2, site: 'd62', state: DataState.disposed),
+          dataRecord(2, site: 'd63', state: DataState.disposed),
         ]),
       );
       await openTab(tester, 'Data');
@@ -196,42 +196,46 @@ void main() {
     expect(find.textContaining('turn on "Show disposed"'), findsOneWidget);
   });
 
-  testWidgets('lists the data.dart files that are not traced, and why', (
-    tester,
-  ) async {
-    await pumpApp(tester, app(const []));
-    await openTab(tester, 'Data');
-    final untraced = find.byKey(const Key('untraced'));
-    await tester.scrollUntilVisible(
-      untraced,
-      200,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(
-      find.descendant(of: untraced, matching: find.text('Not traced')),
-      findsOneWidget,
-    );
-    // The features example's `catalog/data.dart` selects a provider of its own.
-    expect(
-      find.descendant(
-        of: untraced,
-        matching: find.text('lib/app/catalog/data.dart'),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: untraced, matching: find.textContaining('Riverpod')),
-      findsOneWidget,
-    );
-    // And not one that is traced.
-    expect(
-      find.descendant(
-        of: untraced,
-        matching: find.text('lib/app/search/data.dart'),
-      ),
-      findsNothing,
-    );
-  });
+  testWidgets(
+    'lists the data.dart files of an app provider that nothing watched yet',
+    (tester) async {
+      await pumpApp(tester, app(const []));
+      await openTab(tester, 'Data');
+      final untraced = find.byKey(const Key('untraced'));
+      await tester.scrollUntilVisible(
+        untraced,
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(
+        find.descendant(of: untraced, matching: find.text('Not watched yet')),
+        findsOneWidget,
+      );
+      // The features example's `catalog/data.dart` selects a provider of its own.
+      expect(
+        find.descendant(
+          of: untraced,
+          matching: find.text('lib/app/catalog/data.dart'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: untraced,
+          matching: find.textContaining('Riverpod'),
+        ),
+        findsOneWidget,
+      );
+      // And not one that is traced.
+      expect(
+        find.descendant(
+          of: untraced,
+          matching: find.text('lib/app/search/data.dart'),
+        ),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets('says what it cannot show for an app that does not report data', (
     tester,
@@ -256,7 +260,7 @@ void main() {
     expect(find.text('Refund: Refund(2)'), findsOneWidget);
     client.emit(
       DevToolsEvents.data,
-      recordEvent(9, dataRecord(2, site: 'd62').toJson()),
+      recordEvent(9, dataRecord(2, site: 'd63').toJson()),
     );
     await settle(tester);
     expect(find.byKey(const Key('data-2')), findsOneWidget);
@@ -267,5 +271,256 @@ void main() {
     await pumpApp(tester, app([dataRecord(1)]));
     await openTab(tester, 'Data');
     expect(tester.binding.hasScheduledFrame, isFalse);
+  });
+
+  group('holders (since 0.8.0)', () {
+    const appProvider = Shown('FutureProvider<Product>', 'featuredProvider');
+
+    FakeFespalierClient holdersApp(
+      List<DataRecord> data,
+      HoldersRecord Function(int id) answer, {
+      List<String> features = allFeatures,
+    }) => FakeFespalierClient(
+      snapshot: tracedSnapshot(data: data),
+      features: features,
+      handlers: {
+        DevToolsMethods.holders: (params) =>
+            answer(int.parse(params['id']!)).toJson(),
+      },
+    );
+
+    testWidgets('the app\'s own provider is marked, shows its provider, and '
+        'has no build count', (tester) async {
+      final client = app([
+        dataRecord(
+          1,
+          site: 'd13',
+          key: null,
+          via: DataVia.watch,
+          provider: appProvider,
+          builds: 0,
+        ),
+      ]);
+      await pumpApp(tester, client);
+      await openTab(tester, 'Data');
+      final row = find.byKey(const Key('data-1'));
+      expect(
+        find.descendant(of: row, matching: find.text('app provider')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('featuredProvider')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.textContaining('builds')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: row, matching: find.textContaining('listeners')),
+        findsNothing,
+      );
+      expect(
+        find.byTooltip("Invalidate this provider (the app's own)"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a provider fespalier built shows its listeners', (
+      tester,
+    ) async {
+      await pumpApp(tester, app([dataRecord(1, listeners: 3)]));
+      await openTab(tester, 'Data');
+      final row = find.byKey(const Key('data-1'));
+      expect(
+        find.descendant(of: row, matching: find.text('listeners 3')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('app provider')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('builds 1')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the Holders button lists each holder, and the others', (
+      tester,
+    ) async {
+      final since = DateTime(2026, 10, 3, 12, 3, 4).millisecondsSinceEpoch;
+      final client = holdersApp(
+        [dataRecord(1, listeners: 5)],
+        (id) => HoldersRecord(
+          id: id,
+          found: true,
+          alive: true,
+          listeners: 5,
+          others: 1,
+          holders: [
+            HolderRecord(kind: HolderKind.view, since: since),
+            HolderRecord(kind: HolderKind.section, since: since),
+            const HolderRecord(
+              kind: HolderKind.prefetch,
+              since: 1,
+              keepFor: 30000,
+            ),
+            const HolderRecord(kind: HolderKind.prefetch, since: 1),
+            const HolderRecord(kind: HolderKind.link, since: 1, keepFor: 30000),
+            const HolderRecord(kind: HolderKind.link, since: 1),
+          ],
+        ),
+      );
+      await pumpApp(tester, client);
+      await openTab(tester, 'Data');
+      expect(find.byKey(const Key('holders-list-1')), findsNothing);
+      await tester.tap(find.byKey(const Key('holders-1')));
+      await tester.pumpAndSettle();
+      expect(client.callsTo(DevToolsMethods.holders), [
+        {'id': '1'},
+      ]);
+      final list = find.byKey(const Key('holders-list-1'));
+      for (final line in [
+        'page view (since ${formatClock(since)})',
+        'section view (since ${formatClock(since)})',
+        'prefetch handle, kept 30 s',
+        'prefetch handle, kept until closed',
+        'RouteLink preload, kept 30 s',
+        'RouteLink preload, kept until closed',
+        '1 other listener: ref.watch or listen in your code, or another provider',
+      ]) {
+        expect(
+          find.descendant(of: list, matching: find.text(line)),
+          findsOneWidget,
+          reason: line,
+        );
+      }
+      // Pressed again, it closes.
+      await tester.tap(find.byKey(const Key('holders-1')));
+      await tester.pumpAndSettle();
+      expect(list, findsNothing);
+    });
+
+    testWidgets('several other listeners, a disposed provider, and the app\'s '
+        'own provider', (tester) async {
+      final client = holdersApp(
+        [
+          dataRecord(1, listeners: 4),
+          dataRecord(
+            2,
+            site: 'd13',
+            key: null,
+            via: DataVia.watch,
+            provider: appProvider,
+          ),
+        ],
+        (id) => id == 1
+            ? const HoldersRecord(
+                id: 1,
+                found: true,
+                alive: false,
+                listeners: 0,
+                others: 3,
+              )
+            : const HoldersRecord(id: 2, found: true, alive: true),
+      );
+      await pumpApp(tester, client);
+      await openTab(tester, 'Data');
+      await tester.tap(find.byKey(const Key('holders-1')));
+      await tester.pumpAndSettle();
+      var list = find.byKey(const Key('holders-list-1'));
+      expect(
+        find.descendant(
+          of: list,
+          matching: find.text(
+            '3 other listeners: ref.watch or listen in your code, or another provider',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: list, matching: find.text('disposed')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('holders-2')));
+      await tester.pumpAndSettle();
+      list = find.byKey(const Key('holders-list-2'));
+      expect(
+        find.descendant(
+          of: list,
+          matching: find.text(
+            "Other listeners of an app provider are not visible here: see Riverpod's DevTools tab",
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a provider that is no longer tracked says so', (tester) async {
+      final client = holdersApp([
+        dataRecord(1),
+      ], (id) => HoldersRecord(id: id, found: false));
+      await pumpApp(tester, client);
+      await openTab(tester, 'Data');
+      await tester.tap(find.byKey(const Key('holders-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('This provider is no longer tracked.'), findsOneWidget);
+    });
+
+    testWidgets('an app without the holders feature has no button', (
+      tester,
+    ) async {
+      final client = holdersApp(
+        [dataRecord(1)],
+        (id) => HoldersRecord(id: id, found: false),
+        features: [
+          for (final f in allFeatures)
+            if (f != DevToolsFeatures.holders) f,
+        ],
+      );
+      await pumpApp(tester, client);
+      await openTab(tester, 'Data');
+      expect(find.byKey(const Key('data-1')), findsOneWidget);
+      expect(find.byKey(const Key('holders-1')), findsNothing);
+    });
+
+    testWidgets('Not watched yet leaves out a site that has a record', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        app([
+          dataRecord(
+            1,
+            site: 'd13',
+            key: null,
+            via: DataVia.watch,
+            provider: appProvider,
+          ),
+        ]),
+      );
+      await openTab(tester, 'Data');
+      final untraced = find.byKey(const Key('untraced'));
+      await tester.scrollUntilVisible(
+        untraced,
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(
+        find.descendant(
+          of: untraced,
+          matching: find.text('lib/app/catalog/data.dart'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: untraced,
+          matching: find.text('lib/app/catalog/\$productId/data.dart'),
+        ),
+        findsOneWidget,
+      );
+    });
   });
 }

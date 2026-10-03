@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart' hide RouteMatch;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/link.dart' as url;
 
+import 'devtools/devtools.dart' show devToolsAs, kFespalierDevTools;
+import 'devtools/protocol.dart' show HolderKind;
 import 'location.dart';
 import 'route_data.dart';
 import 'route_match.dart';
@@ -302,11 +304,15 @@ class _RouteLinkState extends ConsumerState<RouteLink> {
     if (held != null && !(retry && held.isClosed)) return;
     final to = widget.to;
     if (to != null) {
-      _handle = to.preload(ref);
+      _handle = kFespalierDevTools
+          ? devToolsAs(HolderKind.link, () => to.preload(ref))
+          : to.preload(ref);
     } else {
       final match = _scope?.match?.call(widget.uri!);
       if (match == null) return;
-      _handle = match.route.preload(ref);
+      _handle = kFespalierDevTools
+          ? devToolsAs(HolderKind.link, () => match.route.preload(ref))
+          : match.route.preload(ref);
     }
     _startedFor = (_location, _preload);
   }

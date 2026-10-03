@@ -29,10 +29,10 @@ GuardRecord guardRecord(
   error: error,
 );
 
-/// A data record. The default is `d37` of the features example, keyed by 2.
+/// A data record. The default is `d38` of the features example, keyed by 2.
 DataRecord dataRecord(
   int id, {
-  String site = 'd37',
+  String site = 'd38',
   Shown? key = const Shown('int', '2'),
   int container = 1,
   String state = DataState.data,
@@ -41,6 +41,9 @@ DataRecord dataRecord(
   int? updated,
   Shown? value = const Shown('Refund', 'Refund(2)'),
   String? error,
+  String via = DataVia.build,
+  Shown? provider,
+  int? listeners,
 }) => DataRecord(
   id: id,
   site: site,
@@ -52,12 +55,15 @@ DataRecord dataRecord(
   updated: updated ?? created + 500,
   value: value,
   error: error,
+  via: via,
+  provider: provider,
+  listeners: listeners,
 );
 
-/// An action run. The default is `a37_0` of the features example, called with an input.
+/// An action run. The default is `a38_0` of the features example, called with an input.
 ActionRecord actionRecord(
   int seq, {
-  String site = 'a37_0',
+  String site = 'a38_0',
   Shown? key = const Shown('int', '2'),
   Shown input = const Shown('RefundInput', 'RefundInput(5)'),
   String state = ActionState.done,

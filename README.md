@@ -298,6 +298,13 @@ fespalier:
   #   main: 3 MB                  # main.dart.js
   #   routes:
   #     /checkout: 8 KB           # a deferred route's own and shared chunks
+  # test:                         # no default, and `fsp test` works without it: see below
+  #   out: test/routes            # default; `test`, `integration_test` or a folder below one
+  #   setup: test/routes/setup.dart   # default: <out>/setup.dart, used when it exists
+  #   timeout: 30000              # default, in milliseconds of the test's fake clock
+  #   samples:                    # default: the `maestro:` ones
+  #     products/$id: 1
+  #   skip: [/admin]              # patterns as `fsp routes` prints them
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
@@ -331,6 +338,7 @@ reported: `unknown_path` is `warning` (the default), `error` or `off`.
 `semantics_ids` (since 0.7.0) and `maestro:` are about [Maestro](#maestro-flows-fsp-maestro): the first
 changes the generated file, the second is read, and checked, only by `fsp maestro`.
 `size:` (since 0.8.0) is what [`fsp size`](#web-chunk-sizes-fsp-size) checks the web build against; only that command checks its values.
+`test:` (since 0.8.0) is what [`fsp test`](#route-smoke-tests-fsp-test) reads, and only that command checks it.
 The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
 
@@ -2688,6 +2696,8 @@ fsp maestro             # Maestro smoke flows, one per route (since 0.7.0)
 fsp maestro --check     # CI: non-zero exit when those flows are stale
 fsp size                # the web build's JavaScript per deferred route (since 0.8.0)
 fsp size --check        # CI: non-zero exit when a budget in `size:` is exceeded
+fsp test                # a widget smoke test per route, in test/routes/ (since 0.8.0)
+fsp test --check        # CI: non-zero exit when that file is stale
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --action --loading --error --layout --guard --transition
@@ -3372,6 +3382,142 @@ which would be exact whatever the prefixes are.
 `cli/src/size.rs` is the code, `cli/src/size_tests.rs` its tests, and `cli/tests/fixtures/shop-build/main.dart.js`
 the excerpt of a real build they read.
 
+### Route smoke tests (`fsp test`)
+
+Since 0.8.0. `fsp test` writes a widget smoke test for every route, into one file,
+`test/routes/routes_test.dart`. Each test opens the route at a sample URL with `pumpRouter`, waits until
+its page is on screen, and expects exactly one. It proves what a [Maestro flow](#maestro-flows-fsp-maestro)
+proves (the route exists, its guards let it through, its data loaded, its page was built) in
+`flutter test`, on the VM, with no device and no browser. `fsp test` does not run Flutter: it writes the
+file, or with `--check` compares it, as `fsp maestro` does.
+
+The shop example carries it: `examples/shop/test/routes/routes_test.dart` is what `fsp test` wrote, and
+`just check-examples` fails when it is stale. This is its first test:
+
+```dart
+testWidgets(
+  '/products/:id at /products/1',
+  (tester) => smokeTestRoute(
+    tester,
+    '/products/:id',
+    AppRoutes.router(
+      initialLocation: '/products/1',
+    ),
+    overrides: setup.overrides(
+      '/products/:id',
+    ),
+  ),
+);
+```
+
+**What a test does.** `smokeTestRoute` (in `package:fespalier/testing.dart`) runs these steps:
+
+1. `pumpRouter(..., settle: false)`, which also loads the code of every deferred route first.
+2. It pumps 100 ms of the test's **fake** clock at a time until the page is on screen. A `data.dart`
+   fake that answers after a delay is waited out, and nothing waits on the real clock.
+3. It fails after `timeout` (30 s of fake time by default) with
+   `The page of /items is not on screen after 30000 ms of fake time: the router is at /sign-in. A guard that redirects, a data.dart that fails or never completes, or an exception while building (above) keeps it away.`
+   A guard that redirects, a `data.dart` that fails or never completes, or an exception while building
+   the page (Flutter prints it above) is what keeps the page away; the location says where the router
+   ended.
+4. It expects exactly one page, takes the tree down, and runs the clock `timeout` on, so a fake's pending
+   one-shot timer fires with no widget left to react and the test does not end with "A Timer is still
+   pending". A _periodic_ timer in a fake still fails the test, which is the right signal.
+
+**How the page is found.** With [`semantics_ids: true`](#maestro-flows-fsp-maestro) the test looks for the
+page's `Semantics(identifier: 'route:<pattern>')` with `findRoutePage(pattern)`; it needs no semantics tree,
+and a page underneath another is off screen and not found. Without it, a class page is found by its type
+(`find.byType`), and the test file imports the page's library; a function page has no type to find, so it is
+skipped (printed below). To find a page some other way in a hand-written test, pass `page:` to
+`smokeTestRoute`.
+
+**The file and who owns it.** The file's first line is
+``// Written by `fsp test` from lib/app/: don't edit it, run `fsp test` again.`` and `fsp test` writes only
+that file. It never overwrites a file of that name that does not start with the marker: it fails and says so
+(move your file, or set `out`). The output is a function of the tree and the pubspec (route-table order, no
+dates), so `fsp test --check` writes nothing and exits non-zero when the file is missing or out of date.
+The second line is `// dart format off`. The file is laid out to need no formatting: a call is split one argument
+to a line, each with a trailing comma, which is what `dart format` leaves alone under an SDK older than 3.7
+(the short style, which does not read the marker); under 3.7 and later the marker holds the formatter off.
+Either way `dart format --set-exit-if-changed` is clean on it, in every style.
+
+**`test:`** has these keys, all optional. `fsp test` works with no `test:` section at all:
+
+```yaml
+fespalier:
+  test:
+    out: test/routes               # default; `test`, `integration_test` or a folder below one
+    setup: test/routes/setup.dart  # default: <out>/setup.dart, used when it exists
+    timeout: 30000                 # default; milliseconds of the fake clock a test waits for its page, 1000 to 600000
+    samples:                       # default: `maestro.samples`; same format
+      products/$id: 1
+    skip: [/admin]                 # patterns as `fsp routes` prints them
+```
+
+**Samples** are the values of the dynamic folders, in the format of
+[`maestro.samples`](#maestro-flows-fsp-maestro). When `test.samples` is not there, `maestro.samples` is
+used: only that key of `maestro:` is read, so a `maestro:` section that `fsp maestro` would refuse does not
+stop `fsp test`. With neither, a route with a dynamic segment is skipped. A sample is percent-encoded and
+checked against the segment's type, with the same messages as Maestro's, naming `fespalier.test.samples`
+or `fespalier.maestro.samples`, whichever is in use.
+
+**The setup file** is yours: `test/routes/setup.dart` by default, or `test.setup`. `fsp test` only reads
+which of two top-level functions it exports, and imports it as `setup` into the test file:
+
+```dart
+// test/routes/setup.dart
+import 'package:fespalier/testing.dart';
+
+/// Called once per test, so every test gets fresh fakes.
+List<Override> overrides(String pattern) => [
+  apiProvider.overrideWithValue(FakeApi()),
+  // checkout/guard.dart sends an empty cart back to /cart: this one has a line.
+  if (pattern == '/checkout') cartProvider.overrideWith(_FullCart.new),
+];
+
+/// Optional: the app around the router, for an app that needs its theme or localizations.
+Widget app(GoRouter router) => MaterialApp.router(routerConfig: router, theme: appTheme);
+```
+
+- `List<Override> overrides(String pattern)` is called once per test with the route's pattern. It
+  returns the providers that test boots with (`package:fespalier/testing.dart` exports riverpod's
+  `Override` since 0.8.0), and it can vary by route: a signed-in user for a guarded route.
+- `Widget app(GoRouter router)` builds the app around the router; the default is
+  `MaterialApp.router(routerConfig: router)`. `pumpRouter` takes the same `app:` since 0.8.0.
+- Each takes exactly one required positional parameter. A setup file with neither, or with one that takes
+  another shape, is an error that says what to write.
+- A route with a `guard.dart` at or above it is skipped when there is no `overrides`, because the guard would
+  most likely redirect. With `overrides` it gets a test, and a guard that still redirects fails it, naming
+  where the router ended.
+
+**Which routes get a test.** Each is checked in this order, and the first that applies wins. Every skip is
+printed on every run (and listed in the test file's header), and none of them fails `--check`.
+
+| Route                                             | Result  | Printed                                                                                                                             |
+| ------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| A `redirect.dart` route                           | skipped | `skipped /old: a redirect, with no page to see`                                                                                     |
+| Listed in `test.skip`                             | skipped | ``skipped /admin: listed in `fespalier.test.skip` ``                                                                                |
+| A `$x` or `$$x` segment with no sample            | skipped | ``skipped /products/:id: no sample for products/$id in `fespalier.test.samples` ``                                                  |
+| A `guard.dart` at or above it, and no `overrides` | skipped | ``skipped /checkout: guarded by checkout/guard.dart; give test/routes/setup.dart an `overrides(String pattern)` that gets past it`` |
+| A function page, and no `semantics_ids`           | skipped | ``skipped /fn: a function page; set `semantics_ids: true` so its test can find it``                                                 |
+
+A route with `const linkable = false;` is tested: the test runs in the process, not through a link. Each
+route is opened at its canonical path. The success lines are `✓ test: 6 routes in test/routes/routes_test.dart`
+(with `; 1 route skipped` when there are skips, and `(unchanged)` when nothing was written) and, for
+`--check`, `✓ test: test/routes/routes_test.dart is up to date (6 routes)`.
+
+**In CI**, next to `fsp check`:
+
+```yaml
+- run: fsp test --check
+- run: flutter test
+```
+
+**Not built.** Query parameters and localized spellings (a route is opened at its canonical path), one
+file per route (`flutter test` compiles each test file on its own, so fifty files cost minutes), running
+Flutter from `fsp`, and tests of `not_found.dart`. The values of `test:` are checked only by `fsp test`,
+so a mistake there never stops `fsp gen`.
+
 ### Performance
 
 Measured on synthetic apps (`cli/src/bench.rs`: sections of 25 routes with layouts and guards,
@@ -3832,6 +3978,12 @@ synchronous guard shows the page at once. If a widget
 hangs on to its own `WidgetRef` (to call `prefetch` from a test, say), take it from an
 element: `tester.element(find.byType(AppLayout)) as WidgetRef`.
 
+`pumpRouter` also takes `app:` (since 0.8.0), a function from the router to the app widget around it
+(the default is `MaterialApp.router(routerConfig: router)`), and `package:fespalier/testing.dart` exports
+riverpod's `Override`. `findRoutePage(pattern)` finds a page by its `semantics_ids` identifier, and
+`smokeTestRoute` is what [`fsp test`](#route-smoke-tests-fsp-test) runs for each route; the shop's generated
+smoke tests are checked by `just check-examples`.
+
 `pumpRouter` loads the code of every [deferred route](#deferred-routes-a-pages-code-on-demand) first, on the real event loop
 (since 0.7.0): a widget test's `pump` never runs `loadLibrary()`, so without that a deferred page would
 show `loading.dart` for ever. A test that pumps a router of its own calls
@@ -3930,12 +4082,12 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 830 tests (775 unit, 43 CLI integration, 12 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 886 tests (828 unit, 45 CLI integration, 13 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
   scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), string paths that match no route (the lint, its matching, mount point and ignore comments), `fsp size` (dart2js's table of deferred parts read from a real build's `main.dart.js`, own and shared bytes, the stale-build checks and the `size:` budgets), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 988 Flutter tests (the package 477, the DevTools extension 178, `shop` 64, `features` 222, `tabs` 39, `minimal` 8); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 1034 Flutter tests (the package 514, the DevTools extension 178, `shop` 72, `features` 222, `tabs` 40, `minimal` 8); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

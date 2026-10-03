@@ -39,6 +39,13 @@
 //!     route: 64 KB          # each deferred route's own and shared chunks together
 //!     routes:               # per route, by pattern; wins over `route`
 //!       /checkout: 8 KB
+//!   test:                   # default: none, and `fsp test` works without it (see `smoke.rs`)
+//!     out: test/routes      # default; `test`, `integration_test` or a folder below one
+//!     setup: test/routes/setup.dart   # default: <out>/setup.dart, used when it exists
+//!     timeout: 30000        # default, in milliseconds of the test's fake clock
+//!     samples:              # default: the maestro ones
+//!       products/$id: 1
+//!     skip: [/admin]        # patterns as `fsp routes` prints them
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -52,6 +59,8 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_yaml_ng::Value;
 
+use crate::samples;
+pub use crate::samples::SampleValue;
 use crate::scan::FileStyle;
 
 pub const DEFAULT_APP_DIR: &str = "lib/app";
@@ -64,6 +73,11 @@ pub const DEFAULT_MAESTRO_OUT: &str = ".maestro/routes";
 pub const DEFAULT_MAESTRO_TIMEOUT: u32 = 20_000;
 /// Where `fsp size` reads the web build, relative to the project root.
 pub const DEFAULT_SIZE_BUILD: &str = "build/web";
+
+/// Where `fsp test` writes, relative to the project root.
+pub const DEFAULT_TEST_OUT: &str = "test/routes";
+/// How long (in milliseconds of a test's fake clock) a smoke test waits for its page.
+pub const DEFAULT_TEST_TIMEOUT: u32 = 30_000;
 
 /// What the providers fespalier generates for `data()` functions do when they fail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -208,6 +222,9 @@ pub struct Config {
     /// The `size:` section, as written. Only `fsp size` reads it, and it checks the values
     /// then ([`SizeConfig::validate`]), so a mistake in it never stops `fsp gen`.
     pub size: Option<SizeConfig>,
+    /// The `test:` section, as written. Only `fsp test` reads it, and it checks the values
+    /// then ([`TestConfig::validate`]), so a mistake in it never stops `fsp gen`.
+    pub test: Option<TestConfig>,
 }
 
 impl Default for Config {
@@ -232,6 +249,7 @@ impl Default for Config {
             lints: Lints::default(),
             maestro: None,
             size: None,
+            test: None,
         }
     }
 }
@@ -273,6 +291,7 @@ struct RawConfig {
     semantics_ids: Option<bool>,
     maestro: Option<MaestroConfig>,
     size: Option<SizeConfig>,
+    test: Option<TestConfig>,
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -428,13 +447,6 @@ pub enum Target {
     Web(String),
 }
 
-/// What a dynamic folder's sample is, as text: one segment, or the parts of a catch-all.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SampleValue {
-    One(String),
-    Many(Vec<String>),
-}
-
 /// The `maestro:` section, checked: what `fsp maestro` writes flows for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Maestro {
@@ -514,17 +526,12 @@ fn is_link_prefix(s: &str) -> bool {
         && !body.contains('#')
 }
 
-/// A sample as text: a string, a number or a boolean.
-fn sample_text(v: &Value) -> Option<String> {
-    match v {
-        Value::String(s) => Some(s.clone()),
-        Value::Number(n) => Some(n.to_string()),
-        Value::Bool(b) => Some(b.to_string()),
-        _ => None,
-    }
-}
-
 impl MaestroConfig {
+    /// The `samples:` as the pubspec has them (`fsp test` falls back to them).
+    pub fn raw_samples(&self) -> Option<&BTreeMap<String, Value>> {
+        self.samples.as_ref()
+    }
+
     /// Checks the values, naming the key at fault. `links` is the `links:` section, which the
     /// default `link` comes from when the flows are for an app.
     pub fn validate(&self, links: Option<&LinksConfig>) -> Result<Maestro> {
@@ -609,23 +616,7 @@ impl MaestroConfig {
                 ),
             },
         };
-        let mut samples = vec![];
-        for (key, value) in self.samples.iter().flatten() {
-            let sample = match value {
-                Value::Sequence(items) => items
-                    .iter()
-                    .map(sample_text)
-                    .collect::<Option<Vec<String>>>()
-                    .map(SampleValue::Many),
-                one => sample_text(one).map(SampleValue::One),
-            };
-            let Some(sample) = sample else {
-                bail!(
-                    "`fespalier.maestro.samples`: the value of `{key}` must be a text, a number, a boolean or a list of them"
-                );
-            };
-            samples.push((key.clone(), sample));
-        }
+        let samples = samples::parse("fespalier.maestro.samples", self.samples.as_ref())?;
         Ok(Maestro {
             https_app_link: matches!(target, Target::App(_)) && link.starts_with("https://"),
             target,
@@ -739,6 +730,100 @@ impl SizeConfig {
             main: self.main.as_ref().map(|v| size("main", v)).transpose()?,
             route: self.route.as_ref().map(|v| size("route", v)).transpose()?,
             routes,
+        })
+    }
+}
+
+/// The `test:` section of the `fespalier:` config, as the pubspec has it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TestConfig {
+    out: Option<String>,
+    setup: Option<String>,
+    timeout: Option<i64>,
+    samples: Option<BTreeMap<String, Value>>,
+    skip: Option<Vec<String>>,
+}
+
+/// The `test:` section, checked: what `fsp test` writes a test file for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Test {
+    /// Normalized, `/`-separated, relative to the project root, `test`, `integration_test` or a
+    /// folder below one.
+    pub out: String,
+    /// The setup file as the pubspec names it: normalized and relative to the project root.
+    /// `None` is the default, `<out>/setup.dart`, which is used when it exists.
+    pub setup: Option<String>,
+    /// How long a test waits for its page, in milliseconds of its fake clock.
+    pub timeout: u32,
+    /// The patterns (as `fsp routes` prints them) that get no test.
+    pub skip: Vec<String>,
+}
+
+impl Test {
+    /// The setup file, as a path relative to the project root: the configured one, or else
+    /// `<out>/setup.dart`.
+    pub fn setup_path(&self) -> String {
+        self.setup
+            .clone()
+            .unwrap_or_else(|| format!("{}/setup.dart", self.out))
+    }
+}
+
+impl TestConfig {
+    /// The samples as written (`fsp test` falls back to the maestro ones when there are none).
+    pub fn raw_samples(&self) -> Option<&BTreeMap<String, Value>> {
+        self.samples.as_ref()
+    }
+
+    /// Checks the values, naming the key at fault. The samples are checked by the command, with
+    /// the routes they are for.
+    pub fn validate(&self) -> Result<Test> {
+        let out = match &self.out {
+            None => DEFAULT_TEST_OUT.to_string(),
+            Some(raw) => {
+                let out = project_folder("test.out", raw)?;
+                if !matches!(out.split('/').next(), Some("test" | "integration_test")) {
+                    bail!(
+                        "`fespalier.test.out` must be `test`, `integration_test` or a folder below one of them, where `flutter test` finds tests, got `{raw}`"
+                    );
+                }
+                out
+            }
+        };
+        let setup = match &self.setup {
+            None => None,
+            Some(raw) => {
+                let file = project_path(raw).filter(|p| {
+                    let name = p.rsplit('/').next().unwrap_or_default();
+                    name.strip_suffix(".dart")
+                        .is_some_and(|stem| !stem.is_empty())
+                });
+                match file {
+                    Some(p) => Some(p),
+                    None => bail!(
+                        "`fespalier.test.setup` must be a .dart file inside the project (relative, no `..`), got `{raw}`"
+                    ),
+                }
+            }
+        };
+        let timeout = match self.timeout {
+            None => DEFAULT_TEST_TIMEOUT,
+            Some(n) => match u32::try_from(n)
+                .ok()
+                .filter(|n| (1000..=600_000).contains(n))
+            {
+                Some(n) => n,
+                None => bail!(
+                    "`fespalier.test.timeout` is in milliseconds of the test's fake clock, from 1000 to 600000, got `{n}`"
+                ),
+            },
+        };
+        Ok(Test {
+            out,
+            setup,
+            timeout,
+            skip: self.skip.clone().unwrap_or_default(),
         })
     }
 }
@@ -951,6 +1036,7 @@ impl Pubspec {
             config.semantics_ids = c.semantics_ids.unwrap_or(false);
             config.maestro = c.maestro;
             config.size = c.size;
+            config.test = c.test;
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }

@@ -1,8 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "last-release-sha": "6a20a28b8da0cebe8e0671a07b62546b6c8d4076",
   "separate-pull-requests": false,
   "packages": {
     ".": {
+      "release-as": "0.8.1",
       "release-type": "simple",
       "changelog-path": "CHANGELOG.md",
       "include-component-in-tag": false,

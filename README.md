@@ -1189,7 +1189,9 @@ a tab (`/profile/edit`), use [`navigator.dart`](#the-root-navigator-navigatordar
 know: go_router opens a tab on its first route, which can't have a `:segment` in its own
 path, so a tab made only of dynamic routes, or a tab layout placed directly in a
 `$folder`, is an error (put the layout in a `(group)` below that folder instead); and `tabs` in a tab layout must be string literals, so name another list of destinations
-something else. See `examples/tabs`.
+something else. See `examples/tabs`. Since 0.9.0, `package:fespalier_adaptive` can draw the bar from
+the menu, as a bar, a rail or a drawer by window width: see
+[A bar, a rail or a drawer](#a-bar-a-rail-or-a-drawer-fespalier_adaptive).
 
 **Nested tab layouts.** A tab layout can sit inside a tab of another one: put a
 `layout.dart` that takes a `StatefulNavigationShell` in a folder that is a branch of the
@@ -1381,6 +1383,162 @@ Not built: more than one menu per app (use `under:` and `inMenu`), labels from `
 `fsp new orders --nav` writes a `nav.dart` for a folder, `fsp routes --json` has a `nav` key on
 the routes whose folder has one (`file`, `label` when it is a string literal, `order`), and
 `examples/features` has a menu, a team sub-menu and breadcrumbs, with tests for each guard case.
+
+#### A bar, a rail or a drawer: fespalier_adaptive
+
+Since 0.9.0. The menu is one list, and what changes with the screen is the component that shows it.
+`package:fespalier_adaptive` draws `AppMenu.watch` as a `NavigationBar` on a phone, a `NavigationRail` on a
+tablet and a permanent `NavigationDrawer` on a wide window, around a layout's body. The bar is no longer a
+second list of destinations that can drift from the routes, and guards hide or disable entries as they do in
+any menu. It is a package of its own: no `fsp` change, no `fespalier:` key, the same `app.g.dart`, no
+third-party dependency, and an app that does not depend on it is unchanged. Add it next to fespalier, with
+the same `url` and the same `ref` (pub resolves the two to one package only if they are the same repository
+dependency; [Installing fespalier_auth](#installing-fespalier_auth) quotes what it says when they differ):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1
+  fespalier_adaptive:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_adaptive
+      ref: v0.8.1
+```
+
+<!-- x-release-please-end -->
+
+It needs Dart 3.8 and Flutter 3.32 or newer. The tab layout of [Tab layouts](#tab-layouts), with a `nav.dart`
+in each tab's folder for its label and icon, becomes:
+
+```dart
+// lib/app/(tabs)/layout.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_adaptive/material.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+class TabsLayout extends StatelessWidget {
+  const TabsLayout({super.key, required this.navigationShell});
+  final StatefulNavigationShell navigationShell;
+
+  @override
+  Widget build(BuildContext context) => AdaptiveNavScaffold(
+    shell: navigationShell,
+    // under: the tab layout's folder, so each entry knows which tab it is
+    menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),
+    breakpoints: const NavBreakpoints(rail: 840),
+  );
+}
+```
+
+`tabs`, `tabOptions` and `container` stay as they are. A plain layout (one that takes a `Widget child`)
+passes `child: child` instead of `shell:`, and exactly one of the two is asserted. `examples/tabs` is this,
+with its six `nav.dart` files and tests that resize the window.
+
+**Breakpoints.** The component follows the window's width in logical pixels
+(`MediaQuery.sizeOf(context).width`):
+
+| Width             | Component                                                  | `NavMode` |
+| ----------------- | ---------------------------------------------------------- | --------- |
+| under 600         | `NavigationBar` at the bottom                              | `bar`     |
+| 600 to 1199       | `NavigationRail` at the start, every label shown           | `rail`    |
+| 1200 and wider    | a permanent `NavigationDrawer`, with the nested entries    | `drawer`  |
+
+Those are `NavBreakpoints(rail: 600, drawer: 1200)`, Material 3's compact, medium and large window size
+classes (`WindowSizeClass.of(width)` names all five). Both are configurable, and `null` means never:
+`NavBreakpoints.noDrawer`, or `NavBreakpoints(rail: 840)`, which `examples/tabs` uses so that a bar serves up
+to small tablets in portrait (and so that Flutter's default 800 × 600 test window keeps the bar). A `drawer`
+below the `rail` is an assertion. A layout inside a split view that needs the width of its own box builds an
+`AdaptiveNav` itself, under a `LayoutBuilder` (below).
+
+**Which entries.**
+
+- The bar and the rail list the top-level entries that go somewhere: an entry with a route or, in a tab layout,
+  an entry that is a tab, even a heading. Library in `examples/tabs` is a folder with no `page.dart`, and it is
+  the fourth destination. A heading that is not a tab is replaced by the entries below it.
+- The drawer lists every entry that goes somewhere, depth first. A heading is the title of a section over the
+  entries below it (Books and Authors under Library), and a route's own children stay in its section, so a
+  tree of three levels or more is flattened under one level of headings.
+- **Pass `under:` the tab layout's folder.** That is what gives each entry its `tab`: the selected destination
+  is the one whose `tab` is the shell's current index (the drawer's: the deepest selected entry with a route),
+  tapping a tab is `goBranch`, and tapping the current one goes back to its first page. Any other entry is
+  `item.go(context)`. Without `under:` no entry has a tab, so the entries go by the page: a heading is no
+  destination and the current tab does not reset.
+- **Guards** are whatever `AppMenu.watch` answers. A `NavRefused.hide` entry is absent, and the destinations
+  are mapped through their tab, so a tap never lands on the wrong page after another entry went away. A
+  `NavRefused.disable` entry is listed and turned off, and a `pending` one is on. The menu runs your guards
+  while the layout is on screen, which is always: keep them cheap, as [Guards](#guards) says.
+
+**The phone's bar is hidden on a page no entry covers.** A `NavigationBar` cannot show "nothing selected": it
+asserts a selected index. When no destination is the current tab (a plain layout: none is selected), or there
+are fewer than two destinations, the bar is not built and the body is shown alone. A debug build says so once:
+
+```text
+fespalier_adaptive: no menu entry is the current tab (3) of the tab layout, so the navigation bar is hidden. Give the tab's folder a nav.dart (not inMenu: false), and pass AppMenu.watch(ref, under: <the tab layout's folder>).
+```
+
+The fix is in the source of the layout: give the page's folder (the tab's) a `nav.dart`, put the page below an
+entry, or render the menu yourself with an `AdaptiveNavBuilder`. A rail and a drawer have no such limit: they
+show the page with no destination selected.
+
+**State.** The body (the shell or the child) sits at one place in the tree in every mode, so a tab keeps its
+stack and its state when the window is resized or a tablet is rotated. Nothing animates and nothing runs in
+between: no timer, no listener, the width is read when the layout builds.
+
+**Slots.** `icon:` builds each destination's icon (wrap it in a `Badge`), `leading:` and `trailing:` go above
+and below the destinations of the rail and the drawer (a logo, a button) and are not shown with the bar, and
+`floatingActionButton:` is the scaffold's, asked in every mode: return `null` where the button went into
+`leading`.
+
+```dart
+AdaptiveNavScaffold(
+  shell: navigationShell,
+  menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),
+  icon: (context, item, selected) => Badge(
+    isLabelVisible: item.folder.endsWith('inbox'),
+    child: defaultNavIcon(context, item, selected),
+  ),
+  leading: (context, nav) => const FlutterLogo(),
+)
+```
+
+**Your own widgets.** `AdaptiveNavBuilder` hands the model, an `AdaptiveNav` (`destinations`, `sections`,
+`selectedIndex`, `visible`, `enabled(i)` and `select(context, i)`), to a builder you write: chips, Cupertino
+widgets, or `package:material_ui`'s. The Library layout of `examples/tabs` draws its two inner tabs as chips
+this way.
+
+```dart
+AdaptiveNavBuilder(
+  menu: (ref) => AppMenu.watch(ref, under: '(tabs)/library'),
+  shell: navigationShell,
+  builder: (context, nav) => Row(children: [
+    for (final (i, item) in nav.destinations.indexed)
+      ChoiceChip(
+        label: Text(item.label(context)),
+        selected: nav.selectedIndex == i,
+        onSelected: (_) => nav.select(context, i),
+      ),
+  ]),
+)
+```
+
+`package:fespalier_adaptive/fespalier_adaptive.dart` (the model, `NavBreakpoints`, `AdaptiveNavBuilder`) imports
+no Material. `package:fespalier_adaptive/material.dart` (the scaffold, and a re-export of the model) draws
+Flutter's Material widgets, which do not read `package:material_ui`'s theme (see
+[go_router 18 and Material](#getting-started)): an app on `material_ui` renders the model itself, or copies the
+scaffold, one file, with the other import. The scaffold builds on Flutter 3.32: it leaves out
+`NavigationDrawer.header` and `footer` (3.35), and puts `leading` and `trailing` among the drawer's children.
+
+**Testing.** A test sizes the window with `tester.view.physicalSize` (and `devicePixelRatio = 1`, and
+`addTearDown(tester.view.reset)`). Flutter's default test window is 800 × 600 logical pixels, which is a rail
+with the default breakpoints and a bar with `rail: 840`. `examples/tabs/test/adaptive_test.dart` checks each
+component by width and that a tab keeps its state across a resize.
 
 ### Guards
 
@@ -5749,7 +5907,10 @@ pages, and a Library tab that is a tab layout of its own, with two inner tabs), 
 counter that survives switching tabs, `tabOptions`, a cross-fading `container`, a Search tab that also answers `/recherche` (`route.dart` with `paths`), a full-screen route
 outside them (`/settings`), one that stays under `/profile` but renders on the root navigator
 (`/profile/edit`, `navigator.dart`), and a Cupertino `transition.dart` that also moves the tab layout
-itself aside when one of those opens over it.
+itself aside when one of those opens over it. Since 0.9.0 its bar is the menu: six `nav.dart` files, drawn
+by [`fespalier_adaptive`](#a-bar-a-rail-or-a-drawer-fespalier_adaptive) as a bar, a rail or a drawer by window
+width (the Library tab's two inner tabs are chips from an `AdaptiveNavBuilder`), and its tests resize the
+window and check that a tab keeps its state.
 
 `examples/features` also has a guard in a page-less `(members)` group (with a login page that
 returns to where you were), a second guard below it that runs after the first, two
@@ -5792,6 +5953,7 @@ packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, 
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 packages/fespalier_auth/   signed-in routes: session provider, guards, authenticated client, OpenID Connect
 packages/fespalier_sign_keypair/   DPoP proofs for fespalier_auth, signed by a device key (Secure Enclave, AndroidKeyStore)
+packages/fespalier_adaptive/   nav.dart menus as a bar, a rail or a drawer by window width
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed

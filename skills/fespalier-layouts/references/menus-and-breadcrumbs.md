@@ -97,6 +97,10 @@ folder and above, asked with the entry's own location).
 - `fsp new orders --nav` writes the starter; `fsp routes --json` has a `nav` key
   (`file`, `label`, `order`) on routes whose folder has one.
 
+Since 0.9.0 the package `fespalier_adaptive` draws `AppMenu.watch(ref, under: ...)` as a navigation bar,
+a rail or a drawer by window width, so a tab bar is not written by hand any more:
+[`adaptive-layouts.md`](adaptive-layouts.md).
+
 The diagnostics are in
 [`fespalier-troubleshooting`](../../fespalier-troubleshooting/references/diagnostics-menus.md).
 `examples/features` has a menu, a team sub-menu and breadcrumbs with a test for each guard case.

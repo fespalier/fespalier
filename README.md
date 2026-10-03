@@ -294,6 +294,10 @@ fespalier:
   #   timeout: 20000              # default, in milliseconds
   #   samples:
   #     products/$id: 1
+  # size:                         # no default: what `fsp size` checks the web build against (since 0.8.0)
+  #   main: 3 MB                  # main.dart.js
+  #   routes:
+  #     /checkout: 8 KB           # a deferred route's own and shared chunks
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
@@ -326,6 +330,7 @@ is always a valid page. Without the key, `push` leaves the address bar on the pa
 reported: `unknown_path` is `warning` (the default), `error` or `off`.
 `semantics_ids` (since 0.7.0) and `maestro:` are about [Maestro](#maestro-flows-fsp-maestro): the first
 changes the generated file, the second is read, and checked, only by `fsp maestro`.
+`size:` (since 0.8.0) is what [`fsp size`](#web-chunk-sizes-fsp-size) checks the web build against; only that command checks its values.
 The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
 
@@ -2351,8 +2356,9 @@ Future<void> main() async {
 
 Android deferred components (a Play Store feature) are not tried: `loadDeferred` would download all of
 them. `--wasm` compiles, and whether it splits is not verified; correctness doesn't depend on it.
-`examples/shop` defers `/checkout` and `/products/:id`, and `just web-chunks` builds it for the web
-and checks that their strings are in chunks of their own.
+`examples/shop` defers `/checkout` and `/products/:id`, and `just web-chunks` builds it for the web,
+checks that their strings are in chunks of their own, and holds the build to the budgets in its
+pubspec with [`fsp size`](#web-chunk-sizes-fsp-size), which reports what each chunk costs per route.
 
 **A type declared in a deferred `page.dart` is an error.** The generated file names the types of
 segments, query parameters and `extra` outside the page, and Dart can't use a deferred library's
@@ -2608,6 +2614,8 @@ fsp links               # App Links, Universal Links, assetlinks.json and a site
 fsp links --check       # CI: non-zero exit when those files are stale
 fsp maestro             # Maestro smoke flows, one per route (since 0.7.0)
 fsp maestro --check     # CI: non-zero exit when those flows are stale
+fsp size                # the web build's JavaScript per deferred route (since 0.8.0)
+fsp size --check        # CI: non-zero exit when a budget in `size:` is exceeded
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --action --loading --error --layout --guard --transition
@@ -3151,6 +3159,121 @@ run the flows and `fsp maestro --check`.
   see, check that first.
 - No `link:` identifier on `RouteLink`, no `samples` in `meta.dart`, and no web run of the examples in CI.
 - A route reached by a query parameter or a localized spelling has no flow of its own.
+
+### Web chunk sizes (`fsp size`)
+
+Since 0.8.0. A [deferred route](#deferred-routes-a-pages-code-on-demand) is a
+`main.dart.js_N.part.js` on the web, and the chunk files say nothing about which route they belong
+to. `fsp size` reads that out of the build and reports what each deferred route costs, and it can hold
+the build to byte budgets in CI. Build for the web first (`flutter build web`), then:
+
+```sh
+fsp size                # report main.dart.js and each deferred route's chunks
+fsp size --json         # the same, one JSON object per line
+fsp size --check        # CI: non-zero exit when a budget in `size:` is exceeded
+fsp size --build out    # a build in another folder (default: `build/web`, or `size.build`)
+```
+
+For `examples/shop`, which defers `/checkout` and `/products/:id` (a release build, Flutter 3.47.5):
+
+```text
+main.dart.js                                          2384299 B (2.3 MB)  budget 3.0 MB
+/checkout      CheckoutRoute  checkout/page.dart      5259 B (5.1 KB)     own 1090 B, shared 4169 B  budget 8.0 KB
+/products/:id  ProductRoute   products/$id/page.dart  5982 B (5.8 KB)     own 1813 B, shared 4169 B  budget 8.0 KB
+shared  main.dart.js_2.part.js  4169 B (4.1 KB): /checkout, /products/:id
+```
+
+```text
+✓ size: 6 routes, 2 deferred, 3 parts, within budget
+```
+
+(The summary goes to stderr, the report to stdout, so `fsp size > report.txt` keeps the report.)
+
+- **Own** is the bytes of the chunks only this route loads, **shared** the bytes of the chunks it
+  loads that other deferred routes load too, and the **total** is both: what a first visit
+  downloads when nothing else is loaded. dart2js moves code that several deferred pages use into a
+  shared chunk, so one chunk can count for several routes.
+- Routes that are not deferred have no line: their code is in `main.dart.js`, which the first line
+  reports. The summary counts them (`6 routes, 2 deferred`).
+- A chunk that no route loads is listed as `other`, with the deferred imports that do load it (code
+  of your own that uses `deferred as`).
+- **`--json`** prints one object per line on stdout: `{"kind":"main","file":"main.dart.js","bytes":…,"budget":…}`,
+  then `{"kind":"route","pattern","route","file","parts":[…],"own","shared","bytes","budget"}` for each deferred route
+  (`file` is the page, relative to the project, as in `fsp routes --json`; `parts` are
+  in dart2js's order), then `{"kind":"part","file","bytes","routes":[…]}` for every chunk (`routes` is empty for an
+  `other` one). `budget` is `null` without one.
+
+**How it knows.** dart2js writes a table of deferred parts into `main.dart.js`, in every build mode:
+
+```text
+deferredLibraryParts:{_i7:[0,1],_i14:[0,2]},deferredPartUris:["main.dart.js_2.part.js","main.dart.js_1.part.js","main.dart.js_3.part.js"],
+```
+
+The keys are the import prefixes of the generated `app.g.dart` (`import 'app/checkout/page.dart' deferred as _i7;`),
+which `fsp` assigns, and each value lists indexes into `deferredPartUris` (not the file
+numbering: index 0 is `_2`). `fsp size` knows each deferred route's prefix from the same tree that wrote
+the file, and adds up the sizes of the part files on disk. It needs no flag and no special build: it reads
+the build you deploy.
+
+**A budget** goes in the `fespalier:` section of `pubspec.yaml`:
+
+```yaml
+fespalier:
+  size:
+    build: build/web      # default; the `flutter build web` output, inside the project
+    main: 3 MB            # main.dart.js
+    route: 64 KB          # each deferred route's total (own + shared)
+    routes:               # per route, by pattern as `fsp routes` prints it; wins over `route`
+      /checkout: 8 KB
+```
+
+A size is a number of bytes (an integer of at least 1), or a number with a unit: `B`, `KB` (1,024
+bytes) or `MB` (1,048,576 bytes), spelled in capitals, with or without a space, and with a fraction if you
+like: `3 MB`, `1.5 MB`, `64KB`, `900 B`. A budget on a route that is not deferred is an error (budget
+that code with `main`). `fsp size --check` reports as above and exits non-zero when anything is over
+(`2 over budget: /checkout, /products/:id`), and also when there is no budget to check. In CI:
+
+```yaml
+- run: flutter build web --release
+- run: fsp size --check
+```
+
+dart2js's output is deterministic for one Flutter version and one version of your code, so a budget is
+a ceiling that holds. A Flutter upgrade moves `main.dart.js` by kilobytes: keep about 30 % headroom on
+`main` and raise the budgets deliberately, in the commit that bumps Flutter. This repository does it
+(`just web-chunks`, the `web` job: it builds `examples/shop`, runs `fsp size --check` against the budgets in its
+pubspec, and cross-checks the attribution with strings that only each deferred page contains).
+
+**A stale build is caught.** The table is keyed by the routes as they were when you built, so a build
+older than your routes would be reported against the wrong ones. `fsp size` fails when the keys of the
+table are not exactly the prefixes the routes defer now (a deferred route added, removed or moved), and it
+warns when `lib/app.g.dart` is newer than `main.dart.js`:
+
+```text
+warning: build/web/main.dart.js is older than lib/app.g.dart; if the routes changed since, run `flutter build web` again
+```
+
+Every message `fsp size` can print is quoted in the `fespalier-troubleshooting` skill.
+
+**Limits.**
+
+- Sizes are bytes on disk, **not compressed**: a server's gzip or brotli makes each chunk
+  several times smaller, in about the same proportion for all of them. Use the numbers to compare
+  chunks and to notice growth, not as a download size.
+- It reads the JavaScript build (`flutter build web`). A `--wasm` build also writes a
+  `main.dart.js` (the fallback), which is what is read; the `.wasm` file is not looked at.
+- A load id is the import prefix, and two deferred libraries with the same prefix in one app
+  would be told apart by dart2js, not by `fsp size`. The routes' own prefixes are the only ones it
+  matches, which is exact for an app whose deferred imports are the generated ones.
+- For what is _in_ a chunk, `flutter build web --dump-info` writes `main.dart.js.info.json` (tens of
+  megabytes) that a tool like `dart pub global run dart2js_info` reads. `fsp size` does not
+  use it.
+
+**Not built:** gzip sizes (`--gzip`), and a mode that reads `main.dart.js.info.json` when it is there,
+which would be exact whatever the prefixes are.
+
+`cli/src/size.rs` is the code, `cli/src/size_tests.rs` its tests, and `cli/tests/fixtures/shop-build/main.dart.js`
+the excerpt of a real build they read.
 
 ### Performance
 
@@ -3703,10 +3826,10 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 798 tests (746 unit, 41 CLI integration, 11 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 830 tests (775 unit, 43 CLI integration, 12 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
-  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), string paths that match no route (the lint, its matching, mount point and ignore comments), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
+  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), string paths that match no route (the lint, its matching, mount point and ignore comments), `fsp size` (dart2js's table of deferred parts read from a real build's `main.dart.js`, own and shared bytes, the stale-build checks and the `size:` budgets), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
   hooks_riverpod 3, flutter_hooks 0.21). 988 Flutter tests (the package 477, the DevTools extension 178, `shop` 64, `features` 222, `tabs` 39, `minimal` 8); the example tests drive the generated router through every
   file kind.

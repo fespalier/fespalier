@@ -19,6 +19,7 @@ mod routes;
 mod scaffold;
 mod scan;
 mod session;
+mod size;
 mod templates;
 
 use std::path::{Path, PathBuf};
@@ -81,6 +82,18 @@ enum Cmd {
         #[arg(long)]
         check: bool,
     },
+    /// Report the web build's JavaScript per deferred route, and check the budgets (`size:` in pubspec.yaml)
+    Size {
+        /// The `flutter build web` output folder (default: `size.build` in pubspec.yaml, else build/web)
+        #[arg(long, value_name = "DIR")]
+        build: Option<PathBuf>,
+        /// Print the report to stdout as JSON lines (main.dart.js, each deferred route, each part)
+        #[arg(long)]
+        json: bool,
+        /// Exit non-zero when a budget in `size:` is exceeded
+        #[arg(long)]
+        check: bool,
+    },
     /// Regenerate on every change under the app folder
     Watch,
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
@@ -108,6 +121,7 @@ fn main() {
             Cmd::Routes { json, graph } => routes::run(&project, json, graph),
             Cmd::Links { check } => links::run(&project, check),
             Cmd::Maestro { check } => maestro::run(&project, check),
+            Cmd::Size { build, json, check } => size::run(&project, build.as_deref(), json, check),
             Cmd::Watch => watch(&project),
             Cmd::Init => init::run(&project),
             Cmd::New(cmd) => {
@@ -505,6 +519,8 @@ mod route_api_tests;
 mod selector_tests;
 #[cfg(test)]
 mod semantics_tests;
+#[cfg(test)]
+mod size_tests;
 #[cfg(test)]
 mod synth;
 #[cfg(test)]

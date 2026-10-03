@@ -1,4 +1,5 @@
-import 'package:fespalier/fespalier.dart' show MemoryDataStorage, dataCacheStorage;
+import 'package:fespalier/fespalier.dart'
+    show MemoryDataStorage, dataCacheStorage;
 import 'package:fespalier/startup.dart';
 
 /// Runs before the app (the generated main(), lib/app.main.g.dart, calls it before the router

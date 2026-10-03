@@ -59,6 +59,8 @@ struct Last {
 /// Layers 1, 2 and 4 above, one field each so a run can hold one while it uses the other.
 #[derive(Default)]
 pub struct Session {
+    /// Whether the last run wrote an output file, even one that then failed on a lint.
+    pub wrote: bool,
     pub last: LastRun,
     pub formats: Formats,
     pub sites: Sites,
@@ -90,9 +92,14 @@ impl LastRun {
     }
 }
 
-/// Output path → (the code as emitted, what `dart format` made of it).
+/// Output path → (the code as emitted, what `dart format` made of it), and the warnings the
+/// formatter gave that nobody has shown yet (the caller prints them: `fsp gen` and `fsp watch`
+/// to stderr, `fsp dev` into its `fsp` pane).
 #[derive(Default)]
-pub struct Formats(HashMap<String, (String, String)>);
+pub struct Formats {
+    done: HashMap<String, (String, String)>,
+    warnings: Vec<String>,
+}
 
 impl Formats {
     /// `code` formatted by `format`, which is only called for code it hasn't formatted before.
@@ -103,19 +110,24 @@ impl Formats {
         code: &str,
         format: impl FnOnce(&str) -> (String, Option<String>),
     ) -> String {
-        if let Some((raw, done)) = self.0.get(path)
+        if let Some((raw, done)) = self.done.get(path)
             && raw == code
         {
             return done.clone();
         }
         let (done, warning) = format(code);
         match warning {
-            Some(w) => eprintln!("{w}"),
+            Some(w) => self.warnings.push(w),
             None => {
-                self.0
+                self.done
                     .insert(path.to_string(), (code.to_string(), done.clone()));
             }
         }
         done
+    }
+
+    /// The warnings given since the last call, oldest first.
+    pub fn take_warnings(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.warnings)
     }
 }

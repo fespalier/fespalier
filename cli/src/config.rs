@@ -49,6 +49,15 @@
 //!     samples:              # default: the maestro ones
 //!       products/$id: 1
 //!     skip: [/admin]        # patterns as `fsp routes` prints them
+//!   tasks:                  # default: none; what `fsp dev`, `fsp build` and `fsp run` run (see `tasks.rs`)
+//!     dev:
+//!       before: dart run build_runner build -d   # one command, or a list; the first that fails stops
+//!       with:                                    # long-running, next to flutter, one pane each
+//!         build_runner: dart run build_runner watch -d
+//!       run: flutter run                         # default; fsp adds --machine, -d and the args after --
+//!       env: { API_URL: "http://localhost:8080" }
+//!       hot_reload: true                         # default
+//!     codegen: dart run build_runner build -d    # `fsp run codegen`
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -249,6 +258,10 @@ pub struct Config {
     /// The `test:` section, as written. Only `fsp test` reads it, and it checks the values
     /// then ([`TestConfig::validate`]), so a mistake in it never stops `fsp gen`.
     pub test: Option<TestConfig>,
+    /// The `tasks:` section, as written. Only `fsp dev`, `fsp build` and `fsp run` read it, and
+    /// they check it then ([`crate::tasks::Tasks::from_config`]), so a mistake in it never stops
+    /// `fsp gen` (since 0.9.0).
+    pub tasks: Option<Value>,
     /// `main:`: whether the generated `main()` is written (see [`MainMode`]).
     pub main: MainMode,
 }
@@ -278,6 +291,7 @@ impl Default for Config {
             maestro: None,
             size: None,
             test: None,
+            tasks: None,
             main: MainMode::Auto,
         }
     }
@@ -324,6 +338,7 @@ struct RawConfig {
     size: Option<SizeConfig>,
     test: Option<TestConfig>,
     main: Option<MainMode>,
+    tasks: Option<Value>,
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -694,7 +709,7 @@ impl Size {
 }
 
 /// A value as the pubspec spells it, for a message.
-fn shown_value(v: &Value) -> String {
+pub(crate) fn shown_value(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Number(n) => n.to_string(),
@@ -1082,6 +1097,7 @@ impl Pubspec {
             config.maestro = c.maestro;
             config.size = c.size;
             config.test = c.test;
+            config.tasks = c.tasks;
             config.main = c.main.unwrap_or_default();
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;

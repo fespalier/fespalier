@@ -63,6 +63,7 @@ pub fn run(project: &Path) -> Result<()> {
 
     let o = crate::gen_with(project, &cfg.for_scaffolding(), true)?;
     eprintln!("{}", o.line());
+    tasks_example(project)?;
 
     let mut step = 0;
     let mut next = |title: &str| {
@@ -99,6 +100,36 @@ pub fn run(project: &Path) -> Result<()> {
             dir = cfg.app_dir
         );
     }
-    next("Run `fsp watch` next to `flutter run` to regenerate on every save.");
+    next(
+        "Run `fsp dev` to start the app: it regenerates on every save and hot restarts (or `fsp watch` next to `flutter run`).",
+    );
+    Ok(())
+}
+
+/// The line that says a pubspec already has the commented `tasks:` example.
+pub const TASKS_MARKER: &str = "# fsp dev reads tasks:";
+
+/// Appends the commented `tasks:` example to pubspec.yaml (since 0.9.0), when it has no
+/// `fespalier:` key yet: uncommenting the block then gives valid YAML. With the key there (a
+/// second one would be a duplicate) it says where to read about it instead. The block is only
+/// comments, so what the pubspec means does not change.
+fn tasks_example(project: &Path) -> Result<()> {
+    let path = project.join("pubspec.yaml");
+    let mut text =
+        fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    if text.lines().any(|l| l.starts_with(TASKS_MARKER)) {
+        eprintln!("  skip  pubspec.yaml tasks example (exists)");
+    } else if text.lines().any(|l| l.starts_with("fespalier:")) {
+        eprintln!(
+            "  skip  pubspec.yaml tasks example (fespalier: is already there; README, \"Tasks: commands around `flutter run`\")"
+        );
+    } else {
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&templates::render("init/pubspec_tasks.yaml", ()));
+        fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
+        eprintln!("  edit  pubspec.yaml (a commented tasks: example for fsp dev)");
+    }
     Ok(())
 }

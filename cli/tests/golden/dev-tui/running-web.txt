@@ -1,0 +1,30 @@
+ fespalier dev · shop                                                             ● running · debug
+ Chrome (chrome) · web-javascript                                        web http://localhost:54321
+ DevTools http://127.0.0.1:9100/?uri=ws://127.0.0.1:1/x=/ws
+ 1 flutter │ 2 fsp • │ 3 build_runner
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ Launching lib/main.dart on Chrome in debug mode...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ 14 routes · generated 4 s ago in 3.1 ms · no errors · hot reload ✓ 100 ms · Reloaded 3 of 512 li
+ r reload  R restart  d DevTools  o open  t telemetry  1-9/Tab pane  / filter  ? help  q quit

@@ -10,8 +10,9 @@ before changing how it behaves.
 
 | Path | What it is |
 | --- | --- |
-| `cli/` | The generator, Rust crate `fespalier`, binary `fsp`. Pipeline: `scan.rs` (the file tree) → `dart.rs` (tree-sitter reads each Dart file) → `resolve.rs` (binds parameters, checks how the files fit) → `emit.rs` and `manifest.rs` (write the output through `templates/`). Also `scaffold.rs` (`fsp new`), `init.rs`, `session.rs` and `parse_cache.rs` (incremental `fsp watch`), `locale.rs`, `enums.rs`, `extra.rs`. Unit tests sit next to the code as `*_tests.rs`; `cli/tests/` spawns the binary. |
+| `cli/` | The generator, Rust crate `fespalier`, binary `fsp`. Pipeline: `scan.rs` (the file tree) → `dart.rs` (tree-sitter reads each Dart file) → `resolve.rs` (binds parameters, checks how the files fit) → `emit.rs` and `manifest.rs` (write the output through `templates/`). Also `scaffold.rs` (`fsp new`), `init.rs`, `session.rs` and `parse_cache.rs` (incremental `fsp watch`), `locale.rs`, `enums.rs`, `extra.rs`, and `telemetry_stack.rs` (`fsp telemetry`, which needs no project). Unit tests sit next to the code as `*_tests.rs`; `cli/tests/` spawns the binary. |
 | `cli/templates/` | minijinja templates: `app.g.dart.jinja`, the manifest, and the files `fsp new` / `fsp init` write (`new/`, `init/`). |
+| `cli/templates/telemetry/` | The stack `fsp telemetry` writes to `~/.fespalier/telemetry` and runs with Docker Compose: `compose.yaml`, `env.example`, the collector, OpenObserve's one-shot dashboard importer (`import.py`) and Grafana's provisioning. It runs as it is (`docker compose up -d`). The six dashboards (OpenObserve and Grafana JSON), `openobserve/fields.json` and the collector's `dimensions:` block are **generated** by `just telemetry-dashboards`; never edit them by hand. `FILES` in `cli/src/telemetry_stack.rs` embeds every file, and a test fails when one is missing. |
 | `packages/fespalier/` | The Dart runtime (`DataView`, `DeferredLibrary` and `DeferredView`, segment parsing, `TypedLocation`, `testing.dart`) and `bin/fespalier.dart`, the `dart run fespalier` launcher that downloads the matching `fsp`. `lib/src/devtools/` is the app side of the DevTools extension (`protocol.dart` is the wire format and imports nothing; `devtools.dart` is behind `kFespalierDevTools`, false in release). Not published to a registry: apps use it as a git dependency at a release tag. |
 | `packages/fespalier/extension/devtools/` | What DevTools loads: `config.yaml` (its `version:` is release-please's) and `build/`, the extension's release build, **committed and generated** by `scripts/build-devtools-extension.sh`. Never edit a file in `build/`. |
 | `packages/fespalier_devtools/` | The DevTools extension's source, a Flutter web app; only `lib/main.dart` imports `devtools_extensions`, so the rest is tested on the VM against a fake client. Its build is committed to `packages/fespalier/extension/devtools/build/`. `lib/src/protocol.dart` is a copy of the runtime's protocol file; `pubspec.lock` is committed on purpose. |
@@ -19,6 +20,7 @@ before changing how it behaves.
 | `editors/vscode/`, `editors/intellij/` | Editor plugins (TypeScript, Kotlin) that show `fsp --json` diagnostics. |
 | `skills/` | Agent skills for **apps that use fespalier** (one directory per skill, `SKILL.md` plus `references/`), with `skills/coverage.json`, the map from README sections, file kinds, config keys and commands to the skill that covers each. `skills/README.md` is their guide. Not published. |
 | `scripts/` | Python and shell helpers for releases (Homebrew/Scoop rendering, checksum pinning, staged-asset verification) and their tests, `check-const-lints.sh`, and `check-deferred-chunks.sh` (the web build behind `just web-chunks`); `scripts/skills/` holds the skills' coverage gate and sample builder (Node). |
+| `scripts/telemetry/` | The dashboards' one spec, `dashboards.toml` (each panel has a `sql` for OpenObserve and a `promql` for Grafana), `build_dashboards.py` (writes the generated JSON; `--check` fails when it is stale), `conventions_v1.txt` (a copy of the telemetry conventions' names: the only names a query may use), `seed.py` and `smoke.py` (the stack in Docker). `scripts/test_telemetry.py` is `just telemetry`. |
 | `ci/commit-message-parse/` | The squash-message parser the `pr-title` workflow runs; a standalone npm project pinned to release-please's grammar. |
 | `.github/workflows/` | `ci.yml` (the gate), `quality.yml` (org lint and trivy), `pr-title.yml`, `issue-governance.yml`, and the release workflows. |
 
@@ -35,6 +37,9 @@ before changing how it behaves.
 | `just devtools` | The committed DevTools extension build is what `packages/fespalier_devtools` builds to (a fresh build compared byte for byte, in a temporary folder), and `devtools_extensions validate` accepts it. Needs Flutter |
 | `just devtools-build` | Rebuild `packages/fespalier/extension/devtools/build` (and refresh the protocol copy). Run it and commit the result after touching `packages/fespalier_devtools/`, `lib/src/devtools/protocol.dart` or `FLUTTER_VERSION` |
 | `just packaging` | The Python tests for Homebrew/Scoop rendering, checksum pinning and release staging |
+| `just telemetry` | `scripts/test_telemetry.py`: the generated dashboards are fresh, every query uses only the telemetry conventions, the JSON has the shape OpenObserve and Grafana need, `compose.yaml` pins its images by tag and digest, and the dashboard importer runs against a fake OpenObserve. `docker compose config` checks the compose file where Compose is installed (it skips without; CI sets `FSP_REQUIRE_DOCKER=1`, which fails instead) |
+| `just telemetry-dashboards` | Regenerate the dashboards, `fields.json` and the collector's dimensions from `scripts/telemetry/dashboards.toml`. Run it after touching the spec, the conventions copy or the dimensions |
+| `just telemetry-smoke` | `scripts/telemetry/smoke.py`: pull the pinned images, start the stack, send a seeded session, run every panel's query in OpenObserve and Grafana, and compare their counts with the seed's. Needs Docker and about 1.9 GB of images; not in `just ci`, CI's `telemetry-smoke` job runs it. Run it after an image bump |
 | `just skills` | The skills' coverage gate: every README section, file kind, config key and `fsp` command is claimed by a skill, every claim still exists, and frontmatter, stamps and links are valid |
 | `just web-chunks` | `flutter build web --release` of `examples/shop` in a temporary copy, and a check that each deferred page is a `main.dart.js_N.part.js` of its own (about a minute, web artifacts; CI's `web` job runs it, `just ci` does not) |
 | `just skill-samples [file.md ...]` | Builds the skills' code samples in a scratch app with this checkout's `fsp` (`gen`, `analyze`, `test`). Slow; not in `just ci` or CI, so run it when you touch a sample |
@@ -47,7 +52,7 @@ and `rust-version` in `cli/Cargo.toml` moves with it), Flutter in `env.FLUTTER_V
 `.github/workflows/ci.yml`. `just ci` also needs `just`, `cargo-deny`, `python3` and `node` on `PATH`.
 CI additionally scaffolds every file kind with `fsp new` and `fsp init` and checks the result
 with `flutter analyze` and `dart format`; that job has no `just` recipe because it writes into
-the examples.
+the examples. A `telemetry-smoke` job runs the telemetry stack in Docker (`just telemetry-smoke`; `just ci` leaves it out).
 
 Run `just ci`, not a reconstruction of it: the flags you drop are the ones that were set on purpose.
 
@@ -84,6 +89,10 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   put `${{ }}` inside `run:` (pass values through `env:`). The org lint runs zizmor and
   actionlint, so run them on workflow changes. `on.pull_request.paths` is never used: gate jobs
   with an `if:` over the paths-filter job in `quality.yml`.
+- **Docker images are pinned by tag and multi-arch index digest** (`image:tag@sha256:...`, in
+  `cli/templates/telemetry/compose.yaml`; a test checks the form). To bump one, edit the tag, resolve
+  the digest with `docker buildx imagetools inspect <image>:<tag>` (its `Digest:` line, with an
+  `amd64` and an `arm64` entry below it), and run `just telemetry-smoke`.
 - **Regenerate the examples.** After changing the emitter, a template or `manifest.rs`, run
   `just gen-examples` and commit the new `lib/app.g.dart` files; a generator test fails on a stale
   one. Generated files stay unformatted (the `format:` option is off) so they do not depend on the

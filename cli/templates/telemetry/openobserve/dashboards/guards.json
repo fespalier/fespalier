@@ -1,0 +1,389 @@
+{
+  "version": 8,
+  "title": "fespalier · Guards",
+  "description": "What guards and redirects decided, how long async ones kept the user waiting, and which ones threw.",
+  "role": "",
+  "owner": "",
+  "tabs": [
+    {
+      "tabId": "default",
+      "name": "Overview",
+      "panels": [
+        {
+          "id": "panel_decisions",
+          "type": "metric",
+          "title": "Decisions",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS decisions FROM \"default\" WHERE fespalier_operation IN ('guard', 'redirect') AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "decisions",
+                    "alias": "decisions",
+                    "column": "decisions",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 1
+          }
+        },
+        {
+          "id": "panel_denials",
+          "type": "metric",
+          "title": "Denials (a guard sent the user elsewhere)",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS denials FROM \"default\" WHERE fespalier_operation = 'guard' AND fespalier_guard_decision = 'redirect' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "denials",
+                    "alias": "denials",
+                    "column": "denials",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 2
+          }
+        },
+        {
+          "id": "panel_guard_errors",
+          "type": "metric",
+          "title": "Guards that threw",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS errors FROM \"default\" WHERE fespalier_operation IN ('guard', 'redirect') AND fespalier_guard_decision = 'error' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "errors",
+                    "alias": "errors",
+                    "column": "errors",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 3
+          }
+        },
+        {
+          "id": "panel_pending_p95",
+          "type": "metric",
+          "title": "Async guard pending, p95",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": "milliseconds",
+            "decimals": 1
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation IN ('guard', 'redirect') AND fespalier_async = 'true' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "p95_ms",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 144,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 4
+          }
+        },
+        {
+          "id": "panel_outcomes_over_time",
+          "type": "bar",
+          "title": "Decisions by outcome",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS t, fespalier_guard_decision AS decision, COUNT(*) AS n FROM \"default\" WHERE fespalier_operation IN ('guard', 'redirect') AND service_name = '$service' GROUP BY t, decision ORDER BY t",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "t",
+                    "alias": "t",
+                    "column": "t",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "n",
+                    "alias": "n",
+                    "column": "n",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "decision",
+                    "alias": "decision",
+                    "column": "decision",
+                    "color": null
+                  }
+                ],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 8,
+            "w": 192,
+            "h": 16,
+            "i": 5
+          }
+        },
+        {
+          "id": "panel_by_guard",
+          "type": "table",
+          "title": "By guard",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_file AS guard, fespalier_route AS route, COUNT(*) AS decisions, SUM(CASE WHEN fespalier_guard_decision = 'redirect' THEN 1 ELSE 0 END) AS denials, SUM(CASE WHEN fespalier_guard_decision = 'error' THEN 1 ELSE 0 END) AS errors, SUM(CASE WHEN fespalier_guard_decision = 'skipped' THEN 1 ELSE 0 END) AS skipped, approx_percentile_cont(CASE WHEN fespalier_async = 'true' THEN duration END, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation IN ('guard', 'redirect') AND service_name = '$service' GROUP BY guard, route ORDER BY decisions DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "guard",
+                    "alias": "guard",
+                    "column": "guard",
+                    "color": null
+                  },
+                  {
+                    "label": "route",
+                    "alias": "route",
+                    "column": "route",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "decisions",
+                    "alias": "decisions",
+                    "column": "decisions",
+                    "color": null
+                  },
+                  {
+                    "label": "denials",
+                    "alias": "denials",
+                    "column": "denials",
+                    "color": null
+                  },
+                  {
+                    "label": "errors",
+                    "alias": "errors",
+                    "column": "errors",
+                    "color": null
+                  },
+                  {
+                    "label": "skipped",
+                    "alias": "skipped",
+                    "column": "skipped",
+                    "color": null
+                  },
+                  {
+                    "label": "p95_ms",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 24,
+            "w": 192,
+            "h": 16,
+            "i": 6
+          }
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "list": [
+      {
+        "type": "query_values",
+        "name": "service",
+        "label": "App",
+        "query_data": {
+          "stream_type": "traces",
+          "stream": "default",
+          "field": "service_name",
+          "max_record_size": 20
+        },
+        "value": null,
+        "options": [],
+        "multiSelect": false
+      }
+    ],
+    "showDynamicFilters": false
+  },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "1h"
+  }
+}

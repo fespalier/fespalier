@@ -8,17 +8,18 @@ Every command takes `--project <dir>`; the default is the nearest folder, at or
 above the current one, with a `pubspec.yaml` (none: `no pubspec.yaml here or
 above; pass --project`).
 
-| Command                       | What it does                                                                                                                                                                                                         |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fsp init`                    | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do                                         |
-| `fsp gen [--format] [--json]` | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                             |
-| `fsp check [--json]`          | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                      |
-| `fsp watch`                   | `gen` once, then again on every relevant change; keep it next to `flutter run`                                                                                                                                       |
-| `fsp routes [--json]`         | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                        |
-| `fsp links [--check]`         | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                              |
-| `fsp maestro [--check]`       | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0) |
-| `fsp routes --graph [FORMAT]` | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default), a Graphviz `digraph` (`dot`), since 0.5.0, or JSON (`json`, since 0.7.0)                                                                 |
-| `fsp new <path> [flags]`      | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                                                           |
+| Command                       | What it does                                                                                                                                                                                                                                                                                      |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fsp init`                    | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do                                                                                                                      |
+| `fsp gen [--format] [--json]` | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                                                                                                          |
+| `fsp check [--json]`          | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                                                                                                   |
+| `fsp watch`                   | `gen` once, then again on every relevant change; keep it next to `flutter run`                                                                                                                                                                                                                    |
+| `fsp routes [--json]`         | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                                                                                                     |
+| `fsp links [--check]`         | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                                                                                                           |
+| `fsp maestro [--check]`       | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0)                                                                              |
+| `fsp telemetry [flags]`       | Starts a local OpenTelemetry stack with fespalier's six dashboards in Docker: a collector, OpenObserve, and Grafana with `--grafana`. Needs no project and no pubspec key; writes `~/.fespalier/telemetry`. Flags: `--grafana`, `--lan`, `--stop`, `--reset`, `--dir`, `--no-start` (since 0.8.0) |
+| `fsp routes --graph [FORMAT]` | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default), a Graphviz `digraph` (`dot`), since 0.5.0, or JSON (`json`, since 0.7.0)                                                                                                                                              |
+| `fsp new <path> [flags]`      | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                                                                                                                                        |
 
 What they print, to stderr unless noted:
 
@@ -210,6 +211,19 @@ tree keeps it. There is no `--redirect`, `--present` or `--meta` flag.
 After `fsp new '(account)' --layout`, `gen` warns `folder has no page.dart and
 no routes below it; skipped` until a route exists inside the group. That is
 expected.
+
+### `fsp telemetry` (since 0.8.0)
+
+Starts a local stack that receives fespalier's telemetry and shows it in six dashboards; it needs
+Docker with Compose 2.20 or later and a running daemon, and **no project**: run it anywhere. It
+writes its files to `~/.fespalier/telemetry` (`--dir`, or `FSP_TELEMETRY_DIR`), runs
+`docker compose up -d` there, waits for the one-shot importer that loads the dashboards into
+OpenObserve, and prints the addresses. `--grafana` adds Grafana, `--lan` opens the OTLP ports to
+phones for one run, `--stop` and `--reset` stop it (keeping or deleting its data), `--no-start` only
+writes the files. Settings are in `.env` in that folder (written once, never overwritten). The
+dashboards, the app's endpoint (`FespalierOtel.endpoint()`) and the traps are in `fespalier-testing`,
+`references/observability.md`; every message is in `fespalier-troubleshooting`,
+`references/diagnostics-telemetry.md`.
 
 ## Installing `fsp`
 

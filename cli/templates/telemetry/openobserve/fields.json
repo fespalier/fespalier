@@ -1,0 +1,36 @@
+{
+  "traces": [
+    "fespalier_operation",
+    "fespalier_route",
+    "fespalier_file",
+    "fespalier_async",
+    "error_type",
+    "fespalier_navigation_kind",
+    "fespalier_navigation_outcome",
+    "fespalier_navigation_from",
+    "fespalier_navigation_redirected",
+    "fespalier_navigation_depth",
+    "url_path",
+    "url_query",
+    "fespalier_guard_decision",
+    "fespalier_guard_location",
+    "fespalier_data_state",
+    "fespalier_data_keyed",
+    "fespalier_action_name",
+    "fespalier_action_result",
+    "fespalier_deferred_result",
+    "service_name",
+    "operation_name",
+    "span_status",
+    "status_message",
+    "trace_id"
+  ],
+  "logs": [
+    "service_name",
+    "severity",
+    "exception_type",
+    "exception_message",
+    "event_name",
+    "body"
+  ]
+}

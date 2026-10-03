@@ -1,0 +1,544 @@
+{
+  "version": 8,
+  "title": "fespalier · Errors",
+  "description": "Failed guards, loads, actions and deferred loads; uncaught errors; native crashes and ANRs.",
+  "role": "",
+  "owner": "",
+  "tabs": [
+    {
+      "tabId": "default",
+      "name": "Overview",
+      "panels": [
+        {
+          "id": "panel_failed_spans",
+          "type": "metric",
+          "title": "Failed guards, loads, actions and deferred loads",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS failed FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "failed",
+                    "alias": "failed",
+                    "column": "failed",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 1
+          }
+        },
+        {
+          "id": "panel_uncaught",
+          "type": "metric",
+          "title": "Uncaught errors",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS uncaught FROM \"default\" WHERE (UPPER(severity) IN ('ERROR', 'FATAL', 'CRITICAL') OR severity IN ('17', '18', '19', '20', '21', '22', '23', '24')) AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "logs",
+                "x": [],
+                "y": [
+                  {
+                    "label": "uncaught",
+                    "alias": "uncaught",
+                    "column": "uncaught",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 2
+          }
+        },
+        {
+          "id": "panel_crashes",
+          "type": "metric",
+          "title": "Native crashes and ANRs (Android, iOS)",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS crashes FROM \"default\" WHERE event_name IN ('device.crash', 'device.anr') AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "logs",
+                "x": [],
+                "y": [
+                  {
+                    "label": "crashes",
+                    "alias": "crashes",
+                    "column": "crashes",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 3
+          }
+        },
+        {
+          "id": "panel_failed_over_time",
+          "type": "bar",
+          "title": "Failures by operation",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS t, fespalier_operation AS operation, COUNT(*) AS failed FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY t, operation ORDER BY t",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "t",
+                    "alias": "t",
+                    "column": "t",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "failed",
+                    "alias": "failed",
+                    "column": "failed",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "operation",
+                    "alias": "operation",
+                    "column": "operation",
+                    "color": null
+                  }
+                ],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 8,
+            "w": 192,
+            "h": 16,
+            "i": 4
+          }
+        },
+        {
+          "id": "panel_by_type",
+          "type": "table",
+          "title": "By error type",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT error_type AS type, fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, COUNT(*) AS n FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY type, operation, route, file ORDER BY n DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "type",
+                    "alias": "type",
+                    "column": "type",
+                    "color": null
+                  },
+                  {
+                    "label": "operation",
+                    "alias": "operation",
+                    "column": "operation",
+                    "color": null
+                  },
+                  {
+                    "label": "route",
+                    "alias": "route",
+                    "column": "route",
+                    "color": null
+                  },
+                  {
+                    "label": "file",
+                    "alias": "file",
+                    "column": "file",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "n",
+                    "alias": "n",
+                    "column": "n",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 24,
+            "w": 96,
+            "h": 16,
+            "i": 5
+          }
+        },
+        {
+          "id": "panel_uncaught_by_type",
+          "type": "table",
+          "title": "Uncaught errors by type",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT exception_type AS type, COUNT(*) AS n FROM \"default\" WHERE (UPPER(severity) IN ('ERROR', 'FATAL', 'CRITICAL') OR severity IN ('17', '18', '19', '20', '21', '22', '23', '24')) AND service_name = '$service' GROUP BY type ORDER BY n DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "type",
+                    "alias": "type",
+                    "column": "type",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "n",
+                    "alias": "n",
+                    "column": "n",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 24,
+            "w": 96,
+            "h": 16,
+            "i": 6
+          }
+        },
+        {
+          "id": "panel_recent",
+          "type": "table",
+          "title": "Recent failures",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT _timestamp AS time, fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, error_type AS type, status_message AS message, trace_id FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' ORDER BY _timestamp DESC LIMIT 50",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "time",
+                    "alias": "time",
+                    "column": "time",
+                    "color": null
+                  },
+                  {
+                    "label": "operation",
+                    "alias": "operation",
+                    "column": "operation",
+                    "color": null
+                  },
+                  {
+                    "label": "route",
+                    "alias": "route",
+                    "column": "route",
+                    "color": null
+                  },
+                  {
+                    "label": "file",
+                    "alias": "file",
+                    "column": "file",
+                    "color": null
+                  },
+                  {
+                    "label": "type",
+                    "alias": "type",
+                    "column": "type",
+                    "color": null
+                  },
+                  {
+                    "label": "message",
+                    "alias": "message",
+                    "column": "message",
+                    "color": null
+                  },
+                  {
+                    "label": "trace_id",
+                    "alias": "trace_id",
+                    "column": "trace_id",
+                    "color": null
+                  }
+                ],
+                "y": [],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 40,
+            "w": 192,
+            "h": 16,
+            "i": 7
+          }
+        },
+        {
+          "id": "panel_recent_uncaught",
+          "type": "table",
+          "title": "Recent uncaught errors",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT _timestamp AS time, severity, exception_type AS type, exception_message AS message, body FROM \"default\" WHERE (UPPER(severity) IN ('ERROR', 'FATAL', 'CRITICAL') OR severity IN ('17', '18', '19', '20', '21', '22', '23', '24')) AND service_name = '$service' ORDER BY _timestamp DESC LIMIT 50",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "time",
+                    "alias": "time",
+                    "column": "time",
+                    "color": null
+                  },
+                  {
+                    "label": "severity",
+                    "alias": "severity",
+                    "column": "severity",
+                    "color": null
+                  },
+                  {
+                    "label": "type",
+                    "alias": "type",
+                    "column": "type",
+                    "color": null
+                  },
+                  {
+                    "label": "message",
+                    "alias": "message",
+                    "column": "message",
+                    "color": null
+                  },
+                  {
+                    "label": "body",
+                    "alias": "body",
+                    "column": "body",
+                    "color": null
+                  }
+                ],
+                "y": [],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 56,
+            "w": 192,
+            "h": 16,
+            "i": 8
+          }
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "list": [
+      {
+        "type": "query_values",
+        "name": "service",
+        "label": "App",
+        "query_data": {
+          "stream_type": "traces",
+          "stream": "default",
+          "field": "service_name",
+          "max_record_size": 20
+        },
+        "value": null,
+        "options": [],
+        "multiSelect": false
+      }
+    ],
+    "showDynamicFilters": false
+  },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "1h"
+  }
+}

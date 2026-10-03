@@ -95,7 +95,8 @@
         "editors/vscode",
         "editors/intellij",
         "cli/templates/new/action.dart.jinja",
-        "cli/src/devtools.rs"
+        "cli/src/devtools.rs",
+        "command:telemetry"
       ]
     },
     "fespalier-routing": {
@@ -209,7 +210,36 @@
         "packages/fespalier/lib/testing.dart",
         "README.md#Maestro flows (`fsp maestro`)",
         "config:semantics_ids",
-        "packages/fespalier/lib/src/web_semantics.dart"
+        "packages/fespalier/lib/src/web_semantics.dart",
+        "README.md#Dashboards on your computer: `fsp telemetry`",
+        "README.md#The app side",
+        "README.md#The six dashboards",
+        "README.md#The flags",
+        "README.md#The web and `otel_zone`",
+        "README.md#OpenObserve and Grafana show the same numbers",
+        "README.md#Your own copy",
+        "command:telemetry",
+        "cli/src/telemetry_stack.rs",
+        "cli/templates/telemetry",
+        "cli/templates/telemetry/collector/config.yaml",
+        "cli/templates/telemetry/compose.yaml",
+        "cli/templates/telemetry/env.example",
+        "cli/templates/telemetry/grafana/dashboards/actions.json",
+        "cli/templates/telemetry/grafana/dashboards/data.json",
+        "cli/templates/telemetry/grafana/dashboards/deferred.json",
+        "cli/templates/telemetry/grafana/dashboards/errors.json",
+        "cli/templates/telemetry/grafana/dashboards/guards.json",
+        "cli/templates/telemetry/grafana/dashboards/navigation.json",
+        "cli/templates/telemetry/grafana/provisioning/dashboards/fespalier.yaml",
+        "cli/templates/telemetry/grafana/provisioning/datasources/fespalier.yaml",
+        "cli/templates/telemetry/openobserve/dashboards/actions.json",
+        "cli/templates/telemetry/openobserve/dashboards/data.json",
+        "cli/templates/telemetry/openobserve/dashboards/deferred.json",
+        "cli/templates/telemetry/openobserve/dashboards/errors.json",
+        "cli/templates/telemetry/openobserve/dashboards/guards.json",
+        "cli/templates/telemetry/openobserve/dashboards/navigation.json",
+        "cli/templates/telemetry/openobserve/fields.json",
+        "cli/templates/telemetry/openobserve/import.py"
       ]
     },
     "fespalier-troubleshooting": {
@@ -232,7 +262,8 @@
         "cli/src/main.rs",
         "README.md#DevTools extension",
         "packages/fespalier/lib/src/devtools/devtools.dart",
-        "packages/fespalier/lib/src/devtools/protocol.dart"
+        "packages/fespalier/lib/src/devtools/protocol.dart",
+        "cli/src/telemetry_stack.rs"
       ]
     },
     "fespalier-migration": {

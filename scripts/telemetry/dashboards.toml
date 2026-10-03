@@ -1,0 +1,524 @@
+# The one spec for fespalier's six dashboards (since 0.8.0). `just telemetry-dashboards` turns it into
+# the OpenObserve (v8) JSON and the Grafana JSON under cli/templates/telemetry/, and into the
+# collector's dimension list and the columns the importer creates. Never edit those by hand.
+#
+# Every panel has a `sql` (OpenObserve, over the `traces` or `logs` stream) and a `promql` list
+# (Grafana, over the metrics the collector derives from fespalier's spans). Counts agree between the
+# two; percentiles are interpolated within histogram buckets in Grafana.
+#
+# Panel fields
+#   id           unique in the dashboard; OpenObserve panel id "panel_<id>"
+#   title        the panel's title
+#   type         stat | timeseries | bars | table
+#   width        quarter | half | full   (stat: quarter; anything else: half)
+#   unit         "ms" for values in milliseconds
+#   stream_type  traces (default) | logs
+#   requires     attributes of a proposed contract addition; the panel is left out while the
+#                conventions do not have them (scripts/telemetry/conventions_v1.txt)
+#   sql          one query; every alias named in `columns` appears as "AS <alias>"
+#   columns      name, axis (x | y | breakdown; default y), time = true on the time axis,
+#                requires, oo_only = true for a column Grafana cannot show (a message, a trace id),
+#                select = the SQL for a column that needs one of `requires` (it goes where the
+#                sql has {extra_columns}, and only while the column is kept)
+#   promql       the Grafana targets: expr, legend, requires; a table has one per y column that is
+#                not oo_only, in the same order, plus extra = true for a Grafana-only count column
+#   rename       Grafana tables: label name -> column title
+#   grafana      false: the panel is OpenObserve-only
+#   links        Grafana panel links (title, url)
+#
+# Macros ({name}, expanded in sql and expr, nested ones too)
+#   {svc}            the App variable in SQL
+#   {sel}            service_name="$service" in PromQL
+#   {sel:navigate}   fespalier_operation="navigate", service_name="$service"
+#   {sel:a|b}        fespalier_operation=~"a|b", service_name="$service"
+
+[macros]
+svc = "service_name = '$service'"
+from = 'FROM "default"'
+p50 = "approx_percentile_cont(duration, 0.5) / 1000.0"
+p95 = "approx_percentile_cont(duration, 0.95) / 1000.0"
+err_logs = "(UPPER(severity) IN ('ERROR', 'FATAL', 'CRITICAL') OR severity IN ('17', '18', '19', '20', '21', '22', '23', '24'))"
+nav_ok_sql = "fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'ok' AND fespalier_navigation_kind <> 'refresh'"
+nav_timed_sql = "fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded'"
+nav_redirected_sql = "fespalier_operation = 'navigate' AND fespalier_navigation_redirected = 'true'"
+guard_sql = "fespalier_operation IN ('guard', 'redirect')"
+nav_ok_sel = '{sel:navigate}, fespalier_navigation_outcome="ok", fespalier_navigation_kind!="refresh"'
+nav_timed_sel = '{sel:navigate}, fespalier_navigation_outcome!="superseded"'
+nav_redirected_sel = '{sel:navigate}, fespalier_navigation_redirected="true"'
+guard_sel = "{sel:guard|redirect}"
+data_timed_sel = '{sel:data}, fespalier_data_state=~"data|error"'
+failed_sel = '{sel}, status_code="STATUS_CODE_ERROR"'
+
+# ------------------------------------------------------------------------------------------------
+[[dashboard]]
+id = "navigation"
+title = "Navigation"
+description = "Route views, time to first frame per route, and redirects."
+
+  [[dashboard.panels]]
+  id = "views"
+  title = "Route views"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS views {from} WHERE {nav_ok_sql} AND {svc}"
+  columns = [{ name = "views" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {nav_ok_sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "ttff_p95"
+  title = "Time to first frame, p95"
+  type = "stat"
+  unit = "ms"
+  sql = "SELECT {p95} AS p95_ms {from} WHERE {nav_timed_sql} AND {svc}"
+  columns = [{ name = "p95_ms" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__range])))" }]
+
+  [[dashboard.panels]]
+  id = "redirected"
+  title = "Redirected navigations"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS redirected {from} WHERE {nav_redirected_sql} AND {svc}"
+  columns = [{ name = "redirected" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {nav_redirected_sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "not_found"
+  title = "Not found"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS not_found {from} WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'not_found' AND {svc}"
+  columns = [{ name = "not_found" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:navigate}, fespalier_navigation_outcome="not_found" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "views_over_time"
+  title = "Views per route"
+  type = "bars"
+  width = "full"
+  sql = "SELECT histogram(_timestamp) AS t, fespalier_route AS route, COUNT(*) AS views {from} WHERE {nav_ok_sql} AND {svc} GROUP BY t, route ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true }, { name = "route", axis = "breakdown" }, { name = "views" }]
+  promql = [{ expr = "sum by (fespalier_route) (sum_over_time(fespalier_calls{ {nav_ok_sel} }[$__interval]))", legend = "{{fespalier_route}}" }]
+
+  [[dashboard.panels]]
+  id = "ttff_by_route"
+  title = "Time to first frame by route"
+  type = "table"
+  sql = "SELECT fespalier_route AS route, COUNT(*) AS views, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE {nav_timed_sql} AND {svc} GROUP BY route ORDER BY p95_ms DESC"
+  columns = [{ name = "route", axis = "x" }, { name = "views" }, { name = "p50_ms" }, { name = "p95_ms" }]
+  rename = { fespalier_route = "route" }
+  promql = [
+    { expr = "sum by (fespalier_route) (sum_over_time(fespalier_calls{ {nav_timed_sel} }[$__range]))" },
+    { expr = "histogram_quantile(0.5, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__range])))" },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__range])))" },
+  ]
+
+  [[dashboard.panels]]
+  id = "ttff_over_time"
+  title = "Time to first frame, p95"
+  type = "timeseries"
+  unit = "ms"
+  sql = "SELECT histogram(_timestamp) AS t, {p95} AS p95_ms {from} WHERE {nav_timed_sql} AND {svc} GROUP BY t ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true }, { name = "p95_ms" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__interval])))", legend = "p95" }]
+
+  [[dashboard.panels]]
+  id = "redirected_to"
+  title = "Redirected navigations, by where they landed"
+  type = "table"
+  sql = "SELECT fespalier_route AS landed, COUNT(*) AS n {from} WHERE {nav_redirected_sql} AND {svc} GROUP BY landed ORDER BY n DESC"
+  columns = [{ name = "landed", axis = "x" }, { name = "n" }]
+  rename = { fespalier_route = "landed" }
+  promql = [{ expr = "sum by (fespalier_route) (sum_over_time(fespalier_calls{ {nav_redirected_sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "kinds"
+  title = "Navigation kinds"
+  type = "bars"
+  sql = "SELECT fespalier_navigation_kind AS kind, COUNT(*) AS n {from} WHERE fespalier_operation = 'navigate' AND {svc} GROUP BY kind ORDER BY n DESC"
+  columns = [{ name = "kind", axis = "x" }, { name = "n" }]
+  rename = { fespalier_navigation_kind = "kind" }
+  promql = [{ expr = "sum by (fespalier_navigation_kind) (sum_over_time(fespalier_calls{ {sel:navigate} }[$__range]))" }]
+
+# ------------------------------------------------------------------------------------------------
+[[dashboard]]
+id = "guards"
+title = "Guards"
+description = "What guards and redirects decided, how long async ones kept the user waiting, and which ones threw."
+
+  [[dashboard.panels]]
+  id = "decisions"
+  title = "Decisions"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS decisions {from} WHERE {guard_sql} AND {svc}"
+  columns = [{ name = "decisions" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {guard_sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "denials"
+  title = "Denials (a guard sent the user elsewhere)"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS denials {from} WHERE fespalier_operation = 'guard' AND fespalier_guard_decision = 'redirect' AND {svc}"
+  columns = [{ name = "denials" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:guard}, fespalier_guard_decision="redirect" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "guard_errors"
+  title = "Guards that threw"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS errors {from} WHERE {guard_sql} AND fespalier_guard_decision = 'error' AND {svc}"
+  columns = [{ name = "errors" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="error" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "pending_p95"
+  title = "Async guard pending, p95"
+  type = "stat"
+  unit = "ms"
+  sql = "SELECT {p95} AS p95_ms {from} WHERE {guard_sql} AND fespalier_async = 'true' AND {svc}"
+  columns = [{ name = "p95_ms" }]
+  promql = [{ expr = 'histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {guard_sel}, fespalier_async="true" }[$__range])))' }]
+
+  [[dashboard.panels]]
+  id = "outcomes_over_time"
+  title = "Decisions by outcome"
+  type = "bars"
+  width = "full"
+  sql = "SELECT histogram(_timestamp) AS t, fespalier_guard_decision AS decision, COUNT(*) AS n {from} WHERE {guard_sql} AND {svc} GROUP BY t, decision ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true }, { name = "decision", axis = "breakdown" }, { name = "n" }]
+  promql = [{ expr = "sum by (fespalier_guard_decision) (sum_over_time(fespalier_calls{ {guard_sel} }[$__interval]))", legend = "{{fespalier_guard_decision}}" }]
+
+  [[dashboard.panels]]
+  id = "by_guard"
+  title = "By guard"
+  type = "table"
+  width = "full"
+  sql = """SELECT fespalier_file AS guard, fespalier_route AS route, COUNT(*) AS decisions, SUM(CASE WHEN fespalier_guard_decision = 'redirect' THEN 1 ELSE 0 END) AS denials, SUM(CASE WHEN fespalier_guard_decision = 'error' THEN 1 ELSE 0 END) AS errors, SUM(CASE WHEN fespalier_guard_decision = 'skipped' THEN 1 ELSE 0 END) AS skipped, approx_percentile_cont(CASE WHEN fespalier_async = 'true' THEN duration END, 0.95) / 1000.0 AS p95_ms {from} WHERE {guard_sql} AND {svc} GROUP BY guard, route ORDER BY decisions DESC"""
+  columns = [{ name = "guard", axis = "x" }, { name = "route", axis = "x" }, { name = "decisions" }, { name = "denials" }, { name = "errors" }, { name = "skipped" }, { name = "p95_ms" }]
+  rename = { fespalier_file = "guard", fespalier_route = "route" }
+  promql = [
+    { expr = "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {guard_sel} }[$__range]))" },
+    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="redirect" }[$__range]))' },
+    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="error" }[$__range]))' },
+    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="skipped" }[$__range]))' },
+    { expr = 'histogram_quantile(0.95, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {guard_sel}, fespalier_async="true" }[$__range])))' },
+  ]
+
+# ------------------------------------------------------------------------------------------------
+[[dashboard]]
+id = "data"
+title = "Data"
+description = "How data.dart loads behave: volume, failures, load time, and which sync loads never showed a loading frame."
+
+  [[dashboard.panels]]
+  id = "loads"
+  title = "Loads"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS loads {from} WHERE fespalier_operation = 'data' AND {svc}"
+  columns = [{ name = "loads" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {sel:data} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "data_errors"
+  title = "Failed loads"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS errors {from} WHERE fespalier_operation = 'data' AND fespalier_data_state = 'error' AND {svc}"
+  columns = [{ name = "errors" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="error" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "load_p95"
+  title = "Load time, p95"
+  type = "stat"
+  unit = "ms"
+  # A Stream (ends at once) or a disposed load would skew it.
+  sql = "SELECT {p95} AS p95_ms {from} WHERE fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') AND {svc}"
+  columns = [{ name = "p95_ms" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" }]
+
+  [[dashboard.panels]]
+  id = "abandoned"
+  title = "Abandoned (disposed before settling)"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS abandoned {from} WHERE fespalier_operation = 'data' AND fespalier_data_state = 'disposed' AND {svc}"
+  columns = [{ name = "abandoned" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="disposed" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "retries"
+  title = "Retries"
+  type = "stat"
+  requires = ["fespalier.data.attempt"]
+  sql = "SELECT COUNT(*) AS retries {from} WHERE fespalier_operation = 'data' AND fespalier_data_attempt <> '1' AND {svc}"
+  columns = [{ name = "retries" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_attempt!="1" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "cache_hits"
+  title = "Cache hits"
+  type = "stat"
+  requires = ["fespalier.data.source"]
+  sql = "SELECT COUNT(*) AS cache_hits {from} WHERE fespalier_operation = 'data' AND fespalier_data_source = 'cache' AND {svc}"
+  columns = [{ name = "cache_hits" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_source="cache" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "by_file"
+  title = "By data.dart"
+  type = "table"
+  width = "full"
+  sql = """SELECT fespalier_file AS file, fespalier_route AS route, COUNT(*) AS loads, SUM(CASE WHEN fespalier_data_state = 'error' THEN 1 ELSE 0 END) AS errors, SUM(CASE WHEN fespalier_data_state = 'disposed' THEN 1 ELSE 0 END) AS abandoned{extra_columns}, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE fespalier_operation = 'data' AND {svc} GROUP BY file, route ORDER BY loads DESC"""
+  columns = [
+    { name = "file", axis = "x" },
+    { name = "route", axis = "x" },
+    { name = "loads" },
+    { name = "errors" },
+    { name = "abandoned" },
+    { name = "retries", requires = ["fespalier.data.attempt"], select = "SUM(CASE WHEN fespalier_data_attempt <> '1' THEN 1 ELSE 0 END) AS retries" },
+    { name = "cache_hits", requires = ["fespalier.data.source"], select = "SUM(CASE WHEN fespalier_data_source = 'cache' THEN 1 ELSE 0 END) AS cache_hits" },
+    { name = "p50_ms" },
+    { name = "p95_ms" },
+  ]
+  rename = { fespalier_file = "file", fespalier_route = "route" }
+  promql = [
+    { expr = "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data} }[$__range]))" },
+    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="error" }[$__range]))' },
+    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="disposed" }[$__range]))' },
+    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_attempt!="1" }[$__range]))', requires = ["fespalier.data.attempt"] },
+    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_source="cache" }[$__range]))', requires = ["fespalier.data.source"] },
+    { expr = "histogram_quantile(0.5, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
+  ]
+
+  [[dashboard.panels]]
+  id = "load_time_over_time"
+  title = "Load time, p95, by data.dart"
+  type = "timeseries"
+  unit = "ms"
+  sql = "SELECT histogram(_timestamp) AS t, fespalier_file AS file, {p95} AS p95_ms {from} WHERE fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') AND {svc} GROUP BY t, file ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true }, { name = "file", axis = "breakdown" }, { name = "p95_ms" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__interval])))", legend = "{{fespalier_file}}" }]
+
+  [[dashboard.panels]]
+  id = "async_split"
+  title = "Sync and async loads"
+  type = "bars"
+  sql = "SELECT fespalier_async AS async, COUNT(*) AS n {from} WHERE fespalier_operation = 'data' AND {svc} GROUP BY async ORDER BY async"
+  columns = [{ name = "async", axis = "x" }, { name = "n" }]
+  rename = { fespalier_async = "async" }
+  promql = [{ expr = "sum by (fespalier_async) (sum_over_time(fespalier_calls{ {sel:data} }[$__range]))" }]
+
+# ------------------------------------------------------------------------------------------------
+[[dashboard]]
+id = "actions"
+title = "Actions"
+description = "How action.dart writes behave: volume, failures and latency per action."
+
+  [[dashboard.panels]]
+  id = "runs"
+  title = "Runs"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS runs {from} WHERE fespalier_operation = 'action' AND {svc}"
+  columns = [{ name = "runs" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {sel:action} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "failures"
+  title = "Failures"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS failures {from} WHERE fespalier_operation = 'action' AND fespalier_action_result = 'error' AND {svc}"
+  columns = [{ name = "failures" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_result="error" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "action_p95"
+  title = "Latency, p95"
+  type = "stat"
+  unit = "ms"
+  sql = "SELECT {p95} AS p95_ms {from} WHERE fespalier_operation = 'action' AND {svc}"
+  columns = [{ name = "p95_ms" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" }]
+
+  [[dashboard.panels]]
+  id = "rollbacks"
+  title = "Optimistic rollbacks"
+  type = "stat"
+  requires = ["fespalier.action.rolled_back"]
+  sql = "SELECT COUNT(*) AS rollbacks {from} WHERE fespalier_operation = 'action' AND fespalier_action_rolled_back = 'true' AND {svc}"
+  columns = [{ name = "rollbacks" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_rolled_back="true" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "rate"
+  title = "Runs by action"
+  type = "bars"
+  sql = "SELECT histogram(_timestamp) AS t, fespalier_action_name AS action, COUNT(*) AS runs {from} WHERE fespalier_operation = 'action' AND {svc} GROUP BY t, action ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true }, { name = "action", axis = "breakdown" }, { name = "runs" }]
+  promql = [{ expr = "sum by (fespalier_action_name) (sum_over_time(fespalier_calls{ {sel:action} }[$__interval]))", legend = "{{fespalier_action_name}}" }]
+
+  [[dashboard.panels]]
+  id = "failures_over_time"
+  title = "Failures by action"
+  type = "bars"
+  sql = "SELECT histogram(_timestamp) AS t, fespalier_action_name AS action, COUNT(*) AS failures {from} WHERE fespalier_operation = 'action' AND fespalier_action_result = 'error' AND {svc} GROUP BY t, action ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true }, { name = "action", axis = "breakdown" }, { name = "failures" }]
+  promql = [{ expr = 'sum by (fespalier_action_name) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_result="error" }[$__interval]))', legend = "{{fespalier_action_name}}" }]
+
+  [[dashboard.panels]]
+  id = "by_action"
+  title = "By action"
+  type = "table"
+  width = "full"
+  sql = """SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, SUM(CASE WHEN fespalier_action_result = 'error' THEN 1 ELSE 0 END) AS failures{extra_columns}, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE fespalier_operation = 'action' AND {svc} GROUP BY action, file ORDER BY runs DESC"""
+  columns = [
+    { name = "action", axis = "x" },
+    { name = "file", axis = "x" },
+    { name = "runs" },
+    { name = "failures" },
+    { name = "invalid", requires = ["fespalier.action.invalid"], select = "SUM(CASE WHEN fespalier_action_invalid = 'true' THEN 1 ELSE 0 END) AS invalid" },
+    { name = "rollbacks", requires = ["fespalier.action.rolled_back"], select = "SUM(CASE WHEN fespalier_action_rolled_back = 'true' THEN 1 ELSE 0 END) AS rollbacks" },
+    { name = "p50_ms" },
+    { name = "p95_ms" },
+  ]
+  rename = { fespalier_action_name = "action", fespalier_file = "file" }
+  promql = [
+    { expr = "sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action} }[$__range]))" },
+    { expr = 'sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_result="error" }[$__range]))' },
+    { expr = 'sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_invalid="true" }[$__range]))', requires = ["fespalier.action.invalid"] },
+    { expr = 'sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_rolled_back="true" }[$__range]))', requires = ["fespalier.action.rolled_back"] },
+    { expr = "histogram_quantile(0.5, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" },
+  ]
+
+# ------------------------------------------------------------------------------------------------
+[[dashboard]]
+id = "deferred"
+title = "Deferred loads"
+description = "How long the code of a deferred page takes to arrive, and which loads failed."
+
+  [[dashboard.panels]]
+  id = "deferred_loads"
+  title = "Loads"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS loads {from} WHERE fespalier_operation = 'deferred' AND {svc}"
+  columns = [{ name = "loads" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {sel:deferred} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "deferred_p95"
+  title = "Load time, p95"
+  type = "stat"
+  unit = "ms"
+  sql = "SELECT {p95} AS p95_ms {from} WHERE fespalier_operation = 'deferred' AND {svc}"
+  columns = [{ name = "p95_ms" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {sel:deferred} }[$__range])))" }]
+
+  [[dashboard.panels]]
+  id = "deferred_failures"
+  title = "Failed loads"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS failures {from} WHERE fespalier_operation = 'deferred' AND fespalier_deferred_result = 'error' AND {svc}"
+  columns = [{ name = "failures" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:deferred}, fespalier_deferred_result="error" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "deferred_by_page"
+  title = "By page"
+  type = "table"
+  width = "full"
+  sql = """SELECT fespalier_file AS page, fespalier_route AS route, COUNT(*) AS loads, SUM(CASE WHEN fespalier_deferred_result = 'error' THEN 1 ELSE 0 END) AS failures, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE fespalier_operation = 'deferred' AND {svc} GROUP BY page, route ORDER BY loads DESC"""
+  columns = [{ name = "page", axis = "x" }, { name = "route", axis = "x" }, { name = "loads" }, { name = "failures" }, { name = "p50_ms" }, { name = "p95_ms" }]
+  rename = { fespalier_file = "page", fespalier_route = "route" }
+  promql = [
+    { expr = "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:deferred} }[$__range]))" },
+    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:deferred}, fespalier_deferred_result="error" }[$__range]))' },
+    { expr = "histogram_quantile(0.5, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {sel:deferred} }[$__range])))" },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {sel:deferred} }[$__range])))" },
+  ]
+
+  [[dashboard.panels]]
+  id = "deferred_over_time"
+  title = "Load time, p95"
+  type = "timeseries"
+  unit = "ms"
+  sql = "SELECT histogram(_timestamp) AS t, {p95} AS p95_ms {from} WHERE fespalier_operation = 'deferred' AND {svc} GROUP BY t ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true }, { name = "p95_ms" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {sel:deferred} }[$__interval])))", legend = "p95" }]
+
+# ------------------------------------------------------------------------------------------------
+[[dashboard]]
+id = "errors"
+title = "Errors"
+description = "Failed guards, loads, actions and deferred loads; uncaught errors; native crashes and ANRs."
+
+  [[dashboard.panels]]
+  id = "failed_spans"
+  title = "Failed guards, loads, actions and deferred loads"
+  type = "stat"
+  sql = "SELECT COUNT(*) AS failed {from} WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND {svc}"
+  columns = [{ name = "failed" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {failed_sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "uncaught"
+  title = "Uncaught errors"
+  type = "stat"
+  stream_type = "logs"
+  sql = "SELECT COUNT(*) AS uncaught {from} WHERE {err_logs} AND {svc}"
+  columns = [{ name = "uncaught" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_app_errors{ {sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "crashes"
+  title = "Native crashes and ANRs (Android, iOS)"
+  type = "stat"
+  stream_type = "logs"
+  sql = "SELECT COUNT(*) AS crashes {from} WHERE event_name IN ('device.crash', 'device.anr') AND {svc}"
+  columns = [{ name = "crashes" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_app_crashes{ {sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "failed_over_time"
+  title = "Failures by operation"
+  type = "bars"
+  width = "full"
+  sql = "SELECT histogram(_timestamp) AS t, fespalier_operation AS operation, COUNT(*) AS failed {from} WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND {svc} GROUP BY t, operation ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true }, { name = "operation", axis = "breakdown" }, { name = "failed" }]
+  promql = [{ expr = "sum by (fespalier_operation) (sum_over_time(fespalier_calls{ {failed_sel} }[$__interval]))", legend = "{{fespalier_operation}}" }]
+
+  [[dashboard.panels]]
+  id = "by_type"
+  title = "By error type"
+  type = "table"
+  sql = "SELECT error_type AS type, fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, COUNT(*) AS n {from} WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND {svc} GROUP BY type, operation, route, file ORDER BY n DESC"
+  columns = [{ name = "type", axis = "x" }, { name = "operation", axis = "x" }, { name = "route", axis = "x" }, { name = "file", axis = "x" }, { name = "n" }]
+  rename = { error_type = "type", fespalier_operation = "operation", fespalier_route = "route", fespalier_file = "file" }
+  promql = [{ expr = "sum by (error_type, fespalier_operation, fespalier_route, fespalier_file) (sum_over_time(fespalier_calls{ {failed_sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "uncaught_by_type"
+  title = "Uncaught errors by type"
+  type = "table"
+  stream_type = "logs"
+  sql = "SELECT exception_type AS type, COUNT(*) AS n {from} WHERE {err_logs} AND {svc} GROUP BY type ORDER BY n DESC"
+  columns = [{ name = "type", axis = "x" }, { name = "n" }]
+  rename = { exception_type = "type" }
+  promql = [{ expr = "sum by (exception_type) (sum_over_time(fespalier_app_errors{ {sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "recent"
+  title = "Recent failures"
+  type = "table"
+  width = "full"
+  sql = "SELECT _timestamp AS time, fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, error_type AS type, status_message AS message, trace_id {from} WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND {svc} ORDER BY _timestamp DESC LIMIT 50"
+  columns = [{ name = "time", axis = "x", oo_only = true }, { name = "operation", axis = "x" }, { name = "route", axis = "x" }, { name = "file", axis = "x" }, { name = "type", axis = "x" }, { name = "message", axis = "x", oo_only = true }, { name = "trace_id", axis = "x", oo_only = true }]
+  rename = { fespalier_operation = "operation", fespalier_route = "route", fespalier_file = "file", error_type = "type" }
+  promql = [{ expr = "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{ {failed_sel} }[$__range]))", extra = true, name = "failures" }]
+  links = [{ title = "Messages and traces in OpenObserve", url = "http://localhost:5080/web/traces" }]
+
+  [[dashboard.panels]]
+  id = "recent_uncaught"
+  title = "Recent uncaught errors"
+  type = "table"
+  width = "full"
+  stream_type = "logs"
+  grafana = false
+  sql = "SELECT _timestamp AS time, severity, exception_type AS type, exception_message AS message, body {from} WHERE {err_logs} AND {svc} ORDER BY _timestamp DESC LIMIT 50"
+  columns = [{ name = "time", axis = "x" }, { name = "severity", axis = "x" }, { name = "type", axis = "x" }, { name = "message", axis = "x" }, { name = "body", axis = "x" }]

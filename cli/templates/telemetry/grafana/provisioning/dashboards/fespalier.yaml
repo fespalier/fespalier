@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+  - name: fespalier
+    folder: fespalier
+    folderUid: fespalier
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/fespalier/grafana-dashboards

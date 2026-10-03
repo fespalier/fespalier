@@ -1,0 +1,542 @@
+{
+  "version": 8,
+  "title": "fespalier · Navigation",
+  "description": "Route views, time to first frame per route, and redirects.",
+  "role": "",
+  "owner": "",
+  "tabs": [
+    {
+      "tabId": "default",
+      "name": "Overview",
+      "panels": [
+        {
+          "id": "panel_views",
+          "type": "metric",
+          "title": "Route views",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS views FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'ok' AND fespalier_navigation_kind <> 'refresh' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "views",
+                    "alias": "views",
+                    "column": "views",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 1
+          }
+        },
+        {
+          "id": "panel_ttff_p95",
+          "type": "metric",
+          "title": "Time to first frame, p95",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": "milliseconds",
+            "decimals": 1
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "p95_ms",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 2
+          }
+        },
+        {
+          "id": "panel_redirected",
+          "type": "metric",
+          "title": "Redirected navigations",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS redirected FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_redirected = 'true' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "redirected",
+                    "alias": "redirected",
+                    "column": "redirected",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 3
+          }
+        },
+        {
+          "id": "panel_not_found",
+          "type": "metric",
+          "title": "Not found",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS not_found FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'not_found' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "not_found",
+                    "alias": "not_found",
+                    "column": "not_found",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 144,
+            "y": 0,
+            "w": 48,
+            "h": 8,
+            "i": 4
+          }
+        },
+        {
+          "id": "panel_views_over_time",
+          "type": "bar",
+          "title": "Views per route",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS t, fespalier_route AS route, COUNT(*) AS views FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'ok' AND fespalier_navigation_kind <> 'refresh' AND service_name = '$service' GROUP BY t, route ORDER BY t",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "t",
+                    "alias": "t",
+                    "column": "t",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "views",
+                    "alias": "views",
+                    "column": "views",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "route",
+                    "alias": "route",
+                    "column": "route",
+                    "color": null
+                  }
+                ],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 8,
+            "w": 192,
+            "h": 16,
+            "i": 5
+          }
+        },
+        {
+          "id": "panel_ttff_by_route",
+          "type": "table",
+          "title": "Time to first frame by route",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_route AS route, COUNT(*) AS views, approx_percentile_cont(duration, 0.5) / 1000.0 AS p50_ms, approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded' AND service_name = '$service' GROUP BY route ORDER BY p95_ms DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "route",
+                    "alias": "route",
+                    "column": "route",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "views",
+                    "alias": "views",
+                    "column": "views",
+                    "color": null
+                  },
+                  {
+                    "label": "p50_ms",
+                    "alias": "p50_ms",
+                    "column": "p50_ms",
+                    "color": null
+                  },
+                  {
+                    "label": "p95_ms",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 24,
+            "w": 96,
+            "h": 16,
+            "i": 6
+          }
+        },
+        {
+          "id": "panel_ttff_over_time",
+          "type": "line",
+          "title": "Time to first frame, p95",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "milliseconds",
+            "decimals": 1
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp) AS t, approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded' AND service_name = '$service' GROUP BY t ORDER BY t",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "t",
+                    "alias": "t",
+                    "column": "t",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "p95_ms",
+                    "alias": "p95_ms",
+                    "column": "p95_ms",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 24,
+            "w": 96,
+            "h": 16,
+            "i": 7
+          }
+        },
+        {
+          "id": "panel_redirected_to",
+          "type": "table",
+          "title": "Redirected navigations, by where they landed",
+          "description": "",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_route AS landed, COUNT(*) AS n FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_redirected = 'true' AND service_name = '$service' GROUP BY landed ORDER BY n DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "landed",
+                    "alias": "landed",
+                    "column": "landed",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "n",
+                    "alias": "n",
+                    "column": "n",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 40,
+            "w": 96,
+            "h": 16,
+            "i": 8
+          }
+        },
+        {
+          "id": "panel_kinds",
+          "type": "bar",
+          "title": "Navigation kinds",
+          "description": "",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT fespalier_navigation_kind AS kind, COUNT(*) AS n FROM \"default\" WHERE fespalier_operation = 'navigate' AND service_name = '$service' GROUP BY kind ORDER BY n DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [
+                  {
+                    "label": "kind",
+                    "alias": "kind",
+                    "column": "kind",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "n",
+                    "alias": "n",
+                    "column": "n",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 40,
+            "w": 96,
+            "h": 16,
+            "i": 9
+          }
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "list": [
+      {
+        "type": "query_values",
+        "name": "service",
+        "label": "App",
+        "query_data": {
+          "stream_type": "traces",
+          "stream": "default",
+          "field": "service_name",
+          "max_record_size": 20
+        },
+        "value": null,
+        "options": [],
+        "multiSelect": false
+      }
+    ],
+    "showDynamicFilters": false
+  },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "1h"
+  }
+}

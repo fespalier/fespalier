@@ -1,0 +1,61 @@
+# A copy of fespalier's telemetry conventions, contract v1: the names the dashboards may use.
+#
+# Source: plans2/P4-lifecycle-otel.md, section 2 ("Telemetry conventions (stable), contract v1"),
+# the planning document for the route-lifecycle and OpenTelemetry work (branch claude/lifecycle-otel).
+# Once that work is on main, the source of truth is packages/fespalier_otel/lib/src/conventions.dart
+# (class FespalierConventions); scripts/telemetry/build_dashboards.py then reads that file and this
+# one is deleted. Until then, a change to the contract is made here by hand.
+#
+# Format, one declaration per line:
+#   attr <key> [= <value> ...]   a span attribute; the values, when it has a fixed set
+#   resource <key>               a resource attribute
+#   event <name>                 a span event
+#   event_attr <key>             an attribute of an event (it is not a span column)
+#
+# Four proposed, additive attributes (fespalier.data.attempt, fespalier.data.source,
+# fespalier.action.rolled_back, fespalier.action.invalid) are NOT here: they are not in contract v1, so
+# every panel and column in dashboards.toml that `requires` one is left out of the generated
+# dashboards. Add the line when the attribute is emitted, run `just telemetry-dashboards`, and they
+# appear.
+
+resource service.name
+resource service.version
+resource app.build_id
+resource deployment.environment.name
+resource fespalier.version
+resource fespalier.telemetry.version
+
+event fespalier.page.enter
+event fespalier.page.focus
+event fespalier.page.leave
+event exception
+
+attr fespalier.operation = navigate guard redirect data action deferred
+attr fespalier.route
+attr fespalier.file
+attr fespalier.async = true false
+attr error.type
+
+attr fespalier.navigation.kind = initial go push pop replace refresh
+attr fespalier.navigation.outcome = ok not_found superseded
+attr fespalier.navigation.from
+attr fespalier.navigation.redirected = true false
+attr fespalier.navigation.depth
+attr url.path
+attr url.query
+
+attr fespalier.guard.decision = pass redirect error skipped
+attr fespalier.guard.location
+
+attr fespalier.data.state = data error stream disposed
+attr fespalier.data.keyed = true false
+
+attr fespalier.action.name
+attr fespalier.action.result = ok error
+
+attr fespalier.deferred.result = ok error
+
+event_attr fespalier.page.duration_ms
+event_attr exception.type
+event_attr exception.message
+event_attr exception.stacktrace

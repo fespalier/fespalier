@@ -1,6 +1,6 @@
 ---
 name: fespalier-testing
-description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in, pure tests of locations, dataAt and match, Maestro on a device or the web (semantics_ids, fsp maestro), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
+description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in, pure tests of locations, dataAt and match, Maestro on a device or the web (semantics_ids, fsp maestro), local telemetry dashboards (fsp telemetry, OpenObserve, Grafana), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
 ---
 
 # fespalier-testing
@@ -112,6 +112,13 @@ waits for it. The identifier contract, the test that proves it
 (`find.bySemanticsIdentifier`, with the handle disposed in the test body) and the traps (hash URLs,
 `maestro test .maestro` skipping `routes/`, the web reload under a guard flow, the semantics tree
 staying on in a web build) are in [`references/maestro.md`](references/maestro.md).
+
+**To watch a running app rather than assert on it** (since 0.8.0), `fsp telemetry` starts OpenObserve (and
+Grafana with `--grafana`) in Docker with six dashboards over fespalier's spans: route views and time to the
+first frame, what guards decided, `data.dart` loads, actions, deferred loads, errors. The command, the
+endpoint an app on an emulator, a simulator, a phone or the web uses, which dashboard answers which
+question, and the traps (empty dashboards, `otel_zone`'s `runGuarded` blanking a web app) are in
+[`references/observability.md`](references/observability.md).
 
 ## Three facts to keep in mind
 

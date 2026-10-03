@@ -1482,3 +1482,332 @@ fn maestro_reports_config_and_route_errors_with_a_failing_exit() {
     assert!(!ok && err.ends_with("1 error(s); no flows\n"), "{err}");
     assert!(!dir.path().join(".maestro").exists());
 }
+
+// ---- fsp telemetry ----------------------------------------------------------------------------
+
+/// A folder with a stand-in `docker`: it logs `cwd|args|bind|cors` per call to `$FAKE_LOG`, and
+/// answers `compose version --short` with `$FAKE_VERSION` (default 2.29.7). `$FAKE_INFO`,
+/// `$FAKE_UP`, `$FAKE_WAIT` and `$FAKE_DOWN` are the exit codes of `info`, `up -d`,
+/// `wait dashboards` and `down`.
+#[cfg(unix)]
+fn fake_docker(dir: &Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = dir.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let path = bin.join("docker");
+    fs::write(
+        &path,
+        r#"#!/bin/sh
+echo "$PWD|$*|bind=$FSP_OTLP_BIND|cors=$FSP_OTLP_CORS_ORIGIN" >> "$FAKE_LOG"
+case "$*" in
+  "compose version --short") echo "${FAKE_VERSION:-2.29.7}"; exit 0 ;;
+  "info --format {{.ServerVersion}}") exit "${FAKE_INFO:-0}" ;;
+  *" up -d") exit "${FAKE_UP:-0}" ;;
+  *" wait dashboards") exit "${FAKE_WAIT:-0}" ;;
+  *" down"*) exit "${FAKE_DOWN:-0}" ;;
+esac
+exit 9
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    bin
+}
+
+/// `fsp telemetry` in a folder with no project, the fake docker first on PATH and the stack in
+/// `<root>/stack`. Returns success, stderr and the docker calls, with the stack path as `STACK`.
+#[cfg(unix)]
+fn telemetry(root: &Path, args: &[&str], extra: &[(&str, &str)]) -> (bool, String, Vec<String>) {
+    let bin = fake_docker(root);
+    let log = root.join("docker.log");
+    let work = root.join("work");
+    fs::create_dir_all(&work).unwrap();
+    let stack = root.join("stack");
+    let mut all = vec![
+        ("PATH", bin.to_str().unwrap()),
+        ("FAKE_LOG", log.to_str().unwrap()),
+        ("FSP_TELEMETRY_DIR", stack.to_str().unwrap()),
+    ];
+    all.extend_from_slice(extra);
+    let (ok, out, err) = fsp_full(&work, &[&["telemetry"], args].concat(), &all);
+    assert!(out.is_empty(), "stdout: {out}");
+    let stack = stack.to_str().unwrap();
+    let calls = fs::read_to_string(&log)
+        .unwrap_or_default()
+        .lines()
+        .map(|l| l.replace(stack, "STACK"))
+        .collect();
+    (ok, err.replace(stack, "STACK"), calls)
+}
+
+#[test]
+fn telemetry_no_start_writes_the_stack_without_docker_or_a_project() {
+    let root = tempfile::tempdir().unwrap();
+    let stack = root.path().join("stack");
+    let work = root.path().join("work");
+    fs::create_dir_all(&work).unwrap();
+    // No pubspec.yaml above `work`, and no docker on PATH.
+    let args = ["telemetry", "--no-start", "--dir", stack.to_str().unwrap()];
+    let (ok, out, err) = fsp_full(&work, &args, &[("PATH", "")]);
+    assert!(ok && out.is_empty(), "{out}{err}");
+    assert_eq!(
+        err,
+        format!(
+            "✓ wrote the telemetry stack to {}\n  start it in that folder: docker compose up -d   \
+             (add --profile grafana for Grafana)\n",
+            stack.display()
+        )
+    );
+    for file in [
+        "compose.yaml",
+        ".env",
+        "env.example",
+        "collector/config.yaml",
+        "openobserve/import.py",
+        "openobserve/fields.json",
+        "openobserve/dashboards/navigation.json",
+        "grafana/dashboards/errors.json",
+        "grafana/provisioning/datasources/fespalier.yaml",
+    ] {
+        assert!(stack.join(file).is_file(), "{file}");
+    }
+    // A second run keeps an edited .env.
+    fs::write(stack.join(".env"), "FSP_O2_PORT=6000\n").unwrap();
+    let (ok, _, _) = fsp_full(&work, &args, &[("PATH", "")]);
+    assert!(ok);
+    assert_eq!(
+        fs::read_to_string(stack.join(".env")).unwrap(),
+        "FSP_O2_PORT=6000\n"
+    );
+}
+
+#[test]
+fn telemetry_flags_that_exclude_each_other_are_clap_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    for (flags, message) in [
+        (
+            ["--stop", "--grafana"],
+            "error: the argument '--stop' cannot be used with '--grafana'",
+        ),
+        (
+            ["--stop", "--reset"],
+            "error: the argument '--stop' cannot be used with '--reset'",
+        ),
+        (
+            ["--lan", "--reset"],
+            "error: the argument '--lan' cannot be used with '--reset'",
+        ),
+        (
+            ["--no-start", "--stop"],
+            "error: the argument '--no-start' cannot be used with '--stop'",
+        ),
+    ] {
+        let args = ["telemetry", flags[0], flags[1]];
+        let (ok, _, err) = fsp_full(dir.path(), &args, &[]);
+        assert!(!ok && err.starts_with(message), "{flags:?}: {err}");
+    }
+}
+
+#[test]
+fn telemetry_without_a_home_folder_asks_for_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_fsp"))
+        .arg("telemetry")
+        .env_clear()
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr),
+        "fsp telemetry can't find your home folder: pass --dir or set FSP_TELEMETRY_DIR\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_stop_without_docker_says_so() {
+    let root = tempfile::tempdir().unwrap();
+    let empty = root.path().join("empty");
+    fs::create_dir_all(&empty).unwrap();
+    let stack = root.path().join("stack");
+    let args = ["telemetry", "--stop", "--dir", stack.to_str().unwrap()];
+    let (ok, _, err) = fsp_full(root.path(), &args, &[("PATH", empty.to_str().unwrap())]);
+    assert!(!ok);
+    assert_eq!(
+        err,
+        format!(
+            "fsp telemetry needs Docker with Compose v2.20 or later: `docker compose version` \
+             failed (No such file or directory (os error 2)). The stack's files are in {}; start \
+             them with `docker compose up -d` in that folder.\n",
+            stack.display()
+        )
+    );
+    assert!(!stack.exists(), "--stop writes nothing");
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_starts_the_stack_and_waits_for_the_importer() {
+    let root = tempfile::tempdir().unwrap();
+    let (ok, err, calls) = telemetry(root.path(), &[], &[]);
+    assert!(ok, "{err}");
+    assert_eq!(
+        err,
+        "✓ telemetry stack running: 6 dashboards in OpenObserve, folder fespalier\n  \
+         OpenObserve  http://localhost:5080  dev@fespalier.local / Fespalier-local-1\n  \
+         OTLP         http://localhost:4318 (HTTP), localhost:4317 (gRPC)\n  \
+         The app      FespalierOtel.endpoint() reaches it from an emulator, a simulator, desktop \
+         and the web\n"
+    );
+    assert_eq!(calls.len(), 4, "{calls:?}");
+    assert!(
+        calls[0].ends_with("|compose version --short|bind=|cors="),
+        "{calls:?}"
+    );
+    assert!(
+        calls[1].ends_with("|info --format {{.ServerVersion}}|bind=|cors="),
+        "{calls:?}"
+    );
+    assert_eq!(calls[2], "STACK|compose up -d|bind=|cors=");
+    assert_eq!(calls[3], "STACK|compose wait dashboards|bind=|cors=");
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_grafana_adds_the_profile_and_its_line() {
+    let root = tempfile::tempdir().unwrap();
+    let (ok, err, calls) = telemetry(root.path(), &["--grafana"], &[]);
+    assert!(ok, "{err}");
+    assert!(
+        err.contains("\n  Grafana      http://localhost:3000  admin / Fespalier-local-1\n"),
+        "{err}"
+    );
+    assert!(calls.contains(&"STACK|compose --profile grafana up -d|bind=|cors=".to_string()));
+    assert!(
+        calls.contains(&"STACK|compose --profile grafana wait dashboards|bind=|cors=".to_string())
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_reads_ports_from_the_env_file() {
+    let root = tempfile::tempdir().unwrap();
+    let stack = root.path().join("stack");
+    fs::create_dir_all(&stack).unwrap();
+    fs::write(
+        stack.join(".env"),
+        "# mine\nFSP_O2_PORT=6000\nFSP_OTLP_HTTP_PORT=4400\n",
+    )
+    .unwrap();
+    let (ok, err, _) = telemetry(root.path(), &[], &[]);
+    assert!(ok, "{err}");
+    assert!(
+        err.contains("OpenObserve  http://localhost:6000  "),
+        "{err}"
+    );
+    assert!(
+        err.contains("OTLP         http://localhost:4400 (HTTP), localhost:4317 (gRPC)"),
+        "{err}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_lan_binds_otlp_to_every_interface_and_writes_the_dart_defines() {
+    let root = tempfile::tempdir().unwrap();
+    let (ok, err, calls) = telemetry(root.path(), &["--lan"], &[]);
+    if !ok {
+        // A machine with no route to a network has no address to give out.
+        assert_eq!(
+            err,
+            "fsp telemetry --lan can't find this computer's address on your network; start \
+             without --lan and pass --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://<this \
+             computer's address>:4318 yourself\n"
+        );
+        return;
+    }
+    let up = calls.iter().find(|c| c.contains("compose up -d")).unwrap();
+    assert!(up.contains("|bind=0.0.0.0|cors=http://"), "{up}");
+    assert!(up.ends_with(":*"), "{up}");
+    let defines = fs::read_to_string(root.path().join("stack/dart-defines.json")).unwrap();
+    assert!(
+        defines.starts_with("{\"OTEL_EXPORTER_OTLP_ENDPOINT\": \"http://"),
+        "{defines}"
+    );
+    assert!(defines.ends_with(":4318\"}\n"), "{defines}");
+    assert!(
+        err.contains("\n  A phone      flutter run --dart-define-from-file="),
+        "{err}"
+    );
+    // The next run without --lan binds to loopback again.
+    let (ok, _, calls) = telemetry(root.path(), &[], &[]);
+    assert!(ok);
+    let up = calls.iter().rev().find(|c| c.contains("up -d")).unwrap();
+    assert!(up.ends_with("|bind=|cors="), "{up}");
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_errors_say_what_failed() {
+    let root = tempfile::tempdir().unwrap();
+    let (ok, err, _) = telemetry(root.path(), &[], &[("FAKE_VERSION", "2.19.1")]);
+    assert!(!ok);
+    assert_eq!(
+        err,
+        "fsp telemetry needs Docker Compose v2.20 or later (for `docker compose wait`); this one \
+         is 2.19.1\n"
+    );
+    let (ok, err, _) = telemetry(root.path(), &[], &[("FAKE_INFO", "1")]);
+    assert!(!ok);
+    assert_eq!(
+        err,
+        "fsp telemetry needs a running Docker daemon: `docker info` failed (exit 1). The stack's \
+         files are in STACK; start Docker, then run `fsp telemetry` again.\n"
+    );
+    let (ok, err, _) = telemetry(root.path(), &[], &[("FAKE_UP", "1")]);
+    assert!(!ok);
+    assert_eq!(
+        err,
+        "docker compose up failed (exit 1); its output is above. A port in use? Set \
+         FSP_OTLP_HTTP_PORT, FSP_OTLP_GRPC_PORT, FSP_O2_PORT or FSP_GRAFANA_PORT in STACK/.env\n"
+    );
+    let (ok, err, _) = telemetry(root.path(), &[], &[("FAKE_WAIT", "3")]);
+    assert!(!ok);
+    assert_eq!(
+        err,
+        "the dashboards were not imported into OpenObserve (exit 3); `docker compose logs \
+         dashboards` in STACK says why\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_stop_and_reset_run_down_with_the_grafana_profile() {
+    let root = tempfile::tempdir().unwrap();
+    let (ok, err, _) = telemetry(root.path(), &["--stop"], &[]);
+    assert!(!ok);
+    assert_eq!(
+        err,
+        "there is no telemetry stack in STACK (no compose.yaml): nothing to stop or reset\n"
+    );
+    let (ok, _, _) = telemetry(root.path(), &["--no-start"], &[]);
+    assert!(ok);
+    let (ok, err, calls) = telemetry(root.path(), &["--stop"], &[]);
+    assert!(ok, "{err}");
+    assert_eq!(
+        err,
+        "✓ telemetry stack stopped; its data is kept (fsp telemetry --reset deletes it)\n"
+    );
+    assert!(calls.contains(&"STACK|compose --profile grafana down|bind=|cors=".to_string()));
+    let (ok, err, calls) = telemetry(root.path(), &["--reset"], &[]);
+    assert!(ok, "{err}");
+    assert_eq!(err, "✓ telemetry stack stopped and its data deleted\n");
+    assert!(calls.contains(&"STACK|compose --profile grafana down -v|bind=|cors=".to_string()));
+    let (ok, err, _) = telemetry(root.path(), &["--stop"], &[("FAKE_DOWN", "4")]);
+    assert!(!ok);
+    assert_eq!(
+        err,
+        "docker compose down failed (exit 4); its output is above\n"
+    );
+}

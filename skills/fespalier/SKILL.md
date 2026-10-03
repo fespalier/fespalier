@@ -136,6 +136,7 @@ fsp check                                  # CI: non-zero on errors, writes noth
 fsp routes [--json | --graph [dot | json]]  # the route table, or the tree as Mermaid / DOT / JSON
 fsp links [--check]                        # App Links, Universal Links, sitemap from the routes (0.5.0)
 fsp maestro [--check]                      # Maestro smoke flows, one per route (0.7.0)
+fsp telemetry [--grafana | --lan | --stop | --reset]   # a local OpenTelemetry stack and dashboards, in Docker (0.8.0)
 fsp new 'orders/[id]' --data --loading     # scaffold a route, then gen
 ```
 

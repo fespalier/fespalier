@@ -345,6 +345,36 @@ instance must be set.`): nothing is saved and a restart test shows `loading.dart
 - `await tester.pump(const Duration(days: 3))` expires an entry under the fake clock (the storage reads `clock.now()`).
 - `storage.clear()` is what a sign-out does; the next start shows nothing.
 
+## Reconnects and offline banners (since 0.9.0)
+
+With `package:fespalier_connectivity`, a `FakeConnectivity` is the source: `connectivitySource.overrideWithValue(fake)` in the
+`overrides` of `pumpRouter`, with `reconnectSignal.overrideWith(ConnectivitySignal.new)` when a `refetchOnReconnect` route is
+under test (`pumpRouter` does not run `startup()`). The banner, the reconnect and the resume repair are a compiling starter in
+[`fespalier-data`](../../fespalier-data/references/reconnect-and-network.md), whose `test/connectivity_test.dart` has all of the
+following as running samples.
+
+```dart
+final fake = FakeConnectivity(); // Wi-Fi; nothing is sent on listen, like the web
+await pumpRouter(tester, AppRoutes.router(initialLocation: '/products/1'), overrides: [
+  connectivitySource.overrideWithValue(fake),
+  reconnectSignal.overrideWith(ConnectivitySignal.new),
+]);
+await tester.pump(const Duration(minutes: 2)); // the product is stale (the fake clock)
+fake.offline();
+fake.online(); // from no network to a network: it loads again, once, however the network flaps
+await tester.pumpAndSettle();
+```
+
+- `set`, `offline()` and `online([via])` deliver **synchronously**; `check()` answers `now` and counts in `checks`;
+  `listenerCount` is 0 once nothing watches. A Wi-Fi to mobile switch and the first answer are not reconnects.
+- **A widget test that reaches the plugin fails** with Flutter's report `while activating platform stream on channel
+dev.fluttercommunity.plus/connectivity_status`: override `connectivitySource` in any test that shows `hasNetwork` (and in `fsp
+test`'s `setup.dart` for a route whose page does).
+- A resume (`handleAppLifecycleStateChanged(inactive)`, then `resumed`) asks `check()` again: set `fake.now` first to test the iOS
+  repair.
+- A `ProviderContainer` of your own disposes on a zero-duration timer, and derived providers recompute on it: `await
+tester.pump(const Duration(milliseconds: 1))`.
+
 ## DPoP proofs (since 0.9.0)
 
 With `package:fespalier_sign_keypair`, a test needs no secure element: `DpopProof(signer: FakeDpopSigner())` is a proof

@@ -228,7 +228,10 @@
         "cli/src/forms.rs",
         "README.md#A cache on disk: fespalier_storage",
         "packages/fespalier_storage/README.md",
-        "packages/fespalier_storage/lib/fespalier_storage.dart"
+        "packages/fespalier_storage/lib/fespalier_storage.dart",
+        "README.md#Reconnects: fespalier_connectivity",
+        "packages/fespalier_connectivity/README.md",
+        "packages/fespalier_connectivity/lib/fespalier_connectivity.dart"
       ]
     },
     "fespalier-layouts": {
@@ -296,6 +299,7 @@
         "README.md#Testing flagged routes",
         "packages/fespalier_flags/lib/testing.dart",
         "packages/fespalier_storage/lib/testing.dart",
+        "packages/fespalier_connectivity/lib/testing.dart",
         "README.md#Maestro flows (`fsp maestro`)",
         "config:semantics_ids",
         "packages/fespalier/lib/src/web_semantics.dart",

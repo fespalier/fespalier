@@ -67,3 +67,8 @@ Since 0.9.0 `package:fespalier_storage` gives the [`dataCache`](https://github.c
 a storage on disk: `PrefsDataStorage` (shared_preferences) and `HiveDataStorage` (hive_ce), with a size budget, so a route's
 saved value is on the first frame of the next start. It is one more repository dependency at the same release tag, and
 changes neither the generated code nor a release build that does not use it.
+
+Since 0.9.0 `package:fespalier_connectivity` is [the reconnect signal](https://github.com/fespalier/fespalier#reconnects-fespalier_connectivity)
+`Freshness(refetchOnReconnect: true)` waits for, from `connectivity_plus`, and a `hasNetwork` provider for offline banners
+(one line in `startup()`: `reconnectSignal.overrideWith(ConnectivitySignal.new)`). Another repository dependency at the same
+release tag; it changes neither the generated code nor a release build that does not use it.

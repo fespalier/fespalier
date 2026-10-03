@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:features/auth.dart';
-import 'package:fespalier/fespalier.dart' show dataCacheStorage;
+import 'package:fespalier/fespalier.dart'
+    show dataCacheStorage, reconnectSignal;
 import 'package:fespalier/startup.dart';
+import 'package:fespalier_connectivity/fespalier_connectivity.dart';
 import 'package:fespalier_flags/fespalier_flags.dart';
 import 'package:fespalier_storage/fespalier_storage.dart';
 
@@ -48,6 +50,8 @@ Future<List<Override>> startup() async {
     ),
     // fespalier_storage: the team's dataCache in shared preferences (null if they could not open: nothing saved).
     dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
+    // fespalier_connectivity: refetchOnReconnect (teams/$teamId/route.dart) follows connectivity_plus.
+    reconnectSignal.overrideWith(ConnectivitySignal.new),
   ];
 }
 

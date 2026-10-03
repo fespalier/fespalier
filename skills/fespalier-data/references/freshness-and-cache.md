@@ -151,9 +151,14 @@ A value is stale once it has been in memory for `staleTime` **since it arrived**
 
 ### Reconnect: plug in a source
 
-`reconnectSignal` never fires by itself (Flutter has no API for "the network is back"). Override it with a
-`RefetchSignal` that listens to your source, or call `ref.read(reconnectSignal.notifier).fire()`. This one is written
-against a `Stream<bool>` the app owns; with `connectivity_plus`, map its `onConnectivityChanged` to that stream.
+`reconnectSignal` never fires by itself (Flutter has no API for "the network is back"). **Since 0.9.0 `fespalier_connectivity` is
+that signal** from `connectivity_plus`: `reconnectSignal.overrideWith(ConnectivitySignal.new)` in `startup()`, with a
+`hasNetwork` provider for a banner, the web's first state and iOS's background events handled, and a `FakeConnectivity` for
+tests; see [`reconnect-and-network.md`](reconnect-and-network.md). **Without the package**, override it with a `RefetchSignal`
+that listens to your source, or call `ref.read(reconnectSignal.notifier).fire()`. This one is written against a
+`Stream<bool>` the app owns; with `connectivity_plus`, map its `onConnectivityChanged` to that stream. It listens to the
+stream only, so it misses the web's first state and iOS's events from the background: ask the source again on a resume
+(`appResumeSignal`) if you keep it.
 
 ```dart
 // lib/connectivity.dart

@@ -2547,32 +2547,11 @@ Riverpod provider holding a count, a `RefetchSignal`, that the data provider lis
 
 - `appResumeSignal` fires on resume. It is created only while a provider with `refetchOnResume`
   listens to it, and its `AppLifecycleListener` goes with it.
-- `reconnectSignal` **never fires by itself**: Flutter has no API for "the network is back". Plug
-  your connectivity source in by overriding it, or call `ref.read(reconnectSignal.notifier).fire()`
-  where you know. With `connectivity_plus`:
-
-```dart
-// lib/connectivity_signal.dart
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:fespalier/fespalier.dart';
-
-/// Fires when the device goes from offline to online.
-class ConnectivitySignal extends RefetchSignal {
-  @override
-  int build() {
-    var online = true;
-    final subscription = Connectivity().onConnectivityChanged.listen((results) {
-      final now = !results.contains(ConnectivityResult.none);
-      if (now && !online) fire();
-      online = now;
-    });
-    ref.onDispose(subscription.cancel);
-    return 0;
-  }
-}
-
-// main.dart: ProviderScope(overrides: [reconnectSignal.overrideWith(ConnectivitySignal.new)], …)
-```
+- `reconnectSignal` **never fires by itself**: Flutter has no API for "the network is back". Override it with
+  a `RefetchSignal` of your own that listens to your connectivity source, or call
+  `ref.read(reconnectSignal.notifier).fire()` where you know. `fespalier_connectivity` (since 0.9.0,
+  [below](#reconnects-fespalier_connectivity)) is that signal from `connectivity_plus`, tested:
+  `reconnectSignal.overrideWith(ConnectivitySignal.new)` in `startup()`.
 
 **Your own provider.** `freshData(ref, const Freshness(...), value)` is what the generated provider
 wraps its value in. It returns `value` itself (a `Future` stays the `Future`, a value stays a
@@ -2607,6 +2586,119 @@ reload starts on a frame and its value shows on the next, so `pump()` a few time
 `freshness` and `dataCache` are names fsp now reads in a `data.dart`, so an app with a public
 top-level variable of one of those names and another type gets the first error: rename it (a
 private `_freshness` is never read).
+
+#### Reconnects: fespalier_connectivity
+
+Since 0.9.0. `refetchOnReconnect: true` waits for [`reconnectSignal`](#freshness-staletime-resume-and-reconnect), which
+never fires by itself. `package:fespalier_connectivity` is that signal, from `connectivity_plus`, tested, with the two
+platform repairs below and a `hasNetwork` provider for an offline banner. fespalier's core depends on neither the plugin nor
+this package, the generated code is the same bytes, and an app that does not depend on it pays nothing for it.
+
+Add it next to fespalier, with the same `url` and the same `ref` (as for [`fespalier_flags`](#feature-flags-fespalier_flags)):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1
+  fespalier_connectivity:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_connectivity
+      ref: v0.8.1
+```
+
+<!-- x-release-please-end -->
+
+It needs Dart 3.8 and Flutter 3.32 or newer, and takes `connectivity_plus` `>=6.0.0 <8.0.0`. One line in `startup()`, which
+stays synchronous (no first-frame cost):
+
+```dart
+// lib/app/startup.dart
+List<Override> startup() => [reconnectSignal.overrideWith(ConnectivitySignal.new)];
+
+// lib/app/teams/$teamId/route.dart: every data() at and below is loaded again when the device gets a network back,
+// if its value is at least 30 seconds old
+const freshness = Freshness(staleTime: Duration(seconds: 30), refetchOnReconnect: true);
+```
+
+**What fires and what does not.** `ConnectivitySignal` fires when the device goes **from no network to a network**
+(`[none]` to anything else). It does not fire on the first answer, and not on a Wi-Fi to mobile switch. Every data provider
+that listens loads again if its value is at least `staleTime` old (stale-while-revalidate: the old value stays on screen,
+and `keepDataOnError` keeps the page if the reload fails); within `staleTime` nothing loads. A reload already under way is
+not repeated (a value that is loading is never stale), so a flapping network needs no debounce timer: it fires each time and
+loads once. The signal exists while a `data.dart` with `refetchOnReconnect` is alive, and so does its subscription to
+`connectivity_plus`: an app with no such data subscribes to nothing.
+
+**A banner.** `hasNetwork` is a `bool` provider: `false` only once the device has said "no network", and `true` before the
+first answer, so nothing flashes offline at start. It pairs with `XRoute.watch(ref).isFromCache` ("offline copy"):
+
+```dart
+if (!ref.watch(hasNetwork)) const Text('No network')
+```
+
+`networkConnectivity` is the `List<ConnectivityResult>?` behind it (null until the first answer), for an app that shows the
+kind of network.
+
+**Connectivity versus reachability.** This package, like `navigator.onLine` on the web, answers "is a network interface up?".
+That is local, instant and event-driven. Reachability answers "does the server I need answer?", and only a request can tell:
+
+- Connected but unreachable: a captive portal (hotel Wi-Fi before its login page), a router with no uplink, a VPN that is
+  down, a firewall, the server down. Reachable over a link the OS reports oddly: a VPN reported as `other` on iOS, the iOS
+  simulator's missed Wi-Fi events.
+- So `refetchOnReconnect` on connectivity can fire on a captive portal: the reload fails and `keepDataOnError` keeps the
+  page. `hasNetwork == false` is reliable ("no network at all"); `true` promises nothing. An offline banner should say "No
+  network", and a failed load should show its own error.
+- fespalier does not ship reachability: it needs a request to **your** server (not a third party's: privacy, and a third
+  party answering says nothing about yours), and any polling is a timer. A compiled recipe in
+  [`skills/fespalier-data/references/reconnect-and-network.md`](skills/fespalier-data/references/reconnect-and-network.md) asks
+  your own API once per connectivity change and per resume, never on a timer, and turns that into a `RefetchSignal`.
+
+**Two platform repairs.** The web sends nothing when a stream starts listening (only `online` and `offline` events), so the
+first state is asked with `check()` (which reads `navigator.onLine`); an event that arrives before that answer wins over it.
+And iOS drops connectivity events while the app is in the background (the plugin resyncs "on the next listen or check"), so
+`networkConnectivity` asks `check()` again on each resume, through fespalier's own `appResumeSignal`: an offline banner does
+not stay up after the network came back in the background. Neither starts a timer.
+
+**Testing.** `package:fespalier_connectivity/testing.dart` has `FakeConnectivity`, a `ConnectivitySource` whose `set`, `offline()`
+and `online([via])` deliver a change **synchronously**, whose `check()` answers `now`, and which sends nothing on listen
+(like the web). Override `connectivitySource` with it (and `reconnectSignal` with `ConnectivitySignal.new`, as `startup()`
+does; `pumpRouter` does not run `startup()`):
+
+```dart
+final fake = FakeConnectivity();
+await pumpRouter(
+  tester,
+  AppRoutes.router(initialLocation: '/teams/acme/members/7'),
+  overrides: [
+    connectivitySource.overrideWithValue(fake),
+    reconnectSignal.overrideWith(ConnectivitySignal.new),
+  ],
+);
+await tester.pump(const Duration(seconds: 31)); // the team is stale now (the fake clock)
+fake.offline();
+fake.online(); // a reconnect: the team loads again, once
+await tester.pumpAndSettle();
+```
+
+A widget test that reaches the plugin without that override **fails**, with Flutter's report
+`while activating platform stream on channel dev.fluttercommunity.plus/connectivity_status` and
+`MissingPluginException(No implementation found for method listen on channel dev.fluttercommunity.plus/connectivity_status)`
+(a test that shows `hasNetwork`, or builds a `refetchOnReconnect` provider with the package's signal, and no
+`FakeConnectivity`). `examples/features` carries it: `teams/$teamId/route.dart` has `refetchOnReconnect: true`,
+`startup.dart` overrides `reconnectSignal`, and `test/offline_test.dart` flaps the network.
+
+In debug (`debugPrint`, nothing in a release build):
+
+- `fespalier_connectivity: the connectivity stream reported an error: <error>`
+- `fespalier_connectivity: checking connectivity failed: <error>`
+
+Both leave the state as it was. Their causes are in the
+[troubleshooting skill](skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md).
 
 #### A cache that survives a restart: `dataCache`
 
@@ -6023,6 +6115,12 @@ Since 0.9.0 it also keeps its team in shared preferences ([`fespalier_storage`](
 restarts the app over the same store: the first frame of the second start is the saved team, not `loading.dart`, and a
 start that cannot load it shows the saved one.
 
+Since 0.9.0 the team also loads again when the device gets a network back
+([`fespalier_connectivity`](#reconnects-fespalier_connectivity)): `teams/$teamId/route.dart` has
+`refetchOnReconnect: true`, `startup.dart` overrides `reconnectSignal`, and `test/offline_test.dart` flaps a
+`FakeConnectivity` (within the 30 seconds nothing loads, a Wi-Fi to mobile switch is not a reconnect, and a network that
+flaps loads once).
+
 `examples/tabs` also keeps its manifest in a library of its own (`output_manifest:
 lib/app.routes.g.dart`, with `Review` metas that `lib/main.dart` never imports), and its tests
 restore the selected tab, a background tab's stack and a page's state after a simulated
@@ -6056,6 +6154,7 @@ packages/fespalier_auth/   signed-in routes: session provider, guards, authentic
 packages/fespalier_sign_keypair/   DPoP proofs for fespalier_auth, signed by a device key (Secure Enclave, AndroidKeyStore)
 packages/fespalier_flags/   feature flags: FlagSource, flag() providers that guards watch, flagGuard (since 0.9.0)
 packages/fespalier_storage/   dataCache storages on shared_preferences and Hive, with a size budget (since 0.9.0)
+packages/fespalier_connectivity/   reconnectSignal from connectivity_plus, and hasNetwork for offline banners (since 0.9.0)
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed

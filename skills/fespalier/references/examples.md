@@ -26,6 +26,10 @@ off, `startup.dart` reads `--dart-define=FEATURES_LABS=true`, and `test/flags_te
 opens a `PrefsDataStorage`, and `test/offline_test.dart` restarts the app over the same in-memory store (`fakePrefsStore`):
 the first frame of the second start is the saved team, a start that cannot load it shows the saved one, and `clear()` is a
 sign-out. Read it with `fespalier-data` (`references/storage-backends.md`).
+**The team loads again when the network comes back** (`fespalier_connectivity`): `teams/$teamId/route.dart` has
+`refetchOnReconnect: true`, `startup.dart` overrides `reconnectSignal` with `ConnectivitySignal`, and `test/offline_test.dart`
+flaps a `FakeConnectivity` (fresh within 30 seconds: nothing loads; Wi-Fi to mobile is not a reconnect; a network that flaps
+loads once; a reload that fails keeps the page). Read it with `fespalier-data` (`references/reconnect-and-network.md`).
 
 The examples nest `material_ui`'s `MaterialApp` around `MaterialApp.router` in their tests
 so they pass on both go_router 17 and 18; with the root `transition.dart` that `fsp init`

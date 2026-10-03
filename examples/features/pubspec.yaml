@@ -17,6 +17,9 @@ dependencies:
   # A saved team (shared preferences) for the next start (since 0.9.0): teams/$teamId/data.dart.
   fespalier_storage:
     path: ../../packages/fespalier_storage
+  # refetchOnReconnect follows connectivity_plus (since 0.9.0): teams/$teamId/route.dart.
+  fespalier_connectivity:
+    path: ../../packages/fespalier_connectivity
 
 dev_dependencies:
   flutter_lints: ^6.0.0
@@ -26,7 +29,7 @@ dev_dependencies:
   # flutter's; the tests nest both so they pass on either.
   material_ui: ^1.0.0
 
-# fespalier_flags and fespalier_storage depend on fespalier by git, as an app does; here both are the checkout's.
+# The fespalier_* packages depend on fespalier by git, as an app does; here all of them are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier

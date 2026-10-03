@@ -96,7 +96,7 @@ You need Flutter 3.32 or newer (Dart 3.8) for the package. go_router 18 needs Fl
 curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 ```
 
-It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.8.0` <!-- x-release-please-version -->
+It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.8.1` <!-- x-release-please-version -->
 to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install
 elsewhere. On Windows, in PowerShell:
 
@@ -112,7 +112,7 @@ any platform:
 <!-- x-release-please-start-version -->
 
 ```sh
-cargo install --git https://github.com/fespalier/fespalier --tag v0.8.0 fespalier
+cargo install --git https://github.com/fespalier/fespalier --tag v0.8.1 fespalier
 ```
 
 <!-- x-release-please-end -->
@@ -164,7 +164,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.8.0
+      ref: v0.8.1
 ```
 
 <!-- x-release-please-end -->
@@ -4580,12 +4580,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.8.0
+      ref: v0.8.1
   fespalier_otel:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_otel
-      ref: v0.8.0
+      ref: v0.8.1
 ```
 
 <!-- x-release-please-end -->

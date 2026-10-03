@@ -6,10 +6,10 @@ import 'fake_client.dart';
 
 const _at = 1696230000000;
 
-/// A guard decision. The default is `g5@6` of the features example, letting `/admin` through.
+/// A guard decision. The default is `g6@7` of the features example, letting `/admin` through.
 GuardRecord guardRecord(
   int seq, {
-  String site = 'g5@6',
+  String site = 'g6@7',
   String uri = '/admin',
   String result = GuardOutcome.pass,
   String? location,
@@ -29,10 +29,10 @@ GuardRecord guardRecord(
   error: error,
 );
 
-/// A data record. The default is `d37` of the features example, keyed by 2.
+/// A data record. The default is `d39` of the features example, keyed by 2.
 DataRecord dataRecord(
   int id, {
-  String site = 'd37',
+  String site = 'd39',
   Shown? key = const Shown('int', '2'),
   int container = 1,
   String state = DataState.data,
@@ -41,6 +41,9 @@ DataRecord dataRecord(
   int? updated,
   Shown? value = const Shown('Refund', 'Refund(2)'),
   String? error,
+  String via = DataVia.build,
+  Shown? provider,
+  int? listeners,
 }) => DataRecord(
   id: id,
   site: site,
@@ -52,12 +55,15 @@ DataRecord dataRecord(
   updated: updated ?? created + 500,
   value: value,
   error: error,
+  via: via,
+  provider: provider,
+  listeners: listeners,
 );
 
-/// An action run. The default is `a37_0` of the features example, called with an input.
+/// An action run. The default is `a39_0` of the features example, called with an input.
 ActionRecord actionRecord(
   int seq, {
-  String site = 'a37_0',
+  String site = 'a39_0',
   Shown? key = const Shown('int', '2'),
   Shown input = const Shown('RefundInput', 'RefundInput(5)'),
   String state = ActionState.done,

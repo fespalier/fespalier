@@ -24,7 +24,9 @@ pub struct Module {
     /// Top-level getters: `Codec<Object?, Object?> get extraCodec => ...;`
     pub getters: Vec<Getter>,
     /// Top-level enums: `enum Category { shoes, hats }`.
-    pub enums: Vec<String>,
+    pub enums: Vec<EnumDecl>,
+    /// Top-level `typedef X = T;` (not the old function-typedef syntax, nor a generic one).
+    pub typedefs: Vec<Typedef>,
     /// The libraries it re-exports: `export 'category.dart';`, as written.
     pub exports: Vec<String>,
     /// Where the grammar first gave up on the file (an ERROR or MISSING node),
@@ -32,6 +34,21 @@ pub struct Module {
     /// valid Dart the grammar is too old for; the declarations above are read
     /// on a best-effort basis.
     pub parse_error: Option<Span>,
+}
+
+/// `typedef NicknameFields = ({String nickname, int? age});`
+#[derive(Debug, Clone)]
+pub struct Typedef {
+    pub name: String,
+    /// The aliased type; a record type has its fields in `ty.record`.
+    pub ty: Ty,
+}
+
+/// A top-level enum and its constants, in declaration order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumDecl {
+    pub name: String,
+    pub values: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -300,7 +317,8 @@ pub fn parse(src: &str) -> Module {
             "function_declaration" => m.functions.extend(r.function(*n)),
             "top_level_variable_declaration" => m.variables.extend(r.variables(*n)),
             "getter_declaration" => m.getters.extend(r.getter(*n)),
-            "enum_declaration" => m.enums.extend(r.enum_name(*n)),
+            "enum_declaration" => m.enums.extend(r.enum_decl(*n)),
+            "type_alias" => m.typedefs.extend(r.typedef(*n)),
             "import_or_export" => m
                 .exports
                 .extend(first_named(*n, "library_export").and_then(|e| r.export(e))),
@@ -494,8 +512,33 @@ impl Reader<'_> {
         })
     }
 
-    fn enum_name(&self, n: Node) -> Option<String> {
-        Some(self.text(n.child_by_field_name("name")?).to_string())
+    fn enum_decl(&self, n: Node) -> Option<EnumDecl> {
+        let name = self.text(n.child_by_field_name("name")?).to_string();
+        let mut values = vec![];
+        if let Some(body) = n.child_by_field_name("body") {
+            let mut cursor = body.walk();
+            for c in body.named_children(&mut cursor) {
+                if c.kind() == "enum_constant"
+                    && let Some(v) = c.child_by_field_name("name")
+                {
+                    values.push(self.text(v).to_string());
+                }
+            }
+        }
+        Some(EnumDecl { name, values })
+    }
+
+    /// `typedef X = T;` → `X` and `T`; the old `typedef void X(int a);` and a generic
+    /// `typedef X<T> = ...;` are skipped.
+    fn typedef(&self, n: Node) -> Option<Typedef> {
+        let mut cur = n.walk();
+        let mut kids = n.named_children(&mut cur);
+        let name = kids.next().filter(|k| k.kind() == "type_identifier")?;
+        let ty = kids.next().filter(|k| k.kind() == "type")?;
+        Some(Typedef {
+            name: self.text(name).to_string(),
+            ty: self.ty(ty),
+        })
     }
 
     /// `export 'a.dart' show A;` → `a.dart`. A conditional export (`if (...) 'b.dart'`) is
@@ -2188,5 +2231,27 @@ mod tests {
         for (i, _) in src.char_indices() {
             parse(&src[..i]);
         }
+    }
+
+    #[test]
+    fn reads_typedefs() {
+        let m = parse(
+            "typedef NicknameFields = ({String nickname, int? age});\n\
+             typedef Pair = (int, String);\n\
+             typedef Old(int a);\n\
+             typedef Generic<T> = List<T>;\n",
+        );
+        let names: Vec<_> = m.typedefs.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["NicknameFields", "Pair"]);
+        let fields = m.typedefs[0].ty.record.as_ref().unwrap();
+        assert_eq!(
+            fields
+                .iter()
+                .map(|(n, t)| (n.as_str(), t.text.as_str()))
+                .collect::<Vec<_>>(),
+            [("nickname", "String"), ("age", "int?")]
+        );
+        assert_eq!(m.typedefs[0].ty.text, "({String nickname, int? age})");
+        assert!(m.typedefs[1].ty.record.as_ref().is_none_or(Vec::is_empty));
     }
 }

@@ -165,7 +165,7 @@ fn a_matcher_lists_the_data_the_route_watches() {
         &[
             // The same expression the page's DataView watches, with the key built from `p`.
             "ItemRoute(id: p.id, q: p.q), {'id': p.id, 'q': p.q}, [_data1((id: p.id, q: p.q))])",
-            "watch: (ref) => ref.watch(_data1((id: v.id, q: v.q))),",
+            "watch: (ref) => watchData(ref, 'd1', _data1((id: v.id, q: v.q))),",
             // A list is the QueryList the provider is keyed by, as in the page.
             "[_data3(QueryList(p.tags))])",
             // No data: an empty list, which is not null.
@@ -476,7 +476,7 @@ fn a_section_can_be_keyed_by_query_parameters() {
         &[
             // The section's layout reads them from the URL, as any layout's query parameters.
             "({String? period, List<String> tags}) _layout1(GoRouterState s) => (period: Query.asString(s, 'period'), tags: Query.asStringList(s, 'tags'));",
-            "watch: (ref) => ref.watch(_data1((period: v.period, tags: QueryList(v.tags)))),",
+            "watch: (ref) => watchData(ref, 'd1', _data1((period: v.period, tags: QueryList(v.tags)))),",
             // Every route below is keyed by them too, so its typed route can write them.
             "const MonthlyRoute({this.period, this.tags = const []});",
             "const YearlyRoute({this.period, this.tags = const []});",
@@ -856,6 +856,7 @@ fn new_args(route: &str, not_found: bool) -> NewArgs {
         layout: false,
         guard: false,
         transition: false,
+        nav: false,
         observe: false,
         function: false,
         not_found,

@@ -2,18 +2,39 @@ import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minimal/app.g.dart';
+import 'package:minimal/app.main.g.dart';
 import 'package:minimal/app/items/\$id/error.dart';
 import 'package:minimal/app/items/\$id/loading.dart';
 import 'package:minimal/app/items/\$id/page.dart';
 import 'package:minimal/app/page.dart';
 
-// pumpRouter boots the generated router in a ProviderScope and a MaterialApp,
-// the way main.dart does. Make a new router for every test: a router
-// remembers where it went.
-Future<void> boot(WidgetTester tester, String location) =>
-    pumpRouter(tester, AppRoutes.router(initialLocation: location));
+// pumpRouter boots the generated router in a ProviderScope and the app around it,
+// lib/app/app.dart (AppMain.app, with the theme main() runs it with). Make a new router for
+// every test: a router remembers where it went.
+Future<void> boot(WidgetTester tester, String location) => pumpRouter(
+  tester,
+  AppRoutes.router(initialLocation: location),
+  app: AppMain.app,
+);
 
 void main() {
+  testWidgets('AppMain.root() boots the whole app, as main() runs it', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      AppMain.root(router: () => AppRoutes.router(initialLocation: '/about')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('A page written as a function.'), findsOneWidget);
+    // app.dart's theme: a seed colour, indigo.
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(app.title, 'Minimal');
+    expect(
+      app.theme?.colorScheme.primary,
+      ColorScheme.fromSeed(seedColor: Colors.indigo).primary,
+    );
+  });
+
   testWidgets('navigates by tapping, inside the layout', (tester) async {
     await boot(tester, '/');
     expect(find.text('Hello from fespalier'), findsOneWidget);

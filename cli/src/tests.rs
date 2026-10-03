@@ -75,7 +75,7 @@ fn example_app_generates_cleanly() {
             "data: (d) => _i14.ProductPage(product: d),",
             "error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),",
             // products/data.dart exports its own provider; it's used as-is.
-            "watch: (ref) => ref.watch(_i10.data),",
+            "watch: (ref) => watchData(ref, 'd5', _i10.data),",
             "static final data = _i10.data;",
             "(Ref ref, int id) => traceData(ref, 'd6', id, _i13.data(ref, id: id)),",
             "Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);",
@@ -126,19 +126,21 @@ fn committed_output_is_up_to_date() {
     for name in ["shop", "features", "tabs", "minimal", "telemetry"] {
         // The examples' own pubspec.yaml: `output_manifest:` and `meta:` change what is written.
         let cfg = Config::load(&examples(name)).unwrap();
-        let (code, diags, app) = crate::analyze(&examples(name).join("lib/app"), &cfg).unwrap();
+        let (code, main, diags, app) =
+            crate::analyze_with_main(&examples(name).join("lib/app"), &cfg).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
         // `format: true` (examples/minimal) commits the output as `dart format` leaves it. Without
         // `dart` on PATH (the generator's CI job) there is nothing to compare it with: skip.
-        let code = if cfg.format {
-            let (formatted, warning) =
-                crate::format::format_dart(&code, &examples(name).join(&cfg.output));
-            if warning.is_some() {
-                continue;
+        let format = |code: String, path: &str| {
+            if !cfg.format {
+                return Some(code);
             }
-            formatted
-        } else {
-            code
+            let (formatted, warning) =
+                crate::format::format_dart(&code, &examples(name).join(path));
+            warning.is_none().then_some(formatted)
+        };
+        let Some(code) = format(code, &cfg.output) else {
+            continue;
         };
         let committed = fs::read_to_string(examples(name).join(&cfg.output)).unwrap_or_default();
         assert!(
@@ -146,6 +148,25 @@ fn committed_output_is_up_to_date() {
             "examples/{name}/{} is stale; run `fsp gen --project examples/{name}`",
             cfg.output
         );
+        // The generated main() (`lib/app.main.g.dart`) is checked in when the app has one, and
+        // is absent when it has none.
+        let main_path = examples(name).join(cfg.output_main());
+        match main {
+            Some(main) => {
+                let main = format(main, &cfg.output_main()).unwrap();
+                let committed = fs::read_to_string(&main_path).unwrap_or_default();
+                assert!(
+                    committed == main,
+                    "examples/{name}/{} is stale; run `fsp gen --project examples/{name}`",
+                    cfg.output_main()
+                );
+            }
+            None => assert!(
+                !main_path.exists(),
+                "examples/{name}/{} is there but the app has no main to generate",
+                cfg.output_main()
+            ),
+        }
         // A separate manifest library is checked in too.
         if let Some(path) = &cfg.output_manifest {
             let manifest = crate::manifest::emit(&app, &cfg).unwrap();
@@ -225,7 +246,7 @@ fn page_params_are_filled_by_name_then_type() {
             "({String shop, int id, String? note}) _params2(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'), note: Query.asString(s, 'note'));",
             // Several segments key the provider by a record.
             "(Ref ref, ({String shop, int id}) k) => traceData(ref, 'd2', k, _i0.data(ref, shop: k.shop, id: k.id)),",
-            "watch: (ref) => ref.watch(_data2((shop: v.shop, id: v.id))),",
+            "watch: (ref) => watchData(ref, 'd2', _data2((shop: v.shop, id: v.id))),",
             "const ItemRoute({required this.shop, required this.id, this.note});",
             "withQuery(joinLocation(AppRoutes.base, '/${Uri.encodeComponent(shop)}/$id'), {'note': note})",
             "ref.refresh(data((shop: shop, id: id)).future)",
@@ -377,10 +398,10 @@ fn user_providers_are_used_as_is() {
     has(
         &c,
         &[
-            "watch: (ref) => ref.watch(_i2.data(v.id)),",
+            "watch: (ref) => watchData(ref, 'd3', _i2.data(v.id)),",
             "data: (d) => _i3.ItemPage(item: d),",
             "const ItemRoute({required this.id});\n\n  final int id;",
-            "watch: (ref) => ref.watch(_i0.data((a: v.a, b: v.b))),",
+            "watch: (ref) => watchData(ref, 'd2', _i0.data((a: v.a, b: v.b))),",
             "const AbRoute({required this.a, required this.b});\n\n  final int a;\n  final String b;",
         ],
     );
@@ -920,6 +941,7 @@ fn scaffold_then_generate() {
         layout: true,
         guard: true,
         transition: false,
+        nav: false,
         observe: false,
     };
     scaffold::new_route(dir.path(), &args("orders/[orderId]", true)).unwrap();
@@ -977,7 +999,7 @@ fn query_params_reach_every_file_and_key_data() {
         &[
             "({String? q, int? page, List<String> tags, bool? admin}) _params1(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'), admin: Query.asBool(s, 'admin'));",
             "(Ref ref, ({String? q, int? page}) k) => traceData(ref, 'd1', k, _i1.data(ref, q: k.q, page: k.page)),",
-            "watch: (ref) => ref.watch(_data1((q: v.q, page: v.page))),",
+            "watch: (ref) => watchData(ref, 'd1', _data1((q: v.q, page: v.page))),",
             "data: (d) => _i2.SearchPage(results: d, q: v.q, tags: v.tags),",
             "loading: () => _i3.L(page: v.page),",
             "(v) => _i4.guard(ProviderScope.containerOf(context, listen: false), admin: v.admin),",
@@ -1337,6 +1359,7 @@ fn scaffold_writes_a_transition() {
         layout: false,
         guard: false,
         transition: true,
+        nav: false,
         observe: false,
     };
     scaffold::new_route(dir.path(), &args).unwrap();
@@ -1911,6 +1934,7 @@ fn scaffold_honours_app_dir() {
         layout: true,
         guard: false,
         transition: false,
+        nav: false,
         observe: false,
     };
     scaffold::new_route(dir.path(), &args).unwrap();

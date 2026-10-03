@@ -31,3 +31,6 @@ fespalier:
   # A `push`ed page shows its URL in the browser's address bar (go_router's
   # `optionURLReflectsImperativeAPIs`); the other examples keep the default, off.
   push_updates_url: true
+  # Each page gets a PageStorage per history entry: the browser's back and forward bring a
+  # keyed scrollable back to where it was (README, "Scroll restoration"); a `go` starts at the top.
+  scroll_restoration: true

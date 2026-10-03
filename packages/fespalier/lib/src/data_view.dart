@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'deferred.dart';
+import 'optimistic.dart' show OptimisticLayer;
 
 /// Glue emitted around every route that has a `data.dart`:
 /// watch the provider, then pick page / loading / error.
@@ -14,6 +15,11 @@ import 'deferred.dart';
 /// load: a refresh or reload keeps rendering the old value (or the error), and a
 /// provider that failed and is being retried keeps showing its `error`. Off,
 /// `loading` shows whenever the provider is loading.
+///
+/// A route whose data.dart has a `freshness` or a `dataCache` sets [keepDataOnError] (since
+/// 0.8.0): a reload that fails (a stale value loaded again, a start offline) keeps the page on
+/// its value, and `error` only shows when there is nothing to show. A value restored from the
+/// cache (`isFromCache`) shows while the fresh one loads, whatever [keepPrevious] says.
 ///
 /// With a [library] (the route's `page.dart` is deferred, since 0.7.0) the page's code
 /// starts loading at the first build, in parallel with the data, and the page shows once
@@ -29,7 +35,9 @@ class DataView<T> extends ConsumerWidget {
     required this.loading,
     required this.error,
     this.keepPrevious = true,
+    this.keepDataOnError = false,
     this.library,
+    this.optimistic,
   });
 
   /// Reads the provider's state; called on every build.
@@ -52,23 +60,43 @@ class DataView<T> extends ConsumerWidget {
   /// Whether the previous data stays on screen while a refresh loads.
   final bool keepPrevious;
 
+  /// Whether a failed reload keeps showing the value it had (set for a route whose data.dart
+  /// has a `freshness` or a `dataCache`, since 0.8.0): [error] then only shows when there is
+  /// no value.
+  final bool keepDataOnError;
+
   /// The code of the page [data] builds, when its `page.dart` is deferred; null otherwise.
   /// It starts loading with the first build, and [data]'s page is built inside a
   /// [DeferredView] for good, so the page's `State` survives the load.
   final DeferredLibrary? library;
 
+  /// What the page shows of the value while a write that patches it is in flight: the
+  /// `optimistic()` of an action, through the layer the generated file watches here (since
+  /// 0.8.0). Null when no action patches this data.
+  final OptimisticLayer<T> Function(WidgetRef ref)? optimistic;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lib = library;
     lib?.preload();
-    return watch(ref).when(
-      skipLoadingOnReload: keepPrevious,
-      skipLoadingOnRefresh: keepPrevious,
+    final value = watch(ref);
+    final layer = optimistic?.call(ref);
+    final page = layer == null || layer.isEmpty
+        ? data
+        : (T d) => data(layer.apply(d));
+    // After a write that patched it, the data loads again under its patch: no loading.dart.
+    final keep = keepPrevious || (layer?.settling(value.value) ?? false);
+    return value.when(
+      // A value Riverpod's offline persistence restored (isFromCache) is shown while the
+      // fresh one loads, whatever keep_previous says (since 0.8.0).
+      skipLoadingOnReload: keep || value.isFromCache,
+      skipLoadingOnRefresh: keep,
+      skipError: keepDataOnError,
       data: lib == null
-          ? data
+          ? page
           : (d) => DeferredView(
               library: lib,
-              page: () => data(d),
+              page: () => page(d),
               loading: loading,
               error: error,
             ),

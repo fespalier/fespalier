@@ -4,8 +4,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart'
     show NotifierProviderFamily, ProviderListenable, ProviderOrFamily;
 
+import 'action_form.dart' show FieldErrors;
 import 'devtools/devtools.dart'
     show kFespalierDevTools, traceActionEnd, traceActionStart;
+import 'optimistic.dart' show OptimisticPatch;
 import 'telemetry.dart'
     show TelemetrySite, telemetryActionEnd, telemetryActionStart;
 
@@ -45,9 +47,20 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     String? site,
     Object? key,
     TelemetrySite? telemetry,
+    FieldErrors? Function(I input)? validate,
+    OptimisticPatch<I>? optimistic,
   }) : _site = kFespalierDevTools ? site : null,
        _key = kFespalierDevTools ? key : null,
-       _telemetry = telemetry;
+       _telemetry = telemetry,
+       _validate = validate,
+       _optimistic = optimistic;
+
+  /// The `validate()` beside the action (since 0.8.0): run before it, a write it refuses never
+  /// starts.
+  final FieldErrors? Function(I input)? _validate;
+
+  /// The `optimistic()` beside the action, bound to the layer of the data it patches (since 0.8.0).
+  final OptimisticPatch<I>? _optimistic;
 
   final FutureOr<T> Function(Ref ref, I input) _run;
   final Iterable<ProviderListenable<AsyncValue<Object?>>> Function()
@@ -85,15 +98,20 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     final Object? span = telemetry == null
         ? null
         : telemetryActionStart(telemetry);
+    if (_validate?.call(input) case final errors? when !errors.isEmpty) {
+      _fail(run, errors, StackTrace.current, trace, span, false, null);
+      throw errors;
+    }
+    final ticket = _optimistic?.begin(ref, input);
     final FutureOr<T> result;
     try {
       result = _run(ref, input);
     } catch (error, stackTrace) {
-      _fail(run, error, stackTrace, trace, span, false);
+      _fail(run, error, stackTrace, trace, span, false, ticket);
       rethrow;
     }
     if (result is! Future<T>) {
-      _succeed(run, result, trace, span, false);
+      _succeed(run, result, trace, span, false, ticket);
       return result;
     }
     // Alive until the write is over, whoever watches: the state of a submission that
@@ -103,7 +121,7 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     return result.then<T>(
       (value) {
         try {
-          _succeed(run, value, trace, span, true);
+          _succeed(run, value, trace, span, true, ticket);
         } finally {
           link.close();
         }
@@ -111,7 +129,7 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
       },
       onError: (Object error, StackTrace stackTrace) {
         try {
-          _fail(run, error, stackTrace, trace, span, true);
+          _fail(run, error, stackTrace, trace, span, true, ticket);
         } finally {
           link.close();
         }
@@ -127,11 +145,20 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     if (ref.mounted) state = const AsyncData<Null>(null);
   }
 
-  void _succeed(int run, T value, int? trace, Object? span, bool isAsync) {
+  void _succeed(
+    int run,
+    T value,
+    int? trace,
+    Object? span,
+    bool isAsync,
+    Object? ticket,
+  ) {
     if (kFespalierDevTools) traceActionEnd(trace, result: value);
     if (_telemetry != null) telemetryActionEnd(span, isAsync: isAsync);
     if (!ref.mounted) return;
     if (run == _runs) state = AsyncData<T?>(value);
+    // Before the invalidation: the patch holds over the value the data has now.
+    if (ticket != null) _optimistic?.commit(ref, ticket);
     for (final target in _invalidates()) {
       if (target is! ProviderOrFamily) throw _notAProvider(target);
       ref.invalidate(target as ProviderOrFamily);
@@ -145,6 +172,7 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     int? trace,
     Object? span,
     bool isAsync,
+    Object? ticket,
   ) {
     if (kFespalierDevTools) {
       traceActionEnd(trace, failed: true, error: error);
@@ -158,6 +186,7 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
         stackTrace: stackTrace,
       );
     }
+    if (ticket != null && ref.mounted) _optimistic?.rollback(ref, ticket);
     if (ref.mounted && run == _runs) state = AsyncError<T?>(error, stackTrace);
   }
 }
@@ -178,9 +207,17 @@ ActionProvider<I, T> actionProvider<I, T>(
   invalidates,
   String? site,
   TelemetrySite? telemetry,
+  FieldErrors? Function(I input)? validate,
+  OptimisticPatch<I> Function()? optimistic,
 }) => NotifierProvider.autoDispose<ActionNotifier<I, T>, AsyncValue<T?>>(
-  () =>
-      ActionNotifier<I, T>(run, invalidates, site: site, telemetry: telemetry),
+  () => ActionNotifier<I, T>(
+    run,
+    invalidates,
+    site: site,
+    telemetry: telemetry,
+    validate: validate,
+    optimistic: optimistic?.call(),
+  ),
 );
 
 /// The provider family of an action keyed by [K]: its segments and query parameters, like a
@@ -193,6 +230,8 @@ actionFamily<K, I, T>(
   invalidates,
   String? site,
   TelemetrySite? telemetry,
+  FieldErrors? Function(I input)? validate,
+  OptimisticPatch<I> Function(K key)? optimistic,
 }) => NotifierProvider.autoDispose
     .family<ActionNotifier<I, T>, AsyncValue<T?>, K>(
       (key) => ActionNotifier<I, T>(
@@ -201,6 +240,8 @@ actionFamily<K, I, T>(
         site: site,
         key: key,
         telemetry: telemetry,
+        validate: validate,
+        optimistic: optimistic?.call(key),
       ),
     );
 
@@ -229,6 +270,13 @@ final class ActionHandle<I, T, R> {
 
   /// Whether the last run failed: `state.hasError`.
   bool get hasError => state.hasError;
+
+  /// What the last run said of the input's fields, when it failed with [FieldErrors] (thrown by
+  /// the action or its `validate()`, since 0.8.0); null otherwise.
+  FieldErrors? get fieldErrors => switch (state) {
+    AsyncError(error: final FieldErrors e) => e,
+    _ => null,
+  };
 
   /// Back to idle, e.g. when the page dismisses the error it shows.
   void reset() => _reset();

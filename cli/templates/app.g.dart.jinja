@@ -10,16 +10,28 @@
 
   /// Watches the state of `{{ a.name }}()` and gives `call(input)` to run it, for `build`. A failed run is in `state`, not thrown.
   static final {{ a.hook }} = (WidgetRef ref{{ a.hook_params }}) => ref.{{ a.watch_with }}({{ a.provider }}{{ a.key }});
+{%- if a.form %}
+
+
+  /// The form of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}, for `build` in a `HookConsumerWidget`: a typed field per field of its input, starting from `{{ a.form.function }}({{ "data" if a.form.has_data }})`; `onSubmit` checks the fields{{ " and `" ~ a.form.validate ~ "()`" if a.form.validate }}, then runs it, and is null while it runs. Since 0.8.0.
+  static final {{ a.form.hook }} = (WidgetRef ref, {{ a.form.params }}) => useActionForm(ref, {{ a.provider }}{{ a.key }}, {{ a.form.args }});
+{%- endif %}
 {%- endmacro %}
 {% macro view(b) -%}
 {% if b.data -%}
 DataView(
-  watch: (ref) => ref.watch({{ b.data.provider }}),
+  watch: (ref) => watchData(ref, '{{ b.data.site }}', {{ b.data.provider }}),
   refresh: (ref) => {{ b.data.invalidate }},
   data: (d) => {{ b.page | indent(2) }},
   loading: () => {{ b.data.loading }},
   error: (e, st, retry) => {{ b.data.error }},
   keepPrevious: {{ "true" if keep_previous else "false" }},
+{% if b.data.optimistic %}
+  optimistic: (ref) => ref.watch({{ b.data.optimistic }}),
+{% endif %}
+{% if b.data.keep_data_on_error %}
+  keepDataOnError: true,
+{% endif %}
 {% if b.data.library %}
   library: {{ b.data.library }},
 {% endif %}
@@ -39,6 +51,12 @@ buildWithParams(
 guardWithParams(
   () => {{ seg_fn }}(state),
   (v) => {{ call }},
+)
+{%- endmacro %}
+{% macro scroll_memory(page) -%}
+RouteScrollMemory(
+  state: state,
+  child: {{ page | indent(2) }},
 )
 {%- endmacro %}
 {% macro with_transition(t, page) -%}
@@ -134,6 +152,9 @@ GoRoute(
 {% endif %}
 {% if r.page %}
 {% set page = with_segments(r.seg_fn, view(r), r.not_found) if r.seg_fn else view(r) %}
+{% if scroll_restoration %}
+{% set page = scroll_memory(page) %}
+{% endif %}
 {% if r.transition %}
   pageBuilder: (context, state) => {{ with_transition(r.transition, page) | indent(2) }},
 {% elif r.remount %}
@@ -167,6 +188,9 @@ GoRoute(
 {% endfor %}
 
 import 'package:fespalier/fespalier.dart';
+{% if menu %}
+import 'package:fespalier/nav.dart';
+{% endif %}
 import 'package:flutter/widgets.dart';
 
 {% for i in imports %}
@@ -257,7 +281,7 @@ abstract final class AppRoutes {
     // pubspec `semantics_ids`: on the web, a driver like Maestro sees nothing without the semantics tree.
     ensureWebSemantics();
 {% endif %}
-    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl{{ ", providers: _devToolsProviders" if devtools_providers }});
     return [
 {% for r in tree %}
       {{ route(r) | indent(6) }},
@@ -373,8 +397,13 @@ abstract final class {{ r.name }} {
   /// {{ r.file }} as a Riverpod provider{{ r.keyed }}.
   static final data = {{ r.expr }};
 
+{% if r.optimistic %}
+  /// Watches {{ r.file }}, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference. Since 0.8.0.
+  static final watch = (WidgetRef ref{{ r.args }}) => ref.watchOptimistic(data{{ r.key }}, {{ r.optimistic }});
+{% else %}
   /// Watches {{ r.file }}: an `AsyncValue`, typed by inference.
   static final watch = (WidgetRef ref{{ r.args }}) => ref.watch(data{{ r.key }});
+{% endif %}
 
   /// Reads {{ r.file }} once, keeping it alive until it completes.
   static final read = (WidgetRef ref{{ r.args }}) => ref.{{ "readSelected" if r.selector else "readData" }}(data{{ r.key }});
@@ -476,8 +505,13 @@ final class {{ r.name }}Route extends TypedLocation {
 {% endif %}
 {% if r.data %}
 
+{% if r.data.optimistic %}
+  /// Watches {{ r.data.file }}, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference (static, so it can name the keys). Since 0.8.0.
+  static final watch = (WidgetRef ref{{ r.data.args }}) => ref.watchOptimistic(data{{ r.data.key }}, {{ r.data.optimistic }});
+{% else %}
   /// Watches {{ r.data.file }}: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref{{ r.data.args }}) => ref.watch(data{{ r.data.key }});
+{% endif %}
 
   /// Reads {{ r.data.file }} once, keeping it alive until it completes.
   static final read = (WidgetRef ref{{ r.data.args }}) => ref.{{ "readSelected" if r.data.selector else "readData" }}(data{{ r.data.key }});
@@ -550,16 +584,42 @@ final _data{{ p.id }} = ({{ p.params }}) => {{ p.call }};
 
 /// data.dart selects the app's own provider: nothing wraps it.
 final _data{{ p.id }} = {{ p.call }};
+{% elif p.cache %}
+
+final _data{{ p.id }} = {{ "cachedDataFamily" if p.family else "cachedData" }}(
+  ({{ p.params }}) => traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}{{ ", telemetry: const TelemetrySite(" ~ p.site_file ~ ", route: " ~ p.site_route ~ ")" if telemetry }}),
+  cache: {{ p.cache.expr }},
+  name: {{ p.cache.name }},
+{% if p.cache.key_param %}
+  keyParts: ({{ p.cache.key_param }}) => {{ p.cache.key_parts }},
+{% endif %}
+{% if p.freshness %}
+  freshness: {{ p.freshness }},
+{% endif %}
+{% if p.no_retry %}
+  // No automatic retry: error.dart and its Retry button are the retry UX.
+  retry: (retryCount, error) => null,
+{% endif %}
+);
 {% else %}
 
 final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
+{% if p.freshness %}
+  ({{ p.params }}) => freshData(ref, {{ p.freshness }}, traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}{{ ", telemetry: const TelemetrySite(" ~ p.site_file ~ ", route: " ~ p.site_route ~ ")" if telemetry }})),
+{% else %}
   ({{ p.params }}) => traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}{{ ", telemetry: const TelemetrySite(" ~ p.site_file ~ ", route: " ~ p.site_route ~ ")" if telemetry }}),
+{% endif %}
 {% if p.no_retry %}
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
 {% endif %}
 );
 {% endif %}
+{% endfor %}
+{% for l in layers %}
+
+/// {{ l.doc }}
+final {{ l.name }} = {{ l.def }};
 {% endfor %}
 {% for r in routes %}
 {% for a in r.actions %}
@@ -571,6 +631,12 @@ final {{ a.top }} = {{ a.factory }}(
   invalidates: ({{ a.key_param }}) => {{ a.invalidates }},
 {% else %}
   invalidates: () => {{ a.invalidates }},
+{% endif %}
+{% if a.validate %}
+  validate: {{ a.validate }},
+{% endif %}
+{% if a.optimistic %}
+  optimistic: {{ a.optimistic }},
 {% endif %}
   site: '{{ a.site }}',
 {% if telemetry %}
@@ -590,6 +656,12 @@ final {{ a.top }} = {{ a.factory }}(
 {% else %}
   invalidates: () => {{ a.invalidates }},
 {% endif %}
+{% if a.validate %}
+  validate: {{ a.validate }},
+{% endif %}
+{% if a.optimistic %}
+  optimistic: {{ a.optimistic }},
+{% endif %}
   site: '{{ a.site }}',
 {% if telemetry %}
   telemetry: const TelemetrySite({{ a.site_file }}, route: {{ a.site_route }}, name: '{{ a.name }}'),
@@ -597,6 +669,71 @@ final {{ a.top }} = {{ a.factory }}(
 );
 {% endfor %}
 {% endfor %}
+{% if menu %}
+
+/// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.0).
+abstract final class AppMenu {
+  /// Every nav.dart, nested as their folders are (the app folder's own entry, and a tab layout's
+  /// own page, sit beside the entries below them), each level by `order`, then by folder.
+  static const List<NavNode> tree = [{{ menu.roots | join(", ") }}];
+
+  /// The entries of [tree] at the location around [ref]'s widget, or the topmost ones at or below
+  /// the folder [under] (`'(tabs)'`, `r'teams/$teamId'`): with their routes built from the
+  /// location, whether each is selected, and what their guards answer now. Entries that need
+  /// segments the location doesn't have, `inMenu: false` ones and refused ones (`NavRefused.hide`)
+  /// are left out. Watch it in `build`, in a layout or a page.
+  static List<NavItem> watch(WidgetRef ref, {String? under}) =>
+      watchNav(ref, tree, AppRoutes.matchUrl, _trails, under: under);
+
+  /// The entries from the top of [tree] down to the page at the current location: breadcrumbs.
+  /// Guards are not asked (the location is past them). Empty where no nav.dart covers the page.
+  static List<NavItem> breadcrumbs(WidgetRef ref) =>
+      watchNavTrail(ref, AppRoutes.matchUrl, _trails);
+
+  static const Map<Type, List<NavNode>> _trails = {
+{% for t in menu.trails %}
+    {{ t.route }}: [{{ t.nodes | join(", ") }}],
+{% endfor %}
+  };
+}
+{% for n in menu.nodes %}
+
+{{ n }}
+{% endfor %}
+{% if menu.withins %}
+
+{% for w in menu.withins %}
+{{ w }}
+{% endfor %}
+{% endif %}
+{% if menu.routes %}
+
+{% for f in menu.routes %}
+{{ f }}
+{% endfor %}
+{% endif %}
+{% if menu.labels %}
+
+{% for f in menu.labels %}
+{{ f }}
+{% endfor %}
+{% endif %}
+{% if menu.guards %}
+
+{% for f in menu.guards %}
+{{ f }}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if devtools_providers %}
+
+/// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
+Map<Object, String> _devToolsProviders() => {
+{% for p in devtools_providers %}
+      {{ p.expr }}: '{{ p.site }}',
+{% endfor %}
+    };
+{% endif %}
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release

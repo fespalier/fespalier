@@ -33,16 +33,18 @@ is never remounted.
 `Transitions` has ready-made ones; each gives the page a `restorationId` from its
 key:
 
-| Helper                                | What it does                                                        |
-| ------------------------------------- | ------------------------------------------------------------------- |
-| `fade(key, child, {duration})`        | cross-fades (250 ms by default)                                     |
-| `slide(key, child, {from, duration})` | slides in from an `AxisDirection` edge (default `right`, 300 ms)    |
-| `none(key, child)`                    | swaps instantly                                                     |
-| `material(key, child)`                | the platform-default Material transition                            |
-| `cupertino(key, child)`               | the iOS slide plus edge-swipe back                                  |
-| `dialog(key, child, {...})`           | opens as a Material dialog over the previous page                   |
-| `sheet(key, child, {...})`            | opens as a modal bottom sheet over the previous page                |
-| `fullscreenDialog(key, child)`        | a Material page that slides up, with a close button in its `AppBar` |
+| Helper                                        | What it does                                                        |
+| --------------------------------------------- | ------------------------------------------------------------------- |
+| `fade(key, child, {duration, heroes})`        | cross-fades (250 ms by default)                                     |
+| `slide(key, child, {from, duration, heroes})` | slides in from an `AxisDirection` edge (default `right`, 300 ms)    |
+| `none(key, child, {heroes})`                  | swaps instantly                                                     |
+| `material(key, child, {heroes})`              | the platform-default Material transition                            |
+| `cupertino(key, child, {heroes})`             | the iOS slide plus edge-swipe back                                  |
+| `dialog(key, child, {...})`                   | opens as a Material dialog over the previous page                   |
+| `sheet(key, child, {...})`                    | opens as a modal bottom sheet over the previous page                |
+| `fullscreenDialog(key, child, {heroes})`      | a Material page that slides up, with a close button in its `AppBar` |
+
+`heroes:` (0.8.0) is covered under "Shared elements (heroes)" below; `dialog` and `sheet` have none.
 
 Routes with **no** `transition.dart` above them keep go_router's default for your
 app type: the platform transition under a Material or Cupertino app, **none**
@@ -227,6 +229,102 @@ as `barrierDismissible`, `isScrollControlled`, `showDragHandle` and `enableDrag`
   delegate) above the router.
 - The route's `transition.dart` **also covers routes below it**, so give a dialog
   route its own folder.
+
+## Shared elements (heroes)
+
+Since 0.8.0 a shared element is one line on each side, and nothing is generated (`app.g.dart` is
+unchanged):
+
+```dart
+// in the row of each product (products/page.dart)
+leading: ProductRoute(id: p.id).hero('avatar', child: CircleAvatar(child: Text(p.name[0]))),
+
+// in the product's own page (products/$id/page.dart)
+ProductRoute(id: product.id).hero('avatar', child: CircleAvatar(radius: 40, child: Text(product.name[0]))),
+```
+
+- **The tag** is `route.heroTag(name)`, a `RouteHeroTag(path, name)`: the location up to the `?`
+  (mount prefix included) and the name (any object; an app `enum` keeps it typo-proof). Both pages
+  must name the **same route and the same name**. `hero` is an extension (`RouteHeroes`) on the typed
+  routes, so a route with a query parameter called `hero` still compiles; it shadows the extension.
+- **`RouteHero`** is a `Hero` that is out of flights while its tab is not shown (`TickerMode` off,
+  which go_router's tab container and `examples/tabs` set). Two tabs may show one tag, and a route on
+  the root navigator over the tab bar flies from the shown tab. A plain `Hero` there throws "There are
+  multiple heroes that share the same tag within a subtree". A **custom tab `container`** that hides
+  tabs with `Offstage` alone gets that assertion back: wrap the hidden tabs in
+  `TickerMode(enabled: false)`.
+- **The style** goes in `transition.dart`:
+  `Transitions.cupertino(key, child, heroes: const Heroes(onBackGesture: true))`. `Heroes` has `onBackGesture` (heroes follow the back swipe;
+  Flutter checks **both** pages, so set it in the root `transition.dart`), `path`
+  (`HeroFlightPath.platform`, `arc` or `straight`) and `shuttle`. `heroes:` wraps the page in a
+  `RouteHeroScope`, which a `RouteHero`'s own `onBackGesture:`, `path:` and `shuttle:` override; the
+  nearest `transition.dart` that passes it wins, and one that doesn't leaves the tree as it was. A
+  `present.dart` page or a `Page` of your own wraps its child in `RouteHeroScope(heroes: ...)`.
+- **What does not fly.** A `dialog` or `sheet` (and a `present.dart` that builds a `PopupRoute`):
+  Flutter flies heroes between page routes only, so use `fullscreenDialog`, `material` or a
+  `PageRoute`. A tab switch (`goBranch`) pushes no route. A remounted page is a new route: a tag
+  made from a segment differs between the two pages, a constant one flies. A page with `data.dart`
+  or a deferred one flies only when it is in the destination's first frame, so
+  `RouteLink(preload: Preload.intent)` or `route.preload`; otherwise `loading.dart` shows and
+  nothing flies.
+- **Two of one tag on one page** is Flutter's assertion: rename one, or wrap it in
+  `HeroMode(enabled: false)`. An enum of names declared in a deferred `page.dart` would make the
+  list page import it eagerly: put it in a file of its own.
+
+Not built: generated per-route hero names (use an enum), and a lint for a name used on one side only.
+
+## Scroll restoration on back and forward (since 0.8.0)
+
+Flutter builds a page from nothing when the browser's back or forward button brings it
+back, so a long list starts at the top. `scroll_restoration: true` in the pubspec's
+`fespalier:` section (off by default; `fsp gen` after) wraps each page's own view in
+`RouteScrollMemory(state: state, child: ...)`, which gives the page a `PageStorage`
+bucket per history entry:
+
+```yaml
+# pubspec.yaml
+fespalier:
+  scroll_restoration: true
+```
+
+```dart
+// lib/app/feed/page.dart
+import 'package:flutter/material.dart';
+
+class FeedPage extends StatelessWidget {
+  const FeedPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => ListView.builder(
+    key: const PageStorageKey<String>('feed'),
+    itemCount: 100,
+    itemBuilder: (_, i) => ListTile(title: Text('Item $i')),
+  );
+}
+```
+
+- **Only a scrollable under a `PageStorageKey` is restored.** Flutter stores an offset by
+  key and stores nothing for a scrollable without one; fespalier does not invent keys.
+  Give each scrollable of a page its own key (a carousel in a list), or two lists could
+  swap offsets.
+- **Back and forward restore; the app's own navigation does not.** The entry gets its
+  bucket back only when the browser brought it back. `go`, `push`, `replace`, a
+  `RouteLink` and the first route get a fresh bucket and start at the top. A location the
+  platform reports without history state (a link opened from outside) counts as the app's.
+- **An entry is its matched location**, plus the query for the top page: `/search?q=a`
+  and `/search?q=b` are two entries.
+- **A page that stays mounted keeps its live scroll** (the page below a child route, a tab,
+  a page whose URL changes in place under `remount: never`): nothing is restored for it,
+  its bucket moves to the new location. On Android and iOS back is a pop, so the page below
+  is still mounted.
+- **In memory only**: 64 entries per router (the oldest forgotten first), a reload of the tab
+  starts empty, the same location twice in the history is one entry. A list that grows as it
+  scrolls is clamped to the items it has when rebuilt.
+- **Layouts, redirects and not-found views are not wrapped**; with the key off the generated
+  file has no `RouteScrollMemory`.
+- **Testing it**: play the browser with `pushRouteInformation` _and the state the app
+  reported_ (`routeInformationUpdated` on `SystemChannels.navigation`); a location alone is a
+  link from outside and starts at the top. See `fespalier-testing`, `references/pitfalls.md`.
 
 ## State restoration
 

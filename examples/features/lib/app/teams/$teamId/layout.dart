@@ -1,3 +1,4 @@
+import 'package:features/app/_components/menus.dart';
 import 'package:features/app/teams/\$teamId/data.dart';
 import 'package:flutter/material.dart';
 
@@ -12,6 +13,7 @@ class TeamLayout extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         children: [
           Text('Team ${team.name}'),
+          const TeamMenu(),
           Expanded(child: child),
         ],
       );

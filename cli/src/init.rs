@@ -5,11 +5,17 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 
-use crate::config::Pubspec;
+use crate::config::{MainMode, Pubspec};
 use crate::scan::FileStyle;
 use crate::templates;
 
-const STARTERS: [&str; 4] = ["layout", "page", "not_found", "transition"];
+const STARTERS: [&str; 5] = ["layout", "page", "not_found", "transition", "app"];
+
+/// What the starter templates are rendered with.
+#[derive(serde::Serialize)]
+struct Starter<'a> {
+    package: &'a str,
+}
 
 pub fn run(project: &Path) -> Result<()> {
     if !project.join("pubspec.yaml").is_file() {
@@ -26,6 +32,10 @@ pub fn run(project: &Path) -> Result<()> {
     let dir = project.join(&cfg.app_dir);
     fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     for kind in STARTERS {
+        // `main: manual` keeps the app's own main(): no app.dart for the generated one to run.
+        if kind == "app" && cfg.main == MainMode::Manual {
+            continue;
+        }
         // `file_style` picks the spelling; a file in the other one counts as existing.
         let (snake, kebab) = (
             format!("{kind}.dart"),
@@ -43,7 +53,11 @@ pub fn run(project: &Path) -> Result<()> {
             eprintln!("  skip  {shown} (exists)");
             continue;
         }
-        fs::write(&path, templates::render(&format!("init/{kind}.dart"), ()))?;
+        let starter = Starter { package: &package };
+        fs::write(
+            &path,
+            templates::render(&format!("init/{kind}.dart"), starter),
+        )?;
         eprintln!("  new   {shown}");
     }
 
@@ -62,14 +76,29 @@ pub fn run(project: &Path) -> Result<()> {
             "\n   dependencies:\n     fespalier:\n       git:\n         url: https://github.com/vaam-apps/fespalier\n         path: packages/fespalier\n         ref: v0.7.0" // x-release-please-version
         );
     }
-    next("Run the router from lib/main.dart:");
-    eprintln!(
-        "\n   import 'package:fespalier/fespalier.dart';\n   import 'package:flutter/material.dart';\n   import 'package:{package}/{}';\n\n   void main() => runApp(\n         ProviderScope(\n           child: MaterialApp.router(routerConfig: AppRoutes.router()),\n         ),\n       );",
-        cfg.output_in_lib()
-    );
-    eprintln!(
-        "\n   Already have a GoRouter? Mount the tree inside it instead:\n\n   GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])"
-    );
+    if cfg.main == MainMode::Manual {
+        next("Run the router from lib/main.dart:");
+        eprintln!(
+            "\n   import 'package:fespalier/fespalier.dart';\n   import 'package:flutter/material.dart';\n   import 'package:{package}/{}';\n\n   void main() => runApp(\n         ProviderScope(\n           child: MaterialApp.router(routerConfig: AppRoutes.router()),\n         ),\n       );",
+            cfg.output_in_lib()
+        );
+        eprintln!(
+            "\n   Already have a GoRouter? Mount the tree inside it instead:\n\n   GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])"
+        );
+    } else {
+        let main_file = cfg.output_main();
+        let main_in_lib = main_file.strip_prefix("lib/").unwrap_or(&main_file);
+        next(&format!(
+            "Make lib/main.dart run the generated main() ({main_file}):"
+        ));
+        eprintln!(
+            "\n   import 'package:{package}/{main_in_lib}';\n\n   Future<void> main() => AppMain.run();"
+        );
+        eprintln!(
+            "\n   The app around the router (theme, title) is {dir}/app.dart; work to do before it starts goes\n   in {dir}/startup.dart (see the README, \"main(): app.dart, startup.dart and splash.dart\").\n   Already have a GoRouter? Mount the tree inside it instead, and set `main: manual`:\n\n   GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])",
+            dir = cfg.app_dir
+        );
+    }
     next("Run `fsp watch` next to `flutter run` to regenerate on every save.");
     Ok(())
 }

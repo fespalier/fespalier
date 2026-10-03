@@ -1,0 +1,14 @@
+# Written by `fsp maestro` from lib/app/vault/page.dart: don't edit it, run `fsp maestro` again.
+# Guarded by vault/guard.dart: ../sign-in.yaml runs before the link.
+appId: "com.example.features"
+name: "/vault"
+tags:
+  - "fespalier"
+---
+- launchApp
+- runFlow: "../sign-in.yaml"
+- openLink: "features://app.example.com/vault"
+- extendedWaitUntil:
+    visible:
+      id: "route:/vault"
+    timeout: 20000

@@ -1,6 +1,6 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.0: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.0 its forms: form(), validate() and optimistic()). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
@@ -71,6 +71,35 @@ is generated for it. Two `data.dart` files yielding the same type for one
 parameter are an error: name the parameter `data` (the nearest) or change a type.
 See [`references/sections.md`](references/sections.md).
 
+## Freshness and the cache (since 0.8.0)
+
+Opt in, per `data.dart` or per folder; an app that declares neither generates what 0.7.0 did.
+
+```dart
+const freshness = Freshness(staleTime: Duration(minutes: 1), refetchOnResume: true); // data.dart or route.dart
+final dataCache = DataCache<Product>.json(toJson: (p) => p.toJson(), fromJson: (j) => Product.fromJson(j! as Map<String, Object?>)); // data.dart only
+```
+
+| Rule                                                                     | What it means                                                                                                                                                                                  |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Where                                                                    | `freshness` in a `data.dart` (that data) or a `route.dart` (every function-form `data()` at and below; the nearest wins, a `data.dart`'s own wins over all). `dataCache` in a `data.dart` only |
+| Which forms                                                              | The function form (`Future<T>`, `FutureOr<T>` or `T`). A `Stream`, a selector and a provider form are errors; a `route.dart` default skips them silently                                       |
+| Stale                                                                    | In memory for `staleTime` **since it arrived**. Loading and error values are never stale. Nothing polls                                                                                        |
+| What loads a stale value                                                 | A **read**: a new listener (a page opening, `SectionView`, `prefetch`/`preload`, `read`), a listener coming back (page uncovered, tab shown), or a resume/reconnect signal                     |
+| What it shows meanwhile                                                  | The stale value **at once**, then the new one (`keep_previous` decides if `loading.dart` shows)                                                                                                |
+| `refetchOnResume` / `refetchOnReconnect`                                 | Signals (`appResumeSignal`, `reconnectSignal`); threshold `staleTime ?? Duration.zero`. `reconnectSignal` **never fires by itself**: override it or call `fire()`                              |
+| A failed reload                                                          | Keeps the page on its data (`keepDataOnError: true` on the `DataView`); `error.dart` only when there is nothing to show                                                                        |
+| An invalidation (`ref.invalidate`, `refresh`, an action's `invalidates`) | Loads **at once**, whatever the `staleTime`: it is not a read                                                                                                                                  |
+| `dataCache`                                                              | Saved only if the app overrides `dataCacheStorage` (`null` by default). `MemoryDataStorage` for tests and the web; a `Storage<String, String>` on disk to survive a restart                    |
+
+Gotchas: every new reader counts (a small `staleTime` reloads a section each time a page below it opens);
+`read` returns what is in memory even if stale (`refresh` waits for the network); `keepFor` is how long a
+handle holds a value, not freshness; a failed user `refresh()` is hidden behind the old page; a cold start
+always loads again; a failed load never deletes the saved value; `freshness` and `dataCache` are names `fsp`
+now reads in a `data.dart` (a public variable of that name and another type is an error: rename it).
+[`references/freshness-and-cache.md`](references/freshness-and-cache.md) has the samples that compile, the
+reconnect signal, the storage, the key format and the tests.
+
 ## Typed helpers, prefetch, lookup
 
 ```dart
@@ -131,24 +160,61 @@ await RefundRoute.submit(ref, id: 1, input: input);  // a callback or a test: th
 [`references/actions.md`](references/actions.md) has the rules, the generated members,
 what is invalidated and a test that compiles.
 
+## Forms and optimistic updates (since 0.8.0)
+
+Not a file kind: `form()`, `validate()` and `optimistic()` are _companion functions_ in the
+`action.dart` of their action (`approveForm`, `approveValidate`, `approveOptimistic` beside
+`approve`), and never actions themselves.
+
+```dart
+typedef NicknameFields = ({String nickname, bool newsletter});   // the input: a record, named fields
+NicknameFields form(Profile profile) => (nickname: profile.nickname, newsletter: profile.newsletter);
+FieldErrors? validate(NicknameFields input) => FieldErrors({if (input.nickname.isEmpty) 'nickname': 'Enter a nickname'});
+Profile optimistic(Profile current, NicknameFields input) => Profile(input.nickname, input.newsletter);
+// page (a HookConsumerWidget): final form = NicknameRoute.useForm(ref, data: profile);
+```
+
+- **The input is a record with named fields**, inline or a `typedef` in the **same** `action.dart`.
+  `useForm` gives `form.fields.nickname.controller` / `.value` / `.error`, `onSubmit` (**null while
+  the action runs**), `isPending`, `isDirty`, `error`, `reset()`. It is a **real hook**: only in a
+  `HookConsumerWidget`. `data:` is the data the page got.
+- **`validate()` runs in the form and in the action's provider**, before the action: a refused
+  input never starts the write. The action throws `FieldErrors({'field': 'message'})` for what
+  only the server knows; keys are the record's field names.
+- **`optimistic()` patches the `data.dart` the action invalidates whose type is `T`**: shown from
+  the start of the write, removed on failure, kept over the old value after a success until the
+  data has loaded again (no frame of the old value, `keep_previous: false` too). `XRoute.data`,
+  `read` and `refresh` stay the server's value.
+- Fields the user has not changed follow new data; changed ones keep what was typed.
+
+[`references/forms-and-optimistic.md`](references/forms-and-optimistic.md) has every rule and a
+sample that compiles, with its test.
+
 ## Seeing it in DevTools (since 0.7.0)
 
 The `fespalier` tab's **Data** tab lists each provider fespalier makes from a `data.dart`: its state
-(`loading`, `data`, `error`, `stream`, `disposed`), builds, key and value, with an **Invalidate** button;
-**Actions** lists the runs of the `action.dart` functions. The generated provider body is wrapped in
-`traceData`, which returns the function's own result (a value stays a value, a `Future` stays the `Future`).
-A `data.dart` that returns or selects a provider is **not traced**, and who holds a provider is not shown
-(`fespalier-troubleshooting`, its DevTools page).
+(`loading`, `data`, `error`, `stream`, `disposed`), builds, listeners, key and value, with an **Invalidate**
+button and, since 0.8.0, a **Holders** button that lists who keeps the provider (the page, a section, a
+`prefetch` / `preload` handle, a `RouteLink` preload) and counts the other listeners. **Actions** lists the
+runs of the `action.dart` functions. The generated provider body is wrapped in `traceData`, which returns the
+function's own result (a value stays a value, a `Future` stays the `Future`), and every view watches with
+`watchData(ref, 'd37', provider)`, which is `ref.watch`. A `data.dart` that returns or selects a provider is
+followed since 0.8.0 as an `app provider`, through the state the views got; its other listeners are not
+visible (`fespalier-troubleshooting`, its DevTools page).
 
 ## Common symptoms
 
-| Symptom                                            | Look at                                                                                    |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Page blinks to `loading.dart` on every reload      | `keep_previous: false` in `pubspec.yaml` (the default is `true`)                           |
-| A failing `data.dart` runs several times in a test | Default `data_retry: inherit`; `pumpRouter` already disables retries (`fespalier-testing`) |
-| `error.dart` never shows during a retry            | A function-form `data()` wrapping `.future` of your provider: use a selector               |
-| `refresh`/`retry` throws a `StateError`            | A selector that returns `.select(...)` of a provider: return the provider itself           |
-| A prefetched page still loads                      | The handle was closed, or the id/query differs from the key the page uses                  |
-| `dataAt` is `null` for a URL that works in the app | The segment fails to parse, or the URL is outside the mount prefix                         |
-| A page doesn't refresh after a write               | The data is another route's: list it in `invalidates` (`references/actions.md`)            |
-| An fsp error on `data.dart` or `action.dart`       | `fespalier-troubleshooting`                                                                |
+| Symptom                                            | Look at                                                                                                                       |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Page blinks to `loading.dart` on every reload      | `keep_previous: false` in `pubspec.yaml` (the default is `true`)                                                              |
+| A failing `data.dart` runs several times in a test | Default `data_retry: inherit`; `pumpRouter` already disables retries (`fespalier-testing`)                                    |
+| `error.dart` never shows during a retry            | A function-form `data()` wrapping `.future` of your provider: use a selector                                                  |
+| `refresh`/`retry` throws a `StateError`            | A selector that returns `.select(...)` of a provider: return the provider itself                                              |
+| A prefetched page still loads                      | The handle was closed, or the id/query differs from the key the page uses                                                     |
+| `dataAt` is `null` for a URL that works in the app | The segment fails to parse, or the URL is outside the mount prefix                                                            |
+| A page doesn't refresh after a write               | The data is another route's: list it in `invalidates` (`references/actions.md`)                                               |
+| A stale value stays on screen                      | Nothing read it: `freshness` loads on a read, a resume or a reconnect, never by a timer (`references/freshness-and-cache.md`) |
+| Offline start shows `error.dart`                   | No `dataCache`/`dataCacheStorage`, or nothing was saved yet or it passed `maxAge`                                             |
+| The form forgot what I typed (0.8.0)               | The data loaded again while the fields were untouched: only fields the user changed are kept                                  |
+| The page flashes the old value after a save        | `optimistic()` patches another type than the page shows, or the data is not in `invalidates`                                  |
+| An fsp error on `data.dart` or `action.dart`       | `fespalier-troubleshooting`                                                                                                   |

@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/(account)/nickname/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/nickname"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/nickname"
+- extendedWaitUntil:
+    visible:
+      id: "route:/nickname"
+    timeout: 20000

@@ -29,6 +29,7 @@ fn args(route: &str, layout: bool) -> NewArgs {
         layout,
         guard: false,
         transition: false,
+        nav: false,
         observe: false,
     }
 }
@@ -93,6 +94,7 @@ fn everything(route: &str, function: bool) -> NewArgs {
         layout: true,
         guard: true,
         transition: true,
+        nav: true,
         observe: true,
         ..args(route, true)
     }

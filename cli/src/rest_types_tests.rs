@@ -415,6 +415,7 @@ fn fsp_new_keeps_the_type_an_existing_catch_all_has() {
         layout: false,
         guard: false,
         transition: false,
+        nav: false,
         observe: false,
     };
     crate::scaffold::new_route(dir.path(), &args).unwrap();

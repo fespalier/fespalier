@@ -117,6 +117,12 @@ never stays on screen.
   The generated `redirect:` wraps each call in `traceGuard`, which returns the guard's own result, so
   a sync guard stays sync (`fespalier-troubleshooting`, its DevTools page).
 
+- **A menu runs your guards too (since 0.8.0).** `AppMenu.watch(ref)` (generated from `nav.dart`
+  files) asks the guards that run for each guarded entry, with the entry's own location, to list,
+  switch off or hide it. It follows a `Ref` guard's `ref.watch`es, shows an entry pending while an
+  async guard is out, and reads a `ProviderContainer c` guard once. Keep guards cheap and free of
+  side effects (`fespalier-layouts`, its page on menus and breadcrumbs).
+
 ## Where to read more
 
 | Need                                                                | Reference                                                                  |

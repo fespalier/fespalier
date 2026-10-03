@@ -82,8 +82,12 @@ matches the package your `pubspec.lock` resolved.
 | `navigator.dart`   | `const navigator = RouteNavigator.root;`: render above every layout                |
 | `not_found.dart`   | Unknown URLs and unparsable segments; nearest folder wins                          |
 | `meta.dart`        | `const meta = ...;` this route's own facts, into the manifest                      |
-| `route.dart`       | `caseSensitive`, `paths`, `nest`, `linkable`, `remount`, `deferred`                |
+| `route.dart`       | `caseSensitive`, `paths`, `nest`, `linkable`, `remount`, `deferred`, `freshness`   |
 | `extra_codec.dart` | At the app root only: `extraCodec`, to restore `extra` after a restart             |
+| `app.dart`         | App root only (since 0.8.0): the widget around the router (`MaterialApp`)          |
+| `startup.dart`     | App root only (since 0.8.0): `startup()`, `zone()`, observers, `retry()`           |
+| `splash.dart`      | App root only (since 0.8.0): shown while an async `startup()` runs                 |
+| `nav.dart`         | `const nav = Nav(...)`: how a folder shows in the generated menus (0.8.0)          |
 
 Folder names: `products` is a static segment; `$id` a dynamic one; `$$rest` one
 or more remaining segments and `$$$rest` zero or more; `(account)` a group that
@@ -137,12 +141,17 @@ fsp check                                  # CI: non-zero on errors, writes noth
 fsp routes [--json | --graph [dot | json]]  # the route table, or the tree as Mermaid / DOT / JSON
 fsp links [--check]                        # App Links, Universal Links, sitemap from the routes (0.5.0)
 fsp maestro [--check]                      # Maestro smoke flows, one per route (0.7.0)
+fsp size [--json] [--check]                # the web build's JavaScript per deferred route, and budgets (0.8.0)
+fsp test [--check]                         # a widget smoke test per route, test/routes/routes_test.dart (0.8.0)
 fsp new 'orders/[id]' --data --loading     # scaffold a route, then gen
 ```
 
-`fsp init` then prints the `main.dart` you need: `MaterialApp.router(routerConfig:
-AppRoutes.router())` inside a `ProviderScope`. To add the tree to an existing
-`GoRouter`, use `AppRoutes.mount(at: '/x')` (see `fespalier-migration`).
+`fsp init` then prints the `main.dart` you need. Since 0.8.0 it is
+`Future<void> main() => AppMain.run();`, with the generated `lib/app.main.g.dart` running
+`lib/app/app.dart` (and `startup.dart`, `splash.dart`); see
+[`references/app-main.md`](references/app-main.md). Before 0.8.0, and with `main: manual`, it prints
+`MaterialApp.router(routerConfig: AppRoutes.router())` inside a `ProviderScope`. To add the tree to an
+existing `GoRouter`, use `AppRoutes.mount(at: '/x')` (see `fespalier-migration`).
 
 ## How parameters are filled
 
@@ -165,10 +174,12 @@ and the reserved names.
 | `layout.dart`, tabs, `container`, shell transitions, restoration                                         | `fespalier-layouts`                             |
 | `guard.dart`, `redirect.dart`, `returnTo`, sign-in flows                                                 | `fespalier-guards`                              |
 | `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.0) | `fespalier-observability`                       |
+| `app.dart`, `startup.dart`, `splash.dart`, `main: manual`, `AppMain` (the generated `main()`)            | this skill: `references/app-main.md`            |
 | Widget tests: `pumpRouter`, `currentLocation`, deep links, data states                                   | `fespalier-testing`                             |
 | An `fsp` error, a stale `app.g.dart`, a route that does not show                                         | `fespalier-troubleshooting`                     |
 | Looking at a running app in Flutter DevTools (the `fespalier` tab, since 0.7.0)                          | `fespalier-troubleshooting` (its DevTools page) |
 | Upgrading 0.2 to 0.3, or adopting fespalier in a go_router app                                           | `fespalier-migration`                           |
+| Upgrading 0.2 to 0.3 or 0.7 to 0.8, or adopting fespalier in a go_router app                             | `fespalier-migration`                           |
 
 ## Where the truth is
 

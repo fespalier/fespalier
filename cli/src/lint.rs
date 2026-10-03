@@ -25,8 +25,9 @@ use crate::config::{Config, LintLevel};
 use crate::dart::Span;
 use crate::diag::{Base, Diags, Level};
 use crate::locale::{self, Localized};
-use crate::resolve::App;
+use crate::resolve::{self, App};
 use crate::scan::Seg;
+use crate::segtype::{self, SegTy};
 
 /// The id a lint goes by, in `lints:` and in `// fsp:ignore`.
 const ID: &str = "unknown_path";
@@ -456,7 +457,8 @@ fn names_us(comment: &str, key: &str) -> bool {
 
 // --- The route table --------------------------------------------------------------------------
 
-/// The routes as `AppRoutes.matchUrl` tries them, for matching string paths.
+/// The routes as `AppRoutes.matchUrl` tries them, for matching string paths: most specific
+/// first (see [`resolve::match_rank`]), because the first one that fits decides.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Table {
     routes: Vec<Pattern>,
@@ -468,46 +470,63 @@ pub struct Table {
 struct Pattern {
     parts: Vec<Part>,
     case_sensitive: bool,
+    /// The route's canonical pattern (`/products/:id`), which a message names.
+    canonical: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 enum Part {
     /// Every spelling that reaches the segment (a localized folder has several).
     Static(Vec<String>),
-    Dynamic,
-    /// `$$rest` (one or more parts) or `$$$rest` (`optional`: none or more).
+    Dynamic(SegTy),
+    /// `$$rest` (one or more parts) or `$$$rest` (`optional`: none or more), each part of `ty`.
     Rest {
         optional: bool,
+        ty: SegTy,
     },
 }
 
 impl Table {
     /// Every route (a page or a `redirect.dart`) of `app`. A `not_found.dart` adds none.
     pub fn new(app: &App) -> Table {
-        let routes = app
+        let ty = |r: &resolve::Route, n: &str| {
+            r.segs
+                .iter()
+                .find(|(s, _)| s == n)
+                .map_or(SegTy::Text, |(_, folder)| SegTy::of(app, *folder))
+        };
+        let mut ranked: Vec<(Vec<u8>, Pattern)> = app
             .routes
             .iter()
             .filter(|r| r.is_route())
-            .map(|r| Pattern {
-                case_sensitive: r.case_sensitive,
-                parts: r
-                    .url
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, s)| match s {
-                        Seg::Static(s) => Some(Part::Static(
-                            locale::at(&r.localized, i)
-                                .map_or_else(|| vec![s.clone()], Localized::alternatives),
-                        )),
-                        Seg::Dynamic(_) => Some(Part::Dynamic),
-                        Seg::CatchAll(_, optional) => Some(Part::Rest {
-                            optional: *optional,
-                        }),
-                        Seg::Group(_) => None,
-                    })
-                    .collect(),
+            .map(|r| {
+                let pattern = Pattern {
+                    case_sensitive: r.case_sensitive,
+                    canonical: resolve::pattern(&r.url),
+                    parts: r
+                        .url
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, s)| match s {
+                            Seg::Static(s) => Some(Part::Static(
+                                locale::at(&r.localized, i)
+                                    .map_or_else(|| vec![s.clone()], Localized::alternatives),
+                            )),
+                            Seg::Dynamic(n) => Some(Part::Dynamic(ty(r, n))),
+                            Seg::CatchAll(n, optional) => Some(Part::Rest {
+                                optional: *optional,
+                                ty: ty(r, n),
+                            }),
+                            Seg::Group(_) => None,
+                        })
+                        .collect(),
+                };
+                (resolve::match_rank(&r.url), pattern)
             })
             .collect();
+        // Stable, as `emit::matchers` sorts them: ties keep the folder order.
+        ranked.sort_by(|a, b| a.0.cmp(&b.0));
+        let routes = ranked.into_iter().map(|(_, p)| p).collect();
         Table {
             routes,
             root_case_sensitive: app.routes.first().is_none_or(|r| r.case_sensitive),
@@ -530,11 +549,11 @@ impl Pattern {
         let mut bad = vec![];
         for (i, part) in self.parts.iter().enumerate() {
             match part {
-                Part::Rest { optional } => {
+                Part::Rest { optional, .. } => {
                     return (path.len() > i || *optional).then_some(bad);
                 }
                 _ if i >= path.len() => return None,
-                Part::Dynamic => {}
+                Part::Dynamic(_) => {}
                 Part::Static(spellings) => {
                     if !spellings
                         .iter()
@@ -554,7 +573,7 @@ impl Pattern {
             match self.parts.get(i) {
                 None => return false,
                 Some(Part::Rest { .. }) => return true,
-                Some(Part::Dynamic) => {}
+                Some(Part::Dynamic(_)) => {}
                 Some(Part::Static(spellings)) => {
                     if !spellings.iter().any(|s| same(s, want, self.case_sensitive)) {
                         return false;
@@ -566,11 +585,51 @@ impl Pattern {
     }
 }
 
+impl Pattern {
+    /// The first of the (complete, decoded) parts of `path` whose text this pattern's type cannot
+    /// read: its index in `path`, whether it is a part of a catch-all, and the type. `None` when
+    /// every part may parse. Parts the pattern has no part for (a prefix that stops short) are
+    /// not looked at.
+    fn type_misfit(&self, path: &[String]) -> Option<(usize, bool, &SegTy)> {
+        for (i, part) in self.parts.iter().enumerate() {
+            match part {
+                Part::Static(_) => {}
+                Part::Dynamic(ty) => {
+                    if path
+                        .get(i)
+                        .is_some_and(|p| !ty.fits(p, self.case_sensitive))
+                    {
+                        return Some((i, false, ty));
+                    }
+                }
+                Part::Rest { ty, .. } => {
+                    return path
+                        .iter()
+                        .enumerate()
+                        .skip(i)
+                        .find(|(_, p)| !ty.fits(p, self.case_sensitive))
+                        .map(|(k, _)| (k, true, ty));
+                }
+            }
+        }
+        None
+    }
+}
+
 impl Table {
-    fn matches(&self, path: &[String]) -> bool {
+    /// The route `AppRoutes.matchUrl` takes for `path`: the first one that fits it. The runtime
+    /// builds that one and shows not-found when a segment does not parse, without trying the
+    /// next (`matchRoutes` in `route_match.dart`).
+    fn first_fit(&self, path: &[String]) -> Option<&Pattern> {
         self.routes
             .iter()
-            .any(|p| p.misfits(path).is_some_and(|bad| bad.is_empty()))
+            .find(|p| p.misfits(path).is_some_and(|bad| bad.is_empty()))
+    }
+
+    /// Whether `path` reaches a route and every segment of it can be read.
+    fn matches(&self, path: &[String]) -> bool {
+        self.first_fit(path)
+            .is_some_and(|p| p.type_misfit(path).is_none())
     }
 
     /// The nearest spelling of the one static part that is wrong, as `(part index, spelling)`:
@@ -589,7 +648,7 @@ impl Table {
             };
             let have = path[i].to_lowercase();
             for spelling in spellings {
-                let d = distance(&have, &spelling.to_lowercase());
+                let d = segtype::distance(&have, &spelling.to_lowercase());
                 if d <= 2
                     && d <= spelling.chars().count() / 3
                     && best.as_ref().is_none_or(|(b, ..)| d < *b)
@@ -600,24 +659,6 @@ impl Table {
         }
         best.map(|(_, i, s)| (i, s))
     }
-}
-
-/// The Levenshtein distance between two strings, in characters.
-fn distance(a: &str, b: &str) -> usize {
-    let b: Vec<char> = b.chars().collect();
-    let mut row: Vec<usize> = (0..=b.len()).collect();
-    for (i, ca) in a.chars().enumerate() {
-        let mut diagonal = row[0];
-        row[0] = i + 1;
-        for (j, cb) in b.iter().enumerate() {
-            let above = row[j + 1];
-            row[j + 1] = (above + 1)
-                .min(row[j] + 1)
-                .min(diagonal + usize::from(ca != *cb));
-            diagonal = above;
-        }
-    }
-    row[b.len()]
 }
 
 // --- Matching a path ----------------------------------------------------------------------
@@ -632,6 +673,25 @@ enum Finding {
     },
     /// A path that interpolates, whose first complete segments no route starts with.
     NoRouteStarts { prefix: String, text: String },
+    /// A path the first fitting route reads, but a segment of it does not parse.
+    WrongType {
+        path: String,
+        pattern: String,
+        part: String,
+        in_rest: bool,
+        reason: String,
+        suggestion: Option<String>,
+    },
+    /// A path that interpolates, whose first complete segments only routes that cannot read
+    /// them start with.
+    PrefixWrongType {
+        prefix: String,
+        text: String,
+        pattern: String,
+        part: String,
+        in_rest: bool,
+        reason: String,
+    },
 }
 
 impl Finding {
@@ -652,6 +712,35 @@ impl Finding {
             Finding::NoRouteStarts { prefix, text } => format!(
                 "no route starts with `{prefix}`, so `{text}` shows not-found whatever it interpolates [{ID}]"
             ),
+            Finding::WrongType {
+                path,
+                pattern,
+                part,
+                in_rest,
+                reason,
+                suggestion,
+            } => {
+                let its = if *in_rest { "its part " } else { "" };
+                let hint = suggestion
+                    .as_ref()
+                    .map_or(String::new(), |s| format!("; did you mean `{s}`?"));
+                format!(
+                    "`{path}` reaches {pattern}, but {its}`{part}` {reason}, so it shows not-found{hint} [{ID}]"
+                )
+            }
+            Finding::PrefixWrongType {
+                prefix,
+                text,
+                pattern,
+                part,
+                in_rest,
+                reason,
+            } => {
+                let its = if *in_rest { "its part " } else { "" };
+                format!(
+                    "no route starts with `{prefix}`: {its}`{part}` {reason} at {pattern}, so `{text}` shows not-found whatever it interpolates [{ID}]"
+                )
+            }
         }
     }
 }
@@ -724,7 +813,8 @@ fn judge(site: &Site, base: &[String], table: &Table) -> Option<Finding> {
     let path_end = cut.unwrap_or(lead.len());
     let parts = segments(&lead[..path_end])?;
     let below = below(&parts, base, table.root_case_sensitive)?;
-    if table.matches(below) {
+    let first = table.first_fit(below);
+    if first.is_some_and(|p| p.type_misfit(below).is_none()) {
         return None;
     }
     let shown = if hole {
@@ -732,25 +822,55 @@ fn judge(site: &Site, base: &[String], table: &Table) -> Option<Finding> {
     } else {
         lead.clone()
     };
+    if let Some(p) = first {
+        // The first route that fits reads the path, and one of its segments does not parse.
+        let (i, in_rest, ty) = p.type_misfit(below)?;
+        let part = below[i].clone();
+        // With a hole after the `?`, `lead` is only the start of the literal: no suggestion.
+        // A suggestion must itself be a path that works.
+        let suggestion = if hole {
+            None
+        } else {
+            ty.nearest(&part).filter(|v| {
+                let mut fixed = below.to_vec();
+                fixed[i].clone_from(v);
+                table.matches(&fixed)
+            })
+        }
+        .map(|v| replace_part(&lead, path_end, base.len() + i, &v));
+        return Some(Finding::WrongType {
+            path: shown,
+            pattern: p.canonical.clone(),
+            part,
+            in_rest,
+            reason: ty.reason(),
+            suggestion,
+        });
+    }
     // With a hole after the `?`, `lead` is only the start of the literal: no suggestion.
     let nearest = if hole { None } else { table.nearest(below) };
-    let suggestion = nearest.map(|(i, spelling)| {
-        let mut raw: Vec<&str> = lead[..path_end].split('/').collect();
-        let at = raw
-            .iter()
-            .enumerate()
-            .filter(|(_, p)| !p.is_empty())
-            .nth(base.len() + i)
-            .map(|(k, _)| k);
-        if let Some(k) = at {
-            raw[k] = &spelling;
-        }
-        format!("{}{}", raw.join("/"), &lead[path_end..])
-    });
+    let suggestion =
+        nearest.map(|(i, spelling)| replace_part(&lead, path_end, base.len() + i, &spelling));
     Some(Finding::Unmatched {
         path: shown,
         suggestion,
     })
+}
+
+/// `lead` with its `n`th non-empty segment spelled `spelling`; what follows the path (from
+/// `path_end`: a `?` or `#`) is kept.
+fn replace_part(lead: &str, path_end: usize, n: usize, spelling: &str) -> String {
+    let mut raw: Vec<&str> = lead[..path_end].split('/').collect();
+    let at = raw
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| !p.is_empty())
+        .nth(n)
+        .map(|(k, _)| k);
+    if let Some(k) = at {
+        raw[k] = spelling;
+    }
+    format!("{}{}", raw.join("/"), &lead[path_end..])
 }
 
 /// A path with an interpolation: the complete segments before the first one must be the start
@@ -762,8 +882,22 @@ fn judge_prefix(site: &Site, lead: &str, base: &[String], table: &Table) -> Opti
         return None;
     }
     let below = below(&parts, base, table.root_case_sensitive)?;
-    if table.routes.iter().any(|p| p.starts_like(below)) {
+    let mut starting = table.routes.iter().filter(|p| p.starts_like(below));
+    let first = starting.clone().next();
+    if starting.any(|p| p.type_misfit(below).is_none()) {
         return None;
+    }
+    if let Some(p) = first
+        && let Some((i, in_rest, ty)) = p.type_misfit(below)
+    {
+        return Some(Finding::PrefixWrongType {
+            prefix: format!("{before}/"),
+            text: site.text.clone(),
+            pattern: p.canonical.clone(),
+            part: below[i].clone(),
+            in_rest,
+            reason: ty.reason(),
+        });
     }
     Some(Finding::NoRouteStarts {
         prefix: format!("{before}/"),

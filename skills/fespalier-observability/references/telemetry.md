@@ -191,7 +191,7 @@ with `InMemorySpanExporter` from `package:dartastic_opentelemetry/testing.dart` 
 (**once per isolate**, so once per test file), install `FespalierOtel()`, and read the exporter after a
 `pump()`: a span is exported when it ends.
 
-Since 0.9.0 a navigation that `navigateFrom` marked has ` source=notification` at the end of its start line
+Since 0.9.0 a navigation that `navigateFrom` marked has `source=notification` at the end of its start line
 (`#1 start navigate /orders/42 source=notification`; unmarked lines do not change), and
 `RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and `#n within exit` around what runs
 inside `data()` or an action, so a line the code under test adds to `recording.log` shows it ran within its

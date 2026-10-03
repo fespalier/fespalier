@@ -22,7 +22,7 @@ both.
 | `meta.dart`        | its own route only (not inherited)                                                                          | nothing: it is data                                                                  |
 | `route.dart`       | `caseSensitive`, `linkable`, `remount`, `deferred`, `freshness`: folder and below; `paths`: its own segment | nothing: it is data                                                                  |
 | `extra_codec.dart` | the app root only                                                                                           | nothing: it is data                                                                  |
-| `nav.dart`         | its own folder's menu entry (since 0.8.0)                                                      | `label()`: a `BuildContext` and the segments at or above (named, `required`)         |
+| `nav.dart`         | its own folder's menu entry (since 0.8.0)                                                                   | `label()`: a `BuildContext` and the segments at or above (named, `required`)         |
 
 `not_found.dart` also reads as `not-found.dart` (kebab), whatever `file_style`
 says; `file_style` only picks what `fsp init` and `fsp new` write.

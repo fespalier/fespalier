@@ -134,7 +134,7 @@ drawer-versus-side-list plain layout that highlights the current route through
 | `tabs` error on a `(group)` or `$folder` tab      | The tab's first route has a `:segment`; add `tabOptions` `initialLocation` or restructure |
 | A full-screen page shows the tab bar              | It is inside the layout's folder without `navigator.dart` (or outside it, to avoid tabs)  |
 | Dialog opens over a blank screen on a deep link   | The dialog route has no parent page above it in the tree                                  |
-| A menu entry is missing                         | Its folder needs segments the location lacks, `inMenu: false`, or a guard refuses it      |
+| A menu entry is missing                           | Its folder needs segments the location lacks, `inMenu: false`, or a guard refuses it      |
 | Restored app forgets a page's local state         | Custom `Page` without `restorationId: key.value`, or renamed folders                      |
 | A list starts at the top after the browser's back | `scroll_restoration` is off, or the scrollable has no `PageStorageKey` (since 0.8.0)      |
 

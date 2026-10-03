@@ -83,7 +83,7 @@ matches the package your `pubspec.lock` resolved.
 | `meta.dart`        | `const meta = ...;` this route's own facts, into the manifest                    |
 | `route.dart`       | `caseSensitive`, `paths`, `nest`, `linkable`, `remount`, `deferred`, `freshness` |
 | `extra_codec.dart` | At the app root only: `extraCodec`, to restore `extra` after a restart           |
-| `nav.dart`         | `const nav = Nav(...)`: how a folder shows in the generated menus (0.8.0) |
+| `nav.dart`         | `const nav = Nav(...)`: how a folder shows in the generated menus (0.8.0)        |
 
 Folder names: `products` is a static segment; `$id` a dynamic one; `$$rest` one
 or more remaining segments and `$$$rest` zero or more; `(account)` a group that

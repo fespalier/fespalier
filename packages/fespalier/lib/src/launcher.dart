@@ -473,14 +473,21 @@ class Launcher {
     } on ProcessException catch (e) {
       throw LauncherException('could not run $path: ${e.message}');
     }
-    // Ctrl-C reaches both processes through the terminal; a plain kill only reaches us.
-    final term = Platform.isWindows
-        ? null
-        : ProcessSignal.sigterm.watch().listen((_) => child.kill());
+    // Ctrl-C reaches both processes through the terminal; a plain kill only reaches us. Listening
+    // to SIGINT (and doing nothing) keeps this process alive until `fsp` is done: `fsp dev` stops
+    // flutter and its own helpers on Ctrl-C, which takes a moment, and the prompt should wait.
+    final signals = Platform.isWindows
+        ? <StreamSubscription<ProcessSignal>>[]
+        : [
+            ProcessSignal.sigterm.watch().listen((_) => child.kill()),
+            ProcessSignal.sigint.watch().listen((_) {}),
+          ];
     try {
       return await child.exitCode;
     } finally {
-      await term?.cancel();
+      for (final s in signals) {
+        await s.cancel();
+      }
     }
   }
 }

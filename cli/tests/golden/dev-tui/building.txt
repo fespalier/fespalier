@@ -1,0 +1,30 @@
+ fespalier dev · shop                           ◐ building · Running Gradle task 'assembleDebug'...
+ Pixel 8 (emulator-5554) · android-arm64
+ DevTools: waiting for the VM service
+ 1 flutter │ 2 fsp │ 3 build_runner
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ Running Gradle task 'assembleDebug'...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ · generating
+ r reload  R restart  d DevTools  o open  t telemetry  1-9/Tab pane  / filter  ? help  q quit

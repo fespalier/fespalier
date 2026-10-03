@@ -192,6 +192,9 @@ jobs:
           # lib/main.dart is the app's own, so it is made to run that one, as init prints.
           test -f lib/app/app.dart
           test -f lib/app.main.g.dart
+          # ... and a commented `tasks:` example for `fsp dev` (since 0.9.0), comments only, so the
+          # `flutter analyze` below parses the same pubspec.
+          grep -q '^# fsp dev reads tasks:' pubspec.yaml
           cat > lib/main.dart <<'DART'
           import 'package:fresh_app/app.main.g.dart';
 
@@ -282,6 +285,15 @@ jobs:
           flutter pub get
           FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier --version
           FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier routes
+      # `fsp dev` against the real flutter (since 0.9.0): a fresh web app in headless Chrome. It
+      # waits for the app, adds a route (a hot restart), edits a page (a hot reload) and quits with
+      # `q`. Every other test of `fsp dev` talks to a fake flutter; this is the one that notices when
+      # flutter changes its `--machine` protocol. The script is `just dev-e2e`.
+      - name: fsp dev runs the app, restarts on a new route and reloads on an edit
+        timeout-minutes: 10
+        env:
+          FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
+        run: scripts/check-dev-e2e.sh
 
   web:
     name: Deferred routes split on the web

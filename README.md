@@ -96,7 +96,7 @@ You need Flutter 3.32 or newer (Dart 3.8) for the package. go_router 18 needs Fl
 curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 ```
 
-It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.8.0` <!-- x-release-please-version -->
+It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.8.1` <!-- x-release-please-version -->
 to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install
 elsewhere. On Windows, in PowerShell:
 
@@ -112,7 +112,7 @@ any platform:
 <!-- x-release-please-start-version -->
 
 ```sh
-cargo install --git https://github.com/fespalier/fespalier --tag v0.8.0 fespalier
+cargo install --git https://github.com/fespalier/fespalier --tag v0.8.1 fespalier
 ```
 
 <!-- x-release-please-end -->
@@ -164,7 +164,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.8.0
+      ref: v0.8.1
 ```
 
 <!-- x-release-please-end -->
@@ -223,13 +223,14 @@ which go_router requires to be an ancestor navigator's. (`AppRoutes.router()` ta
 **4. Day to day.**
 
 ```sh
-fsp watch                                 # next to `flutter run`: regenerates when the routing changes
+fsp dev                                   # the app, regenerated and hot restarted on every save (since 0.9.0)
+fsp watch                                 # or next to your own `flutter run`: regenerates when the routing changes
 fsp new 'orders/[id]' --data --loading    # scaffold a route, then regenerate app.g.dart
 fsp new 'orders/[id]/refund' --action     # a write beside the page (action.dart)
 ```
 
 `fsp new` runs `gen` right away, so the new route is usable as soon as it returns. See
-"The generator" for all flags.
+"The generator" for all flags, and [Running your app](#running-your-app-fsp-dev) for `fsp dev`.
 
 **Two ways to keep `app.g.dart`.** Pick one.
 
@@ -332,6 +333,12 @@ fespalier:
   #   samples:                    # default: the `maestro:` ones
   #     products/$id: 1
   #   skip: [/admin]              # patterns as `fsp routes` prints them
+  # tasks:                        # no default: what `fsp dev`, `fsp build` and `fsp run` run (since 0.9.0)
+  #   dev:
+  #     before: dart run build_runner build -d
+  #     with:
+  #       build_runner: dart run build_runner watch -d
+  #   codegen: dart run build_runner build -d
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
@@ -369,6 +376,8 @@ browser's back and forward button hand back (see [Scroll restoration](#scroll-re
 bool is an error.
 `size:` (since 0.8.1) is what [`fsp size`](#web-chunk-sizes-fsp-size) checks the web build against; only that command checks its values.
 `test:` (since 0.8.1) is what [`fsp test`](#route-smoke-tests-fsp-test) reads, and only that command checks it.
+`tasks:` (since 0.9.0) is what [`fsp dev`, `fsp build` and `fsp run`](#tasks-commands-around-flutter-run) run: commands to run
+before, next to and after `flutter run`. Only those commands check it; `fsp gen` never reports a mistake in it.
 
 `main` (since 0.8.1) is `auto`, `generated` or `manual`: whether `fsp` writes [`lib/app.main.g.dart`](#main-appdart-startupdart-and-splashdart),
 with `AppMain`. `auto` writes it when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart`,
@@ -408,6 +417,99 @@ found by its name, like the other files.
   Or stay on go_router 17 by adding `go_router: ^17.0.0` to your `dependencies`. The
   examples use Flutter's `MaterialApp` and each has a root `transition.dart` returning
   `Transitions.material`, so their routes animate on both go_router 17 and 18.
+
+## Running your app: `fsp dev`
+
+Since 0.9.0. `fsp dev` is `fsp watch` and `flutter run` in one terminal. It writes `lib/app.g.dart`, starts the
+app, and **hot restarts** it whenever the routes change, because a new route needs a restart. Any other save of a
+Dart file under `lib/` gets a **hot reload**. It needs no configuration.
+
+```sh
+fsp dev                  # pick a device, run the app, keep app.g.dart current
+fsp dev -- -d chrome     # anything after -- goes to flutter run
+```
+
+![fsp dev: a header with the app, the device and the DevTools link; a tab per process; the flutter log; a status line with the route count, the last generation and the last hot restart; the keys.](docs/images/fsp-dev.svg)
+
+| Key            |                                                                     |
+| -------------- | ------------------------------------------------------------------- |
+| `r` / `R`      | hot reload / hot restart                                            |
+| `d` / `o`      | open DevTools / open the app in the browser (web)                   |
+| `t`            | start [`fsp telemetry`](#dashboards-on-your-computer-fsp-telemetry) |
+| `Tab`, `1`–`9` | switch between flutter, fsp and your own processes                  |
+| `/`            | filter the log; `Esc` clears                                        |
+| `?` / `q`      | help / quit                                                         |
+
+The header shows the device, the web address or VM service, and the DevTools link. The status line shows the
+route count, the first routing error (clickable in terminals that support links), and how long the last hot
+reload took. When flutter stops by itself (a build error, say), the view stays: fix it and press `R`.
+
+`fsp dev` runs `flutter run --machine` and talks to it over flutter's own protocol, so it works the same on macOS,
+Linux and Windows. Flutter's other keys (`p`, `w`, ...) live in DevTools (`d`). You can still run `fsp watch` next
+to your own `flutter run`, or your editor's.
+
+With several devices, `fsp dev` asks which one (and remembers the answer in `.dart_tool/fespalier/dev.json`); with
+one phone or emulator it picks that, as `flutter run` does. Name one yourself after `--`: `fsp dev -- -d chrome`.
+
+### Tasks: commands around `flutter run`
+
+Add what your app needs around `flutter run` under `tasks:` in the `fespalier:` section of `pubspec.yaml`:
+
+```yaml
+fespalier:
+  tasks:
+    dev:
+      before: dart run build_runner build -d # runs first; if it fails, fsp dev stops
+      with:
+        build_runner: dart run build_runner watch -d # runs alongside, in a pane of its own
+      env:
+        API_URL: http://localhost:8080
+    codegen: dart run build_runner build -d # fsp run codegen
+```
+
+| Key          | What it is                                                                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `run`        | The main command. `dev` defaults to `flutter run` (fsp adds `--machine`, the device and your args), `build` to `flutter build`. Write `fvm flutter run`, or a script that passes `"$@"` on to `flutter run`. |
+| `before`     | A command or a list, run one after the other before `run`. The first that fails stops the task with its exit code.                                                                                           |
+| `with`       | Long-running commands, by name, started next to `run` and stopped with it.                                                                                                                                   |
+| `after`      | A command or a list, run when `run` exits 0.                                                                                                                                                                 |
+| `env`        | Variables for these commands (not for the app: use `--dart-define` for that).                                                                                                                                |
+| `hot_reload` | `dev` only. `false` turns the automatic reload and restart off; `r` and `R` still work.                                                                                                                      |
+
+A command written as a string runs in the shell (`sh` on macOS and Linux, `cmd` on Windows). Written as a list
+(`[flutter, test]`) it runs with no shell, the same everywhere. `fsp` at the start of a command is the `fsp`
+running the task, even under `dart run fespalier`. A mistake in `tasks:` is reported by `fsp dev`, `fsp build`
+and `fsp run`, never by `fsp gen`.
+
+A list under `before` or `after` is a list of commands, so `before: [dart, run, x]` is three shell commands
+(`dart`, `run` and `x`); write `before: [[dart, run, x]]` for one command with no shell. A task that is only
+`run` can be written as the command itself, as `codegen` is above. A custom `run` gets `--machine` and the
+arguments after `--` appended, but not a device: put `-d` in it, or after `--`.
+
+### `fsp build` and `fsp run`
+
+`fsp build <target>` runs `fsp gen`, then the `build` task: `before`, `flutter build <target>` (plus your args
+after `--`), `after`. `fsp run <task>` runs a task of your own; `fsp run` alone lists them. `--dry-run` prints
+what would run and runs nothing.
+
+```yaml
+    check: # fsp run check
+      before: [fsp check, fsp test --check]
+      run: [flutter, test]
+    web: # fsp run web
+      run: fsp build web -- --release
+      after: fsp size --check
+```
+
+`fsp telemetry` starts its stack and returns, so it goes in `before` (`before: fsp telemetry`), not `with`.
+
+### Plain output, CI and Windows
+
+Outside a terminal (CI, an IDE's run panel), with `TERM=dumb`, or with `fsp dev --no-tui`, `fsp dev` prints each
+line with the name of the process in front (`[flutter]`, `[fsp]`, `[build_runner]`), and you type `r`, `R` or `q`
+followed by Enter. With several devices and no terminal to ask in, pass one: `fsp dev -- -d <id>`. Quitting asks
+flutter to stop the app, then stops the `with` commands and everything they started. A second `q` or Ctrl-C stops
+them at once.
 
 ## File kinds
 
@@ -3648,6 +3750,9 @@ fsp test --check        # CI: non-zero exit when that file is stale
 fsp telemetry           # a local OpenTelemetry stack with fespalier's dashboards (since 0.8.1; needs Docker)
 fsp telemetry --grafana # ...and Grafana, with the same dashboards
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
+fsp dev                 # fsp watch and flutter run in one terminal, hot restarting when the routes change (since 0.9.0)
+fsp build web           # fsp gen, then flutter build web, with the hooks of `tasks: build:` (since 0.9.0)
+fsp run codegen         # a task of your own from `tasks:` in pubspec.yaml; `fsp run` lists them (since 0.9.0)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --action --loading --error --layout --guard --transition
                         # [id] or :id both mean $id, so no shell quoting of $
@@ -3802,6 +3907,8 @@ What the commands print:
   when the output didn't change (with `output_manifest`, or a [generated `main()`](#main-appdart-startupdart-and-splashdart)
   since 0.8.1, every file is named: `✓ 12 routes → lib/app.g.dart, lib/app.main.g.dart`).
 - `fsp check`: `✓ 12 routes, no errors`.
+- `fsp dev` (since 0.9.0): the same `gen` line, then the [full-screen view](#running-your-app-fsp-dev), or with `--no-tui`
+  the lines of each process with its name in front, `[fsp] ✓ 12 routes → lib/app.g.dart (3.1ms)`.
 - `fsp watch`: the `gen` line once at startup, then a line each time a save changes
   `lib/app.g.dart`. An edit that doesn't (a widget's `build` method, say) prints nothing.
   It ignores its own output and file reads, so it doesn't loop while idle. It keeps the parse
@@ -4562,12 +4669,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.8.0
+      ref: v0.8.1
   fespalier_auth:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
-      ref: v0.8.0
+      ref: v0.8.1
 ```
 
 <!-- x-release-please-end -->
@@ -5020,12 +5127,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.8.0
+      ref: v0.8.1
   fespalier_otel:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_otel
-      ref: v0.8.0
+      ref: v0.8.1
 ```
 
 <!-- x-release-please-end -->
@@ -5704,6 +5811,7 @@ just telemetry-dashboards   # regenerate the dashboards after editing scripts/te
 just telemetry-smoke        # run the telemetry stack in Docker and check every dashboard query (needs Docker)
 just devtools-build   # rebuild the DevTools extension after touching its source (see below)
 just web-routes  # the shop's Maestro flows open their routes in Chromium (needs Flutter and Node; not in `just ci`)
+just dev-e2e     # fsp dev against the real flutter in headless Chrome (needs Flutter and Chrome; CI's scaffold job runs it)
 ```
 
 [AGENTS.md](AGENTS.md) is the contributor and agent guide: the layout, the gate commands,

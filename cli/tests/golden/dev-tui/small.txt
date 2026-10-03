@@ -1,0 +1,16 @@
+ fespalier dev · shop                   ↻ reloading · debug
+ Pixel 8 (emulator-5554) · android-arm64
+ DevTools: waiting for the VM service
+ 1 flutter │ 2 fsp • │ 3 build_runner
+ ──────────────────────────────────────────────────────────
+ log line 7
+ log line 8
+ log line 9
+ log line 10
+ log line 11
+ log line 12
+ log line 13
+ log line 14
+ ──────────────────────────────────────────────────────────
+ ✓ 14 routes · generated 2 s ago in 3.1 ms · no errors
+ ? help  q quit

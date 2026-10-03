@@ -161,6 +161,13 @@ web-routes:
     cd ci/web-routes && npm ci && npx --no-install playwright install chromium
     scripts/check-web-routes.sh examples/shop
 
+# `fsp dev` against the real flutter: a fresh web app with `fsp init` in headless Chrome. It waits for the
+# app, adds a route (a hot restart), edits a page (a hot reload) and quits with `q`: the one check of fsp
+# against flutter's real `--machine` protocol. Needs Flutter with web support and Chrome (CHROME_EXECUTABLE
+# names one that is not on the path); about a minute, and not part of `just ci`
+dev-e2e:
+    scripts/check-dev-e2e.sh
+
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
 # are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
 # `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, and the README

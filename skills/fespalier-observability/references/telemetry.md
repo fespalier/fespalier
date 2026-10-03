@@ -3,6 +3,9 @@
 Since 0.8.1. The README's [Telemetry](https://github.com/fespalier/fespalier#telemetry) section is the user
 documentation; this page is what an agent needs to set it up and to say why nothing shows.
 
+Under `fsp dev` (since 0.9.0) the key `t` starts `fsp telemetry` in a pane of its own, and `before: fsp telemetry`
+in `tasks: dev:` starts it with the app: it starts its stack and returns, so it goes in `before`, not `with`.
+
 ## The pieces
 
 - **`fespalier: telemetry: true`** in `pubspec.yaml` (a bool; anything else is an error, see

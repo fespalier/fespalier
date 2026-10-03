@@ -1,6 +1,6 @@
 [package]
 name = "fespalier"
-version = "0.8.0" # x-release-please-version
+version = "0.8.1" # x-release-please-version
 edition = "2024"
 rust-version = "1.98.1"
 publish = false
@@ -20,14 +20,21 @@ path = "src/main.rs"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 codespan-reporting = "0.13"
+ctrlc = { version = "3.5", features = ["termination"] }
 heck = "0.5"
 minijinja = { version = "2", features = ["loader"] }
 notify = "8"
+# The full-screen view of `fsp dev` (crossterm comes through it: `ratatui::crossterm`, so no version skew).
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml_ng = "0.10.0"
 tree-sitter = "0.26"
 tree-sitter-dart = "0.2"
+
+# `killpg` for `fsp dev`: the crate `ctrlc` already pulls in on Unix, at the same version.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", default-features = false, features = ["signal"] }
 
 [dev-dependencies]
 tempfile = "3"

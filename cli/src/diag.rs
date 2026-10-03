@@ -10,7 +10,7 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term::{
     self,
-    termcolor::{ColorChoice, StandardStream},
+    termcolor::{ColorChoice, NoColor, StandardStream, WriteColor},
 };
 
 use crate::dart::Span;
@@ -132,6 +132,41 @@ pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
         ColorChoice::Never
     };
     let out = StandardStream::stderr(color);
+    emit_each(&mut out.lock(), app_dir, shown, diags, |d| eprintln!("{d}"));
+}
+
+/// The same rendering as [`render`], without colour, as lines: what `fsp dev` shows in its
+/// `fsp` pane (since 0.9.0).
+#[must_use]
+pub fn render_plain(app_dir: &Path, shown: &str, diags: &Diags) -> Vec<String> {
+    let mut lines = vec![];
+    for d in &diags.0 {
+        let mut buf = NoColor::new(Vec::new());
+        let mut failed = false;
+        emit_each(&mut buf, app_dir, shown, &Diags(vec![d.clone()]), |_| {
+            failed = true;
+        });
+        if failed {
+            lines.push(d.to_string());
+        } else {
+            lines.extend(
+                String::from_utf8_lossy(&buf.into_inner())
+                    .lines()
+                    .map(str::to_string),
+            );
+        }
+    }
+    lines
+}
+
+/// Writes each diagnostic with its source to `out`; `fallback` gets one that cannot be written.
+fn emit_each(
+    out: &mut dyn WriteColor,
+    app_dir: &Path,
+    shown: &str,
+    diags: &Diags,
+    mut fallback: impl FnMut(&Diag),
+) {
     let config = term::Config::default();
     let mut files = SimpleFiles::new();
     for d in &diags.0 {
@@ -152,10 +187,46 @@ pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
             }
             _ => base.with_message(format!("{shown}: {}", d.msg)),
         };
-        if term::emit_to_write_style(&mut out.lock(), &config, &files, &diagnostic).is_err() {
-            eprintln!("{d}");
+        if term::emit_to_write_style(out, &config, &files, &diagnostic).is_err() {
+            fallback(d);
         }
     }
+}
+
+/// Where a diagnostic is: its file (relative to the project root, as [`json_line`] spells it, and
+/// on disk) and a 1-based line and column.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Loc {
+    /// Relative to the project root: `lib/app/products/$id/page.dart`.
+    pub file: String,
+    /// Where `file` is on disk.
+    pub path: PathBuf,
+    pub line: usize,
+    /// Counts characters.
+    pub column: usize,
+}
+
+impl Loc {
+    /// `lib/app/products/$id/page.dart:6:18`: how an editor's link detector reads it.
+    #[must_use]
+    pub fn text(&self) -> String {
+        format!("{}:{}:{}", self.file, self.line, self.column)
+    }
+}
+
+/// The place `d` points at, when it has a span and the file can be read.
+#[must_use]
+pub fn location(app_dir: &Path, shown: &str, d: &Diag) -> Option<Loc> {
+    let span = d.span.as_ref()?;
+    let path = source_path(app_dir, shown, d)?;
+    let src = std::fs::read_to_string(&path).ok()?;
+    let before = src.get(..span.bytes.start)?;
+    Some(Loc {
+        file: shown_file(shown, d),
+        path,
+        line: span.line,
+        column: before.rsplit('\n').next().unwrap_or("").chars().count() + 1,
+    })
 }
 
 /// One diagnostic as a JSON object, for editors:
@@ -165,15 +236,10 @@ pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
 /// about a place in the file.
 pub fn json_line(app_dir: &Path, shown: &str, d: &Diag) -> String {
     let (line, column) = match &d.span {
-        Some(span) => {
-            let column = source_path(app_dir, shown, d)
-                .and_then(|p| std::fs::read_to_string(p).ok())
-                .and_then(|src| {
-                    let before = src.get(..span.bytes.start)?;
-                    Some(before.rsplit('\n').next().unwrap_or("").chars().count() + 1)
-                });
-            (Some(span.line), column)
-        }
+        Some(span) => (
+            Some(span.line),
+            location(app_dir, shown, d).map(|l| l.column),
+        ),
         None => (None, None),
     };
     serde_json::json!({

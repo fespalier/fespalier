@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'telemetry.dart' show telemetryDeferredEnd, telemetryDeferredStart;
+
 /// The code of one deferred route: its `page.dart`, which the generated file imports
 /// `deferred as` (`const deferred = true;` in a `route.dart`, or `deferred: true` in
 /// pubspec.yaml). Loaded once, the first time the page is built or ahead of time
@@ -18,6 +20,7 @@ final class DeferredLibrary {
     Future<void> Function() loadLibrary,
     this.file, {
     this.loadsInFakeAsync = false,
+    this.route,
   }) : _loadLibrary = loadLibrary;
 
   final Future<void> Function() _loadLibrary;
@@ -30,6 +33,10 @@ final class DeferredLibrary {
   /// for a load a test controls itself (a `Completer`'s future). In a debug build,
   /// starting a load that can't complete under the widget-test binding throws.
   final bool loadsInFakeAsync;
+
+  /// The page's pattern (`/products/:id`), which the generator passes only in an app made with
+  /// `telemetry: true` (since 0.8.0): it is what makes a load a telemetry span.
+  final String? route;
 
   static final Set<DeferredLibrary> _registered = {};
 
@@ -44,13 +51,29 @@ final class DeferredLibrary {
   /// timer) when the code is already loaded.
   Future<void> load() {
     if (_loaded) return Future<void>.value();
-    return _loading ??= Future<void>.sync(_loadLibrary).then(
+    final pending = _loading;
+    if (pending != null) return pending;
+    // A call that joins a load in flight starts no span of its own.
+    final page = route;
+    final Object? span = page == null
+        ? null
+        : telemetryDeferredStart(file, page);
+    return _loading = Future<void>.sync(_loadLibrary).then(
       (_) {
         _loaded = true;
         _loading = null;
+        if (page != null) telemetryDeferredEnd(span);
       },
       onError: (Object error, StackTrace stackTrace) {
         _loading = null;
+        if (page != null) {
+          telemetryDeferredEnd(
+            span,
+            failed: true,
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
         Error.throwWithStackTrace(error, stackTrace);
       },
     );

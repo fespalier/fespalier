@@ -6,6 +6,8 @@ import 'package:hooks_riverpod/misc.dart'
 
 import 'devtools/devtools.dart'
     show kFespalierDevTools, traceActionEnd, traceActionStart;
+import 'telemetry.dart'
+    show TelemetrySite, telemetryActionEnd, telemetryActionStart;
 
 /// The provider of one function of an `action.dart`: what the generated
 /// `XRoute.action` (or `XRoute.approveAction`, ...) is, called with the action's keys when
@@ -35,10 +37,17 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
   /// has no reason to.
   ///
   /// [site] and [key] say which action this is to the DevTools extension (since 0.7.0); they
-  /// are only kept in a build that has it.
-  ActionNotifier(this._run, this._invalidates, {String? site, Object? key})
-    : _site = kFespalierDevTools ? site : null,
-      _key = kFespalierDevTools ? key : null;
+  /// are only kept in a build that has it. [telemetry] names it to telemetry (since 0.8.0); only
+  /// an app made with `telemetry: true` passes one.
+  ActionNotifier(
+    this._run,
+    this._invalidates, {
+    String? site,
+    Object? key,
+    TelemetrySite? telemetry,
+  }) : _site = kFespalierDevTools ? site : null,
+       _key = kFespalierDevTools ? key : null,
+       _telemetry = telemetry;
 
   final FutureOr<T> Function(Ref ref, I input) _run;
   final Iterable<ProviderListenable<AsyncValue<Object?>>> Function()
@@ -48,6 +57,9 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
   /// without it.
   final String? _site;
   final Object? _key;
+
+  /// The action as telemetry names it; null in an app made without `telemetry: true`.
+  final TelemetrySite? _telemetry;
 
   /// Counts the runs, so that only the last one started (or [reset]) writes the state.
   int _runs = 0;
@@ -69,15 +81,19 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     final int? trace = kFespalierDevTools
         ? traceActionStart(_site, _key, input)
         : null;
+    final telemetry = _telemetry;
+    final Object? span = telemetry == null
+        ? null
+        : telemetryActionStart(telemetry);
     final FutureOr<T> result;
     try {
       result = _run(ref, input);
     } catch (error, stackTrace) {
-      _fail(run, error, stackTrace, trace);
+      _fail(run, error, stackTrace, trace, span, false);
       rethrow;
     }
     if (result is! Future<T>) {
-      _succeed(run, result, trace);
+      _succeed(run, result, trace, span, false);
       return result;
     }
     // Alive until the write is over, whoever watches: the state of a submission that
@@ -87,7 +103,7 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     return result.then<T>(
       (value) {
         try {
-          _succeed(run, value, trace);
+          _succeed(run, value, trace, span, true);
         } finally {
           link.close();
         }
@@ -95,7 +111,7 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
       },
       onError: (Object error, StackTrace stackTrace) {
         try {
-          _fail(run, error, stackTrace, trace);
+          _fail(run, error, stackTrace, trace, span, true);
         } finally {
           link.close();
         }
@@ -111,8 +127,9 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     if (ref.mounted) state = const AsyncData<Null>(null);
   }
 
-  void _succeed(int run, T value, int? trace) {
+  void _succeed(int run, T value, int? trace, Object? span, bool isAsync) {
     if (kFespalierDevTools) traceActionEnd(trace, result: value);
+    if (_telemetry != null) telemetryActionEnd(span, isAsync: isAsync);
     if (!ref.mounted) return;
     if (run == _runs) state = AsyncData<T?>(value);
     for (final target in _invalidates()) {
@@ -121,9 +138,25 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     }
   }
 
-  void _fail(int run, Object error, StackTrace stackTrace, int? trace) {
+  void _fail(
+    int run,
+    Object error,
+    StackTrace stackTrace,
+    int? trace,
+    Object? span,
+    bool isAsync,
+  ) {
     if (kFespalierDevTools) {
       traceActionEnd(trace, failed: true, error: error);
+    }
+    if (_telemetry != null) {
+      telemetryActionEnd(
+        span,
+        isAsync: isAsync,
+        failed: true,
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
     if (ref.mounted && run == _runs) state = AsyncError<T?>(error, stackTrace);
   }
@@ -137,24 +170,29 @@ StateError _notAProvider(Object target) => StateError(
 
 /// The provider of an action with no keys: [run] is the function of `action.dart` and
 /// [invalidates] what a success makes stale. Called by the generated file, which passes [site],
-/// the action's key in the route tree DevTools reads (since 0.7.0).
+/// the action's key in the route tree DevTools reads (since 0.7.0), and, in an app made with
+/// `telemetry: true`, [telemetry] (since 0.8.0).
 ActionProvider<I, T> actionProvider<I, T>(
   FutureOr<T> Function(Ref ref, I input) run, {
   required Iterable<ProviderListenable<AsyncValue<Object?>>> Function()
   invalidates,
   String? site,
+  TelemetrySite? telemetry,
 }) => NotifierProvider.autoDispose<ActionNotifier<I, T>, AsyncValue<T?>>(
-  () => ActionNotifier<I, T>(run, invalidates, site: site),
+  () =>
+      ActionNotifier<I, T>(run, invalidates, site: site, telemetry: telemetry),
 );
 
 /// The provider family of an action keyed by [K]: its segments and query parameters, like a
-/// `data.dart`'s. Called by the generated file, which passes [site] as [actionProvider] does.
+/// `data.dart`'s. Called by the generated file, which passes [site] and [telemetry] as
+/// [actionProvider] does.
 NotifierProviderFamily<ActionNotifier<I, T>, AsyncValue<T?>, K>
 actionFamily<K, I, T>(
   FutureOr<T> Function(Ref ref, K key, I input) run, {
   required Iterable<ProviderListenable<AsyncValue<Object?>>> Function(K key)
   invalidates,
   String? site,
+  TelemetrySite? telemetry,
 }) => NotifierProvider.autoDispose
     .family<ActionNotifier<I, T>, AsyncValue<T?>, K>(
       (key) => ActionNotifier<I, T>(
@@ -162,6 +200,7 @@ actionFamily<K, I, T>(
         () => invalidates(key),
         site: site,
         key: key,
+        telemetry: telemetry,
       ),
     );
 

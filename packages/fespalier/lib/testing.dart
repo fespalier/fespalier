@@ -21,6 +21,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show Override;
 
 import 'src/deferred.dart';
+import 'src/telemetry.dart';
 
 Duration? _noRetry(int retryCount, Object error) => null;
 
@@ -110,4 +111,81 @@ String currentLocation(WidgetTester tester) {
   final top = matches.lastOrNull;
   if (top is ImperativeRouteMatch) return top.matches.uri.toString();
   return router.routeInformationProvider.value.uri.toString();
+}
+
+/// A [FespalierTelemetry] that keeps what it is told, as lines a test can compare (since 0.8.0).
+///
+/// Install it with `FespalierTelemetry.install(recording)` in `setUp` and
+/// `FespalierTelemetry.install(null)` in `tearDown`. Each operation has a number, `#3`, which
+/// ties its start to its end and names the navigation it ran under:
+///
+/// ```text
+/// #1 start navigate /products/1
+/// #2 start guard checkout/guard.dart parent=#1
+/// #2 end guard pass
+/// #1 page enter /products/:id
+/// #1 end navigate ok route=/products/:id kind=go
+/// ```
+///
+/// The grammar of a line:
+///
+/// ```text
+/// #n start OP WHAT [keyed] [parent=#m]
+/// #n end OP OUTCOME [async] [-> LOCATION] [error=TEXT]
+/// #n end navigate OUTCOME [route=P] [kind=K] [from=P] [redirected] [depth=N] [at=LOCATION]
+/// #n page enter|focus|leave PATTERN
+/// ```
+///
+/// WHAT is the requested location (navigate), the file (guard, redirect, data), `file#name`
+/// (action) or `file route=PATTERN` (deferred); `keyed` is data from a family.
+final class RecordingTelemetry extends FespalierTelemetry {
+  /// Creates a recorder with an empty [log].
+  RecordingTelemetry();
+
+  /// What happened, in order.
+  final List<String> log = [];
+
+  final Map<int, TelemetryOp> _ops = {};
+  int _last = 0;
+
+  @override
+  Object? start(TelemetryStart start) {
+    final id = ++_last;
+    _ops[id] = start.op;
+    final what = switch (start.op) {
+      TelemetryOp.navigate => start.uri?.toString() ?? '(commit)',
+      TelemetryOp.action => '${start.site?.file}#${start.site?.name}',
+      TelemetryOp.deferred => '${start.file} route=${start.route}',
+      _ => '${start.site?.file}${start.keyed ? ' keyed' : ''}',
+    };
+    final parent = start.parent == null ? '' : ' parent=#${start.parent}';
+    log.add('#$id start ${start.op.name} $what$parent');
+    return id;
+  }
+
+  @override
+  void end(Object? token, TelemetryEnd end) {
+    final op = _ops[token];
+    final parts = <String>[
+      '#$token end ${op?.name} ${end.outcome}',
+      if (end.isAsync) 'async',
+      if (end.location != null && op != TelemetryOp.navigate)
+        '-> ${end.location}',
+      if (op == TelemetryOp.navigate) ...[
+        if (end.route != null) 'route=${end.route}',
+        if (end.kind != null) 'kind=${end.kind}',
+        if (end.from != null) 'from=${end.from}',
+        if (end.redirected) 'redirected',
+        if (end.depth > 0) 'depth=${end.depth}',
+        if (end.location != null) 'at=${end.location}',
+      ],
+      if (end.error != null) 'error=${end.error}',
+    ];
+    log.add(parts.join(' '));
+  }
+
+  @override
+  void page(Object? navigation, TelemetryPage page) {
+    log.add('#$navigation page ${page.kind.name} ${page.route}');
+  }
 }

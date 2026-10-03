@@ -23,6 +23,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart' show Ref;
 import '../navigation_kind.dart';
 import '../route_match.dart' show UrlMatch;
 import '../segments.dart' show GuardResult;
+import '../telemetry.dart'
+    show TelemetrySite, telemetryDataTrace, telemetryGuardTrace;
 import 'protocol.dart';
 
 /// Whether fespalier's DevTools support is compiled in: false in release builds, and in any
@@ -286,10 +288,20 @@ bool _skipped = false;
 ///
 /// A guard that throws before it returns never gets here, so it is not shown; go_router gets the
 /// error as it always did.
+///
+/// [telemetry] (since 0.8.0) is the call site as telemetry names it: the generated file passes
+/// one `const` for each guard in an app made with `telemetry: true`, and none otherwise, so an
+/// app without it never reaches the telemetry code.
 @pragma('vm:prefer-inline')
 @pragma('dart2js:tryInline')
-GuardResult traceGuard(GoRouterState state, String site, GuardResult result) {
+GuardResult traceGuard(
+  GoRouterState state,
+  String site,
+  GuardResult result, {
+  TelemetrySite? telemetry,
+}) {
   if (kFespalierDevTools) _traceGuard(state, site, result);
+  if (telemetry != null) telemetryGuardTrace(state, site, telemetry, result);
   return result;
 }
 
@@ -507,10 +519,22 @@ Expando<int> _containerIds = Expando<int>('fespalier containers');
 ///
 /// It reads no provider and listens to nothing: a `Future` gets a side `then` that only records
 /// how it ended, a `Stream` is not touched, and [ref] gets one `onDispose` callback.
+///
+/// [telemetry] (since 0.8.0) is the call site as telemetry names it, passed only by an app made
+/// with `telemetry: true`.
 @pragma('vm:prefer-inline')
 @pragma('dart2js:tryInline')
-T traceData<T>(Ref ref, String site, Object? key, T result) {
+T traceData<T>(
+  Ref ref,
+  String site,
+  Object? key,
+  T result, {
+  TelemetrySite? telemetry,
+}) {
   if (kFespalierDevTools) _traceData(ref, site, key, result);
+  if (telemetry != null) {
+    telemetryDataTrace(ref, telemetry, key != null, result);
+  }
   return result;
 }
 

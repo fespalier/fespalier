@@ -15,6 +15,10 @@ import 'package:flutter/widgets.dart' show BuildContext, ErrorDescription;
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'navigation_kind.dart';
+import 'route_info.dart' show pathTemplate;
+import 'telemetry.dart';
+
 /// The hooks of one `observe.dart` for one page: what a generated `app.g.dart` builds for the
 /// route at a location. [file] names the observe.dart (relative to the app folder) in error
 /// reports.
@@ -135,6 +139,23 @@ final class _Entered {
   final Stopwatch watch = Stopwatch()..start();
 }
 
+/// A navigation telemetry is following: from the request (or the commit that had none) to the
+/// end of the first frame after the commit.
+final class _Nav {
+  _Nav(this.token, this.requested);
+
+  /// What the sink returned for the start.
+  final Object? token;
+
+  /// The location asked for; null for a navigation that starts at its commit (a pop, a guard's
+  /// refresh).
+  final Uri? requested;
+
+  bool committed = false;
+  String? kind;
+  int depth = 0;
+}
+
 /// The one watch on a router that the lifecycle hooks and telemetry share. Not exported: the
 /// public entry points are [observeAttach] and `telemetryAttach`.
 final class RouterWatch {
@@ -160,12 +181,102 @@ final class RouterWatch {
   final Map<String, _Entered> _entered = {};
   String? _top;
 
+  // Telemetry: set by `enableTelemetry`.
+  bool _telemetry = false;
+  String Function()? _base;
+  _Nav? _nav;
+  NavSnapshot? _snapshot;
+  String? _topPattern;
+
   /// Looks at a router that already has a location when it is attached.
   void scheduleFirst() {
     if (router.routerDelegate.currentConfiguration.isNotEmpty) _schedule();
   }
 
-  void _committed() => _schedule();
+  /// Makes the watch report navigations and page events to the installed
+  /// [FespalierTelemetry] sink. [base] returns where the tree is mounted.
+  void enableTelemetry(String Function() base) {
+    _base = base;
+    if (_telemetry) return;
+    _telemetry = true;
+    router.routeInformationProvider.addListener(_requested);
+    final config = router.routerDelegate.currentConfiguration;
+    if (config.isEmpty && config.error == null) {
+      // Not parsed yet: this is the initial navigation, and it starts now.
+      if (telemetryOn) {
+        final uri = router.routeInformationProvider.value.uri;
+        _nav = _Nav(telemetryNavigationStart(uri), uri);
+      }
+    } else {
+      // Attached late: the router already shows its first location.
+      final (:kind, :now) = classifyNavigation(config, null);
+      _snapshot = now;
+      if (telemetryOn) {
+        _nav = _Nav(telemetryNavigationStart(null), null)
+          ..committed = true
+          ..kind = kind
+          ..depth = now.depth;
+      }
+      _schedule();
+    }
+  }
+
+  /// The route information provider notified: a location was requested (`go`, `push`,
+  /// `replace`, a tab switch, the platform), or the router was refreshed.
+  void _requested() {
+    try {
+      if (!telemetryOn) return;
+      final uri = router.routeInformationProvider.value.uri;
+      // The same location as the one committed: `GoRouter.refresh()` only notifies again, and a
+      // `go` to where you are commits nothing. Not a new navigation.
+      if (uri == router.routerDelegate.currentConfiguration.uri) return;
+      _endPending();
+      _nav = _Nav(telemetryNavigationStart(uri), uri);
+    } catch (e) {
+      telemetryAttachError(e);
+    }
+  }
+
+  /// A navigation is in the way of a newer one: one that never committed is superseded, and
+  /// one that did is ended with what it committed.
+  void _endPending() {
+    final nav = _nav;
+    if (nav == null) return;
+    _nav = null;
+    if (!nav.committed) {
+      telemetryNavigationEnd(
+        nav.token,
+        const TelemetryEnd(TelemetryOutcome.superseded),
+      );
+      return;
+    }
+    final config = router.routerDelegate.currentConfiguration;
+    final walk = _Walk()..add(config.matches, config.uri, const []);
+    _endNavigation(nav, config, walk.instances.lastOrNull);
+  }
+
+  void _committed() {
+    if (_telemetry) _committedForTelemetry();
+    _schedule();
+  }
+
+  void _committedForTelemetry() {
+    try {
+      final config = router.routerDelegate.currentConfiguration;
+      if (config.isEmpty && config.error == null) return;
+      final (:kind, :now) = classifyNavigation(config, _snapshot);
+      _snapshot = now;
+      if (!telemetryOn) return;
+      // A commit nobody asked for (a pop, a guard's refresh) starts its navigation here.
+      final nav = _nav ??= _Nav(telemetryNavigationStart(null), null);
+      // A second commit before the frame (a refresh) keeps the kind of the first.
+      if (!nav.committed) nav.kind = kind;
+      nav.committed = true;
+      nav.depth = now.depth;
+    } catch (e) {
+      telemetryAttachError(e);
+    }
+  }
 
   void _schedule() {
     if (_pending) return;
@@ -192,25 +303,87 @@ final class RouterWatch {
           b.any((k) => !walk.activeBranches.contains(k));
     }
 
+    final pages = <TelemetryPage>[];
     // Leave: every entered page that is on no navigator any more, newest first.
     for (final e in _entered.values.toList().reversed) {
       if (present.contains(e.instance.id) || parked(e)) continue;
       _entered.remove(e.instance.id);
+      if (_telemetry) {
+        pages.add(
+          TelemetryPage(
+            TelemetryPageKind.leave,
+            e.pattern,
+            duration: e.watch.elapsed,
+          ),
+        );
+      }
       _run(e.hooks.reversed, 'onLeave', (h) => h.onLeave);
     }
     // Then the page on top: entered for the first time, or on top again.
-    final visible = walk.instances.isEmpty ? null : walk.instances.last;
+    final visible = walk.instances.lastOrNull;
     if (visible != null) {
       final known = _entered[visible.id];
+      final pattern = _telemetry ? _patternOf(visible) : null;
       if (known == null) {
         final hooks = _bind(visible.uri);
-        _entered[visible.id] = _Entered(visible, hooks, null);
+        _entered[visible.id] = _Entered(visible, hooks, pattern);
+        if (_telemetry) {
+          pages.add(TelemetryPage(TelemetryPageKind.enter, pattern));
+        }
         _run(hooks, 'onEnter', (h) => h.onEnter);
       } else if (_top != visible.id) {
+        if (_telemetry) {
+          pages.add(TelemetryPage(TelemetryPageKind.focus, pattern));
+        }
         _run(_bind(visible.uri), 'onFocus', (h) => h.onFocus);
       }
     }
     _top = visible?.id;
+    if (_telemetry) _finishTelemetry(config, visible, pages);
+  }
+
+  String? _patternOf(_Instance i) =>
+      pathTemplate(i.fullPath, _base?.call() ?? '/');
+
+  /// The first frame after a commit is built: the page events, then the end of the navigation.
+  void _finishTelemetry(
+    RouteMatchList config,
+    _Instance? visible,
+    List<TelemetryPage> pages,
+  ) {
+    try {
+      final nav = _nav;
+      if (nav == null || !nav.committed) return;
+      for (final page in pages) {
+        telemetryPageEvent(nav.token, page);
+      }
+      _nav = null;
+      _endNavigation(nav, config, visible);
+    } catch (e) {
+      telemetryAttachError(e);
+    }
+  }
+
+  void _endNavigation(_Nav nav, RouteMatchList config, _Instance? visible) {
+    final notFound = config.error != null;
+    final route = notFound
+        ? null
+        : (visible == null ? null : _patternOf(visible));
+    final location = visible?.uri ?? config.uri;
+    final requested = nav.requested;
+    telemetryNavigationEnd(
+      nav.token,
+      TelemetryEnd(
+        notFound ? TelemetryOutcome.notFound : TelemetryOutcome.ok,
+        route: route,
+        from: _topPattern,
+        kind: nav.kind,
+        location: location.toString(),
+        redirected: requested != null && requested.path != location.path,
+        depth: nav.depth,
+      ),
+    );
+    _topPattern = route;
   }
 
   List<RouteHooks> _bind(Uri uri) {

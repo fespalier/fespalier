@@ -217,7 +217,10 @@ class _RouteLinkState extends ConsumerState<RouteLink> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _scope = RouteLinkScope.maybeOf(context);
-    _tickerEnabled = TickerMode.valuesOf(context).enabled;
+    // `TickerMode.valuesOf` is Flutter 3.35+ and the package supports 3.32; `of` still
+    // answers the same until the floor moves.
+    // ignore: deprecated_member_use
+    _tickerEnabled = TickerMode.of(context);
     _viewSize = MediaQuery.maybeSizeOf(context);
     _listenToScrollables();
     _dropStaleHandle();

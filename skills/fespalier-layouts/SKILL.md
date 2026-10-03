@@ -1,6 +1,6 @@
 ---
 name: fespalier-layouts
-description: "Layouts and shells in fespalier — layout.dart (a ShellRoute around a folder and everything below it), (group) layouts, tab layouts on a StatefulNavigationShell with tabs, tabOptions and a custom container, nested tabs, transition.dart and how a layout's shell animates, dialogs and sheets as routes, state restoration ids, scroll restoration on the browser's back and forward, and adaptive patterns (rail versus bar, drawer versus side list), and, since 0.8.1, menus and breadcrumbs generated from nav.dart files (a drawer, a tab bar, a breadcrumb row that respects guards). Load before adding or changing a layout.dart, a tab bar, a menu, a nav.dart, a transition.dart or restoration, or when a layout wraps the wrong pages, a tab loses its state, or a ListTile asserts about its Material."
+description: "Layouts and shells in fespalier — layout.dart (a ShellRoute around a folder and everything below it), (group) layouts, tab layouts on a StatefulNavigationShell with tabs, tabOptions and a custom container, nested tabs, transition.dart and how a layout's shell animates, dialogs and sheets as routes, state restoration ids, scroll restoration on the browser's back and forward, and adaptive layouts (since 0.9.0 the package fespalier_adaptive draws the nav.dart menu as a navigation bar, a rail or a drawer by window width, AdaptiveNavScaffold and AdaptiveNavBuilder; by hand before that), and, since 0.8.1, menus and breadcrumbs generated from nav.dart files (a drawer, a tab bar, a breadcrumb row that respects guards). Load before adding or changing a layout.dart, a tab bar, a menu, a nav.dart, a transition.dart or restoration, or when a layout wraps the wrong pages, a tab loses its state, a phone shows no bottom bar, or a ListTile asserts about its Material."
 ---
 
 # fespalier-layouts
@@ -116,28 +116,50 @@ and the app-without-nav.dart guarantee are in
 wraps each page in `RouteScrollMemory`; the browser's back and forward then give a scrollable its
 offset back, **only if it has a `PageStorageKey`**, and a `go` starts at the top. Same page.
 
-## Adaptive
+## Adaptive (`fespalier_adaptive`, since 0.9.0)
 
-There is no adaptive API: branch on `MediaQuery.sizeOf(context).width` inside the
-layout and render the same `child` or `navigationShell` either way.
-[`references/adaptive-layouts.md`](references/adaptive-layouts.md) has a
-bar-versus-rail tab layout whose tab state survives a resize, and a
-drawer-versus-side-list plain layout that highlights the current route through
-`AppManifest.of(GoRouterState.of(context))`.
+The core has no adaptive API; the package `fespalier_adaptive` (a repository dependency at fespalier's tag,
+no third-party dependency, generated code unchanged) draws `AppMenu.watch(ref, under: '(tabs)')` as a
+`NavigationBar` under 600 logical pixels, a `NavigationRail` from 600 and a permanent `NavigationDrawer` from
+1200, around the same body, so a tab keeps its state when the window is resized:
+
+```dart
+AdaptiveNavScaffold(
+  shell: navigationShell,                       // or child: child, for a plain layout
+  menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),   // under: gives each entry its tab
+  breakpoints: const NavBreakpoints(rail: 840), // optional; null means never
+)
+```
+
+- **A phone's bar is hidden on a page no menu entry covers**: a `NavigationBar` cannot show "nothing
+  selected". A debug build says `fespalier_adaptive: no menu entry is the current tab (3) of the tab
+layout, so the navigation bar is hidden. ...` once; give the tab's folder a `nav.dart`, or render the
+  menu with `AdaptiveNavBuilder`. A rail and a drawer show none selected.
+- A tab folder with no `page.dart` (a heading) is a bar destination because it is a tab; in the drawer it is
+  a section title over its children. Guards hide an entry or, with `NavRefused.disable`, turn it off.
+- `package:fespalier_adaptive/fespalier_adaptive.dart` is the model (`AdaptiveNav`, `NavBreakpoints`,
+  `AdaptiveNavBuilder`) with **no Material import**, for Cupertino or `material_ui`; `material.dart` is the
+  scaffold. In a test, Flutter's default 800 x 600 window is a **rail** with the default breakpoints.
+
+All of it, with compiled samples, is in [`references/adaptive-layouts.md`](references/adaptive-layouts.md).
+Without the package, or on 0.8.x, [`references/adaptive-by-hand.md`](references/adaptive-by-hand.md) has a
+bar-versus-rail tab layout whose tab state survives a resize, and a drawer-versus-side-list plain layout
+that highlights the current route through `AppManifest.of(GoRouterState.of(context))`.
 
 ## Quick diagnosis
 
-| Symptom                                           | Likely cause                                                                              |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Routes do not animate (go_router 18)              | No root `transition.dart`; with Flutter's `MaterialApp` go_router 18 animates nothing     |
-| Every layout shell now animates after upgrading   | 0.3.0: a `transition.dart` at or above a layout animates its shell too                    |
-| A tab lost its state on switching                 | A custom `container` that does not keep every child in the tree (use `Offstage`/`Stack`)  |
-| `tabs` error on a `(group)` or `$folder` tab      | The tab's first route has a `:segment`; add `tabOptions` `initialLocation` or restructure |
-| A full-screen page shows the tab bar              | It is inside the layout's folder without `navigator.dart` (or outside it, to avoid tabs)  |
-| Dialog opens over a blank screen on a deep link   | The dialog route has no parent page above it in the tree                                  |
-| A menu entry is missing                           | Its folder needs segments the location lacks, `inMenu: false`, or a guard refuses it      |
-| Restored app forgets a page's local state         | Custom `Page` without `restorationId: key.value`, or renamed folders                      |
-| A list starts at the top after the browser's back | `scroll_restoration` is off, or the scrollable has no `PageStorageKey` (since 0.8.1)      |
+| Symptom                                           | Likely cause                                                                                   |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Routes do not animate (go_router 18)              | No root `transition.dart`; with Flutter's `MaterialApp` go_router 18 animates nothing          |
+| Every layout shell now animates after upgrading   | 0.3.0: a `transition.dart` at or above a layout animates its shell too                         |
+| A tab lost its state on switching                 | A custom `container` that does not keep every child in the tree (use `Offstage`/`Stack`)       |
+| `tabs` error on a `(group)` or `$folder` tab      | The tab's first route has a `:segment`; add `tabOptions` `initialLocation` or restructure      |
+| A full-screen page shows the tab bar              | It is inside the layout's folder without `navigator.dart` (or outside it, to avoid tabs)       |
+| Dialog opens over a blank screen on a deep link   | The dialog route has no parent page above it in the tree                                       |
+| A menu entry is missing                           | Its folder needs segments the location lacks, `inMenu: false`, or a guard refuses it           |
+| No bottom bar on a phone, a rail in a test        | No menu entry is the current tab, or the test window is 800 wide (0.9.0, `fespalier_adaptive`) |
+| Restored app forgets a page's local state         | Custom `Page` without `restorationId: key.value`, or renamed folders                           |
+| A list starts at the top after the browser's back | `scroll_restoration` is off, or the scrollable has no `PageStorageKey` (since 0.8.1)           |
 
 For an `fsp` error message, see
 [`fespalier-troubleshooting`](../fespalier-troubleshooting/).

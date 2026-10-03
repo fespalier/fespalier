@@ -338,3 +338,25 @@ expect(find.text('Hello Bob'), findsOneWidget);                 // the optimisti
 api.gate!.complete();
 await tester.pump();                                            // then assert the server's value
 ```
+
+## An adaptive layout (since 0.9.0)
+
+With `package:fespalier_adaptive`, the component follows the window's width, and **Flutter's default test window is
+800 x 600 logical pixels: a rail with the default breakpoints** (a bar with `NavBreakpoints(rail: 840)`, what
+`examples/tabs` uses). Size the window with `tester.view`, and reset it:
+
+```dart
+tester.view.physicalSize = const Size(400, 900); // a bar; 700 is a rail, 1300 a drawer
+tester.view.devicePixelRatio = 1;
+addTearDown(tester.view.reset);
+await pumpRouter(tester, AppRoutes.router(initialLocation: '/search'));
+expect(find.byType(NavigationBar), findsOneWidget);
+
+tester.view.physicalSize = const Size(1300, 900); // resize in the same test
+await tester.pumpAndSettle();
+expect(find.byType(NavigationDrawer), findsOneWidget);
+```
+
+A tab's state survives the resize, so a test can count on the counter it tapped before it. The model alone needs no
+widget: `AdaptiveNav(menu: items, width: 1300)` with `NavItem`s built by hand. A compiling test is in
+[`fespalier-layouts`](../../fespalier-layouts/references/adaptive-layouts.md).

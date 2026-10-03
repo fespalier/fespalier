@@ -101,6 +101,14 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier_adaptive/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_adaptive/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier_image/pubspec.yaml"
         },
         {

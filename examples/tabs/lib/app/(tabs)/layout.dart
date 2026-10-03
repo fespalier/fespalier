@@ -1,5 +1,7 @@
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_adaptive/material.dart';
 import 'package:flutter/material.dart';
+import 'package:tabs/app.g.dart';
 import 'package:tabs/cross_fade.dart';
 
 /// Asking for a `StatefulNavigationShell` instead of a `child` makes this a
@@ -28,30 +30,24 @@ Widget container(
 ) =>
     CrossFadeContainer(currentIndex: shell.currentIndex, children: children);
 
+/// The bar is the menu: `nav.dart` in each tab's folder says what it is called and what its icon
+/// is, and `AdaptiveNavScaffold` shows `AppMenu.watch` as a `NavigationBar` on a phone, a
+/// `NavigationRail` on a tablet and a `NavigationDrawer` on a wide window, around the same
+/// `navigationShell`, so a tab keeps its state when the window changes size.
+///
+/// `rail: 840`: a bar up to small tablets in portrait (the default is 600), and Flutter's default
+/// 800 x 600 test window keeps the bar. The drawer starts at 1200.
 class TabsLayout extends StatelessWidget {
   const TabsLayout({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        body: navigationShell,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: navigationShell.currentIndex,
-          onDestinationSelected: (i) => navigationShell.goBranch(
-            i,
-            // Tapping the current tab goes back to its first page.
-            initialLocation: i == navigationShell.currentIndex,
-          ),
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-            NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
-            NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
-            NavigationDestination(
-              icon: Icon(Icons.library_books),
-              label: 'Library',
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) => AdaptiveNavScaffold(
+        shell: navigationShell,
+        // `under:` the tab layout's folder, so each entry knows its tab: tapping the current one
+        // goes back to its first page, and the Library heading is a tab.
+        menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),
+        breakpoints: const NavBreakpoints(rail: 840),
       );
 }

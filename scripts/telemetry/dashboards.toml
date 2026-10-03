@@ -301,7 +301,7 @@ and what to do; click a tile for the details."""
   title = "Verdicts, in words"
   type = "table"
   width = "full"
-  height = 15
+  height = 17
   grafana = false
   transpose = true
   description = "The same checks as the tiles, said in words, so colour is never the only signal. 'Too few to judge' means fewer than 20 samples in this time range."
@@ -449,8 +449,8 @@ description = "Are screens opening fast, where do people go, and what slows a sc
   marks = "screen_open"
   description = "The slowest-5 % open time over time. The dashed lines are the good (300 ms) and bad (1 s) marks. A jump right after a change points at that change."
   sql = "SELECT histogram(_timestamp) AS t, {p95} AS p95_ms {from} WHERE {nav_timed_sql} AND {svc} GROUP BY t ORDER BY t"
-  columns = [{ name = "t", axis = "x", time = true, label = "Time" }, { name = "p95_ms", label = "Slowest 5 % of opens" }]
-  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__interval])))", legend = "Slowest 5 % of opens" }]
+  columns = [{ name = "t", axis = "x", time = true, label = "Time" }, { name = "p95_ms", label = "Slowest 5 %" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__interval])))", legend = "Slowest 5 %" }]
 
   [[dashboard.panels]]
   id = "most_viewed"

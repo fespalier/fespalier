@@ -570,7 +570,7 @@
             "uid": "fespalier-openobserve"
           },
           "expr": "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__interval])))",
-          "legendFormat": "Slowest 5 % of opens",
+          "legendFormat": "Slowest 5 %",
           "instant": false,
           "range": true
         }

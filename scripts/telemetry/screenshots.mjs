@@ -106,6 +106,13 @@ const NOT_ENOUGH = /not enough data yet/i;
 
 // File name -> where it is and what to wait for.
 const SHOTS = [
+  { file: "grafana-app-health.png", ui: "grafana", dashboard: "health" },
+  {
+    file: "grafana-screens.png",
+    ui: "grafana",
+    dashboard: "screens",
+    limit: 1000,
+  },
   {
     file: "openobserve-app-health.png",
     ui: "o2",
@@ -121,18 +128,12 @@ const SHOTS = [
     file: "openobserve-actions.png",
     ui: "o2",
     dashboard: "fespalier · Actions",
+    limit: 850,
   },
   {
     file: "openobserve-errors.png",
     ui: "o2",
     dashboard: "fespalier · Errors",
-    limit: 900,
-  },
-  { file: "grafana-app-health.png", ui: "grafana", dashboard: "health" },
-  {
-    file: "grafana-screens.png",
-    ui: "grafana",
-    dashboard: "screens",
     limit: 1000,
   },
 ];
@@ -301,7 +302,30 @@ const serveApp = (dir) =>
   });
 
 /** Opens the example app's routes, so that its real spans arrive beside the seeded ones. */
+/** How many fespalier spans of the service OpenObserve holds. */
+const appSpans = async () => {
+  const search = {
+    query: {
+      sql: `SELECT COUNT(*) AS n FROM "default" WHERE service_name = '${SERVICE}' AND fespalier_operation IS NOT NULL`,
+      start_time: Date.now() * 1000 - 3600e6,
+      end_time: Date.now() * 1000 + 60e6,
+      from: 0,
+      size: 1,
+    },
+  };
+  const response = await fetch(`${urls.o2}/api/default/_search?type=traces`, {
+    method: "POST",
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(search),
+  });
+  return (await response.json()).hits?.[0]?.n ?? 0;
+};
+
 const visitApp = async (chromium, launch) => {
+  const before = await appSpans();
   const server = await serveApp(resolve(appBuild));
   const browser = await chromium.launch(launch);
   try {
@@ -321,35 +345,16 @@ const visitApp = async (chromium, launch) => {
     );
     for (const route of routes) {
       await page.goto(`http://127.0.0.1:${APP_PORT}${route}`);
-      await sleep(2000);
+      await sleep(7000); // the exporter sends a batch every 5 s, and a page that goes away loses its batch
     }
-    await sleep(8000); // the OTLP exporter batches
+    await sleep(3000);
   } finally {
     await browser.close();
     server.close();
   }
-  const count = await (async () => {
-    const search = {
-      query: {
-        sql: `SELECT COUNT(*) AS n FROM "default" WHERE service_name = '${SERVICE}' AND fespalier_operation IS NOT NULL`,
-        start_time: Date.now() * 1000 - 3600e6,
-        end_time: Date.now() * 1000 + 60e6,
-        from: 0,
-        size: 1,
-      },
-    };
-    const response = await fetch(`${urls.o2}/api/default/_search?type=traces`, {
-      method: "POST",
-      headers: {
-        Authorization: authorization,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(search),
-    });
-    return (await response.json()).hits?.[0]?.n ?? 0;
-  })();
+  const count = (await appSpans()) - before;
   if (count <= 0) throw new Failure("no spans of the example app arrived");
-  console.log(`    ${count} spans of ${SERVICE} are in OpenObserve`);
+  console.log(`    ${count} spans of the example app arrived in OpenObserve`);
 };
 
 // ----------------------------------------------------------------------------------- browser
@@ -375,12 +380,12 @@ const o2Url = async (title) => {
     throw new Failure(
       `OpenObserve has no dashboard "${title}" in the folder fespalier`,
     );
-  const query = `org_identifier=default&dashboard=${found.dashboard_id}&folder=${folder.folderId}&tab=default&period=15m&var-service=${SERVICE}`;
+  const query = `org_identifier=default&dashboard=${found.dashboard_id}&folder=${folder.folderId}&tab=default&period=10m&var-service=${SERVICE}`;
   return `${urls.o2}/web/dashboards/view?${query}`;
 };
 
 const grafanaUrl = (uid) =>
-  `${urls.grafana}/d/fespalier-${uid}?orgId=1&from=now-15m&to=now&var-service=${SERVICE}&theme=light&kiosk`;
+  `${urls.grafana}/d/fespalier-${uid}?orgId=1&from=now-8m&to=now&var-service=${SERVICE}&theme=light&kiosk`;
 
 /** What each panel shows, and what is wrong with it. Runs in the page. */
 const inspect = ({ S, notEnough, noData }) => {
@@ -534,8 +539,8 @@ const cropOf = async (page, ui, shot) => {
   return {
     x: Math.floor(box.left),
     y: Math.floor(box.top),
-    width: Math.floor(box.width - box.left),
-    height: Math.ceil(box.bottom - box.top + 10),
+    width: Math.floor(box.width - box.left - (ui === "o2" ? 15 : 0)),
+    height: Math.ceil(box.bottom - box.top + 4),
   };
 };
 
@@ -568,6 +573,8 @@ const capture = async (browser, shot, dir) => {
         );
     }
     await settle(page, shot.ui, shot.file);
+    await page.mouse.move(1, 1); // no tile shows its hover buttons
+    await sleep(500);
     const clip = await cropOf(page, shot.ui, shot);
     await page.screenshot({ path: join(dir, shot.file), clip });
     console.log(`    ${shot.file}: ${clip.width}x${clip.height}`);

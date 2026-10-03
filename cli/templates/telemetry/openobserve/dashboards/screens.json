@@ -529,7 +529,7 @@
                 ],
                 "y": [
                   {
-                    "label": "Slowest 5 % of opens",
+                    "label": "Slowest 5 %",
                     "alias": "p95_ms",
                     "column": "p95_ms",
                     "color": null

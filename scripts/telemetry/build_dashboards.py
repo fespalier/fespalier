@@ -423,6 +423,8 @@ def oo_height(panel, default):
 
 
 def gf_height(panel, default):
+    if panel["type"] == "text":
+        return GF_HEIGHT["text"]
     if panel.get("height"):
         return max(3, round(panel["height"] * 9 / 16))
     return GF_HEIGHT.get(panel["type"], default)

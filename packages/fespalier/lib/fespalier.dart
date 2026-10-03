@@ -15,6 +15,15 @@ export 'package:hooks_riverpod/hooks_riverpod.dart';
 export 'package:hooks_riverpod/misc.dart' show ProviderListenable;
 
 export 'src/action.dart';
+// The cache of a data.dart's value for the next start (since 0.8.0).
+export 'src/data_cache.dart'
+    show
+        CachedData,
+        DataCache,
+        MemoryDataStorage,
+        cachedData,
+        cachedDataFamily,
+        dataCacheStorage;
 export 'src/data_view.dart';
 export 'src/deferred.dart';
 // DevTools support (since 0.7.0): what a generated app.g.dart registers and attaches
@@ -28,6 +37,8 @@ export 'src/devtools/devtools.dart'
         traceGuard,
         watchData;
 export 'src/extra_codec.dart';
+// Data freshness (since 0.8.0): `staleTime`, refetch on resume and reconnect.
+export 'src/freshness.dart';
 export 'src/guards.dart';
 export 'src/heroes.dart';
 export 'src/layout_page.dart';

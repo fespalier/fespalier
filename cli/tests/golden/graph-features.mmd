@@ -55,9 +55,9 @@ flowchart TD
         n44["/shops/:shop<br/>ShopRoute<br/>(guard)"]
         n45["/shops/:shop/items/:id<br/>ItemRoute<br/>(data)"]
       end
-      subgraph b5["layout teams/#36;teamId/layout.dart (data)"]
+      subgraph b5["layout teams/#36;teamId/layout.dart (data, fresh)"]
         n46["/teams/:teamId/members<br/>MembersRoute"]
-        n47["/teams/:teamId/members/:member<br/>MemberRoute<br/>(data)"]
+        n47["/teams/:teamId/members/:member<br/>MemberRoute<br/>(data, fresh)"]
         n48["/teams/:teamId/settings<br/>TeamSettingsRoute"]
       end
       n49["/browse/*categories<br/>BrowseRoute<br/>(data)"]

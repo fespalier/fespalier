@@ -70,6 +70,12 @@ pub fn markers(r: &Route, root: bool, guarded: bool) -> Vec<&'static str> {
     if r.data.is_some() {
         out.push("data");
     }
+    if r.data.as_ref().is_some_and(|d| d.freshness.is_some()) {
+        out.push("fresh");
+    }
+    if r.data.as_ref().is_some_and(|d| d.cache) {
+        out.push("cached");
+    }
     if !r.actions.is_empty() {
         out.push("action");
     }
@@ -213,6 +219,14 @@ impl Builder {
 pub fn layout_marks(r: &Route, root: bool) -> Vec<&'static str> {
     [
         (r.is_section(), "data"),
+        (
+            r.is_section() && r.data.as_ref().is_some_and(|d| d.freshness.is_some()),
+            "fresh",
+        ),
+        (
+            r.is_section() && r.data.as_ref().is_some_and(|d| d.cache),
+            "cached",
+        ),
         (r.guard.is_some(), "guard"),
         (root, "root"),
     ]

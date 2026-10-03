@@ -116,6 +116,11 @@ final _lib2 = DeferredLibrary(_i7.loadLibrary, 'checkout/page.dart');   // one p
 
 ## Generated providers
 
+With a `freshness` (since 0.8.0) the body is `freshData(ref, _iN.freshness, traceData(...))` (`_iN` is the `data.dart`, or the
+`route.dart` that sets the default), and with a `dataCache` the provider is `cachedData(...)` / `cachedDataFamily(...)`
+(`cache: _iN.dataCache`, `name: 'products/\$id'`, `keyParts: (int id) => [id]`, `freshness:` and `retry:` when they
+apply). Either adds `keepDataOnError: true` to the route's `DataView`. A route with neither is as in 0.7.0.
+
 A `data()` function becomes `FutureProvider.autoDispose.family(...)` (or
 `StreamProvider`). With `data_retry: none` it carries
 `retry: (retryCount, error) => null`; with the default `inherit` it sets no

@@ -302,6 +302,9 @@ struct ViewDataCx {
     error: String,
     /// `_lib6`, for a deferred page: `DataView` loads its code in parallel with the data.
     library: Option<String>,
+    /// The data has a `freshness` or a `dataCache` (since 0.8.0): a failed reload keeps the
+    /// page on its value.
+    keep_data_on_error: bool,
 }
 
 #[derive(Serialize)]
@@ -472,6 +475,23 @@ struct ProviderCx {
     /// What the family is keyed by, as `traceData` is told: the key's parameter, `k` for a
     /// record of keys, or `null` with no keys.
     key_expr: String,
+    /// `_i13.freshness` (since 0.8.0): the provider wraps its value in `freshData`.
+    freshness: Option<String>,
+    /// The data.dart's `dataCache` (since 0.8.0): the provider is `cachedData[Family]`.
+    cache: Option<CacheCx>,
+}
+
+#[derive(Serialize)]
+struct CacheCx {
+    /// `_i13.dataCache`
+    expr: String,
+    /// The data.dart's folder relative to the app folder, as a Dart string literal.
+    name: String,
+    /// The family's key parameter as `create` takes it (`int id`, `({String shop, int id}) k`);
+    /// none without keys.
+    key_param: Option<String>,
+    /// The key's parts in path order: `[id]`, `[k.shop, k.id]`.
+    key_parts: String,
 }
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
@@ -1061,6 +1081,7 @@ fn layout_cx(
                 error,
                 // Layouts are never deferred.
                 library: None,
+                keep_data_on_error: keeps_data_on_error(d),
             }
         }),
         not_found: not_found_call(r),
@@ -1331,6 +1352,7 @@ fn page_route(
         loading: loading.clone(),
         error: error.clone(),
         library: library.clone(),
+        keep_data_on_error: keeps_data_on_error(d),
     });
     // A deferred page's class can't be named in a constant expression.
     let page_call = if library.is_some() {
@@ -1839,6 +1861,12 @@ fn provider_expr(id: usize, d: &Data) -> String {
     }
 }
 
+/// A route whose data has a `freshness` or a `dataCache` keeps its page on the value it had when
+/// a reload fails (since 0.8.0).
+fn keeps_data_on_error(d: &Data) -> bool {
+    d.freshness.is_some() || d.cache
+}
+
 /// The names of a route's catch-all segments.
 fn catch_alls(app: &App, r: &Route) -> Vec<String> {
     r.segs
@@ -1981,6 +2009,8 @@ fn action_keys(a: &Action) -> Data {
         ty: String::new(),
         keys: a.keys.clone(),
         record: a.keys.len() > 1,
+        freshness: None,
+        cache: false,
     }
 }
 
@@ -2448,6 +2478,7 @@ fn key_params(app: &App, r: &Route, d: &Data) -> (String, Vec<String>) {
 fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx> {
     let d = r.data.as_ref().filter(|d| !d.provider)?;
     let (keys, args) = key_params(app, r, d);
+    let keys_decl = keys.clone();
     let (params, mut call_args) = if d.selector {
         (keys, vec![])
     } else {
@@ -2475,7 +2506,31 @@ fn provider(app: &App, cfg: &Config, id: usize, r: &Route) -> Option<ProviderCx>
         selector: d.selector,
         site: devtools::site_data(id),
         key_expr: key_value(app, r, d),
+        freshness: d
+            .freshness
+            .as_ref()
+            .map(|(import, _)| format!("_i{import}.freshness")),
+        cache: d.cache.then(|| CacheCx {
+            expr: format!("_i{}.dataCache", d.import),
+            name: dart_str(&r.dir),
+            key_param: (!keys_decl.is_empty()).then(|| keys_decl.clone()),
+            key_parts: key_parts(app, r, d),
+        }),
     })
+}
+
+/// The parts a cached provider's key is saved by, in path order: `[id]`, `[k.shop, k.id]`.
+fn key_parts(app: &App, r: &Route, d: &Data) -> String {
+    let names: Vec<String> = data_params(app, r)
+        .into_iter()
+        .filter(|(n, _)| d.keys.contains(n))
+        .map(|(n, _)| n)
+        .collect();
+    let parts: Vec<String> = match (names.as_slice(), d.record) {
+        ([n], false) => vec![n.clone()],
+        (many, _) => many.iter().map(|n| format!("k.{n}")).collect(),
+    };
+    format!("[{}]", parts.join(", "))
 }
 
 /// The Dart expression that is a `data()` provider's key inside its `create` function, as
@@ -2549,6 +2604,12 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     }
     if r.data.is_some() {
         tags.push("data");
+    }
+    if r.data.as_ref().is_some_and(|d| d.freshness.is_some()) {
+        tags.push("fresh");
+    }
+    if r.data.as_ref().is_some_and(|d| d.cache) {
+        tags.push("cached");
     }
     if !r.actions.is_empty() {
         tags.push("action");

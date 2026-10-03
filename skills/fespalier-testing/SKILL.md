@@ -83,22 +83,23 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 
 ## What to test, and how
 
-| You want to check                  | Do                                                                                                                                                 |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A URL opens its page               | `pumpRouter(..., AppRoutes.router(initialLocation: '/products/2'))`, `find.byType(ProductPage)`                                                    |
-| Not found                          | `/nope` or an unparsable segment (`/products/abc`): the page is never built, guards that read segments are skipped                                 |
-| Loading, then data                 | `settle: false`, `await tester.pump()`, `find.byType(ProductLoading)`, then `pump(delay)`                                                          |
-| An error view                      | a fake that throws: `error.dart` shows at once (no retries in `pumpRouter`)                                                                        |
-| A backend fake                     | override the provider your `data()` reads: `overrides: [apiProvider.overrideWithValue(FakeApi())]`                                                 |
-| Typed navigation                   | `ProductRoute(id: 1).go(tester.element(find.byType(ProductsPage)))`, then `pumpAndSettle`                                                          |
-| A guard                            | `c.read(session.notifier).signIn()` through the returned container, then navigate (or `pumpAndSettle`: a `Ref` guard that watches moves by itself) |
-| Locations, matches, data providers | plain `test()`: `.location`, `locationFor`, `AppRoutes.dataAt(uri)`, `AppRoutes.match(uri)`                                                        |
-| A `WidgetRef` (prefetch, refresh)  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                     |
-| An action (a write, since 0.5.0)   | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                      |
-| Restoration                        | your own app widget building the router in `State`, `restartAndRestore()`                                                                          |
-| Scroll restoration (0.8.0)         | play the browser with `pushRouteInformation` **and the state the app reported**; a location alone starts at the top (`pitfalls.md`)                |
-| A deferred route (0.7.0)           | `pumpRouter` loads it; with your own router, `await tester.runAsync(AppRoutes.loadDeferred)` before `pumpWidget` (`pitfalls.md`)                   |
-| A `RouteLink` hover (0.5.0)        | a mouse `createGesture`, `moveTo`, `pump`; `container.exists(XRoute.data(...))` (`pitfalls.md`)                                                    |
+| You want to check                                  | Do                                                                                                                                                         |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A URL opens its page                               | `pumpRouter(..., AppRoutes.router(initialLocation: '/products/2'))`, `find.byType(ProductPage)`                                                            |
+| Not found                                          | `/nope` or an unparsable segment (`/products/abc`): the page is never built, guards that read segments are skipped                                         |
+| Loading, then data                                 | `settle: false`, `await tester.pump()`, `find.byType(ProductLoading)`, then `pump(delay)`                                                                  |
+| An error view                                      | a fake that throws: `error.dart` shows at once (no retries in `pumpRouter`)                                                                                |
+| A backend fake                                     | override the provider your `data()` reads: `overrides: [apiProvider.overrideWithValue(FakeApi())]`                                                         |
+| Typed navigation                                   | `ProductRoute(id: 1).go(tester.element(find.byType(ProductsPage)))`, then `pumpAndSettle`                                                                  |
+| A guard                                            | `c.read(session.notifier).signIn()` through the returned container, then navigate (or `pumpAndSettle`: a `Ref` guard that watches moves by itself)         |
+| Locations, matches, data providers                 | plain `test()`: `.location`, `locationFor`, `AppRoutes.dataAt(uri)`, `AppRoutes.match(uri)`                                                                |
+| A `WidgetRef` (prefetch, refresh)                  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                             |
+| An action (a write, since 0.5.0)                   | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                              |
+| Restoration                                        | your own app widget building the router in `State`, `restartAndRestore()`                                                                                  |
+| Scroll restoration (0.8.0)                         | play the browser with `pushRouteInformation` **and the state the app reported**; a location alone starts at the top (`pitfalls.md`)                        |
+| A deferred route (0.7.0)                           | `pumpRouter` loads it; with your own router, `await tester.runAsync(AppRoutes.loadDeferred)` before `pumpWidget` (`pitfalls.md`)                           |
+| Aging data, a resume, a reconnect, a cache (0.8.0) | `pump(Duration)` ages by the fake clock; `handleAppLifecycleStateChanged`; `reconnectSignal.notifier.fire()`; a shared `MemoryDataStorage` (`pitfalls.md`) |
+| A `RouteLink` hover (0.5.0)                        | a mouse `createGesture`, `moveTo`, `pump`; `container.exists(XRoute.data(...))` (`pitfalls.md`)                                                            |
 
 Full compiled tests for all of these are in
 [`references/recipes.md`](references/recipes.md); the traps, each of which cost a test

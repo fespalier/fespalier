@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.8.1](https://github.com/fespalier/fespalier/compare/v0.8.0...v0.8.1) (2026-10-03)
+
+
+### Features
+
+* plain-language telemetry dashboards and fsp telemetry --report ([#64](https://github.com/fespalier/fespalier/issues/64)) ([295c925](https://github.com/fespalier/fespalier/commit/295c9256ec0d756255cbc7f5869b2e1a8cd1cc5f))
+
+
+### Bug Fixes
+
+* point at fespalier/fespalier, make the Homebrew and Scoop push optional, ship the wave as 0.8.1 ([#65](https://github.com/fespalier/fespalier/issues/65)) ([f82ed13](https://github.com/fespalier/fespalier/commit/f82ed13fecab6e002efe6b6933fb5e98e513dcba))
+
+
+### Chores
+
+* cut the next release as 0.8.1 from after [#61](https://github.com/fespalier/fespalier/issues/61) ([#67](https://github.com/fespalier/fespalier/issues/67)) ([90c788b](https://github.com/fespalier/fespalier/commit/90c788b30a48fd422a422b3ba3ed878f3592be97))
+* release main ([#52](https://github.com/fespalier/fespalier/issues/52)) ([c4f8b65](https://github.com/fespalier/fespalier/commit/c4f8b655f8bb907cabbd6409ad1bdf5715d4b679))
+
 ## [0.8.0](https://github.com/vaam-apps/fespalier/compare/v0.7.0...v0.8.0) (2026-10-03)
 
 

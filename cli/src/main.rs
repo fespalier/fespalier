@@ -1,5 +1,9 @@
 mod config;
+mod daemon;
 mod dart;
+mod dev;
+mod dev_state;
+mod dev_tui;
 mod devtools;
 mod diag;
 mod emit;
@@ -16,7 +20,9 @@ mod locale;
 mod maestro;
 mod manifest;
 mod menu;
+mod osc8;
 mod parse_cache;
+mod procs;
 mod resolve;
 mod routes;
 mod samples;
@@ -26,19 +32,18 @@ mod segtype;
 mod session;
 mod size;
 mod smoke;
+mod tasks;
 mod telemetry_stack;
 mod templates;
+mod watch;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
 use std::{env, fs, process};
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 use config::Config;
-use notify::event::ModifyKind;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use session::{Run, Session};
 
 #[derive(Parser)]
@@ -109,6 +114,12 @@ enum Cmd {
     },
     /// Regenerate on every change under the app folder
     Watch,
+    /// Run the app: `fsp watch` and `flutter run` in one terminal, hot restarting when the routes change (`tasks: dev:` in pubspec.yaml)
+    Dev(dev::DevCmd),
+    /// `fsp gen`, then `flutter build <TARGET>`, with the hooks of `tasks: build:` in pubspec.yaml
+    Build(tasks::BuildCmd),
+    /// Run a task from `tasks:` in pubspec.yaml; with no name, list them
+    Run(tasks::RunCmd),
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
     Init,
     /// Scaffold a route: `fsp new products/[id] --data --loading --error`
@@ -145,6 +156,9 @@ fn main() {
             Cmd::Size { build, json, check } => size::run(&project, build.as_deref(), json, check),
             Cmd::Test { check } => smoke::run(&project, check),
             Cmd::Watch => watch(&project),
+            Cmd::Dev(cmd) => dev::run(&project, &cmd),
+            Cmd::Build(cmd) => tasks::build(&project, &cmd),
+            Cmd::Run(cmd) => tasks::run_task(&project, &cmd),
             Cmd::Init => init::run(&project),
             Cmd::New(cmd) => {
                 let created = scaffold::new_route_opts(&project, &cmd.args, cmd.no_page)?;
@@ -164,10 +178,27 @@ fn main() {
         }
     })();
     if let Err(e) = result {
+        // `Exit` says its piece itself, if it has one, and only carries the code.
+        if let Some(Exit(code)) = e.downcast_ref::<Exit>() {
+            process::exit(*code);
+        }
         eprintln!("{e:#}");
         process::exit(1);
     }
 }
+
+/// An error that ends `fsp` with this exit code and prints nothing: the command said what it had
+/// to (a failed `before` step, flutter's own exit code, a signal).
+#[derive(Debug)]
+pub struct Exit(pub i32);
+
+impl std::fmt::Display for Exit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "exit {}", self.0)
+    }
+}
+
+impl std::error::Error for Exit {}
 
 fn find_project(explicit: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(p) = explicit {
@@ -226,19 +257,18 @@ pub fn gen_with(project: &Path, cfg: &Config, write: bool) -> Result<Outcome> {
 
 /// `json`: diagnostics go to stdout as JSON lines instead of the codespan rendering.
 pub fn gen_opts(project: &Path, cfg: &Config, write: bool, json: bool) -> Result<Outcome> {
-    gen_core(
-        project,
-        cfg,
-        write,
-        &mut Session::default(),
-        |app_dir, diags| {
-            if json {
-                diag::render_json(app_dir, &cfg.app_dir, diags);
-            } else {
-                diag::render(app_dir, &cfg.app_dir, diags);
-            }
-        },
-    )
+    let mut session = Session::default();
+    let result = gen_core(project, cfg, write, &mut session, |app_dir, diags| {
+        if json {
+            diag::render_json(app_dir, &cfg.app_dir, diags);
+        } else {
+            diag::render(app_dir, &cfg.app_dir, diags);
+        }
+    });
+    for warning in session.formats.take_warnings() {
+        eprintln!("{warning}");
+    }
+    result
 }
 
 /// `show` prints the diagnostics (watch mode skips ones it already showed). `session` is what
@@ -313,6 +343,7 @@ fn gen_core(
         );
     }
     let mut wrote = false;
+    session.wrote = false;
     for (path, code) in &run.files {
         let out = project.join(path);
         // `check` writes and compares nothing, so it never needs `dart`. `gen` formats
@@ -331,6 +362,7 @@ fn gen_core(
             }
             fs::write(&out, &code).with_context(|| format!("writing {}", out.display()))?;
             wrote = true;
+            session.wrote = true;
         }
     }
     let output = outputs(cfg, writes_main).join(", ");
@@ -411,111 +443,19 @@ fn analyze_tree(
     (code, main, app)
 }
 
-/// Whether a filesystem event can change what the app folder generates.
-/// Reads (`Access`, which the generator itself causes) and metadata-only changes
-/// don't, and neither does the generated file when it lives in the app folder.
-/// `watch` also sees `lib/` outside the app folder, because an enum a segment names is
-/// declared there (`lib/models/category.dart`): of those paths only Dart files and folders
-/// (a path with no extension) count, not the `.png` or `.json` beside them.
-fn relevant(ev: &Event, outputs: &[PathBuf], app_dir: &Path) -> bool {
-    let kind_matters = match ev.kind {
-        EventKind::Access(_) | EventKind::Modify(ModifyKind::Metadata(_)) => false,
-        EventKind::Create(_)
-        | EventKind::Remove(_)
-        | EventKind::Modify(_)
-        | EventKind::Any
-        | EventKind::Other => true,
-    };
-    let matters = |p: &PathBuf| {
-        !outputs.contains(p)
-            && (p.starts_with(app_dir) || p.extension().is_none_or(|e| e == "dart"))
-    };
-    kind_matters && (ev.paths.is_empty() || ev.paths.iter().any(matters))
-}
-
-/// What `watch` last showed, so an unchanged rerun stays quiet.
-#[derive(Default)]
-struct Shown {
-    /// The diagnostics last printed.
-    diags: String,
-    /// Diagnostics plus the error line (empty after a clean run).
-    outcome: String,
-}
-
+/// `fsp watch`: [`watch::watch_loop`] with a sink that prints to stderr.
 fn watch(project: &Path) -> Result<()> {
     let cfg = Config::load(project)?;
-    let app_dir = project.join(&cfg.app_dir);
-    let main_output = cfg.output_main();
-    let outputs: Vec<PathBuf> = [
-        Some(&cfg.output),
-        cfg.output_manifest.as_ref(),
-        Some(&main_output),
-    ]
-    .into_iter()
-    .flatten()
-    .map(|o| project.join(o))
-    .collect();
-    let mut shown = Shown::default();
-    // A save changes one file: keep the parse results of the others between runs, and the
-    // last run's result and formatted text (see session.rs).
-    parse_cache::enable();
-    let mut session = Session::default();
-    let mut run = |first: bool| {
-        let t = Instant::now();
-        let mut diags = String::new();
-        let result = gen_core(project, &cfg, true, &mut session, |dir, d| {
-            diags =
-                d.0.iter()
-                    .map(std::string::ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join("\n");
-            if diags != shown.diags {
-                diag::render(dir, &cfg.app_dir, d);
-            }
-        });
-        let outcome = match &result {
-            Ok(_) => diags.clone(),
-            Err(e) => format!("{diags}\n{e:#}"),
-        };
-        let quiet = !first && outcome == shown.outcome;
-        match result {
-            Ok(o) if o.wrote || !quiet => eprintln!("{} ({:.1?})", o.line(), t.elapsed()),
-            Err(e) if !quiet => eprintln!("{e:#}"),
-            _ => {}
-        }
-        shown = Shown { diags, outcome };
-        parse_cache::finish_run();
-    };
-    run(true);
-
     let (tx, rx) = mpsc::channel();
-    let changes_under = app_dir.clone();
-    let mut watcher = RecommendedWatcher::new(
-        move |res: notify::Result<Event>| match res {
-            Ok(ev) if relevant(&ev, &outputs, &changes_under) => {
-                let _ = tx.send(());
+    watch::watch_loop(project, &cfg, tx, &rx, |msg| match msg {
+        watch::Watched::Diags(dir, d) => diag::render(dir, &cfg.app_dir, d),
+        watch::Watched::Warning(text) | watch::Watched::Watching(text) => eprintln!("{text}"),
+        watch::Watched::Pass(report) => {
+            if let Some(line) = report.line {
+                eprintln!("{line}");
             }
-            Ok(_) => {}
-            Err(e) => eprintln!("watch error: {e}"),
-        },
-        notify::Config::default(),
-    )?;
-    // The app folder, and the rest of `lib/` too when it is there: that is where the enums are
-    // that segments and query parameters name, and editing one must regenerate.
-    let lib = project.join("lib");
-    let watched = if app_dir.starts_with(&lib) && lib.is_dir() {
-        lib
-    } else {
-        app_dir.clone()
-    };
-    watcher.watch(&watched, RecursiveMode::Recursive)?;
-    eprintln!("watching {}/ …", cfg.app_dir);
-    while rx.recv().is_ok() {
-        // Editors save in bursts; one regeneration per burst.
-        while rx.recv_timeout(Duration::from_millis(80)).is_ok() {}
-        run(false);
-    }
-    Ok(())
+        }
+    })
 }
 
 #[cfg(test)]
@@ -527,7 +467,13 @@ mod case_tests;
 #[cfg(test)]
 mod cli_tests;
 #[cfg(test)]
+mod daemon_tests;
+#[cfg(test)]
 mod deferred_tests;
+#[cfg(test)]
+mod dev_state_tests;
+#[cfg(test)]
+mod dev_tui_tests;
 #[cfg(test)]
 mod devtools_tests;
 #[cfg(test)]
@@ -569,6 +515,8 @@ mod observe_tests;
 #[cfg(test)]
 mod paths_tests;
 #[cfg(test)]
+mod procs_tests;
+#[cfg(test)]
 mod refresh_tests;
 #[cfg(test)]
 mod remount_tests;
@@ -590,6 +538,8 @@ mod size_tests;
 mod smoke_tests;
 #[cfg(test)]
 mod synth;
+#[cfg(test)]
+mod tasks_tests;
 #[cfg(test)]
 mod telemetry_tests;
 #[cfg(test)]

@@ -1,0 +1,30 @@
+
+
+
+
+
+
+
+
+
+
+                            ┌ fespalier dev ───────────────────────────┐
+                            │more than one device: pick one to run on  │
+                            │                                          │
+                            │  macOS (macos) · darwin                  │
+                            │› Chrome (chrome) · web-javascript        │
+                            │  iPhone 15 (ios-1) · ios                 │
+                            │                                          │
+                            │↑/↓ choose · Enter run · q quit           │
+                            └──────────────────────────────────────────┘
+
+
+
+
+
+
+
+
+
+
+

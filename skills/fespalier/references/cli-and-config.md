@@ -8,21 +8,24 @@ Every command takes `--project <dir>`; the default is the nearest folder, at or
 above the current one, with a `pubspec.yaml` (none: `no pubspec.yaml here or
 above; pass --project`).
 
-| Command                                     | What it does                                                                                                                                                                                                                                                                                                   |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------                         |
-| `fsp init`                                  | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` and, since 0.8.1, `app.dart` (not with `main: manual`) under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do (the `main.dart` that runs `AppMain`, since 0.8.1)                         |
-| `fsp gen [--format] [--json]`               | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                                                                                                                       |
-| `fsp check [--json]`                        | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                                                                                                                |
-| `fsp watch`                                 | `gen` once, then again on every relevant change; keep it next to `flutter run`                                                                                                                                                                                                                                 |
-| `fsp routes [--json]`                       | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                                                                                                                  |
-| `fsp links [--check]`                       | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                                                                                                                        |
-| `fsp maestro [--check]`                     | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0)                                                                                           |
-| `fsp telemetry [flags]`                     | Starts a local OpenTelemetry stack with fespalier's four dashboards in Docker: a collector, OpenObserve, and Grafana with `--grafana`. Needs no project and no pubspec key; writes `~/.fespalier/telemetry`. Flags: `--grafana`, `--lan`, `--stop`, `--reset`, `--report`, `--dir`, `--no-start` (since 0.8.1) |
-| `fsp size [--build DIR] [--json] [--check]` | Reports the web build's JavaScript per deferred route (own, shared and total bytes, read from dart2js's table in `main.dart.js`); `--check` exits 1 when a budget in the `size:` config is exceeded (since 0.8.1)                                                                                              |
-| `fsp test [--check]`                        | Writes one widget smoke test per route into `test/routes/routes_test.dart` (`pumpRouter`, wait on the fake clock for the page) from the route tree and the optional `test:` config (since 0.8.1); see below                                                                                                    |
-| `fsp routes --graph [FORMAT]`               | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default), a Graphviz `digraph` (`dot`), since 0.5.0, or JSON (`json`, since 0.7.0)                                                                                                                                                           |
-| `fsp new <path> [flags]`                    | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                                                                                                                                                     |
+| Command                                      | What it does                                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| -------------------------------------------  | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------                         |
+| `fsp init`                                   | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` and, since 0.8.1, `app.dart` (not with `main: manual`) under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do (the `main.dart` that runs `AppMain`, since 0.8.1)                         |
+| `fsp gen [--format] [--json]`                | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                                                                                                                       |
+| `fsp check [--json]`                         | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                                                                                                                |
+| `fsp watch`                                  | `gen` once, then again on every relevant change; keep it next to `flutter run`, or use `fsp dev`                                                                                                                                                                                                               |
+| `fsp dev [-- <args>] [--no-tui] [--dry-run]` | `fsp watch` and `flutter run --machine` in one terminal, in a full-screen view: hot restart when `lib/app.g.dart` changed, hot reload on any other save, the `tasks: dev:` hooks (since 0.9.0); see below                                                                                                      |
+| `fsp build <target> [-- <args>] [--dry-run]` | `fsp gen`, then `flutter build <target>` with the hooks of `tasks: build:` (since 0.9.0)                                                                                                                                                                                                                       |
+| `fsp run [task] [-- <args>] [--dry-run]`     | Runs a task of `tasks:` in pubspec.yaml; with no name, lists them on stdout (since 0.9.0)                                                                                                                                                                                                                      |
+| `fsp routes [--json]`                        | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                                                                                                                  |
+| `fsp links [--check]`                        | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                                                                                                                        |
+| `fsp maestro [--check]`                      | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0)                                                                                           |
+| `fsp telemetry [flags]`                      | Starts a local OpenTelemetry stack with fespalier's four dashboards in Docker: a collector, OpenObserve, and Grafana with `--grafana`. Needs no project and no pubspec key; writes `~/.fespalier/telemetry`. Flags: `--grafana`, `--lan`, `--stop`, `--reset`, `--report`, `--dir`, `--no-start` (since 0.8.1) |
+| `fsp size [--build DIR] [--json] [--check]`  | Reports the web build's JavaScript per deferred route (own, shared and total bytes, read from dart2js's table in `main.dart.js`); `--check` exits 1 when a budget in the `size:` config is exceeded (since 0.8.1)                                                                                              |
+| `fsp test [--check]`                         | Writes one widget smoke test per route into `test/routes/routes_test.dart` (`pumpRouter`, wait on the fake clock for the page) from the route tree and the optional `test:` config (since 0.8.1); see below                                                                                                    |
+| `fsp routes --graph [FORMAT]`                | Prints the route tree as a Mermaid `flowchart TD` (`mermaid`, the default), a Graphviz `digraph` (`dot`), since 0.5.0, or JSON (`json`, since 0.7.0)                                                                                                                                                           |
+| `fsp new <path> [flags]`                     | Scaffolds a route, skips files that exist, then runs `gen`                                                                                                                                                                                                                                                     |
 
 What they print, to stderr unless noted:
 
@@ -42,6 +45,9 @@ What they print, to stderr unless noted:
 - `watch`: `watching lib/app/ …`, the `gen` line at startup, then a line (with a
   duration) each time a save changes the output. An edit that changes nothing
   generated (a `build` method) prints nothing.
+- `dev` (since 0.9.0): the `gen` line, then the full-screen view, or with `--no-tui`, off a terminal, with
+  `TERM=dumb` or in CI, `[flutter]`, `[fsp]` and `[name]` lines (see below). `build`: the `gen` line, then
+  flutter's own output. `run`: the task's own output, and with no name the list, on stdout.
 - `--json` on `gen` and `check` prints each **diagnostic** to stdout as one JSON
   object per line, `{"file","line","column","severity","message"}` (`file` is
   relative to the project root; `line`/`column` count from 1 and are `null` for a
@@ -330,6 +336,79 @@ dashboards, the app's endpoint (`FespalierOtel.endpoint()`) and the traps are in
 `references/observability.md`; every message is in `fespalier-troubleshooting`,
 `references/diagnostics-telemetry.md`.
 
+### `fsp dev`, `fsp build` and `fsp run` (since 0.9.0)
+
+`fsp dev` generates, runs the `before` steps of `tasks: dev:`, starts the `with` commands and
+`flutter run --machine` (flutter's daemon protocol on stdin and stdout, so there are no signals and no pty,
+and it works the same on Windows), and keeps `lib/app.g.dart` current while it runs. It needs no
+configuration; everything after `--` goes to `flutter run` (`fsp dev -- -d chrome --flavor dev`).
+
+**The rule an agent needs: a regeneration restarts, a save reloads.** The router is built once, so a hot
+reload keeps the old route table: a pass of the generator that **wrote** an output (a new, removed or edited
+route, a new `data.dart`) sends `app.restart` with `fullRestart: true`; any other save under `lib/` sends a
+hot reload; a pass with errors sends nothing, and `app.g.dart` is left as it was. `r` and `R` do it by hand;
+`hot_reload: false` turns the automatic ones off. Requests are coalesced: a restart in flight covers a reload.
+
+```yaml
+# pubspec.yaml
+fespalier:
+  tasks: # since 0.9.0; read only by `fsp dev`, `fsp build` and `fsp run`
+    dev:
+      before: dart run build_runner build -d # one command, or a list; in order; the first that fails stops
+      with: # long-running, next to flutter; each gets a pane named by its key
+        build_runner: dart run build_runner watch -d
+      run: fvm flutter run # default `flutter run`; fsp adds --machine, -d <device> and the args after --
+      env: # for every command of this task, not for the app (that is --dart-define)
+        API_URL: http://localhost:8080
+      hot_reload: true # default; false: no automatic reload or restart (r and R still work)
+      after: [] # runs when `run` exits 0
+    build: # `fsp build <target>`: fsp gen, then `<run> <target> <args>`
+      before: [dart run build_runner build -d]
+    codegen: dart run build_runner build -d # a task that is only `run`; `fsp run codegen`
+    check: # `fsp run check`
+      before: [fsp check, fsp test --check]
+      run: [flutter, test] # a list is argv: no shell, the same on every OS
+```
+
+- **A command** is a string, which the shell runs (`sh -c`; `cmd /d /s /c` on Windows), or a list of words,
+  which runs with no shell. `before` and `after` take a command or a **list of commands**, so
+  `before: [dart, run, x]` is **three** shell commands; one argv command in a list is `[[dart, run, x]]`.
+  A leading `fsp` is the very `fsp` that runs the task (it works under `dart run fespalier dev`).
+- **Defaults and additions.** `dev.run` is `[flutter, run]`, `build.run` is `[flutter, build]`. `fsp dev` adds
+  `--machine` (unless given), `-d <id>` when it chose the device, then the args after `--`; `fsp build` adds
+  the target and the args; a task of your own gets the args. To a shell string they are appended as quoted words.
+  A custom `run` (`fvm flutter run`, a script) gets `--machine` and the args but **no device**: put `-d`
+  in it or after `--`, and make a script pass `"$@"` on.
+- **Every command** runs in the project root with the task's `env` and `FSP=<path of this fsp>`; `fsp build` also
+  sets `FSP_BUILD_TARGET`. A task other than `dev` and `build` needs a `run`; `hot_reload` is `dev` only; a
+  `with` name is `[A-Za-z0-9_-]{1,20}`, not `flutter` or `fsp`.
+- **Checked by the commands that read it.** `Config.tasks` is the raw value, so a mistake in `tasks:` never fails
+  `fsp gen`, `check` or `watch`; `fsp dev`, `build` and `run` report it with the key (the 17 messages are in
+  `fespalier-troubleshooting`, `references/diagnostics-dev.md`). `--dry-run` prints the plan and runs nothing.
+- **The device.** With no `-d` after `--` and the default `run`, `fsp dev` asks `flutter devices --machine` (while
+  the `before` steps run) and picks the one device, or the one phone or emulator among desktop and web ones, as
+  `flutter run` does; with several it asks (a picker; `pick a device [1-3]:` in plain mode; the last choice is
+  remembered in `.dart_tool/fespalier/dev.json`) and with no terminal says
+  ``more than one device: pick one with `fsp dev -- -d <id>` (ids: macos, chrome)``.
+- **The view.** A header (app, state, device, VM service or web URL, DevTools), a tab per process (`flutter`, `fsp`,
+  each `with`, `telemetry` after `t`) with marks for new lines (`•`), new errors (`!`) and an ended process
+  (`✗`, `■`), the selected log, a status line (route count, the last generation, the first routing error with
+  its location as a link, the last hot restart or reload) and the keys: `r` `R` `d` `o` `t`, `Tab` and `1`-`9`,
+  `/` filter, `c` clear, `?` help, `q` or Ctrl-C quit (a second kills everything). When flutter stops by itself the
+  view stays open (`✗ stopped (exit N)`): `R` or Enter runs it again.
+- **Plain mode** (`--no-tui`, stdout or stdin not a terminal, `TERM=dumb`, or `CI` set): each line is `[flutter] ...`,
+  `[fsp] ...` or `[name] ...`, and the keys are lines on stdin (`r`, `R`, `q`, `d`, `o`, then Enter). An end of
+  input does not quit. There is no JSON event stream.
+- **Quitting.** `app.stop` goes to flutter (SIGTERM after 10 s, SIGKILL 5 s later), then each `with` group gets
+  SIGTERM (SIGKILL after 5 s; `taskkill /T /F` on Windows); the `after` steps run unless flutter failed by itself.
+  Exit codes: 0 after `q`, 130 after a signal or a second `q`, flutter's own code when it ended with a failure, a
+  failed step's code.
+
+`fsp build <target>` is `fsp gen` and then `before`, `flutter build <target> <args>` and `after` (`after` only when
+the build exits 0), with fsp's own stdio. `fsp run <task>` does the same for a task of your own; `fsp run dev` and
+`fsp run build` are refused, with a hint. `with` commands of both are started next to `run`, with their output
+prefixed, and stopped when it ends. `fsp telemetry` starts its stack and returns, so it goes in `before`, not `with`.
+
 ## Installing `fsp`
 
 | Way                                                                                         | Notes                                                                                                                                              |
@@ -395,6 +474,7 @@ fespalier:
   # maestro: {url: http://localhost:8080}  # see `fsp maestro` above
   # size: {main: 3 MB, routes: {/checkout: 8 KB}}  # since 0.8.1; see `fsp size` above
   # test: {timeout: 30000}                # since 0.8.1; see `fsp test` above
+  # tasks: {codegen: dart run build_runner build -d}   # since 0.9.0; see `fsp dev` below
 ```
 
 | Key                  | Values                                           | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
@@ -421,6 +501,7 @@ fespalier:
 | `main`               | `auto` / `generated` / `manual`                  | Since 0.8.1. Whether `fsp` writes `lib/app.main.g.dart` (`AppMain`). `auto` (default): when the app root has an `app.dart`, `startup.dart` or `splash.dart`; `generated`: always; `manual`: never, and those three are not read (one warning each). Another value: ``unknown variant `always`, expected one of `auto`, `generated`, `manual` ``. See [`app-main.md`](app-main.md)                                                                                                                                                                                                         |
 | `size`               | a map (keys above)                               | What `fsp size` checks the web build against; only that command checks the values (since 0.8.1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `test`               | a map (keys above)                               | What `fsp test` writes a smoke test file for; only that command checks the values (since 0.8.1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `tasks`              | a map of tasks (see `fsp dev`)                   | The commands `fsp dev`, `fsp build` and `fsp run` run: `run`, `before`, `with`, `after`, `env`, `hot_reload`. Only those commands check it, so a mistake in it never stops `fsp gen` (since 0.9.0). An `fsp` older than 0.9.0 rejects the key itself                                                                                                                                                                                                                                                                                                                                      |
 
 There is no key for `extraCodec`: `lib/app/extra_codec.dart` is found by name. Nor for the generated `main()`'s path:
 it is `output` with `.main.g.dart` in place of `.g.dart` (`lib/app.main.g.dart`), and `output_manifest` may not be it.

@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="872" height="602" viewBox="0 0 872 602" role="img" aria-label="fsp dev, the full-screen view: a header with the app, the device and the DevTools link; a tab per process; the flutter log; a status line; the keys">
+<rect width="872" height="602" rx="10" fill="#0d1117"/>
+<circle cx="22" cy="19" r="6" fill="#ff5f56"/>
+<circle cx="42" cy="19" r="6" fill="#ffbd2e"/>
+<circle cx="62" cy="19" r="6" fill="#27c93f"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" xml:space="preserve">
+<text xml:space="preserve" x="24.4" y="59.0" fill="#c9d1d9" textLength="168.0" lengthAdjust="spacing" font-weight="bold">fespalier dev · shop</text>
+<text xml:space="preserve" x="704.8" y="59.0" fill="#7ee787" textLength="75.6" lengthAdjust="spacing">● running</text>
+<text xml:space="preserve" x="780.4" y="59.0" fill="#6e7681" textLength="67.2" lengthAdjust="spacing"> · debug</text>
+<text xml:space="preserve" x="16.0" y="77.0" fill="#c9d1d9" textLength="336.0" lengthAdjust="spacing"> Pixel 8 (emulator-5554) · android-arm64</text>
+<text xml:space="preserve" x="511.6" y="77.0" fill="#6e7681" textLength="336.0" lengthAdjust="spacing">VM service ws://127.0.0.1:52341/aBcD=/ws</text>
+<text xml:space="preserve" x="24.4" y="95.0" fill="#6e7681" textLength="67.2" lengthAdjust="spacing">DevTools</text>
+<text xml:space="preserve" x="100.0" y="95.0" fill="#c9d1d9" textLength="470.4" lengthAdjust="spacing">http://127.0.0.1:9100/?uri=ws://127.0.0.1:52341/aBcD=/ws</text>
+<rect x="24.4" y="100.0" width="75.6" height="18" fill="#c9d1d9"/>
+<text xml:space="preserve" x="24.4" y="113.0" fill="#0d1117" textLength="75.6" lengthAdjust="spacing" font-weight="bold">1 flutter</text>
+<text xml:space="preserve" x="100.0" y="113.0" fill="#6e7681" textLength="16.8" lengthAdjust="spacing"> │</text>
+<text xml:space="preserve" x="125.2" y="113.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacing">2 fsp</text>
+<text xml:space="preserve" x="175.6" y="113.0" fill="#e3b341" textLength="8.4" lengthAdjust="spacing">•</text>
+<text xml:space="preserve" x="184.0" y="113.0" fill="#6e7681" textLength="16.8" lengthAdjust="spacing"> │</text>
+<text xml:space="preserve" x="209.2" y="113.0" fill="#c9d1d9" textLength="117.6" lengthAdjust="spacing">3 build_runner</text>
+<text xml:space="preserve" x="335.2" y="113.0" fill="#e3b341" textLength="8.4" lengthAdjust="spacing">•</text>
+<text xml:space="preserve" x="24.4" y="131.0" fill="#6e7681" textLength="823.2" lengthAdjust="spacing">──────────────────────────────────────────────────────────────────────────────────────────────────</text>
+<text xml:space="preserve" x="16.0" y="149.0" fill="#c9d1d9" textLength="436.8" lengthAdjust="spacing"> Launching lib/main.dart on Pixel 8 in debug mode...</text>
+<text xml:space="preserve" x="16.0" y="167.0" fill="#c9d1d9" textLength="327.6" lengthAdjust="spacing"> Running Gradle task 'assembleDebug'...</text>
+<text xml:space="preserve" x="16.0" y="185.0" fill="#c9d1d9" textLength="436.8" lengthAdjust="spacing"> ✓ Built build/app/outputs/flutter-apk/app-debug.apk</text>
+<text xml:space="preserve" x="16.0" y="203.0" fill="#c9d1d9" textLength="487.2" lengthAdjust="spacing"> Installing build/app/outputs/flutter-apk/app-debug.apk...</text>
+<text xml:space="preserve" x="16.0" y="221.0" fill="#c9d1d9" textLength="294.0" lengthAdjust="spacing"> Syncing files to device Pixel 8...</text>
+<text xml:space="preserve" x="16.0" y="239.0" fill="#c9d1d9" textLength="302.4" lengthAdjust="spacing"> I/flutter ( 4242): signed in as ada</text>
+<text xml:space="preserve" x="16.0" y="257.0" fill="#c9d1d9" textLength="411.6" lengthAdjust="spacing"> I/flutter ( 4242): GET /api/products 200 (84 ms)</text>
+<text xml:space="preserve" x="16.0" y="275.0" fill="#c9d1d9" textLength="378.0" lengthAdjust="spacing"> I/flutter ( 4242): GET /api/cart 200 (31 ms)</text>
+<text xml:space="preserve" x="16.0" y="293.0" fill="#c9d1d9" textLength="218.4" lengthAdjust="spacing"> Performing hot restart...</text>
+<text xml:space="preserve" x="16.0" y="311.0" fill="#c9d1d9" textLength="268.8" lengthAdjust="spacing"> Restarted application in 412ms.</text>
+<text xml:space="preserve" x="16.0" y="329.0" fill="#c9d1d9" textLength="302.4" lengthAdjust="spacing"> I/flutter ( 4242): signed in as ada</text>
+<text xml:space="preserve" x="24.4" y="545.0" fill="#6e7681" textLength="823.2" lengthAdjust="spacing">──────────────────────────────────────────────────────────────────────────────────────────────────</text>
+<text xml:space="preserve" x="24.4" y="563.0" fill="#7ee787" textLength="92.4" lengthAdjust="spacing">✓ 14 routes</text>
+<text xml:space="preserve" x="116.8" y="563.0" fill="#6e7681" textLength="16.8" lengthAdjust="spacing"> ·</text>
+<text xml:space="preserve" x="142.0" y="563.0" fill="#c9d1d9" textLength="226.8" lengthAdjust="spacing">generated 4 s ago in 3.1 ms</text>
+<text xml:space="preserve" x="368.8" y="563.0" fill="#6e7681" textLength="16.8" lengthAdjust="spacing"> ·</text>
+<text xml:space="preserve" x="394.0" y="563.0" fill="#c9d1d9" textLength="75.6" lengthAdjust="spacing">no errors</text>
+<text xml:space="preserve" x="469.6" y="563.0" fill="#6e7681" textLength="16.8" lengthAdjust="spacing"> ·</text>
+<text xml:space="preserve" x="494.8" y="563.0" fill="#c9d1d9" textLength="92.4" lengthAdjust="spacing">hot restart</text>
+<text xml:space="preserve" x="595.6" y="563.0" fill="#7ee787" textLength="67.2" lengthAdjust="spacing">✓ 412 ms</text>
+<text xml:space="preserve" x="24.4" y="581.0" fill="#a5d6ff" textLength="8.4" lengthAdjust="spacing">r</text>
+<text xml:space="preserve" x="32.8" y="581.0" fill="#6e7681" textLength="58.8" lengthAdjust="spacing"> reload</text>
+<text xml:space="preserve" x="108.4" y="581.0" fill="#a5d6ff" textLength="8.4" lengthAdjust="spacing">R</text>
+<text xml:space="preserve" x="116.8" y="581.0" fill="#6e7681" textLength="67.2" lengthAdjust="spacing"> restart</text>
+<text xml:space="preserve" x="200.8" y="581.0" fill="#a5d6ff" textLength="8.4" lengthAdjust="spacing">d</text>
+<text xml:space="preserve" x="209.2" y="581.0" fill="#6e7681" textLength="75.6" lengthAdjust="spacing"> DevTools</text>
+<text xml:space="preserve" x="301.6" y="581.0" fill="#a5d6ff" textLength="8.4" lengthAdjust="spacing">o</text>
+<text xml:space="preserve" x="310.0" y="581.0" fill="#6e7681" textLength="42.0" lengthAdjust="spacing"> open</text>
+<text xml:space="preserve" x="368.8" y="581.0" fill="#a5d6ff" textLength="8.4" lengthAdjust="spacing">t</text>
+<text xml:space="preserve" x="377.2" y="581.0" fill="#6e7681" textLength="84.0" lengthAdjust="spacing"> telemetry</text>
+<text xml:space="preserve" x="478.0" y="581.0" fill="#a5d6ff" textLength="58.8" lengthAdjust="spacing">1-9/Tab</text>
+<text xml:space="preserve" x="536.8" y="581.0" fill="#6e7681" textLength="42.0" lengthAdjust="spacing"> pane</text>
+<text xml:space="preserve" x="595.6" y="581.0" fill="#a5d6ff" textLength="8.4" lengthAdjust="spacing">/</text>
+<text xml:space="preserve" x="604.0" y="581.0" fill="#6e7681" textLength="58.8" lengthAdjust="spacing"> filter</text>
+<text xml:space="preserve" x="679.6" y="581.0" fill="#a5d6ff" textLength="8.4" lengthAdjust="spacing">?</text>
+<text xml:space="preserve" x="688.0" y="581.0" fill="#6e7681" textLength="42.0" lengthAdjust="spacing"> help</text>
+<text xml:space="preserve" x="746.8" y="581.0" fill="#a5d6ff" textLength="8.4" lengthAdjust="spacing">q</text>
+<text xml:space="preserve" x="755.2" y="581.0" fill="#6e7681" textLength="42.0" lengthAdjust="spacing"> quit</text>
+</g>
+</svg>

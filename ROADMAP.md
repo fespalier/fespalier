@@ -7,29 +7,55 @@ it ships.
 
 ## In progress (0.9.0)
 
-- **`fsp dev`, `fsp build` and `fsp run`.** One command that runs `fsp watch` and `flutter run`
-  together, with a terminal UI: a tab per process, the device and DevTools links, the route count,
-  the last regeneration and the last hot reload. A regenerated `lib/app.g.dart` triggers a hot
-  restart and other Dart saves a hot reload, through `flutter run --machine`, so it works on Windows
-  too. Tasks live in `pubspec.yaml` under `fespalier: tasks:` (`run`, `before`, `with`, `after`,
-  `env`), so codegen, `fvm` or a custom script fit in without a separate config file. Plain prefixed
-  output in CI or with `--no-tui`.
+`fsp dev`, `fsp build` and `fsp run` (tasks in `pubspec.yaml`, a terminal UI) are merged and ship
+in 0.9.0. Next, as Flutter packages next to `fespalier_otel`:
+
+- **`fespalier_auth`.** One session provider (restoring, signed out, signed in) restored in
+  `startup.dart`, guard helpers (`requireSignedIn`, `requireRole`, `redirectIfSignedIn`) that return
+  to the typed location after sign-in, tokens in secure storage, and a refresh that happens on
+  demand and is shared by every waiting request (no timers). A pure-Dart OpenID Connect backend with
+  PKCE and Keycloak defaults, an authenticated `http` client and an optional `dio` integration;
+  Firebase, Supabase and password sign-in as recipes.
+- **`fespalier_sign_keypair`.** Device-bound sign-in with vaam-apps/flutter-sign-keypair: a key
+  that never leaves the Secure Enclave or AndroidKeyStore, and DPoP (RFC 9449) proofs on every
+  request, which Keycloak 26.4 accepts.
+- **`fespalier_image`.** A widget that requests the image size its layout needs, from a configured
+  set of widths, through a URL builder for imgproxy and EmgR, Cloudinary, imgix, Thumbor, a template
+  or a list of sized URLs. No signing key in the app. `RouteLink` can warm the destination's image.
 
 ## Next
 
-- **Instrumentation the app doesn't have to write.** The generated `main()` already has hooks for
-  this (`MainHooks` in `cli/src/entry.rs`) that nothing fills yet: with `telemetry: true` and an
-  `app.dart`, `lib/app.main.g.dart` could install `FespalierOtel` and the zone itself, so
-  `fsp telemetry` plus one pubspec line is the whole setup.
-- **The four telemetry attributes that are documented as not emitted.** Forms (0.8) and data
-  freshness (0.8) now have what they need: `fespalier.data.attempt` (retries),
-  `fespalier.data.source` (cache or network), `fespalier.action.rolled_back` (an optimistic update
-  undone) and `fespalier.action.invalid` (a form refused before it ran). Adding them is additive to
-  contract v1, and brings back the retries, cache-hits and rollbacks panels in the dashboards.
-- **Flutter 3.47.6.** A `build:` change on its own, because it needs `just devtools-build` and the
-  committed DevTools extension build with it.
+- **Core seams the adapters need.** `FespalierTelemetry.combine` (several sinks at once), the
+  route pattern as each page's `name` (so vendor navigator observers see screens), adapter wiring
+  in the generated `main()` from one pubspec key, `traceData` taking a closure (HTTP spans under
+  the data span), `AppRoutes.urlOf`, a DevTools panel adapters can post to, and `test: a11y: true`
+  in `fsp test`.
+- **Adapters**, each a small package:
+  - `fespalier_launch`: notification, shortcut and home-widget taps open typed routes, the first
+    screen on a cold start.
+  - `fespalier_sentry` and `fespalier_crashlytics`: errors and performance from the telemetry sink,
+    named by route pattern and tagged with the file that threw.
+  - `fespalier_adaptive`: `nav.dart` menus as a bottom bar, rail or drawer by width.
+  - `fespalier_flags`: feature flags that guards watch, so menus hide flagged routes.
+  - `fespalier_dio` (and an `http` variant): cancellation when a page goes away, server validation
+    errors on form fields, no retried writes, trace headers.
+  - `fespalier_analytics`: screen views and time on screen, named from `meta.dart`, with consent.
+  - `fespalier_storage`: `dataCache` storage that shows the saved value on the first frame.
+  - `fespalier_connectivity`: the reconnect signal that `refetchOnReconnect` waits for.
+- **Instrumentation the app doesn't have to write.** With `telemetry: true` and an `app.dart`, the
+  generated `main()` installs `FespalierOtel` and its zone itself.
+- **The four telemetry attributes documented as not emitted**: `fespalier.data.attempt`,
+  `fespalier.data.source`, `fespalier.action.rolled_back`, `fespalier.action.invalid`. Forms and
+  data freshness now have what they need; adding them brings back the retries, cache-hits and
+  rollbacks panels.
+- **Reload instead of restart after a regeneration.** `fsp dev` hot restarts when `lib/app.g.dart`
+  changes, because the generated router is built once, so a hot reload would keep the old route
+  table. In debug the router could rebuild itself on `reassemble` (go_router's
+  `GoRouter.routingConfig`, with a `ValueListenable<RoutingConfig>`); a regeneration would then need
+  only a hot reload and keep the app's state.
+- **Flutter 3.47.6.** A `build:` change on its own, with `just devtools-build`.
 - **Editor support for tasks.** The VS Code and IntelliJ plugins list `fespalier: tasks:` as run
-  configurations and show `fsp dev`'s diagnostics, from a machine-readable `fsp dev` event stream.
+  configurations.
 - **Make `Maestro flows open their routes on the web` a required check** once it has a few weeks
   of green runs.
 
@@ -39,7 +65,7 @@ it ships.
   and the type it names count as different types (see README's "Status"). Resolving them needs the
   Dart analyzer, as a sidecar or through the analysis server.
 - **Dashboards beyond the local stack.** The same dashboard spec rendered for hosted OpenObserve
-  and Grafana Cloud, with the import as a documented one-liner.
+  and Grafana Cloud.
 
 ## Waiting on others
 
@@ -49,8 +75,8 @@ it ships.
 - **`runGuarded` on the web.** `otel_zone`'s `runGuarded` never runs its body in a Flutter web app,
   so the docs use `kIsWeb ? body() : observability.runGuarded(body)` until it is fixed in
   vaam-apps/flutter-otel-zone.
-- **OpenTelemetry Collector 0.162.0.** Tagged, but no image is published yet; the stack stays on the
-  pinned 0.161 image until one is.
+- **OpenTelemetry Collector 0.162.0.** Tagged, but no image is published yet; the stack stays on
+  0.161.0 until one is.
 - **OpenObserve:** a click on a stat tile opens nothing, and PromQL's `or vector(0)` returns no
   series (v1.0.4). Drill-down is on the tables and charts until then, and the Grafana tiles work
   around the second.

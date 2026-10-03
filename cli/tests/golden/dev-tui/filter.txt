@@ -1,0 +1,30 @@
+ fespalier dev · shop                                                             ● running · debug
+ Pixel 8 (emulator-5554) · android-arm64                   VM service ws://127.0.0.1:52341/aBcD=/ws
+ DevTools http://127.0.0.1:9100/?uri=ws://127.0.0.1:52341/aBcD=/ws
+ 1 flutter │ 2 fsp • │ 3 build_runner •
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ Running Gradle task 'assembleDebug'...
+ gradle: configuring project :app
+ Running Gradle task 'assembleDebug'...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ──────────────────────────────────────────────────────────────────────────────────────────────────
+ ✓ 14 routes · generated 4 s ago in 3.1 ms · no errors · hot restart ✓ 412 ms
+ / Gradle  Esc clears  r reload  R restart  d DevTools  o open  t telemetry  1-9/Tab pane  / filter

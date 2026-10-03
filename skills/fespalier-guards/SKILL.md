@@ -1,6 +1,6 @@
 ---
 name: fespalier-guards
-description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Since 0.9.0 also the fespalier_auth package: a session provider, restoreAuth in startup.dart, requireSignedIn, requireRole and redirectIfSignedIn guards, token storage, lazy single-flight refresh, an authenticated HTTP client (http and dio), OpenID Connect with PKCE and Keycloak, recipes for Firebase, Supabase and your own API, device-bound tokens (DPoP, fespalier_sign_keypair) and a fake backend for tests. Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
+description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Since 0.9.0 also the fespalier_auth package: a session provider, restoreAuth in startup.dart, requireSignedIn, requireRole and redirectIfSignedIn guards, token storage, lazy single-flight refresh, an authenticated HTTP client (http and dio), OpenID Connect with PKCE and Keycloak, recipes for Firebase, Supabase and your own API, device-bound tokens (DPoP, fespalier_sign_keypair) and a fake backend for tests, and the fespalier_flags package for feature flags (flagGuard in a guard.dart, menus that follow a flag, a synchronous flag provider, vendor sources, FakeFlags). Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
 ---
 
 # fespalier-guards
@@ -178,6 +178,46 @@ a JSON API, the guards, the sign-in form, an API call and its tests) and every b
 `examples/auth` is the running version (guards, form, refresh, restore, Keycloak realm). Its messages are in
 [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its `diagnostics-auth.md` page).
 
+## Feature flags (`fespalier_flags`, since 0.9.0)
+
+fespalier's core has **no flag feature**; the `fespalier_flags` package (a git dependency next to fespalier, **same `url`,
+same `ref`**) is a guard with a source of values. It adds no dependency beyond fespalier, no timer and no polling, and
+changes no generated code.
+
+```dart
+// lib/flags.dart
+const labs = BoolFlag('labs');
+
+// lib/app/labs/guard.dart: /labs is there while the flag is on; a nav.dart beside it is hidden while it is off
+GuardResult guard(Ref ref) => flagGuard(ref, labs, orElse: const HomeRoute().location);
+
+// lib/app/startup.dart
+Future<List<Override>> startup() async => [
+  flagSource.overrideWithValue(const ConstFlags({'labs': bool.fromEnvironment('LABS')})),
+];
+```
+
+- **A flag is synchronous**: `ref.watch(flag(labs))` is a `bool`, never an `AsyncValue` or a `Future`, and a flag that is
+  not known yet is its **fallback**. So the guard stays sync, the first frame is not blank, and menus (which run guards)
+  hide the entry for free.
+- **One `guard.dart` per folder**: compose with `??` (`flagGuard(...) ?? requireSignedIn(...)`).
+- **Never call a vendor's async API in a guard** (PostHog's `isFeatureEnabled` is a `Future`: the entry turns pending and
+  the first frame is blank). Put the value behind a `FlagSource`.
+- **`follow: false` for a flow**: with the default, turning the flag off on the page takes the user off it.
+- **A guard that redirected stays subscribed until the next navigation**, so a flag's subscription outlives the page it
+  gated by one navigation (a test pins it). A guarded page under a pushed page reacts only when uncovered.
+- **A cold deep link before the source is ready sees the fallback**: await the vendor's local load in `startup()`, or
+  wrap a network-first vendor in `AsyncFlags` (the app's own `.timeout()` is the only timer).
+- **Without an override every flag is its fallback.** A flag that is "always off" is no override in `startup()`, or a key
+  typo (`FakeFlags.strict` in tests).
+- **Not built:** a `route.dart` constant for a flag, vendor packages, a DevTools flag panel.
+
+[`references/feature-flags.md`](references/feature-flags.md) has the package in full and a compiled starter (the route, the
+guard, the menu entry, `startup()` and the tests). `examples/features` has `/labs` behind a flag. The tests use
+`FakeFlags` from `package:fespalier_flags/testing.dart` ([`fespalier-testing`](../fespalier-testing/SKILL.md)); the run-time
+messages are in [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its
+`diagnostics-flags-storage-network.md` page).
+
 ## Where to read more
 
 | Need                                                                  | Reference                                                                  |
@@ -187,5 +227,6 @@ a JSON API, the guards, the sign-in form, an API call and its tests) and every b
 | `fespalier_auth` (since 0.9.0): restore, guards, refresh, HTTP, tests | [`references/auth-package.md`](references/auth-package.md)                 |
 | OpenID Connect, Keycloak, Firebase, Supabase, your own API, dio       | [`references/auth-backends.md`](references/auth-backends.md)               |
 | Device-bound tokens: DPoP, `fespalier_sign_keypair`, proofs in tests  | [`references/auth-dpop.md`](references/auth-dpop.md)                       |
+| Feature flags (since 0.9.0): `flagGuard`, flag providers, `FakeFlags` | [`references/feature-flags.md`](references/feature-flags.md)               |
 | Testing a guarded route                                               | `fespalier-testing`                                                        |
 | An `fsp` error on a guard or redirect                                 | `fespalier-troubleshooting`                                                |

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:features/auth.dart';
 import 'package:fespalier/startup.dart';
+import 'package:fespalier_flags/fespalier_flags.dart';
 
 /// What the app asked this file for, in order. The tests read it to check when each runs.
 final List<String> startupLog = [];
@@ -37,7 +38,13 @@ Future<void> zone(Future<void> Function() body) {
 Future<List<Override>> startup() async {
   startupLog.add(Zone.current[_inZone] == true ? 'startup in zone' : 'startup');
   final signedIn = await sessionStore.restore();
-  return [session.overrideWith(() => _Restored(signedIn))];
+  return [
+    session.overrideWith(() => _Restored(signedIn)),
+    // --dart-define=FEATURES_LABS=true shows /labs (fespalier_flags).
+    flagSource.overrideWithValue(
+      const ConstFlags({'labs': bool.fromEnvironment('FEATURES_LABS')}),
+    ),
+  ];
 }
 
 class _Restored extends Flag {

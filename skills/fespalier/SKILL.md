@@ -177,6 +177,7 @@ and the reserved names.
 | `data.dart`, loading and error views, retries, prefetch, sections, `dataAt`                                                  | `fespalier-data`                                |
 | `layout.dart`, tabs, `container`, shell transitions, restoration                                                             | `fespalier-layouts`                             |
 | `guard.dart`, `redirect.dart`, `returnTo`, sign-in flows, `fespalier_auth` and `fespalier_sign_keypair` (DPoP) (since 0.9.0) | `fespalier-guards`                              |
+| Feature flags, a route behind a flag, a menu entry that follows one (`fespalier_flags`, since 0.9.0)                         | `fespalier-guards`                              |
 | `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.1)                     | `fespalier-observability`                       |
 | `app.dart`, `startup.dart`, `splash.dart`, `main: manual`, `AppMain` (the generated `main()`)                                | this skill: `references/app-main.md`            |
 | Widget tests: `pumpRouter`, `currentLocation`, deep links, data states                                                       | `fespalier-testing`                             |

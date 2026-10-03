@@ -1510,6 +1510,184 @@ context.go(returnTo(from));                  // from if it's a location in the a
 and the like fall back, so a crafted `?from=` can't send people off your app. Both `uri` and
 the typed routes include the mount prefix when the tree is mounted with `at:`.
 
+### Feature flags: fespalier_flags
+
+Since 0.9.0. A feature flag is a value the app asks for by name and that a server, a vendor SDK or a build can
+change: show `/labs` to some users, move `checkout` to its second version. fespalier's core has no flag feature and
+gains none: no file kind, no `fespalier:` key, no `fsp` command, and `app.g.dart` is the same bytes.
+`package:fespalier_flags` is [Guards](#guards) with a source of values: a flag is a provider that answers **at
+once** (never an `AsyncValue`, never a `Future`), so a guard that watches one stays synchronous, and a menu entry
+behind it follows the flag because [menus run guards](#menus-and-breadcrumbs-navdart). An app that does not depend on
+it is unchanged. It adds no dependency beyond fespalier, no timer and no polling.
+
+Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if they are
+the same repository dependency; a mismatch fails with `Because every version of fespalier_flags from path depends on
+fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and demo depends on
+fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier, fespalier_flags from path
+is forbidden.`, the form it takes when the first is a path):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1
+  fespalier_flags:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_flags
+      ref: v0.8.1
+```
+
+<!-- x-release-please-end -->
+
+Declare each flag once, `const`, gate a route with `flagGuard` in its `guard.dart`, and read a flag anywhere that has a
+`Ref` or a `WidgetRef`:
+
+```dart
+// lib/flags.dart
+const labs = BoolFlag('labs');
+const checkoutV2 = BoolFlag('checkout_v2');
+const pageSize = IntFlag('page_size', fallback: 20);
+
+// lib/app/labs/guard.dart: /labs is there while the flag is on
+GuardResult guard(Ref ref) => flagGuard(ref, labs, orElse: const HomeRoute().location);
+
+// a widget, a provider, a guard: the value is there at once
+final size = ref.watch(flag(pageSize));
+```
+
+`BoolFlag` is off unless the source says otherwise (its `fallback` is `false`); `StringFlag`, `IntFlag` and
+`DoubleFlag` have a required `fallback`. A flag is its **fallback** whenever the source has no value for its key, has
+one of another type, throws, or has not started yet, so a flag is never loading. Two declarations with the same type,
+key and fallback are the same flag. A `nav.dart` beside the `guard.dart` needs nothing else: while the flag is off
+the guard refuses the entry, and a refused entry is hidden (`NavRefused.hide`, the default; `whenRefused:
+NavRefused.disable` greys it out instead).
+
+- **A new route behind a flag:** `lib/app/checkout-v2/guard.dart` is `flagGuard(ref, checkoutV2, orElse: const
+  CartRoute().location)`. A whole section: the guard goes in a `(group)` or in the section's folder, as any guard.
+- **The old URL goes to the new one while the flag is on:** `checkout/guard.dart` is `flagGuard(ref, checkoutV2,
+  whenOff: true, orElse: const CheckoutV2Route().location)`.
+- **The same URL, two pages:** no guard; the page switches: `ref.watch(flag(checkoutV2)) ? const CheckoutV2() : const
+  CheckoutV1()`.
+- **A flag and a sign-in:** a folder has one `guard.dart`, so compose with `??`. `flagGuard` returns a `String?`,
+  synchronously: `flagGuard(ref, labs, orElse: '/') ?? (ref.watch(session) ? null :
+  LoginRoute(from: uri.toString()).location)` (with [`fespalier_auth`](#authentication): `?? requireSignedIn(ref,
+  uri, signIn: ...)`).
+- **A flow that must not be pulled from under the user** (a checkout): `flagGuard(ref, checkoutV2, orElse: '/',
+  follow: false)` reads the flag once per navigation (`ref.read`): the page stays open when the flag turns off, the
+  next navigation applies it, and a menu does not follow.
+
+**Live updates.** A source can send an event when values change (`FlagSource.changes`: `FlagsChanged({'labs'})` names
+the keys, `FlagsChanged.all()` means any). `fespalier_flags` listens with **one subscription per `ProviderContainer`**,
+opened when the first flag is watched and cancelled when the last watched flag goes, and reads again only the watched
+flags the event names. A guard, a menu or a widget runs again only when the value it reads **differs**, so a flag that
+turns off on `/labs` takes the app to `orElse` in the next frame and a menu entry under it hides, with no navigation.
+Nothing in the package polls or starts a timer; a vendor's own streaming or polling runs inside its SDK, by its settings.
+
+**What to know.**
+
+- **A guard that redirected stays subscribed until the next navigation.** fespalier keeps a `ref.watch`ing guard
+  while the committed location runs it, and a guard that redirected is kept until the next commit (see
+  [Guards](#guards)). So a flag's subscription can outlive the page it gated by one navigation: a cold deep link to
+  `/labs` with the flag off lands on `/`, and the flag is still listened to until the user goes somewhere else.
+  `packages/fespalier_flags/test/guard_test.dart` pins this, so a change in fespalier's guard lifetime is noticed.
+- **A guarded page under a pushed page** does not react until it is uncovered (the rule of every guard).
+- **A cold deep link before the source is ready** sees the fallback, so a guard sends it to `orElse`: await the
+  vendor's local load in `startup()` (below).
+- **Never call a vendor's async API in a guard.** PostHog's `isFeatureEnabled` is a `Future`: the guard answers a
+  `Future`, the menu entry turns pending and the first frame is blank. Copy the value into a
+  [`FlagSource`](#where-flag-values-come-from) and read that.
+- **`follow: true` (the default) takes a user off a page** when the flag turns off mid-flow. Use `follow: false` for a
+  flow.
+- **Each change re-reads the watched flags the event names.** Vendors that count evaluations (LaunchDarkly) or track
+  exposures (GrowthBook) see those reads; a keyed `FlagsChanged` keeps them to the keys that changed.
+
+**Not built.** A `route.dart` constant (`const flag = 'checkout_v2'`): it would be a second gating mechanism, with
+binding rules, diagnostics and an order to define against `guard.dart`, `nest = false` and menus, to save one line.
+Vendor **packages**: each bridge is 15 to 40 lines of mapping, so they are recipes, below. A DevTools panel for flag
+values.
+
+#### Where flag values come from
+
+`startup()` returns the source, once: `flagSource.overrideWithValue(source)`. Without one, `flagSource` is
+`const ConstFlags()`: every flag is its fallback.
+
+```dart
+// lib/app/startup.dart
+Future<List<Override>> startup() async => [
+  flagSource.overrideWithValue(const ConstFlags({'labs': bool.fromEnvironment('LABS')})),
+];
+```
+
+A `FlagSource` is four synchronous typed reads (`boolValue(key, fallback)`, `stringValue`, `intValue`,
+`doubleValue`) and `Stream<FlagsChanged>? get changes`. The typed reads are what OpenFeature's static-context client
+and LaunchDarkly's variations are, so a bridge to a vendor is a line per method. Every read must answer **from
+memory**: guards and menus call it, so never from the network, a file or a platform channel. A read that throws is the
+flag's fallback (printed in debug).
+
+| Source               | What it is                                                                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ConstFlags({...})`  | Fixed values, or `--dart-define`d ones. `changes` is `null`. A bool reads a `bool`, a double any `num`; a value of another type is the fallback |
+| `AsyncFlags(future)` | A source that is not ready at start: reads come from `meanwhile` until the future completes, then one `FlagsChanged.all()`                      |
+| A vendor bridge      | Your own `FlagSource` over the vendor's SDK: a recipe, below                                                                                    |
+| `FakeFlags({...})`   | For tests: [Testing flagged routes](#testing-flagged-routes)                                                                                    |
+
+**Initial values, with no timer.** `startup()` awaits only what is **local**: Remote Config's `ensureInitialized()`
+and `activate()` (the values the previous session fetched), LaunchDarkly's construction, PostHog's `setup()` and a read
+of the app's keys from the native SDK's cache. From the first frame every read is a synchronous call into the vendor's
+memory. A vendor whose start waits for the network (GrowthBook past its cache's TTL, LaunchDarkly's `start()` on a first
+launch, which "may not complete until ... the device leaves airplane mode") goes in `AsyncFlags(start(), meanwhile:
+...)`: the fallbacks (or the app's last known values) until the `Future` completes, then one `FlagsChanged.all()`. An
+app that must see remote values before its first frame awaits the vendor in `startup()` with a `.timeout()` of its own
+if it wants one: that timer is the app's choice, and fespalier's tests never reach it (tests override `flagSource`).
+
+**Recipes.** Firebase Remote Config, LaunchDarkly, PostHog and GrowthBook have a recipe, compiled by `just
+skill-samples`, in [`skills/fespalier-guards`](skills/fespalier-guards/SKILL.md): about 15 to 40 lines each, a class
+that `implements FlagSource` and a `startup()` that returns it. They are not packages because there is no fespalier
+logic left in them, and a package per vendor would cost a release, a CI entry that resolves the vendor's SDK and a
+fake of its singleton for 20 lines. A recipe becomes a package when its glue grows fespalier-specific logic or past
+about 60 lines. **OpenFeature** is the common interface to converge on, but is not adopted: its Dart SDK is a beta. A
+bridge over it is about 25 lines, and `FlagSource` mirrors its typed reads and its configuration-changed event.
+
+#### Testing flagged routes
+
+`FakeFlags` (in `package:fespalier_flags/testing.dart`) is a `FlagSource` that holds values in memory. Give it to
+`pumpRouter` as an override, or to the setup file of `fsp test`:
+
+```dart
+testWidgets('labs is there with the flag on, and goes with it', (tester) async {
+  final flags = FakeFlags({'labs': true});
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/labs'),
+    overrides: [flagSource.overrideWithValue(flags)],
+  );
+  expect(currentLocation(tester), '/labs');
+
+  flags.set('labs', false);   // delivered synchronously
+  await tester.pump();        // one frame: the guard ran again, the router moved
+  expect(currentLocation(tester), '/');
+});
+```
+
+```dart
+// test/routes/setup.dart: `fsp test` tests a flagged route instead of skipping it
+List<Override> overrides(String pattern) => [
+  flagSource.overrideWithValue(FakeFlags({'labs': pattern == '/labs'})),
+];
+```
+
+- **`set(key, value)`** sends `FlagsChanged({key})` before it returns, `setAll({...})` one event for several keys, and
+  a `null` value removes the key. Call them from the test body, not while a widget builds.
+- **`FakeFlags.strict({...})`** throws a `StateError` for a key it lacks or a value of another type, and reports it
+  to `FlutterError.reportError`, so a typo in a key fails a `testWidgets` instead of reading the fallback.
+- **`listenerCount`** is how many listen to its changes: `0` once nothing watches a flag.
+- Without an override, every flag is its fallback, so existing tests of an app that adds a flag see the flag off.
+
 ### Route lifecycle: `observe.dart`
 
 Since 0.8.1, an `observe.dart` runs code when a page becomes the one the user sees, when it is on
@@ -5761,6 +5939,11 @@ its root layout reads through the route manifest to set the page title, and its 
 review-code check on `AppRoutes.all`. It sets `scroll_restoration: true` (since 0.8.1): `/feed` has two
 lists under `PageStorageKey`s, and its tests play the browser's back and forward.
 
+Since 0.9.0 `examples/features` has `/labs`, a route behind a feature flag ([`fespalier_flags`](#feature-flags-fespalier_flags)):
+`lib/app/labs/guard.dart` is one `flagGuard`, and the menu entry is hidden while the flag is off. It is off by default;
+run with `--dart-define=FEATURES_LABS=true` to see it. `test/flags_test.dart` turns the flag on and off with a
+`FakeFlags` while the menu is open and while the app is on `/labs`.
+
 `examples/tabs` also keeps its manifest in a library of its own (`output_manifest:
 lib/app.routes.g.dart`, with `Review` metas that `lib/main.dart` never imports), and its tests
 restore the selected tab, a background tab's stack and a page's state after a simulated
@@ -5792,6 +5975,7 @@ packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, 
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 packages/fespalier_auth/   signed-in routes: session provider, guards, authenticated client, OpenID Connect
 packages/fespalier_sign_keypair/   DPoP proofs for fespalier_auth, signed by a device key (Secure Enclave, AndroidKeyStore)
+packages/fespalier_flags/   feature flags: FlagSource, flag() providers that guards watch, flagGuard (since 0.9.0)
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed

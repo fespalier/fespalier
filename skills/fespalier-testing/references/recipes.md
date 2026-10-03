@@ -285,6 +285,37 @@ await tester.pumpAndSettle();
 fakeAuth(signedInAs: ...)` makes every guarded route render (otherwise a guarded route is skipped).
 - `RecordingTelemetry` sees the `auth` spans: `#2 start auth refresh backend=fake trigger=expired`.
 
+## Flagged routes (since 0.9.0)
+
+With `package:fespalier_flags`, a `FakeFlags` is the flag source: `flagSource.overrideWithValue(fake)` in the `overrides`
+of `pumpRouter`. The guard, the menu entry and these tests are a compiling starter in
+[`fespalier-guards`](../../fespalier-guards/references/feature-flags.md), whose `test/labs_test.dart` has all of the
+following as running samples.
+
+```dart
+final flags = FakeFlags({'labs': true});
+await pumpRouter(
+  tester,
+  AppRoutes.router(initialLocation: '/labs'),
+  overrides: [flagSource.overrideWithValue(flags)],
+);
+expect(currentLocation(tester), '/labs');
+
+flags.set('labs', false); // delivered synchronously, from the test body
+await tester.pump(); // one frame: the guard ran again and the router moved
+expect(currentLocation(tester), '/');
+```
+
+- `FakeFlags({...})` reads a key it lacks, or a value of another type, as the flag's fallback; **`FakeFlags.strict`**
+  throws a `StateError` instead and reports it to `FlutterError.reportError`, so a typo in a key fails the test.
+- `set(key, value)` (`null` removes it) and `setAll({...})` send `FlagsChanged` synchronously: call them from the test
+  body, never while a widget builds, then `await tester.pump()`. `listenerCount` is 0 once nothing watches a flag.
+- A cold deep link with the flag off is on `orElse` in the **first** frame (`pumpRouter(..., settle: false)`): the guard
+  answers at once.
+- In `fsp test`'s `test/routes/setup.dart`, `List<Override> overrides(String pattern) =>
+[flagSource.overrideWithValue(FakeFlags({'labs': true}))]` makes a flagged route render instead of being skipped.
+- Without an override every flag is its fallback, so tests written before a flag existed see it off.
+
 ## DPoP proofs (since 0.9.0)
 
 With `package:fespalier_sign_keypair`, a test needs no secure element: `DpopProof(signer: FakeDpopSigner())` is a proof

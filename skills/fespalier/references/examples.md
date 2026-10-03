@@ -17,6 +17,12 @@ Since 0.8.1 `minimal`, `shop` and `features` run the generated `main()` (`lib/ma
 `splash.dart` and a `zone()`, and tests them in `test/startup_test.dart`), and `tabs` keeps a `main()`
 of its own. See [`app-main.md`](app-main.md).
 
+Since 0.9.0 `features` also carries the state packages. **`/labs`** is behind a feature flag (`fespalier_flags`):
+`lib/app/labs/guard.dart` is one `flagGuard(ref, labs, orElse: ...)`, `nav.dart` beside it is hidden while the flag is
+off, `startup.dart` reads `--dart-define=FEATURES_LABS=true`, and `test/flags_test.dart` turns the flag on and off with a
+`FakeFlags` while the menu is open and while the app is on `/labs`. Read it with `fespalier-guards`
+(`references/feature-flags.md`).
+
 The examples nest `material_ui`'s `MaterialApp` around `MaterialApp.router` in their tests
 so they pass on both go_router 17 and 18; with the root `transition.dart` that `fsp init`
 writes you do not need that (`pumpRouter` uses Flutter's `MaterialApp`).

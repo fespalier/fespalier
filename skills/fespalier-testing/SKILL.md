@@ -1,6 +1,6 @@
 ---
 name: fespalier-testing
-description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in (fakeAuth from fespalier_auth, since 0.9.0), pure tests of locations, dataAt and match, a generated smoke test per route (fsp test, setup.dart, smokeTestRoute), Maestro on a device or the web (semantics_ids, fsp maestro), local telemetry dashboards (fsp telemetry, OpenObserve, Grafana), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
+description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in (fakeAuth from fespalier_auth, since 0.9.0), flagged routes (FakeFlags from fespalier_flags, since 0.9.0), pure tests of locations, dataAt and match, a generated smoke test per route (fsp test, setup.dart, smokeTestRoute), Maestro on a device or the web (semantics_ids, fsp maestro), local telemetry dashboards (fsp telemetry, OpenObserve, Grafana), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
 ---
 
 # fespalier-testing
@@ -40,6 +40,10 @@ testWidgets('shows a product', (tester) async {
   `FakeAuthBackend` and a `MemoryTokenStore`: no `startup()`, no network, no timer. Call it **inside the test
   body**, where the fake clock starts; `tokenLifetime:` plus `tester.pump(const Duration(minutes: 6))` ages the
   session. See "Signed-in routes" in [`references/recipes.md`](references/recipes.md).
+- **Flagged routes (since 0.9.0).** With `package:fespalier_flags`, `overrides: [flagSource.overrideWithValue(FakeFlags({'labs': true}))]`
+  (from `package:fespalier_flags/testing.dart`) turns a flag on for a `pumpRouter` test; `flags.set('labs', false)` then
+  `await tester.pump()` takes the app off the flagged route. `FakeFlags.strict` fails a test on a key typo. See
+  `references/recipes.md` and [`fespalier-guards`](../fespalier-guards/SKILL.md) (its feature-flags page).
 - **DPoP proofs (since 0.9.0).** With `package:fespalier_sign_keypair`, `FakeDpopSigner` (from
   `package:fespalier_sign_keypair/testing.dart`) is a software key from a fixed scalar (the same on every run, no
   platform), and `verifyDpopProof` is what a fake server checks every proof with. See "DPoP proofs" in
@@ -116,6 +120,7 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 | Typed navigation                                   | `ProductRoute(id: 1).go(tester.element(find.byType(ProductsPage)))`, then `pumpAndSettle`                                                                  |
 | A guard                                            | `c.read(session.notifier).signIn()` through the returned container, then navigate (or `pumpAndSettle`: a `Ref` guard that watches moves by itself)         |
 | A signed-in route (0.9.0, `fespalier_auth`)        | `overrides: fakeAuth(signedInAs: const AuthUser(id: 'ada'))`; signed out: `fakeAuth()`, and the route lands on `/sign-in?from=...`                         |
+| A flagged route (0.9.0, `fespalier_flags`)         | `overrides: [flagSource.overrideWithValue(FakeFlags({'labs': true}))]`; `flags.set('labs', false)`, then `pump()`: the app leaves it                       |
 | Locations, matches, data providers                 | plain `test()`: `.location`, `locationFor`, `AppRoutes.dataAt(uri)`, `AppRoutes.match(uri)`                                                                |
 | A `WidgetRef` (prefetch, refresh)                  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                             |
 | An action (a write, since 0.5.0)                   | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                              |

@@ -79,6 +79,9 @@ folder and above, asked with the entry's own location).
 - **A menu runs the guards.** Each guarded entry asks them once while a menu with it is on
   screen, and again when what they watch changes; keep guards cheap and free of side effects.
   `NavRefused.show` skips asking.
+- **A feature flag hides an entry through its guard** (since 0.9.0): a folder whose `guard.dart` is
+  `flagGuard(ref, labs, orElse: ...)` has its entry refused, and so hidden, while the flag is off, and shown in the next
+  frame when it turns on, with no navigation ([`fespalier-guards`](../../fespalier-guards/references/feature-flags.md)).
 - A guard may read a segment: the generator builds the entry's route and passes its fields. A
   guard's query parameters get `null` (`const []` for a list) and its `extra` `null`: the entry's
   location has none.

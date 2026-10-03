@@ -276,7 +276,11 @@
         "packages/fespalier_sign_keypair/README.md",
         "packages/fespalier_sign_keypair/lib/fespalier_sign_keypair.dart",
         "packages/fespalier_sign_keypair/lib/verify.dart",
-        "examples/auth"
+        "examples/auth",
+        "README.md#Feature flags: fespalier_flags",
+        "README.md#Where flag values come from",
+        "packages/fespalier_flags/README.md",
+        "packages/fespalier_flags/lib/fespalier_flags.dart"
       ]
     },
     "fespalier-testing": {
@@ -286,6 +290,8 @@
         "README.md#Testing signed-in routes",
         "packages/fespalier_auth/lib/testing.dart",
         "packages/fespalier_sign_keypair/lib/testing.dart",
+        "README.md#Testing flagged routes",
+        "packages/fespalier_flags/lib/testing.dart",
         "README.md#Maestro flows (`fsp maestro`)",
         "config:semantics_ids",
         "packages/fespalier/lib/src/web_semantics.dart",

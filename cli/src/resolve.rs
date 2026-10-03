@@ -16,7 +16,7 @@
     reason = "sections and data are bound before the lookups that unwrap them; the resolver states those invariants"
 )]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use heck::ToUpperCamelCase;
 
@@ -144,6 +144,54 @@ pub struct Data {
     pub keys: Vec<String>,
     /// Keyed by a named record `(a: .., b: ..)` rather than a bare value.
     pub record: bool,
+    /// The `freshness` that applies (since 0.8.0): the import index of the library that
+    /// declares it, and that file relative to the app folder (the data.dart itself, or the
+    /// nearest route.dart at or above it). Only for a `data()` function that doesn't return a
+    /// Stream.
+    pub freshness: Option<(usize, String)>,
+    /// The data.dart declares `dataCache` (since 0.8.0); only for such a `data()` function.
+    pub cache: bool,
+}
+
+/// What a data.dart is, for `freshness` and `dataCache`, which only a `data()` function that
+/// loads once can have.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DataForm {
+    Function,
+    Stream,
+    Selector,
+    Provider,
+}
+
+/// What `freshness` must be (E1), here and in a route.dart.
+const BAD_FRESHNESS: &str = "`freshness` must be a `Freshness(...)`: write `const freshness = Freshness(staleTime: Duration(minutes: 5));`";
+
+/// What `dataCache` must be (E6).
+const BAD_DATA_CACHE: &str = "`dataCache` must be a `DataCache(...)` or `DataCache.json(...)`: write `final dataCache = DataCache<Product>.json(toJson: ..., fromJson: ...);`";
+
+/// Whether a variable's initializer is a call of the constructor `name` (since 0.8.0):
+/// `Freshness(`, `const Freshness(`, `prefix.Freshness(`, `DataCache<T>.json(`. The source has
+/// no whitespace (see `Variable::value`), so a `const` in front reads as `constFreshness(`.
+fn is_ctor(v: &dart::Variable, name: &str) -> bool {
+    let Some(value) = v.value.as_deref() else {
+        return false;
+    };
+    let is_ident = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+            && !s.starts_with(|c: char| c.is_ascii_digit())
+    };
+    let named = |s: &str| {
+        // An optional `prefix.` of an `import ... as prefix`, then the name and its call.
+        let s = match s.split_once('.') {
+            Some((prefix, rest)) if prefix != name && is_ident(prefix) => rest,
+            _ => s,
+        };
+        s.strip_prefix(name)
+            .is_some_and(|rest| rest.starts_with(['(', '<', '.']))
+    };
+    named(value) || value.strip_prefix("const").is_some_and(named)
 }
 
 /// A name listed in `const invalidates = [...]`, with where it sits.
@@ -374,6 +422,22 @@ pub struct BranchOptions {
     pub initial_location: Option<String>,
 }
 
+/// A folder's `nav.dart` (since 0.8.0): `const nav = Nav(label: 'Products', order: 1);` and,
+/// optionally, `String label(BuildContext context, {required int id})`.
+#[derive(Debug, Clone)]
+pub struct NavDecl {
+    /// The index of the nav.dart in the generated file's imports.
+    pub import: usize,
+    /// Relative to the app folder: `products/nav.dart`.
+    pub file: String,
+    /// `order:` as written, or 0.
+    pub order: i64,
+    /// `label:` when it is a string literal (for `fsp routes --json`).
+    pub label: Option<String>,
+    /// The segments `label()` asks for, in declaration order; `None` without a `label()`.
+    pub label_args: Option<Vec<String>>,
+}
+
 #[derive(Debug)]
 pub struct Route {
     pub dir: String,
@@ -439,6 +503,9 @@ pub struct Route {
     pub layout_extra: Option<HookExtra>,
     /// The literal named arguments of `const meta = Meta(code: 'x', ...)`, for `meta_unique`.
     pub meta_args: Vec<dart::ObjectArg>,
+    /// The folder's `nav.dart`, when it has a valid one: how it shows in the menus (`AppMenu`).
+    /// Set for a folder with or without a page.
+    pub nav: Option<NavDecl>,
     /// The sections (route ids) above this folder, outermost first, whose data.dart the
     /// layouts above load: what `AppRoutes.dataAt` lists before the route's own data.
     pub sections: Vec<usize>,
@@ -532,6 +599,10 @@ pub struct App {
     /// The type of each of those as the generated file spells it (`List<_i3.Category>`) → as the
     /// app does (`List<Category>`): what the manifest and `fsp routes` show.
     pub type_names: HashMap<String, String>,
+    /// The constant names of each enum segment's or query parameter's type, keyed as the
+    /// generated file spells it (`_i3.Category`). Nothing emitted reads it: the `unknown_path`
+    /// lint does.
+    pub enum_values: HashMap<String, Vec<String>>,
 }
 
 /// The app folder's `extra_codec.dart`, which exports `extraCodec`.
@@ -697,6 +768,8 @@ struct Inherited {
     remount: Remount,
     /// The nearest route.dart's `deferred`, else the config's.
     deferred: bool,
+    /// The nearest route.dart with a `freshness` (since 0.8.0), relative to the app folder.
+    freshness: Option<String>,
 }
 
 /// What a `nest = false` takes a route out of: the page above it, and the folders between.
@@ -765,6 +838,8 @@ pub fn resolve(
         queries: HashMap::new(),
         query_order: vec![],
         listed: vec![],
+        freshness_declared: vec![],
+        freshness_used: BTreeSet::new(),
         diags,
     };
     r.node(
@@ -790,6 +865,7 @@ pub fn resolve(
         }
     }
     r.settle_actions();
+    r.unused_freshness();
     r.app
 }
 
@@ -823,6 +899,10 @@ struct Resolver<'a> {
     /// What each `action.dart` says to invalidate (`const invalidates = [...]`), by route id:
     /// the names it lists, resolved once every route is known. `None` is the default set.
     listed: Vec<(usize, Option<Vec<Named>>)>,
+    /// The route.dart files with a valid `freshness`, and where (since 0.8.0).
+    freshness_declared: Vec<(String, Span)>,
+    /// Those that apply to a data.dart below.
+    freshness_used: BTreeSet<String>,
     diags: &'a mut Diags,
 }
 
@@ -872,6 +952,7 @@ impl Resolver<'_> {
             extra: None,
             layout_extra: None,
             meta_args: vec![],
+            nav: None,
             sections: up.sections.iter().map(|s| s.id).collect(),
             case_sensitive: up.case_sensitive,
             localized: up.localized.clone(),
@@ -957,7 +1038,7 @@ impl Resolver<'_> {
         } else {
             Scope::Route(id)
         };
-        let data = modules
+        let mut data = modules
             .get(&Kind::Data)
             .and_then(|m| self.data(m, node, &segs, data_scope));
         let section = data.is_some() && section_folder;
@@ -1029,6 +1110,7 @@ impl Resolver<'_> {
         let mut linkable = up.linkable;
         let mut remount = up.remount;
         let mut deferred = up.deferred;
+        let mut freshness = up.freshness.clone();
         if let Some(m) = modules.get(&Kind::Route) {
             let file = node.rel(Kind::Route);
             let spelled = locale::read(
@@ -1044,6 +1126,21 @@ impl Resolver<'_> {
             linkable = self.linkable(m, &file).unwrap_or(up.linkable);
             remount = self.remount(m, &file).unwrap_or(up.remount);
             deferred = self.deferred(m, &file).unwrap_or(up.deferred);
+            if let Some(f) = self.route_freshness(m, &file) {
+                freshness = Some(f);
+            }
+        }
+        // route.dart's `freshness` is the default of every data() function that loads once at
+        // and below this folder: a data.dart's own wins, and a selector, a provider and a
+        // Stream are skipped without a word (it is a default, not a demand).
+        if let (Some(d), Some(rf)) = (data.as_mut(), &freshness)
+            && d.freshness.is_none()
+            && !d.selector
+            && !d.provider
+            && !d.stream
+        {
+            d.freshness = Some((self.import(rf), rf.clone()));
+            self.freshness_used.insert(rf.clone());
         }
         self.app.routes[id].case_sensitive = case_sensitive;
         self.app.routes[id].linkable = linkable;
@@ -1067,6 +1164,7 @@ impl Resolver<'_> {
             linkable,
             remount,
             deferred,
+            freshness: freshness.clone(),
         };
         // A page is what a route below can leave; so is the layout of a folder between.
         let layout_file = node
@@ -1283,6 +1381,9 @@ impl Resolver<'_> {
         self.app.routes[id].meta = modules
             .get(&Kind::Meta)
             .and_then(|m| self.meta(m, node, has_route));
+        self.app.routes[id].nav = modules
+            .get(&Kind::Nav)
+            .and_then(|m| self.nav(m, node, &segs));
         // A redirect.dart route can carry an `extra` too, which its redirect reads.
         let extra = extra.or_else(|| {
             redirect
@@ -1375,7 +1476,10 @@ impl Resolver<'_> {
             let msg = "guard.dart guards no routes: there is no page.dart or redirect.dart at or below this folder";
             self.diags.warn(&node.rel(Kind::Guard), None, msg);
         }
-        let bare = !node.files.contains_key(&Kind::Page) && !node.files.contains_key(&Kind::Guard);
+        // A lone nav.dart is a heading nothing hangs from: the menu check says so (W-N9).
+        let bare = !node.files.contains_key(&Kind::Page)
+            && !node.files.contains_key(&Kind::Guard)
+            && !node.files.contains_key(&Kind::Nav);
         if !any_route && node.children.is_empty() && !node.dir.is_empty() && bare {
             self.diags.warn(
                 &node.dir,
@@ -1657,6 +1761,149 @@ impl Resolver<'_> {
         Some(file)
     }
 
+    /// `const nav = Nav(label: 'Products', order: 1);` in a folder's nav.dart, and the optional
+    /// `String label(BuildContext context, {required int id})`: how the folder shows in the menus.
+    /// Read from the source, like `meta`, so `nav` must be a `const` `Nav(...)` call with a
+    /// whole-number `order`. `segs` are the folder's segments: what `label()` can ask for.
+    fn nav(&mut self, m: &Module, node: &Node, segs: &[(String, usize)]) -> Option<NavDecl> {
+        let file = node.rel(Kind::Nav);
+        let mut found = m.variables.iter().filter(|v| v.name == "nav");
+        let Some(v) = found.next() else {
+            self.diags
+                .error(&file, None, "expected `const nav = Nav(label: '...');`");
+            return None;
+        };
+        if let Some(again) = found.next() {
+            self.diags
+                .error(&file, Some(&again.span), "`nav` is declared twice");
+        }
+        if !v.is_const {
+            let msg = "`nav` must be `const` (AppMenu lists it in a const tree): write `const nav = Nav(...);`";
+            self.diags.error(&file, Some(&v.span), msg);
+            return None;
+        }
+        let written = v.value.as_deref().unwrap_or_default();
+        let is_nav = written.starts_with("Nav(") || written.starts_with("constNav(");
+        let Some(args) = v.ctor_args.as_ref().filter(|_| is_nav) else {
+            let msg = "`nav` must be a `Nav(...)` call, so fsp can read its `order`: `const nav = Nav(label: 'Products', order: 1);`";
+            self.diags.error(&file, Some(&v.span), msg);
+            return None;
+        };
+        let mut order = 0;
+        let mut label = None;
+        let mut ok = true;
+        for a in args {
+            match (a.name.as_str(), &a.value) {
+                ("order", Lit::Num(n)) if n.parse::<i64>().is_ok() => {
+                    order = n.parse::<i64>().unwrap_or_default();
+                }
+                ("order", _) => {
+                    let msg = "`order` must be a whole-number literal, like `order: 2`: fsp sorts the menu with it";
+                    self.diags.error(&file, Some(&a.span), msg);
+                    ok = false;
+                }
+                ("label", Lit::Str(l)) => label = Some(l.clone()),
+                _ => {}
+            }
+        }
+        let label_args = m
+            .functions
+            .iter()
+            .find(|f| f.name == "label")
+            .map(|f| self.nav_label(f, &file, segs));
+        let label_args = match label_args {
+            Some(Some(args)) => Some(args),
+            Some(None) => {
+                ok = false;
+                None
+            }
+            None => None,
+        };
+        let import = self.import(&file);
+        ok.then_some(NavDecl {
+            import,
+            file,
+            order,
+            label,
+            label_args,
+        })
+    }
+
+    /// `String label(BuildContext context, {required int id})` in a nav.dart: the segments it
+    /// asks for, in declaration order; `None` when it is wrong (the errors are reported).
+    fn nav_label(
+        &mut self,
+        f: &Function,
+        file: &str,
+        segs: &[(String, usize)],
+    ) -> Option<Vec<String>> {
+        let mut ok = true;
+        if !f.ret.as_ref().is_some_and(|r| r.is("String")) {
+            let msg = "label() must return a String: `String label(BuildContext context) => ...`";
+            self.diags.error(file, Some(&f.span), msg);
+            ok = false;
+        }
+        let first_is_context = f
+            .params
+            .first()
+            .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("BuildContext")));
+        if !first_is_context {
+            let msg =
+                "label() must take `BuildContext context` first: the menu calls it while it builds";
+            self.diags.error(file, Some(&f.span), msg);
+            ok = false;
+        }
+        let mut asked = vec![];
+        for p in f.params.iter().skip(1) {
+            let Some((_, folder)) = segs.iter().find(|(n, _)| *n == p.name) else {
+                let msg = if segs.is_empty() {
+                    format!(
+                        "label() gets no segments here (this folder and the ones above it have none); remove `{}`",
+                        p.name
+                    )
+                } else {
+                    format!(
+                        "label() can ask for the segments of its folder and above ({}); `{}` is none of them",
+                        show_segs(segs),
+                        p.name
+                    )
+                };
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+                continue;
+            };
+            if !p.named {
+                let msg = format!(
+                    "label() takes segments as named parameters, e.g. `{{required int {}}}`",
+                    p.name
+                );
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+            } else if !p.required {
+                let msg = format!(
+                    "`{}` must be `required`: a menu entry always has its segments",
+                    p.name
+                );
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+            } else if let Some(ty) = &p.ty {
+                self.constraints.push(Constraint {
+                    folder: *folder,
+                    name: p.name.clone(),
+                    ty: ty.clone(),
+                    file: file.to_string(),
+                    span: p.span.clone(),
+                });
+            } else {
+                let msg = format!("give `{}` a type (String, int, double or bool)", p.name);
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+            }
+            asked.push(p.name.clone());
+        }
+        ok.then_some(asked)
+    }
+
     /// `const navigator = RouteNavigator.root;` in a folder's navigator.dart: the navigator
     /// its routes render on. Read from the source, like `tabs`, so it must be one of the two
     /// enum values, spelled out.
@@ -1772,14 +2019,21 @@ impl Resolver<'_> {
     fn route_config(&mut self, m: &Module, file: &str) -> Option<bool> {
         let mut found = m.variables.iter().filter(|v| v.name == "caseSensitive");
         let Some(v) = found.next() else {
-            // A route.dart may hold only `paths`, `nest`, `linkable`, `remount` or `deferred`.
+            // A route.dart may hold only `paths`, `nest`, `linkable`, `remount`, `deferred`,
+            // `freshness` or (reported by `route_freshness`) `dataCache`.
             if !m.variables.iter().any(|v| {
                 matches!(
                     v.name.as_str(),
-                    "paths" | "nest" | "linkable" | "remount" | "deferred"
+                    "paths"
+                        | "nest"
+                        | "linkable"
+                        | "remount"
+                        | "deferred"
+                        | "freshness"
+                        | "dataCache"
                 )
             }) {
-                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;`");
+                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;`, `const deferred = true;` or `const freshness = Freshness(staleTime: Duration(minutes: 5));`");
             }
             return None;
         };
@@ -1792,6 +2046,94 @@ impl Resolver<'_> {
             self.diags.error(file, Some(&v.span), msg);
         }
         v.boolean
+    }
+
+    /// `const freshness = Freshness(...)` in a folder's route.dart (since 0.8.0): the default
+    /// of every `data()` function at and below this folder that loads once. The nearest one wins.
+    /// fsp doesn't read the value: the generated file refers to it, and Dart type-checks it.
+    /// Returns the file when it is valid.
+    fn route_freshness(&mut self, m: &Module, file: &str) -> Option<String> {
+        if let Some(v) = m.variables.iter().find(|v| v.name == "dataCache") {
+            let msg = "`dataCache` belongs in the data.dart whose value it saves, not in a route.dart: each data type has its own encode and decode";
+            self.diags.error(file, Some(&v.span), msg);
+        }
+        let mut found = m.variables.iter().filter(|v| v.name == "freshness");
+        let v = found.next()?;
+        if let Some(again) = found.next() {
+            self.diags
+                .error(file, Some(&again.span), "`freshness` is declared twice");
+        }
+        if !is_ctor(v, "Freshness") {
+            self.diags.error(file, Some(&v.span), BAD_FRESHNESS);
+            return None;
+        }
+        self.freshness_declared
+            .push((file.to_string(), v.span.clone()));
+        Some(file.to_string())
+    }
+
+    /// `freshness` and `dataCache` of a data.dart (since 0.8.0). Both are variables fsp only
+    /// looks at by name: the generated file refers to them (`_i3.freshness`), and the Dart
+    /// analyzer checks their types. They apply to a `data()` function that loads once; for any
+    /// other form each says what to do instead. Returns whether a valid `freshness` and a
+    /// valid `dataCache` apply.
+    fn data_options(&mut self, m: &Module, file: &str, form: DataForm) -> (bool, bool) {
+        let mut applies = [false, false];
+        for (i, name, ctor, bad) in [
+            (0, "freshness", "Freshness", BAD_FRESHNESS),
+            (1, "dataCache", "DataCache", BAD_DATA_CACHE),
+        ] {
+            let mut found = m.variables.iter().filter(|v| v.name == name);
+            let Some(v) = found.next() else { continue };
+            if let Some(again) = found.next() {
+                self.diags.error(
+                    file,
+                    Some(&again.span),
+                    format!("`{name}` is declared twice"),
+                );
+            }
+            if !is_ctor(v, ctor) {
+                self.diags.error(file, Some(&v.span), bad);
+                continue;
+            }
+            let msg = match (i, form) {
+                (_, DataForm::Function) => {
+                    applies[i] = true;
+                    continue;
+                }
+                (0, DataForm::Stream) => {
+                    "`freshness` is for a data() that loads once, and this one returns a `Stream`, which is live: nothing in it goes stale. Drop `freshness`, or return a `Future`"
+                }
+                (0, DataForm::Selector) => {
+                    "`freshness` applies to the provider fespalier makes of a data() function, and this data.dart selects a provider of your own; call `freshData(ref, const Freshness(...), value)` inside that provider instead"
+                }
+                (0, DataForm::Provider) => {
+                    "`freshness` applies to the provider fespalier makes of a data() function, and this data.dart exports its own `data` provider; call `freshData(ref, const Freshness(...), value)` inside it instead"
+                }
+                (_, DataForm::Stream) => {
+                    "`dataCache` saves the last value of a data() that loads once, and this one returns a `Stream`; drop `dataCache`, or return a `Future`"
+                }
+                (_, DataForm::Selector) => {
+                    "`dataCache` applies to the provider fespalier makes of a data() function, and this data.dart selects a provider of your own; persist that provider with Riverpod's `persist` (from package:fespalier/persist.dart) instead"
+                }
+                (_, DataForm::Provider) => {
+                    "`dataCache` applies to the provider fespalier makes of a data() function, and this data.dart exports its own `data` provider; persist it with Riverpod's `persist` (from package:fespalier/persist.dart) instead"
+                }
+            };
+            self.diags.error(file, Some(&v.span), msg);
+        }
+        (applies[0], applies[1])
+    }
+
+    /// A route.dart's `freshness` that no data.dart below uses (since 0.8.0) does nothing.
+    fn unused_freshness(&mut self) {
+        let declared = std::mem::take(&mut self.freshness_declared);
+        for (file, span) in declared {
+            if !self.freshness_used.contains(&file) {
+                let msg = "`freshness` here applies to no data.dart: none at or below this folder is a data() function that returns a Future or a value without a `freshness` of its own; drop it";
+                self.diags.warn(&file, Some(&span), msg);
+            }
+        }
     }
 
     /// `const linkable = false;` in a folder's route.dart: `fsp links` leaves this folder's
@@ -2167,6 +2509,11 @@ impl Resolver<'_> {
         if let Lookup::Found(found) = lookup {
             let import = self.import(file);
             let spelled = extra::extra_type(whole, src, file, import, tag);
+            if let Some(b) = enums::enum_base(&spelled.ty) {
+                self.app
+                    .enum_values
+                    .insert(b.to_string(), found.values.clone());
+            }
             let key = whole.replacen(base, &found.key(), 1);
             let decl = Some(found.decl.clone());
             return Some(Typed {
@@ -2330,6 +2677,7 @@ impl Resolver<'_> {
         let file = node.rel(Kind::Data);
         if let Some(f) = m.functions.iter().find(|f| f.name == "data") {
             if let Some(ty) = f.ret.as_ref().and_then(selected_value) {
+                self.data_options(m, &file, DataForm::Selector);
                 return self.selector(f, ty, &file, segs, scope);
             }
             if f.ret
@@ -2366,6 +2714,12 @@ impl Resolver<'_> {
             };
             let keys = in_path_order(keys, segs);
             let import = self.import(&file);
+            let form = if stream {
+                DataForm::Stream
+            } else {
+                DataForm::Function
+            };
+            let (fresh, cache) = self.data_options(m, &file, form);
             return Some(Data {
                 import,
                 provider: false,
@@ -2374,6 +2728,8 @@ impl Resolver<'_> {
                 ty,
                 record: keys.len() > 1,
                 keys,
+                freshness: fresh.then(|| (import, file.clone())),
+                cache,
             });
         }
 
@@ -2480,6 +2836,7 @@ impl Resolver<'_> {
                 self.diags.error(&file, Some(&v.span), msg);
             }
             let import = self.import(&file);
+            self.data_options(m, &file, DataForm::Provider);
             return Some(Data {
                 import,
                 provider: true,
@@ -2488,6 +2845,8 @@ impl Resolver<'_> {
                 ty,
                 keys,
                 record,
+                freshness: None,
+                cache: false,
             });
         }
 
@@ -2529,6 +2888,8 @@ impl Resolver<'_> {
             ty,
             record: keys.len() > 1,
             keys,
+            freshness: None,
+            cache: false,
         })
     }
 
@@ -3822,6 +4183,20 @@ pub fn pattern(url: &[Seg]) -> String {
         })
         .collect();
     format!("/{}", parts.join("/"))
+}
+
+/// How specific each URL segment is, for ordering routes the way `AppRoutes.matchUrl` (and
+/// `go_router`) tries them: a static segment is 0, a `:param` 1, a catch-all 2. Compared
+/// lexicographically, so the most specific route comes first.
+pub fn match_rank(url: &[Seg]) -> Vec<u8> {
+    url.iter()
+        .filter_map(|s| match s {
+            Seg::Static(_) => Some(0),
+            Seg::Dynamic(_) => Some(1),
+            Seg::CatchAll(..) => Some(2),
+            Seg::Group(_) => None,
+        })
+        .collect()
 }
 
 /// The semantics identifier of the route at `url`: `route:/products/:id`. It depends only on the

@@ -26,11 +26,11 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 
-use crate::config::{Config, Maestro, SampleValue, Target, parent, relative_dir};
+use crate::config::{Config, Maestro, Target, parent, relative_dir};
 use crate::emit::rel;
-use crate::links::url_segment;
 use crate::resolve::{self, App, Route};
-use crate::scan::{Kind, Seg};
+use crate::samples;
+use crate::scan::Kind;
 use crate::{analyze, diag, plural};
 
 /// What the first line of every file `fsp maestro` writes starts with: how it tells its own
@@ -74,102 +74,10 @@ fn yaml_str(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_default()
 }
 
-/// The parts of a sample, for each dynamic folder (an index into `app.routes`) that has one,
-/// after checking each against the folder it is for.
-fn resolve_samples(app: &App, cfg: &Config, m: &Maestro) -> Result<HashMap<usize, Vec<String>>> {
-    let mut out = HashMap::new();
-    for (key, value) in &m.samples {
-        let Some(folder) = app.routes.iter().position(|f| f.dir == *key) else {
-            bail!(
-                "`fespalier.maestro.samples`: `{key}` is not a folder of {}; write it as `fsp routes` prints it, without `/page.dart` (`products/$id`)",
-                cfg.app_dir
-            );
-        };
-        let optional = match &app.routes[folder].seg {
-            Some(Seg::Dynamic(_)) => None,
-            Some(Seg::CatchAll(_, optional)) => Some(*optional),
-            _ => bail!(
-                "`fespalier.maestro.samples`: `{key}` is not a `$segment` folder; samples give the values of dynamic segments"
-            ),
-        };
-        let parts: Vec<String> = match (value, optional) {
-            (SampleValue::One(s), _) => vec![s.clone()],
-            (SampleValue::Many(_), None) => bail!(
-                "`fespalier.maestro.samples`: `{key}` is one segment; give one value, not a list"
-            ),
-            (SampleValue::Many(parts), Some(_)) => parts.clone(),
-        };
-        if parts.is_empty() && optional == Some(false) {
-            bail!(
-                "`fespalier.maestro.samples`: `{key}` is a catch-all that needs at least one part"
-            );
-        }
-        let ty = app.seg_type(folder);
-        let element = ty
-            .strip_prefix("List<")
-            .and_then(|t| t.strip_suffix('>'))
-            .unwrap_or(ty);
-        for part in &parts {
-            if part.is_empty() {
-                bail!("`fespalier.maestro.samples`: `{key}` is empty; a segment can't be");
-            }
-            let fits = match element {
-                "int" => part.parse::<i64>().is_ok(),
-                "double" | "num" => part.parse::<f64>().is_ok_and(f64::is_finite),
-                "bool" => matches!(part.as_str(), "true" | "false"),
-                _ => true,
-            };
-            if !fits {
-                bail!(
-                    "`fespalier.maestro.samples`: `{key}` is a `{}` segment, and `{part}` is not one",
-                    app.display_type(ty)
-                );
-            }
-        }
-        out.insert(folder, parts);
-    }
-    Ok(out)
-}
-
-/// The path of the route's URL with the samples filled in, percent-encoded: `/products/1`,
-/// `/docs/guides/intro`. `Err` is the folder that has no sample. An optional catch-all with
-/// none is left off.
-fn link_path(
-    app: &App,
-    r: &Route,
-    samples: &HashMap<usize, Vec<String>>,
-) -> std::result::Result<String, String> {
-    let mut out = String::new();
-    let mut dynamic = r.segs.iter();
-    for seg in &r.url {
-        match seg {
-            Seg::Static(s) => {
-                out.push('/');
-                out.push_str(&url_segment(s));
-            }
-            Seg::Dynamic(_) | Seg::CatchAll(..) => {
-                let folder = dynamic.next().map_or(0, |(_, f)| *f);
-                match (samples.get(&folder), seg) {
-                    (Some(parts), _) => {
-                        for p in parts {
-                            out.push('/');
-                            out.push_str(&url_segment(p));
-                        }
-                    }
-                    (None, Seg::CatchAll(_, true)) => {}
-                    (None, _) => return Err(app.routes[folder].dir.clone()),
-                }
-            }
-            Seg::Group(_) => {}
-        }
-    }
-    Ok(if out.is_empty() { "/".into() } else { out })
-}
-
 /// The `guard.dart` files at or above the route's folder, outermost first, relative to the
 /// app folder. A `(group)` folder's guard covers what is in it, because a folder's path
 /// includes its groups.
-fn guards_above(app: &App, r: &Route) -> Vec<String> {
+pub(crate) fn guards_above(app: &App, r: &Route) -> Vec<String> {
     let mut guards: Vec<&Route> = app
         .routes
         .iter()
@@ -240,7 +148,7 @@ fn flow_text(cfg: &Config, m: &Maestro, r: &Route, path: &str, guards: &[String]
 /// The flows for `app`, and the routes that get none, both in the order of the route table.
 /// Nothing here touches the file system.
 pub fn flows(app: &App, cfg: &Config, m: &Maestro) -> Result<(Vec<Flow>, Vec<Skip>)> {
-    let samples = resolve_samples(app, cfg, m)?;
+    let samples = samples::resolve(app, cfg, "fespalier.maestro.samples", &m.samples)?;
     let for_app = matches!(m.target, Target::App(_));
     let (mut flows, mut skips): (Vec<Flow>, Vec<Skip>) = (vec![], vec![]);
     let mut owners: HashMap<String, String> = HashMap::new();
@@ -260,7 +168,7 @@ pub fn flows(app: &App, cfg: &Config, m: &Maestro) -> Result<(Vec<Flow>, Vec<Ski
             skip("`const linkable = false;`, so `fsp links` does not open the app at it".into());
             continue;
         }
-        let path = match link_path(app, r, &samples) {
+        let path = match samples::link_path(app, r, &samples) {
             Ok(p) => p,
             Err(folder) => {
                 skip(format!(

@@ -1,4 +1,5 @@
 import 'package:features/app.g.dart';
+import 'package:features/app/_components/menus.dart';
 import 'package:features/page_meta.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,9 @@ import 'package:flutter/material.dart';
 ///
 /// They can also read the route manifest: the browser tab title (and the
 /// app-switcher label) comes from the page's `meta.dart`, when it has one.
+///
+/// And the menus `nav.dart` files describe: a menu button (the list is built when it opens) and the
+/// breadcrumbs of the page.
 class RootLayout extends StatelessWidget {
   const RootLayout({super.key, required this.child, this.banner});
 
@@ -24,6 +28,7 @@ class RootLayout extends StatelessWidget {
           children: [
             if (banner != null) Text('Banner: $banner'),
             Expanded(child: child),
+            const AppMenuBar(),
           ],
         ),
       ),

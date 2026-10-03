@@ -1,0 +1,52 @@
+# Real Maestro against the shop's web build, weekly and on demand. NOT a gate: Maestro's web support
+# is beta and pairs its own ChromeDriver with whatever Chrome the runner has, so a red run usually
+# means Chrome or Maestro moved. ci.yml's `web-routes` job is the gate (Playwright, pinned). If this
+# one is red for reasons outside fespalier four weeks running, delete it and the README sentence.
+name: maestro-web
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep equal to ci.yml's (cli/tests/versions.rs checks it).
+  FLUTTER_VERSION: 3.47.5
+  # The release zip is checked against its sha256 before it is unpacked: bump both together.
+  MAESTRO_VERSION: cli-2.11.0
+  MAESTRO_SHA256: 5384593cb4e7a106489e75a821d157dd43f4e438df6bc308b72e82c685e1283a
+
+jobs:
+  maestro:
+    name: Maestro web flows (examples/shop)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Maestro (pinned, checksum verified)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/maestro.zip" \
+            "https://github.com/mobile-dev-inc/maestro/releases/download/$MAESTRO_VERSION/maestro.zip"
+          echo "$MAESTRO_SHA256  $RUNNER_TEMP/maestro.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/maestro.zip" -d "$RUNNER_TEMP"
+      - name: Run the committed flows with Maestro
+        run: scripts/check-web-routes.sh examples/shop --maestro "$RUNNER_TEMP/maestro/bin/maestro"

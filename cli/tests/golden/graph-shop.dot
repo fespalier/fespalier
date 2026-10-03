@@ -11,7 +11,7 @@ digraph routes {
       n1 [label="/cart\nCartRoute"];
       n2 [label="/checkout\nCheckoutRoute\n(guard, deferred)"];
       n3 [label="/products\nProductsRoute\n(data)"];
-      n4 [label="/products/:id\nProductRoute\n(data, deferred)"];
+      n4 [label="/products/:id\nProductRoute\n(data, fresh, cached, deferred)"];
       n5 [label="/greet/:name\nGreetRoute"];
     }
   }

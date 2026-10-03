@@ -206,7 +206,7 @@ fn a_layouts_data_dart_is_the_data_of_its_section() {
             // The layout waits for the data, showing the default loading and error views.
             "pageBuilder: (context, state, child) => layoutPage(",
             "DataView(",
-            "watch: (ref) => ref.watch(_data1),",
+            "watch: (ref) => watchData(ref, 'd1', _data1),",
             "data: (d) => _i1.ShopLayout(child: child, shop: d),",
             "loading: () => const DefaultLoading(),",
             "error: (e, st, retry) => DefaultError(error: e, retry: retry),",
@@ -247,11 +247,11 @@ fn section_keys_come_from_segments_and_the_layout_reads_the_url() {
         &c,
         &[
             "() => _layout1(state),",
-            "watch: (ref) => ref.watch(_data1(v.tid)),",
+            "watch: (ref) => watchData(ref, 'd1', _data1(v.tid)),",
             "refresh: (ref) => ref.invalidate(_data1(v.tid)),",
             "data: (d) => _i1.TeamLayout(child: child, t: d),",
             // The page reads the same provider, keyed by its own copy of the segment.
-            "watch: (ref) => ref.watch(_data1(v.tid)),\n",
+            "watch: (ref) => watchData(ref, 'd1', _data1(v.tid)),\n",
             "data: (s1) => _i2.MembersPage(team: s1),",
             "({int tid}) _layout1(GoRouterState s) => (tid: Segment.asInt(s, 'tid'));",
         ],
@@ -643,6 +643,7 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
         layout,
         guard: false,
         transition: false,
+        nav: false,
     };
     // A group has no page of its own; with its layout, data.dart is the section's.
     new_route(dir.path(), &args("(shop)", true, true)).unwrap();

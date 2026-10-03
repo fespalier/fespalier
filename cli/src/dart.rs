@@ -24,7 +24,7 @@ pub struct Module {
     /// Top-level getters: `Codec<Object?, Object?> get extraCodec => ...;`
     pub getters: Vec<Getter>,
     /// Top-level enums: `enum Category { shoes, hats }`.
-    pub enums: Vec<String>,
+    pub enums: Vec<EnumDecl>,
     /// Top-level `typedef X = T;` (not the old function-typedef syntax, nor a generic one).
     pub typedefs: Vec<Typedef>,
     /// The libraries it re-exports: `export 'category.dart';`, as written.
@@ -42,6 +42,13 @@ pub struct Typedef {
     pub name: String,
     /// The aliased type; a record type has its fields in `ty.record`.
     pub ty: Ty,
+}
+
+/// A top-level enum and its constants, in declaration order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumDecl {
+    pub name: String,
+    pub values: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -310,7 +317,7 @@ pub fn parse(src: &str) -> Module {
             "function_declaration" => m.functions.extend(r.function(*n)),
             "top_level_variable_declaration" => m.variables.extend(r.variables(*n)),
             "getter_declaration" => m.getters.extend(r.getter(*n)),
-            "enum_declaration" => m.enums.extend(r.enum_name(*n)),
+            "enum_declaration" => m.enums.extend(r.enum_decl(*n)),
             "type_alias" => m.typedefs.extend(r.typedef(*n)),
             "import_or_export" => m
                 .exports
@@ -505,8 +512,20 @@ impl Reader<'_> {
         })
     }
 
-    fn enum_name(&self, n: Node) -> Option<String> {
-        Some(self.text(n.child_by_field_name("name")?).to_string())
+    fn enum_decl(&self, n: Node) -> Option<EnumDecl> {
+        let name = self.text(n.child_by_field_name("name")?).to_string();
+        let mut values = vec![];
+        if let Some(body) = n.child_by_field_name("body") {
+            let mut cursor = body.walk();
+            for c in body.named_children(&mut cursor) {
+                if c.kind() == "enum_constant"
+                    && let Some(v) = c.child_by_field_name("name")
+                {
+                    values.push(self.text(v).to_string());
+                }
+            }
+        }
+        Some(EnumDecl { name, values })
     }
 
     /// `typedef X = T;` → `X` and `T`; the old `typedef void X(int a);` and a generic

@@ -157,7 +157,7 @@ jobs:
         working-directory: examples/features
         run: |
           fsp() { cargo run --quiet --manifest-path ../../cli/Cargo.toml -- "$@"; }
-          fsp new 'invoices/[invoiceId]' --data --action --loading --error --layout --guard --transition
+          fsp new 'invoices/[invoiceId]' --data --action --loading --error --layout --guard --transition --nav
           fsp new 'shops/:shop/items/:id/reviews'
           fsp new 'plain' --data
           fsp new '(admin)/users' --layout
@@ -185,12 +185,13 @@ jobs:
             xargs -0 dart format --output=none --set-exit-if-changed
           flutter analyze
       # A release build has none of fespalier's DevTools code: `kFespalierDevTools` is false there,
-      # so the service extensions, the route tree, the hooks and the `traceGuard` / `traceData`
-      # wrappers around the guards and the data are compiled away. A profile build has all of
-      # it, which is what gives the greps for it a meaning. The app has a guarded route with a
-      # data.dart and an action.dart, so the generated file carries every wrapper, and a button
-      # that runs the action, so the build has to keep the code that traces it. (`fsp init`
-      # leaves main.dart alone, so the app is given one that uses the generated router.)
+      # so the service extensions, the route tree, the hooks and the `traceGuard` / `traceData` /
+      # `watchData` wrappers around the guards, the data and the views are compiled away. A
+      # profile build has all of it, which is what gives the greps for it a meaning. The app has
+      # a guarded route with a data.dart and an action.dart, so the generated file carries every
+      # wrapper, and a button that runs the action, so the build has to keep the code that traces
+      # it. (`fsp init` leaves main.dart alone, so the app is given one that uses the generated
+      # router.)
       - name: A release build carries no DevTools code
         env:
           FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
@@ -200,6 +201,8 @@ jobs:
           "$FSP_BIN" gen
           grep -q 'traceGuard(' lib/app.g.dart
           grep -q 'traceData(' lib/app.g.dart
+          grep -q 'watchData(' lib/app.g.dart
+          grep -q '_devToolsProviders' lib/app.g.dart
           grep -q "site: 'a" lib/app.g.dart
           cat > lib/main.dart <<'DART'
           import 'package:fespalier/fespalier.dart';
@@ -225,14 +228,14 @@ jobs:
           DART
           flutter analyze
           flutter build web --profile --no-wasm-dry-run
-          for needle in 'ext\.fespalier\.snapshot' 'ext\.fespalier\.invalidate' 'ext\.fespalier\.open' 'fespalier:guard' 'fespalier:data' 'fespalier:action' 'ToolEvent'; do
+          for needle in 'ext\.fespalier\.snapshot' 'ext\.fespalier\.invalidate' 'ext\.fespalier\.open' 'ext\.fespalier\.holders' 'fespalier:guard' 'fespalier:data' 'fespalier:action' 'ToolEvent' 'fespalier views' 'fespalier containers'; do
             grep -q "$needle" build/web/main.dart.js || {
               echo "::error::the profile build has no $needle, so the release check below proves nothing"
               exit 1
             }
           done
           flutter build web --release --no-wasm-dry-run
-          for needle in 'ext\.fespalier' 'fespalier:' 'ToolEvent'; do
+          for needle in 'ext\.fespalier' 'fespalier:' 'ToolEvent' 'fespalier views' 'fespalier containers'; do
             if grep -q "$needle" build/web/main.dart.js; then
               echo "::error::the release build contains fespalier's DevTools code ($needle)"
               exit 1
@@ -249,7 +252,7 @@ jobs:
   web:
     name: Deferred routes split on the web
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -263,9 +266,44 @@ jobs:
           cache: true
       # `flutter build web --release` of examples/shop in a throwaway copy (the examples stay
       # platform-free): each deferred page must be a main.dart.js_N.part.js of its own, with its
-      # strings out of main.dart.js. The script is `just web-chunks`.
-      - name: Each deferred page is a chunk of its own
-        run: scripts/check-deferred-chunks.sh examples/shop 'Place order' 'Add to cart'
+      # strings out of main.dart.js. Then `fsp size --check` holds the build to the budgets in the
+      # shop's `size:` section, and its attribution is cross-checked against those strings (the
+      # script builds `fsp`, which is why the timeout is 30 minutes). The script is `just web-chunks`.
+      - name: Each deferred page is a chunk of its own, within its budget
+        run: scripts/check-deferred-chunks.sh examples/shop '/checkout=Place order' '/products/:id=Add to cart'
+
+  web-routes:
+    name: Maestro flows open their routes on the web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ci/web-routes/package-lock.json
+      # Playwright and the Chromium build it pins: both come from ci/web-routes/package-lock.json
+      # (an exact `playwright` version), so the browser only changes when that file does.
+      - name: Install the browser check
+        working-directory: ci/web-routes
+        run: |
+          npm ci
+          npx --no-install playwright install --with-deps chromium
+      # A release web build of examples/shop (no CDN) in a throwaway copy, served locally with every
+      # other request blocked; each flow in examples/shop/.maestro/routes is replayed: open the url,
+      # open the link, wait for its Semantics identifier. The script is `just web-routes`.
+      - name: Each committed flow's route shows on the web
+        run: scripts/check-web-routes.sh examples/shop
 
   vscode:
     name: VS Code extension

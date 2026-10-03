@@ -302,8 +302,7 @@ class _Details extends StatelessWidget {
                       '${tree.appDir}/${s.file}',
                       if (s.kind == 'guard') '(${s.id})',
                       if (s.kind == 'action') '${s.name}()',
-                      if (s.kind == 'data' && !s.traced)
-                        '(returns or selects a provider)',
+                      if (s.kind == 'data' && !s.traced) '(app provider)',
                     ].join(' '),
                   ),
                 ),

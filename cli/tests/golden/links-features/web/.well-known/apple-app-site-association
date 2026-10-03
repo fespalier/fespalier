@@ -79,6 +79,10 @@
             "caseSensitive": false
           },
           {
+            "/": "/feed",
+            "caseSensitive": false
+          },
+          {
             "/": "/files"
           },
           {
@@ -258,6 +262,10 @@
           },
           {
             "/": "/ticks",
+            "caseSensitive": false
+          },
+          {
+            "/": "/vault",
             "caseSensitive": false
           },
           {

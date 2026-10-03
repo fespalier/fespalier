@@ -37,6 +37,9 @@
     <loc>https://shop.example.com/docs/new</loc>
   </url>
   <url>
+    <loc>https://shop.example.com/feed</loc>
+  </url>
+  <url>
     <loc>https://shop.example.com/guide</loc>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://shop.example.com/guide" />
     <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/f%C3%BChrer" />
@@ -119,5 +122,8 @@
   </url>
   <url>
     <loc>https://shop.example.com/ticks</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/vault</loc>
   </url>
 </urlset>

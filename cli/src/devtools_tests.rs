@@ -488,9 +488,22 @@ fn an_app_with_no_route_has_an_empty_tree() {
 fn the_generated_file_registers_and_attaches_only_under_the_const() {
     for name in ["minimal", "shop", "features", "tabs"] {
         let (_, _, code) = analyzed(&examples(name));
-        // `mount()` registers, `router()` attaches the router it builds and returns it.
+        // `mount()` registers, `router()` attaches the router it builds and returns it. An app
+        // with a `data.dart` also hands over the function that lists their providers.
+        let providers = if name == "tabs" {
+            ""
+        } else {
+            ", providers: _devToolsProviders"
+        };
         assert!(
-            code.contains("    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);\n"),
+            code.contains(&format!(
+                "    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl{providers});\n"
+            )),
+            "{name}"
+        );
+        assert_eq!(
+            code.matches("_devToolsProviders").count(),
+            if providers.is_empty() { 0 } else { 2 },
             "{name}"
         );
         assert!(
@@ -669,4 +682,158 @@ fn a_data_dart_with_no_keys_or_a_record_of_keys_tells_trace_data_so() {
         "{code}"
     );
     assert!(code.contains("', k, _i"), "{code}");
+}
+
+/// The site (`d37`) of the `data.dart` at `file` in `tree`.
+fn site_of(tree: &Value, file: &str) -> String {
+    sites(tree)
+        .into_iter()
+        .find(|(_, s)| s["kind"] == "data" && s["file"] == file)
+        .unwrap_or_else(|| panic!("no data site for {file}"))
+        .0
+        .clone()
+}
+
+/// The lines of `_devToolsProviders`: `(expression, site)`, in order.
+fn listed_providers(code: &str) -> Vec<(String, String)> {
+    let Some(start) = code.find("Map<Object, String> _devToolsProviders() => {\n") else {
+        return vec![];
+    };
+    let body = &code[start..];
+    let body = &body[body.find('\n').unwrap() + 1..];
+    let body = &body[..body.find("};").unwrap()];
+    body.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let (expr, site) = l.trim().trim_end_matches(',').split_once(": '").unwrap();
+            (expr.to_string(), site.trim_end_matches('\'').to_string())
+        })
+        .collect()
+}
+
+#[test]
+fn every_data_dart_is_listed_for_prefetches_except_a_selector_with_keys() {
+    let item = |name: &str| {
+        format!(
+            "class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, required this.id, required this.data}}); final int id; final String data; }}"
+        )
+    };
+    let plain = |name: &str| {
+        format!(
+            "class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, required this.data}}); final String data; }}"
+        )
+    };
+    let dir = files_project(&[
+        ("page.dart", &page("Home")),
+        ("a/page.dart", &plain("A")),
+        ("a/data.dart", "Future<String> data(Ref ref) async => '';"),
+        ("b/page.dart", &plain("B")),
+        (
+            "b/data.dart",
+            "final data = FutureProvider<String>((ref) async => '');",
+        ),
+        ("c/page.dart", &plain("C")),
+        (
+            "c/data.dart",
+            "ProviderListenable<AsyncValue<String>> data() => cProvider;",
+        ),
+        ("d/$id/page.dart", &item("D")),
+        (
+            "d/$id/data.dart",
+            "ProviderListenable<AsyncValue<String>> data({required int id}) => dProvider(id);",
+        ),
+        ("e/$id/page.dart", &item("E")),
+        (
+            "e/$id/data.dart",
+            "Future<String> data(Ref ref, {required int id}) async => '';",
+        ),
+    ]);
+    let (cfg, app, code) = analyzed(dir.path());
+    let tree = devtools::tree(&app, &cfg);
+    let site = |file: &str| site_of(&tree, file);
+    let listed = listed_providers(&code);
+    let mut want = vec![
+        (
+            format!("_data{}", &site("a/data.dart")[1..]),
+            site("a/data.dart"),
+        ),
+        (
+            format!("_i{}.data", import_of(&code, "b/data.dart")),
+            site("b/data.dart"),
+        ),
+        (
+            format!("_data{}", &site("c/data.dart")[1..]),
+            site("c/data.dart"),
+        ),
+        // The selector with keys is a closure: the runtime learns its family from a view.
+        (
+            format!("_data{}", &site("e/$id/data.dart")[1..]),
+            site("e/$id/data.dart"),
+        ),
+    ];
+    // Folder order, which is the order of the sites' numbers.
+    want.sort_by_key(|(_, site)| site[1..].parse::<usize>().unwrap());
+    assert_eq!(listed, want, "{code}");
+    assert!(
+        !listed.iter().any(|(_, s)| *s == site("d/$id/data.dart")),
+        "{code}"
+    );
+    // The selector with keys is still watched, under its site.
+    assert!(
+        code.contains(&format!(
+            "watchData(ref, '{}', _data",
+            site("d/$id/data.dart")
+        )),
+        "{code}"
+    );
+}
+
+/// The `N` of the import `_iN` of `file` (relative to the app folder).
+fn import_of(code: &str, file: &str) -> usize {
+    let line = code
+        .lines()
+        .find(|l| l.starts_with("import '") && l.contains(&format!("app/{file}'")))
+        .unwrap_or_else(|| panic!("no import of {file}"));
+    line.rsplit("as _i")
+        .next()
+        .unwrap()
+        .trim_end_matches(';')
+        .parse()
+        .unwrap()
+}
+
+#[test]
+fn an_app_with_no_data_dart_has_no_watch_data_and_no_providers_function() {
+    let dir = files_project(&[("page.dart", &page("Home")), ("a/page.dart", &page("A"))]);
+    let (_, _, code) = analyzed(dir.path());
+    assert!(!code.contains("watchData"), "{code}");
+    assert!(!code.contains("_devToolsProviders"), "{code}");
+    assert!(!code.contains("providers:"), "{code}");
+    let tabs = fs::read_to_string(examples("tabs").join("lib/app.g.dart")).unwrap();
+    assert!(!tabs.contains("watchData"));
+    assert!(!tabs.contains("_devToolsProviders"));
+}
+
+#[test]
+fn every_site_a_view_watches_is_a_data_site_of_the_tree_and_every_data_site_is_watched() {
+    for name in ["minimal", "shop", "features", "tabs"] {
+        let (cfg, app, code) = analyzed(&examples(name));
+        let tree = devtools::tree(&app, &cfg);
+        let watched = sites_after(&code, "watchData(ref, '");
+        for site in &watched {
+            assert_eq!(tree["sites"][*site]["kind"], "data", "{name}: {site}");
+        }
+        for (id, site) in sites(&tree) {
+            if site["kind"] == "data" {
+                assert!(
+                    watched.contains(&id.as_str()),
+                    "{name}: {id} is never watched through watchData"
+                );
+            }
+        }
+        // What `traceData` wraps is watched by the same string, so a view finds its record.
+        for site in sites_after(&code, "traceData(ref, '") {
+            assert!(watched.contains(&site), "{name}: {site}");
+        }
+    }
 }

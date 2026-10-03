@@ -150,12 +150,15 @@ returns what it is given: every guard and `redirect.dart` call in a `redirect:` 
 `traceGuard(state, 'g5@6', <the call>)` (a `redirect.dart`'s site is `r32`; with `guardWithParams` the
 whole `guardWithParams(...)` is wrapped, so a bad segment reads `skipped`), the body of a generated
 provider as `traceData(ref, 'd37', id, _i4.data(ref, id: id))` (the key is the family's parameter, `k` for
-a record of keys, `null` for none; a `data.dart` that returns or selects a provider is not wrapped), and each
+a record of keys, `null` for none; a `data.dart` that returns or selects a provider is not wrapped; with `telemetry: true`,
+since 0.9.0, it is `traceDataCall(ref, 'd37', id, () => _i4.data(ref, id: id), telemetry: ...)`, which runs `data()` once,
+synchronously, inside the telemetry sink's `within`), and each
 action factory gets `site: 'a37_0'`. Since 0.8.1 every `DataView` and `SectionView` reads its data with
 `watchData(ref, 'd37', _data37(v.id))` instead of `ref.watch(...)`, and an app with a `data.dart` has a
 function `_devToolsProviders()` (each provider, or family, by site; a selector with parameters is left out)
 that `mount()` hands to `devToolsRegister(providers: …)`. The sites are the keys of the tree's `sites`.
-`traceGuard`, `traceData` and `watchData` return their last argument, the very object (`watchData` returns
+`traceGuard`, `traceData`, `traceDataCall` and `watchData` return their last argument (`traceDataCall`: what its
+closure returned), the very object (`watchData` returns
 `ref.watch(provider)`): a sync guard or `data()` stays sync, a `Future` is not wrapped in another, and in a
 release build all three are the identity, inlined away (a release build keeps only the action's `site`
 string). Never remove them by hand.

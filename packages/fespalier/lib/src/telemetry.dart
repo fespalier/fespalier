@@ -14,6 +14,11 @@
 /// start and its end in the same call stack, and an async one through a side listener on the very
 /// `Future` (the pattern DevTools support uses), which handles its own error so it cannot make an
 /// unhandled one. Every call into the sink is inside a `try`.
+///
+/// Since 0.9.0 several sinks share the one slot ([FespalierTelemetry.combine],
+/// [FespalierTelemetry.add]), a sink can make the span of a `data()` or an action current while
+/// it runs ([FespalierTelemetry.within]), and a navigation can say where it came from
+/// ([navigateFrom]).
 library;
 
 import 'dart:async';
@@ -42,7 +47,51 @@ abstract class FespalierTelemetry {
 
   /// Installs [sink] (null uninstalls). Call it before `runApp`, once the SDK is up and before
   /// the router is built, so that the initial navigation is reported too.
+  ///
+  /// There is one slot: a second `install` replaces the first. Use [combine] or [add] to report to
+  /// several sinks.
   static void install(FespalierTelemetry? sink) => _current = sink;
+
+  /// One sink that tells each of [sinks] everything, in order (since 0.9.0): OpenTelemetry,
+  /// Sentry and analytics side by side, though [install] holds one sink.
+  ///
+  /// Each sink gets the token it returned itself, at [end], [page] and [within], and as the
+  /// [TelemetryStart.parent] of what runs under one of its navigations: no sink ever sees another
+  /// sink's token. A sink that throws is isolated: the others and the app go on, its error is
+  /// printed once (`fespalier telemetry: <error> in <Sink> (not shown again)`), and it is called
+  /// again next time. A combined sink in [sinks] is flattened; `combine([])` reports nothing, and
+  /// `combine([sink])` is [sink].
+  static FespalierTelemetry combine(List<FespalierTelemetry> sinks) {
+    final children = <_Child>[];
+    for (final sink in sinks) {
+      switch (sink) {
+        case _Combined():
+          children.addAll(sink._children);
+        case _NoTelemetry():
+          break;
+        default:
+          children.add(_Child(sink));
+      }
+    }
+    return switch (children.length) {
+      0 => const _NoTelemetry(),
+      1 => children.single.sink,
+      _ => _Combined(List<_Child>.unmodifiable(children)),
+    };
+  }
+
+  /// Installs [sink] next to the installed one (since 0.9.0): `install(combine([?current, sink]))`.
+  /// For adapters (their `FespalierAdapter.beforeRun`) and apps that share the one slot;
+  /// [install] replaces everything, `install(null)` removes everything.
+  static void add(FespalierTelemetry sink) =>
+      _current = combine([?_current, sink]);
+
+  /// Runs [body] within the operation [token] came from, as fespalier does around `data()`
+  /// (since 0.9.0): for adapter packages that start operations of their own with [begin]. [body]
+  /// runs once, synchronously; what it returns (the very object) or throws comes back. With no
+  /// sink, or a null [token], it is `body()`.
+  static T run<T>(Object? token, T Function() body) =>
+      telemetryWithin(token, body);
 
   /// Starts an operation with the installed sink, for an adapter package such as
   /// `fespalier_auth` (since 0.9.0): fespalier's own call sites use the internal functions of this
@@ -65,6 +114,24 @@ abstract class FespalierTelemetry {
   /// A page was entered, focused or left at the end of the navigation [navigation] (the token
   /// [start] returned for it).
   void page(Object? navigation, TelemetryPage page) {}
+
+  /// Runs [body] inside the operation [token] came from (since 0.9.0). fespalier calls it around a
+  /// `data()` and an action's function, so a sink can make that operation's span current while
+  /// they run: a span made inside them (an HTTP client's), after an `await` too, is then its child.
+  ///
+  /// Call [body] once, synchronously, before returning. You may run it in a zone of your own made
+  /// with zone values only (`runZoned(body, zoneValues: ...)`; OpenTelemetry's
+  /// `Context.current.withSpan(span).runSync(body)`). Never give that zone an error handler
+  /// (`runZonedGuarded`, `onError:`, `ZoneSpecification.handleUncaughtError`): a `Future` that fails
+  /// in another error zone never reaches Riverpod, so fespalier refuses such a zone and runs
+  /// [body] outside it.
+  ///
+  /// [body] returns what the operation returned (null when it threw; [end] says so), so a sink can
+  /// observe it, e.g. hand the `Future` to a vendor API that ends a span when it settles. It never
+  /// throws: fespalier rethrows what the operation threw after this returns. Whatever this method
+  /// does, fespalier returns the operation's own result, the very object; a sink cannot replace
+  /// it. The default calls [body].
+  void within(Object? token, Object? Function() body) => body();
 }
 
 /// What an operation is, which says which fields of [TelemetryStart] are set.
@@ -106,6 +173,7 @@ final class TelemetryStart {
     this.authBackend,
     this.authTrigger,
     this.authDpop = false,
+    this.source,
   });
 
   /// Which kind of operation started.
@@ -142,6 +210,93 @@ final class TelemetryStart {
 
   /// auth: whether the backend binds its tokens with DPoP.
   final bool authDpop;
+
+  /// navigate: where the navigation came from when the app's own code did not start it, a
+  /// [NavigationSource] value (since 0.9.0); null otherwise.
+  final String? source;
+
+  /// This start with [parent] as its parent, every other field copied. A field added to this
+  /// class must be added here too: `telemetry_combine_test.dart` ("combine copies every field of
+  /// a start") sets every field and fails when one is lost.
+  TelemetryStart _withParent(Object? parent) => TelemetryStart(
+    op,
+    site: site,
+    file: file,
+    route: route,
+    uri: uri,
+    parent: parent,
+    keyed: keyed,
+    authStep: authStep,
+    authBackend: authBackend,
+    authTrigger: authTrigger,
+    authDpop: authDpop,
+    source: source,
+  );
+}
+
+/// Where a navigation came from when the app's own code did not start it (since 0.9.0): the
+/// values of [TelemetryStart.source] and of `fespalier.navigation.source`. Telemetry conventions,
+/// contract version 1.
+abstract final class NavigationSource {
+  /// A tap on a push or local notification.
+  static const String notification = 'notification';
+
+  /// A home-screen shortcut (`quick_actions`).
+  static const String shortcut = 'shortcut';
+
+  /// A home-screen widget (`home_widget`).
+  static const String widget = 'widget';
+
+  /// An app link, universal link or custom-scheme link that a bridge handed over (`app_links`).
+  static const String link = 'link';
+
+  /// Every value, in this order.
+  static const List<String> values = [notification, shortcut, widget, link];
+}
+
+/// The source the navigation that starts next is marked with, set by [navigateFrom].
+String? _source;
+
+/// Runs [navigate] (a `router.go`, `push` or `replace`, or the call that builds the router whose
+/// initial location is the launch) and marks the navigation it starts as coming from [source], one
+/// of [NavigationSource]'s values (since 0.9.0). Telemetry reports it as
+/// `fespalier.navigation.source`; nothing else changes (guards run as for any link). [navigate]
+/// runs once, synchronously, and what it returns is returned. The mark is taken by the first
+/// navigation [navigate] starts and dropped when it returns, so it cannot reach a later one.
+///
+/// ```dart
+/// // A tap on a notification, with the app running:
+/// navigateFrom(NavigationSource.notification, () => router.go('/orders/42'));
+/// // A cold start from a notification: the router's initial location is the launch.
+/// final router = navigateFrom(
+///   NavigationSource.notification,
+///   () => AppRoutes.router(initialLocation: '/orders/42'),
+/// );
+/// ```
+///
+/// fespalier never calls it by itself: a platform deep link and the browser's back button look
+/// the same to it as any other navigation. The bridge that knows (a notification handler) does.
+T navigateFrom<T>(String source, T Function() navigate) {
+  assert(
+    NavigationSource.values.contains(source),
+    'navigateFrom: `$source` is not a NavigationSource value (notification, '
+    'shortcut, widget or link)',
+  );
+  final outer = _source;
+  _source = source;
+  try {
+    return navigate();
+  } finally {
+    _source = outer;
+  }
+}
+
+/// The source [navigateFrom] set, if a navigation did not take it yet; taking it clears it, so only
+/// the first navigation of the closure is marked.
+String? takeNavigationSource() {
+  final source = _source;
+  _source = null;
+  return source;
 }
 
 /// The values of [TelemetryEnd.outcome]. They are the contract values of the telemetry
@@ -348,17 +503,88 @@ void telemetryPageEvent(Object? navigation, TelemetryPage page) {
   }
 }
 
+/// Runs [body] within the operation [token] came from (since 0.9.0): the installed sink's
+/// [FespalierTelemetry.within] runs it, and what it returns (the very object) or throws comes
+/// back. With no sink, or a null [token] (nothing was started), it is `body()`.
+///
+/// This is what `traceDataCall` and an action's `call` use; adapter packages reach it as
+/// [FespalierTelemetry.run].
+T telemetryWithin<T>(Object? token, T Function() body) {
+  final sink = FespalierTelemetry._current;
+  if (sink == null || token == null) return body();
+  return _through(sink, token, body, _report);
+}
+
+/// Calls `sink.within(token, once)`, where `once` is [body] made safe to hand a sink:
+///
+/// - it runs [body] at most once, however often the sink calls it (a second call returns the
+///   same result), and when the sink never calls it, [body] runs after `within` returned;
+/// - it hands the sink what [body] returned, and null when it threw: the exception is kept and
+///   rethrown, with its stack trace, after `within` returned, outside the sink;
+/// - it refuses an error zone of the sink's own: if `once` finds itself in a zone that is not in
+///   the caller's error zone (`runZonedGuarded`, `onError:`), [body] runs in the caller's zone
+///   instead and the mistake is printed once;
+/// - a sink whose `within` throws is reported through [failed], and the operation goes on.
+///
+/// What comes back is [body]'s own result, never the sink's.
+T _through<T>(
+  FespalierTelemetry sink,
+  Object? token,
+  T Function() body,
+  void Function(Object error) failed,
+) {
+  final caller = Zone.current;
+  var ran = false;
+  var threw = false;
+  Object? result;
+  Object? error;
+  StackTrace? stackTrace;
+  Object? once() {
+    if (ran) return result;
+    ran = true;
+    try {
+      if (Zone.current.inSameErrorZone(caller)) {
+        result = body();
+      } else {
+        _report(
+          '${sink.runtimeType}.within changed the error zone, so data() and '
+          'actions run outside it (use runZoned with zoneValues, not '
+          'runZonedGuarded)',
+        );
+        result = caller.run(body);
+      }
+    } catch (e, s) {
+      threw = true;
+      error = e;
+      stackTrace = s;
+    }
+    return result;
+  }
+
+  try {
+    sink.within(token, once);
+  } catch (e) {
+    failed(e);
+  }
+  once();
+  if (threw) Error.throwWithStackTrace(error!, stackTrace!);
+  return result as T;
+}
+
 /// Reports an error of the watch's telemetry side: printed once, then dropped.
 void telemetryAttachError(Object error) => _report(error);
 
 /// Whether a sink is installed.
 bool get telemetryOn => FespalierTelemetry._current != null;
 
-/// A navigation starts: [uri] is the requested location, or null when it starts at its commit.
-/// Returns its token, which is also what runs during it is parented to until
-/// [telemetryNavigationEnd].
-Object? telemetryNavigationStart(Uri? uri) {
-  final token = telemetryBegin(TelemetryStart(TelemetryOp.navigate, uri: uri));
+/// A navigation starts: [uri] is the requested location, or null when it starts at its commit,
+/// and [source] says where it came from when the app's own code did not start it (since 0.9.0,
+/// what [takeNavigationSource] returned). Returns its token, which is also what runs during it is
+/// parented to until [telemetryNavigationEnd].
+Object? telemetryNavigationStart(Uri? uri, {String? source}) {
+  final token = telemetryBegin(
+    TelemetryStart(TelemetryOp.navigate, uri: uri, source: source),
+  );
   _pendingNavigation = token;
   return token;
 }
@@ -431,7 +657,9 @@ TelemetryEnd _guardEnd(String? location, bool isAsync) => TelemetryEnd(
   location: location,
 );
 
-/// What `traceData` does with a [telemetry] site: [result] is what `data()` returned.
+/// What `traceData` does with a [telemetry] site: [result] is what `data()` returned. The span
+/// starts here, after `data()` ran; an app made with `telemetry: true` calls `traceDataCall`
+/// (since 0.9.0), which starts it before.
 void telemetryDataTrace(
   Ref ref,
   TelemetrySite telemetry,
@@ -440,14 +668,40 @@ void telemetryDataTrace(
 ) {
   if (FespalierTelemetry._current == null) return;
   try {
-    final token = telemetryBegin(
-      TelemetryStart(
-        TelemetryOp.data,
-        site: telemetry,
-        keyed: keyed,
-        parent: _pendingNavigation,
-      ),
-    );
+    telemetryDataEnd(ref, telemetryDataStart(telemetry, keyed), result);
+  } catch (e) {
+    _report(e);
+  }
+}
+
+/// A data load starts, before `data()` runs (since 0.9.0): returns its token, null with no sink
+/// (or when the sink threw).
+Object? telemetryDataStart(TelemetrySite telemetry, bool keyed) {
+  if (FespalierTelemetry._current == null) return null;
+  return telemetryBegin(
+    TelemetryStart(
+      TelemetryOp.data,
+      site: telemetry,
+      keyed: keyed,
+      parent: _pendingNavigation,
+    ),
+  );
+}
+
+/// `data()` threw before it returned (since 0.9.0): the span [token] came from ends with an error.
+void telemetryDataThrew(Object? token, Object error, StackTrace stackTrace) {
+  if (FespalierTelemetry._current == null) return;
+  telemetryFinish(
+    token,
+    TelemetryEnd(TelemetryOutcome.error, error: error, stackTrace: stackTrace),
+  );
+}
+
+/// `data()` returned [result]: a value ends the span [token] came from at once, a `Future` ends it
+/// when it settles (or when [ref] is disposed first), and a `Stream` is not listened to.
+void telemetryDataEnd(Ref ref, Object? token, Object? result) {
+  if (FespalierTelemetry._current == null) return;
+  try {
     if (result is Future<Object?>) {
       var ended = false;
       void end(TelemetryEnd e) {
@@ -538,4 +792,116 @@ void telemetryDeferredEnd(
       stackTrace: stackTrace,
     ),
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// `FespalierTelemetry.combine`.
+
+/// The sink of `combine([])`: reports nothing.
+final class _NoTelemetry extends FespalierTelemetry {
+  const _NoTelemetry();
+}
+
+/// A sink of a [_Combined], and whether its error was printed.
+final class _Child {
+  _Child(this.sink);
+
+  final FespalierTelemetry sink;
+  bool _printed = false;
+
+  /// Prints [error] once for this sink, the way the others are not told.
+  void failed(Object error) {
+    if (_printed) return;
+    _printed = true;
+    debugPrint(
+      'fespalier telemetry: $error in ${sink.runtimeType} (not shown again)',
+    );
+  }
+}
+
+/// The token of an operation a [_Combined] started: what each child returned, by position.
+final class _Tokens {
+  const _Tokens(this.of);
+
+  final List<Object?> of;
+}
+
+/// The token child [i] of a [_Combined] returned for the operation [token] stands for; null when
+/// it returned none, or when [token] is not one of ours.
+Object? _own(Object? token, int i) =>
+    token is _Tokens && i < token.of.length ? token.of[i] : null;
+
+/// Tells each child everything, in order, as the one installed sink. Each child gets its own
+/// token (never another sink's) and the parent token it gave itself, and every call into a child
+/// is inside its own `try`.
+final class _Combined extends FespalierTelemetry {
+  _Combined(this._children);
+
+  final List<_Child> _children;
+
+  @override
+  Object? start(TelemetryStart start) {
+    final parent = start.parent;
+    List<Object?>? tokens;
+    for (var i = 0; i < _children.length; i++) {
+      final child = _children[i];
+      try {
+        final token = child.sink.start(
+          parent == null ? start : start._withParent(_own(parent, i)),
+        );
+        if (token != null) {
+          (tokens ??= List<Object?>.filled(_children.length, null))[i] = token;
+        }
+      } catch (e) {
+        child.failed(e);
+      }
+    }
+    return tokens == null ? null : _Tokens(tokens);
+  }
+
+  @override
+  void end(Object? token, TelemetryEnd end) {
+    for (var i = 0; i < _children.length; i++) {
+      final child = _children[i];
+      try {
+        child.sink.end(_own(token, i), end);
+      } catch (e) {
+        child.failed(e);
+      }
+    }
+  }
+
+  @override
+  void page(Object? navigation, TelemetryPage page) {
+    for (var i = 0; i < _children.length; i++) {
+      final child = _children[i];
+      try {
+        child.sink.page(_own(navigation, i), page);
+      } catch (e) {
+        child.failed(e);
+      }
+    }
+  }
+
+  /// The first child is outermost: its `within` runs the second's, which runs the third's, and
+  /// the innermost runs [body]. Each child sees what [body] returned. A child that has no token
+  /// for the operation is stepped over, and so is one that throws or never calls through;
+  /// [body] runs exactly once.
+  @override
+  void within(Object? token, Object? Function() body) => _nest(0, token, body);
+
+  Object? _nest(int from, Object? token, Object? Function() body) {
+    var i = from;
+    while (i < _children.length && _own(token, i) == null) {
+      i++;
+    }
+    if (i == _children.length) return body();
+    final child = _children[i];
+    return _through<Object?>(
+      child.sink,
+      _own(token, i),
+      () => _nest(i + 1, token, body),
+      child.failed,
+    );
+  }
 }

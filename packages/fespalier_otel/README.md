@@ -81,6 +81,21 @@ takes as "telemetry off", so a store build never sends to a developer's computer
 
 An app that starts the SDK itself (`OTel.initialize`) leaves `isReady` out.
 
+### Next to another sink, and HTTP spans under `data()` (since 0.9.0)
+
+`install` holds one sink: to send to OpenTelemetry and to Sentry or an analytics SDK, use
+`FespalierTelemetry.combine([FespalierOtel(...), other])`, or `FespalierTelemetry.add(sink)` to put one next
+to the installed one. Each sink keeps its own tokens, so `FespalierOtel` still parents its guard, data and
+deferred spans under its own navigation span.
+
+`FespalierOtel` makes a data span and an action span the **current** span while `data()` or the action runs
+(`Context.current.withSpan(span).runSync`), so the spans that `otel_http` and `otel_dio` make inside them,
+after an `await` too, are their children. A navigation that `navigateFrom` marked (a notification, a
+shortcut, a widget, a link) carries `fespalier.navigation.source`. The README's
+[Spans around data() and actions](https://github.com/fespalier/fespalier#spans-around-data-and-actions) and
+[Where a navigation came from](https://github.com/fespalier/fespalier#where-a-navigation-came-from-navigatefrom)
+have the details.
+
 ### See what it sends
 
 `fsp telemetry` (since 0.8.1) starts OpenObserve with four dashboards that answer plain questions ("Do screens

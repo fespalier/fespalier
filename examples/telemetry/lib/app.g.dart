@@ -446,7 +446,7 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 final _lib5 = DeferredLibrary(_i9.loadLibrary, '(tabs)/settings/page.dart', route: '/settings');
 
 final _data4 = FutureProvider.autoDispose.family(
-  (Ref ref, int id) => traceData(ref, 'd4', id, _i5.data(ref, id: id), telemetry: const TelemetrySite('(tabs)/orders/\$id/data.dart', route: '/orders/:id')),
+  (Ref ref, int id) => traceDataCall(ref, 'd4', id, () => _i5.data(ref, id: id), telemetry: const TelemetrySite('(tabs)/orders/\$id/data.dart', route: '/orders/:id')),
 );
 
 /// `action()` of (tabs)/orders/$id/action.dart: its state, and what it invalidates after a success.

@@ -17,6 +17,13 @@
   static final {{ a.form.hook }} = (WidgetRef ref, {{ a.form.params }}) => useActionForm(ref, {{ a.provider }}{{ a.key }}, {{ a.form.args }});
 {%- endif %}
 {%- endmacro %}
+{% macro trace_data(p) -%}
+{% if telemetry -%}
+traceDataCall(ref, '{{ p.site }}', {{ p.key_expr }}, () => {{ p.call }}, telemetry: const TelemetrySite({{ p.site_file }}, route: {{ p.site_route }}))
+{%- else -%}
+traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }})
+{%- endif %}
+{%- endmacro %}
 {% macro view(b) -%}
 {% if b.data -%}
 DataView(
@@ -587,7 +594,7 @@ final _data{{ p.id }} = {{ p.call }};
 {% elif p.cache %}
 
 final _data{{ p.id }} = {{ "cachedDataFamily" if p.family else "cachedData" }}(
-  ({{ p.params }}) => traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}{{ ", telemetry: const TelemetrySite(" ~ p.site_file ~ ", route: " ~ p.site_route ~ ")" if telemetry }}),
+  ({{ p.params }}) => {{ trace_data(p) }},
   cache: {{ p.cache.expr }},
   name: {{ p.cache.name }},
 {% if p.cache.key_param %}
@@ -605,9 +612,9 @@ final _data{{ p.id }} = {{ "cachedDataFamily" if p.family else "cachedData" }}(
 
 final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
 {% if p.freshness %}
-  ({{ p.params }}) => freshData(ref, {{ p.freshness }}, traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}{{ ", telemetry: const TelemetrySite(" ~ p.site_file ~ ", route: " ~ p.site_route ~ ")" if telemetry }})),
+  ({{ p.params }}) => freshData(ref, {{ p.freshness }}, {{ trace_data(p) }}),
 {% else %}
-  ({{ p.params }}) => traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}{{ ", telemetry: const TelemetrySite(" ~ p.site_file ~ ", route: " ~ p.site_route ~ ")" if telemetry }}),
+  ({{ p.params }}) => {{ trace_data(p) }},
 {% endif %}
 {% if p.no_retry %}
   // No automatic retry: error.dart and its Retry button are the retry UX.

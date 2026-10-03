@@ -23,8 +23,13 @@ import 'conventions.dart';
 ///
 /// Nothing is emitted until [isReady] says the SDK is up (dartastic's entry points throw before
 /// `OTel.initialize`), every SDK call is inside a `try`, and the adapter starts no timer and no
-/// zone: a failure costs a span, never a feature. The names and attributes it emits are the
+/// error zone: a failure costs a span, never a feature. The names and attributes it emits are the
 /// telemetry conventions, contract version 1 ([FespalierConventions]).
+///
+/// Since 0.9.0 a data span and an action span are the current span while `data()` or the action
+/// runs ([within]), so the spans that `otel_http` and `otel_dio` make inside them, after an
+/// `await` too, are their children. Next to another sink (Sentry, analytics), install both with
+/// `FespalierTelemetry.combine` or `FespalierTelemetry.add`.
 final class FespalierOtel extends FespalierTelemetry {
   /// [isReady] says whether the SDK is up: pass `() => observability.isReady` with `otel_zone`.
   /// Leave it out when the app initialises the SDK itself before installing this.
@@ -108,6 +113,7 @@ final class FespalierOtel extends FespalierTelemetry {
           FespalierConventions.opNavigate,
           <String, Object>{
             FespalierConventions.operation: FespalierConventions.opNavigate,
+            FespalierConventions.navigationSource: ?start.source,
           },
         ),
         TelemetryOp.guard || TelemetryOp.redirect => (
@@ -168,6 +174,24 @@ final class FespalierOtel extends FespalierTelemetry {
       return _Running(span, start.op);
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Makes the span of a data load or an action the current one while `data()` or the action
+  /// runs, as the SDK does it: with zone values only (`Context.runSync` is
+  /// `runZoned(zoneValues:)`), so what the call awaits keeps its context, and with no error
+  /// handler, so a `Future` that fails still reaches Riverpod.
+  @override
+  void within(Object? token, Object? Function() body) {
+    if (token is! _Running) {
+      body();
+      return; // a block-bodied `void` method may not `return body();`
+    }
+    try {
+      Context.current.withSpan(token.span).runSync(body);
+    } catch (_) {
+      // A failing SDK costs the parenting, never the call: fespalier runs the body itself when
+      // it did not run.
     }
   }
 

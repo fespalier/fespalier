@@ -174,5 +174,13 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   message into a pane (an `Input::Line` or `Input::Notice`), not `eprintln!`. Every child runs in its own
   process group (`procs.rs`), and the tests that need flutter use a fake `flutter` script that speaks the
   daemon protocol, polling a log instead of sleeping.
+- **Several telemetry sinks, and `within` (since 0.9.0).** `FespalierTelemetry.combine` gives each sink its
+  own tokens and parents (`TelemetryStart._withParent` copies a start with a new parent: **a field you add to
+  `TelemetryStart` goes there too**, and `telemetry_combine_test.dart` sets every field), and isolates each
+  sink's errors. `within` is **synchronous and transparent**: `telemetryWithin` runs the body once, in the
+  caller's error zone (a sink's own error handler is refused and printed once), and returns the very object,
+  so a sync `data()` stays sync. Only an app made with `telemetry: true` calls `traceDataCall(..., () =>
+  data(...))`; the others keep `traceData` and their `app.g.dart` does not change. A `fespalier_otel`
+  convention is contract version 1: add a key, never rename one.
 - Every place that spells out the release version is annotated for release-please and checked by
   `cli/tests/versions.rs`; if that test fails after your change, you moved or removed an annotation.

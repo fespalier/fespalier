@@ -18,7 +18,8 @@ in `tasks: dev:` starts it with the app: it starts its stack and returns, so it 
 - **`FespalierTelemetry`**: the sink, in `package:fespalier`. `FespalierTelemetry.install(sink)` (null
   uninstalls) before `runApp` and before the router is built. A sink is called synchronously and must
   return at once and not throw; what it throws is caught and printed once
-  (`fespalier telemetry: <error> (not shown again)`).
+  (`fespalier telemetry: <error> (not shown again)`). There is **one slot**: a second `install`
+  replaces the first (several sinks: see below, since 0.9.0).
 - **`RecordingTelemetry`** (`package:fespalier/testing.dart`): a sink that keeps lines for a test.
 - **`package:fespalier_otel`**: `FespalierOtel`, the sink that makes spans on the dartastic SDK, and
   `FespalierConventions`, the names ([conventions](conventions.md)). It does not depend on `otel_zone`,
@@ -87,6 +88,94 @@ web, and spans and logs are exported. Run the body as it is on the web (the `gua
 error hooks `runGuarded` installs are then not installed there. `OtelZoneConfig` and everything else is
 unchanged.
 
+## Several sinks: `combine` and `add` (since 0.9.0)
+
+`install` holds one sink, so OpenTelemetry, Sentry and an analytics SDK need one sink made of the three:
+
+```dart
+FespalierTelemetry.install(
+  FespalierTelemetry.combine([
+    FespalierOtel(isReady: () => observability.isReady),
+    AnalyticsTelemetry(),
+  ]),
+);
+```
+
+`FespalierTelemetry.add(sink)` is `install(combine([?current, sink]))`: use it where two places each install
+a sink (a package's setup and the app's `startup()`) so neither replaces the other. `install` still replaces
+everything and `install(null)` removes everything.
+
+- **Each sink has its own tokens.** What a sink returned from `start` is what it, and only it, gets back at
+  `end`, `page` and `within`, and as the `TelemetryStart.parent` of what runs under one of its
+  navigations. One sink's spans therefore cannot become another sink's parents, and `FespalierOtel` behind
+  a `combine` still parents its guard, data and deferred spans under its own navigation span.
+- **Each sink is isolated.** One that throws costs only its own report: the others and the app go on, and
+  its error is printed **once per sink**, `fespalier telemetry: <error> in <Sink> (not shown again)`, and
+  it is called again next time. A sink whose `start` returned null is still told the end, with null.
+- `combine` flattens a combined sink in the list, `combine([])` reports nothing and `combine([sink])` is
+  `sink`. Sinks are called in list order; for `within` the **first is outermost**.
+
+## `within`: the data and action span is current (since 0.9.0)
+
+By default a span made while `data()` or an action runs (an HTTP client's) is a root of its own trace.
+A sink may override the hook fespalier calls around them:
+
+```dart
+/// Runs [body] inside the operation [token] came from. The default calls [body].
+void within(Object? token, Object? Function() body) => body();
+```
+
+`FespalierOtel` overrides it with `Context.current.withSpan(span).runSync(body)`, so the spans of Dartastic's
+`otel_http` and `otel_dio` made inside `data()` or an action, after an `await` too, are children of its
+span. The rules for a sink of your own:
+
+- **Call `body` once, synchronously, before you return.** It returns what the operation returned (null if it
+  threw) so you may observe it, for example hand a `Future` to a vendor API that ends a span when it
+  settles; it never throws (fespalier rethrows after you return). `body` runs once even if you never call
+  it, call it twice or throw.
+- **fespalier returns the operation's own result, the very object**, whatever you do: a sync `data()` stays
+  sync (no `Future`, no microtask) and a `Future` is the one Riverpod awaits. A sink cannot replace it.
+- **Zone values only.** `runZoned(body, zoneValues: {...})` is right, and what Dartastic's `Context.runSync`
+  is. **Never give the zone an error handler** (`runZonedGuarded`, `onError:`, a `ZoneSpecification` with
+  `handleUncaughtError`): a `Future` that fails in another error zone never reaches Riverpod and the page
+  stays on its loading view. fespalier refuses such a zone: it runs `body` in the caller's zone and prints
+  once `fespalier telemetry: <Sink>.within changed the error zone, so data() and actions run outside it
+(use runZoned with zoneValues, not runZonedGuarded) (not shown again)`.
+- Behind a `combine`, each sink's `within` runs the next, so every sink's scope wraps `data()` and each
+  sees the result. A sink with no token for the operation, or one that throws, is stepped over.
+- **Guards and deferred loads do not get `within`** (a guard must stay cheap; a deferred load runs no app
+  code). `FespalierTelemetry.run(token, body)` is the same for an adapter package that starts operations
+  of its own with `FespalierTelemetry.begin`.
+
+An app made with `telemetry: true` gets `traceDataCall(ref, 'd4', id, () => data(ref, id: id), telemetry: ...)`
+in `app.g.dart` instead of `traceData(ref, 'd4', id, data(ref, id: id), telemetry: ...)`: **regenerate with
+`fsp gen`**. The data span now starts before `data()` runs (its duration includes the sync part), and a
+`data()` that throws before it returns now has a `data` span (`fespalier.data.state = error`,
+`fespalier.async = false`). An app without `telemetry: true` is unchanged. A sink that already had a member
+called `within` with another signature must rename it.
+
+## `navigateFrom`: where a navigation came from (since 0.9.0)
+
+```dart
+// A tap on a notification, with the app running:
+navigateFrom(NavigationSource.notification, () => router.go('/orders/42'));
+// A cold start from it: the router built inside the closure starts the launch navigation.
+final router = navigateFrom(
+  NavigationSource.notification,
+  () => AppRoutes.router(initialLocation: '/orders/42'),
+);
+```
+
+`NavigationSource` is `notification`, `shortcut`, `widget` or `link`. The closure runs once, synchronously,
+and what it returns is returned. **The first navigation it starts takes the mark; it is dropped when the
+closure returns**, so it cannot reach a later one (a closure that starts nothing, or goes where the router
+already is, leaves nothing). Telemetry reports it as `TelemetryStart.source` and `FespalierOtel` as
+`fespalier.navigation.source` on the `navigate` span; `fespalier.navigation.kind` still says how the stack
+changed (a cold start is `initial` with a source). **fespalier never calls it by itself**: a platform deep
+link and the browser's back button look like any other navigation, and the bridge that knows (a
+notification handler) does. Another value asserts in debug, ``navigateFrom: `banner` is not a
+NavigationSource value (notification, shortcut, widget or link)``.
+
 ## Testing
 
 ```dart
@@ -102,13 +191,74 @@ with `InMemorySpanExporter` from `package:dartastic_opentelemetry/testing.dart` 
 (**once per isolate**, so once per test file), install `FespalierOtel()`, and read the exporter after a
 `pump()`: a span is exported when it ends.
 
+Since 0.9.0 a navigation that `navigateFrom` marked has ` source=notification` at the end of its start line
+(`#1 start navigate /orders/42 source=notification`; unmarked lines do not change), and
+`RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and `#n within exit` around what runs
+inside `data()` or an action, so a line the code under test adds to `recording.log` shows it ran within its
+operation. Two sinks next to each other, and a sink of your own that makes its operation current:
+
+```dart
+// test/sinks_test.dart
+import 'dart:async';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// A sink that makes the file of its operation the current one while data() and actions run.
+final class CurrentFile extends FespalierTelemetry {
+  static const _key = #currentFile;
+
+  static String? get current => Zone.current[_key] as String?;
+
+  @override
+  Object? start(TelemetryStart start) => start.site?.file;
+
+  @override
+  void within(Object? token, Object? Function() body) {
+    // Zone values only: never runZonedGuarded, never onError.
+    runZoned(body, zoneValues: {_key: token});
+  }
+}
+
+const site = TelemetrySite('orders/\$id/data.dart', route: '/orders/:id');
+
+void main() {
+  tearDown(() => FespalierTelemetry.install(null));
+
+  test('two sinks, and data() runs inside its span', () async {
+    final recording = RecordingTelemetry(recordWithin: true);
+    FespalierTelemetry.install(
+      FespalierTelemetry.combine([recording, CurrentFile()]),
+    );
+    final order = FutureProvider.autoDispose<String?>(
+      (ref) => traceDataCall(ref, 'd1', null, () async {
+        await Future<void>.delayed(Duration.zero);
+        return CurrentFile.current;
+      }, telemetry: site),
+    );
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    // After an await, the current file is still the data span's.
+    expect(await container.read(order.future), 'orders/\$id/data.dart');
+    expect(recording.log, [
+      '#1 start data orders/\$id/data.dart',
+      '#1 within enter',
+      '#1 within exit',
+      '#1 end data data async',
+    ]);
+  });
+}
+```
+
 ## What it costs
 
 - **Off, nothing.** No `TelemetrySite` is passed, so each wrapper's `telemetry` parameter is null and the
   code behind it is compiled out of a release build. CI builds an app (with an `observe.dart`) for the web
   and greps the release build for `fespalier telemetry`.
 - **Sync stays sync.** fespalier creates no `Future`, microtask or timer for telemetry; the wrappers
-  return the very object they were given. The OpenTelemetry SDK's own span processors are `async`
+  return the very object they were given. Since 0.9.0 a telemetry app's data provider also allocates one
+  closure per build (`traceDataCall`), and nothing else. The OpenTelemetry SDK's own span processors are `async`
   methods, so the SDK schedules microtasks when a span starts or ends; they are never in the path of a
   value the app gets.
 - A backgrounded app draws no frames, so a navigation made then ends its span at the next frame after

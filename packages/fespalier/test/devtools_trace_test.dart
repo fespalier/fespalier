@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/persist.dart' show StorageOptions;
 import 'package:fespalier/src/devtools/devtools.dart'
     show
         debugDevToolsCall,
@@ -459,6 +460,58 @@ void main() {
           (DataState.data, 2),
         ],
       );
+    });
+
+    test(
+      'a provider wrapped in freshData (since 0.8.0) is traced the same',
+      () async {
+        final c = container();
+        var runs = 0;
+        final provider = FutureProvider.autoDispose<int>(
+          (ref) => freshData(
+            ref,
+            const Freshness(staleTime: Duration(minutes: 1)),
+            traceData(ref, 'd7', null, Future.value(++runs)),
+          ),
+        );
+        c.listen(provider, (_, _) {});
+        await pumpEventQueue();
+        c.invalidate(provider);
+        await pumpEventQueue();
+        final record = (await snapshot()).data.single;
+        expect(record.builds, 2);
+        expect(record.state, DataState.data);
+        expect(record.value, const Shown('int', '2'));
+      },
+    );
+
+    test('and so is a cachedData provider, with a saved value in front of it '
+        '(since 0.8.0)', () async {
+      final storage = MemoryDataStorage()
+        ..write('fespalier:items', '5', const StorageOptions());
+      final c = ProviderContainer(
+        retry: (_, _) => null,
+        overrides: [dataCacheStorage.overrideWithValue(storage)],
+      );
+      addTearDown(c.dispose);
+      var runs = 0;
+      final provider = cachedData<int>(
+        (ref) => traceData(ref, 'd7', null, Future.value(++runs + 10)),
+        cache: DataCache<int>(encode: (v) => '$v', decode: int.parse),
+        name: 'items',
+      );
+      final sub = c.listen(provider, (_, _) {});
+      // The saved value is the state, but the data record is of what the function returned.
+      expect(sub.read().isFromCache, isTrue);
+      await pumpEventQueue();
+      final record = (await snapshot()).data.single;
+      expect(record.builds, 1);
+      expect(record.state, DataState.data);
+      expect(record.value, const Shown('int', '11'));
+      expect(sub.read().requireValue, 11);
+      sub.close();
+      await pumpEventQueue();
+      expect((await snapshot()).data.single.state, DataState.disposed);
     });
 
     test('disposal is shown, and a family key is', () async {

@@ -230,7 +230,7 @@ abstract final class AppRoutes {
   }) {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
-    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return [
       ShellRoute(
         pageBuilder: (context, state, child) => _i1.transition(
@@ -349,7 +349,7 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: DataView(
-                      watch: (ref) => ref.watch(_data13),
+                      watch: (ref) => watchData(ref, 'd13', _data13),
                       refresh: (ref) => ref.invalidateSelected(_data13),
                       data: (d) => _i17.CatalogPage(featured: d),
                       loading: () => const DefaultLoading(),
@@ -369,7 +369,7 @@ abstract final class AppRoutes {
                         child: buildWithParams(
                           () => _params14(state),
                           (v) => DataView(
-                            watch: (ref) => ref.watch(_data14(v.productId)),
+                            watch: (ref) => watchData(ref, 'd14', _data14(v.productId)),
                             refresh: (ref) => ref.invalidateSelected(_data14(v.productId)),
                             data: (d) => _i19.ProductDetailPage(product: d),
                             loading: () => const _i20.ProductLoading(),
@@ -391,7 +391,7 @@ abstract final class AppRoutes {
                             child: buildWithParams(
                               () => _params15(state),
                               (v) => DataView(
-                                watch: (ref) => ref.watch(_data15((productId: v.productId, page: v.page))),
+                                watch: (ref) => watchData(ref, 'd15', _data15((productId: v.productId, page: v.page))),
                                 refresh: (ref) => ref.invalidateSelected(_data15((productId: v.productId, page: v.page))),
                                 data: (d) => _i23.ReviewsPage(reviews: d),
                                 loading: () => const _i20.ProductLoading(),
@@ -415,7 +415,7 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: DataView(
-                      watch: (ref) => ref.watch(_i26.data),
+                      watch: (ref) => watchData(ref, 'd18', _i26.data),
                       refresh: (ref) => ref.invalidate(_i26.data),
                       data: (d) => _i27.CounterPage(count: d),
                       loading: () => const DefaultLoading(),
@@ -661,7 +661,7 @@ abstract final class AppRoutes {
                   buildWithParams(
                       () => _layout54(state),
                       (v) => DataView(
-                        watch: (ref) => ref.watch(_data54(v.period)),
+                        watch: (ref) => watchData(ref, 'd54', _data54(v.period)),
                         refresh: (ref) => ref.invalidate(_data54(v.period)),
                         data: (d) => _i66.ReportsLayout(data: d, child: child),
                         loading: () => const DefaultLoading(),
@@ -682,7 +682,7 @@ abstract final class AppRoutes {
                         child: buildWithParams(
                           () => _params55(state),
                           (v) => SectionView(
-                            watch: (ref) => ref.watch(_data54(v.period)),
+                            watch: (ref) => watchData(ref, 'd54', _data54(v.period)),
                             data: (s54) => _i67.MonthlyReportPage(data: s54),
                           ),
                           () => notFound(state.uri),
@@ -718,7 +718,7 @@ abstract final class AppRoutes {
                     child: buildWithParams(
                       () => _params57(state),
                       (v) => DataView(
-                        watch: (ref) => ref.watch(_data57((q: v.q, page: v.page, tags: QueryList(v.tags)))),
+                        watch: (ref) => watchData(ref, 'd57', _data57((q: v.q, page: v.page, tags: QueryList(v.tags)))),
                         refresh: (ref) => ref.invalidate(_data57((q: v.q, page: v.page, tags: QueryList(v.tags)))),
                         data: (d) => _i70.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
                         loading: () => const DefaultLoading(),
@@ -738,7 +738,7 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: DataView(
-                      watch: (ref) => ref.watch(_data69),
+                      watch: (ref) => watchData(ref, 'd69', _data69),
                       refresh: (ref) => ref.invalidate(_data69),
                       data: (d) => _i91.TicksPage(data: d),
                       loading: () => const DefaultLoading(),
@@ -825,7 +825,7 @@ abstract final class AppRoutes {
                         child: buildWithParams(
                           () => _params38(state),
                           (v) => DataView(
-                            watch: (ref) => ref.watch(_data38(v.id)),
+                            watch: (ref) => watchData(ref, 'd38', _data38(v.id)),
                             refresh: (ref) => ref.invalidate(_data38(v.id)),
                             data: (d) => _i48.RefundPage(id: v.id, quote: d),
                             loading: () => const DefaultLoading(),
@@ -930,7 +930,7 @@ abstract final class AppRoutes {
                     child: buildWithParams(
                       () => _params59(state),
                       (v) => DataView(
-                        watch: (ref) => ref.watch(_data59(v.category)),
+                        watch: (ref) => watchData(ref, 'd59', _data59(v.category)),
                         refresh: (ref) => ref.invalidate(_data59(v.category)),
                         data: (d) => _i72.CategoryShopPage(category: v.category, items: d, sort: v.sort),
                         loading: () => const DefaultLoading(),
@@ -981,7 +981,7 @@ abstract final class AppRoutes {
                             child: buildWithParams(
                               () => _params63(state),
                               (v) => DataView(
-                                watch: (ref) => ref.watch(_data63((shop: v.shop, id: v.id))),
+                                watch: (ref) => watchData(ref, 'd63', _data63((shop: v.shop, id: v.id))),
                                 refresh: (ref) => ref.invalidate(_data63((shop: v.shop, id: v.id))),
                                 data: (d) => _i77.ItemPage(d),
                                 loading: () => const DefaultLoading(),
@@ -1004,7 +1004,7 @@ abstract final class AppRoutes {
                   buildWithParams(
                       () => _layout65(state),
                       (v) => DataView(
-                        watch: (ref) => ref.watch(_data65(v.teamId)),
+                        watch: (ref) => watchData(ref, 'd65', _data65(v.teamId)),
                         refresh: (ref) => ref.invalidate(_data65(v.teamId)),
                         data: (d) => _i83.TeamLayout(team: d, child: child),
                         loading: () => const _i81.TeamLoading(),
@@ -1025,7 +1025,7 @@ abstract final class AppRoutes {
                         child: buildWithParams(
                           () => _params66(state),
                           (v) => SectionView(
-                            watch: (ref) => ref.watch(_data65(v.teamId)),
+                            watch: (ref) => watchData(ref, 'd65', _data65(v.teamId)),
                             data: (s65) => _i85.MembersPage(s65, teamId: v.teamId),
                           ),
                           () => _i86.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
@@ -1043,10 +1043,10 @@ abstract final class AppRoutes {
                             child: buildWithParams(
                               () => _params67(state),
                               (v) => DataView(
-                                watch: (ref) => ref.watch(_data67(v.member)),
+                                watch: (ref) => watchData(ref, 'd67', _data67(v.member)),
                                 refresh: (ref) => ref.invalidate(_data67(v.member)),
                                 data: (d) => SectionView(
-                                  watch: (ref) => ref.watch(_data65(v.teamId)),
+                                  watch: (ref) => watchData(ref, 'd65', _data65(v.teamId)),
                                   data: (s65) => _i88.MemberPage(label: d, team: s65),
                                 ),
                                 loading: () => const _i81.TeamLoading(),
@@ -1070,7 +1070,7 @@ abstract final class AppRoutes {
                         child: buildWithParams(
                           () => _params68(state),
                           (v) => SectionView(
-                            watch: (ref) => ref.watch(_data65(v.teamId)),
+                            watch: (ref) => watchData(ref, 'd65', _data65(v.teamId)),
                             data: (s65) => _i89.TeamSettingsPage(data: s65),
                           ),
                           () => _i84.TeamNotFound(uri: state.uri),
@@ -1091,7 +1091,7 @@ abstract final class AppRoutes {
                     child: buildWithParams(
                       () => _params12(state),
                       (v) => DataView(
-                        watch: (ref) => ref.watch(_data12(restKey(v.categories))),
+                        watch: (ref) => watchData(ref, 'd12', _data12(restKey(v.categories))),
                         refresh: (ref) => ref.invalidate(_data12(restKey(v.categories))),
                         data: (d) => _i15.BrowsePage(categories: v.categories, data: d),
                         loading: () => const DefaultLoading(),
@@ -1113,7 +1113,7 @@ abstract final class AppRoutes {
                     child: buildWithParams(
                       () => _params17(state),
                       (v) => DataView(
-                        watch: (ref) => ref.watch(_data17(restKey(v.ids))),
+                        watch: (ref) => watchData(ref, 'd17', _data17(restKey(v.ids))),
                         refresh: (ref) => ref.invalidate(_data17(restKey(v.ids))),
                         data: (d) => _i25.ComparePage(ids: v.ids, total: d),
                         loading: () => const DefaultLoading(),
@@ -1149,7 +1149,7 @@ abstract final class AppRoutes {
                     child: buildWithParams(
                       () => _params71(state),
                       (v) => DataView(
-                        watch: (ref) => ref.watch(_data71(restKey(v.article))),
+                        watch: (ref) => watchData(ref, 'd71', _data71(restKey(v.article))),
                         refresh: (ref) => ref.invalidate(_data71(restKey(v.article))),
                         data: (d) => _i94.WikiPage(article: v.article, data: d),
                         loading: () => const DefaultLoading(),
@@ -3447,6 +3447,23 @@ final _action65_0 = actionFamily(
   invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_data65(teamId)],
   site: 'a65_0',
 );
+
+/// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
+Map<Object, String> _devToolsProviders() => {
+      _data12: 'd12',
+      _data13: 'd13',
+      _data17: 'd17',
+      _i26.data: 'd18',
+      _data38: 'd38',
+      _data54: 'd54',
+      _data57: 'd57',
+      _data59: 'd59',
+      _data63: 'd63',
+      _data65: 'd65',
+      _data67: 'd67',
+      _data69: 'd69',
+      _data71: 'd71',
+    };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release

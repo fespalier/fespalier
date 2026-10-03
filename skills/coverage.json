@@ -153,6 +153,7 @@
         "packages/fespalier/lib/src/deferred.dart",
         "cli/src/locale.rs",
         "cli/src/enums.rs",
+        "cli/src/segtype.rs",
         "cli/src/extra.rs",
         "cli/src/manifest.rs",
         "cli/templates/manifest.dart.jinja",

@@ -22,6 +22,11 @@ import 'package:hooks_riverpod/misc.dart' show Override;
 
 import 'src/deferred.dart';
 
+/// Riverpod's `Override`, the type of the list `overrides` and `pumpRouter(overrides:)` take
+/// (since 0.8.0): the setup file of `fsp test` returns a `List<Override>` and imports it from
+/// here.
+export 'package:hooks_riverpod/misc.dart' show Override;
+
 Duration? _noRetry(int retryCount, Object error) => null;
 
 /// Disposes [router] unless the test already did: a second `dispose` is an error.
@@ -118,4 +123,65 @@ String currentLocation(WidgetTester tester) {
   final top = matches.lastOrNull;
   if (top is ImperativeRouteMatch) return top.matches.uri.toString();
   return router.routeInformationProvider.value.uri.toString();
+}
+
+/// The page of the route whose pattern is [pattern] (`/products/:id`), found by the
+/// `Semantics(identifier: 'route:<pattern>')` that `semantics_ids: true` gives it. Needs no
+/// semantics tree; a page off screen (underneath another) is skipped (since 0.8.0).
+Finder findRoutePage(String pattern) => find.byWidgetPredicate(
+  (w) => w is Semantics && w.properties.identifier == 'route:$pattern',
+  description: 'the page of $pattern',
+);
+
+/// What `fsp test` runs for each route (since 0.8.0): boots [router] with [pumpRouter] (and
+/// [overrides], [app]), pumps on the fake clock until [page] (by default
+/// `findRoutePage(pattern)`) is on screen, expects exactly one, then takes the tree down and
+/// runs the clock [timeout] on so a fake's pending delay doesn't fail the test.
+///
+/// The wait is deterministic: it pumps 100 ms of fake time at a time, so a `data.dart` fake that
+/// answers after a delay is waited out, and a page that never comes fails after [timeout] of
+/// fake time, not real time, naming where the router is. A guard that redirects (no override to
+/// get past it), a `data.dart` that fails or never completes, or an exception while building the
+/// page keeps it away.
+Future<void> smokeTestRoute(
+  WidgetTester tester,
+  String pattern,
+  GoRouter router, {
+  Finder? page,
+  List<Override> overrides = const [],
+  Widget Function(GoRouter router)? app,
+  Duration timeout = const Duration(seconds: 30),
+}) async {
+  final finder = page ?? findRoutePage(pattern);
+  await pumpRouter(
+    tester,
+    router,
+    overrides: overrides,
+    app: app,
+    settle: false,
+  );
+  const step = Duration(milliseconds: 100);
+  var waited = Duration.zero;
+  while (finder.evaluate().isEmpty) {
+    if (waited >= timeout) {
+      String at;
+      try {
+        at = currentLocation(tester);
+      } on Object {
+        at = 'unknown';
+      }
+      fail(
+        'The page of $pattern is not on screen after ${timeout.inMilliseconds} ms of fake '
+        'time: the router is at $at. A guard that redirects, a data.dart that fails or '
+        'never completes, or an exception while building (above) keeps it away.',
+      );
+    }
+    await tester.pump(step);
+    waited += step;
+  }
+  expect(finder, findsOneWidget);
+  // Take the tree down and run the clock on: a fake's pending one-shot timer fires with no
+  // widget left to react, so the test does not end with "A Timer is still pending".
+  await tester.pumpWidget(const SizedBox());
+  await tester.pump(timeout);
 }

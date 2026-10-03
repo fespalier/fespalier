@@ -1,0 +1,10 @@
+import 'package:fespalier/nav.dart';
+
+/// How this folder shows in the menus `fsp` generates (`AppMenu`).
+{% if nav_wide %}
+const nav = Nav(
+  label: '{{ nav_label }}',
+);
+{% else %}
+const nav = Nav(label: '{{ nav_label }}');
+{% endif %}

@@ -6,7 +6,7 @@
 //   /checkout      CheckoutRoute  checkout/page.dart  (guard, transition, deferred)
 //   /greet/:name   GreetRoute     greet/$name/page.dart  (transition)
 //   /products      ProductsRoute  products/page.dart  (data, transition)
-//   /products/:id  ProductRoute   products/$id/page.dart  (data, transition, deferred)
+//   /products/:id  ProductRoute   products/$id/page.dart  (data, fresh, cached, transition, deferred)
 
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/widgets.dart';
@@ -83,7 +83,7 @@ abstract final class AppRoutes {
     DeferredLibrary.register(deferred);
     // pubspec `semantics_ids`: on the web, a driver like Maestro sees nothing without the semantics tree.
     ensureWebSemantics();
-    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return [
       ShellRoute(
         pageBuilder: (context, state, child) => _i3.transition(
@@ -125,7 +125,7 @@ abstract final class AppRoutes {
                   buildWithParams(
                     () => _params5(state),
                     (v) => DataView(
-                      watch: (ref) => ref.watch(_i10.data),
+                      watch: (ref) => watchData(ref, 'd5', _i10.data),
                       refresh: (ref) => ref.invalidate(_i10.data),
                       data: (d) => Semantics(identifier: 'route:/products', container: true, child: _i11.ProductsPage(products: d, sort: v.sort, page: v.page)),
                       loading: () => const _i12.ProductsLoading(),
@@ -143,12 +143,13 @@ abstract final class AppRoutes {
                       buildWithParams(
                         () => _params6(state),
                         (v) => DataView(
-                          watch: (ref) => ref.watch(_data6(v.id)),
+                          watch: (ref) => watchData(ref, 'd6', _data6(v.id)),
                           refresh: (ref) => ref.invalidate(_data6(v.id)),
                           data: (d) => Semantics(identifier: 'route:/products/:id', container: true, child: _i14.ProductPage(product: d)),
                           loading: () => const _i12.ProductsLoading(),
                           error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),
                           keepPrevious: true,
+                          keepDataOnError: true,
                           library: _lib6,
                         ),
                         () => notFound(state.uri),
@@ -506,13 +507,23 @@ final _lib2 = DeferredLibrary(_i7.loadLibrary, 'checkout/page.dart');
 /// products/$id/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
 final _lib6 = DeferredLibrary(_i14.loadLibrary, 'products/\$id/page.dart');
 
-final _data6 = FutureProvider.autoDispose.family(
+final _data6 = cachedDataFamily(
   (Ref ref, int id) => traceData(ref, 'd6', id, _i13.data(ref, id: id)),
+  cache: _i13.dataCache,
+  name: 'products/\$id',
+  keyParts: (int id) => [id],
+  freshness: _i13.freshness,
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
 );
 
+/// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
+Map<Object, String> _devToolsProviders() => {
+      _i10.data: 'd5',
+      _data6: 'd6',
+    };
+
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"shop","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/cart","route":"CartRoute","file":"cart/page.dart","folder":"cart","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/checkout","route":"CheckoutRoute","file":"checkout/page.dart","folder":"checkout","markers":["guard","deferred"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/products","route":"ProductsRoute","file":"products/page.dart","folder":"products","markers":["data"],"params":[{"name":"sort","type":"Sort?","in":"query"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[{"type":"route","pattern":"/products/:id","route":"ProductRoute","file":"products/\$id/page.dart","folder":"products/\$id","markers":["data","deferred"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/greet/:name","route":"GreetRoute","file":"greet/\$name/page.dart","folder":"greet/\$name","markers":[],"params":[{"name":"name","type":"String","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"d5":{"kind":"data","file":"products/data.dart","route":"ProductsRoute","section":null,"traced":false},"d6":{"kind":"data","file":"products/\$id/data.dart","route":"ProductRoute","section":null,"traced":true},"g2@2":{"kind":"guard","file":"checkout/guard.dart","route":"CheckoutRoute","pattern":"/checkout"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"shop","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/cart","route":"CartRoute","file":"cart/page.dart","folder":"cart","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/checkout","route":"CheckoutRoute","file":"checkout/page.dart","folder":"checkout","markers":["guard","deferred"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/products","route":"ProductsRoute","file":"products/page.dart","folder":"products","markers":["data"],"params":[{"name":"sort","type":"Sort?","in":"query"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[{"type":"route","pattern":"/products/:id","route":"ProductRoute","file":"products/\$id/page.dart","folder":"products/\$id","markers":["data","fresh","cached","deferred"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/greet/:name","route":"GreetRoute","file":"greet/\$name/page.dart","folder":"greet/\$name","markers":[],"params":[{"name":"name","type":"String","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"d5":{"kind":"data","file":"products/data.dart","route":"ProductsRoute","section":null,"traced":false},"d6":{"kind":"data","file":"products/\$id/data.dart","route":"ProductRoute","section":null,"traced":true},"g2@2":{"kind":"guard","file":"checkout/guard.dart","route":"CheckoutRoute","pattern":"/checkout"}}}';

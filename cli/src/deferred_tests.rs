@@ -320,7 +320,7 @@ fn a_deferred_data_page_hands_its_library_to_the_data_view() {
     has(
         &c,
         &[
-            "DataView( watch: (ref) => ref.watch(_data1), refresh: (ref) => ref.invalidate(_data1), data: (d) => _i1.APage(n: d), loading: () => const DefaultLoading(), error: (e, st, retry) => DefaultError(error: e, retry: retry), keepPrevious: true, library: _lib1, )",
+            "DataView( watch: (ref) => watchData(ref, 'd1', _data1), refresh: (ref) => ref.invalidate(_data1), data: (d) => _i1.APage(n: d), loading: () => const DefaultLoading(), error: (e, st, retry) => DefaultError(error: e, retry: retry), keepPrevious: true, library: _lib1, )",
         ],
     );
     lacks(&c, &["DeferredView("]);
@@ -404,7 +404,7 @@ fn a_section_page_nests_the_deferred_view_in_its_section_view() {
     has(
         &c,
         &[
-            "SectionView( watch: (ref) => ref.watch(_data1), data: (s1) => DeferredView( library: _lib2, page: () => _i2.CartPage(shop: s1),",
+            "SectionView( watch: (ref) => watchData(ref, 'd1', _data1), data: (s1) => DeferredView( library: _lib2, page: () => _i2.CartPage(shop: s1),",
         ],
     );
     // The layout is never deferred.
@@ -601,7 +601,7 @@ fn a_route_dart_with_nothing_it_knows_lists_what_it_does() {
     assert_eq!(
         e,
         [
-            "✗ route.dart  expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;`"
+            "✗ route.dart  expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;`, `const deferred = true;` or `const freshness = Freshness(staleTime: Duration(minutes: 5));`"
         ]
     );
 }

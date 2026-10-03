@@ -116,7 +116,7 @@ void main() {
       );
       client.emit(
         DevToolsEvents.data,
-        recordEvent(9, dataRecord(2, site: 'd62').toJson()),
+        recordEvent(9, dataRecord(2, site: 'd64').toJson()),
       );
       await pumpEventQueue();
       final data = controller.snapshot!.data;
@@ -326,6 +326,61 @@ void main() {
       final controller = await started(client);
       await controller.invalidate(7);
       expect(controller.actionError, 'parameter `id` is not a number');
+    });
+  });
+
+  group('holders (since 0.8.0)', () {
+    const answer = HoldersRecord(
+      id: 7,
+      found: true,
+      alive: true,
+      listeners: 2,
+      others: 1,
+      holders: [HolderRecord(kind: HolderKind.view, since: 1)],
+    );
+
+    test('asks the app who holds the provider, and gives the answer', () async {
+      final client = FakeFespalierClient(
+        handlers: {DevToolsMethods.holders: (_) => answer.toJson()},
+      );
+      final controller = await started(client);
+      expect(await controller.holders(7), answer);
+      expect(client.callsTo(DevToolsMethods.holders), [
+        {'id': '7'},
+      ]);
+      expect(controller.actionError, isNull);
+    });
+
+    test('an app that does not list the feature is not asked', () async {
+      final client = FakeFespalierClient(features: firstFeatures);
+      final controller = await started(client);
+      expect(await controller.holders(7), isNull);
+      expect(client.callsTo(DevToolsMethods.holders), isEmpty);
+    });
+
+    test('says what the app said when it refuses', () async {
+      final client = FakeFespalierClient(
+        handlers: {
+          DevToolsMethods.holders: (_) =>
+              throw const FespalierError('parameter `id` is not a number'),
+        },
+      );
+      final controller = await started(client);
+      expect(await controller.holders(7), isNull);
+      expect(controller.actionError, 'parameter `id` is not a number');
+    });
+
+    test('an unknown id is an answer, not an error', () async {
+      final client = FakeFespalierClient(
+        handlers: {
+          DevToolsMethods.holders: (_) =>
+              const HoldersRecord(id: 9, found: false).toJson(),
+        },
+      );
+      final controller = await started(client);
+      final unknown = await controller.holders(9);
+      expect(unknown!.found, isFalse);
+      expect(controller.actionError, isNull);
     });
   });
 

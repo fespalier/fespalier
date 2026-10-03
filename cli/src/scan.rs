@@ -29,6 +29,8 @@ pub enum Kind {
     Present,
     /// The app folder's own `extra_codec.dart`: read at the root only.
     ExtraCodec,
+    /// `nav.dart`: how a folder shows in the generated menus (`AppMenu`).
+    Nav,
     /// The app folder's own `app.dart`: the widget around the router (root only, since 0.8.0).
     App,
     /// The app folder's own `startup.dart`: what runs before the app (root only, since 0.8.0).
@@ -38,7 +40,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 18] = [
+    pub const ALL: [Kind; 19] = [
         Kind::Page,
         Kind::Data,
         Kind::Action,
@@ -54,6 +56,7 @@ impl Kind {
         Kind::Navigator,
         Kind::Present,
         Kind::ExtraCodec,
+        Kind::Nav,
         Kind::App,
         Kind::Startup,
         Kind::Splash,
@@ -76,6 +79,7 @@ impl Kind {
             Kind::Navigator => "navigator.dart",
             Kind::Present => "present.dart",
             Kind::ExtraCodec => "extra_codec.dart",
+            Kind::Nav => "nav.dart",
             Kind::App => "app.dart",
             Kind::Startup => "startup.dart",
             Kind::Splash => "splash.dart",

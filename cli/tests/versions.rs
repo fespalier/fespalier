@@ -421,6 +421,27 @@ fn the_launcher_reads_its_version_from_the_package() {
     );
 }
 
+/// The value of the `FLUTTER_VERSION:` line of a workflow's top-level `env:`.
+fn flutter_version(workflow: &str) -> String {
+    let text = read(workflow);
+    text.lines()
+        .find_map(|l| l.trim().strip_prefix("FLUTTER_VERSION:"))
+        .map(|v| v.split('#').next().unwrap_or("").trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| panic!("{workflow} has no `FLUTTER_VERSION:` line"))
+}
+
+#[test]
+fn the_weekly_maestro_workflow_builds_with_the_flutter_of_ci() {
+    // `maestro-web.yml` builds the same web app as ci.yml's `web-routes` job: a Flutter bump in
+    // one file only would make the weekly run test something CI does not.
+    assert_eq!(
+        flutter_version(".github/workflows/maestro-web.yml"),
+        flutter_version(".github/workflows/ci.yml"),
+        "FLUTTER_VERSION differs between maestro-web.yml (left) and ci.yml (right)"
+    );
+}
+
 #[test]
 fn the_pinned_checksums_are_none_or_belong_to_a_version_up_to_this_one() {
     // `release_checksums.dart` is written by the `release-pins` workflow (scripts/pin_checksums.py)

@@ -174,6 +174,13 @@ fespalier:
   keep_previous: true   # true | false
 ```
 
+## A route with a `freshness` or a `dataCache` (since 0.8.0)
+
+Its `DataView` gets `keepDataOnError: true`: a reload that fails keeps the page on the value it had (the error is in
+`XRoute.watch(ref).error`), and `error.dart` only shows when there is nothing to show, whatever `keep_previous`
+says. And a value Riverpod's offline persistence restored (`isFromCache`) is shown while the fresh one loads, with
+`keep_previous: false` too. See [`freshness-and-cache.md`](freshness-and-cache.md).
+
 ## Reloads from code
 
 ```dart

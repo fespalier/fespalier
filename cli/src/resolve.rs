@@ -16,7 +16,7 @@
     reason = "sections and data are bound before the lookups that unwrap them; the resolver states those invariants"
 )]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use heck::ToUpperCamelCase;
 
@@ -25,6 +25,7 @@ use crate::dart::{self, Class, Function, Lit, Module, Span, Ty};
 use crate::diag::Diags;
 use crate::enums::{self, Libs, Lookup};
 use crate::extra::{self, ExtraType};
+use crate::forms::{self, Companion, RecordError};
 use crate::locale::{self, Localized};
 use crate::scan::{ACTION_RESERVED, Kind, Node, ROUTE_MEMBERS, SECTION_MEMBERS, Seg};
 
@@ -143,6 +144,54 @@ pub struct Data {
     pub keys: Vec<String>,
     /// Keyed by a named record `(a: .., b: ..)` rather than a bare value.
     pub record: bool,
+    /// The `freshness` that applies (since 0.8.0): the import index of the library that
+    /// declares it, and that file relative to the app folder (the data.dart itself, or the
+    /// nearest route.dart at or above it). Only for a `data()` function that doesn't return a
+    /// Stream.
+    pub freshness: Option<(usize, String)>,
+    /// The data.dart declares `dataCache` (since 0.8.0); only for such a `data()` function.
+    pub cache: bool,
+}
+
+/// What a data.dart is, for `freshness` and `dataCache`, which only a `data()` function that
+/// loads once can have.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DataForm {
+    Function,
+    Stream,
+    Selector,
+    Provider,
+}
+
+/// What `freshness` must be (E1), here and in a route.dart.
+const BAD_FRESHNESS: &str = "`freshness` must be a `Freshness(...)`: write `const freshness = Freshness(staleTime: Duration(minutes: 5));`";
+
+/// What `dataCache` must be (E6).
+const BAD_DATA_CACHE: &str = "`dataCache` must be a `DataCache(...)` or `DataCache.json(...)`: write `final dataCache = DataCache<Product>.json(toJson: ..., fromJson: ...);`";
+
+/// Whether a variable's initializer is a call of the constructor `name` (since 0.8.0):
+/// `Freshness(`, `const Freshness(`, `prefix.Freshness(`, `DataCache<T>.json(`. The source has
+/// no whitespace (see `Variable::value`), so a `const` in front reads as `constFreshness(`.
+fn is_ctor(v: &dart::Variable, name: &str) -> bool {
+    let Some(value) = v.value.as_deref() else {
+        return false;
+    };
+    let is_ident = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+            && !s.starts_with(|c: char| c.is_ascii_digit())
+    };
+    let named = |s: &str| {
+        // An optional `prefix.` of an `import ... as prefix`, then the name and its call.
+        let s = match s.split_once('.') {
+            Some((prefix, rest)) if prefix != name && is_ident(prefix) => rest,
+            _ => s,
+        };
+        s.strip_prefix(name)
+            .is_some_and(|rest| rest.starts_with(['(', '<', '.']))
+    };
+    named(value) || value.strip_prefix("const").is_some_and(named)
 }
 
 /// A name listed in `const invalidates = [...]`, with where it sits.
@@ -172,8 +221,66 @@ pub struct Action {
     pub input: ExtraType,
     /// The routes (or sections) whose `data.dart` a success invalidates, outermost first.
     pub invalidates: Vec<usize>,
+    /// Its `form()` (since 0.8.0): the typed fields of the input, and what they start from.
+    pub form: Option<Form>,
+    /// The name of its `validate()` (since 0.8.0), run before the action.
+    pub validate: Option<String>,
+    /// Its `optimistic()` (since 0.8.0).
+    pub optimistic: Option<Optimistic>,
     /// The function, for diagnostics.
     pub span: Span,
+}
+
+/// The `form()` beside an action: `NicknameFields form(Profile profile)`.
+#[derive(Debug, Clone)]
+pub struct Form {
+    /// The function's name: `form`, or `approveForm`.
+    pub function: String,
+    /// The fields of the input record, in order.
+    pub fields: Vec<FormField>,
+    /// The type of the value it takes (the `data:` the page passes), when it takes one.
+    pub data: Option<ExtraType>,
+}
+
+/// One field of the input record of an action with a form.
+#[derive(Debug, Clone)]
+pub struct FormField {
+    pub name: String,
+    /// The `FieldCodec` of a text field (`text`, `optionalInteger`...), `None` for a value field.
+    pub codec: Option<&'static str>,
+}
+
+/// The `optimistic()` beside an action: `Profile optimistic(Profile current, Input input)`.
+#[derive(Debug, Clone)]
+pub struct Optimistic {
+    /// The function's name: `optimistic`, or `approveOptimistic`.
+    pub function: String,
+    /// The type it patches, as written: `Profile`.
+    pub ty: String,
+    /// The route (or section) whose `data.dart` it patches: one of the action's `invalidates`.
+    pub target: Option<usize>,
+    /// The function, for diagnostics.
+    pub span: Span,
+}
+
+/// Where the companions of an action are looked for: the file the action is in.
+struct Companions<'a> {
+    m: &'a Module,
+    src: &'a str,
+    file: &'a str,
+    /// The id of the route (or section) whose `action.dart` it is.
+    id: usize,
+}
+
+/// The named parameters of a form hook that are not an action's keys: a key can't take their
+/// names.
+const FORM_HOOK_PARAMS: [&str; 4] = ["data", "validation", "resetOnSuccess", "messages"];
+
+/// Whether the function takes `Ref` as its first, positional, parameter.
+fn first_is_ref(f: &Function) -> bool {
+    f.params
+        .first()
+        .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("Ref")))
 }
 
 /// The members the generated typed route (or section handle) gets for an action.
@@ -185,6 +292,8 @@ pub struct ActionNames {
     pub run: String,
     /// The hook: `useAction`, or `useApprove`.
     pub hook: String,
+    /// The hook of its form (since 0.8.0): `useForm`, or `useApproveForm`.
+    pub form_hook: String,
 }
 
 impl ActionNames {
@@ -200,12 +309,14 @@ impl ActionNames {
                 provider: "action".into(),
                 run: "submit".into(),
                 hook: "useAction".into(),
+                form_hook: "useForm".into(),
             }
         } else {
             ActionNames {
                 provider: format!("{function}Action"),
                 run: function.into(),
                 hook: format!("use{upper}"),
+                form_hook: format!("use{upper}Form"),
             }
         }
     }
@@ -311,6 +422,22 @@ pub struct BranchOptions {
     pub initial_location: Option<String>,
 }
 
+/// A folder's `nav.dart` (since 0.8.0): `const nav = Nav(label: 'Products', order: 1);` and,
+/// optionally, `String label(BuildContext context, {required int id})`.
+#[derive(Debug, Clone)]
+pub struct NavDecl {
+    /// The index of the nav.dart in the generated file's imports.
+    pub import: usize,
+    /// Relative to the app folder: `products/nav.dart`.
+    pub file: String,
+    /// `order:` as written, or 0.
+    pub order: i64,
+    /// `label:` when it is a string literal (for `fsp routes --json`).
+    pub label: Option<String>,
+    /// The segments `label()` asks for, in declaration order; `None` without a `label()`.
+    pub label_args: Option<Vec<String>>,
+}
+
 #[derive(Debug)]
 pub struct Route {
     pub dir: String,
@@ -376,6 +503,9 @@ pub struct Route {
     pub layout_extra: Option<HookExtra>,
     /// The literal named arguments of `const meta = Meta(code: 'x', ...)`, for `meta_unique`.
     pub meta_args: Vec<dart::ObjectArg>,
+    /// The folder's `nav.dart`, when it has a valid one: how it shows in the menus (`AppMenu`).
+    /// Set for a folder with or without a page.
+    pub nav: Option<NavDecl>,
     /// The sections (route ids) above this folder, outermost first, whose data.dart the
     /// layouts above load: what `AppRoutes.dataAt` lists before the route's own data.
     pub sections: Vec<usize>,
@@ -469,6 +599,10 @@ pub struct App {
     /// The type of each of those as the generated file spells it (`List<_i3.Category>`) → as the
     /// app does (`List<Category>`): what the manifest and `fsp routes` show.
     pub type_names: HashMap<String, String>,
+    /// The constant names of each enum segment's or query parameter's type, keyed as the
+    /// generated file spells it (`_i3.Category`). Nothing emitted reads it: the `unknown_path`
+    /// lint does.
+    pub enum_values: HashMap<String, Vec<String>>,
 }
 
 /// The app folder's `extra_codec.dart`, which exports `extraCodec`.
@@ -634,6 +768,8 @@ struct Inherited {
     remount: Remount,
     /// The nearest route.dart's `deferred`, else the config's.
     deferred: bool,
+    /// The nearest route.dart with a `freshness` (since 0.8.0), relative to the app folder.
+    freshness: Option<String>,
 }
 
 /// What a `nest = false` takes a route out of: the page above it, and the folders between.
@@ -702,6 +838,8 @@ pub fn resolve(
         queries: HashMap::new(),
         query_order: vec![],
         listed: vec![],
+        freshness_declared: vec![],
+        freshness_used: BTreeSet::new(),
         diags,
     };
     r.node(
@@ -727,6 +865,7 @@ pub fn resolve(
         }
     }
     r.settle_actions();
+    r.unused_freshness();
     r.app
 }
 
@@ -760,6 +899,10 @@ struct Resolver<'a> {
     /// What each `action.dart` says to invalidate (`const invalidates = [...]`), by route id:
     /// the names it lists, resolved once every route is known. `None` is the default set.
     listed: Vec<(usize, Option<Vec<Named>>)>,
+    /// The route.dart files with a valid `freshness`, and where (since 0.8.0).
+    freshness_declared: Vec<(String, Span)>,
+    /// Those that apply to a data.dart below.
+    freshness_used: BTreeSet<String>,
     diags: &'a mut Diags,
 }
 
@@ -809,6 +952,7 @@ impl Resolver<'_> {
             extra: None,
             layout_extra: None,
             meta_args: vec![],
+            nav: None,
             sections: up.sections.iter().map(|s| s.id).collect(),
             case_sensitive: up.case_sensitive,
             localized: up.localized.clone(),
@@ -904,7 +1048,7 @@ impl Resolver<'_> {
         } else {
             Scope::Route(id)
         };
-        let data = modules
+        let mut data = modules
             .get(&Kind::Data)
             .and_then(|m| self.data(m, node, &segs, data_scope));
         let section = data.is_some() && section_folder;
@@ -976,6 +1120,7 @@ impl Resolver<'_> {
         let mut linkable = up.linkable;
         let mut remount = up.remount;
         let mut deferred = up.deferred;
+        let mut freshness = up.freshness.clone();
         if let Some(m) = modules.get(&Kind::Route) {
             let file = node.rel(Kind::Route);
             let spelled = locale::read(
@@ -991,6 +1136,21 @@ impl Resolver<'_> {
             linkable = self.linkable(m, &file).unwrap_or(up.linkable);
             remount = self.remount(m, &file).unwrap_or(up.remount);
             deferred = self.deferred(m, &file).unwrap_or(up.deferred);
+            if let Some(f) = self.route_freshness(m, &file) {
+                freshness = Some(f);
+            }
+        }
+        // route.dart's `freshness` is the default of every data() function that loads once at
+        // and below this folder: a data.dart's own wins, and a selector, a provider and a
+        // Stream are skipped without a word (it is a default, not a demand).
+        if let (Some(d), Some(rf)) = (data.as_mut(), &freshness)
+            && d.freshness.is_none()
+            && !d.selector
+            && !d.provider
+            && !d.stream
+        {
+            d.freshness = Some((self.import(rf), rf.clone()));
+            self.freshness_used.insert(rf.clone());
         }
         self.app.routes[id].case_sensitive = case_sensitive;
         self.app.routes[id].linkable = linkable;
@@ -1014,6 +1174,7 @@ impl Resolver<'_> {
             linkable,
             remount,
             deferred,
+            freshness: freshness.clone(),
         };
         // A page is what a route below can leave; so is the layout of a folder between.
         let layout_file = node
@@ -1230,6 +1391,9 @@ impl Resolver<'_> {
         self.app.routes[id].meta = modules
             .get(&Kind::Meta)
             .and_then(|m| self.meta(m, node, has_route));
+        self.app.routes[id].nav = modules
+            .get(&Kind::Nav)
+            .and_then(|m| self.nav(m, node, &segs));
         // A redirect.dart route can carry an `extra` too, which its redirect reads.
         let extra = extra.or_else(|| {
             redirect
@@ -1322,7 +1486,10 @@ impl Resolver<'_> {
             let msg = "guard.dart guards no routes: there is no page.dart or redirect.dart at or below this folder";
             self.diags.warn(&node.rel(Kind::Guard), None, msg);
         }
-        let bare = !node.files.contains_key(&Kind::Page) && !node.files.contains_key(&Kind::Guard);
+        // A lone nav.dart is a heading nothing hangs from: the menu check says so (W-N9).
+        let bare = !node.files.contains_key(&Kind::Page)
+            && !node.files.contains_key(&Kind::Guard)
+            && !node.files.contains_key(&Kind::Nav);
         if !any_route && node.children.is_empty() && !node.dir.is_empty() && bare {
             self.diags.warn(
                 &node.dir,
@@ -1604,6 +1771,149 @@ impl Resolver<'_> {
         Some(file)
     }
 
+    /// `const nav = Nav(label: 'Products', order: 1);` in a folder's nav.dart, and the optional
+    /// `String label(BuildContext context, {required int id})`: how the folder shows in the menus.
+    /// Read from the source, like `meta`, so `nav` must be a `const` `Nav(...)` call with a
+    /// whole-number `order`. `segs` are the folder's segments: what `label()` can ask for.
+    fn nav(&mut self, m: &Module, node: &Node, segs: &[(String, usize)]) -> Option<NavDecl> {
+        let file = node.rel(Kind::Nav);
+        let mut found = m.variables.iter().filter(|v| v.name == "nav");
+        let Some(v) = found.next() else {
+            self.diags
+                .error(&file, None, "expected `const nav = Nav(label: '...');`");
+            return None;
+        };
+        if let Some(again) = found.next() {
+            self.diags
+                .error(&file, Some(&again.span), "`nav` is declared twice");
+        }
+        if !v.is_const {
+            let msg = "`nav` must be `const` (AppMenu lists it in a const tree): write `const nav = Nav(...);`";
+            self.diags.error(&file, Some(&v.span), msg);
+            return None;
+        }
+        let written = v.value.as_deref().unwrap_or_default();
+        let is_nav = written.starts_with("Nav(") || written.starts_with("constNav(");
+        let Some(args) = v.ctor_args.as_ref().filter(|_| is_nav) else {
+            let msg = "`nav` must be a `Nav(...)` call, so fsp can read its `order`: `const nav = Nav(label: 'Products', order: 1);`";
+            self.diags.error(&file, Some(&v.span), msg);
+            return None;
+        };
+        let mut order = 0;
+        let mut label = None;
+        let mut ok = true;
+        for a in args {
+            match (a.name.as_str(), &a.value) {
+                ("order", Lit::Num(n)) if n.parse::<i64>().is_ok() => {
+                    order = n.parse::<i64>().unwrap_or_default();
+                }
+                ("order", _) => {
+                    let msg = "`order` must be a whole-number literal, like `order: 2`: fsp sorts the menu with it";
+                    self.diags.error(&file, Some(&a.span), msg);
+                    ok = false;
+                }
+                ("label", Lit::Str(l)) => label = Some(l.clone()),
+                _ => {}
+            }
+        }
+        let label_args = m
+            .functions
+            .iter()
+            .find(|f| f.name == "label")
+            .map(|f| self.nav_label(f, &file, segs));
+        let label_args = match label_args {
+            Some(Some(args)) => Some(args),
+            Some(None) => {
+                ok = false;
+                None
+            }
+            None => None,
+        };
+        let import = self.import(&file);
+        ok.then_some(NavDecl {
+            import,
+            file,
+            order,
+            label,
+            label_args,
+        })
+    }
+
+    /// `String label(BuildContext context, {required int id})` in a nav.dart: the segments it
+    /// asks for, in declaration order; `None` when it is wrong (the errors are reported).
+    fn nav_label(
+        &mut self,
+        f: &Function,
+        file: &str,
+        segs: &[(String, usize)],
+    ) -> Option<Vec<String>> {
+        let mut ok = true;
+        if !f.ret.as_ref().is_some_and(|r| r.is("String")) {
+            let msg = "label() must return a String: `String label(BuildContext context) => ...`";
+            self.diags.error(file, Some(&f.span), msg);
+            ok = false;
+        }
+        let first_is_context = f
+            .params
+            .first()
+            .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("BuildContext")));
+        if !first_is_context {
+            let msg =
+                "label() must take `BuildContext context` first: the menu calls it while it builds";
+            self.diags.error(file, Some(&f.span), msg);
+            ok = false;
+        }
+        let mut asked = vec![];
+        for p in f.params.iter().skip(1) {
+            let Some((_, folder)) = segs.iter().find(|(n, _)| *n == p.name) else {
+                let msg = if segs.is_empty() {
+                    format!(
+                        "label() gets no segments here (this folder and the ones above it have none); remove `{}`",
+                        p.name
+                    )
+                } else {
+                    format!(
+                        "label() can ask for the segments of its folder and above ({}); `{}` is none of them",
+                        show_segs(segs),
+                        p.name
+                    )
+                };
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+                continue;
+            };
+            if !p.named {
+                let msg = format!(
+                    "label() takes segments as named parameters, e.g. `{{required int {}}}`",
+                    p.name
+                );
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+            } else if !p.required {
+                let msg = format!(
+                    "`{}` must be `required`: a menu entry always has its segments",
+                    p.name
+                );
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+            } else if let Some(ty) = &p.ty {
+                self.constraints.push(Constraint {
+                    folder: *folder,
+                    name: p.name.clone(),
+                    ty: ty.clone(),
+                    file: file.to_string(),
+                    span: p.span.clone(),
+                });
+            } else {
+                let msg = format!("give `{}` a type (String, int, double or bool)", p.name);
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+            }
+            asked.push(p.name.clone());
+        }
+        ok.then_some(asked)
+    }
+
     /// `const navigator = RouteNavigator.root;` in a folder's navigator.dart: the navigator
     /// its routes render on. Read from the source, like `tabs`, so it must be one of the two
     /// enum values, spelled out.
@@ -1719,14 +2029,21 @@ impl Resolver<'_> {
     fn route_config(&mut self, m: &Module, file: &str) -> Option<bool> {
         let mut found = m.variables.iter().filter(|v| v.name == "caseSensitive");
         let Some(v) = found.next() else {
-            // A route.dart may hold only `paths`, `nest`, `linkable`, `remount` or `deferred`.
+            // A route.dart may hold only `paths`, `nest`, `linkable`, `remount`, `deferred`,
+            // `freshness` or (reported by `route_freshness`) `dataCache`.
             if !m.variables.iter().any(|v| {
                 matches!(
                     v.name.as_str(),
-                    "paths" | "nest" | "linkable" | "remount" | "deferred"
+                    "paths"
+                        | "nest"
+                        | "linkable"
+                        | "remount"
+                        | "deferred"
+                        | "freshness"
+                        | "dataCache"
                 )
             }) {
-                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;`");
+                self.diags.error(file, None, "expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;`, `const deferred = true;` or `const freshness = Freshness(staleTime: Duration(minutes: 5));`");
             }
             return None;
         };
@@ -1739,6 +2056,94 @@ impl Resolver<'_> {
             self.diags.error(file, Some(&v.span), msg);
         }
         v.boolean
+    }
+
+    /// `const freshness = Freshness(...)` in a folder's route.dart (since 0.8.0): the default
+    /// of every `data()` function at and below this folder that loads once. The nearest one wins.
+    /// fsp doesn't read the value: the generated file refers to it, and Dart type-checks it.
+    /// Returns the file when it is valid.
+    fn route_freshness(&mut self, m: &Module, file: &str) -> Option<String> {
+        if let Some(v) = m.variables.iter().find(|v| v.name == "dataCache") {
+            let msg = "`dataCache` belongs in the data.dart whose value it saves, not in a route.dart: each data type has its own encode and decode";
+            self.diags.error(file, Some(&v.span), msg);
+        }
+        let mut found = m.variables.iter().filter(|v| v.name == "freshness");
+        let v = found.next()?;
+        if let Some(again) = found.next() {
+            self.diags
+                .error(file, Some(&again.span), "`freshness` is declared twice");
+        }
+        if !is_ctor(v, "Freshness") {
+            self.diags.error(file, Some(&v.span), BAD_FRESHNESS);
+            return None;
+        }
+        self.freshness_declared
+            .push((file.to_string(), v.span.clone()));
+        Some(file.to_string())
+    }
+
+    /// `freshness` and `dataCache` of a data.dart (since 0.8.0). Both are variables fsp only
+    /// looks at by name: the generated file refers to them (`_i3.freshness`), and the Dart
+    /// analyzer checks their types. They apply to a `data()` function that loads once; for any
+    /// other form each says what to do instead. Returns whether a valid `freshness` and a
+    /// valid `dataCache` apply.
+    fn data_options(&mut self, m: &Module, file: &str, form: DataForm) -> (bool, bool) {
+        let mut applies = [false, false];
+        for (i, name, ctor, bad) in [
+            (0, "freshness", "Freshness", BAD_FRESHNESS),
+            (1, "dataCache", "DataCache", BAD_DATA_CACHE),
+        ] {
+            let mut found = m.variables.iter().filter(|v| v.name == name);
+            let Some(v) = found.next() else { continue };
+            if let Some(again) = found.next() {
+                self.diags.error(
+                    file,
+                    Some(&again.span),
+                    format!("`{name}` is declared twice"),
+                );
+            }
+            if !is_ctor(v, ctor) {
+                self.diags.error(file, Some(&v.span), bad);
+                continue;
+            }
+            let msg = match (i, form) {
+                (_, DataForm::Function) => {
+                    applies[i] = true;
+                    continue;
+                }
+                (0, DataForm::Stream) => {
+                    "`freshness` is for a data() that loads once, and this one returns a `Stream`, which is live: nothing in it goes stale. Drop `freshness`, or return a `Future`"
+                }
+                (0, DataForm::Selector) => {
+                    "`freshness` applies to the provider fespalier makes of a data() function, and this data.dart selects a provider of your own; call `freshData(ref, const Freshness(...), value)` inside that provider instead"
+                }
+                (0, DataForm::Provider) => {
+                    "`freshness` applies to the provider fespalier makes of a data() function, and this data.dart exports its own `data` provider; call `freshData(ref, const Freshness(...), value)` inside it instead"
+                }
+                (_, DataForm::Stream) => {
+                    "`dataCache` saves the last value of a data() that loads once, and this one returns a `Stream`; drop `dataCache`, or return a `Future`"
+                }
+                (_, DataForm::Selector) => {
+                    "`dataCache` applies to the provider fespalier makes of a data() function, and this data.dart selects a provider of your own; persist that provider with Riverpod's `persist` (from package:fespalier/persist.dart) instead"
+                }
+                (_, DataForm::Provider) => {
+                    "`dataCache` applies to the provider fespalier makes of a data() function, and this data.dart exports its own `data` provider; persist it with Riverpod's `persist` (from package:fespalier/persist.dart) instead"
+                }
+            };
+            self.diags.error(file, Some(&v.span), msg);
+        }
+        (applies[0], applies[1])
+    }
+
+    /// A route.dart's `freshness` that no data.dart below uses (since 0.8.0) does nothing.
+    fn unused_freshness(&mut self) {
+        let declared = std::mem::take(&mut self.freshness_declared);
+        for (file, span) in declared {
+            if !self.freshness_used.contains(&file) {
+                let msg = "`freshness` here applies to no data.dart: none at or below this folder is a data() function that returns a Future or a value without a `freshness` of its own; drop it";
+                self.diags.warn(&file, Some(&span), msg);
+            }
+        }
     }
 
     /// `const linkable = false;` in a folder's route.dart: `fsp links` leaves this folder's
@@ -2052,6 +2457,11 @@ impl Resolver<'_> {
         if let Lookup::Found(found) = lookup {
             let import = self.import(file);
             let spelled = extra::extra_type(whole, src, file, import, tag);
+            if let Some(b) = enums::enum_base(&spelled.ty) {
+                self.app
+                    .enum_values
+                    .insert(b.to_string(), found.values.clone());
+            }
             let key = whole.replacen(base, &found.key(), 1);
             let decl = Some(found.decl.clone());
             return Some(Typed {
@@ -2215,6 +2625,7 @@ impl Resolver<'_> {
         let file = node.rel(Kind::Data);
         if let Some(f) = m.functions.iter().find(|f| f.name == "data") {
             if let Some(ty) = f.ret.as_ref().and_then(selected_value) {
+                self.data_options(m, &file, DataForm::Selector);
                 return self.selector(f, ty, &file, segs, scope);
             }
             if f.ret
@@ -2251,6 +2662,12 @@ impl Resolver<'_> {
             };
             let keys = in_path_order(keys, segs);
             let import = self.import(&file);
+            let form = if stream {
+                DataForm::Stream
+            } else {
+                DataForm::Function
+            };
+            let (fresh, cache) = self.data_options(m, &file, form);
             return Some(Data {
                 import,
                 provider: false,
@@ -2259,6 +2676,8 @@ impl Resolver<'_> {
                 ty,
                 record: keys.len() > 1,
                 keys,
+                freshness: fresh.then(|| (import, file.clone())),
+                cache,
             });
         }
 
@@ -2365,6 +2784,7 @@ impl Resolver<'_> {
                 self.diags.error(&file, Some(&v.span), msg);
             }
             let import = self.import(&file);
+            self.data_options(m, &file, DataForm::Provider);
             return Some(Data {
                 import,
                 provider: true,
@@ -2373,6 +2793,8 @@ impl Resolver<'_> {
                 ty,
                 keys,
                 record,
+                freshness: None,
+                cache: false,
             });
         }
 
@@ -2414,6 +2836,8 @@ impl Resolver<'_> {
             ty,
             record: keys.len() > 1,
             keys,
+            freshness: None,
+            cache: false,
         })
     }
 
@@ -2435,20 +2859,46 @@ impl Resolver<'_> {
             self.diags.error(&file, None, msg);
             return vec![];
         }
-        let takes_ref = |f: &Function| {
-            f.params
-                .first()
-                .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("Ref")))
-        };
-        let functions: Vec<&Function> = m
+        let takes_ref = first_is_ref;
+        let candidates: Vec<&Function> = m
             .functions
             .iter()
             .filter(|f| !f.name.starts_with('_') && (f.name == "action" || takes_ref(f)))
+            .collect();
+        // A function called `approveForm` beside `approve` is its companion, never an action
+        // (since 0.8.0), even when it takes a `Ref` (which is then reported on it).
+        let functions: Vec<&Function> = candidates
+            .iter()
+            .copied()
+            .filter(|f| {
+                !candidates.iter().any(|b| {
+                    b.name != f.name
+                        && Companion::ALL
+                            .iter()
+                            .any(|&r| forms::companion(&b.name, r) == f.name)
+                })
+            })
             .collect();
         if functions.is_empty() {
             let msg = "expected `Future<T> action(Ref ref, {...segments, required Input input})`; any public function that takes a `Ref` first is an action";
             self.diags.error(&file, None, msg);
             return vec![];
+        }
+        if !m.functions.iter().any(|f| f.name == "action") {
+            for role in Companion::ALL {
+                let name = role.plain();
+                let Some(f) = m.functions.iter().find(|f| f.name == name) else {
+                    continue;
+                };
+                if functions.iter().any(|a| a.name == name) {
+                    continue;
+                }
+                let (what, suffix) = (role.what(), role.suffix());
+                let msg = format!(
+                    "`{name}()` would be the {what} of `action()`, and action.dart has no `action()`: name it after the action it belongs to (`<action>{suffix}`, e.g. `approve{suffix}` for `approve()`), or make it private"
+                );
+                self.diags.warn(&file, Some(&f.span), msg);
+            }
         }
         let listed = self.invalidates(m, &file);
         self.listed.push((id, listed));
@@ -2510,7 +2960,7 @@ impl Resolver<'_> {
                 continue;
             };
             let import = self.import(&file);
-            out.push(Action {
+            let mut action = Action {
                 name: f.name.clone(),
                 import,
                 flow,
@@ -2523,10 +2973,223 @@ impl Resolver<'_> {
                     &format!("a{id}_{}", f.name),
                 ),
                 invalidates: vec![],
+                form: None,
+                validate: None,
+                optimistic: None,
                 span: f.span.clone(),
-            });
+            };
+            let at = Companions {
+                m,
+                src,
+                file: &file,
+                id,
+            };
+            self.companions(&at, f, &input, &mut action);
+            out.push(action);
         }
         out
+    }
+
+    /// Reads and checks the `form()`, `validate()` and `optimistic()` beside the action `f`
+    /// (since 0.8.0). One that doesn't fit is reported and left out; the action still works.
+    fn companions(&mut self, at: &Companions, f: &Function, input: &Ty, a: &mut Action) {
+        let find = |role: Companion| {
+            let name = forms::companion(&f.name, role);
+            at.m.functions.iter().find(|g| g.name == name)
+        };
+        if let Some(g) = find(Companion::Form) {
+            a.form = self.form(at, f, g, input, a);
+        }
+        if let Some(g) = find(Companion::Validate) {
+            a.validate = self.validate(at, f, g, input);
+        }
+        if let Some(g) = find(Companion::Optimistic) {
+            a.optimistic = self.optimistic(at, f, g, input);
+        }
+    }
+
+    /// `NicknameFields form(Profile profile)`: the input as a record type, and what the form
+    /// starts from.
+    fn form(
+        &mut self,
+        at: &Companions,
+        f: &Function,
+        g: &Function,
+        input: &Ty,
+        a: &Action,
+    ) -> Option<Form> {
+        let (action, name) = (&f.name, &g.name);
+        let hook = ActionNames::of(action).form_hook;
+        let file = at.file;
+        let found = input.text.as_str();
+        if first_is_ref(g) {
+            let msg = format!(
+                "`{name}()` is the form of `{action}()`: it gives the form its first values from the data the page passes, so it takes that value (or nothing), not a `Ref`"
+            );
+            self.diags.error(file, Some(&g.span), msg);
+            return None;
+        }
+        let mut ok = true;
+        match &g.ret {
+            None => {
+                let msg = format!(
+                    "`{name}()` needs an explicit return type: the input of `{action}()`, `{found}`"
+                );
+                self.diags.error(file, Some(&g.span), msg);
+                ok = false;
+            }
+            Some(ret) if ret.text != input.text => {
+                let msg = format!(
+                    "`{name}()` returns `{}`, but `{action}()` takes `{found}` as `input`: the form builds the action's input, so they are the same type",
+                    ret.text
+                );
+                self.diags.error(file, Some(&g.span), msg);
+                ok = false;
+            }
+            Some(_) => {}
+        }
+        let fields = match forms::record_fields(input, &at.m.typedefs) {
+            Ok(fields) => fields,
+            Err(RecordError::NotARecord) => {
+                let msg = format!(
+                    "the form of `{action}()` needs the fields of its input, and `{found}` is not a record type declared here: take `input` as a record with named fields (`required ({{int amount, String note}}) input`), or as a typedef of one declared in action.dart"
+                );
+                self.diags.error(file, Some(&g.span), msg);
+                return None;
+            }
+            Err(RecordError::Positional) => {
+                let msg = format!(
+                    "the form of `{action}()` needs a name for each field of its input, and `{found}` has positional fields: name them, e.g. `({{int amount, String note}})`"
+                );
+                self.diags.error(file, Some(&g.span), msg);
+                return None;
+            }
+        };
+        let mut data = None;
+        match g.params.as_slice() {
+            [] => {}
+            [p] if !p.named && p.required => {
+                if let Some(ty) = &p.ty {
+                    data = Some(extra::extra_type(
+                        &ty.text,
+                        at.src,
+                        file,
+                        a.import,
+                        &format!("f{}_{action}", at.id),
+                    ));
+                } else {
+                    let msg = format!(
+                        "give the parameter of `{name}()` a type: it is the type of `data:` in `{hook}`"
+                    );
+                    self.diags.error(file, Some(&p.span), msg);
+                    ok = false;
+                }
+            }
+            _ => {
+                let msg = format!(
+                    "`{name}()` takes at most one parameter, positional and required: the value the form starts from, which the page passes to `{hook}` as `data:`"
+                );
+                self.diags.error(file, Some(&g.span), msg);
+                ok = false;
+            }
+        }
+        if let Some(k) = a
+            .keys
+            .iter()
+            .find(|k| FORM_HOOK_PARAMS.contains(&k.as_str()))
+        {
+            let msg = format!(
+                "`{k}` can't be a key of an action with a form: its hook, `{hook}`, takes a parameter called `{k}`; rename it"
+            );
+            self.diags.error(file, Some(&f.span), msg);
+            ok = false;
+        }
+        ok.then(|| Form {
+            function: name.clone(),
+            fields: fields
+                .into_iter()
+                .map(|(name, ty)| FormField {
+                    name,
+                    codec: forms::codec(&ty),
+                })
+                .collect(),
+            data,
+        })
+    }
+
+    /// `FieldErrors? validate(Input input)`.
+    fn validate(
+        &mut self,
+        at: &Companions,
+        f: &Function,
+        g: &Function,
+        input: &Ty,
+    ) -> Option<String> {
+        let (action, name, file) = (&f.name, &g.name, at.file);
+        if first_is_ref(g) {
+            let msg = format!(
+                "`{name}()` is the validation of `{action}()`: it runs on the device before the action, with the input alone, so it takes no `Ref`; a check that needs the server belongs in `{action}()`, which throws `FieldErrors`"
+            );
+            self.diags.error(file, Some(&g.span), msg);
+            return None;
+        }
+        let returns = g
+            .ret
+            .as_ref()
+            .is_some_and(|r| r.text == "FieldErrors?" || r.text == "FieldErrors");
+        let takes = matches!(
+            g.params.as_slice(),
+            [p] if !p.named && p.required && p.ty.as_ref().is_some_and(|t| t.text == input.text)
+        );
+        if returns && takes {
+            return Some(name.clone());
+        }
+        let found = &input.text;
+        let msg = format!(
+            "expected `FieldErrors? {name}({found} input)`: the validation of `{action}()` takes the action's input and returns what is wrong with it, or null"
+        );
+        self.diags.error(file, Some(&g.span), msg);
+        None
+    }
+
+    /// `T optimistic(T current, Input input)`; its target is found once `invalidates` is known.
+    fn optimistic(
+        &mut self,
+        at: &Companions,
+        f: &Function,
+        g: &Function,
+        input: &Ty,
+    ) -> Option<Optimistic> {
+        let (action, name, file) = (&f.name, &g.name, at.file);
+        if first_is_ref(g) {
+            let msg = format!(
+                "`{name}()` is the optimistic patch of `{action}()`: it runs while the page builds, with the value the page shows and the input, so it takes no `Ref`"
+            );
+            self.diags.error(file, Some(&g.span), msg);
+            return None;
+        }
+        if let [current, given] = g.params.as_slice()
+            && !current.named
+            && current.required
+            && !given.named
+            && given.required
+            && let (Some(t), Some(i), Some(ret)) = (&current.ty, &given.ty, &g.ret)
+            && ret.text == t.text
+            && i.text == input.text
+        {
+            return Some(Optimistic {
+                function: name.clone(),
+                ty: t.text.clone(),
+                target: None,
+                span: g.span.clone(),
+            });
+        }
+        let found = &input.text;
+        let msg = format!(
+            "expected `T {name}(T current, {found} input)`: the optimistic patch of `{action}()` takes the value of a data.dart it invalidates and the input, and returns the value to show while the write is in flight"
+        );
+        self.diags.error(file, Some(&g.span), msg);
+        None
     }
 
     /// What an action returns: `Future<T>`, `FutureOr<T>` or a plain `T`.
@@ -2629,9 +3292,66 @@ impl Resolver<'_> {
                 let ok = self.action_keys(rid, i, &ids, explicit, &file);
                 let a = &mut self.app.routes[rid].actions[i];
                 a.invalidates = if ok { ids.clone() } else { vec![] };
+                if ok {
+                    self.optimistic_target(rid, i, &file);
+                }
             }
         }
         self.action_names();
+    }
+
+    /// Finds the `data.dart` an action's `optimistic()` patches: the first of what the action
+    /// invalidates that gives the type it patches, looking at this folder's own data first, then
+    /// the sections above it (innermost first), then the rest in the order they are listed.
+    fn optimistic_target(&mut self, rid: usize, i: usize, file: &str) {
+        let a = self.app.routes[rid].actions[i].clone();
+        let Some(o) = a.optimistic else { return };
+        let mut order: Vec<usize> = vec![];
+        if a.invalidates.contains(&rid) {
+            order.push(rid);
+        }
+        for &sid in self.app.routes[rid].sections.iter().rev() {
+            if a.invalidates.contains(&sid) && !order.contains(&sid) {
+                order.push(sid);
+            }
+        }
+        for &t in &a.invalidates {
+            if !order.contains(&t) {
+                order.push(t);
+            }
+        }
+        let gives = |t: usize| {
+            self.app.routes[t]
+                .data
+                .as_ref()
+                .map(|d| d.ty.clone())
+                .unwrap_or_default()
+        };
+        let target = order.iter().copied().find(|&t| gives(t) == o.ty);
+        if target.is_none() {
+            let (name, action, ty) = (&o.function, &a.name, &o.ty);
+            let msg = if order.is_empty() {
+                format!(
+                    "`{name}()` patches a `{ty}`, but `{action}()` invalidates no data.dart: list the route whose data.dart gives a `{ty}` in `invalidates`"
+                )
+            } else {
+                let list: Vec<String> = order
+                    .iter()
+                    .map(|&t| {
+                        let data = format!("{}data.dart", folder_prefix(&self.app.routes[t].dir));
+                        format!("`{data}` gives `{}`", gives(t))
+                    })
+                    .collect();
+                format!(
+                    "`{name}()` patches a `{ty}`, and no data.dart that `{action}()` invalidates gives one ({}): patch the type of one of them, or list the route whose data.dart gives a `{ty}` in `invalidates`",
+                    list.join(", ")
+                )
+            };
+            self.diags.error(file, Some(&o.span), msg);
+        }
+        if let Some(o) = &mut self.app.routes[rid].actions[i].optimistic {
+            o.target = target;
+        }
     }
 
     /// Whether the action takes every key of the `data.dart` it must invalidate, with the type
@@ -2712,11 +3432,15 @@ impl Resolver<'_> {
             let mut errors = vec![];
             for a in &r.actions {
                 let n = ActionNames::of(&a.name);
-                for (name, role) in [
+                let mut names = vec![
                     (&n.provider, "provider"),
                     (&n.run, "helper"),
                     (&n.hook, "hook"),
-                ] {
+                ];
+                if a.form.is_some() {
+                    names.push((&n.form_hook, "form hook"));
+                }
+                for (name, role) in names {
                     match taken.iter().find(|(t, _)| t == name) {
                         Some((_, owner)) => errors.push((
                             a.span.clone(),
@@ -3407,6 +4131,20 @@ pub fn pattern(url: &[Seg]) -> String {
         })
         .collect();
     format!("/{}", parts.join("/"))
+}
+
+/// How specific each URL segment is, for ordering routes the way `AppRoutes.matchUrl` (and
+/// `go_router`) tries them: a static segment is 0, a `:param` 1, a catch-all 2. Compared
+/// lexicographically, so the most specific route comes first.
+pub fn match_rank(url: &[Seg]) -> Vec<u8> {
+    url.iter()
+        .filter_map(|s| match s {
+            Seg::Static(_) => Some(0),
+            Seg::Dynamic(_) => Some(1),
+            Seg::CatchAll(..) => Some(2),
+            Seg::Group(_) => None,
+        })
+        .collect()
 }
 
 /// The semantics identifier of the route at `url`: `route:/products/:id`. It depends only on the

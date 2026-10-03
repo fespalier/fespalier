@@ -61,6 +61,10 @@ const TEMPLATES: [(&str, &str); 19] = [
         include_str!("../templates/new/transition.dart.jinja"),
     ),
     (
+        "new/nav.dart",
+        include_str!("../templates/new/nav.dart.jinja"),
+    ),
+    (
         "init/layout.dart",
         include_str!("../templates/init/layout.dart.jinja"),
     ),

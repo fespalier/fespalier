@@ -5,7 +5,7 @@ flowchart TD
       n1["/cart<br/>CartRoute"]
       n2["/checkout<br/>CheckoutRoute<br/>(guard, deferred)"]
       n3["/products<br/>ProductsRoute<br/>(data)"]
-      n4["/products/:id<br/>ProductRoute<br/>(data, deferred)"]
+      n4["/products/:id<br/>ProductRoute<br/>(data, fresh, cached, deferred)"]
       n5["/greet/:name<br/>GreetRoute"]
     end
   end

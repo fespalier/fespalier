@@ -5,9 +5,11 @@ and `fsp` move together: bump both, regenerate, commit.
 
 ## What changes without you doing anything
 
-Nothing in the generated code. An app with no `app.dart`, `startup.dart` or `splash.dart` at the
-root of its app folder gets **no new file and a byte-identical `lib/app.g.dart`**. Every other new
-feature of 0.8.0 is opt-in.
+No behaviour. An app with no `app.dart`, `startup.dart` or `splash.dart` at the root of its app
+folder gets **no new file** (`lib/app.main.g.dart` is written only when one of them exists, or with
+`main: generated`). Its `lib/app.g.dart` still changes in the DevTools support only: a data route's
+view watches through `watchData(...)` and a `_devToolsProviders()` map is added (item 3 of the list
+in `fespalier-migration`). Every other new feature of 0.8.0 is opt-in.
 
 ## The one thing that can break: a root file that is something else
 

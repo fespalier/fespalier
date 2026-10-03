@@ -16,7 +16,16 @@ Future<void> main() async {
   runApp(
     // pubspec.yaml has `data_retry: none`, so failures reach error.dart at
     // once instead of going through Riverpod 3's retries.
-    const ProviderScope(child: ShopApp()),
+    ProviderScope(
+      overrides: [
+        // products/$id/data.dart has a `dataCache`. This storage keeps its products while the
+        // app runs, so a page opened again shows its last product at once. For a cache that
+        // survives a restart, give a `Storage<String, String>` on disk instead (riverpod_sqflite's
+        // `JsonSqFliteStorage`, say), opened before runApp so that its `read` is synchronous.
+        dataCacheStorage.overrideWithValue(MemoryDataStorage()),
+      ],
+      child: const ShopApp(),
+    ),
   );
 }
 

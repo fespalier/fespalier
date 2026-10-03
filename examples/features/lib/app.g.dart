@@ -60,7 +60,7 @@
 //   /shops/:shop                    ShopRoute             shops/$shop/page.dart  (guard, layout, transition)
 //   /shops/:shop/items/:id          ItemRoute             shops/$shop/items/$id/page.dart  (data, transition)
 //   /teams/:teamId/members          MembersRoute          teams/$teamId/members/page.dart  (transition)
-//   /teams/:teamId/members/:member  MemberRoute           teams/$teamId/members/$member/page.dart  (data, transition)
+//   /teams/:teamId/members/:member  MemberRoute           teams/$teamId/members/$member/page.dart  (data, fresh, transition)
 //   /teams/:teamId/settings         TeamSettingsRoute     teams/$teamId/settings/page.dart  (transition)
 //   /ticks                          TicksRoute            ticks/page.dart  (data, transition)
 //   /wiki/*article                  WikiRoute             wiki/$$article/page.dart  (data, transition)
@@ -148,28 +148,29 @@ import 'app/shops/\$shop/items/\$id/page.dart' as _i76;
 import 'app/shops/\$shop/items/\$id/error.dart' as _i77;
 import 'app/teams/\$teamId/data.dart' as _i78;
 import 'app/teams/\$teamId/action.dart' as _i79;
-import 'app/teams/\$teamId/loading.dart' as _i80;
-import 'app/teams/\$teamId/error.dart' as _i81;
-import 'app/teams/\$teamId/layout.dart' as _i82;
-import 'app/teams/\$teamId/not_found.dart' as _i83;
-import 'app/teams/\$teamId/members/page.dart' as _i84;
-import 'app/teams/\$teamId/members/not_found.dart' as _i85;
-import 'app/teams/\$teamId/members/\$member/data.dart' as _i86;
-import 'app/teams/\$teamId/members/\$member/page.dart' as _i87;
-import 'app/teams/\$teamId/settings/page.dart' as _i88;
-import 'app/ticks/data.dart' as _i89;
-import 'app/ticks/page.dart' as _i90;
-import 'app/ticks/transition.dart' as _i91;
-import 'app/wiki/\$\$article/data.dart' as _i92;
-import 'app/wiki/\$\$article/page.dart' as _i93;
-import 'app/meta.dart' as _i94;
-import 'app/docs/\$\$rest/meta.dart' as _i95;
-import 'app/files/\$\$\$path/meta.dart' as _i96;
-import 'app/help/meta.dart' as _i97;
-import 'app/login/meta.dart' as _i98;
-import 'app/old-search/meta.dart' as _i99;
-import 'app/photos/meta.dart' as _i100;
-import 'app/photos/\$id/meta.dart' as _i101;
+import 'app/teams/\$teamId/route.dart' as _i80;
+import 'app/teams/\$teamId/loading.dart' as _i81;
+import 'app/teams/\$teamId/error.dart' as _i82;
+import 'app/teams/\$teamId/layout.dart' as _i83;
+import 'app/teams/\$teamId/not_found.dart' as _i84;
+import 'app/teams/\$teamId/members/page.dart' as _i85;
+import 'app/teams/\$teamId/members/not_found.dart' as _i86;
+import 'app/teams/\$teamId/members/\$member/data.dart' as _i87;
+import 'app/teams/\$teamId/members/\$member/page.dart' as _i88;
+import 'app/teams/\$teamId/settings/page.dart' as _i89;
+import 'app/ticks/data.dart' as _i90;
+import 'app/ticks/page.dart' as _i91;
+import 'app/ticks/transition.dart' as _i92;
+import 'app/wiki/\$\$article/data.dart' as _i93;
+import 'app/wiki/\$\$article/page.dart' as _i94;
+import 'app/meta.dart' as _i95;
+import 'app/docs/\$\$rest/meta.dart' as _i96;
+import 'app/files/\$\$\$path/meta.dart' as _i97;
+import 'app/help/meta.dart' as _i98;
+import 'app/login/meta.dart' as _i99;
+import 'app/old-search/meta.dart' as _i100;
+import 'app/photos/meta.dart' as _i101;
+import 'app/photos/\$id/meta.dart' as _i102;
 import 'package:features/models/category.dart' show Category;
 import 'package:features/models/note.dart' show Note;
 import 'package:features/refunds.dart' show RefundInput;
@@ -630,12 +631,12 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'ticks',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i91.transition(
+                pageBuilder: (context, state) => _i92.transition(
                   state.pageKey,
                   DataView(
                     watch: (ref) => ref.watch(_data68),
                     refresh: (ref) => ref.invalidate(_data68),
-                    data: (d) => _i90.TicksPage(data: d),
+                    data: (d) => _i91.TicksPage(data: d),
                     loading: () => const DefaultLoading(),
                     error: (e, st, retry) => DefaultError(error: e, retry: retry),
                     keepPrevious: true,
@@ -864,12 +865,13 @@ abstract final class AppRoutes {
                       (v) => DataView(
                         watch: (ref) => ref.watch(_data64(v.teamId)),
                         refresh: (ref) => ref.invalidate(_data64(v.teamId)),
-                        data: (d) => _i82.TeamLayout(team: d, child: child),
-                        loading: () => const _i80.TeamLoading(),
-                        error: (e, st, retry) => _i81.TeamError(error: e, retry: retry),
+                        data: (d) => _i83.TeamLayout(team: d, child: child),
+                        loading: () => const _i81.TeamLoading(),
+                        error: (e, st, retry) => _i82.TeamError(error: e, retry: retry),
                         keepPrevious: true,
+                        keepDataOnError: true,
                       ),
-                      () => _i83.TeamNotFound(uri: state.uri),
+                      () => _i84.TeamNotFound(uri: state.uri),
                     ),
                 ),
                 routes: [
@@ -882,9 +884,9 @@ abstract final class AppRoutes {
                         () => _params65(state),
                         (v) => SectionView(
                           watch: (ref) => ref.watch(_data64(v.teamId)),
-                          data: (s64) => _i84.MembersPage(s64, teamId: v.teamId),
+                          data: (s64) => _i85.MembersPage(s64, teamId: v.teamId),
                         ),
-                        () => _i85.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
+                        () => _i86.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                       ),
                     ),
                     routes: [
@@ -900,13 +902,14 @@ abstract final class AppRoutes {
                               refresh: (ref) => ref.invalidate(_data66(v.member)),
                               data: (d) => SectionView(
                                 watch: (ref) => ref.watch(_data64(v.teamId)),
-                                data: (s64) => _i87.MemberPage(label: d, team: s64),
+                                data: (s64) => _i88.MemberPage(label: d, team: s64),
                               ),
-                              loading: () => const _i80.TeamLoading(),
-                              error: (e, st, retry) => _i81.TeamError(error: e, retry: retry),
+                              loading: () => const _i81.TeamLoading(),
+                              error: (e, st, retry) => _i82.TeamError(error: e, retry: retry),
                               keepPrevious: true,
+                              keepDataOnError: true,
                             ),
-                            () => _i85.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
+                            () => _i86.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                           ),
                         ),
                       ),
@@ -921,9 +924,9 @@ abstract final class AppRoutes {
                         () => _params67(state),
                         (v) => SectionView(
                           watch: (ref) => ref.watch(_data64(v.teamId)),
-                          data: (s64) => _i88.TeamSettingsPage(data: s64),
+                          data: (s64) => _i89.TeamSettingsPage(data: s64),
                         ),
-                        () => _i83.TeamNotFound(uri: state.uri),
+                        () => _i84.TeamNotFound(uri: state.uri),
                       ),
                     ),
                   ),
@@ -989,7 +992,7 @@ abstract final class AppRoutes {
                     (v) => DataView(
                       watch: (ref) => ref.watch(_data70(restKey(v.article))),
                       refresh: (ref) => ref.invalidate(_data70(restKey(v.article))),
-                      data: (d) => _i93.WikiPage(article: v.article, data: d),
+                      data: (d) => _i94.WikiPage(article: v.article, data: d),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
                       keepPrevious: true,
@@ -1011,8 +1014,8 @@ abstract final class AppRoutes {
         uri,
         base,
         [
-          (['teams', ':teamId', 'members'], (uri) => _i85.MembersNotFound(uri: uri, teamId: pathPart(uri, base, 1)), caseSensitive: false),
-          (['teams', ':teamId'], (uri) => _i83.TeamNotFound(uri: uri), caseSensitive: false),
+          (['teams', ':teamId', 'members'], (uri) => _i86.MembersNotFound(uri: uri, teamId: pathPart(uri, base, 1)), caseSensitive: false),
+          (['teams', ':teamId'], (uri) => _i84.TeamNotFound(uri: uri), caseSensitive: false),
           (['help|aide|hilfe'], (uri) => _i34.HelpNotFound(uri: uri), caseSensitive: false),
         ],
         (uri) => DefaultNotFound(uri),
@@ -1216,7 +1219,7 @@ abstract final class AppManifest {
       path: '/',
       folder: '',
       layouts: [''],
-      meta: _i94.meta,
+      meta: _i95.meta,
     ),
     RouteInfo(
       type: SlugRoute,
@@ -1328,7 +1331,7 @@ abstract final class AppManifest {
       folder: 'docs/\$\$rest',
       layouts: [''],
       segments: [RouteParam('rest', 'List<String>', catchAll: true)],
-      meta: _i95.meta,
+      meta: _i96.meta,
     ),
     RouteInfo(
       type: NewDocRoute,
@@ -1342,7 +1345,7 @@ abstract final class AppManifest {
       folder: 'files/\$\$\$path',
       layouts: [''],
       segments: [RouteParam('path', 'List<String>', catchAll: true)],
-      meta: _i96.meta,
+      meta: _i97.meta,
     ),
     RouteInfo(
       type: GuideRoute,
@@ -1357,7 +1360,7 @@ abstract final class AppManifest {
       paths: {'fr': '/aide', 'de': '/hilfe'},
       folder: 'help',
       layouts: [''],
-      meta: _i97.meta,
+      meta: _i98.meta,
     ),
     RouteInfo(
       type: HelpTopicRoute,
@@ -1388,7 +1391,7 @@ abstract final class AppManifest {
       folder: 'login',
       layouts: [''],
       query: [RouteParam('from', 'String?')],
-      meta: _i98.meta,
+      meta: _i99.meta,
     ),
     RouteInfo(
       type: NoteRoute,
@@ -1404,7 +1407,7 @@ abstract final class AppManifest {
       presentation: RoutePresentation.redirect,
       layouts: [''],
       query: [RouteParam('q', 'String?')],
-      meta: _i99.meta,
+      meta: _i100.meta,
     ),
     RouteInfo(
       type: OldShopsShopRoute,
@@ -1449,7 +1452,7 @@ abstract final class AppManifest {
       path: '/photos',
       folder: 'photos',
       layouts: [''],
-      meta: _i100.meta,
+      meta: _i101.meta,
     ),
     RouteInfo(
       type: PhotoRoute,
@@ -1457,7 +1460,7 @@ abstract final class AppManifest {
       folder: 'photos/\$id',
       layouts: [''],
       segments: [RouteParam('id', 'int')],
-      meta: _i101.meta,
+      meta: _i102.meta,
     ),
     RouteInfo(
       type: ShareSheetRoute,
@@ -3234,19 +3237,19 @@ final _data62 = FutureProvider.autoDispose.family(
 );
 
 final _data64 = FutureProvider.autoDispose.family(
-  (Ref ref, String teamId) => traceData(ref, 'd64', teamId, _i78.data(ref, teamId: teamId)),
+  (Ref ref, String teamId) => freshData(ref, _i80.freshness, traceData(ref, 'd64', teamId, _i78.data(ref, teamId: teamId))),
 );
 
 final _data66 = FutureProvider.autoDispose.family(
-  (Ref ref, int member) => traceData(ref, 'd66', member, _i86.data(ref, member: member)),
+  (Ref ref, int member) => freshData(ref, _i80.freshness, traceData(ref, 'd66', member, _i87.data(ref, member: member))),
 );
 
 final _data68 = StreamProvider.autoDispose(
-  (Ref ref) => traceData(ref, 'd68', null, _i89.data(ref)),
+  (Ref ref) => traceData(ref, 'd68', null, _i90.data(ref)),
 );
 
 final _data70 = FutureProvider.autoDispose.family(
-  (Ref ref, String article) => traceData(ref, 'd70', article, _i92.data(ref, article: restParts(article))),
+  (Ref ref, String article) => traceData(ref, 'd70', article, _i93.data(ref, article: restParts(article))),
 );
 
 /// `action()` of orders/$id/refund/action.dart: its state, and what it invalidates after a success.
@@ -3266,4 +3269,4 @@ final _action64_0 = actionFamily(
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"features","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"shell","file":"(account)/layout.dart","folder":"(account)","markers":[],"items":[{"type":"route","pattern":"/profile","route":"ProfileRoute","file":"(account)/profile/page.dart","folder":"(account)/profile","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"(account)/settings/page.dart","folder":"(account)/settings","markers":[],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/admin","route":"AdminRoute","file":"(members)/admin/page.dart","folder":"(members)/admin","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/inbox","route":"InboxRoute","file":"(members)/inbox/page.dart","folder":"(members)/inbox","markers":["guard"],"params":[{"name":"folder","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/free","route":"FreeRoute","file":"(plans)/free/page.dart","folder":"(plans)/free","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/pro","route":"ProPlanRoute","file":"(plans)/pro/page.dart","folder":"(plans)/pro","markers":[],"params":[{"name":"coupon","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/catalog","route":"CatalogRoute","file":"catalog/page.dart","folder":"catalog","markers":["data"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId","route":"ProductDetailRoute","file":"catalog/\$productId/page.dart","folder":"catalog/\$productId","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId/reviews","route":"ReviewsRoute","file":"catalog/\$productId/reviews/page.dart","folder":"catalog/\$productId/reviews","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/counter","route":"CounterRoute","file":"counter/page.dart","folder":"counter","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs","route":"DocsIndexRoute","file":"docs/page.dart","folder":"docs","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/docs/new","route":"NewDocRoute","file":"docs/new/page.dart","folder":"docs/new","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs/*rest","route":"DocsRoute","file":"docs/\$\$rest/page.dart","folder":"docs/\$\$rest","markers":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/files","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/guide","route":"GuideRoute","file":"guide/page.dart","folder":"guide","markers":[],"spellings":{"de":"/führer","ru":"/руководство"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help","route":"HelpRoute","file":"help/page.dart","folder":"help","markers":[],"spellings":{"fr":"/aide","de":"/hilfe"},"params":[],"redirect":false,"children":[{"type":"route","pattern":"/help/contact","route":"ContactRoute","file":"help/contact/page.dart","folder":"help/contact","markers":[],"spellings":{"fr":"/aide/contact","de":"/hilfe/kontakt"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help/:topic","route":"HelpTopicRoute","file":"help/\$topic/page.dart","folder":"help/\$topic","markers":[],"spellings":{"fr":"/aide/:topic","de":"/hilfe/:topic"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/help/:topic/examples","route":"HelpExamplesRoute","file":"help/\$topic/examples/page.dart","folder":"help/\$topic/examples","markers":[],"spellings":{"fr":"/aide/:topic/exemples","de":"/hilfe/:topic/beispiele"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":[],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/old-search","route":"OldSearchRoute","file":"old-search/redirect.dart","folder":"old-search","markers":["redirect"],"params":[{"name":"q","type":"String?","in":"query"}],"redirect":true,"children":[]},{"type":"route","pattern":"/photos","route":"PhotosRoute","file":"photos/page.dart","folder":"photos","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share","route":"ShareSheetRoute","file":"photos/share/page.dart","folder":"photos/share","markers":["present","root"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share/terms","route":"TermsRoute","file":"photos/share/terms/page.dart","folder":"photos/share/terms","markers":["root"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/photos/sort","route":"SortRoute","file":"photos/sort/page.dart","folder":"photos/sort","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/upload","route":"UploadRoute","file":"photos/upload/page.dart","folder":"photos/upload","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/:id","route":"PhotoRoute","file":"photos/\$id/page.dart","folder":"photos/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"shell","file":"reports/layout.dart","folder":"reports","markers":["data"],"items":[{"type":"route","pattern":"/reports/monthly","route":"MonthlyReportRoute","file":"reports/monthly/page.dart","folder":"reports/monthly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/reports/yearly","route":"YearlyReportRoute","file":"reports/yearly/page.dart","folder":"reports/yearly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/search","route":"SearchRoute","file":"search/page.dart","folder":"search","markers":["data"],"params":[{"name":"q","type":"String?","in":"query"},{"name":"page","type":"int?","in":"query"},{"name":"tags","type":"List<String>","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/ticks","route":"TicksRoute","file":"ticks/page.dart","folder":"ticks","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/:slug","route":"SlugRoute","file":"\$slug/page.dart","folder":"\$slug","markers":[],"params":[{"name":"slug","type":"String","in":"path"}],"redirect":false,"children":[]},{"type":"shell","file":"notes/layout.dart","folder":"notes","markers":[],"items":[{"type":"route","pattern":"/notes/:id","route":"NoteRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/old-shops/:shop","route":"OldShopsShopRoute","file":"old-shops/\$shop/redirect.dart","folder":"old-shops/\$shop","markers":["redirect"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":true,"children":[]},{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"orders/\$id/page.dart","folder":"orders/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund","route":"RefundRoute","file":"orders/\$id/refund/page.dart","folder":"orders/\$id/refund","markers":["data","action","guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund/receipt","route":"ReceiptRoute","file":"orders/\$id/refund/receipt/page.dart","folder":"orders/\$id/refund/receipt","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders/:id/refund/confirm","route":"ConfirmRefundRoute","file":"orders/\$id/refund/confirm/page.dart","folder":"orders/\$id/refund/confirm","markers":["guard","sibling"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/remount/location/:id","route":"RemountLocationRoute","file":"remount/location/\$id/page.dart","folder":"remount/location/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/never/:id","route":"RemountNeverRoute","file":"remount/never/\$id/page.dart","folder":"remount/never/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/segments/:id","route":"RemountSegmentsRoute","file":"remount/segments/\$id/page.dart","folder":"remount/segments/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/shop/:category","route":"CategoryShopRoute","file":"shop/\$category/page.dart","folder":"shop/\$category","markers":["data"],"spellings":{"fr":"/boutique/:category","de":"/laden/:category"},"params":[{"name":"category","type":"Category","in":"path"},{"name":"sort","type":"Sort?","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"shops/\$shop/layout.dart","folder":"shops/\$shop","markers":["guard"],"items":[{"type":"route","pattern":"/shops/:shop","route":"ShopRoute","file":"shops/\$shop/page.dart","folder":"shops/\$shop","markers":["guard"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/shops/:shop/items/:id","route":"ItemRoute","file":"shops/\$shop/items/\$id/page.dart","folder":"shops/\$shop/items/\$id","markers":["data"],"params":[{"name":"shop","type":"String","in":"path"},{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"shell","file":"teams/\$teamId/layout.dart","folder":"teams/\$teamId","markers":["data"],"items":[{"type":"route","pattern":"/teams/:teamId/members","route":"MembersRoute","file":"teams/\$teamId/members/page.dart","folder":"teams/\$teamId/members","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/teams/:teamId/members/:member","route":"MemberRoute","file":"teams/\$teamId/members/\$member/page.dart","folder":"teams/\$teamId/members/\$member","markers":["data"],"params":[{"name":"teamId","type":"String","in":"path"},{"name":"member","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/teams/:teamId/settings","route":"TeamSettingsRoute","file":"teams/\$teamId/settings/page.dart","folder":"teams/\$teamId/settings","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/browse/*categories","route":"BrowseRoute","file":"browse/\$\$categories/page.dart","folder":"browse/\$\$categories","markers":["data"],"params":[{"name":"categories","type":"List<Category>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/compare/*ids","route":"CompareRoute","file":"compare/\$\$ids/page.dart","folder":"compare/\$\$ids","markers":["data"],"params":[{"name":"ids","type":"List<int>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/files/*path?","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/wiki/*article","route":"WikiRoute","file":"wiki/\$\$article/page.dart","folder":"wiki/\$\$article","markers":["data"],"params":[{"name":"article","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"a37_0":{"kind":"action","file":"orders/\$id/refund/action.dart","name":"action","route":"RefundRoute"},"a64_0":{"kind":"action","file":"teams/\$teamId/action.dart","name":"addMember","route":null},"d12":{"kind":"data","file":"browse/\$\$categories/data.dart","route":"BrowseRoute","section":null,"traced":true},"d13":{"kind":"data","file":"catalog/data.dart","route":"CatalogRoute","section":null,"traced":false},"d14":{"kind":"data","file":"catalog/\$productId/data.dart","route":"ProductDetailRoute","section":null,"traced":false},"d15":{"kind":"data","file":"catalog/\$productId/reviews/data.dart","route":"ReviewsRoute","section":null,"traced":false},"d17":{"kind":"data","file":"compare/\$\$ids/data.dart","route":"CompareRoute","section":null,"traced":true},"d18":{"kind":"data","file":"counter/data.dart","route":"CounterRoute","section":null,"traced":false},"d37":{"kind":"data","file":"orders/\$id/refund/data.dart","route":"RefundRoute","section":null,"traced":true},"d53":{"kind":"data","file":"reports/data.dart","route":null,"section":"reports","traced":true},"d56":{"kind":"data","file":"search/data.dart","route":"SearchRoute","section":null,"traced":true},"d58":{"kind":"data","file":"shop/\$category/data.dart","route":"CategoryShopRoute","section":null,"traced":true},"d62":{"kind":"data","file":"shops/\$shop/items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true},"d64":{"kind":"data","file":"teams/\$teamId/data.dart","route":null,"section":"teams/\$teamId","traced":true},"d66":{"kind":"data","file":"teams/\$teamId/members/\$member/data.dart","route":"MemberRoute","section":null,"traced":true},"d68":{"kind":"data","file":"ticks/data.dart","route":"TicksRoute","section":null,"traced":true},"d70":{"kind":"data","file":"wiki/\$\$article/data.dart","route":"WikiRoute","section":null,"traced":true},"g31@31":{"kind":"guard","file":"notes/\$id/guard.dart","route":"NoteRoute","pattern":"/notes/:id"},"g37@37":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"RefundRoute","pattern":"/orders/:id/refund"},"g37@38":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"ConfirmRefundRoute","pattern":"/orders/:id/refund/confirm"},"g5@6":{"kind":"guard","file":"(members)/guard.dart","route":"AdminRoute","pattern":"/admin"},"g5@7":{"kind":"guard","file":"(members)/guard.dart","route":"InboxRoute","pattern":"/inbox"},"g60@60":{"kind":"guard","file":"shops/\$shop/guard.dart","route":"ShopRoute","pattern":"/shops/:shop"},"g6@6":{"kind":"guard","file":"(members)/admin/guard.dart","route":"AdminRoute","pattern":"/admin"},"r32":{"kind":"redirect","file":"old-search/redirect.dart","route":"OldSearchRoute","pattern":"/old-search"},"r34":{"kind":"redirect","file":"old-shops/\$shop/redirect.dart","route":"OldShopsShopRoute","pattern":"/old-shops/:shop"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"features","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"shell","file":"(account)/layout.dart","folder":"(account)","markers":[],"items":[{"type":"route","pattern":"/profile","route":"ProfileRoute","file":"(account)/profile/page.dart","folder":"(account)/profile","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"(account)/settings/page.dart","folder":"(account)/settings","markers":[],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/admin","route":"AdminRoute","file":"(members)/admin/page.dart","folder":"(members)/admin","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/inbox","route":"InboxRoute","file":"(members)/inbox/page.dart","folder":"(members)/inbox","markers":["guard"],"params":[{"name":"folder","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/free","route":"FreeRoute","file":"(plans)/free/page.dart","folder":"(plans)/free","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/pro","route":"ProPlanRoute","file":"(plans)/pro/page.dart","folder":"(plans)/pro","markers":[],"params":[{"name":"coupon","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/catalog","route":"CatalogRoute","file":"catalog/page.dart","folder":"catalog","markers":["data"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId","route":"ProductDetailRoute","file":"catalog/\$productId/page.dart","folder":"catalog/\$productId","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId/reviews","route":"ReviewsRoute","file":"catalog/\$productId/reviews/page.dart","folder":"catalog/\$productId/reviews","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/counter","route":"CounterRoute","file":"counter/page.dart","folder":"counter","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs","route":"DocsIndexRoute","file":"docs/page.dart","folder":"docs","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/docs/new","route":"NewDocRoute","file":"docs/new/page.dart","folder":"docs/new","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs/*rest","route":"DocsRoute","file":"docs/\$\$rest/page.dart","folder":"docs/\$\$rest","markers":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/files","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/guide","route":"GuideRoute","file":"guide/page.dart","folder":"guide","markers":[],"spellings":{"de":"/führer","ru":"/руководство"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help","route":"HelpRoute","file":"help/page.dart","folder":"help","markers":[],"spellings":{"fr":"/aide","de":"/hilfe"},"params":[],"redirect":false,"children":[{"type":"route","pattern":"/help/contact","route":"ContactRoute","file":"help/contact/page.dart","folder":"help/contact","markers":[],"spellings":{"fr":"/aide/contact","de":"/hilfe/kontakt"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help/:topic","route":"HelpTopicRoute","file":"help/\$topic/page.dart","folder":"help/\$topic","markers":[],"spellings":{"fr":"/aide/:topic","de":"/hilfe/:topic"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/help/:topic/examples","route":"HelpExamplesRoute","file":"help/\$topic/examples/page.dart","folder":"help/\$topic/examples","markers":[],"spellings":{"fr":"/aide/:topic/exemples","de":"/hilfe/:topic/beispiele"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":[],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/old-search","route":"OldSearchRoute","file":"old-search/redirect.dart","folder":"old-search","markers":["redirect"],"params":[{"name":"q","type":"String?","in":"query"}],"redirect":true,"children":[]},{"type":"route","pattern":"/photos","route":"PhotosRoute","file":"photos/page.dart","folder":"photos","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share","route":"ShareSheetRoute","file":"photos/share/page.dart","folder":"photos/share","markers":["present","root"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share/terms","route":"TermsRoute","file":"photos/share/terms/page.dart","folder":"photos/share/terms","markers":["root"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/photos/sort","route":"SortRoute","file":"photos/sort/page.dart","folder":"photos/sort","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/upload","route":"UploadRoute","file":"photos/upload/page.dart","folder":"photos/upload","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/:id","route":"PhotoRoute","file":"photos/\$id/page.dart","folder":"photos/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"shell","file":"reports/layout.dart","folder":"reports","markers":["data"],"items":[{"type":"route","pattern":"/reports/monthly","route":"MonthlyReportRoute","file":"reports/monthly/page.dart","folder":"reports/monthly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/reports/yearly","route":"YearlyReportRoute","file":"reports/yearly/page.dart","folder":"reports/yearly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/search","route":"SearchRoute","file":"search/page.dart","folder":"search","markers":["data"],"params":[{"name":"q","type":"String?","in":"query"},{"name":"page","type":"int?","in":"query"},{"name":"tags","type":"List<String>","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/ticks","route":"TicksRoute","file":"ticks/page.dart","folder":"ticks","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/:slug","route":"SlugRoute","file":"\$slug/page.dart","folder":"\$slug","markers":[],"params":[{"name":"slug","type":"String","in":"path"}],"redirect":false,"children":[]},{"type":"shell","file":"notes/layout.dart","folder":"notes","markers":[],"items":[{"type":"route","pattern":"/notes/:id","route":"NoteRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/old-shops/:shop","route":"OldShopsShopRoute","file":"old-shops/\$shop/redirect.dart","folder":"old-shops/\$shop","markers":["redirect"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":true,"children":[]},{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"orders/\$id/page.dart","folder":"orders/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund","route":"RefundRoute","file":"orders/\$id/refund/page.dart","folder":"orders/\$id/refund","markers":["data","action","guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund/receipt","route":"ReceiptRoute","file":"orders/\$id/refund/receipt/page.dart","folder":"orders/\$id/refund/receipt","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders/:id/refund/confirm","route":"ConfirmRefundRoute","file":"orders/\$id/refund/confirm/page.dart","folder":"orders/\$id/refund/confirm","markers":["guard","sibling"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/remount/location/:id","route":"RemountLocationRoute","file":"remount/location/\$id/page.dart","folder":"remount/location/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/never/:id","route":"RemountNeverRoute","file":"remount/never/\$id/page.dart","folder":"remount/never/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/segments/:id","route":"RemountSegmentsRoute","file":"remount/segments/\$id/page.dart","folder":"remount/segments/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/shop/:category","route":"CategoryShopRoute","file":"shop/\$category/page.dart","folder":"shop/\$category","markers":["data"],"spellings":{"fr":"/boutique/:category","de":"/laden/:category"},"params":[{"name":"category","type":"Category","in":"path"},{"name":"sort","type":"Sort?","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"shops/\$shop/layout.dart","folder":"shops/\$shop","markers":["guard"],"items":[{"type":"route","pattern":"/shops/:shop","route":"ShopRoute","file":"shops/\$shop/page.dart","folder":"shops/\$shop","markers":["guard"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/shops/:shop/items/:id","route":"ItemRoute","file":"shops/\$shop/items/\$id/page.dart","folder":"shops/\$shop/items/\$id","markers":["data"],"params":[{"name":"shop","type":"String","in":"path"},{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"shell","file":"teams/\$teamId/layout.dart","folder":"teams/\$teamId","markers":["data","fresh"],"items":[{"type":"route","pattern":"/teams/:teamId/members","route":"MembersRoute","file":"teams/\$teamId/members/page.dart","folder":"teams/\$teamId/members","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/teams/:teamId/members/:member","route":"MemberRoute","file":"teams/\$teamId/members/\$member/page.dart","folder":"teams/\$teamId/members/\$member","markers":["data","fresh"],"params":[{"name":"teamId","type":"String","in":"path"},{"name":"member","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/teams/:teamId/settings","route":"TeamSettingsRoute","file":"teams/\$teamId/settings/page.dart","folder":"teams/\$teamId/settings","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/browse/*categories","route":"BrowseRoute","file":"browse/\$\$categories/page.dart","folder":"browse/\$\$categories","markers":["data"],"params":[{"name":"categories","type":"List<Category>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/compare/*ids","route":"CompareRoute","file":"compare/\$\$ids/page.dart","folder":"compare/\$\$ids","markers":["data"],"params":[{"name":"ids","type":"List<int>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/files/*path?","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/wiki/*article","route":"WikiRoute","file":"wiki/\$\$article/page.dart","folder":"wiki/\$\$article","markers":["data"],"params":[{"name":"article","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"a37_0":{"kind":"action","file":"orders/\$id/refund/action.dart","name":"action","route":"RefundRoute"},"a64_0":{"kind":"action","file":"teams/\$teamId/action.dart","name":"addMember","route":null},"d12":{"kind":"data","file":"browse/\$\$categories/data.dart","route":"BrowseRoute","section":null,"traced":true},"d13":{"kind":"data","file":"catalog/data.dart","route":"CatalogRoute","section":null,"traced":false},"d14":{"kind":"data","file":"catalog/\$productId/data.dart","route":"ProductDetailRoute","section":null,"traced":false},"d15":{"kind":"data","file":"catalog/\$productId/reviews/data.dart","route":"ReviewsRoute","section":null,"traced":false},"d17":{"kind":"data","file":"compare/\$\$ids/data.dart","route":"CompareRoute","section":null,"traced":true},"d18":{"kind":"data","file":"counter/data.dart","route":"CounterRoute","section":null,"traced":false},"d37":{"kind":"data","file":"orders/\$id/refund/data.dart","route":"RefundRoute","section":null,"traced":true},"d53":{"kind":"data","file":"reports/data.dart","route":null,"section":"reports","traced":true},"d56":{"kind":"data","file":"search/data.dart","route":"SearchRoute","section":null,"traced":true},"d58":{"kind":"data","file":"shop/\$category/data.dart","route":"CategoryShopRoute","section":null,"traced":true},"d62":{"kind":"data","file":"shops/\$shop/items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true},"d64":{"kind":"data","file":"teams/\$teamId/data.dart","route":null,"section":"teams/\$teamId","traced":true},"d66":{"kind":"data","file":"teams/\$teamId/members/\$member/data.dart","route":"MemberRoute","section":null,"traced":true},"d68":{"kind":"data","file":"ticks/data.dart","route":"TicksRoute","section":null,"traced":true},"d70":{"kind":"data","file":"wiki/\$\$article/data.dart","route":"WikiRoute","section":null,"traced":true},"g31@31":{"kind":"guard","file":"notes/\$id/guard.dart","route":"NoteRoute","pattern":"/notes/:id"},"g37@37":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"RefundRoute","pattern":"/orders/:id/refund"},"g37@38":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"ConfirmRefundRoute","pattern":"/orders/:id/refund/confirm"},"g5@6":{"kind":"guard","file":"(members)/guard.dart","route":"AdminRoute","pattern":"/admin"},"g5@7":{"kind":"guard","file":"(members)/guard.dart","route":"InboxRoute","pattern":"/inbox"},"g60@60":{"kind":"guard","file":"shops/\$shop/guard.dart","route":"ShopRoute","pattern":"/shops/:shop"},"g6@6":{"kind":"guard","file":"(members)/admin/guard.dart","route":"AdminRoute","pattern":"/admin"},"r32":{"kind":"redirect","file":"old-search/redirect.dart","route":"OldSearchRoute","pattern":"/old-search"},"r34":{"kind":"redirect","file":"old-shops/\$shop/redirect.dart","route":"OldShopsShopRoute","pattern":"/old-shops/:shop"}}}';

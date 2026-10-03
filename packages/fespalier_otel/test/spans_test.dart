@@ -15,6 +15,10 @@ const TelemetrySite guardSite = TelemetrySite(
   'checkout/guard.dart',
   route: '/checkout',
 );
+const TelemetrySite redirectSite = TelemetrySite(
+  'old/redirect.dart',
+  route: '/old',
+);
 const TelemetrySite dataSite = TelemetrySite(
   'items/\$id/data.dart',
   route: '/items/:id',
@@ -26,6 +30,25 @@ const TelemetrySite actionSite = TelemetrySite(
 );
 
 final InMemorySpanExporter exporter = InMemorySpanExporter();
+
+/// Everything the tests in this file made fespalier emit, for the golden list at the end.
+final Set<String> seenSpans = {};
+final Set<String> seenKeys = {};
+final Set<String> seenEvents = {};
+final Set<String> seenEventKeys = {};
+
+void remember() {
+  for (final span in exporter.spans) {
+    // A span's name is its operation, then what it is about (a route, a file).
+    seenSpans.add(span.name.split(' ').first);
+    if (span.name == 'navigate (not found)') seenSpans.add(span.name);
+    seenKeys.addAll(span.attributes.keys);
+    for (final event in span.spanEvents ?? const <SpanEvent>[]) {
+      seenEvents.add(event.name);
+      seenEventKeys.addAll(event.attributes?.keys ?? const <String>[]);
+    }
+  }
+}
 
 /// What the guard of `/checkout` answers next.
 FutureOr<String?> Function() checkout = () => null;
@@ -58,6 +81,11 @@ GoRouter router({String initial = '/home'}) {
       ),
       GoRoute(path: '/other', builder: (_, _) => page('other')),
       GoRoute(path: '/login', builder: (_, _) => page('login')),
+      GoRoute(
+        path: '/old',
+        redirect: (_, state) =>
+            traceGuard(state, 'r4', '/other', telemetry: redirectSite),
+      ),
       GoRoute(
         path: '/checkout',
         redirect: (_, state) =>
@@ -94,7 +122,10 @@ void main() {
     FespalierTelemetry.install(FespalierOtel());
     checkout = () => null;
   });
-  tearDown(() => FespalierTelemetry.install(null));
+  tearDown(() {
+    remember();
+    FespalierTelemetry.install(null);
+  });
 
   group('a navigation', () {
     testWidgets('is a root span, named for its route, with the page events', (
@@ -130,6 +161,44 @@ void main() {
       expect(enter.getInt('fespalier.page.duration_ms'), isNull);
       expect(nav.status, SpanStatusCode.Unset);
     });
+
+    testWidgets(
+      'a redirect.dart is a redirect span, and a pop focuses the page below',
+      (tester) async {
+        final r = router();
+        await pumpRouter(tester, r);
+        exporter.clear();
+        r.go('/old');
+        await tester.pumpAndSettle();
+        final redirect = only('redirect old/redirect.dart');
+        expect(
+          redirect.attributes.getString('fespalier.operation'),
+          'redirect',
+        );
+        expect(
+          redirect.attributes.getString('fespalier.guard.decision'),
+          'redirect',
+        );
+        expect(
+          only(
+            'navigate /other',
+          ).attributes.getBool('fespalier.navigation.redirected'),
+          true,
+        );
+        unawaited(r.push<void>('/login'));
+        await tester.pumpAndSettle();
+        remember();
+        exporter.clear();
+        r.pop();
+        await tester.pumpAndSettle();
+        final pop = only('navigate /other');
+        expect(pop.attributes.getString('fespalier.navigation.kind'), 'pop');
+        expect(pop.spanEvents?.map((e) => e.name), [
+          'fespalier.page.leave',
+          'fespalier.page.focus',
+        ]);
+      },
+    );
 
     testWidgets('records the location only when asked', (tester) async {
       FespalierTelemetry.install(FespalierOtel(recordLocations: true));
@@ -338,5 +407,52 @@ void main() {
     c.listen(rename, (_, _) {});
     c.read(rename.notifier).call('a');
     expect(exporter.spanNames, ['action items/\$id/action.dart#rename']);
+  });
+
+  // Last in the file: by now every operation has run. This is the golden list of what fespalier
+  // emits, contract version 1. A name that is not in it was added (add it here, and to the
+  // README's conventions); one that is gone was renamed or removed, which is version 2.
+  test('what was emitted is exactly the contract', () {
+    remember();
+    expect(seenSpans, {
+      'navigate',
+      'navigate (not found)',
+      'guard',
+      'redirect',
+      'data',
+      'action',
+      'deferred',
+    });
+    expect(seenKeys, {
+      'fespalier.operation',
+      'fespalier.route',
+      'fespalier.file',
+      'fespalier.async',
+      'error.type',
+      'fespalier.navigation.kind',
+      'fespalier.navigation.outcome',
+      'fespalier.navigation.from',
+      'fespalier.navigation.redirected',
+      'fespalier.navigation.depth',
+      'url.path',
+      'url.query',
+      'fespalier.guard.decision',
+      'fespalier.guard.location',
+      'fespalier.data.state',
+      'fespalier.data.keyed',
+      'fespalier.action.name',
+      'fespalier.action.result',
+      'fespalier.deferred.result',
+    });
+    expect(seenEvents, {
+      'fespalier.page.enter',
+      'fespalier.page.focus',
+      'fespalier.page.leave',
+      'exception',
+    });
+    expect(seenEventKeys.where((k) => k.startsWith('fespalier.')), {
+      'fespalier.route',
+      'fespalier.page.duration_ms',
+    });
   });
 }

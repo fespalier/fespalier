@@ -22,6 +22,7 @@ both.
 | `meta.dart`        | its own route only (not inherited)                                                             | nothing: it is data                                                                  |
 | `route.dart`       | `caseSensitive`, `linkable`, `remount`, `deferred`: folder and below; `paths`: its own segment | nothing: it is data                                                                  |
 | `extra_codec.dart` | the app root only                                                                              | nothing: it is data                                                                  |
+| `nav.dart`         | its own folder's menu entry (since 0.8.0)                                                      | `label()`: a `BuildContext` and the segments at or above (named, `required`)         |
 
 `not_found.dart` also reads as `not-found.dart` (kebab), whatever `file_style`
 says; `file_style` only picks what `fsp init` and `fsp new` write.
@@ -110,6 +111,12 @@ or `redirect.dart`. Copied into the manifest by reference.
 (0.7.0: the pages in this folder and below load their code on demand; only `page.dart` is
 deferred, never a layout). Each must be a literal:
 `fsp` reads the source. A `route.dart` with none of them is an error.
+
+**`nav.dart`** (since 0.8.0) is `const nav = Nav(label: 'Products', order: 1);` and, optionally,
+`String label(BuildContext context, {required int id})`: how the folder shows in the menus and
+breadcrumbs `fsp gen` writes as `AppMenu`. A folder without `page.dart` or `redirect.dart` is a
+heading. `Nav` is in `package:fespalier/nav.dart`. See
+[`fespalier-layouts`](../../fespalier-layouts/references/menus-and-breadcrumbs.md).
 
 **`extra_codec.dart`**: a top-level `extraCodec` (a `const`, a `final` or a
 getter). In a subfolder it is ignored with a warning.

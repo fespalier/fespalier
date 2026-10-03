@@ -257,6 +257,10 @@
             "caseSensitive": false
           },
           {
+            "/": "/vault",
+            "caseSensitive": false
+          },
+          {
             "/": "/wiki/?*",
             "caseSensitive": false
           }

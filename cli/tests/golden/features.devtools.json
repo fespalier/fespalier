@@ -529,6 +529,19 @@
             },
             {
               "type": "route",
+              "pattern": "/vault",
+              "route": "VaultRoute",
+              "file": "vault/page.dart",
+              "folder": "vault",
+              "markers": [
+                "guard"
+              ],
+              "params": [],
+              "redirect": false,
+              "children": []
+            },
+            {
+              "type": "route",
               "pattern": "/:slug",
               "route": "SlugRoute",
               "file": "$slug/page.dart",
@@ -1074,7 +1087,7 @@
       "section": null,
       "traced": true
     },
-    "d70": {
+    "d71": {
       "kind": "data",
       "file": "wiki/$$article/data.dart",
       "route": "WikiRoute",
@@ -1116,6 +1129,12 @@
       "file": "shops/$shop/guard.dart",
       "route": "ShopRoute",
       "pattern": "/shops/:shop"
+    },
+    "g69@69": {
+      "kind": "guard",
+      "file": "vault/guard.dart",
+      "route": "VaultRoute",
+      "pattern": "/vault"
     },
     "g6@6": {
       "kind": "guard",

@@ -117,4 +117,7 @@
   <url>
     <loc>https://shop.example.com/ticks</loc>
   </url>
+  <url>
+    <loc>https://shop.example.com/vault</loc>
+  </url>
 </urlset>

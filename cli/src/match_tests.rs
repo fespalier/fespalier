@@ -856,6 +856,7 @@ fn new_args(route: &str, not_found: bool) -> NewArgs {
         layout: false,
         guard: false,
         transition: false,
+        nav: false,
         function: false,
         not_found,
     }

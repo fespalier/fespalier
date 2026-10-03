@@ -167,6 +167,9 @@ GoRoute(
 {% endfor %}
 
 import 'package:fespalier/fespalier.dart';
+{% if menu %}
+import 'package:fespalier/nav.dart';
+{% endif %}
 import 'package:flutter/widgets.dart';
 
 {% for i in imports %}
@@ -568,6 +571,62 @@ final {{ a.top }} = {{ a.factory }}(
 );
 {% endfor %}
 {% endfor %}
+{% if menu %}
+
+/// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.0).
+abstract final class AppMenu {
+  /// Every nav.dart, nested as their folders are (the app folder's own entry, and a tab layout's
+  /// own page, sit beside the entries below them), each level by `order`, then by folder.
+  static const List<NavNode> tree = [{{ menu.roots | join(", ") }}];
+
+  /// The entries of [tree] at the location around [ref]'s widget, or the topmost ones at or below
+  /// the folder [under] (`'(tabs)'`, `r'teams/$teamId'`): with their routes built from the
+  /// location, whether each is selected, and what their guards answer now. Entries that need
+  /// segments the location doesn't have, `inMenu: false` ones and refused ones (`NavRefused.hide`)
+  /// are left out. Watch it in `build`, in a layout or a page.
+  static List<NavItem> watch(WidgetRef ref, {String? under}) =>
+      watchNav(ref, tree, AppRoutes.matchUrl, _trails, under: under);
+
+  /// The entries from the top of [tree] down to the page at the current location: breadcrumbs.
+  /// Guards are not asked (the location is past them). Empty where no nav.dart covers the page.
+  static List<NavItem> breadcrumbs(WidgetRef ref) =>
+      watchNavTrail(ref, AppRoutes.matchUrl, _trails);
+
+  static const Map<Type, List<NavNode>> _trails = {
+{% for t in menu.trails %}
+    {{ t.route }}: [{{ t.nodes | join(", ") }}],
+{% endfor %}
+  };
+}
+{% for n in menu.nodes %}
+
+{{ n }}
+{% endfor %}
+{% if menu.withins %}
+
+{% for w in menu.withins %}
+{{ w }}
+{% endfor %}
+{% endif %}
+{% if menu.routes %}
+
+{% for f in menu.routes %}
+{{ f }}
+{% endfor %}
+{% endif %}
+{% if menu.labels %}
+
+{% for f in menu.labels %}
+{{ f }}
+{% endfor %}
+{% endif %}
+{% if menu.guards %}
+
+{% for f in menu.guards %}
+{{ f }}
+{% endfor %}
+{% endif %}
+{% endif %}
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release

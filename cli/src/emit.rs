@@ -20,6 +20,7 @@ use crate::diag::Diags;
 use crate::enums;
 use crate::locale::{self, Localized};
 use crate::manifest::{self, ManifestCx};
+use crate::menu::{self, MenuCx};
 use crate::resolve::{
     self, Action, ActionNames, App, Bind, Branch, Data, Flow, Guard, HookFirst, Route, Transition,
 };
@@ -66,6 +67,8 @@ struct FileCx {
     /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
     /// (`_keep`) that tells a parameter left out from one passed as `null`.
     copy_with: bool,
+    /// `AppMenu`, when some folder has a nav.dart (since 0.8.0).
+    menu: Option<MenuCx>,
 }
 
 /// One `import` of the generated file.
@@ -543,6 +546,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
         semantics_ids: cfg.semantics_ids,
+        menu: menu::build(app, diags),
     };
     templates::render("app.g.dart", &cx)
 }

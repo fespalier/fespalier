@@ -194,6 +194,7 @@ fsp new 'products/[id]' --name Product --data --action --loading --error --layou
 fsp new '(account)' --layout        # a group: no page.dart
 fsp new 'kyc/shop/name' --function --name KycShopName
 fsp new 'shop' --not-found
+fsp new 'orders' --nav                # nav.dart: how the folder shows in the menus (since 0.8.0)
 fsp new 'docs/[...rest]'            # $$rest; 'docs/[[...rest]]' is $$$rest
 ```
 

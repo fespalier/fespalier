@@ -216,9 +216,24 @@ abstract final class AppRoutes {
       routes: routes,
       errorBuilder: (context, state) => notFound(state.uri),
     );
+{% if attach %}
+    attach(router);
+    return router;
+  }
+
+  /// Lets DevTools{{ " and the observe.dart hooks" if observe }} follow [router]: [router] calls it, and an app that mounts the
+  /// tree in a GoRouter of its own calls it once with that router.
+  static void attach(GoRouter router) {
+    if (kFespalierDevTools) devToolsAttach(router);
+{% if observe %}
+    observeAttach(router, _observeAt);
+{% endif %}
+  }
+{% else %}
     if (kFespalierDevTools) devToolsAttach(router);
     return router;
   }
+{% endif %}
 
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
   /// GoRouter's own `navigatorKey` as [navigatorKey]: routes on the root navigator
@@ -275,9 +290,9 @@ abstract final class AppRoutes {
       {{ l }}
 {% endfor %}
       return UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }});
-    }{{ ", caseSensitive: false" if not m.case_sensitive }}),
+    }{{ ", caseSensitive: false" if not m.case_sensitive }}{{ m.observe }}),
 {% else %}
-    RouteMatcher({{ m.pattern }}, (s) => UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }}){{ ", caseSensitive: false" if not m.case_sensitive }}),
+    RouteMatcher({{ m.pattern }}, (s) => UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }}){{ ", caseSensitive: false" if not m.case_sensitive }}{{ m.observe }}),
 {% endif %}
 {% endfor %}
   ];
@@ -288,6 +303,11 @@ abstract final class AppRoutes {
   /// The route manifest adds `match`, which also names the route's info.
   static UrlMatch? matchUrl(Uri uri) => matchRoutes(uri, base, _matchers{{ ", caseSensitive: false" if not case_sensitive }});
 
+{% if observe %}
+  /// The observe.dart hooks of the page at [uri], outermost first.
+  static List<RouteHooks> _observeAt(Uri uri) => observeRoutes(uri, base, _matchers{{ ", caseSensitive: false" if not case_sensitive }});
+
+{% endif %}
   /// The providers of the data of the route at [uri], outermost first: the `data.dart` of
   /// each section above it, then its own. They are the ones the page watches (`dataAt(uri)`
   /// of `/products/42` is `[ProductRoute.data(42)]`), so warming them, with

@@ -44,6 +44,9 @@ pub struct NewArgs {
     pub guard: bool,
     #[arg(long)]
     pub transition: bool,
+    /// Write observe.dart: hooks that run when a page is entered, focused and left
+    #[arg(long)]
+    pub observe: bool,
 }
 
 /// What `fsp new` parses: the route flags plus `--no-page`.
@@ -71,6 +74,10 @@ struct Cx {
     label: String,
     /// `/orders/$orderId`, interpolated in data.dart's placeholder.
     path: String,
+    /// `/orders/:orderId`: the pattern the route is known by.
+    pattern: String,
+    /// The named parameters of observe.dart's hooks: the segments.
+    params: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -200,6 +207,8 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         name: a.name.clone().filter(|_| a.function),
         label: seg_cx.iter().map(|s| format!(" ${}", s.name)).collect(),
         path: format!("/{rel}"),
+        pattern: resolve::pattern(&segs),
+        params: seg_cx.iter().map(|s| s.param.clone()).collect(),
         stem,
         action_params: seg_cx
             .iter()
@@ -228,6 +237,7 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         ("not_found", a.not_found),
         ("guard", a.guard),
         ("transition", a.transition),
+        ("observe", a.observe),
     ];
     if !wanted.iter().any(|(_, on)| *on) {
         let why = if is_group {
@@ -236,7 +246,7 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
             "--no-page skips the page"
         };
         bail!(
-            "nothing to create: {why}; also pass --action, --layout, --loading, --error, --not-found, --guard or --transition"
+            "nothing to create: {why}; also pass --action, --layout, --loading, --error, --not-found, --guard, --observe or --transition"
         );
     }
     let dir = app_dir.join(&rel);

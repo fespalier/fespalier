@@ -29,10 +29,12 @@ pub enum Kind {
     Present,
     /// The app folder's own `extra_codec.dart`: read at the root only.
     ExtraCodec,
+    /// `observe.dart`: hooks that run when a page is entered, focused and left.
+    Observe,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 15] = [
+    pub const ALL: [Kind; 16] = [
         Kind::Page,
         Kind::Data,
         Kind::Action,
@@ -48,6 +50,7 @@ impl Kind {
         Kind::Navigator,
         Kind::Present,
         Kind::ExtraCodec,
+        Kind::Observe,
     ];
 
     pub fn file(self) -> &'static str {
@@ -67,6 +70,7 @@ impl Kind {
             Kind::Navigator => "navigator.dart",
             Kind::Present => "present.dart",
             Kind::ExtraCodec => "extra_codec.dart",
+            Kind::Observe => "observe.dart",
         }
     }
 

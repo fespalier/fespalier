@@ -146,6 +146,34 @@ fn new_group_layout_needs_no_page() {
 }
 
 #[test]
+fn new_observe_writes_the_hooks_and_the_generated_file_attaches_them() {
+    let dir = project();
+    let (ok, err) = fsp(dir.path(), &["new", "orders/[id]", "--observe"]);
+    assert!(ok, "{err}");
+    assert!(
+        err.contains("  new   lib/app/orders/$id/observe.dart"),
+        "{err}"
+    );
+    let observe = fs::read_to_string(dir.path().join("lib/app/orders/$id/observe.dart")).unwrap();
+    assert!(
+        observe.contains("void onEnter(Ref ref, {required String id}) {}"),
+        "{observe}"
+    );
+    let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    assert!(
+        code.contains("observeAttach(router, _observeAt);"),
+        "{code}"
+    );
+    // `fsp new` with nothing to write names every flag, this one included.
+    let (ok, err) = fsp(dir.path(), &["new", "(oops)"]);
+    assert!(!ok);
+    assert!(
+        err.contains("nothing to create: a (group) folder has no page; also pass --action, --layout, --loading, --error, --not-found, --guard, --observe or --transition"),
+        "{err}"
+    );
+}
+
+#[test]
 fn new_names_the_files_it_left_behind_when_gen_fails() {
     let dir = project();
     // A bare group has nothing to scaffold.

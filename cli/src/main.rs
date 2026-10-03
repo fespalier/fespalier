@@ -492,6 +492,8 @@ mod navigator_tests;
 #[cfg(test)]
 mod nest_tests;
 #[cfg(test)]
+mod observe_tests;
+#[cfg(test)]
 mod paths_tests;
 #[cfg(test)]
 mod refresh_tests;

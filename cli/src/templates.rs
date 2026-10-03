@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use minijinja::Environment;
 use serde::Serialize;
 
-const TEMPLATES: [(&str, &str); 17] = [
+const TEMPLATES: [(&str, &str); 18] = [
     ("app.g.dart", include_str!("../templates/app.g.dart.jinja")),
     (
         "manifest.dart",
@@ -55,6 +55,10 @@ const TEMPLATES: [(&str, &str); 17] = [
     (
         "new/transition.dart",
         include_str!("../templates/new/transition.dart.jinja"),
+    ),
+    (
+        "new/observe.dart",
+        include_str!("../templates/new/observe.dart.jinja"),
     ),
     (
         "init/layout.dart",

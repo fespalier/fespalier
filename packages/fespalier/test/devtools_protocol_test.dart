@@ -226,6 +226,96 @@ void main() {
       expect(bare.toJson()['key'], isNull);
     });
 
+    test('DataRecord, followed through a view: via, provider, listeners', () {
+      const watched = DataRecord(
+        id: 5,
+        site: 'd8',
+        key: Shown('int', '2'),
+        container: 1,
+        state: DataState.data,
+        builds: 0,
+        created: 1,
+        updated: 2,
+        value: Shown('String', 'v'),
+        via: DataVia.watch,
+        provider: Shown('FutureProvider<String>', 'productProvider(2)'),
+      );
+      expect(DataRecord.fromJson(wire(watched.toJson())), watched);
+      expect(watched.toJson()['via'], 'watch');
+      expect(watched.toJson()['listeners'], isNull);
+      const built = DataRecord(
+        id: 6,
+        site: 'd7',
+        container: 1,
+        state: DataState.data,
+        builds: 1,
+        created: 1,
+        updated: 2,
+        listeners: 3,
+      );
+      final decoded = DataRecord.fromJson(wire(built.toJson()));
+      expect(decoded, built);
+      expect(decoded.via, DataVia.build);
+      expect(decoded.listeners, 3);
+    });
+
+    test('a data record of a runtime before 0.8.0 is a built one, with no '
+        'listeners', () {
+      final record = DataRecord.fromJson({
+        'id': 1,
+        'site': 'd7',
+        'key': null,
+        'container': 1,
+        'state': 'data',
+        'builds': 1,
+        'created': 1,
+        'updated': 2,
+        'value': null,
+        'error': null,
+      });
+      expect(record.via, DataVia.build);
+      expect(record.provider, isNull);
+      expect(record.listeners, isNull);
+    });
+
+    test('HolderRecord and HoldersRecord, found and not', () {
+      const view = HolderRecord(kind: HolderKind.view, since: 1791018188000);
+      const link = HolderRecord(
+        kind: HolderKind.link,
+        since: 1791018181000,
+        keepFor: 30000,
+      );
+      expect(HolderRecord.fromJson(wire(view.toJson())), view);
+      expect(HolderRecord.fromJson(wire(link.toJson())), link);
+      const found = HoldersRecord(
+        id: 7,
+        found: true,
+        alive: true,
+        listeners: 3,
+        others: 1,
+        holders: [view, link],
+      );
+      expect(found.toJson(), {
+        'protocol': 1,
+        'id': 7,
+        'found': true,
+        'alive': true,
+        'listeners': 3,
+        'others': 1,
+        'holders': [
+          {'kind': 'view', 'since': 1791018188000, 'keepFor': null},
+          {'kind': 'link', 'since': 1791018181000, 'keepFor': 30000},
+        ],
+      });
+      expect(HoldersRecord.fromJson(wire(found.toJson())), found);
+      const unknown = HoldersRecord(id: 9, found: false);
+      expect(unknown.toJson(), {'protocol': 1, 'id': 9, 'found': false});
+      expect(HoldersRecord.fromJson(wire(unknown.toJson())), unknown);
+      const app = HoldersRecord(id: 8, found: true, holders: [view]);
+      expect(HoldersRecord.fromJson(wire(app.toJson())), app);
+      expect(app.toJson()['alive'], isNull);
+    });
+
     test('ActionRecord, running and done', () {
       const running = ActionRecord(
         seq: 9,
@@ -403,6 +493,23 @@ void main() {
       expect(hello.features, contains('guards'));
     });
 
+    test(
+      'a holder of a kind it does not know, and a key it does not, are read',
+      () {
+        final answer = HoldersRecord.fromJson({
+          'protocol': 1,
+          'id': 1,
+          'found': true,
+          'holders': [
+            {'kind': 'teleporter', 'since': 1, 'somethingNew': 2},
+          ],
+          'somethingNew': 3,
+        });
+        expect(answer.holders.single.kind, 'teleporter');
+        expect(answer.alive, isNull);
+      },
+    );
+
     test('a navigation kind it does not know is kept as it is', () {
       final record = NavigationRecord.fromJson({
         'seq': 1,
@@ -428,6 +535,7 @@ void main() {
         DevToolsMethods.clear,
         DevToolsMethods.invalidate,
         DevToolsMethods.open,
+        DevToolsMethods.holders,
       ]) {
         expect(method, startsWith('ext.fespalier.'));
       }

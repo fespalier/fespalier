@@ -1,5 +1,7 @@
 /// The wire format between a running app and fespalier's DevTools extension, protocol 1
 /// (since 0.7.0): the names of the service extensions and events, and the records they carry.
+/// What 0.8.0 added (`holders`, and a data record's `via`, `provider` and `listeners`) is
+/// additive, so it is still protocol 1.
 ///
 /// This file imports nothing, so the extension (a Flutter web app that cannot import
 /// `package:fespalier`) holds a byte-identical copy: `scripts/build-devtools-extension.sh`
@@ -63,6 +65,10 @@ abstract final class DevToolsMethods {
   /// `{"protocol": 1, "ok": true}` once the IDE was asked to open it: a `navigate` event on the
   /// `ToolEvent` stream with a `package:` URI. Listed as [DevToolsFeatures.open].
   static const String open = 'ext.fespalier.open';
+
+  /// Parameter `id` (a [DataRecord]'s), since 0.8.0. Answers a [HoldersRecord]: who holds that
+  /// provider now, computed when asked. Listed as [DevToolsFeatures.holders].
+  static const String holders = 'ext.fespalier.holders';
 }
 
 /// The kinds of the events an app posts (`dart:developer`'s `postEvent`, on the `Extension`
@@ -114,6 +120,13 @@ abstract final class DevToolsFeatures {
 
   /// The `open` method.
   static const String open = 'open';
+
+  /// The `holders` method, and a [DataRecord]'s `listeners` (since 0.8.0).
+  static const String holders = 'holders';
+
+  /// A `data.dart` that returns or selects the app's own provider is followed too: the
+  /// [DataRecord]s with `via` [DataVia.watch] (since 0.8.0).
+  static const String watched = 'watched';
 }
 
 /// The values of `navigate`'s `mode`.
@@ -209,6 +222,32 @@ abstract final class DataState {
   /// The provider was disposed (nothing watched it any more, or it was invalidated and has not
   /// been read since).
   static const String disposed = 'disposed';
+}
+
+/// The values of a [DataRecord]'s `via`: how fespalier follows the provider (since 0.8.0).
+abstract final class DataVia {
+  /// fespalier built the provider (the function form of `data.dart`) and sees each build.
+  static const String build = 'build';
+
+  /// The app's own provider (a `data.dart` that returns or selects one), seen through what
+  /// fespalier's views watched: no build count, and no other listeners.
+  static const String watch = 'watch';
+}
+
+/// The values of a [HolderRecord]'s `kind` (since 0.8.0): what keeps a provider alive that
+/// fespalier made.
+abstract final class HolderKind {
+  /// The route's `DataView`.
+  static const String view = 'view';
+
+  /// A section's `SectionView`.
+  static const String section = 'section';
+
+  /// A `PrefetchHandle` (`XRoute.prefetch`, `preload`, `prefetchAll`).
+  static const String prefetch = 'prefetch';
+
+  /// A `RouteLink` preload.
+  static const String link = 'link';
 }
 
 /// The values of an [ActionRecord]'s `state`.
@@ -749,6 +788,9 @@ final class DataRecord {
     required this.updated,
     this.value,
     this.error,
+    this.via = DataVia.build,
+    this.provider,
+    this.listeners,
   });
 
   /// Reads what [toJson] wrote.
@@ -763,6 +805,9 @@ final class DataRecord {
     updated: _int(json, 'updated'),
     value: _shownOrNull(json, 'value'),
     error: _stringOrNull(json, 'error'),
+    via: _stringOrNull(json, 'via') ?? DataVia.build,
+    provider: _shownOrNull(json, 'provider'),
+    listeners: json['listeners'] as int?,
   );
 
   /// A number for the record, one counter per isolate; what `invalidate` takes.
@@ -796,6 +841,17 @@ final class DataRecord {
   /// What the `Future` failed with, for `error`.
   final String? error;
 
+  /// A [DataVia] (since 0.8.0); an older app's record is [DataVia.build].
+  final String via;
+
+  /// The provider the app's own `data.dart` returned or selected, as its `toString` spells it,
+  /// for [DataVia.watch]; null otherwise (since 0.8.0).
+  final Shown? provider;
+
+  /// How many listeners the provider has now, for [DataVia.build]; null for [DataVia.watch], and
+  /// for an app older than 0.8.0 (since 0.8.0).
+  final int? listeners;
+
   /// A part of a [SnapshotRecord] and of the `data` event.
   Map<String, Object?> toJson() => {
     'id': id,
@@ -808,11 +864,122 @@ final class DataRecord {
     'updated': updated,
     'value': value?.toJson(),
     'error': error,
+    'via': via,
+    'provider': provider?.toJson(),
+    'listeners': listeners,
   };
 
   @override
   bool operator ==(Object other) =>
       other is DataRecord && _same(toJson(), other.toJson());
+
+  @override
+  int get hashCode => _hash(toJson());
+}
+
+/// One holder of a provider that fespalier knows (since 0.8.0).
+final class HolderRecord {
+  /// A holder of [kind] (a [HolderKind]).
+  const HolderRecord({required this.kind, required this.since, this.keepFor});
+
+  /// Reads what [toJson] wrote.
+  factory HolderRecord.fromJson(Map<String, Object?> json) => HolderRecord(
+    kind: _string(json, 'kind'),
+    since: _int(json, 'since'),
+    keepFor: json['keepFor'] as int?,
+  );
+
+  /// A [HolderKind].
+  final String kind;
+
+  /// When fespalier first saw it, in milliseconds since the epoch.
+  final int since;
+
+  /// For a prefetch or a link: the `keepFor` it was given, in milliseconds; null for until it is
+  /// closed, and for a view.
+  final int? keepFor;
+
+  /// A part of a [HoldersRecord].
+  Map<String, Object?> toJson() => {
+    'kind': kind,
+    'since': since,
+    'keepFor': keepFor,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is HolderRecord && _same(toJson(), other.toJson());
+
+  @override
+  int get hashCode => _hash(toJson());
+}
+
+/// What `holders` answers (since 0.8.0): who keeps the provider of a [DataRecord] alive now.
+final class HoldersRecord {
+  /// The answer for the record [id].
+  const HoldersRecord({
+    this.protocol = devToolsProtocol,
+    required this.id,
+    required this.found,
+    this.alive,
+    this.listeners,
+    this.others,
+    this.holders = const [],
+  });
+
+  /// Reads what [toJson] wrote.
+  factory HoldersRecord.fromJson(Map<String, Object?> json) => HoldersRecord(
+    protocol: _int(json, 'protocol'),
+    id: _int(json, 'id'),
+    found: _bool(json, 'found'),
+    alive: json['alive'] as bool?,
+    listeners: json['listeners'] as int?,
+    others: json['others'] as int?,
+    holders: [
+      for (final h in _list(json, 'holders'))
+        HolderRecord.fromJson(h! as Map<String, Object?>),
+    ],
+  );
+
+  /// The protocol the app speaks.
+  final int protocol;
+
+  /// The record that was asked about.
+  final int id;
+
+  /// False for an id that is not (or no longer) tracked; the other fields are then absent.
+  final bool found;
+
+  /// Whether the provider is alive in its container; null when that cannot be known (a
+  /// `.select(...)`, a container that is gone).
+  final bool? alive;
+
+  /// How many listeners a provider fespalier built has; null for the app's own provider.
+  final int? listeners;
+
+  /// The listeners fespalier does not know a holder of: `listeners` minus the holders, never
+  /// below 0; null for the app's own provider.
+  final int? others;
+
+  /// The holders fespalier created, oldest first.
+  final List<HolderRecord> holders;
+
+  /// The response of `holders`.
+  Map<String, Object?> toJson() => {
+    'protocol': protocol,
+    'id': id,
+    'found': found,
+    if (found) ...{
+      'alive': alive,
+      'listeners': listeners,
+      'others': others,
+      'holders': [for (final h in holders) h.toJson()],
+    },
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is HoldersRecord && _same(toJson(), other.toJson());
 
   @override
   int get hashCode => _hash(toJson());

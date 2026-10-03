@@ -28,7 +28,6 @@ package next to `fespalier_otel`:
     screen on a cold start.
   - `fespalier_sentry` and `fespalier_crashlytics`: errors and performance from the telemetry sink,
     named by route pattern and tagged with the file that threw.
-  - `fespalier_adaptive`: `nav.dart` menus as a bottom bar, rail or drawer by width.
   - `fespalier_flags`: feature flags that guards watch, so menus hide flagged routes.
   - `fespalier_dio` (and an `http` variant): cancellation when a page goes away, server validation
     errors on form fields, no retried writes, trace headers.

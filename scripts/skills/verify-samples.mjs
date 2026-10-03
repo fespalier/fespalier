@@ -16,8 +16,8 @@
 //     `# pubspec.yaml dependencies` has its lines merged under `dependencies:`
 //     (a recipe's plugin: firebase_auth, supabase_flutter, flutter_web_auth_2;
 //     since 0.9.0). Every other block is a fragment and is not built.
-//   - A page with a block that imports `package:fespalier_auth/` or
-//     `package:fespalier_sign_keypair/` (since 0.9.0) gets that package as a path
+//   - A page with a block that imports `package:fespalier_auth/`,
+//     `package:fespalier_sign_keypair/` or `package:fespalier_adaptive/` (since 0.9.0) gets that package as a path
 //     dependency of this checkout, and a `dependency_overrides:` block pointing
 //     `fespalier` and the companions at it: the companions pin fespalier by
 //     repository tag, which a path dependency of the app cannot be resolved against.
@@ -235,7 +235,11 @@ for (const file of files) {
   // A page that imports the companion packages gets them as path dependencies of this checkout,
   // and `fespalier` overridden to the checkout's too: the companions pin it by repository tag,
   // which a path dependency of the app cannot be resolved against.
-  const companions = ["fespalier_auth", "fespalier_sign_keypair"].filter((name) =>
+  const companions = [
+    "fespalier_auth",
+    "fespalier_sign_keypair",
+    "fespalier_adaptive",
+  ].filter((name) =>
     [...written.values()].some((body) => body.includes(`package:${name}/`)),
   );
   const depLines = [

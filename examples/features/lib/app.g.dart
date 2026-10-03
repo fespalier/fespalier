@@ -3,6 +3,7 @@
 //
 //   /                               HomeRoute             page.dart  (layout, transition)
 //   /:slug                          SlugRoute             $slug/page.dart  (transition)
+//   /nickname                       NicknameRoute         (account)/nickname/page.dart  (data, action, transition)
 //   /profile                        ProfileRoute          (account)/profile/page.dart  (transition)
 //   /settings                       SettingsRoute         (account)/settings/page.dart  (transition)
 //   /admin                          AdminRoute            (members)/admin/page.dart  (guard, transition)
@@ -78,119 +79,123 @@ import 'app/nav.dart' as _i3;
 import 'app/\$slug/page.dart' as _i4;
 import 'app/(account)/transition.dart' as _i5;
 import 'app/(account)/layout.dart' as _i6;
-import 'app/(account)/profile/page.dart' as _i7;
-import 'app/(account)/settings/page.dart' as _i8;
-import 'app/(members)/guard.dart' as _i9;
-import 'app/(members)/admin/page.dart' as _i10;
-import 'app/(members)/admin/guard.dart' as _i11;
-import 'app/(members)/admin/nav.dart' as _i12;
-import 'app/(members)/inbox/page.dart' as _i13;
-import 'app/(members)/inbox/nav.dart' as _i14;
-import 'app/(plans)/free/page.dart' as _i15;
-import 'app/(plans)/pro/page.dart' as _i16;
-import 'app/browse/\$\$categories/data.dart' as _i17;
-import 'app/browse/\$\$categories/page.dart' as _i18;
-import 'app/catalog/data.dart' as _i19;
-import 'app/catalog/page.dart' as _i20;
-import 'app/catalog/\$productId/data.dart' as _i21;
-import 'app/catalog/\$productId/page.dart' as _i22;
-import 'app/catalog/\$productId/loading.dart' as _i23;
-import 'app/catalog/\$productId/error.dart' as _i24;
-import 'app/catalog/\$productId/reviews/data.dart' as _i25;
-import 'app/catalog/\$productId/reviews/page.dart' as _i26;
-import 'app/compare/\$\$ids/data.dart' as _i27;
-import 'app/compare/\$\$ids/page.dart' as _i28;
-import 'app/counter/data.dart' as _i29;
-import 'app/counter/page.dart' as _i30;
-import 'app/docs/page.dart' as _i31;
-import 'app/docs/\$\$rest/page.dart' as _i32;
-import 'app/docs/new/page.dart' as _i33;
-import 'app/feed/page.dart' as _i34;
-import 'app/files/\$\$\$path/page.dart' as _i35;
-import 'app/guide/page.dart' as _i36;
-import 'app/help/page.dart' as _i37;
-import 'app/help/not_found.dart' as _i38;
-import 'app/help/\$topic/page.dart' as _i39;
-import 'app/help/\$topic/examples/page.dart' as _i40;
-import 'app/help/contact/page.dart' as _i41;
-import 'app/login/page.dart' as _i42;
-import 'app/notes/layout.dart' as _i43;
-import 'app/notes/\$id/page.dart' as _i44;
-import 'app/notes/\$id/guard.dart' as _i45;
-import 'app/old-search/redirect.dart' as _i46;
-import 'app/old-shops/\$shop/redirect.dart' as _i47;
-import 'app/orders/\$id/page.dart' as _i48;
-import 'app/orders/\$id/nav.dart' as _i49;
-import 'app/orders/\$id/refund/data.dart' as _i50;
-import 'app/orders/\$id/refund/action.dart' as _i51;
-import 'app/orders/\$id/refund/page.dart' as _i52;
-import 'app/orders/\$id/refund/guard.dart' as _i53;
-import 'app/orders/\$id/refund/nav.dart' as _i54;
-import 'app/orders/\$id/refund/confirm/page.dart' as _i55;
-import 'app/orders/\$id/refund/receipt/page.dart' as _i56;
-import 'app/photos/page.dart' as _i57;
-import 'app/photos/\$id/page.dart' as _i58;
-import 'app/photos/\$id/transition.dart' as _i59;
-import 'app/photos/share/page.dart' as _i60;
-import 'app/photos/share/present.dart' as _i61;
-import 'app/photos/share/terms/page.dart' as _i62;
-import 'app/photos/sort/page.dart' as _i63;
-import 'app/photos/sort/transition.dart' as _i64;
-import 'app/photos/upload/page.dart' as _i65;
-import 'app/photos/upload/transition.dart' as _i66;
-import 'app/remount/location/\$id/page.dart' as _i67;
-import 'app/remount/never/\$id/page.dart' as _i68;
-import 'app/remount/segments/\$id/page.dart' as _i69;
-import 'app/reports/data.dart' as _i70;
-import 'app/reports/layout.dart' as _i71;
-import 'app/reports/monthly/page.dart' as _i72;
-import 'app/reports/yearly/page.dart' as _i73;
-import 'app/search/data.dart' as _i74;
-import 'app/search/page.dart' as _i75;
-import 'app/search/nav.dart' as _i76;
-import 'app/shop/\$category/data.dart' as _i77;
-import 'app/shop/\$category/page.dart' as _i78;
-import 'app/shops/\$shop/page.dart' as _i79;
-import 'app/shops/\$shop/layout.dart' as _i80;
-import 'app/shops/\$shop/guard.dart' as _i81;
-import 'app/shops/\$shop/items/\$id/data.dart' as _i82;
-import 'app/shops/\$shop/items/\$id/page.dart' as _i83;
-import 'app/shops/\$shop/items/\$id/error.dart' as _i84;
-import 'app/teams/\$teamId/data.dart' as _i85;
-import 'app/teams/\$teamId/action.dart' as _i86;
-import 'app/teams/\$teamId/route.dart' as _i87;
-import 'app/teams/\$teamId/loading.dart' as _i88;
-import 'app/teams/\$teamId/error.dart' as _i89;
-import 'app/teams/\$teamId/layout.dart' as _i90;
-import 'app/teams/\$teamId/not_found.dart' as _i91;
-import 'app/teams/\$teamId/nav.dart' as _i92;
-import 'app/teams/\$teamId/members/page.dart' as _i93;
-import 'app/teams/\$teamId/members/not_found.dart' as _i94;
-import 'app/teams/\$teamId/members/nav.dart' as _i95;
-import 'app/teams/\$teamId/members/\$member/data.dart' as _i96;
-import 'app/teams/\$teamId/members/\$member/page.dart' as _i97;
-import 'app/teams/\$teamId/settings/page.dart' as _i98;
-import 'app/teams/\$teamId/settings/nav.dart' as _i99;
-import 'app/ticks/data.dart' as _i100;
-import 'app/ticks/page.dart' as _i101;
-import 'app/ticks/transition.dart' as _i102;
-import 'app/vault/page.dart' as _i103;
-import 'app/vault/guard.dart' as _i104;
-import 'app/vault/nav.dart' as _i105;
-import 'app/wiki/\$\$article/data.dart' as _i106;
-import 'app/wiki/\$\$article/page.dart' as _i107;
-import 'app/meta.dart' as _i108;
-import 'app/docs/\$\$rest/meta.dart' as _i109;
-import 'app/files/\$\$\$path/meta.dart' as _i110;
-import 'app/help/meta.dart' as _i111;
-import 'app/login/meta.dart' as _i112;
-import 'app/old-search/meta.dart' as _i113;
-import 'app/photos/meta.dart' as _i114;
-import 'app/photos/\$id/meta.dart' as _i115;
+import 'app/(account)/nickname/data.dart' as _i7;
+import 'app/(account)/nickname/action.dart' as _i8;
+import 'app/(account)/nickname/page.dart' as _i9;
+import 'app/(account)/profile/page.dart' as _i10;
+import 'app/(account)/settings/page.dart' as _i11;
+import 'app/(members)/guard.dart' as _i12;
+import 'app/(members)/admin/page.dart' as _i13;
+import 'app/(members)/admin/guard.dart' as _i14;
+import 'app/(members)/admin/nav.dart' as _i15;
+import 'app/(members)/inbox/page.dart' as _i16;
+import 'app/(members)/inbox/nav.dart' as _i17;
+import 'app/(plans)/free/page.dart' as _i18;
+import 'app/(plans)/pro/page.dart' as _i19;
+import 'app/browse/\$\$categories/data.dart' as _i20;
+import 'app/browse/\$\$categories/page.dart' as _i21;
+import 'app/catalog/data.dart' as _i22;
+import 'app/catalog/page.dart' as _i23;
+import 'app/catalog/\$productId/data.dart' as _i24;
+import 'app/catalog/\$productId/page.dart' as _i25;
+import 'app/catalog/\$productId/loading.dart' as _i26;
+import 'app/catalog/\$productId/error.dart' as _i27;
+import 'app/catalog/\$productId/reviews/data.dart' as _i28;
+import 'app/catalog/\$productId/reviews/page.dart' as _i29;
+import 'app/compare/\$\$ids/data.dart' as _i30;
+import 'app/compare/\$\$ids/page.dart' as _i31;
+import 'app/counter/data.dart' as _i32;
+import 'app/counter/page.dart' as _i33;
+import 'app/docs/page.dart' as _i34;
+import 'app/docs/\$\$rest/page.dart' as _i35;
+import 'app/docs/new/page.dart' as _i36;
+import 'app/feed/page.dart' as _i37;
+import 'app/files/\$\$\$path/page.dart' as _i38;
+import 'app/guide/page.dart' as _i39;
+import 'app/help/page.dart' as _i40;
+import 'app/help/not_found.dart' as _i41;
+import 'app/help/\$topic/page.dart' as _i42;
+import 'app/help/\$topic/examples/page.dart' as _i43;
+import 'app/help/contact/page.dart' as _i44;
+import 'app/login/page.dart' as _i45;
+import 'app/notes/layout.dart' as _i46;
+import 'app/notes/\$id/page.dart' as _i47;
+import 'app/notes/\$id/guard.dart' as _i48;
+import 'app/old-search/redirect.dart' as _i49;
+import 'app/old-shops/\$shop/redirect.dart' as _i50;
+import 'app/orders/\$id/page.dart' as _i51;
+import 'app/orders/\$id/nav.dart' as _i52;
+import 'app/orders/\$id/refund/data.dart' as _i53;
+import 'app/orders/\$id/refund/action.dart' as _i54;
+import 'app/orders/\$id/refund/page.dart' as _i55;
+import 'app/orders/\$id/refund/guard.dart' as _i56;
+import 'app/orders/\$id/refund/nav.dart' as _i57;
+import 'app/orders/\$id/refund/confirm/page.dart' as _i58;
+import 'app/orders/\$id/refund/receipt/page.dart' as _i59;
+import 'app/photos/page.dart' as _i60;
+import 'app/photos/\$id/page.dart' as _i61;
+import 'app/photos/\$id/transition.dart' as _i62;
+import 'app/photos/share/page.dart' as _i63;
+import 'app/photos/share/present.dart' as _i64;
+import 'app/photos/share/terms/page.dart' as _i65;
+import 'app/photos/sort/page.dart' as _i66;
+import 'app/photos/sort/transition.dart' as _i67;
+import 'app/photos/upload/page.dart' as _i68;
+import 'app/photos/upload/transition.dart' as _i69;
+import 'app/remount/location/\$id/page.dart' as _i70;
+import 'app/remount/never/\$id/page.dart' as _i71;
+import 'app/remount/segments/\$id/page.dart' as _i72;
+import 'app/reports/data.dart' as _i73;
+import 'app/reports/layout.dart' as _i74;
+import 'app/reports/monthly/page.dart' as _i75;
+import 'app/reports/yearly/page.dart' as _i76;
+import 'app/search/data.dart' as _i77;
+import 'app/search/page.dart' as _i78;
+import 'app/search/nav.dart' as _i79;
+import 'app/shop/\$category/data.dart' as _i80;
+import 'app/shop/\$category/page.dart' as _i81;
+import 'app/shops/\$shop/page.dart' as _i82;
+import 'app/shops/\$shop/layout.dart' as _i83;
+import 'app/shops/\$shop/guard.dart' as _i84;
+import 'app/shops/\$shop/items/\$id/data.dart' as _i85;
+import 'app/shops/\$shop/items/\$id/page.dart' as _i86;
+import 'app/shops/\$shop/items/\$id/error.dart' as _i87;
+import 'app/teams/\$teamId/data.dart' as _i88;
+import 'app/teams/\$teamId/action.dart' as _i89;
+import 'app/teams/\$teamId/route.dart' as _i90;
+import 'app/teams/\$teamId/loading.dart' as _i91;
+import 'app/teams/\$teamId/error.dart' as _i92;
+import 'app/teams/\$teamId/layout.dart' as _i93;
+import 'app/teams/\$teamId/not_found.dart' as _i94;
+import 'app/teams/\$teamId/nav.dart' as _i95;
+import 'app/teams/\$teamId/members/page.dart' as _i96;
+import 'app/teams/\$teamId/members/not_found.dart' as _i97;
+import 'app/teams/\$teamId/members/nav.dart' as _i98;
+import 'app/teams/\$teamId/members/\$member/data.dart' as _i99;
+import 'app/teams/\$teamId/members/\$member/page.dart' as _i100;
+import 'app/teams/\$teamId/settings/page.dart' as _i101;
+import 'app/teams/\$teamId/settings/nav.dart' as _i102;
+import 'app/ticks/data.dart' as _i103;
+import 'app/ticks/page.dart' as _i104;
+import 'app/ticks/transition.dart' as _i105;
+import 'app/vault/page.dart' as _i106;
+import 'app/vault/guard.dart' as _i107;
+import 'app/vault/nav.dart' as _i108;
+import 'app/wiki/\$\$article/data.dart' as _i109;
+import 'app/wiki/\$\$article/page.dart' as _i110;
+import 'app/meta.dart' as _i111;
+import 'app/docs/\$\$rest/meta.dart' as _i112;
+import 'app/files/\$\$\$path/meta.dart' as _i113;
+import 'app/help/meta.dart' as _i114;
+import 'app/login/meta.dart' as _i115;
+import 'app/old-search/meta.dart' as _i116;
+import 'app/photos/meta.dart' as _i117;
+import 'app/photos/\$id/meta.dart' as _i118;
 import 'package:features/models/category.dart' show Category;
 import 'package:features/models/note.dart' show Note;
+import 'package:features/nicknames.dart' show Profile;
 import 'package:features/refunds.dart' show RefundInput;
-import 'package:fespalier/fespalier.dart' show Category, RefundInput;
+import 'package:fespalier/fespalier.dart' show Category, Profile, RefundInput;
 import 'package:flutter/material.dart' show Note;
 
 /// The file tree under lib/app/, ready to mount.
@@ -275,13 +280,32 @@ abstract final class AppRoutes {
                 ),
                 routes: [
                   GoRoute(
+                    path: 'nickname',
+                    caseSensitive: false,
+                    pageBuilder: (context, state) => _i5.transition(
+                      state.pageKey,
+                      RouteScrollMemory(
+                        state: state,
+                        child: DataView(
+                          watch: (ref) => watchData(ref, 'd3', _data3),
+                          refresh: (ref) => ref.invalidate(_data3),
+                          data: (d) => _i9.NicknamePage(profile: d),
+                          loading: () => const DefaultLoading(),
+                          error: (e, st, retry) => DefaultError(error: e, retry: retry),
+                          keepPrevious: true,
+                          optimistic: (ref) => ref.watch(_optimistic3),
+                        ),
+                      ),
+                    ),
+                  ),
+                  GoRoute(
                     path: 'profile',
                     caseSensitive: false,
                     pageBuilder: (context, state) => _i5.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i7.ProfilePage(),
+                        child: const _i10.ProfilePage(),
                       ),
                     ),
                   ),
@@ -292,7 +316,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i8.SettingsPage(),
+                        child: const _i11.SettingsPage(),
                       ),
                     ),
                   ),
@@ -303,28 +327,28 @@ abstract final class AppRoutes {
                 path: 'admin',
                 caseSensitive: false,
                 redirect: (context, state) => firstRedirect([
-                  () => traceGuard(state, 'g5@6', refGuard(context, 'g5@6', (ref) => _i9.guard(ref, uri: state.uri))),
-                  () => traceGuard(state, 'g6@6', _i11.guard(ProviderScope.containerOf(context, listen: false))),
+                  () => traceGuard(state, 'g6@7', refGuard(context, 'g6@7', (ref) => _i12.guard(ref, uri: state.uri))),
+                  () => traceGuard(state, 'g7@7', _i14.guard(ProviderScope.containerOf(context, listen: false))),
                 ]),
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i10.AdminPage(),
+                    child: const _i13.AdminPage(),
                   ),
                 ),
               ),
               GoRoute(
                 path: 'inbox',
                 caseSensitive: false,
-                redirect: (context, state) => traceGuard(state, 'g5@7', refGuard(context, 'g5@7', (ref) => _i9.guard(ref, uri: state.uri))),
+                redirect: (context, state) => traceGuard(state, 'g6@8', refGuard(context, 'g6@8', (ref) => _i12.guard(ref, uri: state.uri))),
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params7(state),
-                      (v) => _i13.InboxPage(folder: v.folder),
+                      () => _params8(state),
+                      (v) => _i16.InboxPage(folder: v.folder),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -337,7 +361,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: _i15.page(),
+                    child: _i18.page(),
                   ),
                 ),
               ),
@@ -349,8 +373,8 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params10(state),
-                      (v) => _i16.page(coupon: v.coupon),
+                      () => _params11(state),
+                      (v) => _i19.page(coupon: v.coupon),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -364,9 +388,9 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: DataView(
-                      watch: (ref) => watchData(ref, 'd13', _data13),
-                      refresh: (ref) => ref.invalidateSelected(_data13),
-                      data: (d) => _i20.CatalogPage(featured: d),
+                      watch: (ref) => watchData(ref, 'd14', _data14),
+                      refresh: (ref) => ref.invalidateSelected(_data14),
+                      data: (d) => _i23.CatalogPage(featured: d),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
                       keepPrevious: true,
@@ -382,13 +406,13 @@ abstract final class AppRoutes {
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params14(state),
+                          () => _params15(state),
                           (v) => DataView(
-                            watch: (ref) => watchData(ref, 'd14', _data14(v.productId)),
-                            refresh: (ref) => ref.invalidateSelected(_data14(v.productId)),
-                            data: (d) => _i22.ProductDetailPage(product: d),
-                            loading: () => const _i23.ProductLoading(),
-                            error: (e, st, retry) => _i24.ProductError(error: e, retry: retry),
+                            watch: (ref) => watchData(ref, 'd15', _data15(v.productId)),
+                            refresh: (ref) => ref.invalidateSelected(_data15(v.productId)),
+                            data: (d) => _i25.ProductDetailPage(product: d),
+                            loading: () => const _i26.ProductLoading(),
+                            error: (e, st, retry) => _i27.ProductError(error: e, retry: retry),
                             keepPrevious: true,
                           ),
                           () => notFound(state.uri),
@@ -404,13 +428,13 @@ abstract final class AppRoutes {
                           RouteScrollMemory(
                             state: state,
                             child: buildWithParams(
-                              () => _params15(state),
+                              () => _params16(state),
                               (v) => DataView(
-                                watch: (ref) => watchData(ref, 'd15', _data15((productId: v.productId, page: v.page))),
-                                refresh: (ref) => ref.invalidateSelected(_data15((productId: v.productId, page: v.page))),
-                                data: (d) => _i26.ReviewsPage(reviews: d),
-                                loading: () => const _i23.ProductLoading(),
-                                error: (e, st, retry) => _i24.ProductError(error: e, retry: retry),
+                                watch: (ref) => watchData(ref, 'd16', _data16((productId: v.productId, page: v.page))),
+                                refresh: (ref) => ref.invalidateSelected(_data16((productId: v.productId, page: v.page))),
+                                data: (d) => _i29.ReviewsPage(reviews: d),
+                                loading: () => const _i26.ProductLoading(),
+                                error: (e, st, retry) => _i27.ProductError(error: e, retry: retry),
                                 keepPrevious: true,
                               ),
                               () => notFound(state.uri),
@@ -430,9 +454,9 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: DataView(
-                      watch: (ref) => watchData(ref, 'd18', _i29.data),
-                      refresh: (ref) => ref.invalidate(_i29.data),
-                      data: (d) => _i30.CounterPage(count: d),
+                      watch: (ref) => watchData(ref, 'd19', _i32.data),
+                      refresh: (ref) => ref.invalidate(_i32.data),
+                      data: (d) => _i33.CounterPage(count: d),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
                       keepPrevious: true,
@@ -447,7 +471,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i31.DocsIndexPage(),
+                    child: const _i34.DocsIndexPage(),
                   ),
                 ),
                 routes: [
@@ -458,7 +482,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i33.NewDocPage(),
+                        child: const _i36.NewDocPage(),
                       ),
                     ),
                   ),
@@ -470,8 +494,8 @@ abstract final class AppRoutes {
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params20(state),
-                          (v) => _i32.DocsPage(rest: v.rest),
+                          () => _params21(state),
+                          (v) => _i35.DocsPage(rest: v.rest),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -486,7 +510,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i34.FeedPage(),
+                    child: const _i37.FeedPage(),
                   ),
                 ),
               ),
@@ -497,8 +521,8 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params24(state),
-                      (v) => _i35.FilesPage(path: v.path),
+                      () => _params25(state),
+                      (v) => _i38.FilesPage(path: v.path),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -511,7 +535,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i36.GuidePage(),
+                    child: const _i39.GuidePage(),
                   ),
                 ),
               ),
@@ -522,7 +546,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i37.HelpPage(),
+                    child: const _i40.HelpPage(),
                   ),
                 ),
                 routes: [
@@ -533,7 +557,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i41.ContactPage(),
+                        child: const _i44.ContactPage(),
                       ),
                     ),
                   ),
@@ -545,9 +569,9 @@ abstract final class AppRoutes {
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params27(state),
-                          (v) => _i39.HelpTopicPage(topic: v.topic),
-                          () => _i38.HelpNotFound(uri: state.uri),
+                          () => _params28(state),
+                          (v) => _i42.HelpTopicPage(topic: v.topic),
+                          () => _i41.HelpNotFound(uri: state.uri),
                         ),
                       ),
                     ),
@@ -560,9 +584,9 @@ abstract final class AppRoutes {
                           RouteScrollMemory(
                             state: state,
                             child: buildWithParams(
-                              () => _params28(state),
-                              (v) => _i40.HelpExamplesPage(topic: v.topic),
-                              () => _i38.HelpNotFound(uri: state.uri),
+                              () => _params29(state),
+                              (v) => _i43.HelpExamplesPage(topic: v.topic),
+                              () => _i41.HelpNotFound(uri: state.uri),
                             ),
                           ),
                         ),
@@ -579,8 +603,8 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params30(state),
-                      (v) => _i42.LoginPage(from: v.from),
+                      () => _params31(state),
+                      (v) => _i45.LoginPage(from: v.from),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -589,9 +613,9 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'old-search',
                 caseSensitive: false,
-                redirect: (context, state) => traceGuard(state, 'r33', guardWithParams(
-                  () => _params33(state),
-                  (v) => _i46.redirect(q: v.q),
+                redirect: (context, state) => traceGuard(state, 'r34', guardWithParams(
+                  () => _params34(state),
+                  (v) => _i49.redirect(q: v.q),
                 )),
               ),
               GoRoute(
@@ -601,7 +625,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i57.PhotosPage(),
+                    child: const _i60.PhotosPage(),
                   ),
                 ),
                 routes: [
@@ -609,11 +633,11 @@ abstract final class AppRoutes {
                     path: 'share',
                     parentNavigatorKey: rootNavigatorKey,
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i61.present(
+                    pageBuilder: (context, state) => _i64.present(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i60.ShareSheet(),
+                        child: const _i63.ShareSheet(),
                       ),
                     ),
                     routes: [
@@ -625,7 +649,7 @@ abstract final class AppRoutes {
                           state.pageKey,
                           RouteScrollMemory(
                             state: state,
-                            child: const _i62.TermsPage(),
+                            child: const _i65.TermsPage(),
                           ),
                         ),
                       ),
@@ -634,35 +658,35 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'sort',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i64.transition(
+                    pageBuilder: (context, state) => _i67.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i63.SortPage(),
+                        child: const _i66.SortPage(),
                       ),
                     ),
                   ),
                   GoRoute(
                     path: 'upload',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i66.transition(
+                    pageBuilder: (context, state) => _i69.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i65.UploadPage(),
+                        child: const _i68.UploadPage(),
                       ),
                     ),
                   ),
                   GoRoute(
                     path: ':id',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i59.transition(
+                    pageBuilder: (context, state) => _i62.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params42(state),
-                          (v) => _i58.PhotoPage(id: v.id),
+                          () => _params43(state),
+                          (v) => _i61.PhotoPage(id: v.id),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -674,11 +698,11 @@ abstract final class AppRoutes {
                 pageBuilder: (context, state, child) => _i1.transition(
                   const ValueKey<String>('layout:reports/'),
                   buildWithParams(
-                      () => _layout54(state),
+                      () => _layout55(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd54', _data54(v.period)),
-                        refresh: (ref) => ref.invalidate(_data54(v.period)),
-                        data: (d) => _i71.ReportsLayout(data: d, child: child),
+                        watch: (ref) => watchData(ref, 'd55', _data55(v.period)),
+                        refresh: (ref) => ref.invalidate(_data55(v.period)),
+                        data: (d) => _i74.ReportsLayout(data: d, child: child),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
                         keepPrevious: true,
@@ -695,10 +719,10 @@ abstract final class AppRoutes {
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params55(state),
+                          () => _params56(state),
                           (v) => SectionView(
-                            watch: (ref) => watchData(ref, 'd54', _data54(v.period)),
-                            data: (s54) => _i72.MonthlyReportPage(data: s54),
+                            watch: (ref) => watchData(ref, 'd55', _data55(v.period)),
+                            data: (s55) => _i75.MonthlyReportPage(data: s55),
                           ),
                           () => notFound(state.uri),
                         ),
@@ -713,8 +737,8 @@ abstract final class AppRoutes {
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params56(state),
-                          (v) => const _i73.YearlyReportPage(),
+                          () => _params57(state),
+                          (v) => const _i76.YearlyReportPage(),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -731,11 +755,11 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params57(state),
+                      () => _params58(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd57', _data57((q: v.q, page: v.page, tags: QueryList(v.tags)))),
-                        refresh: (ref) => ref.invalidate(_data57((q: v.q, page: v.page, tags: QueryList(v.tags)))),
-                        data: (d) => _i75.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
+                        watch: (ref) => watchData(ref, 'd58', _data58((q: v.q, page: v.page, tags: QueryList(v.tags)))),
+                        refresh: (ref) => ref.invalidate(_data58((q: v.q, page: v.page, tags: QueryList(v.tags)))),
+                        data: (d) => _i78.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
                         keepPrevious: true,
@@ -748,14 +772,14 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'ticks',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i102.transition(
+                pageBuilder: (context, state) => _i105.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: DataView(
-                      watch: (ref) => watchData(ref, 'd69', _data69),
-                      refresh: (ref) => ref.invalidate(_data69),
-                      data: (d) => _i101.TicksPage(data: d),
+                      watch: (ref) => watchData(ref, 'd70', _data70),
+                      refresh: (ref) => ref.invalidate(_data70),
+                      data: (d) => _i104.TicksPage(data: d),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
                       keepPrevious: true,
@@ -766,12 +790,12 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'vault',
                 caseSensitive: false,
-                redirect: (context, state) => traceGuard(state, 'g70@70', refGuard(context, 'g70@70', (ref) => _i104.guard(ref, uri: state.uri))),
+                redirect: (context, state) => traceGuard(state, 'g71@71', refGuard(context, 'g71@71', (ref) => _i107.guard(ref, uri: state.uri))),
                 pageBuilder: (context, state) => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i103.VaultPage(),
+                    child: const _i106.VaultPage(),
                   ),
                 ),
               ),
@@ -793,20 +817,20 @@ abstract final class AppRoutes {
               ShellRoute(
                 pageBuilder: (context, state, child) => _i1.transition(
                   const ValueKey<String>('layout:notes/'),
-                  _i43.NotesLayout(child: child, extra: extraOrNull(state)),
+                  _i46.NotesLayout(child: child, extra: extraOrNull(state)),
                 ),
                 routes: [
                   GoRoute(
                     path: 'notes/:id',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g32@32', _i45.guard(ProviderScope.containerOf(context, listen: false), extra: extraOrNull(state))),
+                    redirect: (context, state) => traceGuard(state, 'g33@33', _i48.guard(ProviderScope.containerOf(context, listen: false), extra: extraOrNull(state))),
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params32(state),
-                          (v) => _i44.NotePage(id: v.id, extra: extraOf(state)),
+                          () => _params33(state),
+                          (v) => _i47.NotePage(id: v.id, extra: extraOf(state)),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -818,9 +842,9 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'old-shops/:shop',
                 caseSensitive: false,
-                redirect: (context, state) => traceGuard(state, 'r35', guardWithParams(
-                  () => _params35(state),
-                  (v) => _i47.redirect(shop: v.shop),
+                redirect: (context, state) => traceGuard(state, 'r36', guardWithParams(
+                  () => _params36(state),
+                  (v) => _i50.redirect(shop: v.shop),
                 )),
               ),
               GoRoute(
@@ -831,8 +855,8 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params37(state),
-                      (v) => _i48.OrderPage(id: v.id),
+                      () => _params38(state),
+                      (v) => _i51.OrderPage(id: v.id),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -841,20 +865,20 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'refund',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g38@38', guardWithParams(
-                      () => _params38(state),
-                      (v) => _i53.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
+                    redirect: (context, state) => traceGuard(state, 'g39@39', guardWithParams(
+                      () => _params39(state),
+                      (v) => _i56.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
                     )),
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params38(state),
+                          () => _params39(state),
                           (v) => DataView(
-                            watch: (ref) => watchData(ref, 'd38', _data38(v.id)),
-                            refresh: (ref) => ref.invalidate(_data38(v.id)),
-                            data: (d) => _i52.RefundPage(id: v.id, quote: d),
+                            watch: (ref) => watchData(ref, 'd39', _data39(v.id)),
+                            refresh: (ref) => ref.invalidate(_data39(v.id)),
+                            data: (d) => _i55.RefundPage(id: v.id, quote: d),
                             loading: () => const DefaultLoading(),
                             error: (e, st, retry) => DefaultError(error: e, retry: retry),
                             keepPrevious: true,
@@ -872,8 +896,8 @@ abstract final class AppRoutes {
                           RouteScrollMemory(
                             state: state,
                             child: buildWithParams(
-                              () => _params40(state),
-                              (v) => _i56.ReceiptPage(id: v.id),
+                              () => _params41(state),
+                              (v) => _i59.ReceiptPage(id: v.id),
                               () => notFound(state.uri),
                             ),
                           ),
@@ -884,17 +908,17 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'refund/confirm',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g38@39', guardWithParams(
-                      () => _guard38(state),
-                      (v) => _i53.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
+                    redirect: (context, state) => traceGuard(state, 'g39@40', guardWithParams(
+                      () => _guard39(state),
+                      (v) => _i56.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
                     )),
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params39(state),
-                          (v) => _i55.ConfirmRefundPage(id: v.id),
+                          () => _params40(state),
+                          (v) => _i58.ConfirmRefundPage(id: v.id),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -910,8 +934,8 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params49(state),
-                      (v) => _i67.RemountLocationPage(id: v.id, page: v.page),
+                      () => _params50(state),
+                      (v) => _i70.RemountLocationPage(id: v.id, page: v.page),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -925,8 +949,8 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params51(state),
-                      (v) => _i68.RemountNeverPage(id: v.id, page: v.page),
+                      () => _params52(state),
+                      (v) => _i71.RemountNeverPage(id: v.id, page: v.page),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -940,8 +964,8 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params53(state),
-                      (v) => _i69.RemountSegmentsPage(id: v.id, page: v.page),
+                      () => _params54(state),
+                      (v) => _i72.RemountSegmentsPage(id: v.id, page: v.page),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -955,11 +979,11 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params59(state),
+                      () => _params60(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd59', _data59(v.category)),
-                        refresh: (ref) => ref.invalidate(_data59(v.category)),
-                        data: (d) => _i78.CategoryShopPage(category: v.category, items: d, sort: v.sort),
+                        watch: (ref) => watchData(ref, 'd60', _data60(v.category)),
+                        refresh: (ref) => ref.invalidate(_data60(v.category)),
+                        data: (d) => _i81.CategoryShopPage(category: v.category, items: d, sort: v.sort),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
                         keepPrevious: true,
@@ -973,8 +997,8 @@ abstract final class AppRoutes {
                 pageBuilder: (context, state, child) => _i1.transition(
                   const ValueKey<String>('layout:shops/\$shop/'),
                   buildWithParams(
-                      () => _layout61(state),
-                      (v) => _i80.ShopLayout(shop: v.shop, child: child),
+                      () => _layout62(state),
+                      (v) => _i83.ShopLayout(shop: v.shop, child: child),
                       () => notFound(state.uri),
                     ),
                 ),
@@ -982,17 +1006,17 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'shops/:shop',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g61@61', guardWithParams(
-                      () => _params61(state),
-                      (v) => _i81.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
+                    redirect: (context, state) => traceGuard(state, 'g62@62', guardWithParams(
+                      () => _params62(state),
+                      (v) => _i84.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
                     )),
                     pageBuilder: (context, state) => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params61(state),
-                          (v) => _i79.ShopPage(shop: v.shop),
+                          () => _params62(state),
+                          (v) => _i82.ShopPage(shop: v.shop),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -1006,13 +1030,13 @@ abstract final class AppRoutes {
                           RouteScrollMemory(
                             state: state,
                             child: buildWithParams(
-                              () => _params63(state),
+                              () => _params64(state),
                               (v) => DataView(
-                                watch: (ref) => watchData(ref, 'd63', _data63((shop: v.shop, id: v.id))),
-                                refresh: (ref) => ref.invalidate(_data63((shop: v.shop, id: v.id))),
-                                data: (d) => _i83.ItemPage(d),
+                                watch: (ref) => watchData(ref, 'd64', _data64((shop: v.shop, id: v.id))),
+                                refresh: (ref) => ref.invalidate(_data64((shop: v.shop, id: v.id))),
+                                data: (d) => _i86.ItemPage(d),
                                 loading: () => const DefaultLoading(),
-                                error: (e, st, retry) => _i84.ItemError(e, retry),
+                                error: (e, st, retry) => _i87.ItemError(e, retry),
                                 keepPrevious: true,
                               ),
                               () => notFound(state.uri),
@@ -1029,17 +1053,18 @@ abstract final class AppRoutes {
                 pageBuilder: (context, state, child) => _i1.transition(
                   const ValueKey<String>('layout:teams/\$teamId/'),
                   buildWithParams(
-                      () => _layout65(state),
+                      () => _layout66(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd65', _data65(v.teamId)),
-                        refresh: (ref) => ref.invalidate(_data65(v.teamId)),
-                        data: (d) => _i90.TeamLayout(team: d, child: child),
-                        loading: () => const _i88.TeamLoading(),
-                        error: (e, st, retry) => _i89.TeamError(error: e, retry: retry),
+                        watch: (ref) => watchData(ref, 'd66', _data66(v.teamId)),
+                        refresh: (ref) => ref.invalidate(_data66(v.teamId)),
+                        data: (d) => _i93.TeamLayout(team: d, child: child),
+                        loading: () => const _i91.TeamLoading(),
+                        error: (e, st, retry) => _i92.TeamError(error: e, retry: retry),
                         keepPrevious: true,
+                        optimistic: (ref) => ref.watch(_optimistic66(v.teamId)),
                         keepDataOnError: true,
                       ),
-                      () => _i91.TeamNotFound(uri: state.uri),
+                      () => _i94.TeamNotFound(uri: state.uri),
                     ),
                 ),
                 routes: [
@@ -1051,12 +1076,13 @@ abstract final class AppRoutes {
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params66(state),
+                          () => _params67(state),
                           (v) => SectionView(
-                            watch: (ref) => watchData(ref, 'd65', _data65(v.teamId)),
-                            data: (s65) => _i93.MembersPage(s65, teamId: v.teamId),
+                            watch: (ref) => watchData(ref, 'd66', _data66(v.teamId)),
+                            data: (s66) => _i96.MembersPage(s66, teamId: v.teamId),
+                            optimistic: (ref) => ref.watch(_optimistic66(v.teamId)),
                           ),
-                          () => _i94.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
+                          () => _i97.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                         ),
                       ),
                     ),
@@ -1069,20 +1095,21 @@ abstract final class AppRoutes {
                           RouteScrollMemory(
                             state: state,
                             child: buildWithParams(
-                              () => _params67(state),
+                              () => _params68(state),
                               (v) => DataView(
-                                watch: (ref) => watchData(ref, 'd67', _data67(v.member)),
-                                refresh: (ref) => ref.invalidate(_data67(v.member)),
+                                watch: (ref) => watchData(ref, 'd68', _data68(v.member)),
+                                refresh: (ref) => ref.invalidate(_data68(v.member)),
                                 data: (d) => SectionView(
-                                  watch: (ref) => watchData(ref, 'd65', _data65(v.teamId)),
-                                  data: (s65) => _i97.MemberPage(label: d, team: s65),
+                                  watch: (ref) => watchData(ref, 'd66', _data66(v.teamId)),
+                                  data: (s66) => _i100.MemberPage(label: d, team: s66),
+                                  optimistic: (ref) => ref.watch(_optimistic66(v.teamId)),
                                 ),
-                                loading: () => const _i88.TeamLoading(),
-                                error: (e, st, retry) => _i89.TeamError(error: e, retry: retry),
+                                loading: () => const _i91.TeamLoading(),
+                                error: (e, st, retry) => _i92.TeamError(error: e, retry: retry),
                                 keepPrevious: true,
                                 keepDataOnError: true,
                               ),
-                              () => _i94.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
+                              () => _i97.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                             ),
                           ),
                         ),
@@ -1097,12 +1124,13 @@ abstract final class AppRoutes {
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
-                          () => _params68(state),
+                          () => _params69(state),
                           (v) => SectionView(
-                            watch: (ref) => watchData(ref, 'd65', _data65(v.teamId)),
-                            data: (s65) => _i98.TeamSettingsPage(data: s65),
+                            watch: (ref) => watchData(ref, 'd66', _data66(v.teamId)),
+                            data: (s66) => _i101.TeamSettingsPage(data: s66),
+                            optimistic: (ref) => ref.watch(_optimistic66(v.teamId)),
                           ),
-                          () => _i91.TeamNotFound(uri: state.uri),
+                          () => _i94.TeamNotFound(uri: state.uri),
                         ),
                       ),
                     ),
@@ -1118,11 +1146,11 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params12(state),
+                      () => _params13(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd12', _data12(restKey(v.categories))),
-                        refresh: (ref) => ref.invalidate(_data12(restKey(v.categories))),
-                        data: (d) => _i18.BrowsePage(categories: v.categories, data: d),
+                        watch: (ref) => watchData(ref, 'd13', _data13(restKey(v.categories))),
+                        refresh: (ref) => ref.invalidate(_data13(restKey(v.categories))),
+                        data: (d) => _i21.BrowsePage(categories: v.categories, data: d),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
                         keepPrevious: true,
@@ -1140,11 +1168,11 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params17(state),
+                      () => _params18(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd17', _data17(restKey(v.ids))),
-                        refresh: (ref) => ref.invalidate(_data17(restKey(v.ids))),
-                        data: (d) => _i28.ComparePage(ids: v.ids, total: d),
+                        watch: (ref) => watchData(ref, 'd18', _data18(restKey(v.ids))),
+                        refresh: (ref) => ref.invalidate(_data18(restKey(v.ids))),
+                        data: (d) => _i31.ComparePage(ids: v.ids, total: d),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
                         keepPrevious: true,
@@ -1161,8 +1189,8 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params24(state),
-                      (v) => _i35.FilesPage(path: v.path),
+                      () => _params25(state),
+                      (v) => _i38.FilesPage(path: v.path),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -1176,11 +1204,11 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: buildWithParams(
-                      () => _params72(state),
+                      () => _params73(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd72', _data72(restKey(v.article))),
-                        refresh: (ref) => ref.invalidate(_data72(restKey(v.article))),
-                        data: (d) => _i107.WikiPage(article: v.article, data: d),
+                        watch: (ref) => watchData(ref, 'd73', _data73(restKey(v.article))),
+                        refresh: (ref) => ref.invalidate(_data73(restKey(v.article))),
+                        data: (d) => _i110.WikiPage(article: v.article, data: d),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
                         keepPrevious: true,
@@ -1203,9 +1231,9 @@ abstract final class AppRoutes {
         uri,
         base,
         [
-          (['teams', ':teamId', 'members'], (uri) => _i94.MembersNotFound(uri: uri, teamId: pathPart(uri, base, 1)), caseSensitive: false),
-          (['teams', ':teamId'], (uri) => _i91.TeamNotFound(uri: uri), caseSensitive: false),
-          (['help|aide|hilfe'], (uri) => _i38.HelpNotFound(uri: uri), caseSensitive: false),
+          (['teams', ':teamId', 'members'], (uri) => _i97.MembersNotFound(uri: uri, teamId: pathPart(uri, base, 1)), caseSensitive: false),
+          (['teams', ':teamId'], (uri) => _i94.TeamNotFound(uri: uri), caseSensitive: false),
+          (['help|aide|hilfe'], (uri) => _i41.HelpNotFound(uri: uri), caseSensitive: false),
         ],
         (uri) => DefaultNotFound(uri),
         caseSensitive: false,
@@ -1214,38 +1242,39 @@ abstract final class AppRoutes {
   /// Every route as [matchUrl] tries it, most specific first.
   static final List<RouteMatcher> _matchers = [
     RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const []), caseSensitive: false),
+    RouteMatcher(['nickname'], (s) => UrlMatch(s.uri, const NicknameRoute(), const {}, [_data3]), caseSensitive: false),
     RouteMatcher(['profile'], (s) => UrlMatch(s.uri, const ProfileRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['admin'], (s) => UrlMatch(s.uri, const AdminRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['inbox'], (s) {
-      final p = _params7(s);
+      final p = _params8(s);
       return UrlMatch(s.uri, InboxRoute(folder: p.folder), {'folder': p.folder}, const []);
     }, caseSensitive: false),
     RouteMatcher(['free'], (s) => UrlMatch(s.uri, const FreeRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['pro'], (s) {
-      final p = _params10(s);
+      final p = _params11(s);
       return UrlMatch(s.uri, ProPlanRoute(coupon: p.coupon), {'coupon': p.coupon}, const []);
     }, caseSensitive: false),
-    RouteMatcher(['catalog'], (s) => UrlMatch(s.uri, const CatalogRoute(), const {}, [_data13]), caseSensitive: false),
-    RouteMatcher(['counter'], (s) => UrlMatch(s.uri, const CounterRoute(), const {}, [_i29.data]), caseSensitive: false),
+    RouteMatcher(['catalog'], (s) => UrlMatch(s.uri, const CatalogRoute(), const {}, [_data14]), caseSensitive: false),
+    RouteMatcher(['counter'], (s) => UrlMatch(s.uri, const CounterRoute(), const {}, [_i32.data]), caseSensitive: false),
     RouteMatcher(['docs'], (s) => UrlMatch(s.uri, const DocsIndexRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['feed'], (s) => UrlMatch(s.uri, const FeedRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['guide|führer|руководство'], (s) => UrlMatch(s.uri, const GuideRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['help|aide|hilfe'], (s) => UrlMatch(s.uri, const HelpRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['login'], (s) {
-      final p = _params30(s);
+      final p = _params31(s);
       return UrlMatch(s.uri, LoginRoute(from: p.from), {'from': p.from}, const []);
     }, caseSensitive: false),
     RouteMatcher(['old-search'], (s) {
-      final p = _params33(s);
+      final p = _params34(s);
       return UrlMatch(s.uri, OldSearchRoute(q: p.q), {'q': p.q}, const []);
     }, caseSensitive: false),
     RouteMatcher(['photos'], (s) => UrlMatch(s.uri, const PhotosRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['search'], (s) {
-      final p = _params57(s);
-      return UrlMatch(s.uri, SearchRoute(q: p.q, page: p.page, tags: p.tags), {'q': p.q, 'page': p.page, 'tags': p.tags}, [_data57((q: p.q, page: p.page, tags: QueryList(p.tags)))]);
+      final p = _params58(s);
+      return UrlMatch(s.uri, SearchRoute(q: p.q, page: p.page, tags: p.tags), {'q': p.q, 'page': p.page, 'tags': p.tags}, [_data58((q: p.q, page: p.page, tags: QueryList(p.tags)))]);
     }, caseSensitive: false),
-    RouteMatcher(['ticks'], (s) => UrlMatch(s.uri, const TicksRoute(), const {}, [_data69]), caseSensitive: false),
+    RouteMatcher(['ticks'], (s) => UrlMatch(s.uri, const TicksRoute(), const {}, [_data70]), caseSensitive: false),
     RouteMatcher(['vault'], (s) => UrlMatch(s.uri, const VaultRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['docs', 'new'], (s) => UrlMatch(s.uri, const NewDocRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['help|aide|hilfe', 'contact|kontakt'], (s) => UrlMatch(s.uri, const ContactRoute(), const {}, const []), caseSensitive: false),
@@ -1253,113 +1282,113 @@ abstract final class AppRoutes {
     RouteMatcher(['photos', 'sort'], (s) => UrlMatch(s.uri, const SortRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['photos', 'upload'], (s) => UrlMatch(s.uri, const UploadRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['reports', 'monthly'], (s) {
-      final p = _params55(s);
-      return UrlMatch(s.uri, MonthlyReportRoute(period: p.period), {'period': p.period}, [_data54(p.period)]);
+      final p = _params56(s);
+      return UrlMatch(s.uri, MonthlyReportRoute(period: p.period), {'period': p.period}, [_data55(p.period)]);
     }, caseSensitive: false),
     RouteMatcher(['reports', 'yearly'], (s) {
-      final p = _params56(s);
-      return UrlMatch(s.uri, YearlyReportRoute(period: p.period), {'period': p.period}, [_data54(p.period)]);
+      final p = _params57(s);
+      return UrlMatch(s.uri, YearlyReportRoute(period: p.period), {'period': p.period}, [_data55(p.period)]);
     }, caseSensitive: false),
     RouteMatcher(['photos', 'share', 'terms'], (s) => UrlMatch(s.uri, const TermsRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['remount', 'location', ':id'], (s) {
-      final p = _params49(s);
+      final p = _params50(s);
       return UrlMatch(s.uri, RemountLocationRoute(id: p.id, page: p.page), {'id': p.id, 'page': p.page}, const []);
     }, caseSensitive: false),
     RouteMatcher(['remount', 'never', ':id'], (s) {
-      final p = _params51(s);
+      final p = _params52(s);
       return UrlMatch(s.uri, RemountNeverRoute(id: p.id, page: p.page), {'id': p.id, 'page': p.page}, const []);
     }, caseSensitive: false),
     RouteMatcher(['remount', 'segments', ':id'], (s) {
-      final p = _params53(s);
+      final p = _params54(s);
       return UrlMatch(s.uri, RemountSegmentsRoute(id: p.id, page: p.page), {'id': p.id, 'page': p.page}, const []);
     }, caseSensitive: false),
     RouteMatcher(['catalog', ':productId'], (s) {
-      final p = _params14(s);
-      return UrlMatch(s.uri, ProductDetailRoute(productId: p.productId), {'productId': p.productId}, [_data14(p.productId)]);
+      final p = _params15(s);
+      return UrlMatch(s.uri, ProductDetailRoute(productId: p.productId), {'productId': p.productId}, [_data15(p.productId)]);
     }, caseSensitive: false),
     RouteMatcher(['help|aide|hilfe', ':topic'], (s) {
-      final p = _params27(s);
+      final p = _params28(s);
       return UrlMatch(s.uri, HelpTopicRoute(topic: p.topic), {'topic': p.topic}, const []);
     }, caseSensitive: false),
     RouteMatcher(['notes', ':id'], (s) {
-      final p = _params32(s);
+      final p = _params33(s);
       return UrlMatch(s.uri, NoteRoute(id: p.id), {'id': p.id}, const []);
     }, caseSensitive: false),
     RouteMatcher(['old-shops', ':shop'], (s) {
-      final p = _params35(s);
+      final p = _params36(s);
       return UrlMatch(s.uri, OldShopsShopRoute(shop: p.shop), {'shop': p.shop}, const []);
     }, caseSensitive: false),
     RouteMatcher(['orders', ':id'], (s) {
-      final p = _params37(s);
+      final p = _params38(s);
       return UrlMatch(s.uri, OrderRoute(id: p.id), {'id': p.id}, const []);
     }, caseSensitive: false),
     RouteMatcher(['photos', ':id'], (s) {
-      final p = _params42(s);
+      final p = _params43(s);
       return UrlMatch(s.uri, PhotoRoute(id: p.id), {'id': p.id}, const []);
     }, caseSensitive: false),
     RouteMatcher(['shop|boutique|laden', ':category'], (s) {
-      final p = _params59(s);
-      return UrlMatch(s.uri, CategoryShopRoute(category: p.category, sort: p.sort), {'category': p.category, 'sort': p.sort}, [_data59(p.category)]);
+      final p = _params60(s);
+      return UrlMatch(s.uri, CategoryShopRoute(category: p.category, sort: p.sort), {'category': p.category, 'sort': p.sort}, [_data60(p.category)]);
     }, caseSensitive: false),
     RouteMatcher(['shops', ':shop'], (s) {
-      final p = _params61(s);
+      final p = _params62(s);
       return UrlMatch(s.uri, ShopRoute(shop: p.shop), {'shop': p.shop}, const []);
     }, caseSensitive: false),
     RouteMatcher(['catalog', ':productId', 'reviews'], (s) {
-      final p = _params15(s);
-      return UrlMatch(s.uri, ReviewsRoute(productId: p.productId, page: p.page), {'productId': p.productId, 'page': p.page}, [_data15((productId: p.productId, page: p.page))]);
+      final p = _params16(s);
+      return UrlMatch(s.uri, ReviewsRoute(productId: p.productId, page: p.page), {'productId': p.productId, 'page': p.page}, [_data16((productId: p.productId, page: p.page))]);
     }, caseSensitive: false),
     RouteMatcher(['help|aide|hilfe', ':topic', 'examples|exemples|beispiele'], (s) {
-      final p = _params28(s);
+      final p = _params29(s);
       return UrlMatch(s.uri, HelpExamplesRoute(topic: p.topic), {'topic': p.topic}, const []);
     }, caseSensitive: false),
     RouteMatcher(['orders', ':id', 'refund'], (s) {
-      final p = _params38(s);
-      return UrlMatch(s.uri, RefundRoute(id: p.id), {'id': p.id}, [_data38(p.id)]);
+      final p = _params39(s);
+      return UrlMatch(s.uri, RefundRoute(id: p.id), {'id': p.id}, [_data39(p.id)]);
     }, caseSensitive: false),
     RouteMatcher(['teams', ':teamId', 'members'], (s) {
-      final p = _params66(s);
-      return UrlMatch(s.uri, MembersRoute(teamId: p.teamId), {'teamId': p.teamId}, [_data65(p.teamId)]);
+      final p = _params67(s);
+      return UrlMatch(s.uri, MembersRoute(teamId: p.teamId), {'teamId': p.teamId}, [_data66(p.teamId)]);
     }, caseSensitive: false),
     RouteMatcher(['teams', ':teamId', 'settings'], (s) {
-      final p = _params68(s);
-      return UrlMatch(s.uri, TeamSettingsRoute(teamId: p.teamId), {'teamId': p.teamId}, [_data65(p.teamId)]);
+      final p = _params69(s);
+      return UrlMatch(s.uri, TeamSettingsRoute(teamId: p.teamId), {'teamId': p.teamId}, [_data66(p.teamId)]);
     }, caseSensitive: false),
     RouteMatcher(['orders', ':id', 'refund', 'confirm'], (s) {
-      final p = _params39(s);
+      final p = _params40(s);
       return UrlMatch(s.uri, ConfirmRefundRoute(id: p.id), {'id': p.id}, const []);
     }, caseSensitive: false),
     RouteMatcher(['orders', ':id', 'refund', 'receipt'], (s) {
-      final p = _params40(s);
+      final p = _params41(s);
       return UrlMatch(s.uri, ReceiptRoute(id: p.id), {'id': p.id}, const []);
     }, caseSensitive: false),
     RouteMatcher(['shops', ':shop', 'items', ':id'], (s) {
-      final p = _params63(s);
-      return UrlMatch(s.uri, ItemRoute(shop: p.shop, id: p.id), {'shop': p.shop, 'id': p.id}, [_data63((shop: p.shop, id: p.id))]);
+      final p = _params64(s);
+      return UrlMatch(s.uri, ItemRoute(shop: p.shop, id: p.id), {'shop': p.shop, 'id': p.id}, [_data64((shop: p.shop, id: p.id))]);
     }, caseSensitive: false),
     RouteMatcher(['teams', ':teamId', 'members', ':member'], (s) {
-      final p = _params67(s);
-      return UrlMatch(s.uri, MemberRoute(teamId: p.teamId, member: p.member), {'teamId': p.teamId, 'member': p.member}, [_data65(p.teamId), _data67(p.member)]);
+      final p = _params68(s);
+      return UrlMatch(s.uri, MemberRoute(teamId: p.teamId, member: p.member), {'teamId': p.teamId, 'member': p.member}, [_data66(p.teamId), _data68(p.member)]);
     }, caseSensitive: false),
     RouteMatcher(['browse', '*categories'], (s) {
-      final p = _params12(s);
-      return UrlMatch(s.uri, BrowseRoute(categories: p.categories), {'categories': p.categories}, [_data12(restKey(p.categories))]);
+      final p = _params13(s);
+      return UrlMatch(s.uri, BrowseRoute(categories: p.categories), {'categories': p.categories}, [_data13(restKey(p.categories))]);
     }, caseSensitive: false),
     RouteMatcher(['compare', '*ids'], (s) {
-      final p = _params17(s);
-      return UrlMatch(s.uri, CompareRoute(ids: p.ids), {'ids': p.ids}, [_data17(restKey(p.ids))]);
+      final p = _params18(s);
+      return UrlMatch(s.uri, CompareRoute(ids: p.ids), {'ids': p.ids}, [_data18(restKey(p.ids))]);
     }, caseSensitive: false),
     RouteMatcher(['docs', '*rest'], (s) {
-      final p = _params20(s);
+      final p = _params21(s);
       return UrlMatch(s.uri, DocsRoute(rest: p.rest), {'rest': p.rest}, const []);
     }, caseSensitive: false),
     RouteMatcher(['files', '*path?'], (s) {
-      final p = _params24(s);
+      final p = _params25(s);
       return UrlMatch(s.uri, FilesRoute(path: p.path), {'path': p.path}, const []);
     }),
     RouteMatcher(['wiki', '*article'], (s) {
-      final p = _params72(s);
-      return UrlMatch(s.uri, WikiRoute(article: p.article), {'article': p.article}, [_data72(restKey(p.article))]);
+      final p = _params73(s);
+      return UrlMatch(s.uri, WikiRoute(article: p.article), {'article': p.article}, [_data73(restKey(p.article))]);
     }, caseSensitive: false),
     RouteMatcher([':slug'], (s) {
       final p = _params1(s);
@@ -1410,7 +1439,7 @@ abstract final class AppManifest {
       path: '/',
       folder: '',
       layouts: [''],
-      meta: _i108.meta,
+      meta: _i111.meta,
     ),
     RouteInfo(
       type: SlugRoute,
@@ -1418,6 +1447,14 @@ abstract final class AppManifest {
       folder: '\$slug',
       layouts: [''],
       segments: [RouteParam('slug', 'String')],
+    ),
+    RouteInfo(
+      type: NicknameRoute,
+      path: '/nickname',
+      folder: '(account)/nickname',
+      groups: ['(account)'],
+      layouts: ['', '(account)'],
+      dataKeys: [],
     ),
     RouteInfo(
       type: ProfileRoute,
@@ -1522,7 +1559,7 @@ abstract final class AppManifest {
       folder: 'docs/\$\$rest',
       layouts: [''],
       segments: [RouteParam('rest', 'List<String>', catchAll: true)],
-      meta: _i109.meta,
+      meta: _i112.meta,
     ),
     RouteInfo(
       type: NewDocRoute,
@@ -1542,7 +1579,7 @@ abstract final class AppManifest {
       folder: 'files/\$\$\$path',
       layouts: [''],
       segments: [RouteParam('path', 'List<String>', catchAll: true)],
-      meta: _i110.meta,
+      meta: _i113.meta,
     ),
     RouteInfo(
       type: GuideRoute,
@@ -1557,7 +1594,7 @@ abstract final class AppManifest {
       paths: {'fr': '/aide', 'de': '/hilfe'},
       folder: 'help',
       layouts: [''],
-      meta: _i111.meta,
+      meta: _i114.meta,
     ),
     RouteInfo(
       type: HelpTopicRoute,
@@ -1588,7 +1625,7 @@ abstract final class AppManifest {
       folder: 'login',
       layouts: [''],
       query: [RouteParam('from', 'String?')],
-      meta: _i112.meta,
+      meta: _i115.meta,
     ),
     RouteInfo(
       type: NoteRoute,
@@ -1604,7 +1641,7 @@ abstract final class AppManifest {
       presentation: RoutePresentation.redirect,
       layouts: [''],
       query: [RouteParam('q', 'String?')],
-      meta: _i113.meta,
+      meta: _i116.meta,
     ),
     RouteInfo(
       type: OldShopsShopRoute,
@@ -1649,7 +1686,7 @@ abstract final class AppManifest {
       path: '/photos',
       folder: 'photos',
       layouts: [''],
-      meta: _i114.meta,
+      meta: _i117.meta,
     ),
     RouteInfo(
       type: PhotoRoute,
@@ -1657,7 +1694,7 @@ abstract final class AppManifest {
       folder: 'photos/\$id',
       layouts: [''],
       segments: [RouteParam('id', 'int')],
-      meta: _i115.meta,
+      meta: _i118.meta,
     ),
     RouteInfo(
       type: ShareSheetRoute,
@@ -1829,7 +1866,7 @@ abstract final class AppManifest {
 /// Typed access to the data.dart of the section `reports/` wraps (reports/data.dart) keyed by `period`: the layout and the pages below it read it.
 abstract final class ReportsSection {
   /// reports/data.dart as a Riverpod provider keyed by `period`.
-  static final data = _data54;
+  static final data = _data55;
 
   /// Watches reports/data.dart: an `AsyncValue`, typed by inference.
   static final watch = (WidgetRef ref, {String? period}) => ref.watch(data(period));
@@ -1847,10 +1884,10 @@ abstract final class ReportsSection {
 /// Typed access to the data.dart of the section `teams/$teamId/` wraps (teams/$teamId/data.dart) keyed by `teamId`: the layout and the pages below it read it.
 abstract final class TeamsTeamIdSection {
   /// teams/$teamId/data.dart as a Riverpod provider keyed by `teamId`.
-  static final data = _data65;
+  static final data = _data66;
 
-  /// Watches teams/$teamId/data.dart: an `AsyncValue`, typed by inference.
-  static final watch = (WidgetRef ref, {required String teamId}) => ref.watch(data(teamId));
+  /// Watches teams/$teamId/data.dart, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference. Since 0.8.0.
+  static final watch = (WidgetRef ref, {required String teamId}) => ref.watchOptimistic(data(teamId), _optimistic66(teamId));
 
   /// Reads teams/$teamId/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref, {required String teamId}) => ref.readData(data(teamId));
@@ -1862,7 +1899,7 @@ abstract final class TeamsTeamIdSection {
   static Future<void> refresh(WidgetRef ref, {required String teamId}) => ref.refresh(data(teamId).future);
 
   /// The state of `addMember()` (teams/$teamId/action.dart) keyed by `teamId`: `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final addMemberAction = _action65_0;
+  static final addMemberAction = _action66_0;
 
   /// Runs `addMember()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final addMember = (WidgetRef ref, {required String teamId, required String input}) => ref.runAction(addMemberAction(teamId), input);
@@ -1909,6 +1946,52 @@ final class SlugRoute extends TypedLocation {
 
   SlugRoute _copyWith({Object? slug = _keep}) =>
       SlugRoute(slug: _kept<String>(slug, this.slug));
+}
+
+/// `/nickname` → (account)/nickname/page.dart
+final class NicknameRoute extends TypedLocation {
+  const NicknameRoute();
+
+  /// (account)/nickname/data.dart as a Riverpod provider.
+  static final data = _data3;
+
+  @override
+  String get location => joinLocation(AppRoutes.base, '/nickname');
+
+  /// The NicknameRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
+  /// Throws a [StateError] when that is another route.
+  static NicknameRoute of(BuildContext context) => routeOf<NicknameRoute>(context, AppRoutes.matchUrl);
+
+  /// Like [of], or null when the route around [context] is another one.
+  static NicknameRoute? maybeOf(BuildContext context) => maybeRouteOf<NicknameRoute>(context, AppRoutes.matchUrl);
+
+  /// Watches (account)/nickname/data.dart, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference (static, so it can name the keys). Since 0.8.0.
+  static final watch = (WidgetRef ref) => ref.watchOptimistic(data, _optimistic3);
+
+  /// Reads (account)/nickname/data.dart once, keeping it alive until it completes.
+  static final read = (WidgetRef ref) => ref.readData(data);
+
+  /// Starts loading (account)/nickname/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
+
+  /// Re-runs (account)/nickname/data.dart; completes with the fresh value.
+  Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
+
+  /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
+  @override
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data3], keepFor: keepFor);
+
+  /// The state of `action()` ((account)/nickname/action.dart): `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
+  static final action = _action3_0;
+
+  /// Runs `action()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
+  static final submit = (WidgetRef ref, {required _i8.NicknameFields input}) => ref.runAction(action, input);
+
+  /// Watches the state of `action()` and gives `call(input)` to run it, for `build`. A failed run is in `state`, not thrown.
+  static final useAction = (WidgetRef ref) => ref.watchAction(action);
+
+  /// The form of `action()` ((account)/nickname/action.dart), for `build` in a `HookConsumerWidget`: a typed field per field of its input, starting from `form(data)`; `onSubmit` checks the fields and `validate()`, then runs it, and is null while it runs. Since 0.8.0.
+  static final useForm = (WidgetRef ref, {required Profile data, ActionFormValidation validation = ActionFormValidation.afterSubmit, bool resetOnSuccess = false, ActionFormMessages messages = const ActionFormMessages()}) => useActionForm(ref, action, data: data, initial: () => _i8.form(data), fields: (ActionFormFields<_i8.NicknameFields> f) => (nickname: f.text('nickname', (v) => v.nickname, FieldCodec.text), age: f.text('age', (v) => v.age, FieldCodec.optionalInteger), newsletter: f.value('newsletter', (v) => v.newsletter)), input: (f) => (nickname: f.nickname.value, age: f.age.value, newsletter: f.newsletter.value), validate: _i8.validate, validation: validation, resetOnSuccess: resetOnSuccess, messages: messages);
 }
 
 /// `/profile` → (account)/profile/page.dart
@@ -2028,7 +2111,7 @@ final class BrowseRoute extends TypedLocation {
   final List<Category> categories;
 
   /// browse/$$categories/data.dart as a Riverpod provider keyed by `categories`.
-  static final data = _data12;
+  static final data = _data13;
 
   @override
   String get location {
@@ -2065,7 +2148,7 @@ final class BrowseRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data12(restKey(categories))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data13(restKey(categories))], keepFor: keepFor);
 }
 
 /// `/catalog` → catalog/page.dart
@@ -2073,7 +2156,7 @@ final class CatalogRoute extends TypedLocation {
   const CatalogRoute();
 
   /// catalog/data.dart as a Riverpod provider.
-  static final data = _data13;
+  static final data = _data14;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/catalog');
@@ -2099,7 +2182,7 @@ final class CatalogRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data13], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data14], keepFor: keepFor);
 }
 
 /// `/catalog/:productId` → catalog/$productId/page.dart
@@ -2109,7 +2192,7 @@ final class ProductDetailRoute extends TypedLocation {
   final String productId;
 
   /// catalog/$productId/data.dart as a Riverpod provider keyed by `productId`.
-  static final data = _data14;
+  static final data = _data15;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/catalog/${Uri.encodeComponent(productId)}');
@@ -2143,7 +2226,7 @@ final class ProductDetailRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data14(productId)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data15(productId)], keepFor: keepFor);
 }
 
 /// `/catalog/:productId/reviews` → catalog/$productId/reviews/page.dart
@@ -2154,7 +2237,7 @@ final class ReviewsRoute extends TypedLocation {
   final int? page;
 
   /// catalog/$productId/reviews/data.dart as a Riverpod provider keyed by `(productId, page)`.
-  static final data = _data15;
+  static final data = _data16;
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/catalog/${Uri.encodeComponent(productId)}/reviews'), {'page': page});
@@ -2188,7 +2271,7 @@ final class ReviewsRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data15((productId: productId, page: page))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data16((productId: productId, page: page))], keepFor: keepFor);
 }
 
 /// `/compare/*ids` → compare/$$ids/page.dart
@@ -2198,7 +2281,7 @@ final class CompareRoute extends TypedLocation {
   final List<int> ids;
 
   /// compare/$$ids/data.dart as a Riverpod provider keyed by `ids`.
-  static final data = _data17;
+  static final data = _data18;
 
   @override
   String get location {
@@ -2235,7 +2318,7 @@ final class CompareRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data17(restKey(ids))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data18(restKey(ids))], keepFor: keepFor);
 }
 
 /// `/counter` → counter/page.dart
@@ -2243,7 +2326,7 @@ final class CounterRoute extends TypedLocation {
   const CounterRoute();
 
   /// counter/data.dart as a Riverpod provider.
-  static final data = _i29.data;
+  static final data = _i32.data;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/counter');
@@ -2269,7 +2352,7 @@ final class CounterRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_i29.data], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_i32.data], keepFor: keepFor);
 }
 
 /// `/docs` → docs/page.dart
@@ -2647,7 +2730,7 @@ final class RefundRoute extends TypedLocation {
   final int id;
 
   /// orders/$id/refund/data.dart as a Riverpod provider keyed by `id`.
-  static final data = _data38;
+  static final data = _data39;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/orders/$id/refund');
@@ -2681,10 +2764,10 @@ final class RefundRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data38(id)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data39(id)], keepFor: keepFor);
 
   /// The state of `action()` (orders/$id/refund/action.dart) keyed by `id`: `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final action = _action38_0;
+  static final action = _action39_0;
 
   /// Runs `action()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final submit = (WidgetRef ref, {required int id, required RefundInput input}) => ref.runAction(action(id), input);
@@ -2947,7 +3030,7 @@ final class MonthlyReportRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data54(period)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data55(period)], keepFor: keepFor);
 }
 
 /// `/reports/yearly` → reports/yearly/page.dart
@@ -2976,7 +3059,7 @@ final class YearlyReportRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data54(period)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data55(period)], keepFor: keepFor);
 }
 
 /// `/search` → search/page.dart
@@ -2988,7 +3071,7 @@ final class SearchRoute extends TypedLocation {
   final List<String> tags;
 
   /// search/data.dart as a Riverpod provider keyed by `(q, page, tags)`.
-  static final data = _data57;
+  static final data = _data58;
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/search'), {'q': q, 'page': page, 'tags': tags});
@@ -3022,7 +3105,7 @@ final class SearchRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data57((q: q, page: page, tags: QueryList(tags)))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data58((q: q, page: page, tags: QueryList(tags)))], keepFor: keepFor);
 }
 
 /// `/shop/:category` → shop/$category/page.dart
@@ -3030,10 +3113,10 @@ final class CategoryShopRoute extends TypedLocation {
   const CategoryShopRoute({required this.category, this.sort});
 
   final Category category;
-  final _i78.Sort? sort;
+  final _i81.Sort? sort;
 
   /// shop/$category/data.dart as a Riverpod provider keyed by `category`.
-  static final data = _data59;
+  static final data = _data60;
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/shop/${category.name}'), {'sort': sort});
@@ -3055,10 +3138,10 @@ final class CategoryShopRoute extends TypedLocation {
   /// A copy with the given segments and query parameters changed; one left out keeps its value, and
   /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
   /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
-  CategoryShopRoute Function({Category category, _i78.Sort? sort}) get copyWith => _copyWith;
+  CategoryShopRoute Function({Category category, _i81.Sort? sort}) get copyWith => _copyWith;
 
   CategoryShopRoute _copyWith({Object? category = _keep, Object? sort = _keep}) =>
-      CategoryShopRoute(category: _kept<Category>(category, this.category), sort: _kept<_i78.Sort?>(sort, this.sort));
+      CategoryShopRoute(category: _kept<Category>(category, this.category), sort: _kept<_i81.Sort?>(sort, this.sort));
 
   /// Watches shop/$category/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required Category category}) => ref.watch(data(category));
@@ -3074,7 +3157,7 @@ final class CategoryShopRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data59(category)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data60(category)], keepFor: keepFor);
 }
 
 /// `/shops/:shop` → shops/$shop/page.dart
@@ -3110,7 +3193,7 @@ final class ItemRoute extends TypedLocation {
   final int id;
 
   /// shops/$shop/items/$id/data.dart as a Riverpod provider keyed by `(shop, id)`.
-  static final data = _data63;
+  static final data = _data64;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/shops/${Uri.encodeComponent(shop)}/items/$id');
@@ -3144,7 +3227,7 @@ final class ItemRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data63((shop: shop, id: id))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data64((shop: shop, id: id))], keepFor: keepFor);
 }
 
 /// `/teams/:teamId/members` → teams/$teamId/members/page.dart
@@ -3173,7 +3256,7 @@ final class MembersRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data65(teamId)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data66(teamId)], keepFor: keepFor);
 }
 
 /// `/teams/:teamId/members/:member` → teams/$teamId/members/$member/page.dart
@@ -3184,7 +3267,7 @@ final class MemberRoute extends TypedLocation {
   final int member;
 
   /// teams/$teamId/members/$member/data.dart as a Riverpod provider keyed by `member`.
-  static final data = _data67;
+  static final data = _data68;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/teams/${Uri.encodeComponent(teamId)}/members/$member');
@@ -3218,7 +3301,7 @@ final class MemberRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data65(teamId), _data67(member)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data66(teamId), _data68(member)], keepFor: keepFor);
 }
 
 /// `/teams/:teamId/settings` → teams/$teamId/settings/page.dart
@@ -3247,7 +3330,7 @@ final class TeamSettingsRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data65(teamId)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data66(teamId)], keepFor: keepFor);
 }
 
 /// `/ticks` → ticks/page.dart
@@ -3255,7 +3338,7 @@ final class TicksRoute extends TypedLocation {
   const TicksRoute();
 
   /// ticks/data.dart as a Riverpod provider.
-  static final data = _data69;
+  static final data = _data70;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/ticks');
@@ -3281,7 +3364,7 @@ final class TicksRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data69], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data70], keepFor: keepFor);
 }
 
 /// `/vault` → vault/page.dart
@@ -3306,7 +3389,7 @@ final class WikiRoute extends TypedLocation {
   final List<String> article;
 
   /// wiki/$$article/data.dart as a Riverpod provider keyed by `article`.
-  static final data = _data72;
+  static final data = _data73;
 
   @override
   String get location {
@@ -3343,7 +3426,7 @@ final class WikiRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data72(restKey(article))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data73(restKey(article))], keepFor: keepFor);
 }
 
 /// What a `copyWith` parameter is when it is left out: private, so no caller can pass it,
@@ -3358,35 +3441,33 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 
 ({String slug}) _params1(GoRouterState s) => (slug: Segment.asString(s, 'slug'));
 
-({String? folder}) _params7(GoRouterState s) => (folder: Query.asString(s, 'folder'));
+({String? folder}) _params8(GoRouterState s) => (folder: Query.asString(s, 'folder'));
 
-({String? coupon}) _params10(GoRouterState s) => (coupon: Query.asString(s, 'coupon'));
+({String? coupon}) _params11(GoRouterState s) => (coupon: Query.asString(s, 'coupon'));
 
-({List<Category> categories}) _params12(GoRouterState s) => (categories: Segment.asEnumRest(s, 'categories', Category.values, caseSensitive: false));
+({List<Category> categories}) _params13(GoRouterState s) => (categories: Segment.asEnumRest(s, 'categories', Category.values, caseSensitive: false));
 
-({String productId}) _params14(GoRouterState s) => (productId: Segment.asString(s, 'productId'));
+({String productId}) _params15(GoRouterState s) => (productId: Segment.asString(s, 'productId'));
 
-({String productId, int? page}) _params15(GoRouterState s) => (productId: Segment.asString(s, 'productId'), page: Query.asInt(s, 'page'));
+({String productId, int? page}) _params16(GoRouterState s) => (productId: Segment.asString(s, 'productId'), page: Query.asInt(s, 'page'));
 
-({List<int> ids}) _params17(GoRouterState s) => (ids: Segment.asIntRest(s, 'ids'));
+({List<int> ids}) _params18(GoRouterState s) => (ids: Segment.asIntRest(s, 'ids'));
 
-({List<String> rest}) _params20(GoRouterState s) => (rest: Segment.asRest(s, 'rest'));
+({List<String> rest}) _params21(GoRouterState s) => (rest: Segment.asRest(s, 'rest'));
 
-({List<String> path}) _params24(GoRouterState s) => (path: Segment.asRest(s, 'path'));
-
-({String topic}) _params27(GoRouterState s) => (topic: Segment.asString(s, 'topic'));
+({List<String> path}) _params25(GoRouterState s) => (path: Segment.asRest(s, 'path'));
 
 ({String topic}) _params28(GoRouterState s) => (topic: Segment.asString(s, 'topic'));
 
-({String? from}) _params30(GoRouterState s) => (from: Query.asString(s, 'from'));
+({String topic}) _params29(GoRouterState s) => (topic: Segment.asString(s, 'topic'));
 
-({int id}) _params32(GoRouterState s) => (id: Segment.asInt(s, 'id'));
+({String? from}) _params31(GoRouterState s) => (from: Query.asString(s, 'from'));
 
-({String? q}) _params33(GoRouterState s) => (q: Query.asString(s, 'q'));
+({int id}) _params33(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
-({String shop}) _params35(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
+({String? q}) _params34(GoRouterState s) => (q: Query.asString(s, 'q'));
 
-({int id}) _params37(GoRouterState s) => (id: Segment.asInt(s, 'id'));
+({String shop}) _params36(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
 
 ({int id}) _params38(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
@@ -3394,116 +3475,138 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 
 ({int id}) _params40(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
-({int id}) _params42(GoRouterState s) => (id: Segment.asInt(s, 'id'));
+({int id}) _params41(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
-({int id, int? page}) _params49(GoRouterState s) => (id: Segment.asInt(s, 'id'), page: Query.asInt(s, 'page'));
+({int id}) _params43(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
-({int id, int? page}) _params51(GoRouterState s) => (id: Segment.asInt(s, 'id'), page: Query.asInt(s, 'page'));
+({int id, int? page}) _params50(GoRouterState s) => (id: Segment.asInt(s, 'id'), page: Query.asInt(s, 'page'));
 
-({int id, int? page}) _params53(GoRouterState s) => (id: Segment.asInt(s, 'id'), page: Query.asInt(s, 'page'));
+({int id, int? page}) _params52(GoRouterState s) => (id: Segment.asInt(s, 'id'), page: Query.asInt(s, 'page'));
 
-({String? period}) _params55(GoRouterState s) => (period: Query.asString(s, 'period'));
+({int id, int? page}) _params54(GoRouterState s) => (id: Segment.asInt(s, 'id'), page: Query.asInt(s, 'page'));
 
 ({String? period}) _params56(GoRouterState s) => (period: Query.asString(s, 'period'));
 
-({String? q, int? page, List<String> tags}) _params57(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'));
+({String? period}) _params57(GoRouterState s) => (period: Query.asString(s, 'period'));
 
-({Category category, _i78.Sort? sort}) _params59(GoRouterState s) => (category: Segment.asEnum(s, 'category', Category.values, caseSensitive: false), sort: Query.asEnum(s, 'sort', _i78.Sort.values, caseSensitive: false));
+({String? q, int? page, List<String> tags}) _params58(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'));
 
-({String shop}) _params61(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
+({Category category, _i81.Sort? sort}) _params60(GoRouterState s) => (category: Segment.asEnum(s, 'category', Category.values, caseSensitive: false), sort: Query.asEnum(s, 'sort', _i81.Sort.values, caseSensitive: false));
 
-({String shop, int id}) _params63(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'));
+({String shop}) _params62(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
 
-({String teamId}) _params66(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
+({String shop, int id}) _params64(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'));
 
-({String teamId, int member}) _params67(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'), member: Segment.asInt(s, 'member'));
+({String teamId}) _params67(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
 
-({String teamId}) _params68(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
+({String teamId, int member}) _params68(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'), member: Segment.asInt(s, 'member'));
 
-({List<String> article}) _params72(GoRouterState s) => (article: Segment.asRest(s, 'article'));
+({String teamId}) _params69(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
+
+({List<String> article}) _params73(GoRouterState s) => (article: Segment.asRest(s, 'article'));
 
 ({String? banner}) _layout0(GoRouterState s) => (banner: Query.asString(s, 'banner'));
 
-({String? period}) _layout54(GoRouterState s) => (period: Query.asString(s, 'period'));
+({String? period}) _layout55(GoRouterState s) => (period: Query.asString(s, 'period'));
 
-({String shop}) _layout61(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
+({String shop}) _layout62(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
 
-({String teamId}) _layout65(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
+({String teamId}) _layout66(GoRouterState s) => (teamId: Segment.asString(s, 'teamId'));
 
-({int id}) _guard38(GoRouterState s) => (id: Segment.asInt(s, 'id'));
+({int id}) _guard39(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
-final _data12 = FutureProvider.autoDispose.family(
-  (Ref ref, String categories) => traceData(ref, 'd12', categories, _i17.data(ref, categories: restParts(categories).map(Category.values.byName).toList())),
+final _data3 = FutureProvider.autoDispose(
+  (Ref ref) => traceData(ref, 'd3', null, _i7.data(ref)),
+);
+
+final _data13 = FutureProvider.autoDispose.family(
+  (Ref ref, String categories) => traceData(ref, 'd13', categories, _i20.data(ref, categories: restParts(categories).map(Category.values.byName).toList())),
 );
 
 /// data.dart selects the app's own provider: nothing wraps it.
-final _data13 = _i19.data();
+final _data14 = _i22.data();
 
 /// data.dart selects the app's own provider: nothing wraps it (a closure, so its type is inferred).
-final _data14 = (String productId) => _i21.data(productId: productId);
+final _data15 = (String productId) => _i24.data(productId: productId);
 
 /// data.dart selects the app's own provider: nothing wraps it (a closure, so its type is inferred).
-final _data15 = (({String productId, int? page}) k) => _i25.data(productId: k.productId, page: k.page);
+final _data16 = (({String productId, int? page}) k) => _i28.data(productId: k.productId, page: k.page);
 
-final _data17 = FutureProvider.autoDispose.family(
-  (Ref ref, String ids) => traceData(ref, 'd17', ids, _i27.data(ref, ids: restParts(ids).map(int.parse).toList())),
+final _data18 = FutureProvider.autoDispose.family(
+  (Ref ref, String ids) => traceData(ref, 'd18', ids, _i30.data(ref, ids: restParts(ids).map(int.parse).toList())),
 );
 
-final _data38 = FutureProvider.autoDispose.family(
-  (Ref ref, int id) => traceData(ref, 'd38', id, _i50.data(ref, id: id)),
+final _data39 = FutureProvider.autoDispose.family(
+  (Ref ref, int id) => traceData(ref, 'd39', id, _i53.data(ref, id: id)),
 );
 
-final _data54 = FutureProvider.autoDispose.family(
-  (Ref ref, String? period) => traceData(ref, 'd54', period, _i70.data(ref, period: period)),
+final _data55 = FutureProvider.autoDispose.family(
+  (Ref ref, String? period) => traceData(ref, 'd55', period, _i73.data(ref, period: period)),
 );
 
-final _data57 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => traceData(ref, 'd57', k, _i74.data(ref, q: k.q, page: k.page, tags: k.tags)),
+final _data58 = FutureProvider.autoDispose.family(
+  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => traceData(ref, 'd58', k, _i77.data(ref, q: k.q, page: k.page, tags: k.tags)),
 );
 
-final _data59 = FutureProvider.autoDispose.family(
-  (Ref ref, Category category) => traceData(ref, 'd59', category, _i77.data(ref, category: category)),
+final _data60 = FutureProvider.autoDispose.family(
+  (Ref ref, Category category) => traceData(ref, 'd60', category, _i80.data(ref, category: category)),
 );
 
-final _data63 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String shop, int id}) k) => traceData(ref, 'd63', k, _i82.data(ref, shop: k.shop, id: k.id)),
+final _data64 = FutureProvider.autoDispose.family(
+  (Ref ref, ({String shop, int id}) k) => traceData(ref, 'd64', k, _i85.data(ref, shop: k.shop, id: k.id)),
 );
 
-final _data65 = FutureProvider.autoDispose.family(
-  (Ref ref, String teamId) => freshData(ref, _i87.freshness, traceData(ref, 'd65', teamId, _i85.data(ref, teamId: teamId))),
+final _data66 = FutureProvider.autoDispose.family(
+  (Ref ref, String teamId) => freshData(ref, _i90.freshness, traceData(ref, 'd66', teamId, _i88.data(ref, teamId: teamId))),
 );
 
-final _data67 = FutureProvider.autoDispose.family(
-  (Ref ref, int member) => freshData(ref, _i87.freshness, traceData(ref, 'd67', member, _i96.data(ref, member: member))),
+final _data68 = FutureProvider.autoDispose.family(
+  (Ref ref, int member) => freshData(ref, _i90.freshness, traceData(ref, 'd68', member, _i99.data(ref, member: member))),
 );
 
-final _data69 = StreamProvider.autoDispose(
-  (Ref ref) => traceData(ref, 'd69', null, _i100.data(ref)),
+final _data70 = StreamProvider.autoDispose(
+  (Ref ref) => traceData(ref, 'd70', null, _i103.data(ref)),
 );
 
-final _data72 = FutureProvider.autoDispose.family(
-  (Ref ref, String article) => traceData(ref, 'd72', article, _i106.data(ref, article: restParts(article))),
+final _data73 = FutureProvider.autoDispose.family(
+  (Ref ref, String article) => traceData(ref, 'd73', article, _i109.data(ref, article: restParts(article))),
+);
+
+/// What reads of (account)/nickname/data.dart show while a write that patches it is in flight (`optimistic()` of (account)/nickname/action.dart). Since 0.8.0.
+final _optimistic3 = optimisticLayer(_data3);
+
+/// What reads of teams/$teamId/data.dart show while a write that patches it is in flight (`addMemberOptimistic()` of teams/$teamId/action.dart). Since 0.8.0.
+final _optimistic66 = optimisticLayerFamily((String teamId) => _data66(teamId));
+
+/// `action()` of (account)/nickname/action.dart: its state, and what it invalidates after a success.
+final _action3_0 = actionProvider(
+  (Ref ref, _i8.NicknameFields input) => _i8.action(ref, input: input),
+  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_data3],
+  validate: _i8.validate,
+  optimistic: () => _optimistic3.patch(_i8.optimistic),
+  site: 'a3_0',
 );
 
 /// `action()` of orders/$id/refund/action.dart: its state, and what it invalidates after a success.
-final _action38_0 = actionFamily(
-  (Ref ref, int id, RefundInput input) => _i51.action(ref, id: id, input: input),
-  invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_data38(id)],
-  site: 'a38_0',
+final _action39_0 = actionFamily(
+  (Ref ref, int id, RefundInput input) => _i54.action(ref, id: id, input: input),
+  invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_data39(id)],
+  site: 'a39_0',
 );
 
 /// `addMember()` of teams/$teamId/action.dart: its state, and what it invalidates after a success.
-final _action65_0 = actionFamily(
-  (Ref ref, String teamId, String input) => _i86.addMember(ref, teamId: teamId, input: input),
-  invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_data65(teamId)],
-  site: 'a65_0',
+final _action66_0 = actionFamily(
+  (Ref ref, String teamId, String input) => _i89.addMember(ref, teamId: teamId, input: input),
+  invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_data66(teamId)],
+  optimistic: (String teamId) => _optimistic66(teamId).patch(_i89.addMemberOptimistic),
+  site: 'a66_0',
 );
 
 /// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.0).
 abstract final class AppMenu {
   /// Every nav.dart, nested as their folders are (the app folder's own entry, and a tab layout's
   /// own page, sit beside the entries below them), each level by `order`, then by folder.
-  static const List<NavNode> tree = [_nav0, _nav37, _nav57, _nav7, _nav6, _nav65, _nav70];
+  static const List<NavNode> tree = [_nav0, _nav38, _nav58, _nav8, _nav7, _nav66, _nav71];
 
   /// The entries of [tree] at the location around [ref]'s widget, or the topmost ones at or below
   /// the folder [under] (`'(tabs)'`, `r'teams/$teamId'`): with their routes built from the
@@ -3521,10 +3624,11 @@ abstract final class AppMenu {
   static const Map<Type, List<NavNode>> _trails = {
     HomeRoute: [_nav0],
     SlugRoute: [_nav0],
+    NicknameRoute: [_nav0],
     ProfileRoute: [_nav0],
     SettingsRoute: [_nav0],
-    AdminRoute: [_nav0, _nav6],
-    InboxRoute: [_nav0, _nav7],
+    AdminRoute: [_nav0, _nav7],
+    InboxRoute: [_nav0, _nav8],
     FreeRoute: [_nav0],
     ProPlanRoute: [_nav0],
     BrowseRoute: [_nav0],
@@ -3547,10 +3651,10 @@ abstract final class AppMenu {
     NoteRoute: [_nav0],
     OldSearchRoute: [_nav0],
     OldShopsShopRoute: [_nav0],
-    OrderRoute: [_nav0, _nav37],
-    RefundRoute: [_nav0, _nav37, _nav38],
-    ConfirmRefundRoute: [_nav0, _nav37, _nav38],
-    ReceiptRoute: [_nav0, _nav37, _nav38],
+    OrderRoute: [_nav0, _nav38],
+    RefundRoute: [_nav0, _nav38, _nav39],
+    ConfirmRefundRoute: [_nav0, _nav38, _nav39],
+    ReceiptRoute: [_nav0, _nav38, _nav39],
     PhotosRoute: [_nav0],
     PhotoRoute: [_nav0],
     ShareSheetRoute: [_nav0],
@@ -3562,15 +3666,15 @@ abstract final class AppMenu {
     RemountSegmentsRoute: [_nav0],
     MonthlyReportRoute: [_nav0],
     YearlyReportRoute: [_nav0],
-    SearchRoute: [_nav0, _nav57],
+    SearchRoute: [_nav0, _nav58],
     CategoryShopRoute: [_nav0],
     ShopRoute: [_nav0],
     ItemRoute: [_nav0],
-    MembersRoute: [_nav0, _nav65, _nav66],
-    MemberRoute: [_nav0, _nav65, _nav66],
-    TeamSettingsRoute: [_nav0, _nav65, _nav68],
+    MembersRoute: [_nav0, _nav66, _nav67],
+    MemberRoute: [_nav0, _nav66, _nav67],
+    TeamSettingsRoute: [_nav0, _nav66, _nav69],
     TicksRoute: [_nav0],
-    VaultRoute: [_nav0, _nav70],
+    VaultRoute: [_nav0, _nav71],
     WikiRoute: [_nav0],
   };
 }
@@ -3582,126 +3686,127 @@ const _nav0 = NavNode(
   flat: true,
 );
 
-const _nav6 = NavNode(
-  folder: '(members)/admin',
-  nav: _i12.nav,
-  route: _navRoute6,
-  guard: _navGuard6,
-);
-
 const _nav7 = NavNode(
-  folder: '(members)/inbox',
-  nav: _i14.nav,
+  folder: '(members)/admin',
+  nav: _i15.nav,
   route: _navRoute7,
   guard: _navGuard7,
 );
 
-const _nav37 = NavNode(
-  folder: 'orders/\$id',
-  nav: _i49.nav,
-  route: _navRoute37,
-  within: _within37,
-  label: _navLabel37,
-  children: [_nav38],
+const _nav8 = NavNode(
+  folder: '(members)/inbox',
+  nav: _i17.nav,
+  route: _navRoute8,
+  guard: _navGuard8,
 );
 
 const _nav38 = NavNode(
-  folder: 'orders/\$id/refund',
-  nav: _i54.nav,
+  folder: 'orders/\$id',
+  nav: _i52.nav,
   route: _navRoute38,
-  within: _within37,
-  guard: _navGuard38,
+  within: _within38,
+  label: _navLabel38,
+  children: [_nav39],
 );
 
-const _nav57 = NavNode(
+const _nav39 = NavNode(
+  folder: 'orders/\$id/refund',
+  nav: _i57.nav,
+  route: _navRoute39,
+  within: _within38,
+  guard: _navGuard39,
+);
+
+const _nav58 = NavNode(
   folder: 'search',
-  nav: _i76.nav,
-  route: _navRoute57,
-  label: _navLabel57,
-);
-
-const _nav65 = NavNode(
-  folder: 'teams/\$teamId',
-  nav: _i92.nav,
-  within: _within65,
-  label: _navLabel65,
-  children: [_nav66, _nav68],
+  nav: _i79.nav,
+  route: _navRoute58,
+  label: _navLabel58,
 );
 
 const _nav66 = NavNode(
-  folder: 'teams/\$teamId/members',
+  folder: 'teams/\$teamId',
   nav: _i95.nav,
-  route: _navRoute66,
-  within: _within65,
+  within: _within66,
+  label: _navLabel66,
+  children: [_nav67, _nav69],
 );
 
-const _nav68 = NavNode(
+const _nav67 = NavNode(
+  folder: 'teams/\$teamId/members',
+  nav: _i98.nav,
+  route: _navRoute67,
+  within: _within66,
+);
+
+const _nav69 = NavNode(
   folder: 'teams/\$teamId/settings',
-  nav: _i99.nav,
-  route: _navRoute68,
-  within: _within65,
+  nav: _i102.nav,
+  route: _navRoute69,
+  within: _within66,
 );
 
-const _nav70 = NavNode(
+const _nav71 = NavNode(
   folder: 'vault',
-  nav: _i105.nav,
-  route: _navRoute70,
-  guard: _navGuard70,
+  nav: _i108.nav,
+  route: _navRoute71,
+  guard: _navGuard71,
 );
 
-const _within37 = <Type>[OrderRoute, RefundRoute, ConfirmRefundRoute, ReceiptRoute];
-const _within65 = <Type>[MembersRoute, MemberRoute, TeamSettingsRoute];
+const _within38 = <Type>[OrderRoute, RefundRoute, ConfirmRefundRoute, ReceiptRoute];
+const _within66 = <Type>[MembersRoute, MemberRoute, TeamSettingsRoute];
 
 TypedLocation _navRoute0(Map<String, Object?> p) => const HomeRoute();
-TypedLocation _navRoute6(Map<String, Object?> p) => const AdminRoute();
-TypedLocation _navRoute7(Map<String, Object?> p) => const InboxRoute();
-TypedLocation _navRoute37(Map<String, Object?> p) => OrderRoute(id: p['id'] as int);
-TypedLocation _navRoute38(Map<String, Object?> p) => RefundRoute(id: p['id'] as int);
-TypedLocation _navRoute57(Map<String, Object?> p) => const SearchRoute();
-TypedLocation _navRoute66(Map<String, Object?> p) => MembersRoute(teamId: p['teamId'] as String);
-TypedLocation _navRoute68(Map<String, Object?> p) =>
+TypedLocation _navRoute7(Map<String, Object?> p) => const AdminRoute();
+TypedLocation _navRoute8(Map<String, Object?> p) => const InboxRoute();
+TypedLocation _navRoute38(Map<String, Object?> p) => OrderRoute(id: p['id'] as int);
+TypedLocation _navRoute39(Map<String, Object?> p) => RefundRoute(id: p['id'] as int);
+TypedLocation _navRoute58(Map<String, Object?> p) => const SearchRoute();
+TypedLocation _navRoute67(Map<String, Object?> p) => MembersRoute(teamId: p['teamId'] as String);
+TypedLocation _navRoute69(Map<String, Object?> p) =>
     TeamSettingsRoute(teamId: p['teamId'] as String);
-TypedLocation _navRoute70(Map<String, Object?> p) => const VaultRoute();
+TypedLocation _navRoute71(Map<String, Object?> p) => const VaultRoute();
 
-String _navLabel37(BuildContext context, Map<String, Object?> p) =>
-    _i49.label(context, id: p['id'] as int);
-String _navLabel57(BuildContext context, Map<String, Object?> p) => _i76.label(context);
-String _navLabel65(BuildContext context, Map<String, Object?> p) =>
-    _i92.label(context, teamId: p['teamId'] as String);
+String _navLabel38(BuildContext context, Map<String, Object?> p) =>
+    _i52.label(context, id: p['id'] as int);
+String _navLabel58(BuildContext context, Map<String, Object?> p) => _i79.label(context);
+String _navLabel66(BuildContext context, Map<String, Object?> p) =>
+    _i95.label(context, teamId: p['teamId'] as String);
 
-GuardResult _navGuard6(Ref ref, TypedLocation route) {
+GuardResult _navGuard7(Ref ref, TypedLocation route) {
   return firstRedirect([
-    () => _i9.guard(ref, uri: Uri.parse(route.location)),
-    () => _i11.guard(ref.container),
+    () => _i12.guard(ref, uri: Uri.parse(route.location)),
+    () => _i14.guard(ref.container),
   ]);
 }
-GuardResult _navGuard7(Ref ref, TypedLocation route) =>
-    _i9.guard(ref, uri: Uri.parse(route.location));
-GuardResult _navGuard38(Ref ref, TypedLocation route) {
+GuardResult _navGuard8(Ref ref, TypedLocation route) =>
+    _i12.guard(ref, uri: Uri.parse(route.location));
+GuardResult _navGuard39(Ref ref, TypedLocation route) {
   final r = route as RefundRoute;
-  return _i53.guard(ref.container, id: r.id);
+  return _i56.guard(ref.container, id: r.id);
 }
-GuardResult _navGuard70(Ref ref, TypedLocation route) =>
-    _i104.guard(ref, uri: Uri.parse(route.location));
+GuardResult _navGuard71(Ref ref, TypedLocation route) =>
+    _i107.guard(ref, uri: Uri.parse(route.location));
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
 Map<Object, String> _devToolsProviders() => {
-      _data12: 'd12',
+      _data3: 'd3',
       _data13: 'd13',
-      _data17: 'd17',
-      _i29.data: 'd18',
-      _data38: 'd38',
-      _data54: 'd54',
-      _data57: 'd57',
-      _data59: 'd59',
-      _data63: 'd63',
-      _data65: 'd65',
-      _data67: 'd67',
-      _data69: 'd69',
-      _data72: 'd72',
+      _data14: 'd14',
+      _data18: 'd18',
+      _i32.data: 'd19',
+      _data39: 'd39',
+      _data55: 'd55',
+      _data58: 'd58',
+      _data60: 'd60',
+      _data64: 'd64',
+      _data66: 'd66',
+      _data68: 'd68',
+      _data70: 'd70',
+      _data73: 'd73',
     };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"features","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"shell","file":"(account)/layout.dart","folder":"(account)","markers":[],"items":[{"type":"route","pattern":"/profile","route":"ProfileRoute","file":"(account)/profile/page.dart","folder":"(account)/profile","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"(account)/settings/page.dart","folder":"(account)/settings","markers":[],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/admin","route":"AdminRoute","file":"(members)/admin/page.dart","folder":"(members)/admin","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/inbox","route":"InboxRoute","file":"(members)/inbox/page.dart","folder":"(members)/inbox","markers":["guard"],"params":[{"name":"folder","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/free","route":"FreeRoute","file":"(plans)/free/page.dart","folder":"(plans)/free","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/pro","route":"ProPlanRoute","file":"(plans)/pro/page.dart","folder":"(plans)/pro","markers":[],"params":[{"name":"coupon","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/catalog","route":"CatalogRoute","file":"catalog/page.dart","folder":"catalog","markers":["data"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId","route":"ProductDetailRoute","file":"catalog/\$productId/page.dart","folder":"catalog/\$productId","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId/reviews","route":"ReviewsRoute","file":"catalog/\$productId/reviews/page.dart","folder":"catalog/\$productId/reviews","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/counter","route":"CounterRoute","file":"counter/page.dart","folder":"counter","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs","route":"DocsIndexRoute","file":"docs/page.dart","folder":"docs","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/docs/new","route":"NewDocRoute","file":"docs/new/page.dart","folder":"docs/new","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs/*rest","route":"DocsRoute","file":"docs/\$\$rest/page.dart","folder":"docs/\$\$rest","markers":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/feed","route":"FeedRoute","file":"feed/page.dart","folder":"feed","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/files","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/guide","route":"GuideRoute","file":"guide/page.dart","folder":"guide","markers":[],"spellings":{"de":"/führer","ru":"/руководство"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help","route":"HelpRoute","file":"help/page.dart","folder":"help","markers":[],"spellings":{"fr":"/aide","de":"/hilfe"},"params":[],"redirect":false,"children":[{"type":"route","pattern":"/help/contact","route":"ContactRoute","file":"help/contact/page.dart","folder":"help/contact","markers":[],"spellings":{"fr":"/aide/contact","de":"/hilfe/kontakt"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help/:topic","route":"HelpTopicRoute","file":"help/\$topic/page.dart","folder":"help/\$topic","markers":[],"spellings":{"fr":"/aide/:topic","de":"/hilfe/:topic"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/help/:topic/examples","route":"HelpExamplesRoute","file":"help/\$topic/examples/page.dart","folder":"help/\$topic/examples","markers":[],"spellings":{"fr":"/aide/:topic/exemples","de":"/hilfe/:topic/beispiele"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":[],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/old-search","route":"OldSearchRoute","file":"old-search/redirect.dart","folder":"old-search","markers":["redirect"],"params":[{"name":"q","type":"String?","in":"query"}],"redirect":true,"children":[]},{"type":"route","pattern":"/photos","route":"PhotosRoute","file":"photos/page.dart","folder":"photos","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share","route":"ShareSheetRoute","file":"photos/share/page.dart","folder":"photos/share","markers":["present","root"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share/terms","route":"TermsRoute","file":"photos/share/terms/page.dart","folder":"photos/share/terms","markers":["root"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/photos/sort","route":"SortRoute","file":"photos/sort/page.dart","folder":"photos/sort","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/upload","route":"UploadRoute","file":"photos/upload/page.dart","folder":"photos/upload","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/:id","route":"PhotoRoute","file":"photos/\$id/page.dart","folder":"photos/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"shell","file":"reports/layout.dart","folder":"reports","markers":["data"],"items":[{"type":"route","pattern":"/reports/monthly","route":"MonthlyReportRoute","file":"reports/monthly/page.dart","folder":"reports/monthly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/reports/yearly","route":"YearlyReportRoute","file":"reports/yearly/page.dart","folder":"reports/yearly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/search","route":"SearchRoute","file":"search/page.dart","folder":"search","markers":["data"],"params":[{"name":"q","type":"String?","in":"query"},{"name":"page","type":"int?","in":"query"},{"name":"tags","type":"List<String>","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/ticks","route":"TicksRoute","file":"ticks/page.dart","folder":"ticks","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/vault","route":"VaultRoute","file":"vault/page.dart","folder":"vault","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/:slug","route":"SlugRoute","file":"\$slug/page.dart","folder":"\$slug","markers":[],"params":[{"name":"slug","type":"String","in":"path"}],"redirect":false,"children":[]},{"type":"shell","file":"notes/layout.dart","folder":"notes","markers":[],"items":[{"type":"route","pattern":"/notes/:id","route":"NoteRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/old-shops/:shop","route":"OldShopsShopRoute","file":"old-shops/\$shop/redirect.dart","folder":"old-shops/\$shop","markers":["redirect"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":true,"children":[]},{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"orders/\$id/page.dart","folder":"orders/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund","route":"RefundRoute","file":"orders/\$id/refund/page.dart","folder":"orders/\$id/refund","markers":["data","action","guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund/receipt","route":"ReceiptRoute","file":"orders/\$id/refund/receipt/page.dart","folder":"orders/\$id/refund/receipt","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders/:id/refund/confirm","route":"ConfirmRefundRoute","file":"orders/\$id/refund/confirm/page.dart","folder":"orders/\$id/refund/confirm","markers":["guard","sibling"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/remount/location/:id","route":"RemountLocationRoute","file":"remount/location/\$id/page.dart","folder":"remount/location/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/never/:id","route":"RemountNeverRoute","file":"remount/never/\$id/page.dart","folder":"remount/never/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/segments/:id","route":"RemountSegmentsRoute","file":"remount/segments/\$id/page.dart","folder":"remount/segments/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/shop/:category","route":"CategoryShopRoute","file":"shop/\$category/page.dart","folder":"shop/\$category","markers":["data"],"spellings":{"fr":"/boutique/:category","de":"/laden/:category"},"params":[{"name":"category","type":"Category","in":"path"},{"name":"sort","type":"Sort?","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"shops/\$shop/layout.dart","folder":"shops/\$shop","markers":["guard"],"items":[{"type":"route","pattern":"/shops/:shop","route":"ShopRoute","file":"shops/\$shop/page.dart","folder":"shops/\$shop","markers":["guard"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/shops/:shop/items/:id","route":"ItemRoute","file":"shops/\$shop/items/\$id/page.dart","folder":"shops/\$shop/items/\$id","markers":["data"],"params":[{"name":"shop","type":"String","in":"path"},{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"shell","file":"teams/\$teamId/layout.dart","folder":"teams/\$teamId","markers":["data","fresh"],"items":[{"type":"route","pattern":"/teams/:teamId/members","route":"MembersRoute","file":"teams/\$teamId/members/page.dart","folder":"teams/\$teamId/members","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/teams/:teamId/members/:member","route":"MemberRoute","file":"teams/\$teamId/members/\$member/page.dart","folder":"teams/\$teamId/members/\$member","markers":["data","fresh"],"params":[{"name":"teamId","type":"String","in":"path"},{"name":"member","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/teams/:teamId/settings","route":"TeamSettingsRoute","file":"teams/\$teamId/settings/page.dart","folder":"teams/\$teamId/settings","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/browse/*categories","route":"BrowseRoute","file":"browse/\$\$categories/page.dart","folder":"browse/\$\$categories","markers":["data"],"params":[{"name":"categories","type":"List<Category>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/compare/*ids","route":"CompareRoute","file":"compare/\$\$ids/page.dart","folder":"compare/\$\$ids","markers":["data"],"params":[{"name":"ids","type":"List<int>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/files/*path?","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/wiki/*article","route":"WikiRoute","file":"wiki/\$\$article/page.dart","folder":"wiki/\$\$article","markers":["data"],"params":[{"name":"article","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"a38_0":{"kind":"action","file":"orders/\$id/refund/action.dart","name":"action","route":"RefundRoute"},"a65_0":{"kind":"action","file":"teams/\$teamId/action.dart","name":"addMember","route":null},"d12":{"kind":"data","file":"browse/\$\$categories/data.dart","route":"BrowseRoute","section":null,"traced":true},"d13":{"kind":"data","file":"catalog/data.dart","route":"CatalogRoute","section":null,"traced":false},"d14":{"kind":"data","file":"catalog/\$productId/data.dart","route":"ProductDetailRoute","section":null,"traced":false},"d15":{"kind":"data","file":"catalog/\$productId/reviews/data.dart","route":"ReviewsRoute","section":null,"traced":false},"d17":{"kind":"data","file":"compare/\$\$ids/data.dart","route":"CompareRoute","section":null,"traced":true},"d18":{"kind":"data","file":"counter/data.dart","route":"CounterRoute","section":null,"traced":false},"d38":{"kind":"data","file":"orders/\$id/refund/data.dart","route":"RefundRoute","section":null,"traced":true},"d54":{"kind":"data","file":"reports/data.dart","route":null,"section":"reports","traced":true},"d57":{"kind":"data","file":"search/data.dart","route":"SearchRoute","section":null,"traced":true},"d59":{"kind":"data","file":"shop/\$category/data.dart","route":"CategoryShopRoute","section":null,"traced":true},"d63":{"kind":"data","file":"shops/\$shop/items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true},"d65":{"kind":"data","file":"teams/\$teamId/data.dart","route":null,"section":"teams/\$teamId","traced":true},"d67":{"kind":"data","file":"teams/\$teamId/members/\$member/data.dart","route":"MemberRoute","section":null,"traced":true},"d69":{"kind":"data","file":"ticks/data.dart","route":"TicksRoute","section":null,"traced":true},"d72":{"kind":"data","file":"wiki/\$\$article/data.dart","route":"WikiRoute","section":null,"traced":true},"g32@32":{"kind":"guard","file":"notes/\$id/guard.dart","route":"NoteRoute","pattern":"/notes/:id"},"g38@38":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"RefundRoute","pattern":"/orders/:id/refund"},"g38@39":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"ConfirmRefundRoute","pattern":"/orders/:id/refund/confirm"},"g5@6":{"kind":"guard","file":"(members)/guard.dart","route":"AdminRoute","pattern":"/admin"},"g5@7":{"kind":"guard","file":"(members)/guard.dart","route":"InboxRoute","pattern":"/inbox"},"g61@61":{"kind":"guard","file":"shops/\$shop/guard.dart","route":"ShopRoute","pattern":"/shops/:shop"},"g6@6":{"kind":"guard","file":"(members)/admin/guard.dart","route":"AdminRoute","pattern":"/admin"},"g70@70":{"kind":"guard","file":"vault/guard.dart","route":"VaultRoute","pattern":"/vault"},"r33":{"kind":"redirect","file":"old-search/redirect.dart","route":"OldSearchRoute","pattern":"/old-search"},"r35":{"kind":"redirect","file":"old-shops/\$shop/redirect.dart","route":"OldShopsShopRoute","pattern":"/old-shops/:shop"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"features","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"shell","file":"(account)/layout.dart","folder":"(account)","markers":[],"items":[{"type":"route","pattern":"/nickname","route":"NicknameRoute","file":"(account)/nickname/page.dart","folder":"(account)/nickname","markers":["data","action"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/profile","route":"ProfileRoute","file":"(account)/profile/page.dart","folder":"(account)/profile","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"(account)/settings/page.dart","folder":"(account)/settings","markers":[],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/admin","route":"AdminRoute","file":"(members)/admin/page.dart","folder":"(members)/admin","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/inbox","route":"InboxRoute","file":"(members)/inbox/page.dart","folder":"(members)/inbox","markers":["guard"],"params":[{"name":"folder","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/free","route":"FreeRoute","file":"(plans)/free/page.dart","folder":"(plans)/free","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/pro","route":"ProPlanRoute","file":"(plans)/pro/page.dart","folder":"(plans)/pro","markers":[],"params":[{"name":"coupon","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/catalog","route":"CatalogRoute","file":"catalog/page.dart","folder":"catalog","markers":["data"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId","route":"ProductDetailRoute","file":"catalog/\$productId/page.dart","folder":"catalog/\$productId","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId/reviews","route":"ReviewsRoute","file":"catalog/\$productId/reviews/page.dart","folder":"catalog/\$productId/reviews","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/counter","route":"CounterRoute","file":"counter/page.dart","folder":"counter","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs","route":"DocsIndexRoute","file":"docs/page.dart","folder":"docs","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/docs/new","route":"NewDocRoute","file":"docs/new/page.dart","folder":"docs/new","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs/*rest","route":"DocsRoute","file":"docs/\$\$rest/page.dart","folder":"docs/\$\$rest","markers":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/feed","route":"FeedRoute","file":"feed/page.dart","folder":"feed","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/files","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/guide","route":"GuideRoute","file":"guide/page.dart","folder":"guide","markers":[],"spellings":{"de":"/führer","ru":"/руководство"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help","route":"HelpRoute","file":"help/page.dart","folder":"help","markers":[],"spellings":{"fr":"/aide","de":"/hilfe"},"params":[],"redirect":false,"children":[{"type":"route","pattern":"/help/contact","route":"ContactRoute","file":"help/contact/page.dart","folder":"help/contact","markers":[],"spellings":{"fr":"/aide/contact","de":"/hilfe/kontakt"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help/:topic","route":"HelpTopicRoute","file":"help/\$topic/page.dart","folder":"help/\$topic","markers":[],"spellings":{"fr":"/aide/:topic","de":"/hilfe/:topic"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/help/:topic/examples","route":"HelpExamplesRoute","file":"help/\$topic/examples/page.dart","folder":"help/\$topic/examples","markers":[],"spellings":{"fr":"/aide/:topic/exemples","de":"/hilfe/:topic/beispiele"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":[],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/old-search","route":"OldSearchRoute","file":"old-search/redirect.dart","folder":"old-search","markers":["redirect"],"params":[{"name":"q","type":"String?","in":"query"}],"redirect":true,"children":[]},{"type":"route","pattern":"/photos","route":"PhotosRoute","file":"photos/page.dart","folder":"photos","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share","route":"ShareSheetRoute","file":"photos/share/page.dart","folder":"photos/share","markers":["present","root"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share/terms","route":"TermsRoute","file":"photos/share/terms/page.dart","folder":"photos/share/terms","markers":["root"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/photos/sort","route":"SortRoute","file":"photos/sort/page.dart","folder":"photos/sort","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/upload","route":"UploadRoute","file":"photos/upload/page.dart","folder":"photos/upload","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/:id","route":"PhotoRoute","file":"photos/\$id/page.dart","folder":"photos/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"shell","file":"reports/layout.dart","folder":"reports","markers":["data"],"items":[{"type":"route","pattern":"/reports/monthly","route":"MonthlyReportRoute","file":"reports/monthly/page.dart","folder":"reports/monthly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/reports/yearly","route":"YearlyReportRoute","file":"reports/yearly/page.dart","folder":"reports/yearly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/search","route":"SearchRoute","file":"search/page.dart","folder":"search","markers":["data"],"params":[{"name":"q","type":"String?","in":"query"},{"name":"page","type":"int?","in":"query"},{"name":"tags","type":"List<String>","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/ticks","route":"TicksRoute","file":"ticks/page.dart","folder":"ticks","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/vault","route":"VaultRoute","file":"vault/page.dart","folder":"vault","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/:slug","route":"SlugRoute","file":"\$slug/page.dart","folder":"\$slug","markers":[],"params":[{"name":"slug","type":"String","in":"path"}],"redirect":false,"children":[]},{"type":"shell","file":"notes/layout.dart","folder":"notes","markers":[],"items":[{"type":"route","pattern":"/notes/:id","route":"NoteRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/old-shops/:shop","route":"OldShopsShopRoute","file":"old-shops/\$shop/redirect.dart","folder":"old-shops/\$shop","markers":["redirect"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":true,"children":[]},{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"orders/\$id/page.dart","folder":"orders/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund","route":"RefundRoute","file":"orders/\$id/refund/page.dart","folder":"orders/\$id/refund","markers":["data","action","guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund/receipt","route":"ReceiptRoute","file":"orders/\$id/refund/receipt/page.dart","folder":"orders/\$id/refund/receipt","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders/:id/refund/confirm","route":"ConfirmRefundRoute","file":"orders/\$id/refund/confirm/page.dart","folder":"orders/\$id/refund/confirm","markers":["guard","sibling"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/remount/location/:id","route":"RemountLocationRoute","file":"remount/location/\$id/page.dart","folder":"remount/location/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/never/:id","route":"RemountNeverRoute","file":"remount/never/\$id/page.dart","folder":"remount/never/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/segments/:id","route":"RemountSegmentsRoute","file":"remount/segments/\$id/page.dart","folder":"remount/segments/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/shop/:category","route":"CategoryShopRoute","file":"shop/\$category/page.dart","folder":"shop/\$category","markers":["data"],"spellings":{"fr":"/boutique/:category","de":"/laden/:category"},"params":[{"name":"category","type":"Category","in":"path"},{"name":"sort","type":"Sort?","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"shops/\$shop/layout.dart","folder":"shops/\$shop","markers":["guard"],"items":[{"type":"route","pattern":"/shops/:shop","route":"ShopRoute","file":"shops/\$shop/page.dart","folder":"shops/\$shop","markers":["guard"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/shops/:shop/items/:id","route":"ItemRoute","file":"shops/\$shop/items/\$id/page.dart","folder":"shops/\$shop/items/\$id","markers":["data"],"params":[{"name":"shop","type":"String","in":"path"},{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"shell","file":"teams/\$teamId/layout.dart","folder":"teams/\$teamId","markers":["data","fresh"],"items":[{"type":"route","pattern":"/teams/:teamId/members","route":"MembersRoute","file":"teams/\$teamId/members/page.dart","folder":"teams/\$teamId/members","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/teams/:teamId/members/:member","route":"MemberRoute","file":"teams/\$teamId/members/\$member/page.dart","folder":"teams/\$teamId/members/\$member","markers":["data","fresh"],"params":[{"name":"teamId","type":"String","in":"path"},{"name":"member","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/teams/:teamId/settings","route":"TeamSettingsRoute","file":"teams/\$teamId/settings/page.dart","folder":"teams/\$teamId/settings","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/browse/*categories","route":"BrowseRoute","file":"browse/\$\$categories/page.dart","folder":"browse/\$\$categories","markers":["data"],"params":[{"name":"categories","type":"List<Category>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/compare/*ids","route":"CompareRoute","file":"compare/\$\$ids/page.dart","folder":"compare/\$\$ids","markers":["data"],"params":[{"name":"ids","type":"List<int>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/files/*path?","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/wiki/*article","route":"WikiRoute","file":"wiki/\$\$article/page.dart","folder":"wiki/\$\$article","markers":["data"],"params":[{"name":"article","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"a39_0":{"kind":"action","file":"orders/\$id/refund/action.dart","name":"action","route":"RefundRoute"},"a3_0":{"kind":"action","file":"(account)/nickname/action.dart","name":"action","route":"NicknameRoute"},"a66_0":{"kind":"action","file":"teams/\$teamId/action.dart","name":"addMember","route":null},"d13":{"kind":"data","file":"browse/\$\$categories/data.dart","route":"BrowseRoute","section":null,"traced":true},"d14":{"kind":"data","file":"catalog/data.dart","route":"CatalogRoute","section":null,"traced":false},"d15":{"kind":"data","file":"catalog/\$productId/data.dart","route":"ProductDetailRoute","section":null,"traced":false},"d16":{"kind":"data","file":"catalog/\$productId/reviews/data.dart","route":"ReviewsRoute","section":null,"traced":false},"d18":{"kind":"data","file":"compare/\$\$ids/data.dart","route":"CompareRoute","section":null,"traced":true},"d19":{"kind":"data","file":"counter/data.dart","route":"CounterRoute","section":null,"traced":false},"d3":{"kind":"data","file":"(account)/nickname/data.dart","route":"NicknameRoute","section":null,"traced":true},"d39":{"kind":"data","file":"orders/\$id/refund/data.dart","route":"RefundRoute","section":null,"traced":true},"d55":{"kind":"data","file":"reports/data.dart","route":null,"section":"reports","traced":true},"d58":{"kind":"data","file":"search/data.dart","route":"SearchRoute","section":null,"traced":true},"d60":{"kind":"data","file":"shop/\$category/data.dart","route":"CategoryShopRoute","section":null,"traced":true},"d64":{"kind":"data","file":"shops/\$shop/items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true},"d66":{"kind":"data","file":"teams/\$teamId/data.dart","route":null,"section":"teams/\$teamId","traced":true},"d68":{"kind":"data","file":"teams/\$teamId/members/\$member/data.dart","route":"MemberRoute","section":null,"traced":true},"d70":{"kind":"data","file":"ticks/data.dart","route":"TicksRoute","section":null,"traced":true},"d73":{"kind":"data","file":"wiki/\$\$article/data.dart","route":"WikiRoute","section":null,"traced":true},"g33@33":{"kind":"guard","file":"notes/\$id/guard.dart","route":"NoteRoute","pattern":"/notes/:id"},"g39@39":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"RefundRoute","pattern":"/orders/:id/refund"},"g39@40":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"ConfirmRefundRoute","pattern":"/orders/:id/refund/confirm"},"g62@62":{"kind":"guard","file":"shops/\$shop/guard.dart","route":"ShopRoute","pattern":"/shops/:shop"},"g6@7":{"kind":"guard","file":"(members)/guard.dart","route":"AdminRoute","pattern":"/admin"},"g6@8":{"kind":"guard","file":"(members)/guard.dart","route":"InboxRoute","pattern":"/inbox"},"g71@71":{"kind":"guard","file":"vault/guard.dart","route":"VaultRoute","pattern":"/vault"},"g7@7":{"kind":"guard","file":"(members)/admin/guard.dart","route":"AdminRoute","pattern":"/admin"},"r34":{"kind":"redirect","file":"old-search/redirect.dart","route":"OldSearchRoute","pattern":"/old-search"},"r36":{"kind":"redirect","file":"old-shops/\$shop/redirect.dart","route":"OldShopsShopRoute","pattern":"/old-shops/:shop"}}}';

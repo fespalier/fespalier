@@ -15,6 +15,7 @@ export 'package:hooks_riverpod/hooks_riverpod.dart';
 export 'package:hooks_riverpod/misc.dart' show ProviderListenable;
 
 export 'src/action.dart';
+export 'src/action_form.dart';
 // The cache of a data.dart's value for the next start (since 0.8.0).
 export 'src/data_cache.dart'
     show
@@ -44,6 +45,7 @@ export 'src/heroes.dart';
 export 'src/layout_page.dart';
 export 'src/location.dart';
 export 'src/not_found.dart';
+export 'src/optimistic.dart';
 export 'src/remount.dart';
 export 'src/route_info.dart';
 export 'src/route_link.dart';

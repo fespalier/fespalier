@@ -9,6 +9,7 @@
     <data android:host="shop.example.com" />
     <data android:path="/" />
     <data android:pathPattern="/..*" />
+    <data android:path="/nickname" />
     <data android:path="/profile" />
     <data android:path="/settings" />
     <data android:path="/admin" />
@@ -82,6 +83,7 @@
     <data android:host="www.shop.example.com" />
     <data android:path="/" />
     <data android:pathPattern="/..*" />
+    <data android:path="/nickname" />
     <data android:path="/profile" />
     <data android:path="/settings" />
     <data android:path="/admin" />
@@ -156,6 +158,7 @@
     <data android:host="www.shop.example.com" />
     <data android:path="/" />
     <data android:pathPattern="/..*" />
+    <data android:path="/nickname" />
     <data android:path="/profile" />
     <data android:path="/settings" />
     <data android:path="/admin" />

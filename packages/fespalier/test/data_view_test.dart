@@ -562,4 +562,83 @@ void main() {
       await ms(tester, 20);
     });
   });
+
+  group('optimistic (since 0.8.0)', () {
+    testWidgets('the layer is applied in data:', (tester) async {
+      final p = FutureProvider.autoDispose((ref) async => 1);
+      final layer = optimisticLayer(p);
+      final add = actionProvider<int, int>(
+        (ref, input) => Completer<int>().future,
+        invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[p],
+        optimistic: () => layer.patch((int v, int input) => v + input),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: (_, _) => null,
+          child: MaterialApp(
+            home: DataView<int>(
+              watch: (ref) => ref.watch(p),
+              refresh: (ref) => ref.invalidate(p),
+              data: (d) => Text('data $d'),
+              loading: () => const Text('loading'),
+              error: (e, st, retry) => Text('error $e'),
+              optimistic: (ref) => ref.watch(layer),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('data 1'), findsOneWidget);
+      final c = ProviderScope.containerOf(tester.element(find.text('data 1')));
+      unawaited(c.read(add.notifier).call(5) as Future<int>);
+      await tester.pump();
+      expect(find.text('data 6'), findsOneWidget);
+    });
+
+    testWidgets('keepPrevious: false skips loading while a write settles', (
+      tester,
+    ) async {
+      var n = 1;
+      final gate = Completer<int>();
+      final p = FutureProvider.autoDispose((ref) async => n);
+      final layer = optimisticLayer(p);
+      final add = actionProvider<int, int>(
+        (ref, input) async {
+          await gate.future;
+          n += input;
+          return n;
+        },
+        invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[p],
+        optimistic: () => layer.patch((int v, int input) => v + input),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          retry: (_, _) => null,
+          child: MaterialApp(
+            home: DataView<int>(
+              watch: (ref) => ref.watch(p),
+              refresh: (ref) => ref.invalidate(p),
+              data: (d) => Text('data $d'),
+              loading: () => const Text('loading'),
+              error: (e, st, retry) => Text('error $e'),
+              keepPrevious: false,
+              optimistic: (ref) => ref.watch(layer),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final c = ProviderScope.containerOf(tester.element(find.text('data 1')));
+      unawaited(c.read(add.notifier).call(2) as Future<int>);
+      await tester.pump();
+      expect(find.text('data 3'), findsOneWidget);
+      gate.complete(0);
+      for (var i = 0; i < 4; i++) {
+        await tester.pump();
+        expect(find.text('loading'), findsNothing);
+        expect(find.text('data 1'), findsNothing);
+      }
+      expect(find.text('data 3'), findsOneWidget);
+    });
+  });
 }

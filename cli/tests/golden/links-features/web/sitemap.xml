@@ -4,6 +4,9 @@
     <loc>https://shop.example.com/</loc>
   </url>
   <url>
+    <loc>https://shop.example.com/nickname</loc>
+  </url>
+  <url>
     <loc>https://shop.example.com/profile</loc>
   </url>
   <url>

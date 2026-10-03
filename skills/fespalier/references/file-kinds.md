@@ -69,6 +69,9 @@ that route (`XRoute.submit`, `XRoute.useAction`); in a folder with a `layout.dar
 page, to the section (`XSection`). After a success the route's own `data.dart` and the
 sections' above it are invalidated, or what `const invalidates = [...]` lists. Covered by
 `fespalier-data` (`references/actions.md`). With no page or layout beside it, it is an error.
+Since 0.8.0 the file may also hold the action's companions, `form()`, `validate()` and
+`optimistic()` (`approveForm`... beside `approve`): they are not actions and not a file kind
+(`fespalier-data`, `references/forms-and-optimistic.md`).
 
 **`loading.dart`** and **`error.dart`** show while `data.dart` first loads and
 when it fails. They are inherited by every folder below, bound separately for

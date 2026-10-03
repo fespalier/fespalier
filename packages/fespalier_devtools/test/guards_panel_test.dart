@@ -28,11 +28,11 @@ void main() {
         guardRecord(
           2,
           uri: '/inbox',
-          site: 'g5@7',
+          site: 'g6@8',
           result: GuardOutcome.redirect,
           location: '/login?from=%2Finbox',
         ),
-        guardRecord(3, uri: '/old-search', site: 'r33'),
+        guardRecord(3, uri: '/old-search', site: 'r34'),
       ]),
     );
     await openTab(tester, 'Guards');

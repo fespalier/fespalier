@@ -10,6 +10,12 @@
 
   /// Watches the state of `{{ a.name }}()` and gives `call(input)` to run it, for `build`. A failed run is in `state`, not thrown.
   static final {{ a.hook }} = (WidgetRef ref{{ a.hook_params }}) => ref.{{ a.watch_with }}({{ a.provider }}{{ a.key }});
+{%- if a.form %}
+
+
+  /// The form of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}, for `build` in a `HookConsumerWidget`: a typed field per field of its input, starting from `{{ a.form.function }}({{ "data" if a.form.has_data }})`; `onSubmit` checks the fields{{ " and `" ~ a.form.validate ~ "()`" if a.form.validate }}, then runs it, and is null while it runs. Since 0.8.0.
+  static final {{ a.form.hook }} = (WidgetRef ref, {{ a.form.params }}) => useActionForm(ref, {{ a.provider }}{{ a.key }}, {{ a.form.args }});
+{%- endif %}
 {%- endmacro %}
 {% macro view(b) -%}
 {% if b.data -%}
@@ -20,6 +26,9 @@ DataView(
   loading: () => {{ b.data.loading }},
   error: (e, st, retry) => {{ b.data.error }},
   keepPrevious: {{ "true" if keep_previous else "false" }},
+{% if b.data.optimistic %}
+  optimistic: (ref) => ref.watch({{ b.data.optimistic }}),
+{% endif %}
 {% if b.data.keep_data_on_error %}
   keepDataOnError: true,
 {% endif %}
@@ -365,8 +374,13 @@ abstract final class {{ r.name }} {
   /// {{ r.file }} as a Riverpod provider{{ r.keyed }}.
   static final data = {{ r.expr }};
 
+{% if r.optimistic %}
+  /// Watches {{ r.file }}, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference. Since 0.8.0.
+  static final watch = (WidgetRef ref{{ r.args }}) => ref.watchOptimistic(data{{ r.key }}, {{ r.optimistic }});
+{% else %}
   /// Watches {{ r.file }}: an `AsyncValue`, typed by inference.
   static final watch = (WidgetRef ref{{ r.args }}) => ref.watch(data{{ r.key }});
+{% endif %}
 
   /// Reads {{ r.file }} once, keeping it alive until it completes.
   static final read = (WidgetRef ref{{ r.args }}) => ref.{{ "readSelected" if r.selector else "readData" }}(data{{ r.key }});
@@ -468,8 +482,13 @@ final class {{ r.name }}Route extends TypedLocation {
 {% endif %}
 {% if r.data %}
 
+{% if r.data.optimistic %}
+  /// Watches {{ r.data.file }}, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference (static, so it can name the keys). Since 0.8.0.
+  static final watch = (WidgetRef ref{{ r.data.args }}) => ref.watchOptimistic(data{{ r.data.key }}, {{ r.data.optimistic }});
+{% else %}
   /// Watches {{ r.data.file }}: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref{{ r.data.args }}) => ref.watch(data{{ r.data.key }});
+{% endif %}
 
   /// Reads {{ r.data.file }} once, keeping it alive until it completes.
   static final read = (WidgetRef ref{{ r.data.args }}) => ref.{{ "readSelected" if r.data.selector else "readData" }}(data{{ r.data.key }});
@@ -574,6 +593,11 @@ final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
 );
 {% endif %}
 {% endfor %}
+{% for l in layers %}
+
+/// {{ l.doc }}
+final {{ l.name }} = {{ l.def }};
+{% endfor %}
 {% for r in routes %}
 {% for a in r.actions %}
 
@@ -584,6 +608,12 @@ final {{ a.top }} = {{ a.factory }}(
   invalidates: ({{ a.key_param }}) => {{ a.invalidates }},
 {% else %}
   invalidates: () => {{ a.invalidates }},
+{% endif %}
+{% if a.validate %}
+  validate: {{ a.validate }},
+{% endif %}
+{% if a.optimistic %}
+  optimistic: {{ a.optimistic }},
 {% endif %}
   site: '{{ a.site }}',
 );
@@ -599,6 +629,12 @@ final {{ a.top }} = {{ a.factory }}(
   invalidates: ({{ a.key_param }}) => {{ a.invalidates }},
 {% else %}
   invalidates: () => {{ a.invalidates }},
+{% endif %}
+{% if a.validate %}
+  validate: {{ a.validate }},
+{% endif %}
+{% if a.optimistic %}
+  optimistic: {{ a.optimistic }},
 {% endif %}
   site: '{{ a.site }}',
 );

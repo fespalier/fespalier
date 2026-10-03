@@ -399,6 +399,8 @@ widget class" and lists them. Make helpers private (`_Name`) rather than lean on
 | `route.dart`       | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`; and/or `const paths = {'fr': 'produits'};` in a static folder: [its other spellings per locale](#localized-paths); and/or `const nest = false;` beside a `page.dart` or `redirect.dart`: [its route is a sibling of the page above, not a child](#a-sibling-with-a-compound-path); and/or `const linkable = false;` (since 0.5.0): [`fsp links`](#deep-links-and-a-sitemap-fsp-links) leaves this folder's routes and those below it out, [the nearest one winning](#case-and-trailing-slashes); and/or `const remount = Remount.onSegments;` (since 0.6.0): [when the pages in this folder and below get a fresh state because their URL changed](#remounting-a-page-remount), the nearest one winning over the pubspec's `remount`; and/or `const deferred = true;` (since 0.7.0): [the pages in this folder and below load their code on demand](#deferred-routes-a-pages-code-on-demand), the nearest one winning over the pubspec's `deferred`; and/or `const freshness = Freshness(staleTime: Duration(minutes: 5));` (since 0.8.0): [the default for when the data.dart functions in this folder and below load again](#freshness-staletime-resume-and-reconnect), the nearest one winning, a data.dart's own over all. Read from the source, never imported | nothing: it is data                                                                                                                                           |
 | `nav.dart`         | in any folder (since 0.8.0): `const nav = Nav(label: 'Products', order: 1);` — how the folder shows in the generated [menus and breadcrumbs](#menus-and-breadcrumbs-navdart) (`AppMenu`) — and optionally `String label(BuildContext context, {…})`, the label shown, localized. Read from the source (its `order` and the segments `label()` asks for); a folder with no page is a heading                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data; `label()` takes a `BuildContext` and the segments of its folder and above (named, `required`)                                            |
 
+Since 0.8.0 an `action.dart` may also hold the companions of an action: its [`form()`, `validate()`](#forms-form-and-validate) and [`optimistic()`](#optimistic-updates-optimistic). They are functions in that file, not a file kind.
+
 ### Function views
 
 `page.dart`, `loading.dart`, `error.dart`, `layout.dart` and `not_found.dart` can export a
@@ -2019,7 +2021,8 @@ the provider has a value or an error, a reload (`ref.invalidate`, `refresh`, the
 dependencies changing) keeps rendering it: the old page stays until the new value arrives,
 instead of blinking to `loading.dart` and back. `error.dart`'s `retry` still invalidates the
 provider; the error stays up until the new run has an answer. Off, `loading.dart` shows
-whenever the provider is loading (a refresh included). This is `skipLoadingOnReload` and
+whenever the provider is loading (a refresh included), except while a write whose
+[`optimistic()`](#optimistic-updates-optimistic) patched the data settles (since 0.8.0). This is `skipLoadingOnReload` and
 `skipLoadingOnRefresh` on Riverpod's `AsyncValue.when`. It applies to a route's `data.dart` and
 to a section's, including a provider you write yourself.
 
@@ -2369,6 +2372,9 @@ final warm = ProductRoute(id: 42).prefetch(ref);   // a PrefetchHandle, before n
 final all = ProductRoute(id: 42).preload(ref);     // the same, for everything the page reads
 ```
 
+`watch` includes the patches of an [`optimistic()`](#optimistic-updates-optimistic) when the data
+has any (since 0.8.0).
+
 `watch` and `read` are _static_, and take the keys the provider uses as named arguments
 (`ItemRoute.watch(ref, shop: 'a', id: 1)`, `SearchRoute.watch(ref, q: 'ap', page: 2)`;
 none for a route without keys). They can't be instance methods: `ProductRoute(id: 42).watch(ref)`
@@ -2600,7 +2606,8 @@ final Refund done = await RefundRoute.submit(ref, id: 1, input: input);
   key has a state of its own, and an `autoDispose` provider is dropped when nothing watches it,
   except while a write is in flight.
 - **`useAction`** takes the keys and returns a handle: `state` (the same `AsyncValue<T?>`),
-  `isPending`, `hasError`, `reset()`, and `call(input)`. `call` runs the action and completes with
+  `isPending`, `hasError`, `fieldErrors` (the [`FieldErrors`](#forms-form-and-validate) the last
+  run failed with, since 0.8.0, or null), `reset()`, and `call(input)`. `call` runs the action and completes with
   the result, or with `null` when it failed, because the error is in `state`: an `onPressed:
   () => refund.call(input)` can't leave an unhandled error behind. `submit` is the other way: it
   throws what the action threw, for code that wants to handle it (and the error is in `state` too).
@@ -2667,7 +2674,8 @@ teamId: 'acme', input: 'carol')`), and what it invalidates by default is the sec
 the sections above it. A section with no `data.dart` gets a handle for its actions alone
 (`ShopSection`), named like [any section's](#section-data).
 
-Not in this version: optimistic updates. `state` plus `invalidates` cover most pages. Since 0.5.0.
+Since 0.5.0. Forms and optimistic updates (since 0.8.0) are in the two subsections after the list
+below; without them, `state` plus `invalidates` cover most pages.
 
 `fsp new 'orders/[id]/refund' --action` scaffolds one, with the path's segments and an `Object?`
 input to replace with your own type. `fsp routes` tags the route `action` (also in the `tags` of
@@ -2681,7 +2689,129 @@ input to replace with your own type. `fsp routes` tags the route `action` (also 
 - an `invalidates` that is not a `const` list literal of names, a name that is neither a typed
   route nor a section handle or has no `data.dart`, and a key of the data it invalidates that the
   action doesn't take;
-- helper names that collide.
+- helper names that collide;
+- since 0.8.0, a `form()`, `validate()` or `optimistic()` that doesn't fit its action (see below).
+
+#### Forms: `form()` and `validate()`
+
+Since 0.8.0. A form is the UI of one write, so it is not a file kind: `form()`, `validate()` and
+`optimistic()` are _companion functions_ in the `action.dart` of the action they belong to, found
+by name. For the action called `action` the companion is the role itself; for any other action,
+say `approve`, it is `approveForm`, `approveValidate` and `approveOptimistic`. A companion is never
+read as an action, even when it takes a `Ref` (that is an error). An app that writes none of them
+generates exactly what 0.7.0 did.
+
+```dart
+// lib/app/(account)/nickname/action.dart
+/// The input of the action, and so the fields of its form: a record with named fields.
+typedef NicknameFields = ({String nickname, int? age, bool newsletter});
+
+/// The form starts from the data the page passes (the profile it shows).
+NicknameFields form(Profile profile) =>
+    (nickname: profile.nickname, age: profile.age, newsletter: profile.newsletter);
+
+/// Checked on the device before the action runs, and live in the form after a first submit.
+FieldErrors? validate(NicknameFields input) => FieldErrors({
+  if (input.nickname.trim().isEmpty) 'nickname': 'Enter a nickname',
+  if (input.age case final age? when age < 13) 'age': 'You must be 13 or older',
+});
+
+/// The server has the last word: it can throw `FieldErrors({'nickname': 'That nickname is taken'})`.
+Future<Profile> action(Ref ref, {required NicknameFields input}) => …;
+```
+
+```dart
+// the page: a HookConsumerWidget, because useForm is a real hook
+final form = NicknameRoute.useForm(ref, data: profile);
+final f = form.fields;                         // a record of typed fields
+TextField(
+  controller: f.nickname.controller,
+  decoration: InputDecoration(errorText: f.nickname.error),
+),
+CheckboxListTile(value: f.newsletter.value, onChanged: f.newsletter.didChange, …),
+if (form.error case final e?) Text('$e'),      // what is not one field's
+FilledButton(onPressed: form.onSubmit, child: …),  // null while the action runs: disabled
+TextButton(onPressed: form.isDirty ? form.reset : null, child: …),
+```
+
+- **The input is a record with named fields**, written inline (`required ({int amount, String
+  note}) input`) or as a `typedef` declared in the same `action.dart`; the generator reads the
+  field names and types from there and from nothing else. `form()` returns exactly the input's
+  type (as written) and takes no `Ref`: it takes the data the form starts from, or nothing.
+- **`useForm`** is the generated member (`useApproveForm` for `approve`). It takes the action's
+  keys, `data:` (only when `form()` takes a parameter, then required and of that type), and
+  `validation:`, `resetOnSuccess:` and `messages:`. It returns an `ActionForm` with `fields`,
+  `state`, `isPending`, `isDirty`, `isValid`, `error`, `onSubmit`, `submit()` and `reset()`.
+  **It is a real hook**: call it from a `HookConsumerWidget`'s `build`. (`useAction` is not.) A
+  key of the action can't be called `data`, `validation`, `resetOnSuccess` or `messages`.
+- **Fields** are typed by the record's field types. `String`, `int`, `double`, `num` and their
+  nullable forms are text fields with a `controller` that the form owns and disposes; an empty
+  nullable one is `null`, an empty non-nullable number is `Required`, a bad number is `Enter a
+  whole number` or `Enter a number` (pass `messages: ActionFormMessages(...)` to translate them).
+  Any other type (`bool`, an enum, a `DateTime`, a list) is a value field: bind it with `value` and
+  `didChange(v)`, which ignores `null` for a non-nullable type so it fits `Checkbox.onChanged`.
+- **Submit.** `onSubmit` (or `submit()`) first reads the text fields, then asks `validate()`; if
+  anything is wrong it stops there and **the action is not called**. Otherwise it runs the action
+  with the record the fields make. A sync action stays sync: `submit()` returns its value at once.
+  `onSubmit` is `null` while the action runs, so `FilledButton(onPressed: form.onSubmit)`
+  disables itself.
+- **Errors per field.** A field shows, in this order, its own parse error, the `FieldErrors` the
+  action threw for its name (until that field is edited), and what `validate()` says of it.
+  `validation: ActionFormValidation.afterSubmit` (the default) shows nothing before the first
+  submit and every field as it changes after; `onChange` shows a field once the user has changed
+  it. `form.error` is what is not one field's: `FieldErrors.message`, the messages of keys that are
+  no field, or the error of an action that failed otherwise.
+- **`validate()`** is `FieldErrors? validate(Input input)`: it takes no `Ref`, so it is a check
+  the device can make. It does not need a record input. It also runs **inside the action's
+  provider, before the action**, so `submit`, `useAction`'s `call` and a test through the provider
+  are refused the same way: the write never starts, there is no loading state, and the error
+  (`FieldErrors`) is in `state` and `fieldErrors`. A check that needs the server belongs in the
+  action, which throws `FieldErrors({'nickname': 'That nickname is taken'})`.
+- **Initial values and new data.** The form starts from `form(data)`. When the page gets another
+  data object (the action invalidated the data, or it was refreshed), the fields the user has not
+  changed follow it and the changed ones keep what was typed. While the form's own action is
+  running the data is not read again: during an optimistic write the page gets the patched value,
+  and a rollback would otherwise wipe what was typed. `reset()` goes back to the data the form was
+  last given and clears the errors and the action's state. After a success the fields become the
+  new baseline (`isDirty` is false); `resetOnSuccess: true` restarts them from `form(data)`
+  instead.
+
+#### Optimistic updates: `optimistic()`
+
+Since 0.8.0. `T optimistic(T current, Input input)` is what the page shows of one `data.dart` from
+the moment a write starts, until the server's answer is in:
+
+```dart
+// lib/app/teams/$teamId/action.dart
+Team addMemberOptimistic(Team team, String input) =>
+    Team(team.name, [...team.members, input]);
+
+Future<void> addMember(Ref ref, {required String teamId, required String input}) async => …;
+```
+
+- **The target** is the `data.dart` the action invalidates whose type is `T`. When several match,
+  the folder's own data comes first, then the sections above it (innermost first), then the rest
+  of `invalidates` in the order listed. The action has to invalidate it (the default set does; an
+  explicit `invalidates` must list it). If it doesn't, that is an error: a patch over data that
+  never loads again would have no end. Only the target is patched; other invalidated data just
+  reloads.
+- **The sequence.** The patch is shown from the start of the write. On a failure it is removed
+  (the rollback). On a success it **stays over the old value until the invalidated data has loaded
+  again**, then the server's value replaces it: no frame shows the old value in between. This
+  holds with `keep_previous: false` too: while a write that patched the data settles, `DataView`
+  does not show `loading.dart`, because the page has already shown the result. A reload that is not
+  settling a write still shows it as configured.
+- **Concurrent writes** apply oldest first; a failure removes only its own patch.
+- **Which reads are patched.** `DataView`, `SectionView` (the layout and every page that takes the
+  section's data by type) and the typed `XRoute.watch` / `XSection.watch` show the patched value.
+  `XRoute.data` (the provider), `read`, `refresh`, `prefetch`, `preload` and `AppRoutes.dataAt`
+  are the server's value. A dependency-triggered reload (`AsyncLoading` with a value) is returned
+  unpatched by `watch`, and still patched in `DataView`.
+- **The patch holds until the data loads again, even to an equal value**, because it is the
+  reload that ends it, not a comparison. A patch that throws is reported through
+  `FlutterError.reportError` (context `while applying an optimistic() patch`) and skipped; it
+  never turns into `error.dart`.
+- If the page leaves in the middle of a write, the write still finishes and still invalidates.
 
 ### Links: `RouteLink`
 
@@ -4294,6 +4424,13 @@ refund, and the quote beside it, `data.dart`, loads again after a success), and
 `teams/$teamId/action.dart` adds a member to the section, whose data reloads for the layout and the
 page. `test/action_test.dart` holds a refund pending on a `Completer`, so nothing waits for time.
 
+Since 0.8.0 it also has a form and an optimistic update: `(account)/nickname/` is a `HookConsumerWidget` on
+`NicknameRoute.useForm` (a `form()`, `validate()` and `optimistic()` beside its `action()`: errors per field,
+a save button that disables itself, a title that shows the new nickname at once and ends on the server's
+spelling, and fields that follow a reload unless the user changed them), and `teams/$teamId/action.dart` has an
+`addMemberOptimistic()` that puts the member on the page before the section reloads. `test/forms_test.dart` and
+`test/teams_test.dart` hold the save pending on a `Completer`.
+
 `examples/features` also has localized paths: `help/` answers `/aide` and `/hilfe` too, with a dynamic
 child, a nested child that is localized itself, and a `not_found.dart` that covers every spelling; `guide/`, with
 spellings beyond ASCII (`/führer`, `/руководство`); and `shop/`, a page-less folder spelled `boutique` and
@@ -4574,6 +4711,16 @@ don't (`prefetch`, `refresh`, `go`, `location`) are instance methods. If Dart ma
 type through the import machinery that `extra` already uses, become an option, this can be
 reopened; today the trade is a `const` route and a type that is never `dynamic`.
 
+**Why forms are companions of `action.dart`, not a `form.dart`.** A form is the UI of one write, and
+`action.dart` already owns what that needs: the keys, the input type, the pending and error state,
+the invalidation set and the DevTools site. A `form.dart` would bind all of that again and need a
+rule for which action it submits. Validation also has to guard every path to the write (the form,
+`submit`, another page, a test), and only code the action's own provider calls can promise that. An
+`optimistic()` is about the write's effect on data, which is what `invalidates` is about, so the two
+are checked against each other. A new file kind would cost a scan rule, a scaffold, editor support
+and orphan diagnostics; companions are a convention like `invalidates`. And the thing a `form.dart`
+would invite, a form with no write (search filters), is what URL state (`copyWith`) is for.
+
 **Why `copyWith` is a getter of a function type.** `route.copyWith(page: null)` has to mean "clear
 the page" and `route.copyWith()` "keep it", so `null` can't be the default of an `int? page`
 parameter. The usual answers each cost something visible. A method with `Object? page = _keep`
@@ -4629,12 +4776,12 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 946 tests (888 unit, 45 CLI integration, 13 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 977 tests (919 unit, 45 CLI integration, 13 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
   scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), string paths that match no route (the lint, its matching, mount point and ignore comments), `fsp size` (dart2js's table of deferred parts read from a real build's `main.dart.js`, own and shared bytes, the stale-build checks and the `size:` budgets), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 1184 Flutter tests (the package 626, the DevTools extension 189, `shop` 77, `features` 244, `tabs` 40, `minimal` 8); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 1225 Flutter tests (the package 657, the DevTools extension 189, `shop` 77, `features` 254, `tabs` 40, `minimal` 8); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

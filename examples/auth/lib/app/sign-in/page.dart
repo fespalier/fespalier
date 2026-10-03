@@ -57,7 +57,11 @@ class SignInPage extends HookConsumerWidget {
               // signIn is called straight from onPressed: a web popup is blocked otherwise.
               OutlinedButton(
                 onPressed: () => unawaited(_browser(ref, browserError)),
-                child: const Text('Sign in with Keycloak'),
+                child: Text(
+                  usesDemoOidc
+                      ? 'Sign in with the demo provider'
+                      : 'Sign in with Keycloak',
+                ),
               ),
               if (browserError.value case final text?) Text(text),
             ],

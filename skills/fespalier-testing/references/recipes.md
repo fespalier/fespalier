@@ -285,6 +285,19 @@ await tester.pumpAndSettle();
 fakeAuth(signedInAs: ...)` makes every guarded route render (otherwise a guarded route is skipped).
 - `RecordingTelemetry` sees the `auth` spans: `#2 start auth refresh backend=fake trigger=expired`.
 
+## DPoP proofs (since 0.9.0)
+
+With `package:fespalier_sign_keypair`, a test needs no secure element: `DpopProof(signer: FakeDpopSigner())` is a proof
+maker over a software key from a fixed scalar (the same key and signature on every run; `deleteKey`, which sign-out
+calls, moves to the next key), and `verifyDpopProof(proof, method:, uri:, accessToken:, nonce:, thumbprint:, now:)`
+(from `package:fespalier_sign_keypair/testing.dart`) is what a fake server checks each proof with: it throws a
+`DpopProofInvalid` that names the first check that failed (`htm is GET, not POST`, `ath does not match the access
+token`, `iat is 120 s from now`). It does not remember `jti`s: a fake server keeps a `Set` and refuses a repeat, which is
+how a `RetryClient` under the session client shows up. Call `DpopProof` inside the test body so `clock` is the test's;
+`withClock(Clock.fixed(...), ...)` pins `iat`. The whole story, against the demo server, is `examples/auth/test/dpop_test.dart`
+(a nonce challenge, a clock two minutes behind, a refresh with the same key, a rotated key, `keyLost`); a compiling sample
+is in [`fespalier-guards`](../../fespalier-guards/references/auth-dpop.md).
+
 ## A form and its pending state (since 0.8.1)
 
 A form's save is held on a `Completer` and the test pumps by frames: no timer, no `runAsync`.

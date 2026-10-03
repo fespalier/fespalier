@@ -40,10 +40,11 @@ dependencies the same `url` (no `.git`) and the same `ref`.
 | `authHttpClient`, `SessionClient`, `Authorizer` | A `package:http` client whose requests to `apiOrigins` carry the session, refresh once on expiry, and are sent again once after a 401                                                                    |
 | `package:fespalier_auth/oidc.dart`              | `OidcBackend`: the authorization code flow with PKCE for a public client, Keycloak's endpoints and roles, refresh-token rotation, DPoP on the token endpoint. See [`auth-backends.md`](auth-backends.md) |
 | `package:fespalier_auth/dio.dart`               | `SessionInterceptor(authorizer, dio)`: the policy of `authHttpClient` on dio's types (since 0.9.0)                                                                                                       |
+| `package:fespalier_sign_keypair`                | `DpopProof`: DPoP proofs signed by a device key, for `OidcBackend(proof: ...)`. A separate package; see [`auth-dpop.md`](auth-dpop.md)                                                                   |
 | `package:fespalier_auth/testing.dart`           | `FakeAuthBackend`, `FakeProof`, `fakeSession`, `fakeAuth`                                                                                                                                                |
 
 Signing in with **OpenID Connect or Keycloak, Firebase, Supabase, or your own API** is
-[`auth-backends.md`](auth-backends.md); this page is the package and a starter over a JSON API.
+[`auth-backends.md`](auth-backends.md), binding the tokens to the device (DPoP) is [`auth-dpop.md`](auth-dpop.md); this page is the package and a starter over a JSON API.
 `examples/auth` runs all of it with an in-process demo API and tests, and has a Keycloak realm.
 
 ## The starter

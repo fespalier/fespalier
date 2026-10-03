@@ -40,6 +40,10 @@ testWidgets('shows a product', (tester) async {
   `FakeAuthBackend` and a `MemoryTokenStore`: no `startup()`, no network, no timer. Call it **inside the test
   body**, where the fake clock starts; `tokenLifetime:` plus `tester.pump(const Duration(minutes: 6))` ages the
   session. See "Signed-in routes" in [`references/recipes.md`](references/recipes.md).
+- **DPoP proofs (since 0.9.0).** With `package:fespalier_sign_keypair`, `FakeDpopSigner` (from
+  `package:fespalier_sign_keypair/testing.dart`) is a software key from a fixed scalar (the same on every run, no
+  platform), and `verifyDpopProof` is what a fake server checks every proof with. See "DPoP proofs" in
+  [`references/recipes.md`](references/recipes.md).
 - **Hooks and telemetry (since 0.8.1).** An `observe.dart` hook fires at the end of the first frame that
   shows a change, so `await tester.pump()` before asserting what it did; `RecordingTelemetry` is a
   `FespalierTelemetry` that keeps lines for a test (`FespalierTelemetry.install` in `setUp`, `install(null)`

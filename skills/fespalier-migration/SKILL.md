@@ -43,7 +43,12 @@ Bump to `v0.9.0`, regenerate (`lib/app.g.dart` is unchanged for an app that opts
    version 1 (a new value of `fespalier.operation`, new keys): a dashboard that lists the operations shows one
    more. `fsp telemetry`'s dashboards label it "Session (sign-in, refresh, sign-out)".
 3. **New, opt-in:** `package:fespalier_auth` ([`fespalier-guards`](../fespalier-guards/SKILL.md), its
-   `auth-package.md`). Nothing else changes: no generated code, file kind, key or command.
+   `auth-package.md`), with OpenID Connect and Keycloak (`package:fespalier_auth/oidc.dart`), a dio interceptor
+   (`package:fespalier_auth/dio.dart`) and, as a separate package, device-bound tokens
+   (`package:fespalier_sign_keypair`, DPoP; its `auth-dpop.md`). An app that adds `fespalier_sign_keypair` needs
+   **Dart 3.12 and Flutter 3.44**, the same `url` and `ref` as `fespalier` and `fespalier_auth` for the three, and
+   network access to `github.com/vaam-apps/flutter-sign-keypair` at `pub get` (it is a git dependency, not on
+   pub.dev). Nothing else changes: no generated code, file kind, key or command.
 
 ## 0.7 to 0.8: what to check
 

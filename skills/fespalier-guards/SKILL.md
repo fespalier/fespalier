@@ -1,6 +1,6 @@
 ---
 name: fespalier-guards
-description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Since 0.9.0 also the fespalier_auth package: a session provider, restoreAuth in startup.dart, requireSignedIn, requireRole and redirectIfSignedIn guards, token storage, lazy single-flight refresh, an authenticated HTTP client (http and dio), OpenID Connect with PKCE and Keycloak, recipes for Firebase, Supabase and your own API, and a fake backend for tests. Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
+description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Since 0.9.0 also the fespalier_auth package: a session provider, restoreAuth in startup.dart, requireSignedIn, requireRole and redirectIfSignedIn guards, token storage, lazy single-flight refresh, an authenticated HTTP client (http and dio), OpenID Connect with PKCE and Keycloak, recipes for Firebase, Supabase and your own API, device-bound tokens (DPoP, fespalier_sign_keypair) and a fake backend for tests. Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
 ---
 
 # fespalier-guards
@@ -166,6 +166,13 @@ FutureOr<List<Override>> startup() => restoreAuth(authSetup());
   `AbortableRequest`'s abort trigger. **Never put `RetryClient` under the session client**: it re-sends the
   same DPoP proof and the server refuses it. Wrap `authHttpClient` in it instead.
 
+- **Device-bound tokens are the `fespalier_sign_keypair` package** (a third git dependency with the **same `url` and
+  `ref`**): `OidcBackend(proof: DpopProof.device())` signs every token call and API request with a key in the Secure
+  Enclave or the AndroidKeyStore (DPoP, RFC 9449), and the server binds the tokens to it. **`DpopProof.device()` throws
+  `DpopUnavailable` on the web, Windows and Linux** unless `fallback: DpopFallback.software` (a key in memory) or
+  `DpopFallback.bearer` (no DPoP) is given. Sign-out deletes the key. Keycloak sends no nonce and no `Date`, so a wrong
+  device clock is `DPoP proof is not active`: set the clock. [`references/auth-dpop.md`](references/auth-dpop.md).
+
 [`references/auth-package.md`](references/auth-package.md) has the pieces, a compiled starter (a backend over
 a JSON API, the guards, the sign-in form, an API call and its tests) and every behaviour above in detail;
 `examples/auth` is the running version (guards, form, refresh, restore, Keycloak realm). Its messages are in
@@ -179,5 +186,6 @@ a JSON API, the guards, the sign-in form, an API call and its tests) and every b
 | Session provider, sign-in/out, guards that re-run, async guards       | [`references/auth-patterns.md`](references/auth-patterns.md)               |
 | `fespalier_auth` (since 0.9.0): restore, guards, refresh, HTTP, tests | [`references/auth-package.md`](references/auth-package.md)                 |
 | OpenID Connect, Keycloak, Firebase, Supabase, your own API, dio       | [`references/auth-backends.md`](references/auth-backends.md)               |
+| Device-bound tokens: DPoP, `fespalier_sign_keypair`, proofs in tests  | [`references/auth-dpop.md`](references/auth-dpop.md)                       |
 | Testing a guarded route                                               | `fespalier-testing`                                                        |
 | An `fsp` error on a guard or redirect                                 | `fespalier-troubleshooting`                                                |

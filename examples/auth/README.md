@@ -1,8 +1,9 @@
 # auth
 
 A fespalier example for [`fespalier_auth`](../../packages/fespalier_auth) (since 0.9.0): signed-in
-routes, a sign-in form, guards, lazy single-flight refresh, an API client, and OpenID Connect with
-Keycloak. The API is an in-process server (`lib/demo/demo_server.dart`, a `MockClient`), so the app
+routes, a sign-in form, guards, lazy single-flight refresh, an API client, OpenID Connect with
+Keycloak, and device-bound tokens (DPoP, with
+[`fespalier_sign_keypair`](../../packages/fespalier_sign_keypair)). The API is an in-process server (`lib/demo/demo_server.dart`, a `MockClient`), so the app
 runs and is tested with no network.
 
 - `lib/app/startup.dart` returns `restoreAuth(authSetup())`: the stored session is read before the
@@ -23,8 +24,27 @@ runs and is tested with no network.
 `test/` runs against the demo server on the test's fake clock: `guards_test.dart` (`fakeAuth`),
 `sign_in_test.dart`, `refresh_test.dart` (one refresh for two requests, with
 `tester.pump(const Duration(minutes: 6))`), `restore_test.dart` (the first frame is the app, not the
-splash), `telemetry_test.dart` (the `auth` spans) and `oidc_test.dart` (`OidcBackend` against the
-demo server's Keycloak-shaped provider, with PKCE checked on the server side).
+splash), `telemetry_test.dart` (the `auth` spans), `oidc_test.dart` (`OidcBackend` against the
+demo server's Keycloak-shaped provider, with PKCE checked on the server side) and `dpop_test.dart`
+(see below).
+
+## Device-bound tokens (DPoP)
+
+`flutter run --dart-define=OIDC_ISSUER=demo --dart-define=DPOP=true` signs in with OpenID Connect
+against the demo server's own provider, in process (no Keycloak, no browser, no network), with
+`proof: DpopProof.device(fallback: DpopFallback.software)`: the tokens are DPoP-bound, and every
+request to the API carries a proof signed by the device key (the Secure Enclave or the
+AndroidKeyStore; a key in memory on the web, Windows and Linux, which `DpopFallback.software` allows
+and the default `refuse` does not). The demo server checks each proof with `verifyDpopProof`.
+
+`test/dpop_test.dart` runs that against `FakeDpopSigner` (the same key on every run): the code is
+bound to the key (`dpop_jkt`) and so are the tokens (`cnf.jkt`); the API takes a DPoP-bound token only
+with the `DPoP` scheme and a proof of its key, so a token alone, or with a thief's proof, is refused;
+a nonce challenge is answered once and the nonce kept; a refresh carries a proof of the same key; a
+device clock that is two minutes behind is corrected once from the `Date` header; signing out
+rotates the key; a stored session whose key is gone is signed out (`keyLost`). A `RetryClient`
+under the session client re-sends one proof, which the server counts as a reused `jti`
+(`reusedProofs`); over it, every attempt has its own.
 
 ## Run it against Keycloak
 
@@ -63,3 +83,15 @@ in-process demo, which accepts the tokens it cannot check.
 - The Keycloak check of `OidcBackend` (sign-in, rotation, the `invalid_grant` descriptions,
   revocation, end session) is `packages/fespalier_auth/test/keycloak_live_test.dart`, skipped unless
   `FESPALIER_KEYCLOAK_URL` names a running Keycloak with this realm.
+Against Keycloak with DPoP, use the client that requires it:
+
+```sh
+flutter run -d chrome --web-port 8686 \
+  --dart-define=OIDC_ISSUER=http://localhost:8080/realms/fespalier \
+  --dart-define=OIDC_CLIENT_ID=fespalier-auth-example-dpop \
+  --dart-define=DPOP=true
+```
+
+Keycloak sends no `DPoP-Nonce` and no `Date` header, so a wrong device clock there is
+`invalid_request` / `DPoP proof is not active` (set the clock), and the DPoP check against it is
+`packages/fespalier_sign_keypair/test/keycloak_live_test.dart` (same `FESPALIER_KEYCLOAK_URL`).

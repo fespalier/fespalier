@@ -17,6 +17,10 @@ dependencies:
     path: ../../packages/fespalier
   fespalier_auth:
     path: ../../packages/fespalier_auth
+  # DPoP (--dart-define=DPOP=true): proofs signed by a device key, and verifyDpopProof, which the
+  # demo server checks them with.
+  fespalier_sign_keypair:
+    path: ../../packages/fespalier_sign_keypair
   # The browser step of OpenID Connect (--dart-define=OIDC_ISSUER=...). A plugin, so it is the
   # app's dependency and not fespalier_auth's: an app that signs in some other way links none.
   flutter_web_auth_2: ^5.1.0
@@ -29,10 +33,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-# fespalier_auth depends on fespalier by git, as an app does; here both are the checkout's.
+# fespalier_auth and fespalier_sign_keypair depend on fespalier (and the second on the first) by
+# git, as an app does; here all are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
+  fespalier_auth:
+    path: ../../packages/fespalier_auth
 
 flutter:
   uses-material-design: true

@@ -76,6 +76,7 @@ jobs:
           - packages/fespalier_devtools
           - packages/fespalier_otel
           - packages/fespalier_auth
+          - packages/fespalier_sign_keypair
           - examples/shop
           - examples/features
           - examples/tabs

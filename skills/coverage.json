@@ -255,6 +255,10 @@
         "packages/fespalier_auth/lib/dio.dart",
         "README.md#OpenID Connect and Keycloak",
         "README.md#Firebase, Supabase and your own API",
+        "README.md#Device-bound tokens: DPoP with fespalier_sign_keypair",
+        "packages/fespalier_sign_keypair/README.md",
+        "packages/fespalier_sign_keypair/lib/fespalier_sign_keypair.dart",
+        "packages/fespalier_sign_keypair/lib/verify.dart",
         "examples/auth"
       ]
     },
@@ -264,6 +268,7 @@
         "packages/fespalier/lib/testing.dart",
         "README.md#Testing signed-in routes",
         "packages/fespalier_auth/lib/testing.dart",
+        "packages/fespalier_sign_keypair/lib/testing.dart",
         "README.md#Maestro flows (`fsp maestro`)",
         "config:semantics_ids",
         "packages/fespalier/lib/src/web_semantics.dart",

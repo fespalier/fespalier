@@ -56,3 +56,4 @@ Since 0.9.0 `package:fespalier_auth` sits next to it, a repository dependency at
 [signed-in routes](https://github.com/fespalier/fespalier#authentication), with a session provider,
 guards, token storage, lazy single-flight refresh and an authenticated HTTP client. It changes neither the
 generated code nor a release build that does not use it.
+`package:fespalier_sign_keypair` adds [device-bound tokens](https://github.com/fespalier/fespalier#device-bound-tokens-dpop-with-fespalier_sign_keypair) (DPoP, signed by a key in the Secure Enclave or the AndroidKeyStore) to it.

@@ -4771,7 +4771,7 @@ so a token cannot leak to a third party, and `apiOrigins` empty is an error the 
 `package:fespalier_auth/oidc.dart` (a separate library: an app that signs in some other way links none of
 it) has `OidcBackend`: the authorization code flow with PKCE (S256) for a **public** client, in pure Dart over
 `package:http`, with Keycloak's defaults. It owns the token exchange and the refresh, which is what makes the
-single flight, refresh-token rotation and DPoP (device-bound tokens) on the
+single flight, refresh-token rotation and [DPoP](#device-bound-tokens-dpop-with-fespalier_sign_keypair) on the
 token endpoint possible. The browser step is a function you give it, so the package links no plugin:
 `flutter_web_auth_2` (MIT; Android, iOS, macOS, web, Windows and Linux) is the usual one.
 
@@ -4874,6 +4874,67 @@ what `fespalier_auth` does would go unused there. The code, compiled by `just sk
 types: `dio.interceptors.add(SessionInterceptor(ref.watch(authorizer), dio))`. `FormData` bodies are not sent again,
 and a refresh that could not run is a `DioException` whose `error` is the `AuthUnavailable`. dio is a dependency of
 `fespalier_auth`, and is tree-shaken when that library is not imported.
+
+### Device-bound tokens: DPoP with fespalier_sign_keypair
+
+`package:fespalier_sign_keypair` (a separate package, since 0.9.0) is **DPoP**
+([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449)) for `OidcBackend`: every token request, refresh and API call
+carries a proof, a JWT signed by a key that lives in the Secure Enclave (iOS, macOS) or the AndroidKeyStore
+(StrongBox or the TEE), through [flutter-sign-keypair](https://github.com/vaam-apps/flutter-sign-keypair). The server
+binds the access and refresh tokens to that key (`cnf.jkt`), so a token copied off the device is useless without the
+device. It implements `fespalier_auth`'s `ProofOfPossession`, so nothing else in the app changes:
+
+```dart
+// lib/auth_setup.dart
+AuthConfig authSetup() => AuthConfig(
+  backend: OidcBackend(
+    issuer: issuer,
+    clientId: 'shop-app',
+    redirectUri: Uri.parse('com.example.shop:/callback'),
+    endpoints: OidcEndpoints.keycloak(issuer),
+    openBrowser: openBrowser,
+    proof: DpopProof.device(), // throws DpopUnavailable on the web unless a fallback is given
+  ),
+  apiOrigins: [Uri.parse('https://api.example.com')],
+);
+```
+
+Install it next to `fespalier` and `fespalier_auth`, with the same `url` and `ref` for the three (its README has the
+block). It needs Dart 3.12 and Flutter 3.44, Android minSdk 24, iOS 15 and macOS 10.15, and it depends on
+flutter-sign-keypair **by git, pinned to a commit** (the repository is not on pub.dev), so `flutter pub get` clones
+`github.com/vaam-apps/flutter-sign-keypair`.
+
+- **What is sent.** A proof is `{typ: dpop+jwt, alg: ES256, jwk}` and `{jti, htm, htu, iat, ath?, nonce?}`, ES256
+  signed: `jti` is new for every send (retries included), `htu` has no query or fragment, `ath` is only on requests
+  that carry an access token, and the authorization request carries `dpop_jkt`, so the code is bound to the key too.
+  One signature per request, made by the secure element; nothing is cached (a proof is single-use), and no timer or
+  listener is started.
+- **Nonces and the clock.** A `DPoP-Nonce` from any response is kept per origin, and a `use_dpop_nonce` challenge
+  (an authorization server's `400`, a resource server's `401`) is answered once. When a server refuses a proof as not
+  active and its `Date` header says the device clock is more than 5 seconds off, the difference is applied to every
+  later `iat` and the request is sent once more. **Keycloak sends neither a nonce nor a `Date`**, so a wrong clock
+  there is `invalid_request` / `DPoP proof is not active`: set the clock.
+- **The key.** An *ambient* key (it never prompts), made on first use under the key id `fespalier_dpop`. Sign-out
+  deletes it (`rotateKeyOnSignOut`), so the next sign-in makes a new one and an old refresh token, even a stolen one,
+  is useless. `restoreAuth` signs the user out (`SignedOut(reason: SignOutReason.keyLost)`) when the key a stored
+  session is bound to is gone: a restored backup, a wiped keychain.
+- **Where there is no secure element** (the web, Windows, Linux, Fuchsia) `DpopFallback.refuse`, the default, throws
+  `DpopUnavailable`: a library that promises tokens bound to a device must not quietly give you tokens bound to
+  nothing. `DpopFallback.software` is a key in memory (its scalar is in the process; on the web it does not survive a
+  reload, so the session is signed out, unless you pass a `softwareStore`), and `DpopFallback.bearer` is no DPoP
+  (`device()` returns null; the client must not require DPoP-bound tokens). `requireHardware: true` makes a device
+  without a secure element fail instead (the iOS simulator has only the keychain).
+- **Keycloak** supports DPoP since 26.4. Switch on **Require DPoP bound tokens** on the client (the attribute
+  `dpop.bound.access.tokens`; `examples/auth/keycloak/` has a realm with such a client,
+  `fespalier-auth-example-dpop`). Read from Keycloak 26.8.0: errors are `invalid_request` with descriptions
+  (`DPoP proof is missing`, `DPoP proof is not active`, `DPoP proof has already been used`), a refresh token bound to
+  another key is `invalid_grant` / `DPoP confirmation doesn't match DPoP proof`, and a resource server's 401 is
+  `WWW-Authenticate: DPoP ... error="invalid_token"` for every problem with the proof.
+- **`RetryClient` goes over the session client**, never under it: it would send the same proof again, and the
+  server refuses a reused `jti` (see Calling your API).
+- **Tests.** `package:fespalier_sign_keypair/testing.dart` has `FakeDpopSigner` (a software key from a fixed scalar:
+  the same key and signature on every run) and `verifyDpopProof`, which a fake server checks every proof with and
+  which names the first check that failed. `examples/auth` runs a DPoP-checking demo server.
 
 ### Testing signed-in routes
 
@@ -5603,7 +5664,9 @@ restart.
 pages whose two `data.dart` files call an API through `authHttpClient` (an expired token is refreshed once), and
 a first frame that is the app, not a splash, because `startup()` restores the session with no network. The
 API is an in-process server, so it runs and is tested with no network; run against Keycloak with
-`--dart-define=OIDC_ISSUER=...` and the realm in `examples/auth/keycloak/`.
+`--dart-define=OIDC_ISSUER=...` and the realm in `examples/auth/keycloak/`. With
+`--dart-define=OIDC_ISSUER=demo --dart-define=DPOP=true` it signs in against the demo server's own provider with
+device-bound tokens (DPoP), and its tests check every proof the way a server does.
 
 ## Development
 
@@ -5621,6 +5684,7 @@ cli/templates/telemetry/   the stack `fsp telemetry` writes (compose file, colle
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 packages/fespalier_auth/   signed-in routes: session provider, guards, authenticated client, OpenID Connect
+packages/fespalier_sign_keypair/   DPoP proofs for fespalier_auth, signed by a device key (Secure Enclave, AndroidKeyStore)
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed

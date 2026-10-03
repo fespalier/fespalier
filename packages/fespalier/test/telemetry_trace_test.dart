@@ -137,6 +137,66 @@ void main() {
     });
   });
 
+  group('traceDataCall', () {
+    test(
+      'returns the very value and adds no microtask to what Riverpod does',
+      () {
+        // Same measure as traceData's: the wrapper (a closure, the sink's `within` and the span's
+        // start and end) schedules nothing of its own.
+        int microtasks({required bool withSink}) {
+          var count = -1;
+          fakeAsync((async) {
+            FespalierTelemetry.install(withSink ? rec : null);
+            final c = ProviderContainer();
+            final value = Object();
+            final p = Provider<Object>(
+              (ref) =>
+                  traceDataCall(ref, 'd1', null, () => value, telemetry: site),
+            );
+            expect(identical(c.read(p), value), isTrue);
+            expect(async.pendingTimers, isEmpty);
+            count = async.microtaskCount;
+            c.dispose();
+          });
+          return count;
+        }
+
+        microtasks(withSink: false); // warms up what Riverpod sets up once
+        final without = microtasks(withSink: false);
+        expect(microtasks(withSink: true), without);
+        expect(rec.log, ['#1 start data a/data.dart', '#1 end data data']);
+      },
+    );
+
+    test('a Future is the same Future, and a Stream the same Stream', () {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final later = Completer<int>().future;
+      final f = Provider<Future<int>>(
+        (ref) => traceDataCall(ref, 'd1', null, () => later, telemetry: site),
+      );
+      expect(identical(c.read(f), later), isTrue);
+      final stream = StreamController<int>().stream;
+      final s = Provider<Stream<int>>(
+        (ref) => traceDataCall(ref, 'd2', null, () => stream, telemetry: site),
+      );
+      expect(identical(c.read(s), stream), isTrue);
+    });
+
+    test('with no sink the call is the whole cost', () {
+      FespalierTelemetry.install(null);
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      var runs = 0;
+      final p = Provider<int>(
+        (ref) => traceDataCall(ref, 'd1', null, () => ++runs, telemetry: site),
+      );
+      expect(c.read(p), 1);
+      expect(runs, 1);
+      expect(rec.log, isEmpty);
+    });
+  });
+
   group('actions', () {
     test('a sync action returns what it returns and adds no microtask', () {
       int microtasks(ActionProvider<String, Object> action) {

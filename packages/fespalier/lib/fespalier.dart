@@ -35,6 +35,7 @@ export 'src/devtools/devtools.dart'
         devToolsRegister,
         kFespalierDevTools,
         traceData,
+        traceDataCall,
         traceGuard,
         watchData;
 export 'src/extra_codec.dart';
@@ -58,10 +59,12 @@ export 'src/scroll_memory.dart';
 export 'src/segments.dart';
 export 'src/selected_data.dart';
 export 'src/tab_options.dart';
-// Telemetry (since 0.8.1): a sink an adapter implements, and what a generated app.g.dart passes.
+// Telemetry (since 0.8.1): a sink an adapter implements, and what a generated app.g.dart passes
+// (`NavigationSource` and `navigateFrom` since 0.9.0).
 export 'src/telemetry.dart'
     show
         FespalierTelemetry,
+        NavigationSource,
         TelemetryEnd,
         TelemetryOp,
         TelemetryOutcome,
@@ -69,6 +72,7 @@ export 'src/telemetry.dart'
         TelemetryPageKind,
         TelemetrySite,
         TelemetryStart,
+        navigateFrom,
         telemetryAttach;
 export 'src/transitions.dart';
 export 'src/url_state.dart';

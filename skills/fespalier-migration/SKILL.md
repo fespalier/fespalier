@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; the opt-in fespalier_auth package), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; an app with telemetry: true regenerates app.g.dart, where data providers call data() through traceDataCall and the data span starts first and is current; the opt-in fespalier_auth package), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -49,6 +49,20 @@ Bump to `v0.9.0`, regenerate (`lib/app.g.dart` is unchanged for an app that opts
    **Dart 3.12 and Flutter 3.44**, the same `url` and `ref` as `fespalier` and `fespalier_auth` for the three, and
    network access to `github.com/vaam-apps/flutter-sign-keypair` at `pub get` (it is a git dependency, not on
    pub.dev). Nothing else changes: no generated code, file kind, key or command.
+4. **An app with `telemetry: true` regenerates a different `app.g.dart`.** Each data provider calls `data()`
+   through `traceDataCall(ref, 'd4', id, () => _i5.data(ref, id: id), telemetry: ...)` instead of
+   `traceData(ref, 'd4', id, _i5.data(ref, id: id), telemetry: ...)` (an app without `telemetry: true` is
+   byte for byte unchanged). It costs one closure per provider build, with no `Future` and no microtask.
+   What follows: a `data` span **starts before `data()` runs**, so its duration includes the synchronous part;
+   a `data()` that throws before it returns now gets a `data` span (`fespalier.data.state = error`,
+   `fespalier.async = false`; before 0.9.0 it got none); and `FespalierOtel` makes data and action spans
+   current while they run, so the spans of `otel_http` and `otel_dio` made inside are their children.
+5. **New, opt-in, in `fespalier-observability`:** `FespalierTelemetry.combine` and `add` (several sinks in
+   the one slot, each with its own tokens and isolated), the `within` hook a sink may override (an instance
+   member with a default, so a sink compiles unchanged unless it already had a member named `within` with
+   another signature: rename it), `FespalierTelemetry.run` for adapter packages, and `navigateFrom` with
+   `NavigationSource` and the attribute `fespalier.navigation.source` (contract version 1 gains a key; absent
+   unless a bridge marks the navigation). `RecordingTelemetry` gains `recordWithin:` and `source=`.
 
 ## 0.7 to 0.8: what to check
 

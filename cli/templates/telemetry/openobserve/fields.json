@@ -10,6 +10,7 @@
     "fespalier_navigation_from",
     "fespalier_navigation_redirected",
     "fespalier_navigation_depth",
+    "fespalier_navigation_source",
     "url_path",
     "url_query",
     "fespalier_guard_decision",

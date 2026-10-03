@@ -62,3 +62,8 @@ Since 0.9.0 `package:fespalier_flags` is [feature flags](https://github.com/fesp
 another repository dependency at the same release tag: synchronous `flag()` providers that a `guard.dart` watches
 (`flagGuard`), so a route behind a flag and its menu entry follow the flag. It adds no dependency beyond fespalier and
 changes neither the generated code nor a release build that does not use it.
+
+Since 0.9.0 `package:fespalier_storage` gives the [`dataCache`](https://github.com/fespalier/fespalier#a-cache-that-survives-a-restart-datacache)
+a storage on disk: `PrefsDataStorage` (shared_preferences) and `HiveDataStorage` (hive_ce), with a size budget, so a route's
+saved value is on the first frame of the next start. It is one more repository dependency at the same release tag, and
+changes neither the generated code nor a release build that does not use it.

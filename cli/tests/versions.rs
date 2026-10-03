@@ -177,11 +177,12 @@ fn the_runtime_knows_its_version() {
 
 /// The companion packages that are released with fespalier (the OpenTelemetry adapter, and the
 /// ones that follow it): each has the version of the CLI and pins fespalier by a `ref: v…`.
-const COMPANIONS: [&str; 4] = [
+const COMPANIONS: [&str; 5] = [
     "packages/fespalier_otel/pubspec.yaml",
     "packages/fespalier_auth/pubspec.yaml",
     "packages/fespalier_sign_keypair/pubspec.yaml",
     "packages/fespalier_flags/pubspec.yaml",
+    "packages/fespalier_storage/pubspec.yaml",
 ];
 
 #[test]
@@ -313,6 +314,7 @@ fn the_readmes_pin_this_version() {
         "packages/fespalier_auth/README.md",
         "packages/fespalier_sign_keypair/README.md",
         "packages/fespalier_flags/README.md",
+        "packages/fespalier_storage/README.md",
     ] {
         let text = read(file);
         for marker in MARKERS {
@@ -348,6 +350,8 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         "packages/fespalier_sign_keypair/README.md",
         "packages/fespalier_flags/pubspec.yaml",
         "packages/fespalier_flags/README.md",
+        "packages/fespalier_storage/pubspec.yaml",
+        "packages/fespalier_storage/README.md",
         // the agent skills' install pins (skills/README.md, "Versions")
         "skills/fespalier/SKILL.md",
         "skills/fespalier-migration/references/go-router-adoption.md",

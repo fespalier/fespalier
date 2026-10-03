@@ -25,6 +25,7 @@ use crate::dart::{self, Class, Function, Lit, Module, Span, Ty};
 use crate::diag::Diags;
 use crate::enums::{self, Libs, Lookup};
 use crate::extra::{self, ExtraType};
+use crate::forms::{self, Companion, RecordError};
 use crate::locale::{self, Localized};
 use crate::scan::{ACTION_RESERVED, Kind, Node, ROUTE_MEMBERS, SECTION_MEMBERS, Seg};
 
@@ -172,8 +173,66 @@ pub struct Action {
     pub input: ExtraType,
     /// The routes (or sections) whose `data.dart` a success invalidates, outermost first.
     pub invalidates: Vec<usize>,
+    /// Its `form()` (since 0.8.0): the typed fields of the input, and what they start from.
+    pub form: Option<Form>,
+    /// The name of its `validate()` (since 0.8.0), run before the action.
+    pub validate: Option<String>,
+    /// Its `optimistic()` (since 0.8.0).
+    pub optimistic: Option<Optimistic>,
     /// The function, for diagnostics.
     pub span: Span,
+}
+
+/// The `form()` beside an action: `NicknameFields form(Profile profile)`.
+#[derive(Debug, Clone)]
+pub struct Form {
+    /// The function's name: `form`, or `approveForm`.
+    pub function: String,
+    /// The fields of the input record, in order.
+    pub fields: Vec<FormField>,
+    /// The type of the value it takes (the `data:` the page passes), when it takes one.
+    pub data: Option<ExtraType>,
+}
+
+/// One field of the input record of an action with a form.
+#[derive(Debug, Clone)]
+pub struct FormField {
+    pub name: String,
+    /// The `FieldCodec` of a text field (`text`, `optionalInteger`...), `None` for a value field.
+    pub codec: Option<&'static str>,
+}
+
+/// The `optimistic()` beside an action: `Profile optimistic(Profile current, Input input)`.
+#[derive(Debug, Clone)]
+pub struct Optimistic {
+    /// The function's name: `optimistic`, or `approveOptimistic`.
+    pub function: String,
+    /// The type it patches, as written: `Profile`.
+    pub ty: String,
+    /// The route (or section) whose `data.dart` it patches: one of the action's `invalidates`.
+    pub target: Option<usize>,
+    /// The function, for diagnostics.
+    pub span: Span,
+}
+
+/// Where the companions of an action are looked for: the file the action is in.
+struct Companions<'a> {
+    m: &'a Module,
+    src: &'a str,
+    file: &'a str,
+    /// The id of the route (or section) whose `action.dart` it is.
+    id: usize,
+}
+
+/// The named parameters of a form hook that are not an action's keys: a key can't take their
+/// names.
+const FORM_HOOK_PARAMS: [&str; 4] = ["data", "validation", "resetOnSuccess", "messages"];
+
+/// Whether the function takes `Ref` as its first, positional, parameter.
+fn first_is_ref(f: &Function) -> bool {
+    f.params
+        .first()
+        .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("Ref")))
 }
 
 /// The members the generated typed route (or section handle) gets for an action.
@@ -185,6 +244,8 @@ pub struct ActionNames {
     pub run: String,
     /// The hook: `useAction`, or `useApprove`.
     pub hook: String,
+    /// The hook of its form (since 0.8.0): `useForm`, or `useApproveForm`.
+    pub form_hook: String,
 }
 
 impl ActionNames {
@@ -200,12 +261,14 @@ impl ActionNames {
                 provider: "action".into(),
                 run: "submit".into(),
                 hook: "useAction".into(),
+                form_hook: "useForm".into(),
             }
         } else {
             ActionNames {
                 provider: format!("{function}Action"),
                 run: function.into(),
                 hook: format!("use{upper}"),
+                form_hook: format!("use{upper}Form"),
             }
         }
     }
@@ -2487,20 +2550,46 @@ impl Resolver<'_> {
             self.diags.error(&file, None, msg);
             return vec![];
         }
-        let takes_ref = |f: &Function| {
-            f.params
-                .first()
-                .is_some_and(|p| !p.named && p.ty.as_ref().is_some_and(|t| t.is("Ref")))
-        };
-        let functions: Vec<&Function> = m
+        let takes_ref = first_is_ref;
+        let candidates: Vec<&Function> = m
             .functions
             .iter()
             .filter(|f| !f.name.starts_with('_') && (f.name == "action" || takes_ref(f)))
+            .collect();
+        // A function called `approveForm` beside `approve` is its companion, never an action
+        // (since 0.8.0), even when it takes a `Ref` (which is then reported on it).
+        let functions: Vec<&Function> = candidates
+            .iter()
+            .copied()
+            .filter(|f| {
+                !candidates.iter().any(|b| {
+                    b.name != f.name
+                        && Companion::ALL
+                            .iter()
+                            .any(|&r| forms::companion(&b.name, r) == f.name)
+                })
+            })
             .collect();
         if functions.is_empty() {
             let msg = "expected `Future<T> action(Ref ref, {...segments, required Input input})`; any public function that takes a `Ref` first is an action";
             self.diags.error(&file, None, msg);
             return vec![];
+        }
+        if !m.functions.iter().any(|f| f.name == "action") {
+            for role in Companion::ALL {
+                let name = role.plain();
+                let Some(f) = m.functions.iter().find(|f| f.name == name) else {
+                    continue;
+                };
+                if functions.iter().any(|a| a.name == name) {
+                    continue;
+                }
+                let (what, suffix) = (role.what(), role.suffix());
+                let msg = format!(
+                    "`{name}()` would be the {what} of `action()`, and action.dart has no `action()`: name it after the action it belongs to (`<action>{suffix}`, e.g. `approve{suffix}` for `approve()`), or make it private"
+                );
+                self.diags.warn(&file, Some(&f.span), msg);
+            }
         }
         let listed = self.invalidates(m, &file);
         self.listed.push((id, listed));
@@ -2562,7 +2651,7 @@ impl Resolver<'_> {
                 continue;
             };
             let import = self.import(&file);
-            out.push(Action {
+            let mut action = Action {
                 name: f.name.clone(),
                 import,
                 flow,
@@ -2575,10 +2664,223 @@ impl Resolver<'_> {
                     &format!("a{id}_{}", f.name),
                 ),
                 invalidates: vec![],
+                form: None,
+                validate: None,
+                optimistic: None,
                 span: f.span.clone(),
-            });
+            };
+            let at = Companions {
+                m,
+                src,
+                file: &file,
+                id,
+            };
+            self.companions(&at, f, &input, &mut action);
+            out.push(action);
         }
         out
+    }
+
+    /// Reads and checks the `form()`, `validate()` and `optimistic()` beside the action `f`
+    /// (since 0.8.0). One that doesn't fit is reported and left out; the action still works.
+    fn companions(&mut self, at: &Companions, f: &Function, input: &Ty, a: &mut Action) {
+        let find = |role: Companion| {
+            let name = forms::companion(&f.name, role);
+            at.m.functions.iter().find(|g| g.name == name)
+        };
+        if let Some(g) = find(Companion::Form) {
+            a.form = self.form(at, f, g, input, a);
+        }
+        if let Some(g) = find(Companion::Validate) {
+            a.validate = self.validate(at, f, g, input);
+        }
+        if let Some(g) = find(Companion::Optimistic) {
+            a.optimistic = self.optimistic(at, f, g, input);
+        }
+    }
+
+    /// `NicknameFields form(Profile profile)`: the input as a record type, and what the form
+    /// starts from.
+    fn form(
+        &mut self,
+        at: &Companions,
+        f: &Function,
+        g: &Function,
+        input: &Ty,
+        a: &Action,
+    ) -> Option<Form> {
+        let (action, name) = (&f.name, &g.name);
+        let hook = ActionNames::of(action).form_hook;
+        let file = at.file;
+        let found = input.text.as_str();
+        if first_is_ref(g) {
+            let msg = format!(
+                "`{name}()` is the form of `{action}()`: it gives the form its first values from the data the page passes, so it takes that value (or nothing), not a `Ref`"
+            );
+            self.diags.error(file, Some(&g.span), msg);
+            return None;
+        }
+        let mut ok = true;
+        match &g.ret {
+            None => {
+                let msg = format!(
+                    "`{name}()` needs an explicit return type: the input of `{action}()`, `{found}`"
+                );
+                self.diags.error(file, Some(&g.span), msg);
+                ok = false;
+            }
+            Some(ret) if ret.text != input.text => {
+                let msg = format!(
+                    "`{name}()` returns `{}`, but `{action}()` takes `{found}` as `input`: the form builds the action's input, so they are the same type",
+                    ret.text
+                );
+                self.diags.error(file, Some(&g.span), msg);
+                ok = false;
+            }
+            Some(_) => {}
+        }
+        let fields = match forms::record_fields(input, &at.m.typedefs) {
+            Ok(fields) => fields,
+            Err(RecordError::NotARecord) => {
+                let msg = format!(
+                    "the form of `{action}()` needs the fields of its input, and `{found}` is not a record type declared here: take `input` as a record with named fields (`required ({{int amount, String note}}) input`), or as a typedef of one declared in action.dart"
+                );
+                self.diags.error(file, Some(&g.span), msg);
+                return None;
+            }
+            Err(RecordError::Positional) => {
+                let msg = format!(
+                    "the form of `{action}()` needs a name for each field of its input, and `{found}` has positional fields: name them, e.g. `({{int amount, String note}})`"
+                );
+                self.diags.error(file, Some(&g.span), msg);
+                return None;
+            }
+        };
+        let mut data = None;
+        match g.params.as_slice() {
+            [] => {}
+            [p] if !p.named && p.required => {
+                if let Some(ty) = &p.ty {
+                    data = Some(extra::extra_type(
+                        &ty.text,
+                        at.src,
+                        file,
+                        a.import,
+                        &format!("f{}_{action}", at.id),
+                    ));
+                } else {
+                    let msg = format!(
+                        "give the parameter of `{name}()` a type: it is the type of `data:` in `{hook}`"
+                    );
+                    self.diags.error(file, Some(&p.span), msg);
+                    ok = false;
+                }
+            }
+            _ => {
+                let msg = format!(
+                    "`{name}()` takes at most one parameter, positional and required: the value the form starts from, which the page passes to `{hook}` as `data:`"
+                );
+                self.diags.error(file, Some(&g.span), msg);
+                ok = false;
+            }
+        }
+        if let Some(k) = a
+            .keys
+            .iter()
+            .find(|k| FORM_HOOK_PARAMS.contains(&k.as_str()))
+        {
+            let msg = format!(
+                "`{k}` can't be a key of an action with a form: its hook, `{hook}`, takes a parameter called `{k}`; rename it"
+            );
+            self.diags.error(file, Some(&f.span), msg);
+            ok = false;
+        }
+        ok.then(|| Form {
+            function: name.clone(),
+            fields: fields
+                .into_iter()
+                .map(|(name, ty)| FormField {
+                    name,
+                    codec: forms::codec(&ty),
+                })
+                .collect(),
+            data,
+        })
+    }
+
+    /// `FieldErrors? validate(Input input)`.
+    fn validate(
+        &mut self,
+        at: &Companions,
+        f: &Function,
+        g: &Function,
+        input: &Ty,
+    ) -> Option<String> {
+        let (action, name, file) = (&f.name, &g.name, at.file);
+        if first_is_ref(g) {
+            let msg = format!(
+                "`{name}()` is the validation of `{action}()`: it runs on the device before the action, with the input alone, so it takes no `Ref`; a check that needs the server belongs in `{action}()`, which throws `FieldErrors`"
+            );
+            self.diags.error(file, Some(&g.span), msg);
+            return None;
+        }
+        let returns = g
+            .ret
+            .as_ref()
+            .is_some_and(|r| r.text == "FieldErrors?" || r.text == "FieldErrors");
+        let takes = matches!(
+            g.params.as_slice(),
+            [p] if !p.named && p.required && p.ty.as_ref().is_some_and(|t| t.text == input.text)
+        );
+        if returns && takes {
+            return Some(name.clone());
+        }
+        let found = &input.text;
+        let msg = format!(
+            "expected `FieldErrors? {name}({found} input)`: the validation of `{action}()` takes the action's input and returns what is wrong with it, or null"
+        );
+        self.diags.error(file, Some(&g.span), msg);
+        None
+    }
+
+    /// `T optimistic(T current, Input input)`; its target is found once `invalidates` is known.
+    fn optimistic(
+        &mut self,
+        at: &Companions,
+        f: &Function,
+        g: &Function,
+        input: &Ty,
+    ) -> Option<Optimistic> {
+        let (action, name, file) = (&f.name, &g.name, at.file);
+        if first_is_ref(g) {
+            let msg = format!(
+                "`{name}()` is the optimistic patch of `{action}()`: it runs while the page builds, with the value the page shows and the input, so it takes no `Ref`"
+            );
+            self.diags.error(file, Some(&g.span), msg);
+            return None;
+        }
+        if let [current, given] = g.params.as_slice()
+            && !current.named
+            && current.required
+            && !given.named
+            && given.required
+            && let (Some(t), Some(i), Some(ret)) = (&current.ty, &given.ty, &g.ret)
+            && ret.text == t.text
+            && i.text == input.text
+        {
+            return Some(Optimistic {
+                function: name.clone(),
+                ty: t.text.clone(),
+                target: None,
+                span: g.span.clone(),
+            });
+        }
+        let found = &input.text;
+        let msg = format!(
+            "expected `T {name}(T current, {found} input)`: the optimistic patch of `{action}()` takes the value of a data.dart it invalidates and the input, and returns the value to show while the write is in flight"
+        );
+        self.diags.error(file, Some(&g.span), msg);
+        None
     }
 
     /// What an action returns: `Future<T>`, `FutureOr<T>` or a plain `T`.
@@ -2681,9 +2983,66 @@ impl Resolver<'_> {
                 let ok = self.action_keys(rid, i, &ids, explicit, &file);
                 let a = &mut self.app.routes[rid].actions[i];
                 a.invalidates = if ok { ids.clone() } else { vec![] };
+                if ok {
+                    self.optimistic_target(rid, i, &file);
+                }
             }
         }
         self.action_names();
+    }
+
+    /// Finds the `data.dart` an action's `optimistic()` patches: the first of what the action
+    /// invalidates that gives the type it patches, looking at this folder's own data first, then
+    /// the sections above it (innermost first), then the rest in the order they are listed.
+    fn optimistic_target(&mut self, rid: usize, i: usize, file: &str) {
+        let a = self.app.routes[rid].actions[i].clone();
+        let Some(o) = a.optimistic else { return };
+        let mut order: Vec<usize> = vec![];
+        if a.invalidates.contains(&rid) {
+            order.push(rid);
+        }
+        for &sid in self.app.routes[rid].sections.iter().rev() {
+            if a.invalidates.contains(&sid) && !order.contains(&sid) {
+                order.push(sid);
+            }
+        }
+        for &t in &a.invalidates {
+            if !order.contains(&t) {
+                order.push(t);
+            }
+        }
+        let gives = |t: usize| {
+            self.app.routes[t]
+                .data
+                .as_ref()
+                .map(|d| d.ty.clone())
+                .unwrap_or_default()
+        };
+        let target = order.iter().copied().find(|&t| gives(t) == o.ty);
+        if target.is_none() {
+            let (name, action, ty) = (&o.function, &a.name, &o.ty);
+            let msg = if order.is_empty() {
+                format!(
+                    "`{name}()` patches a `{ty}`, but `{action}()` invalidates no data.dart: list the route whose data.dart gives a `{ty}` in `invalidates`"
+                )
+            } else {
+                let list: Vec<String> = order
+                    .iter()
+                    .map(|&t| {
+                        let data = format!("{}data.dart", folder_prefix(&self.app.routes[t].dir));
+                        format!("`{data}` gives `{}`", gives(t))
+                    })
+                    .collect();
+                format!(
+                    "`{name}()` patches a `{ty}`, and no data.dart that `{action}()` invalidates gives one ({}): patch the type of one of them, or list the route whose data.dart gives a `{ty}` in `invalidates`",
+                    list.join(", ")
+                )
+            };
+            self.diags.error(file, Some(&o.span), msg);
+        }
+        if let Some(o) = &mut self.app.routes[rid].actions[i].optimistic {
+            o.target = target;
+        }
     }
 
     /// Whether the action takes every key of the `data.dart` it must invalidate, with the type
@@ -2764,11 +3123,15 @@ impl Resolver<'_> {
             let mut errors = vec![];
             for a in &r.actions {
                 let n = ActionNames::of(&a.name);
-                for (name, role) in [
+                let mut names = vec![
                     (&n.provider, "provider"),
                     (&n.run, "helper"),
                     (&n.hook, "hook"),
-                ] {
+                ];
+                if a.form.is_some() {
+                    names.push((&n.form_hook, "form hook"));
+                }
+                for (name, role) in names {
                     match taken.iter().find(|(t, _)| t == name) {
                         Some((_, owner)) => errors.push((
                             a.span.clone(),

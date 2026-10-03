@@ -6,6 +6,7 @@ mod emit;
 mod enums;
 mod extra;
 mod format;
+mod forms;
 mod graph;
 mod init;
 mod links;
@@ -469,6 +470,8 @@ mod devtools_tests;
 mod enum_tests;
 #[cfg(test)]
 mod extra_tests;
+#[cfg(test)]
+mod form_tests;
 #[cfg(test)]
 mod graph_tests;
 #[cfg(test)]

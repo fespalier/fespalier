@@ -25,6 +25,8 @@ pub struct Module {
     pub getters: Vec<Getter>,
     /// Top-level enums: `enum Category { shoes, hats }`.
     pub enums: Vec<String>,
+    /// Top-level `typedef X = T;` (not the old function-typedef syntax, nor a generic one).
+    pub typedefs: Vec<Typedef>,
     /// The libraries it re-exports: `export 'category.dart';`, as written.
     pub exports: Vec<String>,
     /// Where the grammar first gave up on the file (an ERROR or MISSING node),
@@ -32,6 +34,14 @@ pub struct Module {
     /// valid Dart the grammar is too old for; the declarations above are read
     /// on a best-effort basis.
     pub parse_error: Option<Span>,
+}
+
+/// `typedef NicknameFields = ({String nickname, int? age});`
+#[derive(Debug, Clone)]
+pub struct Typedef {
+    pub name: String,
+    /// The aliased type; a record type has its fields in `ty.record`.
+    pub ty: Ty,
 }
 
 #[derive(Debug, Clone)]
@@ -301,6 +311,7 @@ pub fn parse(src: &str) -> Module {
             "top_level_variable_declaration" => m.variables.extend(r.variables(*n)),
             "getter_declaration" => m.getters.extend(r.getter(*n)),
             "enum_declaration" => m.enums.extend(r.enum_name(*n)),
+            "type_alias" => m.typedefs.extend(r.typedef(*n)),
             "import_or_export" => m
                 .exports
                 .extend(first_named(*n, "library_export").and_then(|e| r.export(e))),
@@ -496,6 +507,19 @@ impl Reader<'_> {
 
     fn enum_name(&self, n: Node) -> Option<String> {
         Some(self.text(n.child_by_field_name("name")?).to_string())
+    }
+
+    /// `typedef X = T;` → `X` and `T`; the old `typedef void X(int a);` and a generic
+    /// `typedef X<T> = ...;` are skipped.
+    fn typedef(&self, n: Node) -> Option<Typedef> {
+        let mut cur = n.walk();
+        let mut kids = n.named_children(&mut cur);
+        let name = kids.next().filter(|k| k.kind() == "type_identifier")?;
+        let ty = kids.next().filter(|k| k.kind() == "type")?;
+        Some(Typedef {
+            name: self.text(name).to_string(),
+            ty: self.ty(ty),
+        })
     }
 
     /// `export 'a.dart' show A;` → `a.dart`. A conditional export (`if (...) 'b.dart'`) is
@@ -2188,5 +2212,27 @@ mod tests {
         for (i, _) in src.char_indices() {
             parse(&src[..i]);
         }
+    }
+
+    #[test]
+    fn reads_typedefs() {
+        let m = parse(
+            "typedef NicknameFields = ({String nickname, int? age});\n\
+             typedef Pair = (int, String);\n\
+             typedef Old(int a);\n\
+             typedef Generic<T> = List<T>;\n",
+        );
+        let names: Vec<_> = m.typedefs.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, ["NicknameFields", "Pair"]);
+        let fields = m.typedefs[0].ty.record.as_ref().unwrap();
+        assert_eq!(
+            fields
+                .iter()
+                .map(|(n, t)| (n.as_str(), t.text.as_str()))
+                .collect::<Vec<_>>(),
+            [("nickname", "String"), ("age", "int?")]
+        );
+        assert_eq!(m.typedefs[0].ty.text, "({String nickname, int? age})");
+        assert!(m.typedefs[1].ty.record.as_ref().is_none_or(Vec::is_empty));
     }
 }

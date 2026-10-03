@@ -249,7 +249,7 @@ jobs:
   web:
     name: Deferred routes split on the web
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -263,9 +263,11 @@ jobs:
           cache: true
       # `flutter build web --release` of examples/shop in a throwaway copy (the examples stay
       # platform-free): each deferred page must be a main.dart.js_N.part.js of its own, with its
-      # strings out of main.dart.js. The script is `just web-chunks`.
-      - name: Each deferred page is a chunk of its own
-        run: scripts/check-deferred-chunks.sh examples/shop 'Place order' 'Add to cart'
+      # strings out of main.dart.js. Then `fsp size --check` holds the build to the budgets in the
+      # shop's `size:` section, and its attribution is cross-checked against those strings (the
+      # script builds `fsp`, which is why the timeout is 30 minutes). The script is `just web-chunks`.
+      - name: Each deferred page is a chunk of its own, within its budget
+        run: scripts/check-deferred-chunks.sh examples/shop '/checkout=Place order' '/products/:id=Add to cart'
 
   vscode:
     name: VS Code extension

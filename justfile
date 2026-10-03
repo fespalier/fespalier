@@ -123,10 +123,11 @@ intellij:
     ./gradlew buildPlugin verifyPluginStructure --no-daemon
 
 # A deferred route's page is a chunk of its own on the web: builds examples/shop for the web in
-# a temporary copy and checks the split (needs Flutter with web support; about a minute, and not
-# part of `just ci`; CI runs it as the `web` job)
+# a temporary copy, checks the split, and runs `fsp size --check` on it (the budgets in the shop's
+# `size:` section), cross-checked with the marker strings (needs Flutter with web support; about a
+# minute plus building `fsp`, and not part of `just ci`; CI runs it as the `web` job)
 web-chunks:
-    scripts/check-deferred-chunks.sh examples/shop 'Place order' 'Add to cart'
+    scripts/check-deferred-chunks.sh examples/shop '/checkout=Place order' '/products/:id=Add to cart'
 
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
 # are `just vscode` and `just intellij`, and the web build of the deferred pages is `just web-chunks`.

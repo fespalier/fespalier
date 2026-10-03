@@ -87,6 +87,14 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier_auth/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_auth/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier/extension/devtools/config.yaml"
         },
         {

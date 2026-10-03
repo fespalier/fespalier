@@ -144,13 +144,16 @@ String currentLocation(WidgetTester tester) {
 ///
 /// ```text
 /// #n start OP WHAT [keyed] [parent=#m]
+/// #n start auth STEP backend=NAME [trigger=T] [dpop]
 /// #n end OP OUTCOME [async] [-> LOCATION] [error=TEXT]
 /// #n end navigate OUTCOME [route=P] [kind=K] [from=P] [redirected] [depth=N] [at=LOCATION]
 /// #n page enter|focus|leave PATTERN
 /// ```
 ///
 /// WHAT is the requested location (navigate), the file (guard, redirect, data), `file#name`
-/// (action) or `file route=PATTERN` (deferred); `keyed` is data from a family.
+/// (action) or `file route=PATTERN` (deferred); `keyed` is data from a family. An auth line
+/// (since 0.9.0) names the step (`restore`, `sign_in`, `refresh`, `sign_out`), the backend, what
+/// asked for a refresh, and `dpop` when the backend binds its tokens.
 final class RecordingTelemetry extends FespalierTelemetry {
   /// Creates a recorder with an empty [log].
   RecordingTelemetry();
@@ -169,6 +172,10 @@ final class RecordingTelemetry extends FespalierTelemetry {
       TelemetryOp.navigate => start.uri?.toString() ?? '(commit)',
       TelemetryOp.action => '${start.site?.file}#${start.site?.name}',
       TelemetryOp.deferred => '${start.file} route=${start.route}',
+      TelemetryOp.auth =>
+        '${start.authStep} backend=${start.authBackend}'
+            '${start.authTrigger == null ? '' : ' trigger=${start.authTrigger}'}'
+            '${start.authDpop ? ' dpop' : ''}',
       _ => '${start.site?.file}${start.keyed ? ' keyed' : ''}',
     };
     final parent = start.parent == null ? '' : ' parent=#${start.parent}';

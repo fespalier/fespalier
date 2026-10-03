@@ -51,3 +51,8 @@ report its navigations, guards, data loads, actions and deferred loads to a
 [`FespalierTelemetry`](https://github.com/fespalier/fespalier#telemetry) sink. `package:fespalier_otel`
 turns them into OpenTelemetry spans on the SDK that `otel_zone` starts. Off, the generated code and the
 release build are unchanged.
+
+Since 0.9.0 `package:fespalier_auth` sits next to it, a repository dependency at the same release tag:
+[signed-in routes](https://github.com/fespalier/fespalier#authentication), with a session provider,
+guards, token storage, lazy single-flight refresh and an authenticated HTTP client. It changes neither the
+generated code nor a release build that does not use it.

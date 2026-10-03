@@ -936,6 +936,10 @@
                       "deferred": {
                         "text": "Code download (deferred page)",
                         "index": 5
+                      },
+                      "auth": {
+                        "text": "Session (sign-in, refresh, sign-out)",
+                        "index": 6
                       }
                     }
                   }

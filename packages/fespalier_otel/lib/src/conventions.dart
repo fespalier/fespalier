@@ -45,6 +45,9 @@ abstract final class FespalierConventions {
   /// The code of a deferred page loaded.
   static const String opDeferred = 'deferred';
 
+  /// fespalier_auth restored, signed in, refreshed or signed out a session (since 0.9.0).
+  static const String opAuth = 'auth';
+
   // Span names: the operation, then what it is about.
 
   /// A navigation that matched no route is named `navigate (not found)`.
@@ -185,6 +188,69 @@ abstract final class FespalierConventions {
 
   /// It failed.
   static const String resultError = 'error';
+
+  // Attributes of an `auth` span (since 0.9.0). Never recorded: tokens, user ids, claims, user
+  // names, e-mails, issuer and endpoint URLs, DPoP proofs and thumbprints.
+
+  /// Which step: restore, sign in, refresh or sign out.
+  static const String authOperation = 'fespalier.auth.operation';
+
+  /// How the step ended.
+  static const String authResult = 'fespalier.auth.result';
+
+  /// The backend's short constant name (`oidc`, `firebase`, `fake`, an app's own).
+  static const String authBackend = 'fespalier.auth.backend';
+
+  /// What asked for a refresh (refresh only).
+  static const String authTrigger = 'fespalier.auth.trigger';
+
+  /// Whether the backend binds its tokens with DPoP.
+  static const String authDpop = 'fespalier.auth.dpop';
+
+  // The values of `fespalier.auth.operation`.
+
+  /// The stored session was read at start-up.
+  static const String authOpRestore = 'restore';
+
+  /// A sign-in, or a session the app adopted.
+  static const String authOpSignIn = 'sign_in';
+
+  /// New tokens were asked for.
+  static const String authOpRefresh = 'refresh';
+
+  /// The user signed out.
+  static const String authOpSignOut = 'sign_out';
+
+  // The values of `fespalier.auth.result`.
+
+  /// It worked.
+  static const String authResultOk = 'ok';
+
+  /// Restore: nothing was stored.
+  static const String authResultNone = 'none';
+
+  /// Restore: the stored refresh token had expired, or the device key is gone.
+  static const String authResultExpired = 'expired';
+
+  /// The server refused: invalid credentials, or a refresh token it no longer accepts.
+  static const String authResultRejected = 'rejected';
+
+  /// The user closed the sign-in.
+  static const String authResultCancelled = 'cancelled';
+
+  /// It could not run; a refresh keeps the session.
+  static const String authResultError = 'error';
+
+  // The values of `fespalier.auth.trigger` (refresh only).
+
+  /// The access token had expired before a request.
+  static const String authTriggerExpired = 'expired';
+
+  /// A server answered 401 to the access token.
+  static const String authTriggerUnauthorized = 'unauthorized';
+
+  /// The app asked for a refresh.
+  static const String authTriggerForced = 'forced';
 
   // Events on the `navigate` span.
 

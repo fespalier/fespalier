@@ -1,6 +1,6 @@
 ---
 name: fespalier-guards
-description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
+description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Since 0.9.0 also the fespalier_auth package: a session provider, restoreAuth in startup.dart, requireSignedIn, requireRole and redirectIfSignedIn guards, token storage, lazy single-flight refresh, an authenticated HTTP client and a fake backend for tests. Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
 ---
 
 # fespalier-guards
@@ -123,11 +123,51 @@ never stays on screen.
   async guard is out, and reads a `ProviderContainer c` guard once. Keep guards cheap and free of
   side effects (`fespalier-layouts`, its page on menus and breadcrumbs).
 
+## `fespalier_auth` (since 0.9.0)
+
+fespalier's core has **no auth feature**; the `fespalier_auth` package (a git dependency next to fespalier, **same
+`url`, same `ref`**) packages the pattern below: a session provider (`authSession`), `restoreAuth` for `startup()`,
+token storage, **lazy single-flight refresh with no timer**, guard helpers and an HTTP client that attaches the
+session to your API. It changes no generated code, adds no file kind, key or command.
+
+```dart
+// lib/app/(signed-in)/guard.dart: the group needs a session; sign-in/ sits BESIDE it
+GuardResult guard(Ref ref, {required Uri uri}) =>
+    requireSignedIn(ref, uri, signIn: (from) => SignInRoute(from: from));
+
+// lib/app/sign-in/guard.dart: the trap. Without it, signing in changes the session and nothing moves
+GuardResult guard(Ref ref, {String? from}) => redirectIfSignedIn(ref, from: from);
+
+// lib/app/startup.dart
+FutureOr<List<Override>> startup() => restoreAuth(authSetup());
+```
+
+- **`redirectIfSignedIn` is what sends the user back.** It watches the session, so signing in on the sign-in page
+  navigates to `from` by itself; the page has no `context.go`. `returnTo` refuses `//host` and `https://…`.
+- **No `refreshing` state.** A refresh keeps `SignedIn`; `isSignedIn` and `authUser` do not notify on a token
+  swap, so no guard runs again. A refused refresh token is `SignedOut(reason: SignOutReason.expired)`; a network
+  error keeps the session (`AuthUnavailable`).
+- **Guards stay synchronous** once `startup()` returns `restoreAuth(...)` (no network, ever: an expired access
+  token is refreshed by the first request). Without it the guards answer a `Future` while the session restores.
+- **`authHttpClient` sends the session only to `AuthConfig.apiOrigins`**, refreshes once when the token has
+  expired (shared by every request that finds it so: refresh-token rotation needs one refresh), and sends a
+  request again after a 401, at most three sends. Watch `authUserId` in a `data.dart`: a user change reloads
+  it, a refresh does not.
+- **Tests:** `fakeAuth(signedInAs: ...)` from `package:fespalier_auth/testing.dart` is the `overrides` of
+  `pumpRouter`; see [`fespalier-testing`](../fespalier-testing/SKILL.md).
+- Never log or put a token, an id or an e-mail in an error or a telemetry attribute: the package's own
+  `toString`s hide them.
+
+[`references/auth-package.md`](references/auth-package.md) has the pieces, a compiled starter (a backend over
+a JSON API, the guards, the sign-in form, an API call and its tests) and every behaviour above in detail. Its
+messages are in [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its `diagnostics-auth.md` page).
+
 ## Where to read more
 
-| Need                                                                | Reference                                                                  |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Every guard and redirect rule, compiled samples, `returnTo` details | [`references/guards-and-redirects.md`](references/guards-and-redirects.md) |
-| Session provider, sign-in/out, guards that re-run, async guards     | [`references/auth-patterns.md`](references/auth-patterns.md)               |
-| Testing a guarded route                                             | `fespalier-testing`                                                        |
-| An `fsp` error on a guard or redirect                               | `fespalier-troubleshooting`                                                |
+| Need                                                                  | Reference                                                                  |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Every guard and redirect rule, compiled samples, `returnTo` details   | [`references/guards-and-redirects.md`](references/guards-and-redirects.md) |
+| Session provider, sign-in/out, guards that re-run, async guards       | [`references/auth-patterns.md`](references/auth-patterns.md)               |
+| `fespalier_auth` (since 0.9.0): restore, guards, refresh, HTTP, tests | [`references/auth-package.md`](references/auth-package.md)                 |
+| Testing a guarded route                                               | `fespalier-testing`                                                        |
+| An `fsp` error on a guard or redirect                                 | `fespalier-troubleshooting`                                                |

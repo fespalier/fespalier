@@ -134,6 +134,7 @@ redirect = "Redirect (redirect.dart)"
 data = "Content load (data.dart)"
 action = "Action (action.dart)"
 deferred = "Code download (deferred page)"
+auth = "Session (sign-in, refresh, sign-out)"
 
 [labels.navigation_kind]
 initial = "App start"

@@ -241,13 +241,24 @@
         "README.md#Sending people back",
         "kind:guard.dart",
         "kind:redirect.dart",
-        "packages/fespalier/lib/src/guards.dart"
+        "packages/fespalier/lib/src/guards.dart",
+        "README.md#Authentication",
+        "README.md#Installing fespalier_auth",
+        "README.md#The session",
+        "README.md#Restoring at startup",
+        "README.md#Guarding signed-in routes",
+        "README.md#Signing in and out",
+        "README.md#Calling your API",
+        "packages/fespalier_auth/README.md",
+        "packages/fespalier_auth/lib/fespalier_auth.dart"
       ]
     },
     "fespalier-testing": {
       "covers": [
         "README.md#Testing",
         "packages/fespalier/lib/testing.dart",
+        "README.md#Testing signed-in routes",
+        "packages/fespalier_auth/lib/testing.dart",
         "README.md#Maestro flows (`fsp maestro`)",
         "config:semantics_ids",
         "packages/fespalier/lib/src/web_semantics.dart",

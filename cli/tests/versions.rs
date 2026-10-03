@@ -556,6 +556,7 @@ fn the_floor_job_runs_the_flutter_the_packages_claim() {
         "packages/fespalier/pubspec.yaml",
         "packages/fespalier_otel/pubspec.yaml",
         "packages/fespalier_auth/pubspec.yaml",
+        "packages/fespalier_adaptive/pubspec.yaml",
     ] {
         assert!(
             read(pubspec).contains(&format!("flutter: \">={minor}.0\"")),

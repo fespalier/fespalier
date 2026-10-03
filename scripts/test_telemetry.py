@@ -10,7 +10,9 @@
 4. compose.yaml pins every image by tag and digest, binds ports to loopback, and agrees with
    env.example; `docker compose config` accepts it (skipped without Docker Compose, unless
    FSP_REQUIRE_DOCKER=1, which CI sets: then it fails instead).
-5. The dashboard importer, run against a fake OpenObserve.
+5. The dashboards are plain: questions for titles, a description on every panel, one table of
+   thresholds that colours both backends and that the README's "Reading the colours" repeats.
+6. The dashboard importer, and the report (`fsp telemetry --report`), run against a fake OpenObserve.
 
 A run with Docker is scripts/telemetry/smoke.py (`just telemetry-smoke`).
 """
@@ -45,6 +47,8 @@ import seed as seed_module  # noqa: E402
 STACK = ROOT / "cli/templates/telemetry"
 COMPOSE = STACK / "compose.yaml"
 IMPORTER = STACK / "openobserve/import.py"
+REPORT = STACK / "openobserve/report.py"
+README = ROOT / "README.md"
 
 print(
     "telemetry conventions: read from packages/fespalier_otel/lib/src/conventions.dart",
@@ -90,18 +94,21 @@ class Fresh(unittest.TestCase):
             shutil.copytree(STACK, out)
             files, _ = bd.build(out=out)
             self.assertEqual([], bd.stale_files(files, out))
-            target = out / "grafana/dashboards/guards.json"
+            target = out / "grafana/dashboards/errors.json"
             target.write_text(target.read_text() + " ")
             (out / "openobserve/dashboards/extra.json").write_text("{}")
             stale = sorted(p.name for p in bd.stale_files(files, out))
-            self.assertEqual(["extra.json", "guards.json"], stale)
+            self.assertEqual(["errors.json", "extra.json"], stale)
 
-    def test_six_dashboards_in_both_backends(self):
-        self.assertEqual(
-            ["actions", "data", "deferred", "errors", "guards", "navigation"],
-            [p.stem for p in oo_files()],
-        )
+    def test_four_dashboards_in_both_backends(self):
+        self.assertEqual(["actions", "errors", "health", "screens"], [p.stem for p in oo_files()])
         self.assertEqual([p.stem for p in oo_files()], [p.stem for p in gf_files()])
+        compose = COMPOSE.read_text()
+        self.assertIn("GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/fespalier/grafana-dashboards/health.json", compose)
+        spec = bd.load_spec()
+        homes = [d["id"] for d in spec["dashboard"] if d.get("home")]
+        self.assertEqual(["health"], homes)
+        self.assertEqual("health", spec["dashboard"][0]["id"])
 
 
 class Conventions(unittest.TestCase):
@@ -177,6 +184,12 @@ class Conventions(unittest.TestCase):
                     for label in ("url_path", "fespalier_guard_location"):
                         self.assertNotIn(label, target["expr"])
 
+    def test_label_keys_are_convention_values(self):
+        spec = bd.load_spec()
+        for name, labels in spec["labels"].items():
+            key = self.conventions.columns[f"fespalier_{name}"]
+            self.assertEqual(sorted(self.conventions.attrs[key]), sorted(labels), name)
+
     def test_fields_json_is_in_the_conventions(self):
         fields = read_json(STACK / "openobserve/fields.json")
         known = set(self.conventions.columns) | set(bd.TRACE_COLUMNS)
@@ -230,6 +243,9 @@ class Structure(unittest.TestCase):
                 self.assertEqual("default", query["fields"]["stream"])
                 self.assertIn(query["fields"]["stream_type"], ("traces", "logs"))
                 sql = query["query"]
+                if panel["type"] == "markdown":
+                    self.assertTrue(panel["markdownContent"], panel["id"])
+                    self.assertEqual("", sql)
                 for axis in ("x", "y", "breakdown"):
                     for item in query["fields"][axis]:
                         alias = item["alias"]
@@ -252,6 +268,12 @@ class Structure(unittest.TestCase):
             self.assertEqual(len(ids), len(set(ids)))
             rects = []
             for panel in dash["panels"]:
+                if panel["type"] == "text":
+                    self.assertTrue(panel["options"]["content"], panel["title"])
+                    self.assertNotIn("targets", panel)
+                    self.assertNotIn("datasource", panel)
+                    rects.append(panel["gridPos"])
+                    continue
                 self.assertEqual(bd.DS, panel["datasource"])
                 self.assertTrue(panel["targets"], panel["title"])
                 for target in panel["targets"]:
@@ -262,22 +284,26 @@ class Structure(unittest.TestCase):
                 self.assertLessEqual(grid["x"] + grid["w"], 24)
                 rects.append(grid)
                 steps = panel["fieldConfig"]["defaults"]["thresholds"]["steps"]
-                self.assertEqual("text", steps[0]["color"], "Grafana's default thresholds paint stats red")
+                colored = panel["fieldConfig"]["defaults"]["color"]["mode"] == "thresholds"
+                # Grafana's default thresholds paint a stat red: only a verdict stat is coloured.
+                self.assertEqual("green" if colored else "text", steps[0]["color"], panel["title"])
             self.assertIsNone(overlaps(rects), path.name)
         self.assertEqual(len(uids), len(set(uids)))
 
     def test_both_backends_have_the_same_panels_in_order(self):
+        by_id = {d["id"]: d for d in self.dashboards}
         for oo_path, gf_path in zip(oo_files(), gf_files()):
             oo = [p["title"] for p in read_json(oo_path)["tabs"][0]["panels"]]
             gf = [p["title"] for p in read_json(gf_path)["panels"]]
-            self.assertEqual([t for t in oo if t != "Recent uncaught errors"], gf, oo_path.name)
-        only_oo = [p["id"] for d in self.dashboards for p in d["panels"] if not p["grafana"]]
-        self.assertEqual(["recent_uncaught"], only_oo)
+            only_oo = [p["title"] for p in by_id[oo_path.stem]["panels"] if not p["grafana"]]
+            self.assertEqual([t for t in oo if t not in only_oo], gf, oo_path.name)
+        only_oo = [f"{d['id']}/{p['id']}" for d in self.dashboards for p in d["panels"] if not p["grafana"]]
+        self.assertEqual(["health/verdicts", "screens/journeys", "errors/recent_uncaught"], only_oo)
 
     def test_tables_have_one_grafana_target_per_value_column(self):
         for dash in self.dashboards:
             for panel in dash["panels"]:
-                if not panel["grafana"]:
+                if not panel["grafana"] or panel["type"] == "text":
                     continue
                 values = [c for c in panel["columns"] if c["axis"] == "y" and not c.get("oo_only")]
                 targets = [t for t in panel["promql"] if not t.get("extra")]
@@ -289,18 +315,288 @@ class Structure(unittest.TestCase):
         for dash in self.dashboards:
             for panel in dash["panels"]:
                 for text in [panel["sql"]] + [t["expr"] for t in panel["promql"]]:
-                    self.assertNotRegex(text.replace("{{", "").replace("}}", ""), r"\{(?!\})[a-z_:|]+\}")
-                self.assertIn("$service", panel["sql"])
+                    self.assertNotRegex(text.replace("{{", "").replace("}}", ""), r"\{(?!\})[a-z_0-9:|]+\}")
+                if panel["type"] != "text":
+                    self.assertIn("$service", panel["sql"])
 
-    def test_the_seed_expects_a_count_for_every_count_stat(self):
-        expected = seed_module.Seed(now=1_700_000_000).expected()
-        stats = {
+    def test_drilldowns_name_existing_dashboards(self):
+        titles = {d["id"]: d["title"] for d in self.dashboards}
+        for path in oo_files():
+            for panel in read_json(path)["tabs"][0]["panels"]:
+                for drill in panel["config"].get("drilldown", []):
+                    self.assertEqual("byDashboard", drill["type"])
+                    self.assertEqual("fespalier", drill["data"]["folder"])
+                    self.assertIn(drill["data"]["dashboard"], [f"fespalier · {t}" for t in titles.values()])
+                    self.assertNotEqual(f"fespalier · {titles[path.stem]}", drill["data"]["dashboard"])
+        for path in gf_files():
+            for panel in read_json(path)["panels"]:
+                text = json.dumps(panel)
+                for uid in re.findall(r"/d/(fespalier-[a-z]+)\?", text):
+                    self.assertIn(uid, [f"fespalier-{i}" for i in titles])
+
+    def test_percentages_are_not_computed_with_or(self):
+        # OpenObserve's PromQL answers nothing for `X or vector(0)` when X is empty (v1.0.4).
+        for dash in self.dashboards:
+            for panel in dash["panels"]:
+                for target in panel["promql"]:
+                    self.assertNotRegex(target["expr"], r"\bor\b", f"{dash['id']}/{panel['id']}")
+                if panel.get("unit") == "percent":
+                    expr = panel["promql"][0]["expr"]
+                    self.assertIn("sum_over_time", expr)
+                    self.assertRegex(expr, r"^100 \* \(sum\(.*\) - sum\(", f"{dash['id']}/{panel['id']}")
+
+    def test_the_seed_expects_a_count_for_every_count_stat_and_a_rate_for_every_percentage(self):
+        seed = seed_module.Seed(now=1_700_000_000)
+        counts = {
             f"{d['id']}/{p['id']}"
             for d in self.dashboards
             for p in d["panels"]
             if p["type"] == "stat" and not p.get("unit")
         }
-        self.assertEqual(stats, set(expected))
+        self.assertEqual(counts, set(seed.expected()))
+        rates = {
+            f"{d['id']}/{p['id']}"
+            for d in self.dashboards
+            for p in d["panels"]
+            if p["type"] == "stat" and p.get("unit") == "percent"
+        }
+        self.assertEqual(rates, set(seed.rates()))
+        quantiles = {
+            f"{d['id']}/{p['id']}"
+            for d in self.dashboards
+            for p in d["panels"]
+            if p["type"] == "stat" and p.get("unit") == "ms"
+        }
+        self.assertEqual(
+            {"health/screens_open", "health/content_loads", "health/actions_finish", "screens/screens_open", "screens/content_loads", "actions/actions_finish"},
+            quantiles,
+        )
+
+    def test_the_seed_has_enough_samples_for_every_gate(self):
+        seed = seed_module.Seed(now=1_700_000_000)
+        spec = bd.load_spec()
+        minimum = spec["style"]["min_samples"]
+        for predicate in (
+            lambda a: a["fespalier.operation"] == "navigate" and a.get("fespalier.navigation.outcome") != "superseded",
+            lambda a: a["fespalier.operation"] == "data" and a.get("fespalier.data.state") in ("data", "error"),
+            lambda a: a["fespalier.operation"] == "action",
+        ):
+            self.assertGreaterEqual(seed.count(predicate), minimum)
+
+
+class Plain(unittest.TestCase):
+    """The dashboards are written for a developer who does not know metrics."""
+
+    BANNED = ("span", "p50", "p95", "quantile", "attribute", "fespalier_")
+
+    def setUp(self):
+        self.spec = bd.load_spec()
+        _, _, self.dashboards = load()
+
+    def panels(self):
+        for dash in self.dashboards:
+            for panel in dash["panels"]:
+                yield dash, panel
+
+    def test_every_panel_but_text_has_a_short_description(self):
+        for dash, panel in self.panels():
+            if panel["type"] == "text":
+                continue
+            where = f"{dash['id']}/{panel['id']}"
+            self.assertTrue(1 <= len(panel["description"]) <= 280, where)
+        for path in oo_files():
+            for panel in read_json(path)["tabs"][0]["panels"]:
+                if panel["type"] != "markdown":
+                    self.assertTrue(panel["description"], panel["id"])
+        for path in gf_files():
+            for panel in read_json(path)["panels"]:
+                if panel["type"] != "text":
+                    self.assertTrue(panel["description"], panel["title"])
+
+    def test_titles_are_questions_without_jargon(self):
+        for dash, panel in self.panels():
+            where = f"{dash['id']}/{panel['id']}"
+            title = panel["title"]
+            if panel["type"] != "text" and panel["id"] != "verdicts":
+                self.assertTrue(title.endswith("?"), f"{where}: {title}")
+            for word in self.BANNED:
+                self.assertNotIn(word, title.lower(), f"{where}: {title}")
+
+    def test_a_verdict_stat_says_what_good_is_and_where_to_look(self):
+        names = [d["title"] for d in self.dashboards]
+        for dash, panel in self.panels():
+            if not panel.get("verdict"):
+                continue
+            where = f"{dash['id']}/{panel['id']}"
+            self.assertIn("Good:", panel["description"], where)
+            self.assertTrue(
+                re.search(r"\b\w+\.dart\b", panel["description"]) or any(n in panel["description"] for n in names),
+                where,
+            )
+
+    def test_column_headers_are_words(self):
+        for dash, panel in self.panels():
+            for column in panel["columns"]:
+                label = column["label"]
+                where = f"{dash['id']}/{panel['id']}/{column['name']}"
+                if panel["type"] in ("text", "stat"):
+                    continue
+                self.assertNotIn("_", label, where)
+                self.assertNotIn("fespalier", label.lower(), where)
+        for path in gf_files():
+            for panel in read_json(path)["panels"]:
+                for transformation in panel.get("transformations", []):
+                    for shown in transformation["options"].get("renameByName", {}).values():
+                        self.assertNotIn("_", shown, panel["title"])
+                        self.assertNotIn("fespalier", shown.lower(), panel["title"])
+
+    def test_the_verdict_table_has_one_question_per_row(self):
+        verdicts = next(p for _, p in self.panels() if p["id"] == "verdicts")
+        labels = [c["label"] for c in verdicts["columns"] if c["axis"] == "y"]
+        self.assertEqual(8, len(labels))
+        for label in labels:
+            self.assertTrue(label.endswith("?"), label)
+        tiles = {p["title"] for _, p in self.panels() if p.get("verdict") or p["id"] in ("dead_ends",)}
+        self.assertTrue(set(labels) & tiles)
+
+
+def threshold_cells(item):
+    """The Good, Needs attention and Bad cells of the README's table for one threshold."""
+    unit = {"ms": " ms", "percent": " %", "count": ""}[item["unit"]]
+    low, high = item["good_below"], item["bad_from"]
+    good = f"< {low:g}{unit}" if item["unit"] != "count" else "0"
+    if low == high:
+        attention = "—"
+    elif item["unit"] == "count":
+        attention = f"{low:g}–{high - 1:g}"
+    else:
+        top = high - (0.1 if item["unit"] == "percent" else 1)
+        attention = f"{low:g}–{top:g}{unit}"
+    bad = f"≥ {high:g}{unit}"
+    return [good, attention, bad]
+
+
+class Verdicts(unittest.TestCase):
+    def setUp(self):
+        self.spec = bd.load_spec()
+        _, _, self.dashboards = load()
+        self.style = self.spec["style"]
+
+    def panels(self):
+        for dash in self.dashboards:
+            for panel in dash["panels"]:
+                yield dash, panel
+
+    def test_every_verdict_resolves(self):
+        for dash, panel in self.panels():
+            where = f"{dash['id']}/{panel['id']}"
+            if panel.get("verdict"):
+                self.assertIn(panel["verdict"], self.spec["thresholds"], where)
+            for tid in panel.get("verdicts", {}).values():
+                self.assertIn(tid, self.spec["thresholds"], where)
+            if panel.get("marks"):
+                self.assertIn(panel["marks"], self.spec["thresholds"], where)
+
+    def test_thresholds_are_ordered_and_explained(self):
+        for tid, item in self.spec["thresholds"].items():
+            self.assertLessEqual(item["good_below"], item["bad_from"], tid)
+            self.assertIn(item["unit"], ("ms", "percent", "count"), tid)
+            self.assertTrue(item["why"], tid)
+
+    def numbers(self, tid):
+        item = self.spec["thresholds"][tid]
+        if item["good_below"] == item["bad_from"]:
+            return [0, item["good_below"]]
+        return [0, item["good_below"], item["bad_from"]]
+
+    def test_openobserve_stat_mappings_ascend_with_the_thresholds(self):
+        colors = [self.style["good"], self.style["attention"], self.style["bad"]]
+        for path in oo_files():
+            for panel in read_json(path)["tabs"][0]["panels"]:
+                mappings = panel["config"].get("mappings")
+                stat = panel["type"] == "metric"
+                if not stat or not mappings:
+                    continue
+                values = [float(m["value"]) for m in mappings]
+                self.assertEqual(sorted(values), values, panel["id"])
+                self.assertTrue(all(m["type"] == "gte" for m in mappings), panel["id"])
+                self.assertTrue(all("text" not in m for m in mappings), "a mapping's text replaces the value")
+                tid = next(
+                    t for d, p in self.panels() for t in [p.get("verdict")]
+                    if t and f"panel_{p['id']}" == panel["id"] and d["id"] == path.stem
+                )
+                self.assertEqual(self.numbers(tid), values, panel["id"])
+                expected = colors if len(values) == 3 else [colors[0], colors[2]]
+                self.assertEqual(expected, [m["color"] for m in mappings], panel["id"])
+
+    def test_grafana_steps_carry_the_same_numbers(self):
+        for dash in self.dashboards:
+            gf = {p["title"]: p for p in read_json(STACK / f"grafana/dashboards/{dash['id']}.json")["panels"]}
+            for panel in dash["panels"]:
+                if not panel["grafana"] or panel["type"] == "text":
+                    continue
+                shown = gf[panel["title"]]
+                if panel.get("verdict"):
+                    steps = shown["fieldConfig"]["defaults"]["thresholds"]["steps"]
+                    self.assertEqual(self.numbers(panel["verdict"])[1:], [s["value"] for s in steps][1:], panel["id"])
+                    self.assertEqual("thresholds", shown["fieldConfig"]["defaults"]["color"]["mode"])
+                for column, tid in panel.get("verdicts", {}).items():
+                    label = next(c["label"] for c in panel["columns"] if c["name"] == column)
+                    override = next(o for o in shown["fieldConfig"]["overrides"] if o["matcher"]["options"] == label)
+                    steps = next(x["value"]["steps"] for x in override["properties"] if x["id"] == "thresholds")
+                    self.assertEqual(self.numbers(tid)[1:], [s["value"] for s in steps][1:], panel["id"])
+                if panel.get("marks"):
+                    limits = self.spec["thresholds"][panel["marks"]]
+                    steps = shown["fieldConfig"]["defaults"]["thresholds"]["steps"]
+                    self.assertEqual([limits["good_below"], limits["bad_from"]], [s["value"] for s in steps][1:])
+                    self.assertEqual("dashed", shown["fieldConfig"]["defaults"]["custom"]["thresholdsStyle"]["mode"])
+
+    def test_openobserve_table_cells_carry_the_same_numbers(self):
+        for dash in self.dashboards:
+            oo = {p["id"]: p for p in read_json(STACK / f"openobserve/dashboards/{dash['id']}.json")["tabs"][0]["panels"]}
+            for panel in dash["panels"]:
+                for column, tid in panel.get("verdicts", {}).items():
+                    shown = oo[f"panel_{panel['id']}"]
+                    override = next(o for o in shown["config"]["override_config"] if o["field"]["value"] == column)
+                    rules = next(c["rules"] for c in override["config"] if c["type"] == "conditional_styles")
+                    self.assertEqual(self.numbers(tid), [r["threshold"] for r in rules], panel["id"])
+                    self.assertTrue(all(r["operator"] == ">=" for r in rules))
+
+    def test_the_verdict_sql_contains_each_limit(self):
+        verdicts = next(p for _, p in self.panels() if p["id"] == "verdicts")
+        for tid in ("screen_open", "content_load", "action_time", "guard_wait", "code_download", "failure_rate", "not_found_rate"):
+            item = self.spec["thresholds"][tid]
+            self.assertIn(f"< {bd.number(item['good_below'])} THEN", verdicts["sql"], tid)
+            self.assertIn(f"< {bd.number(item['bad_from'])} THEN", verdicts["sql"], tid)
+        self.assertEqual(8, verdicts["sql"].count(f"< {self.style['min_samples']} THEN '… Too few to judge ("))
+
+    def test_gated_panels_carry_the_gate_in_both_backends(self):
+        minimum = self.style["min_samples"]
+        for dash, panel in self.panels():
+            if not panel.get("gate"):
+                continue
+            where = f"{dash['id']}/{panel['id']}"
+            self.assertIn(f">= {minimum}", panel["sql"], where)
+            self.assertIn(f">= {minimum}", panel["promql"][0]["expr"], where)
+        for path in oo_files():
+            for panel in read_json(path)["tabs"][0]["panels"]:
+                if panel["type"] == "metric" and "CASE WHEN" in panel["queries"][0]["query"] and panel["config"].get("mappings"):
+                    self.assertEqual(self.style["no_data"], panel["config"]["no_value_replacement"], panel["id"])
+
+    def test_readme_reading_the_colours_matches_the_thresholds(self):
+        text = README.read_text(encoding="utf-8")
+        section = text.split("#### Reading the colours", 1)[1].split("\n#### ", 1)[0]
+        rows = {}
+        for line in section.splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            found = re.search(r"`([a-z_]+)`", cells[0]) if len(cells) == 5 else None
+            if found:
+                rows[found.group(1)] = cells
+        self.assertEqual(set(self.spec["thresholds"]), set(rows))
+        for tid, item in self.spec["thresholds"].items():
+            self.assertEqual(threshold_cells(item), rows[tid][1:4], tid)
+            self.assertEqual(item["why"], rows[tid][4], tid)
+        self.assertIn(f"{self.style['min_samples']} samples", section)
 
 
 class Compose(unittest.TestCase):
@@ -395,7 +691,7 @@ class FakeOpenObserve:
         return str(self.counter)
 
     def writes(self):
-        return [r for r in self.requests if r[0] in ("POST", "PUT")]
+        return [r for r in self.requests if r[0] in ("POST", "PUT", "DELETE")]
 
 
 def make_handler(fake):
@@ -437,6 +733,11 @@ def make_handler(fake):
                 fake.dashboards[new_id] = {"title": body["title"], "hash": new_hash, "body": body}
                 return self.reply(200, {"v8": body, "version": 8, "hash": new_hash})
             match = re.fullmatch(r"/api/default/dashboards/(\d+)", path)
+            if match and method == "DELETE":
+                if match.group(1) not in fake.dashboards:
+                    return self.reply(404, {"code": 404, "message": "Not found"})
+                del fake.dashboards[match.group(1)]
+                return self.reply(200, {"code": 200, "message": "Dashboard deleted"})
             if match and method == "PUT":
                 current = fake.dashboards[match.group(1)]
                 if query["hash"][0] != current["hash"]:
@@ -479,6 +780,9 @@ def make_handler(fake):
         def do_PUT(self):
             self.handle_any("PUT")
 
+        def do_DELETE(self):
+            self.handle_any("DELETE")
+
     return Handler
 
 
@@ -504,7 +808,7 @@ class Importer(unittest.TestCase):
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         self.fields = json.loads((self.source / "fields.json").read_text())
         titles = [json.loads(p.read_text())["title"] for p in sorted((self.source / "dashboards").glob("*.json"))]
-        self.assertEqual(6, len(titles))
+        self.assertEqual(4, len(titles))
         self.titles = titles
 
     def run_importer(self, **extra):
@@ -534,7 +838,7 @@ class Importer(unittest.TestCase):
     def up_to_date(self):
         return [f"fespalier: {t}: up to date" for t in self.titles]
 
-    def test_a_fresh_install_waits_creates_streams_a_folder_and_six_dashboards(self):
+    def test_a_fresh_install_waits_creates_streams_a_folder_and_four_dashboards(self):
         self.fake.not_ready_polls = 2
         code, lines = self.run_importer()
         self.assertEqual(0, code)
@@ -547,9 +851,9 @@ class Importer(unittest.TestCase):
             lines,
         )
         self.assertEqual(0, self.fake.not_ready_polls)
-        self.assertEqual(6, len(self.fake.dashboards))
+        self.assertEqual(4, len(self.fake.dashboards))
         posts = [r for r in self.fake.requests if r[0] == "POST" and r[1] == "/api/default/dashboards"]
-        self.assertEqual(6, len(posts))
+        self.assertEqual(4, len(posts))
         self.assertTrue(all(f"folder={self.fake.folders['fespalier']}" in r[2] for r in posts))
         self.assertEqual(self.fields["traces"], self.fake.streams["traces"])
         self.assertFalse(list(self.state.glob("*.tmp")), "the state is written atomically")
@@ -566,12 +870,12 @@ class Importer(unittest.TestCase):
 
     def test_a_changed_file_is_updated_with_the_listed_hash(self):
         self.run_importer()
-        target = self.source / "dashboards/guards.json"
+        target = self.source / "dashboards/errors.json"
         dash = json.loads(target.read_text())
         dash["description"] = "changed by a new release"
         target.write_text(json.dumps(dash))
-        guards = next(i for i, d in self.fake.dashboards.items() if d["title"] == dash["title"])
-        listed = self.fake.dashboards[guards]["hash"]
+        errors = next(i for i, d in self.fake.dashboards.items() if d["title"] == dash["title"])
+        listed = self.fake.dashboards[errors]["hash"]
         code, lines = self.run_importer()
         self.assertEqual(0, code)
         self.assertEqual(
@@ -581,14 +885,14 @@ class Importer(unittest.TestCase):
         puts = [r for r in self.fake.requests if r[0] == "PUT" and "/dashboards/" in r[1]]
         self.assertEqual(1, len(puts))
         self.assertIn(f"hash={listed}", puts[0][2])
-        self.assertEqual("changed by a new release", self.fake.dashboards[guards]["body"]["description"])
+        self.assertEqual("changed by a new release", self.fake.dashboards[errors]["body"]["description"])
 
     def test_a_dashboard_edited_in_openobserve_is_left_alone(self):
         self.run_importer()
-        target = self.source / "dashboards/guards.json"
+        target = self.source / "dashboards/errors.json"
         dash = json.loads(target.read_text())
-        guards = next(i for i, d in self.fake.dashboards.items() if d["title"] == dash["title"])
-        self.fake.dashboards[guards]["hash"] = "edited-in-the-ui"
+        errors = next(i for i, d in self.fake.dashboards.items() if d["title"] == dash["title"])
+        self.fake.dashboards[errors]["hash"] = "edited-in-the-ui"
         dash["description"] = "changed by a new release"
         target.write_text(json.dumps(dash))
         before = len(self.fake.writes())
@@ -608,6 +912,55 @@ class Importer(unittest.TestCase):
         code, lines = self.run_importer()
         self.assertEqual(0, code)
         self.assertIn(f"fespalier: {title}: created", lines)
+
+    def old_dashboard(self, title="fespalier · Navigation"):
+        """A dashboard an earlier fsp wrote: it is on the server and in the state, but not shipped."""
+        self.run_importer()
+        new_id, new_hash = self.fake.next_id(), self.fake.next_id()
+        self.fake.dashboards[new_id] = {"title": title, "hash": new_hash, "body": {}}
+        saved = json.loads((self.state / "imported.json").read_text())
+        saved[title] = {"source": "old", "hash": new_hash}
+        (self.state / "imported.json").write_text(json.dumps(saved))
+        return new_id
+
+    def test_a_dashboard_no_longer_shipped_is_removed(self):
+        old = self.old_dashboard()
+        code, lines = self.run_importer()
+        self.assertEqual(0, code)
+        self.assertEqual(
+            self.up_to_date() + ["fespalier: fespalier · Navigation: removed (fsp telemetry no longer ships it)"],
+            lines,
+        )
+        self.assertNotIn(old, self.fake.dashboards)
+        deletes = [r for r in self.fake.requests if r[0] == "DELETE"]
+        self.assertEqual([(f"/api/default/dashboards/{old}", f"folder={self.fake.folders['fespalier']}")], [(r[1], r[2]) for r in deletes])
+        self.assertNotIn("fespalier · Navigation", json.loads((self.state / "imported.json").read_text()))
+        code, lines = self.run_importer()
+        self.assertEqual(self.up_to_date(), lines)
+
+    def test_a_dashboard_no_longer_shipped_but_edited_is_left_alone(self):
+        old = self.old_dashboard()
+        self.fake.dashboards[old]["hash"] = "edited-in-the-ui"
+        code, lines = self.run_importer()
+        self.assertEqual(0, code)
+        self.assertEqual(
+            self.up_to_date()
+            + [
+                "fespalier: fespalier · Navigation: no longer shipped, but changed in OpenObserve since "
+                "fsp telemetry wrote it, left alone; delete it when you are done with it"
+            ],
+            lines,
+        )
+        self.assertIn(old, self.fake.dashboards)
+        self.assertEqual([], [r for r in self.fake.requests if r[0] == "DELETE"])
+
+    def test_a_dashboard_deleted_by_hand_is_forgotten_quietly(self):
+        old = self.old_dashboard()
+        del self.fake.dashboards[old]
+        code, lines = self.run_importer()
+        self.assertEqual(0, code)
+        self.assertEqual(self.up_to_date(), lines)
+        self.assertNotIn("fespalier · Navigation", json.loads((self.state / "imported.json").read_text()))
 
     def test_an_existing_stream_gets_only_the_missing_columns(self):
         self.fake.streams["traces"] = self.fields["traces"][:-3]
@@ -638,6 +991,185 @@ class Importer(unittest.TestCase):
         code, lines = self.run_importer()
         self.assertEqual(1, code)
         self.assertRegex(lines[-1], r"^fespalier: the traces stream: OpenObserve answered HTTP \d+: ")
+
+
+# ------------------------------------------------------------------------------------------ report
+
+
+class FakeSearch(FakeOpenObserve):
+    """Adds `_search`, answering from `rows` by a word of the SQL."""
+
+    def __init__(self):
+        super().__init__()
+        self.apps = ["telemetry-example"]
+        self.status = 200
+        self.rows = {}
+        self.queries = []
+
+
+def make_report_handler(fake):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def reply(self, status, body):
+            raw = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def do_GET(self):
+            self.reply(200, {"dashboards": []})
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(length))
+            sql = body["query"]["sql"]
+            fake.queries.append((urlparse(self.path).query, sql))
+            if fake.status != 200:
+                return self.reply(fake.status, {"code": fake.status, "message": "boom"})
+            if sql.startswith("SELECT DISTINCT service_name"):
+                return self.reply(200, {"hits": [{"app": a} for a in fake.apps]})
+            for word, rows in fake.rows.items():
+                if word in sql:
+                    return self.reply(200, {"hits": rows})
+            return self.reply(200, {"hits": []})
+
+    return Handler
+
+
+class Report(unittest.TestCase):
+    VERDICTS = {
+        "app": "This app",
+        "screens_open": "✓ Good · 240 ms",
+        "content_loads": "! Needs attention · 1.4 s",
+        "actions_finish": "✓ Good · 310 ms",
+        "guard_wait": "✓ Good · 60 ms",
+        "code_download": "… Too few to judge (4)",
+        "load_failures": "! Needs attention · 2.5 %",
+        "action_failures": "✗ Bad · 6.2 %",
+        "dead_ends": "✓ Good · 0.4 %",
+    }
+
+    def setUp(self):
+        self.fake = FakeSearch()
+        self.fake.rows = {
+            "AS screens_open": [self.VERDICTS],
+            "AS open_p95": [{"route": "/orders/:id", "views": 412, "open_p95": 1234.5, "content_p95": 2301.0}],
+            "AS type": [
+                {"operation": "action", "file": "orders/$id/action.dart", "route": "/orders/:id", "type": "StateError", "n": 3}
+            ],
+            "AS uncaught": [{"uncaught": 0}],
+            "AS crashes": [{"crashes": 0}],
+        }
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), make_report_handler(self.fake))
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.shutdown)
+        self.addCleanup(self.server.server_close)
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.source = self.tmp / "openobserve"
+        shutil.copytree(STACK / "openobserve", self.source)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def run_report(self):
+        env = {
+            "FSP_O2_URL": self.url,
+            "FSP_O2_EMAIL": "dev@fespalier.local",
+            "FSP_O2_PASSWORD": "Fespalier-local-1",
+            "FSP_O2_PORT": "5080",
+            "FSP_SOURCE_DIR": str(self.source),
+        }
+        spec = importlib.util.spec_from_file_location("fespalier_report", REPORT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        out, code = io.StringIO(), 0
+        with contextlib.redirect_stdout(out), unittest.mock.patch.dict(os.environ, env):
+            try:
+                module.main()
+            except SystemExit as exit_:
+                code = exit_.code
+        return code, out.getvalue()
+
+    def test_the_report_for_one_app(self):
+        code, text = self.run_report()
+        self.assertEqual(0, code)
+        self.assertEqual(
+            "\n".join(
+                [
+                    "fespalier · telemetry-example · last hour",
+                    "  ✓ good               Do screens open quickly?                     240 ms",
+                    "  ! needs attention    Does content load quickly?                   1.4 s",
+                    "  ✓ good               Do actions finish quickly?                   310 ms",
+                    "  ✓ good               Do checks slow screens down?                 60 ms",
+                    "  … too few to judge   Does a deferred page's code arrive quickly?  4 samples",
+                    "  ! needs attention    How often does content fail to load?         2.5 %",
+                    "  ✗ bad                How often do actions fail?                   6.2 %",
+                    "  ✓ good               How often does a link lead nowhere?          0.4 %",
+                    "  ✓ good               Did anything throw an uncaught error?        none",
+                    "  ✓ good               Did the app crash or freeze?                 none",
+                    "  Slowest screen: /orders/:id, 1.2 s to open and 2.3 s for its content (slowest 5 %, 412 views)",
+                    "  Fails most: Action (action.dart) orders/$id/action.dart on /orders/:id, 3 × StateError",
+                    "  Details: http://localhost:5080, Dashboards, folder fespalier, fespalier · App health",
+                ]
+            )
+            + "\n",
+            text,
+        )
+
+    def test_the_sql_is_the_dashboards_own(self):
+        self.run_report()
+        health = {p["id"]: p for p in read_json(STACK / "openobserve/dashboards/health.json")["tabs"][0]["panels"]}
+        sent = {sql for _, sql in self.fake.queries}
+        for panel in ("verdicts", "slowest_screens", "top_failures", "uncaught", "crashes"):
+            sql = health[f"panel_{panel}"]["queries"][0]["query"].replace("$service", "telemetry-example")
+            self.assertIn(sql, sent, panel)
+        kinds = {sql: query for query, sql in self.fake.queries}
+        self.assertTrue(any("type=logs" in q for q in kinds.values()))
+
+    def test_counts_show_a_number_and_the_grade_of_their_thresholds(self):
+        self.fake.rows["AS uncaught"] = [{"uncaught": 3}]
+        self.fake.rows["AS crashes"] = [{"crashes": 1}]
+        code, text = self.run_report()
+        self.assertEqual(0, code)
+        lines = text.splitlines()
+        self.assertRegex(lines[9], r"^  ! needs attention    Did anything throw an uncaught error\? +3$")
+        self.assertRegex(lines[10], r"^  ✗ bad                Did the app crash or freeze\? +1$")
+
+    def test_nothing_failed(self):
+        self.fake.rows["AS type"] = []
+        _, text = self.run_report()
+        self.assertIn("\n  Nothing failed.\n", text)
+        self.assertNotIn("Fails most", text)
+
+    def test_the_slowest_screen_without_content(self):
+        self.fake.rows["AS open_p95"] = [{"route": "/", "views": 1, "open_p95": 80.2, "content_p95": None}]
+        _, text = self.run_report()
+        self.assertIn("  Slowest screen: /, 80 ms to open (slowest 5 %, 1 view)\n", text)
+
+    def test_two_apps_are_two_blocks_separated_by_a_blank_line(self):
+        self.fake.apps = ["a", "b"]
+        _, text = self.run_report()
+        blocks = text.rstrip("\n").split("\n\n")
+        self.assertEqual(["fespalier · a · last hour", "fespalier · b · last hour"], [b.splitlines()[0] for b in blocks])
+
+    def test_no_apps_says_so_and_succeeds(self):
+        self.fake.apps = []
+        code, text = self.run_report()
+        self.assertEqual(0, code)
+        self.assertEqual(
+            "no fespalier spans in the last hour: is the app running, with telemetry: true and FespalierOtel "
+            'installed? (README, "Telemetry")\n',
+            text,
+        )
+
+    def test_an_error_from_openobserve_exits_1(self):
+        self.fake.status = 500
+        code, text = self.run_report()
+        self.assertEqual(1, code)
+        self.assertRegex(text, r"^fespalier: the report's query failed: HTTP 500: ")
 
 
 if __name__ == "__main__":

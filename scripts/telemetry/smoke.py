@@ -9,9 +9,11 @@
 3. Sends the seeded session (seed.py) to the collector.
 4. Waits until the span metrics have all seeded spans.
 5. Runs every OpenObserve panel's SQL and every Grafana target's PromQL: no errors.
-6. Counts: the SQL value == the PromQL value == the seed's expected count; quantiles: not null.
-7. Runs the importer again: `up to date` six times and nothing else.
-8. Stops the stack and deletes its volumes.
+6. Counts: the SQL value == the PromQL value == the seed's expected count; percentages: within 0.05
+   of the seed's rate; quantiles: not null. The verdict table returns one row of eight verdicts.
+7. Runs the importer again: `up to date` four times and nothing else.
+8. Runs `report.py` (what `fsp telemetry --report` runs): it exits 0 and names the app.
+9. Stops the stack and deletes its volumes.
 
 `--no-start` skips steps 1 and 8 and uses a stack that is already running (`--project` names its
 Compose project, for step 7). `--keep` leaves the stack up.
@@ -38,12 +40,15 @@ ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "cli/templates/telemetry/compose.yaml"
 EMAIL, PASSWORD = "dev@fespalier.local", "Fespalier-local-1"
 QUANTILES = {
-    "navigation/ttff_p95",
-    "guards/pending_p95",
-    "data/load_p95",
-    "actions/action_p95",
-    "deferred/deferred_p95",
+    "health/screens_open",
+    "health/content_loads",
+    "health/actions_finish",
+    "screens/screens_open",
+    "screens/content_loads",
+    "actions/actions_finish",
 }
+VERDICT = ("✓ ", "! ", "✗ ", "… ")
+RATE_TOLERANCE = 0.05
 
 
 class Smoke:
@@ -132,7 +137,7 @@ class Smoke:
         self.fail("Grafana did not answer /api/health within 180 s")
 
     def check_provisioned(self):
-        self.step("both UIs have the six dashboards")
+        self.step("both UIs have the four dashboards")
         titles = sorted(f"fespalier · {d['title']}" for d in self.dashboards)
         base_o2 = self.args.openobserve
         status, folder = self.request(f"{base_o2}/api/v2/default/folders/dashboards/name/fespalier", self.o2_auth)
@@ -180,11 +185,21 @@ class Smoke:
         body = {"queries": [query], "from": str(now - 3600 * 1000), "to": str(now)}
         return self.request(f"{self.args.grafana_url}/api/ds/query", self.gf_auth, body)
 
-    def check_panels(self, dashboards, expected):
+    def check_verdicts(self, rows):
+        row = rows[0] if len(rows) == 1 else {}
+        values = [v for k, v in row.items() if k != "app"]
+        if len(rows) != 1 or len(values) != 8 or not all(str(v).startswith(VERDICT) for v in values):
+            self.fail(f"health/verdicts: expected one row of eight verdicts, got {rows!r}")
+        else:
+            print(f"    health/verdicts: {values}")
+
+    def check_panels(self, dashboards, expected, rates):
         self.step("run every panel's SQL (OpenObserve) and PromQL (Grafana)")
         sql_count = promql_count = 0
         for dash in dashboards:
             for panel in dash["panels"]:
+                if panel["type"] == "text":
+                    continue
                 key = f"{dash['id']}/{panel['id']}"
                 sql = panel["sql"].replace("$service", self.service)
                 status, body = self.search(sql, panel["stream_type"])
@@ -198,6 +213,8 @@ class Smoke:
                         self.fail(f"{key}: SQL returned no rows for the seed")
                     if panel["type"] == "stat" and rows:
                         sql_value = next(iter(rows[0].values()))
+                    if key == "health/verdicts":
+                        self.check_verdicts(rows)
                 if not panel["grafana"]:
                     continue
                 prom_value = None
@@ -235,12 +252,16 @@ class Smoke:
                             prom_value = self.stat_value(body)
                 if panel["type"] != "stat":
                     continue
-                print(f"    {key}: SQL {sql_value}, PromQL {prom_value}, seed {expected.get(key, '-')}")
+                print(f"    {key}: SQL {sql_value}, PromQL {prom_value}, seed {expected.get(key, rates.get(key, '-'))}")
                 if key in expected:
                     if sql_value != expected[key]:
                         self.fail(f"{key}: SQL says {sql_value}, the seed says {expected[key]}")
                     if prom_value != expected[key]:
                         self.fail(f"{key}: PromQL says {prom_value}, the seed says {expected[key]}")
+                elif key in rates:
+                    for backend, value in (("SQL", sql_value), ("PromQL", prom_value)):
+                        if value is None or abs(value - rates[key]) > RATE_TOLERANCE:
+                            self.fail(f"{key}: {backend} says {value}, the seed says {rates[key]:.3f}")
                 elif key in QUANTILES:
                     if sql_value is None or prom_value is None:
                         self.fail(f"{key}: a quantile is null (SQL {sql_value}, PromQL {prom_value})")
@@ -270,8 +291,19 @@ class Smoke:
         lines = [line for line in result.stdout.splitlines() if line.strip()]
         names = [d["title"] for d in json.loads(json.dumps(self.dashboards))]
         expected = sorted(f"fespalier: fespalier · {name}: up to date" for name in names)
-        if result.returncode or sorted(lines) != expected:
+        if result.returncode or sorted(lines) != expected or len(lines) != 4:
             self.fail(f"the second import printed {lines!r} (exit {result.returncode}), expected {expected!r}")
+
+    def check_report(self):
+        self.step("run the report (fsp telemetry --report): it must name the app")
+        result = self.compose(
+            "run", "--rm", "--no-deps", "-T", "dashboards", "python3", "/fespalier/report.py",
+            capture=True, check=False,
+        )
+        print(result.stdout)
+        header = f"fespalier · {self.service} · last hour"
+        if result.returncode or header not in result.stdout:
+            self.fail(f"the report exited {result.returncode} and printed {result.stdout!r} {result.stderr!r}")
 
     def run(self):
         files, self.dashboards = build_dashboards.build()
@@ -287,8 +319,9 @@ class Smoke:
             self.wait_for_metrics(generated.span_count())
             self.wait_for_grafana()
             self.check_provisioned()
-            self.check_panels(self.dashboards, generated.expected())
+            self.check_panels(self.dashboards, generated.expected(), generated.rates())
             self.check_importer_again()
+            self.check_report()
         finally:
             if self.failures:
                 self.compose("logs", "--no-color", "--tail", "40", check=False)

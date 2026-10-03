@@ -3,13 +3,19 @@
 
 The spans and logs use only the names in the conventions (packages/fespalier_otel/lib/src/conventions.dart);
 scripts/test_telemetry.py checks that. `expected()` is what each count panel must show for the
-seed, which the smoke test (smoke.py) compares with both backends.
+seed and `rates()` each percentage tile, which the smoke test (smoke.py) compares with both backends.
 
     python3 scripts/telemetry/seed.py [--endpoint http://localhost:4318] [--service shop] [--expected]
+
+`--showcase` sends a second, hand-shaped session instead (a service called telemetry-example with
+amber and red spots, for the README screenshots; scripts/telemetry/screenshots.mjs). With
+`--drip-minutes N` it sends a batch every 15 seconds for N minutes, stamped with the time it is
+sent, because Grafana's span metrics are stamped when the collector receives a span.
 """
 
 import argparse
 import json
+import math
 import random
 import sys
 import time
@@ -248,6 +254,8 @@ class Seed:
         return sum(1 for _, flat in self.spans if predicate(flat))
 
     def expected(self):
+        """The count of every count tile, by "<dashboard>/<panel>"."""
+
         def op(*names):
             return lambda a: a.get("fespalier.operation") in names
 
@@ -263,25 +271,54 @@ class Seed:
         navigate = op("navigate")
         count = self.count
         errors = sum(1 for log in self.logs if log["number"] >= 17)
+        crashes = sum(1 for log in self.logs if log["event"])
+        viewed = count(
+            both(navigate, is_("fespalier.navigation.outcome", "ok"), not_("fespalier.navigation.kind", "refresh"))
+        )
+        failed = count(lambda a: a["_error"])
+        action_runs = count(op("action"))
+        action_failures = count(both(op("action"), is_("fespalier.action.result", "error")))
         return {
-            "navigation/views": count(
-                both(navigate, is_("fespalier.navigation.outcome", "ok"), not_("fespalier.navigation.kind", "refresh"))
-            ),
-            "navigation/redirected": count(both(navigate, is_("fespalier.navigation.redirected", True))),
-            "navigation/not_found": count(both(navigate, is_("fespalier.navigation.outcome", "not_found"))),
-            "guards/decisions": count(op("guard", "redirect")),
-            "guards/denials": count(both(op("guard"), is_("fespalier.guard.decision", "redirect"))),
-            "guards/guard_errors": count(both(op("guard", "redirect"), is_("fespalier.guard.decision", "error"))),
-            "data/loads": count(op("data")),
-            "data/data_errors": count(both(op("data"), is_("fespalier.data.state", "error"))),
-            "data/abandoned": count(both(op("data"), is_("fespalier.data.state", "disposed"))),
-            "actions/runs": count(op("action")),
-            "actions/failures": count(both(op("action"), is_("fespalier.action.result", "error"))),
-            "deferred/deferred_loads": count(op("deferred")),
-            "deferred/deferred_failures": count(both(op("deferred"), is_("fespalier.deferred.result", "error"))),
-            "errors/failed_spans": count(lambda a: a["_error"]),
+            "health/screens_viewed": viewed,
+            "health/uncaught": errors,
+            "health/crashes": crashes,
+            "screens/screens_viewed": viewed,
+            "actions/runs": action_runs,
+            "actions/failures": action_failures,
+            "errors/failed_spans": failed,
             "errors/uncaught": errors,
-            "errors/crashes": sum(1 for log in self.logs if log["event"]),
+            "errors/crashes": crashes,
+            "errors/guard_errors": count(
+                both(op("guard", "redirect"), is_("fespalier.guard.decision", "error"))
+            ),
+        }
+
+    def rates(self):
+        """The percentage of every percentage tile (the seed has enough samples for each)."""
+
+        def share(numerator, denominator):
+            return 100.0 * self.count(numerator) / self.count(denominator)
+
+        def op(name):
+            return lambda a: a.get("fespalier.operation") == name
+
+        def timed_data(a):
+            return op("data")(a) and a.get("fespalier.data.state") in ("data", "error")
+
+        def timed_navigation(a):
+            return op("navigate")(a) and a.get("fespalier.navigation.outcome") != "superseded"
+
+        load_failures = share(lambda a: timed_data(a) and a["fespalier.data.state"] == "error", timed_data)
+        action_failures = share(lambda a: op("action")(a) and a["_error"], op("action"))
+        dead_ends = share(
+            lambda a: op("navigate")(a) and a.get("fespalier.navigation.outcome") == "not_found",
+            timed_navigation,
+        )
+        return {
+            "health/load_failures": load_failures,
+            "health/action_failures": action_failures,
+            "actions/action_failures": action_failures,
+            "screens/dead_ends": dead_ends,
         }
 
     def span_count(self):
@@ -303,27 +340,334 @@ class Seed:
             )
         }
 
-    def traces_payload(self):
+    def traces_payload(self, spans=None):
+        spans = [s for s, _ in self.spans] if spans is None else spans
         return {
             "resourceSpans": [
                 {
                     "resource": self.resource(),
-                    "scopeSpans": [
-                        {"scope": {"name": "fespalier", "version": "0.8.0"}, "spans": [s for s, _ in self.spans]}
-                    ],
+                    "scopeSpans": [{"scope": {"name": "fespalier", "version": "0.8.0"}, "spans": spans}],
                 }
             ]
         }
 
-    def logs_payload(self):
+    def logs_payload(self, records=None):
+        records = self.log_records if records is None else records
         return {
             "resourceLogs": [
                 {
                     "resource": self.resource(),
-                    "scopeLogs": [{"scope": {"name": "otel_zone"}, "logRecords": self.log_records}],
+                    "scopeLogs": [{"scope": {"name": "otel_zone"}, "logRecords": records}],
                 }
             ]
         }
+
+
+# ---------------------------------------------------------------------------------- showcase
+
+SHOWCASE_SERVICE = "telemetry-example"
+SHOWCASE_ROUTES = ["/", "/orders", "/orders/:id", "/settings", "/login"]
+# Where a visitor goes from a route: (next route, weight); None ends the visit.
+SHOWCASE_FLOW = {
+    "/": [("/orders", 60), ("/settings", 15), ("/login", 5), (None, 20)],
+    "/orders": [("/orders/:id", 62), ("/", 10), ("/settings", 8), (None, 20)],
+    "/orders/:id": [("/orders", 62), ("/orders/:id", 8), ("/", 8), (None, 22)],
+    "/settings": [("/", 40), ("/orders", 30), (None, 30)],
+    "/login": [("/", 70), (None, 30)],
+}
+# route -> (median ms, sigma) of the time to the first frame
+SHOWCASE_OPEN = {
+    "/": (90, 0.45),
+    "/orders": (120, 0.45),
+    "/orders/:id": (285, 0.5),
+    "/settings": (190, 0.48),
+    "/login": (70, 0.4),
+}
+
+
+def lognormal(rng, median_ms, sigma):
+    return round(rng.lognormvariate(math.log(median_ms), sigma), 2)
+
+
+class Showcase(Seed):
+    """The example app, with its slow and failing spots: what the README screenshots show.
+
+    A visit is a few navigations a few seconds apart. The middle third of the time has a slow
+    spell, so that a time series has a story. Deterministic for a seed (1), like Seed.
+    """
+
+    def __init__(self, minutes=6, service=SHOWCASE_SERVICE, seed=1, start=None):
+        self.minutes = minutes
+        self.start = int((time.time() - minutes * 60 if start is None else start) * 1e9)
+        super().__init__(service, seed, now=(self.start / 1e9) + minutes * 60)
+
+    def _pick(self, choices):
+        return self.rng.choices([c for c, _ in choices], [w for _, w in choices])[0]
+
+    def _build(self, _):
+        rng = self.rng
+        window = int(self.minutes * 60 * 1e9)
+        visits = int(self.minutes * 18)
+        deferred_left, guard_errors_left = 3, 2
+        for _visit in range(visits):
+            at = self.start + int(rng.random() * window * 0.93)
+            route, previous, steps = "/", None, 0
+            while route is not None and steps < 14:
+                clock = at + int(steps * rng.uniform(1.5, 6.0) * 1e9)
+                if clock >= self.start + window:
+                    break
+                spell = 1.8 if self.start + window / 3 <= clock < self.start + 2 * window / 3 else 1.0
+                kind = "initial" if previous is None else self._kind(previous, route)
+                target, redirected = route, False
+                trace = self.hex(32)
+                attributes = {
+                    "fespalier.operation": "navigate",
+                    "fespalier.navigation.kind": kind,
+                    "fespalier.navigation.from": previous,
+                }
+                roll = rng.random()
+                if roll < 0.012:
+                    attributes.update(
+                        {"fespalier.navigation.outcome": "not_found", "fespalier.navigation.redirected": False}
+                    )
+                    self.span("navigate (not found)", clock, lognormal(rng, 30, 0.3), trace, None, attributes)
+                    previous, route, steps = previous or "/", self._pick(SHOWCASE_FLOW[previous or "/"]), steps + 1
+                    continue
+                if roll < 0.04:
+                    attributes.update(
+                        {"fespalier.navigation.outcome": "superseded", "fespalier.navigation.redirected": False}
+                    )
+                    self.span("navigate", clock, lognormal(rng, 40, 0.4), trace, None, attributes)
+                    previous, route, steps = previous or "/", self._pick(SHOWCASE_FLOW[previous or "/"]), steps + 1
+                    continue
+                guard_decision = None
+                if route == "/settings":
+                    guard_decision = rng.choices(["pass", "redirect"], [96, 4])[0]
+                    if guard_errors_left and rng.random() < 0.04:
+                        guard_decision, guard_errors_left = "error", guard_errors_left - 1
+                elif route in ("/orders", "/orders/:id") and rng.random() < 0.03:
+                    guard_decision = "redirect"
+                if guard_decision == "redirect":
+                    target, redirected = "/login", True
+                median, sigma = SHOWCASE_OPEN[target]
+                duration = lognormal(rng, median * spell, sigma)
+                attributes.update(
+                    {
+                        "fespalier.navigation.outcome": "ok",
+                        "fespalier.navigation.redirected": redirected,
+                        "fespalier.route": target,
+                    }
+                )
+                root = self.span(f"navigate {target}", clock, duration, trace, None, attributes)["spanId"]
+                self._children(rng, clock, trace, root, route, target, guard_decision, spell)
+                if route == "/settings" and deferred_left and guard_decision != "redirect":
+                    deferred_left -= 1
+                    self.span(
+                        "deferred (tabs)/settings/page.dart",
+                        clock,
+                        lognormal(rng, 300, 0.25),
+                        trace,
+                        root,
+                        {
+                            "fespalier.operation": "deferred",
+                            "fespalier.route": "/settings",
+                            "fespalier.file": "(tabs)/settings/page.dart",
+                            "fespalier.deferred.result": "ok",
+                        },
+                    )
+                previous = target
+                route, steps = self._pick(SHOWCASE_FLOW[target]), steps + 1
+        self.spans.sort(key=lambda item: int(item[0]["startTimeUnixNano"]))
+        self._logs(self.start + window)
+
+    @staticmethod
+    def _kind(previous, route):
+        if previous == "/orders" and route == "/orders/:id":
+            return "push"
+        if previous == "/orders/:id" and route == "/orders":
+            return "pop"
+        if previous == route:
+            return "refresh"
+        return "go"
+
+    def _children(self, rng, clock, trace, root, route, target, guard_decision, spell):
+        if route == "/settings":
+            error = "StateError" if guard_decision == "error" else None
+            self.span(
+                "guard (tabs)/settings/guard.dart",
+                clock,
+                lognormal(rng, 35, 0.5),
+                trace,
+                root,
+                {
+                    "fespalier.operation": "guard",
+                    "fespalier.route": "/settings",
+                    "fespalier.file": "(tabs)/settings/guard.dart",
+                    "fespalier.async": True,
+                    "fespalier.guard.decision": guard_decision,
+                    "error.type": error,
+                },
+                error,
+            )
+        elif route in ("/orders", "/orders/:id"):
+            self.span(
+                "guard orders/guard.dart",
+                clock,
+                0.2,
+                trace,
+                root,
+                {
+                    "fespalier.operation": "guard",
+                    "fespalier.route": route,
+                    "fespalier.file": "orders/guard.dart",
+                    "fespalier.async": False,
+                    "fespalier.guard.decision": guard_decision or "pass",
+                },
+            )
+        if target == "/orders" or target == "/orders/:id":
+            keyed = target == "/orders/:id"
+            file = "orders/$id/data.dart" if keyed else "orders/data.dart"
+            median, sigma = (700, 0.5) if keyed else (300, 0.5)
+            state = rng.choices(["data", "error", "disposed"], [95, 2 if keyed else 1, 3])[0]
+            error = "SocketException" if state == "error" else None
+            self.span(
+                f"data {file}",
+                clock + int(20e6),
+                lognormal(rng, median * (1.3 if spell > 1 else 1), sigma),
+                trace,
+                root,
+                {
+                    "fespalier.operation": "data",
+                    "fespalier.route": target,
+                    "fespalier.file": file,
+                    "fespalier.async": True,
+                    "fespalier.data.state": state,
+                    "fespalier.data.keyed": keyed,
+                    "error.type": error,
+                },
+                error,
+            )
+        if target == "/orders/:id" and rng.random() < 0.5:
+            error = rng.choice(["StateError", "StateError", "TimeoutException"]) if rng.random() < 0.11 else None
+            self.span(
+                "action orders/$id/action.dart#approve",
+                clock + int(2e9),
+                lognormal(rng, 450, 0.45),
+                self.hex(32),
+                None,
+                {
+                    "fespalier.operation": "action",
+                    "fespalier.route": "/orders/:id",
+                    "fespalier.file": "orders/$id/action.dart",
+                    "fespalier.async": True,
+                    "fespalier.action.name": "approve",
+                    "fespalier.action.result": "error" if error else "ok",
+                    "error.type": error,
+                },
+                error,
+            )
+        if target == "/login" and rng.random() < 0.7:
+            error = "StateError" if rng.random() < 0.03 else None
+            self.span(
+                "action login/action.dart#signIn",
+                clock + int(3e9),
+                lognormal(rng, 300, 0.4),
+                self.hex(32),
+                None,
+                {
+                    "fespalier.operation": "action",
+                    "fespalier.route": "/login",
+                    "fespalier.file": "login/action.dart",
+                    "fespalier.async": True,
+                    "fespalier.action.name": "signIn",
+                    "fespalier.action.result": "error" if error else "ok",
+                    "error.type": error,
+                },
+                error,
+            )
+
+    def _logs(self, end):
+        # Three uncaught errors, no crash, and a few ordinary records.
+        window = end - self.start
+        shapes = [(17, "ERROR")] * 3 + [(9, "INFO")] * 5
+        self.log_records, self.logs = [], []
+        for i, (number, text) in enumerate(shapes):
+            at = self.start + int(window * (0.2 + 0.1 * i))
+            attributes = {
+                "exception.type": "FlutterError",
+                "exception.message": "A RenderFlex overflowed by 14 pixels on the bottom.",
+            }
+            self.log_records.append(
+                {
+                    "timeUnixNano": str(at),
+                    "severityNumber": number,
+                    "severityText": text,
+                    "body": {"stringValue": "uncaught error" if number >= 17 else "a message"},
+                    "attributes": attrs(attributes),
+                }
+            )
+            self.logs.append({"number": number, "event": None})
+
+    def batch(self, until, since=None):
+        """The spans and records that start in [since, until) (nanoseconds), as OTLP payloads."""
+        spans = [
+            s for s, _ in self.spans if (since or 0) <= int(s["startTimeUnixNano"]) < until
+        ]
+        records = [r for r in self.log_records if (since or 0) <= int(r["timeUnixNano"]) < until]
+        return spans, records
+
+
+def shift(spans, records, delta):
+    """The same spans and records, `delta` nanoseconds later (so that a batch ends now)."""
+    moved = []
+    for span in spans:
+        copy = dict(span)
+        for key in ("startTimeUnixNano", "endTimeUnixNano"):
+            copy[key] = str(int(span[key]) + delta)
+        if span.get("events"):
+            copy["events"] = [
+                {**e, "timeUnixNano": str(int(e["timeUnixNano"]) + delta)} for e in span["events"]
+            ]
+        moved.append(copy)
+    later = [{**r, "timeUnixNano": str(int(r["timeUnixNano"]) + delta)} for r in records]
+    return moved, later
+
+
+def send(endpoint, show, spans, records):
+    for path, payload, items in (
+        ("/v1/traces", show.traces_payload(spans), spans),
+        ("/v1/logs", show.logs_payload(records), records),
+    ):
+        if items:
+            post(endpoint, path, payload)
+
+
+def run_showcase(endpoint, minutes, drip, interval=15):
+    """Sends the showcase session once, or, with `drip`, a batch every `interval` seconds."""
+    if not drip:
+        show = Showcase(minutes)
+        spans, records = show.batch(10**30)
+        send(endpoint, show, spans, records)
+        print(f"sent {len(spans)} spans and {len(records)} log records for {show.service}")
+        return show
+    show = Showcase(minutes, start=time.time())
+    ticks = max(1, int(minutes * 60 / interval))
+    window = int(minutes * 60 * 1e9)
+    sent_spans = sent_records = 0
+    for tick in range(ticks):
+        begin = show.start + int(tick * window / ticks)
+        end = show.start + int((tick + 1) * window / ticks)
+        pause = end / 1e9 - time.time()
+        if pause > 0:
+            time.sleep(pause)
+        spans, records = show.batch(end, begin)
+        spans, records = shift(spans, records, int(time.time() * 1e9) - end)
+        send(endpoint, show, spans, records)
+        sent_spans += len(spans)
+        sent_records += len(records)
+        print(f"tick {tick + 1}/{ticks}: {len(spans)} spans", flush=True)
+    print(f"sent {sent_spans} spans and {sent_records} log records for {show.service}")
+    return show
 
 
 def post(endpoint, path, payload):
@@ -342,7 +686,15 @@ def main(argv=None):
     parser.add_argument("--endpoint", default="http://localhost:4318")
     parser.add_argument("--service", default=SERVICE)
     parser.add_argument("--expected", action="store_true", help="print the expected counts, send nothing")
+    parser.add_argument("--showcase", action="store_true", help="send the README screenshots' session instead")
+    parser.add_argument("--minutes", type=float, default=6, help="--showcase: how long a session lasts")
+    parser.add_argument("--drip-minutes", type=float, help="--showcase: send a batch every 15 s for N minutes")
     args = parser.parse_args(argv)
+    if args.drip_minutes and not args.showcase:
+        parser.error("--drip-minutes needs --showcase")
+    if args.showcase:
+        run_showcase(args.endpoint, args.drip_minutes or args.minutes, bool(args.drip_minutes))
+        return 0
     seed = Seed(args.service)
     if args.expected:
         print(json.dumps(seed.expected(), indent=2))

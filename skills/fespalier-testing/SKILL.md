@@ -138,8 +138,9 @@ skips, the failure message and the traps are in
 [`references/route-smoke-tests.md`](references/route-smoke-tests.md).
 
 **To watch a running app rather than assert on it** (since 0.8.0), `fsp telemetry` starts OpenObserve (and
-Grafana with `--grafana`) in Docker with six dashboards over fespalier's spans: route views and time to the
-first frame, what guards decided, `data.dart` loads, actions, deferred loads, errors. The command, the
+Grafana with `--grafana`) in Docker with four dashboards over fespalier's spans, written as questions (App
+health, Screens, Actions, Errors; green, amber or red), and `fsp telemetry --report` prints the same answers in
+the terminal. The command, the
 endpoint an app on an emulator, a simulator, a phone or the web uses, which dashboard answers which
 question, and the traps (empty dashboards, `otel_zone`'s `runGuarded` blanking a web app) are in
 [`references/observability.md`](references/observability.md).

@@ -16,6 +16,21 @@ A fespalier example for the route lifecycle (`observe.dart`) and for OpenTelemet
   a navigation with its guard, data load and page events as children and events, an action, and a
   deferred load.
 
+## See it
+
+```sh
+fsp telemetry          # starts the stack and prints the addresses
+flutter run -d chrome  # in this folder; open the app's routes a few times
+```
+
+Open `http://localhost:5080` (`dev@fespalier.local` / `Fespalier-local-1`), then Dashboards, folder
+`fespalier`, **fespalier · App health**: one tile per question, green, amber or red (grey until 20
+samples are in). `fsp telemetry --report` prints the same answers in the terminal.
+
+![fespalier's App health dashboard in OpenObserve: eight tiles answer whether screens open and load quickly and whether loads, actions or the app fail, coloured green, amber or red, above a table of verdicts in words.](../../docs/images/telemetry/openobserve-app-health.png)
+
+_Sample data from `scripts/telemetry/seed.py --showcase`._
+
 This is the one example on go_router 17: `otel_zone` depends on `otel_go_router`, which declares
 `go_router: ^17.0.0`.
 

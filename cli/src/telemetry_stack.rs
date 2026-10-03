@@ -45,28 +45,24 @@ pub const FILES: &[(&str, &str)] = &[
         include_str!("../templates/telemetry/openobserve/fields.json"),
     ),
     (
+        "openobserve/report.py",
+        include_str!("../templates/telemetry/openobserve/report.py"),
+    ),
+    (
         "openobserve/dashboards/actions.json",
         include_str!("../templates/telemetry/openobserve/dashboards/actions.json"),
-    ),
-    (
-        "openobserve/dashboards/data.json",
-        include_str!("../templates/telemetry/openobserve/dashboards/data.json"),
-    ),
-    (
-        "openobserve/dashboards/deferred.json",
-        include_str!("../templates/telemetry/openobserve/dashboards/deferred.json"),
     ),
     (
         "openobserve/dashboards/errors.json",
         include_str!("../templates/telemetry/openobserve/dashboards/errors.json"),
     ),
     (
-        "openobserve/dashboards/guards.json",
-        include_str!("../templates/telemetry/openobserve/dashboards/guards.json"),
+        "openobserve/dashboards/health.json",
+        include_str!("../templates/telemetry/openobserve/dashboards/health.json"),
     ),
     (
-        "openobserve/dashboards/navigation.json",
-        include_str!("../templates/telemetry/openobserve/dashboards/navigation.json"),
+        "openobserve/dashboards/screens.json",
+        include_str!("../templates/telemetry/openobserve/dashboards/screens.json"),
     ),
     (
         "grafana/provisioning/datasources/fespalier.yaml",
@@ -81,29 +77,29 @@ pub const FILES: &[(&str, &str)] = &[
         include_str!("../templates/telemetry/grafana/dashboards/actions.json"),
     ),
     (
-        "grafana/dashboards/data.json",
-        include_str!("../templates/telemetry/grafana/dashboards/data.json"),
-    ),
-    (
-        "grafana/dashboards/deferred.json",
-        include_str!("../templates/telemetry/grafana/dashboards/deferred.json"),
-    ),
-    (
         "grafana/dashboards/errors.json",
         include_str!("../templates/telemetry/grafana/dashboards/errors.json"),
     ),
     (
-        "grafana/dashboards/guards.json",
-        include_str!("../templates/telemetry/grafana/dashboards/guards.json"),
+        "grafana/dashboards/health.json",
+        include_str!("../templates/telemetry/grafana/dashboards/health.json"),
     ),
     (
-        "grafana/dashboards/navigation.json",
-        include_str!("../templates/telemetry/grafana/dashboards/navigation.json"),
+        "grafana/dashboards/screens.json",
+        include_str!("../templates/telemetry/grafana/dashboards/screens.json"),
     ),
 ];
 
 /// `docker compose wait` appeared in Compose 2.20.
 const MIN_COMPOSE: (u32, u32) = (2, 20);
+
+/// The dashboard to start with: its title in OpenObserve and Grafana (a test compares it with the
+/// generated `health.json`).
+const HOME_TITLE: &str = "fespalier · App health";
+
+/// What `--report` says when the stack is not running.
+const REPORT_NEEDS_STACK: &str =
+    "fsp telemetry --report needs the stack running: start it with `fsp telemetry`";
 
 #[derive(Args)]
 pub struct TelemetryCmd {
@@ -126,6 +122,9 @@ pub struct TelemetryCmd {
     /// Stop the stack and delete its data (the OpenObserve and Grafana volumes)
     #[arg(long)]
     pub reset: bool,
+    /// Print how each app is doing, in plain words (the stack must be running)
+    #[arg(long, conflicts_with_all = ["grafana", "lan", "no_start", "stop", "reset"])]
+    pub report: bool,
 }
 
 /// W1: printed after a successful start when the project `fsp` runs in (the working folder or
@@ -150,6 +149,10 @@ pub fn run(cmd: &TelemetryCmd, project: Option<&Path>) -> Result<()> {
         return stop(&dir, cmd.reset);
     }
     write_stack(&dir)?;
+    if cmd.report {
+        check_compose(&dir)?;
+        return report(&dir);
+    }
     if cmd.no_start {
         eprintln!("{}", wrote_lines(&dir).join("\n"));
         return Ok(());
@@ -185,15 +188,42 @@ fn resolve_dir(explicit: Option<&Path>, var: &dyn Fn(&str) -> Option<String>) ->
     Some(PathBuf::from(home).join(".fespalier").join("telemetry"))
 }
 
-/// Writes each file that is missing or differs. `.env` is written once from `env.example` and
-/// never overwritten; nothing else in the folder is touched.
+/// Writes each file that is missing or differs, and deletes a dashboard file an earlier `fsp`
+/// wrote and this one no longer ships. `.env` is written once from `env.example` and never
+/// overwritten; nothing else in the folder is touched.
 fn write_stack(dir: &Path) -> Result<()> {
     for (rel, content) in FILES {
         write_if_changed(&dir.join(rel), content)?;
     }
+    remove_stale_dashboards(dir)?;
     let env = dir.join(".env");
     if !env.exists() {
         write_if_changed(&env, example_env())?;
+    }
+    Ok(())
+}
+
+/// The two dashboard folders belong to `fsp`: a `*.json` in them that `FILES` does not list is
+/// a dashboard of an earlier version.
+fn remove_stale_dashboards(dir: &Path) -> Result<()> {
+    for folder in ["openobserve/dashboards", "grafana/dashboards"] {
+        let Ok(entries) = fs::read_dir(dir.join(folder)) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let listed = FILES
+                .iter()
+                .any(|(rel, _)| *rel == format!("{folder}/{name}"));
+            if !listed
+                && path.is_file()
+                && name.ends_with(".json")
+                && let Err(e) = fs::remove_file(&path)
+            {
+                bail!("can't remove {}: {e}", path.display());
+            }
+        }
     }
     Ok(())
 }
@@ -378,6 +408,44 @@ fn start(dir: &Path, grafana: bool, lan: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// `--report`: the importer's Python container runs `report.py`, which asks the running
+/// OpenObserve the very questions App health asks and prints the answers in words.
+fn report(dir: &Path) -> Result<()> {
+    let output = compose(dir, false, &["ps", "--status", "running", "--services"])
+        .stderr(Stdio::inherit())
+        .output()?;
+    if !output.status.success() || !is_running(&String::from_utf8_lossy(&output.stdout)) {
+        bail!("{REPORT_NEEDS_STACK}");
+    }
+    let status = compose(
+        dir,
+        false,
+        &[
+            "run",
+            "--rm",
+            "--no-deps",
+            "-T",
+            "dashboards",
+            "python3",
+            "/fespalier/report.py",
+        ],
+    )
+    .status()?;
+    if !status.success() {
+        bail!("{}", report_failed(&exit_code(status)));
+    }
+    Ok(())
+}
+
+/// Whether `docker compose ps --services` lists OpenObserve.
+fn is_running(services: &str) -> bool {
+    services.lines().any(|l| l.trim() == "openobserve")
+}
+
+fn report_failed(code: &str) -> String {
+    format!("the report failed (exit {code}); the lines above say why")
+}
+
 /// `--stop` and `--reset`. `--profile grafana` matters: without it `down` leaves a Grafana
 /// container that an earlier `--grafana` run started.
 fn stop(dir: &Path, reset: bool) -> Result<()> {
@@ -425,7 +493,7 @@ fn summary_lines(
     let get = |key: &str| setting(env, key);
     let mut lines = vec![
         format!(
-            "✓ telemetry stack running: {} dashboards in OpenObserve, folder fespalier",
+            "✓ telemetry stack running: {} dashboards in OpenObserve, folder fespalier; start with {HOME_TITLE}",
             dashboard_count()
         ),
         format!(

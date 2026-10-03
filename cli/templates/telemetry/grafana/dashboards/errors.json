@@ -1,7 +1,7 @@
 {
   "uid": "fespalier-errors",
   "title": "fespalier · Errors",
-  "description": "Failed guards, loads, actions and deferred loads; uncaught errors; native crashes and ANRs.",
+  "description": "What broke, where, and with which error: failed checks, loads, actions and code downloads, uncaught errors, and native crashes.",
   "tags": [
     "fespalier"
   ],
@@ -12,6 +12,18 @@
     "to": "now"
   },
   "refresh": "30s",
+  "links": [
+    {
+      "title": "fespalier",
+      "type": "dashboards",
+      "tags": [
+        "fespalier"
+      ],
+      "asDropdown": false,
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
   "templating": {
     "list": [
       {
@@ -35,16 +47,31 @@
   "panels": [
     {
       "id": 1,
+      "type": "text",
+      "title": "What counts as a failure",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "A **failure** is a check (`guard.dart`, `redirect.dart`), a content load (`data.dart`), an action (`action.dart`) or a code download that threw. An **uncaught error** is one nothing caught. Colours as on App health: 🟢 none · 🟠 a few · 🔴 many."
+      }
+    },
+    {
+      "id": 2,
       "type": "stat",
-      "title": "Failed guards, loads, actions and deferred loads",
-      "description": "",
+      "title": "How many operations failed?",
+      "description": "Checks, content loads, actions and code downloads that threw. Good: none. If not: the table below names each one with the file to open, such as a data.dart or action.dart.",
       "datasource": {
         "type": "prometheus",
         "uid": "fespalier-openobserve"
       },
       "gridPos": {
         "x": 0,
-        "y": 0,
+        "y": 3,
         "w": 6,
         "h": 4
       },
@@ -65,23 +92,31 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
+            "mode": "thresholds"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "text",
+                "color": "green",
                 "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
               }
             ]
-          }
+          },
+          "noValue": "0"
         },
         "overrides": []
       },
       "options": {
-        "colorMode": "none",
+        "colorMode": "background_solid",
         "graphMode": "none",
         "textMode": "value",
         "reduceOptions": {
@@ -94,17 +129,17 @@
       }
     },
     {
-      "id": 2,
+      "id": 3,
       "type": "stat",
-      "title": "Uncaught errors",
-      "description": "",
+      "title": "Did anything throw an uncaught error?",
+      "description": "Errors nothing caught (logged at ERROR or above). Good: none. If not: Errors lists them by type with the message; most come from a widget build or an unawaited Future.",
       "datasource": {
         "type": "prometheus",
         "uid": "fespalier-openobserve"
       },
       "gridPos": {
         "x": 6,
-        "y": 0,
+        "y": 3,
         "w": 6,
         "h": 4
       },
@@ -125,23 +160,31 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
+            "mode": "thresholds"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "text",
+                "color": "green",
                 "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
               }
             ]
-          }
+          },
+          "noValue": "0"
         },
         "overrides": []
       },
       "options": {
-        "colorMode": "none",
+        "colorMode": "background_solid",
         "graphMode": "none",
         "textMode": "value",
         "reduceOptions": {
@@ -154,17 +197,17 @@
       }
     },
     {
-      "id": 3,
+      "id": 4,
       "type": "stat",
-      "title": "Native crashes and ANRs (Android, iOS)",
-      "description": "",
+      "title": "Did the app crash or freeze?",
+      "description": "Native crashes and 'app not responding' freezes on Android and iOS. Good: none; even one is worth a look. If not: Errors has the time; read the device log.",
       "datasource": {
         "type": "prometheus",
         "uid": "fespalier-openobserve"
       },
       "gridPos": {
         "x": 12,
-        "y": 0,
+        "y": 3,
         "w": 6,
         "h": 4
       },
@@ -185,23 +228,27 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
+            "mode": "thresholds"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "text",
+                "color": "green",
                 "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
               }
             ]
-          }
+          },
+          "noValue": "0"
         },
         "overrides": []
       },
       "options": {
-        "colorMode": "none",
+        "colorMode": "background_solid",
         "graphMode": "none",
         "textMode": "value",
         "reduceOptions": {
@@ -214,17 +261,85 @@
       }
     },
     {
-      "id": 4,
+      "id": 5,
+      "type": "stat",
+      "title": "Did a check throw?",
+      "description": "A guard.dart or redirect.dart that threw blocks the screen behind it. Good: none. If not: the table below names the file; guard the code that can fail.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum(sum_over_time(fespalier_calls{fespalier_operation=~\"guard|redirect\", service_name=\"$service\", fespalier_guard_decision=\"error\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 6,
       "type": "timeseries",
-      "title": "Failures by operation",
-      "description": "",
+      "title": "When did things fail?",
+      "description": "Failures over time, by kind.",
       "datasource": {
         "type": "prometheus",
         "uid": "fespalier-openobserve"
       },
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 7,
         "w": 24,
         "h": 9
       },
@@ -266,23 +381,96 @@
             }
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "navigate"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Screen open"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "guard"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Check (guard.dart)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "redirect"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Redirect (redirect.dart)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "data"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Content load (data.dart)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "action"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Action (action.dart)"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "deferred"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Code download (deferred page)"
+              }
+            ]
+          }
+        ]
       },
       "options": {}
     },
     {
-      "id": 5,
+      "id": 7,
       "type": "table",
-      "title": "By error type",
-      "description": "",
+      "title": "What failed, and where?",
+      "description": "Each failure by kind, screen, file and error type, most frequent first. Open the file named here.",
       "datasource": {
         "type": "prometheus",
         "uid": "fespalier-openobserve"
       },
       "gridPos": {
         "x": 0,
-        "y": 13,
-        "w": 12,
+        "y": 16,
+        "w": 24,
         "h": 9
       },
       "targets": [
@@ -292,7 +480,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "sum by (error_type, fespalier_operation, fespalier_route, fespalier_file) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__range]))",
+          "expr": "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false,
@@ -316,9 +504,59 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Kind"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "navigate": {
+                        "text": "Screen open",
+                        "index": 0
+                      },
+                      "guard": {
+                        "text": "Check (guard.dart)",
+                        "index": 1
+                      },
+                      "redirect": {
+                        "text": "Redirect (redirect.dart)",
+                        "index": 2
+                      },
+                      "data": {
+                        "text": "Content load (data.dart)",
+                        "index": 3
+                      },
+                      "action": {
+                        "text": "Action (action.dart)",
+                        "index": 4
+                      },
+                      "deferred": {
+                        "text": "Code download (deferred page)",
+                        "index": 5
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
-      "options": {},
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Times",
+            "desc": true
+          }
+        ]
+      },
       "transformations": [
         {
           "id": "merge",
@@ -331,35 +569,37 @@
               "Time": true
             },
             "indexByName": {
-              "error_type": 0,
-              "fespalier_operation": 1,
-              "fespalier_route": 2,
-              "fespalier_file": 3,
-              "Value #A": 4
+              "fespalier_operation": 0,
+              "fespalier_route": 1,
+              "fespalier_file": 2,
+              "error_type": 3,
+              "Value #A": 4,
+              "Value": 5
             },
             "renameByName": {
-              "error_type": "type",
-              "fespalier_operation": "operation",
-              "fespalier_route": "route",
-              "fespalier_file": "file",
-              "Value #A": "n"
+              "fespalier_operation": "Kind",
+              "fespalier_route": "Screen",
+              "fespalier_file": "File",
+              "error_type": "Error type",
+              "Value #A": "Times",
+              "Value": "Times"
             }
           }
         }
       ]
     },
     {
-      "id": 6,
+      "id": 8,
       "type": "table",
-      "title": "Uncaught errors by type",
-      "description": "",
+      "title": "Which uncaught errors?",
+      "description": "Uncaught errors by type. The message is in Recent uncaught errors.",
       "datasource": {
         "type": "prometheus",
         "uid": "fespalier-openobserve"
       },
       "gridPos": {
-        "x": 12,
-        "y": 13,
+        "x": 0,
+        "y": 25,
         "w": 12,
         "h": 9
       },
@@ -396,7 +636,14 @@
         },
         "overrides": []
       },
-      "options": {},
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Times",
+            "desc": true
+          }
+        ]
+      },
       "transformations": [
         {
           "id": "merge",
@@ -410,28 +657,30 @@
             },
             "indexByName": {
               "exception_type": 0,
-              "Value #A": 1
+              "Value #A": 1,
+              "Value": 2
             },
             "renameByName": {
-              "exception_type": "type",
-              "Value #A": "n"
+              "exception_type": "Error type",
+              "Value #A": "Times",
+              "Value": "Times"
             }
           }
         }
       ]
     },
     {
-      "id": 7,
+      "id": 9,
       "type": "table",
-      "title": "Recent failures",
-      "description": "",
+      "title": "What failed last?",
+      "description": "The latest 50 failures with their message and trace id; click a trace id in OpenObserve's Traces to see the whole navigation.",
       "datasource": {
         "type": "prometheus",
         "uid": "fespalier-openobserve"
       },
       "gridPos": {
         "x": 0,
-        "y": 22,
+        "y": 34,
         "w": 24,
         "h": 9
       },
@@ -466,7 +715,50 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Kind"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "navigate": {
+                        "text": "Screen open",
+                        "index": 0
+                      },
+                      "guard": {
+                        "text": "Check (guard.dart)",
+                        "index": 1
+                      },
+                      "redirect": {
+                        "text": "Redirect (redirect.dart)",
+                        "index": 2
+                      },
+                      "data": {
+                        "text": "Content load (data.dart)",
+                        "index": 3
+                      },
+                      "action": {
+                        "text": "Action (action.dart)",
+                        "index": 4
+                      },
+                      "deferred": {
+                        "text": "Code download (deferred page)",
+                        "index": 5
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "options": {},
       "transformations": [
@@ -485,14 +777,16 @@
               "fespalier_route": 1,
               "fespalier_file": 2,
               "error_type": 3,
-              "Value #A": 4
+              "Value #A": 4,
+              "Value": 5
             },
             "renameByName": {
-              "fespalier_operation": "operation",
-              "fespalier_route": "route",
-              "fespalier_file": "file",
-              "error_type": "type",
-              "Value #A": "failures"
+              "fespalier_operation": "Kind",
+              "fespalier_route": "Screen",
+              "fespalier_file": "File",
+              "error_type": "Error type",
+              "Value #A": "Times",
+              "Value": "Times"
             }
           }
         }

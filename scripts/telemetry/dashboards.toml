@@ -1,6 +1,11 @@
-# The one spec for fespalier's six dashboards (since 0.8.0). `just telemetry-dashboards` turns it into
-# the OpenObserve (v8) JSON and the Grafana JSON under cli/templates/telemetry/, and into the
-# collector's dimension list and the columns the importer creates. Never edit those by hand.
+# The one spec for fespalier's four dashboards (since 0.8.0): App health, Screens, Actions and Errors.
+# `just telemetry-dashboards` turns it into the OpenObserve (v8) JSON and the Grafana JSON under
+# cli/templates/telemetry/, and into the collector's dimension list and the columns the importer
+# creates. Never edit those by hand.
+#
+# The dashboards are written for an app developer who has never read a metrics book: every title is a
+# question, every panel says what it shows, what good looks like and what to do, and the colours come
+# from the one [thresholds] table below (README, "Reading the colours").
 #
 # Every panel has a `sql` (OpenObserve, over the `traces` or `logs` stream) and a `promql` list
 # (Grafana, over the metrics the collector derives from fespalier's spans). Counts agree between the
@@ -8,17 +13,31 @@
 #
 # Panel fields
 #   id           unique in the dashboard; OpenObserve panel id "panel_<id>"
-#   title        the panel's title
-#   type         stat | timeseries | bars | table
-#   width        quarter | half | full   (stat: quarter; anything else: half)
-#   unit         "ms" for values in milliseconds
+#   title        the panel's title: a question ("Do screens open quickly?"); text panels are exempt
+#   type         stat | timeseries | bars | table | text
+#   width        quarter | half | full   (stat: quarter; anything else: half; text: full)
+#   height       OpenObserve grid rows (default: stat 8, text 5, anything else 16); Grafana's follow
+#   unit         ms | percent; a stat's unit (a table's are in `units`)
+#   description  what it shows, what good looks like, what to do: at most 280 characters, required
+#                for every panel but text
+#   same_as      "<dashboard>.<panel>": start from that panel, then apply this panel's own fields
+#   verdict      stat: the [thresholds] id that colours it green, amber or red
+#   gate         true: under [style].min_samples samples the tile shows "Not enough data yet"
+#   drilldown    the id of the dashboard a click opens (not the panel's own)
 #   stream_type  traces (default) | logs
 #   sql          one query; every alias named in `columns` appears as "AS <alias>"
-#   columns      name, axis (x | y | breakdown; default y), time = true on the time axis,
-#                oo_only = true for a column Grafana cannot show (a message, a trace id)
+#   columns      name, axis (x | y | breakdown; default y), label (the header a person reads),
+#                time = true on the time axis, oo_only = true for a column Grafana cannot show
 #   promql       the Grafana targets: expr, legend; a table has one per y column that is
 #                not oo_only, in the same order, plus extra = true for a Grafana-only count column
-#   rename       Grafana tables: label name -> column title
+#   rename       Grafana tables: label name -> column name
+#   verdicts     table: column -> [thresholds] id, which colours its cells
+#   units        table: column -> ms | percent
+#   labels       table or chart: column -> [labels.<name>], which shows a human text for a value
+#   sort         table: the column a Grafana table sorts by, largest first
+#   marks        timeseries: a [thresholds] id; its two limits become horizontal reference lines
+#   transpose    OpenObserve table: rows become columns (the verdict table)
+#   content      text panels: Markdown (content_grafana: the same for Grafana, when it differs)
 #   grafana      false: the panel is OpenObserve-only
 #   links        Grafana panel links (title, url)
 #
@@ -27,6 +46,102 @@
 #   {sel}            service_name="$service" in PromQL
 #   {sel:navigate}   fespalier_operation="navigate", service_name="$service"
 #   {sel:a|b}        fespalier_operation=~"a|b", service_name="$service"
+#   {n_of:P}                 SQL: how many rows match the predicate P
+#   {p50_of:P} {p95_of:P}    SQL: the typical / slowest-5 % duration (ms) of the rows matching P
+#   {rate_of:N|D}            SQL: 100 * rows matching N / rows matching D
+#   {p95_gated:P}            SQL: {p95_of:P}, or NULL under min_samples matching rows
+#   {pct:N|D}                SQL: {rate_of:N|D}, or NULL when fewer than min_samples rows match D
+#   {verdict:T|V|N}          SQL: "✓ Good · 240 ms" and friends for the value V of threshold T over N samples
+#   {label:L|C}              SQL: column C shown with the text of [labels.L]
+#   {pct_prom:D|K}           PromQL: 100 * (calls matching D - calls matching K) / calls matching D,
+#                            where K selects the calls that did not fail (OpenObserve's PromQL cannot
+#                            say `X or vector(0)`, so the failures are counted by subtraction)
+#   {gate_prom:S}            PromQL: "and" the number of calls matching S is at least min_samples
+
+# Status colours (the dataviz status palette). Tables use the pale pairs [background, text]; Grafana
+# uses its theme-aware named colours. Under `min_samples` a tile shows "Not enough data yet".
+[style]
+good = "#0ca30c"
+attention = "#fab219"
+bad = "#d03b3b"
+table = { good = ["#f0fdf4", "#15803d"], attention = ["#fefce8", "#a16207"], bad = ["#fef2f2", "#b91c1c"] }
+grafana = { good = "green", attention = "orange", bad = "red" }
+min_samples = 20
+no_data = "Not enough data yet"
+
+# One table per kind of measurement. `good_below` and the bad limit `bad_from` split the values into
+# good (below good_below), needs attention (from good_below up to bad_from) and bad (bad_from and
+# up); equal numbers leave out "needs attention". The reasons are the README's "Reading the colours".
+[thresholds.screen_open]
+unit = "ms"
+good_below = 300
+bad_from = 1000
+why = "The span ends at the first frame, so it is the wait before anything moves. 300 ms is Material's screen-transition duration and the edge of \"instant\"; 1 s is Nielsen's limit for keeping the user's flow of thought."
+
+[thresholds.content_load]
+unit = "ms"
+good_below = 1000
+bad_from = 3000
+why = "The screen already shows loading.dart, so the user is waiting knowingly. 1 s keeps the flow; at 3 s more than half of mobile visitors give up."
+
+[thresholds.action_time]
+unit = "ms"
+good_below = 1000
+bad_from = 3000
+why = "The same reasoning for a tap that saves: past 1 s it needs a spinner, and past 3 s people tap again."
+
+[thresholds.guard_wait]
+unit = "ms"
+good_below = 100
+bad_from = 300
+why = "A check runs before the screen appears and adds to every open. 100 ms is \"instant\", and 300 ms would by itself spend the whole budget for opening a screen."
+
+[thresholds.code_download]
+unit = "ms"
+good_below = 500
+bad_from = 2000
+why = "Downloading a deferred page's code on the web: it should fit in a screen transition, and more than 2 s is a visible stall."
+
+[thresholds.failure_rate]
+unit = "percent"
+good_below = 1
+bad_from = 5
+why = "A 99 % success rate is the usual floor for user-facing calls, and Android's bad-behaviour line for crashes is about 1 %. At 5 %, one attempt in 20 fails."
+
+[thresholds.not_found_rate]
+unit = "percent"
+good_below = 1
+bad_from = 5
+why = "Typed routes cannot miss, so not-found comes from hand-built links, old deep links and typing on the web. A few are normal; 5 % is a broken link."
+
+[thresholds.error_count]
+unit = "count"
+good_below = 1
+bad_from = 10
+why = "While you develop, every uncaught error is worth a look, but a single one should not turn the page red."
+
+[thresholds.crash_count]
+unit = "count"
+good_below = 1
+bad_from = 1
+why = "A native crash or an \"app not responding\" freeze is always bad."
+
+# Texts for the values of an attribute. Each key must be a convention value, which a test checks.
+[labels.operation]
+navigate = "Screen open"
+guard = "Check (guard.dart)"
+redirect = "Redirect (redirect.dart)"
+data = "Content load (data.dart)"
+action = "Action (action.dart)"
+deferred = "Code download (deferred page)"
+
+[labels.navigation_kind]
+initial = "App start"
+go = "Link, tab or go()"
+push = "Pushed on top"
+pop = "Back"
+replace = "Replaced"
+refresh = "Same screen again"
 
 [macros]
 svc = "service_name = '$service'"
@@ -36,450 +151,632 @@ p95 = "approx_percentile_cont(duration, 0.95) / 1000.0"
 err_logs = "(UPPER(severity) IN ('ERROR', 'FATAL', 'CRITICAL') OR severity IN ('17', '18', '19', '20', '21', '22', '23', '24'))"
 nav_ok_sql = "fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'ok' AND fespalier_navigation_kind <> 'refresh'"
 nav_timed_sql = "fespalier_operation = 'navigate' AND fespalier_navigation_outcome <> 'superseded'"
+nav_notfound_sql = "fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'not_found'"
 nav_redirected_sql = "fespalier_operation = 'navigate' AND fespalier_navigation_redirected = 'true'"
 guard_sql = "fespalier_operation IN ('guard', 'redirect')"
+guard_async_sql = "fespalier_operation IN ('guard', 'redirect') AND fespalier_async = 'true'"
+data_sql = "fespalier_operation = 'data'"
+data_timed_sql = "fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error')"
+data_error_sql = "fespalier_operation = 'data' AND fespalier_data_state = 'error'"
+action_sql = "fespalier_operation = 'action'"
+action_error_sql = "fespalier_operation = 'action' AND fespalier_action_result = 'error'"
+deferred_sql = "fespalier_operation = 'deferred'"
+failed_sql = "span_status = 'ERROR' AND fespalier_operation IS NOT NULL"
 nav_ok_sel = '{sel:navigate}, fespalier_navigation_outcome="ok", fespalier_navigation_kind!="refresh"'
 nav_timed_sel = '{sel:navigate}, fespalier_navigation_outcome!="superseded"'
+nav_notfound_sel = '{sel:navigate}, fespalier_navigation_outcome="not_found"'
 nav_redirected_sel = '{sel:navigate}, fespalier_navigation_redirected="true"'
 guard_sel = "{sel:guard|redirect}"
 data_timed_sel = '{sel:data}, fespalier_data_state=~"data|error"'
+data_error_sel = '{sel:data}, fespalier_data_state="error"'
+data_ok_sel = '{sel:data}, fespalier_data_state="data"'
+nav_ok_outcome_sel = '{sel:navigate}, fespalier_navigation_outcome="ok"'
+action_error_sel = '{sel:action}, fespalier_action_result="error"'
+action_ok_sel = '{sel:action}, fespalier_action_result="ok"'
 failed_sel = '{sel}, status_code="STATUS_CODE_ERROR"'
 
-# ------------------------------------------------------------------------------------------------
+# ================================================================================================
+# App health: the home page. One tile per question, then the same checks in words.
+# ================================================================================================
 [[dashboard]]
-id = "navigation"
-title = "Navigation"
-description = "Route views, time to first frame per route, and redirects."
+id = "health"
+home = true
+title = "App health"
+description = "Start here: is the app fast, and does it work? One tile per question; green is good, amber needs attention, red is bad."
 
   [[dashboard.panels]]
-  id = "views"
-  title = "Route views"
+  id = "how_to_read"
+  title = "How to read this"
+  type = "text"
+  height = 7
+  content = """**Start here.** Each tile answers one question about the app chosen in **App**, over the time range at the top.
+🟢 good · 🟠 needs attention · 🔴 bad · grey: not enough data yet. Hover ⓘ next to a title for what it means
+and what to do; click a row for the details. *Verdicts, in words* says the same without colour."""
+  content_grafana = """**Start here.** Each tile answers one question about the app chosen in **App**, over the time range at the top.
+🟢 good · 🟠 needs attention · 🔴 bad · grey: not enough data yet. Hover the (i) next to a title for what it means
+and what to do; click a tile for the details."""
+
+  [[dashboard.panels]]
+  id = "screens_open"
+  title = "Do screens open quickly?"
   type = "stat"
+  unit = "ms"
+  verdict = "screen_open"
+  gate = true
+  drilldown = "screens"
+  description = "Time from a tap to the new screen's first frame, for the slowest 5 % of opens. Good: under 300 ms. If not: open Screens; slow ones usually wait on a guard.dart or build too much in page.dart."
+  sql = "SELECT {p95_gated:{nav_timed_sql}} AS p95_ms {from} WHERE {svc}"
+  columns = [{ name = "p95_ms" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__range]))) {gate_prom:{nav_timed_sel}}" }]
+
+  [[dashboard.panels]]
+  id = "content_loads"
+  title = "Does content load quickly?"
+  type = "stat"
+  unit = "ms"
+  verdict = "content_load"
+  gate = true
+  drilldown = "screens"
+  description = "How long data.dart takes to deliver a screen's content, slowest 5 %. Good: under 1 s. If not: Screens lists each data.dart; cache it (dataCache), load less, or show what you have first."
+  sql = "SELECT {p95_gated:{data_timed_sql}} AS p95_ms {from} WHERE {svc}"
+  columns = [{ name = "p95_ms" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range]))) {gate_prom:{data_timed_sel}}" }]
+
+  [[dashboard.panels]]
+  id = "actions_finish"
+  title = "Do actions finish quickly?"
+  type = "stat"
+  unit = "ms"
+  verdict = "action_time"
+  gate = true
+  drilldown = "actions"
+  description = "How long an action.dart takes, from the tap to its result, slowest 5 %. Good: under 1 s. If not: Actions shows which one; consider optimistic() so the screen answers at once."
+  sql = "SELECT {p95_gated:{action_sql}} AS p95_ms {from} WHERE {svc}"
+  columns = [{ name = "p95_ms" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range]))) {gate_prom:{sel:action}}" }]
+
+  [[dashboard.panels]]
+  id = "screens_viewed"
+  title = "How many screens were viewed?"
+  type = "stat"
+  drilldown = "screens"
+  description = "Screens that opened in this time range (back and tab switches included, refreshes not). It tells you how much the other tiles are based on."
   sql = "SELECT COUNT(*) AS views {from} WHERE {nav_ok_sql} AND {svc}"
   columns = [{ name = "views" }]
   promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {nav_ok_sel} }[$__range]))" }]
 
   [[dashboard.panels]]
-  id = "ttff_p95"
-  title = "Time to first frame, p95"
+  id = "load_failures"
+  title = "How often does content fail to load?"
   type = "stat"
-  unit = "ms"
-  sql = "SELECT {p95} AS p95_ms {from} WHERE {nav_timed_sql} AND {svc}"
-  columns = [{ name = "p95_ms" }]
-  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__range])))" }]
+  unit = "percent"
+  verdict = "failure_rate"
+  gate = true
+  drilldown = "screens"
+  description = "Share of finished data.dart loads that threw. Good: under 1 %. If not: Errors shows the error type and file; add a retry (data_retry) or an error.dart that lets people try again."
+  sql = "SELECT {pct:{data_error_sql}|{data_timed_sql}} AS failed_pct {from} WHERE {svc}"
+  columns = [{ name = "failed_pct" }]
+  promql = [{ expr = "{pct_prom:{data_timed_sel}|{data_ok_sel}} {gate_prom:{data_timed_sel}}" }]
 
   [[dashboard.panels]]
-  id = "redirected"
-  title = "Redirected navigations"
+  id = "action_failures"
+  title = "How often do actions fail?"
   type = "stat"
-  sql = "SELECT COUNT(*) AS redirected {from} WHERE {nav_redirected_sql} AND {svc}"
-  columns = [{ name = "redirected" }]
-  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {nav_redirected_sel} }[$__range]))" }]
-
-  [[dashboard.panels]]
-  id = "not_found"
-  title = "Not found"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS not_found {from} WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'not_found' AND {svc}"
-  columns = [{ name = "not_found" }]
-  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:navigate}, fespalier_navigation_outcome="not_found" }[$__range]))' }]
-
-  [[dashboard.panels]]
-  id = "views_over_time"
-  title = "Views per route"
-  type = "bars"
-  width = "full"
-  sql = "SELECT histogram(_timestamp) AS t, fespalier_route AS route, COUNT(*) AS views {from} WHERE {nav_ok_sql} AND {svc} GROUP BY t, route ORDER BY t"
-  columns = [{ name = "t", axis = "x", time = true }, { name = "route", axis = "breakdown" }, { name = "views" }]
-  promql = [{ expr = "sum by (fespalier_route) (sum_over_time(fespalier_calls{ {nav_ok_sel} }[$__interval]))", legend = "{{fespalier_route}}" }]
-
-  [[dashboard.panels]]
-  id = "ttff_by_route"
-  title = "Time to first frame by route"
-  type = "table"
-  sql = "SELECT fespalier_route AS route, COUNT(*) AS views, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE {nav_timed_sql} AND {svc} GROUP BY route ORDER BY p95_ms DESC"
-  columns = [{ name = "route", axis = "x" }, { name = "views" }, { name = "p50_ms" }, { name = "p95_ms" }]
-  rename = { fespalier_route = "route" }
-  promql = [
-    { expr = "sum by (fespalier_route) (sum_over_time(fespalier_calls{ {nav_timed_sel} }[$__range]))" },
-    { expr = "histogram_quantile(0.5, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__range])))" },
-    { expr = "histogram_quantile(0.95, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__range])))" },
-  ]
-
-  [[dashboard.panels]]
-  id = "ttff_over_time"
-  title = "Time to first frame, p95"
-  type = "timeseries"
-  unit = "ms"
-  sql = "SELECT histogram(_timestamp) AS t, {p95} AS p95_ms {from} WHERE {nav_timed_sql} AND {svc} GROUP BY t ORDER BY t"
-  columns = [{ name = "t", axis = "x", time = true }, { name = "p95_ms" }]
-  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__interval])))", legend = "p95" }]
-
-  [[dashboard.panels]]
-  id = "redirected_to"
-  title = "Redirected navigations, by where they landed"
-  type = "table"
-  sql = "SELECT fespalier_route AS landed, COUNT(*) AS n {from} WHERE {nav_redirected_sql} AND {svc} GROUP BY landed ORDER BY n DESC"
-  columns = [{ name = "landed", axis = "x" }, { name = "n" }]
-  rename = { fespalier_route = "landed" }
-  promql = [{ expr = "sum by (fespalier_route) (sum_over_time(fespalier_calls{ {nav_redirected_sel} }[$__range]))" }]
-
-  [[dashboard.panels]]
-  id = "kinds"
-  title = "Navigation kinds"
-  type = "bars"
-  sql = "SELECT fespalier_navigation_kind AS kind, COUNT(*) AS n {from} WHERE fespalier_operation = 'navigate' AND {svc} GROUP BY kind ORDER BY n DESC"
-  columns = [{ name = "kind", axis = "x" }, { name = "n" }]
-  rename = { fespalier_navigation_kind = "kind" }
-  promql = [{ expr = "sum by (fespalier_navigation_kind) (sum_over_time(fespalier_calls{ {sel:navigate} }[$__range]))" }]
-
-# ------------------------------------------------------------------------------------------------
-[[dashboard]]
-id = "guards"
-title = "Guards"
-description = "What guards and redirects decided, how long async ones kept the user waiting, and which ones threw."
-
-  [[dashboard.panels]]
-  id = "decisions"
-  title = "Decisions"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS decisions {from} WHERE {guard_sql} AND {svc}"
-  columns = [{ name = "decisions" }]
-  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {guard_sel} }[$__range]))" }]
-
-  [[dashboard.panels]]
-  id = "denials"
-  title = "Denials (a guard sent the user elsewhere)"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS denials {from} WHERE fespalier_operation = 'guard' AND fespalier_guard_decision = 'redirect' AND {svc}"
-  columns = [{ name = "denials" }]
-  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:guard}, fespalier_guard_decision="redirect" }[$__range]))' }]
-
-  [[dashboard.panels]]
-  id = "guard_errors"
-  title = "Guards that threw"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS errors {from} WHERE {guard_sql} AND fespalier_guard_decision = 'error' AND {svc}"
-  columns = [{ name = "errors" }]
-  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="error" }[$__range]))' }]
-
-  [[dashboard.panels]]
-  id = "pending_p95"
-  title = "Async guard pending, p95"
-  type = "stat"
-  unit = "ms"
-  sql = "SELECT {p95} AS p95_ms {from} WHERE {guard_sql} AND fespalier_async = 'true' AND {svc}"
-  columns = [{ name = "p95_ms" }]
-  promql = [{ expr = 'histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {guard_sel}, fespalier_async="true" }[$__range])))' }]
-
-  [[dashboard.panels]]
-  id = "outcomes_over_time"
-  title = "Decisions by outcome"
-  type = "bars"
-  width = "full"
-  sql = "SELECT histogram(_timestamp) AS t, fespalier_guard_decision AS decision, COUNT(*) AS n {from} WHERE {guard_sql} AND {svc} GROUP BY t, decision ORDER BY t"
-  columns = [{ name = "t", axis = "x", time = true }, { name = "decision", axis = "breakdown" }, { name = "n" }]
-  promql = [{ expr = "sum by (fespalier_guard_decision) (sum_over_time(fespalier_calls{ {guard_sel} }[$__interval]))", legend = "{{fespalier_guard_decision}}" }]
-
-  [[dashboard.panels]]
-  id = "by_guard"
-  title = "By guard"
-  type = "table"
-  width = "full"
-  sql = """SELECT fespalier_file AS guard, fespalier_route AS route, COUNT(*) AS decisions, SUM(CASE WHEN fespalier_guard_decision = 'redirect' THEN 1 ELSE 0 END) AS denials, SUM(CASE WHEN fespalier_guard_decision = 'error' THEN 1 ELSE 0 END) AS errors, SUM(CASE WHEN fespalier_guard_decision = 'skipped' THEN 1 ELSE 0 END) AS skipped, approx_percentile_cont(CASE WHEN fespalier_async = 'true' THEN duration END, 0.95) / 1000.0 AS p95_ms {from} WHERE {guard_sql} AND {svc} GROUP BY guard, route ORDER BY decisions DESC"""
-  columns = [{ name = "guard", axis = "x" }, { name = "route", axis = "x" }, { name = "decisions" }, { name = "denials" }, { name = "errors" }, { name = "skipped" }, { name = "p95_ms" }]
-  rename = { fespalier_file = "guard", fespalier_route = "route" }
-  promql = [
-    { expr = "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {guard_sel} }[$__range]))" },
-    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="redirect" }[$__range]))' },
-    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="error" }[$__range]))' },
-    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="skipped" }[$__range]))' },
-    { expr = 'histogram_quantile(0.95, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {guard_sel}, fespalier_async="true" }[$__range])))' },
-  ]
-
-# ------------------------------------------------------------------------------------------------
-[[dashboard]]
-id = "data"
-title = "Data"
-description = "How data.dart loads behave: volume, failures, load time, and which sync loads never showed a loading frame."
-
-  [[dashboard.panels]]
-  id = "loads"
-  title = "Loads"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS loads {from} WHERE fespalier_operation = 'data' AND {svc}"
-  columns = [{ name = "loads" }]
-  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {sel:data} }[$__range]))" }]
-
-  [[dashboard.panels]]
-  id = "data_errors"
-  title = "Failed loads"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS errors {from} WHERE fespalier_operation = 'data' AND fespalier_data_state = 'error' AND {svc}"
-  columns = [{ name = "errors" }]
-  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="error" }[$__range]))' }]
-
-  [[dashboard.panels]]
-  id = "load_p95"
-  title = "Load time, p95"
-  type = "stat"
-  unit = "ms"
-  # A Stream (ends at once) or a disposed load would skew it.
-  sql = "SELECT {p95} AS p95_ms {from} WHERE fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') AND {svc}"
-  columns = [{ name = "p95_ms" }]
-  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" }]
-
-  [[dashboard.panels]]
-  id = "abandoned"
-  title = "Abandoned (disposed before settling)"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS abandoned {from} WHERE fespalier_operation = 'data' AND fespalier_data_state = 'disposed' AND {svc}"
-  columns = [{ name = "abandoned" }]
-  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="disposed" }[$__range]))' }]
-
-  [[dashboard.panels]]
-  id = "by_file"
-  title = "By data.dart"
-  type = "table"
-  width = "full"
-  sql = """SELECT fespalier_file AS file, fespalier_route AS route, COUNT(*) AS loads, SUM(CASE WHEN fespalier_data_state = 'error' THEN 1 ELSE 0 END) AS errors, SUM(CASE WHEN fespalier_data_state = 'disposed' THEN 1 ELSE 0 END) AS abandoned, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE fespalier_operation = 'data' AND {svc} GROUP BY file, route ORDER BY loads DESC"""
-  columns = [
-    { name = "file", axis = "x" },
-    { name = "route", axis = "x" },
-    { name = "loads" },
-    { name = "errors" },
-    { name = "abandoned" },
-    { name = "p50_ms" },
-    { name = "p95_ms" },
-  ]
-  rename = { fespalier_file = "file", fespalier_route = "route" }
-  promql = [
-    { expr = "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data} }[$__range]))" },
-    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="error" }[$__range]))' },
-    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="disposed" }[$__range]))' },
-    { expr = "histogram_quantile(0.5, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
-    { expr = "histogram_quantile(0.95, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
-  ]
-
-  [[dashboard.panels]]
-  id = "load_time_over_time"
-  title = "Load time, p95, by data.dart"
-  type = "timeseries"
-  unit = "ms"
-  sql = "SELECT histogram(_timestamp) AS t, fespalier_file AS file, {p95} AS p95_ms {from} WHERE fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') AND {svc} GROUP BY t, file ORDER BY t"
-  columns = [{ name = "t", axis = "x", time = true }, { name = "file", axis = "breakdown" }, { name = "p95_ms" }]
-  promql = [{ expr = "histogram_quantile(0.95, sum by (le, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__interval])))", legend = "{{fespalier_file}}" }]
-
-  [[dashboard.panels]]
-  id = "async_split"
-  title = "Sync and async loads"
-  type = "bars"
-  sql = "SELECT fespalier_async AS async, COUNT(*) AS n {from} WHERE fespalier_operation = 'data' AND {svc} GROUP BY async ORDER BY async"
-  columns = [{ name = "async", axis = "x" }, { name = "n" }]
-  rename = { fespalier_async = "async" }
-  promql = [{ expr = "sum by (fespalier_async) (sum_over_time(fespalier_calls{ {sel:data} }[$__range]))" }]
-
-# ------------------------------------------------------------------------------------------------
-[[dashboard]]
-id = "actions"
-title = "Actions"
-description = "How action.dart writes behave: volume, failures and latency per action."
-
-  [[dashboard.panels]]
-  id = "runs"
-  title = "Runs"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS runs {from} WHERE fespalier_operation = 'action' AND {svc}"
-  columns = [{ name = "runs" }]
-  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {sel:action} }[$__range]))" }]
-
-  [[dashboard.panels]]
-  id = "failures"
-  title = "Failures"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS failures {from} WHERE fespalier_operation = 'action' AND fespalier_action_result = 'error' AND {svc}"
-  columns = [{ name = "failures" }]
-  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_result="error" }[$__range]))' }]
-
-  [[dashboard.panels]]
-  id = "action_p95"
-  title = "Latency, p95"
-  type = "stat"
-  unit = "ms"
-  sql = "SELECT {p95} AS p95_ms {from} WHERE fespalier_operation = 'action' AND {svc}"
-  columns = [{ name = "p95_ms" }]
-  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" }]
-
-  [[dashboard.panels]]
-  id = "rate"
-  title = "Runs by action"
-  type = "bars"
-  sql = "SELECT histogram(_timestamp) AS t, fespalier_action_name AS action, COUNT(*) AS runs {from} WHERE fespalier_operation = 'action' AND {svc} GROUP BY t, action ORDER BY t"
-  columns = [{ name = "t", axis = "x", time = true }, { name = "action", axis = "breakdown" }, { name = "runs" }]
-  promql = [{ expr = "sum by (fespalier_action_name) (sum_over_time(fespalier_calls{ {sel:action} }[$__interval]))", legend = "{{fespalier_action_name}}" }]
-
-  [[dashboard.panels]]
-  id = "failures_over_time"
-  title = "Failures by action"
-  type = "bars"
-  sql = "SELECT histogram(_timestamp) AS t, fespalier_action_name AS action, COUNT(*) AS failures {from} WHERE fespalier_operation = 'action' AND fespalier_action_result = 'error' AND {svc} GROUP BY t, action ORDER BY t"
-  columns = [{ name = "t", axis = "x", time = true }, { name = "action", axis = "breakdown" }, { name = "failures" }]
-  promql = [{ expr = 'sum by (fespalier_action_name) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_result="error" }[$__interval]))', legend = "{{fespalier_action_name}}" }]
-
-  [[dashboard.panels]]
-  id = "by_action"
-  title = "By action"
-  type = "table"
-  width = "full"
-  sql = """SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, SUM(CASE WHEN fespalier_action_result = 'error' THEN 1 ELSE 0 END) AS failures, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE fespalier_operation = 'action' AND {svc} GROUP BY action, file ORDER BY runs DESC"""
-  columns = [
-    { name = "action", axis = "x" },
-    { name = "file", axis = "x" },
-    { name = "runs" },
-    { name = "failures" },
-    { name = "p50_ms" },
-    { name = "p95_ms" },
-  ]
-  rename = { fespalier_action_name = "action", fespalier_file = "file" }
-  promql = [
-    { expr = "sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action} }[$__range]))" },
-    { expr = 'sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_result="error" }[$__range]))' },
-    { expr = "histogram_quantile(0.5, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" },
-    { expr = "histogram_quantile(0.95, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" },
-  ]
-
-# ------------------------------------------------------------------------------------------------
-[[dashboard]]
-id = "deferred"
-title = "Deferred loads"
-description = "How long the code of a deferred page takes to arrive, and which loads failed."
-
-  [[dashboard.panels]]
-  id = "deferred_loads"
-  title = "Loads"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS loads {from} WHERE fespalier_operation = 'deferred' AND {svc}"
-  columns = [{ name = "loads" }]
-  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {sel:deferred} }[$__range]))" }]
-
-  [[dashboard.panels]]
-  id = "deferred_p95"
-  title = "Load time, p95"
-  type = "stat"
-  unit = "ms"
-  sql = "SELECT {p95} AS p95_ms {from} WHERE fespalier_operation = 'deferred' AND {svc}"
-  columns = [{ name = "p95_ms" }]
-  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {sel:deferred} }[$__range])))" }]
-
-  [[dashboard.panels]]
-  id = "deferred_failures"
-  title = "Failed loads"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS failures {from} WHERE fespalier_operation = 'deferred' AND fespalier_deferred_result = 'error' AND {svc}"
-  columns = [{ name = "failures" }]
-  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:deferred}, fespalier_deferred_result="error" }[$__range]))' }]
-
-  [[dashboard.panels]]
-  id = "deferred_by_page"
-  title = "By page"
-  type = "table"
-  width = "full"
-  sql = """SELECT fespalier_file AS page, fespalier_route AS route, COUNT(*) AS loads, SUM(CASE WHEN fespalier_deferred_result = 'error' THEN 1 ELSE 0 END) AS failures, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE fespalier_operation = 'deferred' AND {svc} GROUP BY page, route ORDER BY loads DESC"""
-  columns = [{ name = "page", axis = "x" }, { name = "route", axis = "x" }, { name = "loads" }, { name = "failures" }, { name = "p50_ms" }, { name = "p95_ms" }]
-  rename = { fespalier_file = "page", fespalier_route = "route" }
-  promql = [
-    { expr = "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:deferred} }[$__range]))" },
-    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:deferred}, fespalier_deferred_result="error" }[$__range]))' },
-    { expr = "histogram_quantile(0.5, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {sel:deferred} }[$__range])))" },
-    { expr = "histogram_quantile(0.95, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {sel:deferred} }[$__range])))" },
-  ]
-
-  [[dashboard.panels]]
-  id = "deferred_over_time"
-  title = "Load time, p95"
-  type = "timeseries"
-  unit = "ms"
-  sql = "SELECT histogram(_timestamp) AS t, {p95} AS p95_ms {from} WHERE fespalier_operation = 'deferred' AND {svc} GROUP BY t ORDER BY t"
-  columns = [{ name = "t", axis = "x", time = true }, { name = "p95_ms" }]
-  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {sel:deferred} }[$__interval])))", legend = "p95" }]
-
-# ------------------------------------------------------------------------------------------------
-[[dashboard]]
-id = "errors"
-title = "Errors"
-description = "Failed guards, loads, actions and deferred loads; uncaught errors; native crashes and ANRs."
-
-  [[dashboard.panels]]
-  id = "failed_spans"
-  title = "Failed guards, loads, actions and deferred loads"
-  type = "stat"
-  sql = "SELECT COUNT(*) AS failed {from} WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND {svc}"
-  columns = [{ name = "failed" }]
-  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {failed_sel} }[$__range]))" }]
+  unit = "percent"
+  verdict = "failure_rate"
+  gate = true
+  drilldown = "actions"
+  description = "Share of action.dart runs that threw. Good: under 1 %. If not: Actions lists the failing action and Errors its error type; check its validate() and the server's answer."
+  sql = "SELECT {pct:{action_error_sql}|{action_sql}} AS failed_pct {from} WHERE {svc}"
+  columns = [{ name = "failed_pct" }]
+  promql = [{ expr = "{pct_prom:{sel:action}|{action_ok_sel}} {gate_prom:{sel:action}}" }]
 
   [[dashboard.panels]]
   id = "uncaught"
-  title = "Uncaught errors"
+  title = "Did anything throw an uncaught error?"
   type = "stat"
   stream_type = "logs"
+  verdict = "error_count"
+  drilldown = "errors"
+  description = "Errors nothing caught (logged at ERROR or above). Good: none. If not: Errors lists them by type with the message; most come from a widget build or an unawaited Future."
   sql = "SELECT COUNT(*) AS uncaught {from} WHERE {err_logs} AND {svc}"
   columns = [{ name = "uncaught" }]
   promql = [{ expr = "sum(sum_over_time(fespalier_app_errors{ {sel} }[$__range]))" }]
 
   [[dashboard.panels]]
   id = "crashes"
-  title = "Native crashes and ANRs (Android, iOS)"
+  title = "Did the app crash or freeze?"
   type = "stat"
   stream_type = "logs"
+  verdict = "crash_count"
+  drilldown = "errors"
+  description = "Native crashes and 'app not responding' freezes on Android and iOS. Good: none; even one is worth a look. If not: Errors has the time; read the device log."
   sql = "SELECT COUNT(*) AS crashes {from} WHERE event_name IN ('device.crash', 'device.anr') AND {svc}"
   columns = [{ name = "crashes" }]
   promql = [{ expr = "sum(sum_over_time(fespalier_app_crashes{ {sel} }[$__range]))" }]
 
+  # One row, eight columns; OpenObserve shows it transposed, so the questions are the row names.
   [[dashboard.panels]]
-  id = "failed_over_time"
-  title = "Failures by operation"
+  id = "verdicts"
+  title = "Verdicts, in words"
+  type = "table"
+  width = "full"
+  height = 17
+  grafana = false
+  transpose = true
+  description = "The same checks as the tiles, said in words, so colour is never the only signal. 'Too few to judge' means fewer than 20 samples in this time range."
+  sql = """SELECT 'This app' AS app,
+{verdict:screen_open|{p95_of:{nav_timed_sql}}|{n_of:{nav_timed_sql}}} AS screens_open,
+{verdict:content_load|{p95_of:{data_timed_sql}}|{n_of:{data_timed_sql}}} AS content_loads,
+{verdict:action_time|{p95_of:{action_sql}}|{n_of:{action_sql}}} AS actions_finish,
+{verdict:guard_wait|{p95_of:{guard_async_sql}}|{n_of:{guard_async_sql}}} AS guard_wait,
+{verdict:code_download|{p95_of:{deferred_sql}}|{n_of:{deferred_sql}}} AS code_download,
+{verdict:failure_rate|{rate_of:{data_error_sql}|{data_timed_sql}}|{n_of:{data_timed_sql}}} AS load_failures,
+{verdict:failure_rate|{rate_of:{action_error_sql}|{action_sql}}|{n_of:{action_sql}}} AS action_failures,
+{verdict:not_found_rate|{rate_of:{nav_notfound_sql}|{nav_timed_sql}}|{n_of:{nav_timed_sql}}} AS dead_ends
+{from} WHERE {svc}"""
+  columns = [
+    { name = "app", axis = "x", label = "App" },
+    { name = "screens_open", label = "Do screens open quickly?" },
+    { name = "content_loads", label = "Does content load quickly?" },
+    { name = "actions_finish", label = "Do actions finish quickly?" },
+    { name = "guard_wait", label = "Do checks slow screens down?" },
+    { name = "code_download", label = "Does a deferred page's code arrive quickly?" },
+    { name = "load_failures", label = "How often does content fail to load?" },
+    { name = "action_failures", label = "How often do actions fail?" },
+    { name = "dead_ends", label = "How often does a link lead nowhere?" },
+  ]
+
+  [[dashboard.panels]]
+  id = "slowest_screens"
+  title = "Which screens are slowest?"
+  type = "table"
+  width = "half"
+  height = 12
+  drilldown = "screens"
+  sort = "open_p95"
+  verdicts = { open_p95 = "screen_open", content_p95 = "content_load" }
+  units = { open_p95 = "ms", content_p95 = "ms" }
+  description = "The five screens that take longest to open. Content is the data.dart load that follows. If one is red: open Screens and check its guard.dart and data.dart rows."
+  sql = "SELECT fespalier_route AS route, {n_of:{nav_ok_sql}} AS views, {p95_of:{nav_timed_sql}} AS open_p95, {p95_of:{data_timed_sql}} AS content_p95 {from} WHERE fespalier_route IS NOT NULL AND {svc} GROUP BY route ORDER BY open_p95 DESC NULLS LAST LIMIT 5"
+  columns = [
+    { name = "route", axis = "x", label = "Screen" },
+    { name = "views", label = "Views" },
+    { name = "open_p95", label = "Open, slowest 5 %" },
+    { name = "content_p95", label = "Content, slowest 5 %" },
+  ]
+  rename = { fespalier_route = "route" }
+  promql = [
+    { expr = "sum by (fespalier_route) (sum_over_time(fespalier_calls{ {nav_ok_sel} }[$__range]))" },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__range])))" },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
+  ]
+
+  [[dashboard.panels]]
+  id = "top_failures"
+  title = "What fails most?"
+  type = "table"
+  width = "half"
+  height = 12
+  drilldown = "errors"
+  labels = { operation = "operation" }
+  description = "The five things that failed most often, with the file to open. A Check is a guard.dart, Content a data.dart, an Action an action.dart."
+  sql = "SELECT fespalier_operation AS operation, fespalier_file AS file, fespalier_route AS route, error_type AS type, COUNT(*) AS n {from} WHERE {failed_sql} AND {svc} GROUP BY operation, file, route, type ORDER BY n DESC LIMIT 5"
+  columns = [
+    { name = "operation", axis = "x", label = "Kind" },
+    { name = "file", axis = "x", label = "File" },
+    { name = "route", axis = "x", label = "Screen" },
+    { name = "type", axis = "x", label = "Error type" },
+    { name = "n", label = "Times" },
+  ]
+  rename = { fespalier_operation = "operation", fespalier_file = "file", fespalier_route = "route", error_type = "type" }
+  sort = "n"
+  promql = [{ expr = "topk(5, sum by (fespalier_operation, fespalier_file, fespalier_route, error_type) (sum_over_time(fespalier_calls{ {failed_sel} }[$__range])))" }]
+
+# ================================================================================================
+# Screens: where people go, how fast screens open, and what slows one down.
+# ================================================================================================
+[[dashboard]]
+id = "screens"
+title = "Screens"
+description = "Are screens opening fast, where do people go, and what slows a screen down: its checks (guard.dart), its content (data.dart) or its code (deferred pages)?"
+
+  [[dashboard.panels]]
+  id = "about"
+  title = "What a screen is"
+  type = "text"
+  content = """A **screen** is a route: a `page.dart` under `lib/app/`. **Open** runs from the tap to its first frame (redirects and guards included). **Content** is the `data.dart` load that follows. Colours as on App health: 🟢 good · 🟠 needs attention · 🔴 bad · grey: not enough data yet."""
+
+  [[dashboard.panels]]
+  id = "screens_viewed"
+  same_as = "health.screens_viewed"
+  drilldown = ""
+
+  [[dashboard.panels]]
+  id = "screens_open"
+  same_as = "health.screens_open"
+  drilldown = ""
+
+  [[dashboard.panels]]
+  id = "content_loads"
+  same_as = "health.content_loads"
+  drilldown = ""
+
+  [[dashboard.panels]]
+  id = "dead_ends"
+  title = "How often does a link lead nowhere?"
+  type = "stat"
+  unit = "percent"
+  verdict = "not_found_rate"
+  gate = true
+  description = "Share of navigations that matched no route and showed not_found.dart. Good: under 1 %. If not: check the links you build by hand; typed routes (AppRoutes) cannot go wrong."
+  sql = "SELECT {pct:{nav_notfound_sql}|{nav_timed_sql}} AS not_found_pct {from} WHERE {svc}"
+  columns = [{ name = "not_found_pct" }]
+  promql = [{ expr = "{pct_prom:{nav_timed_sel}|{nav_ok_outcome_sel}} {gate_prom:{nav_timed_sel}}" }]
+
+  [[dashboard.panels]]
+  id = "by_screen"
+  title = "How long does each screen take?"
+  type = "table"
+  width = "full"
+  height = 12
+  sort = "open_p95"
+  verdicts = { open_p95 = "screen_open", content_p95 = "content_load" }
+  units = { open_p50 = "ms", open_p95 = "ms", content_p95 = "ms" }
+  description = "Every screen with its typical (p50) and slowest-5 % (p95) open time, and its content load. Sort by any column. A red Open usually means a slow guard.dart or a heavy page.dart build."
+  sql = "SELECT fespalier_route AS route, {n_of:{nav_ok_sql}} AS views, {p50_of:{nav_timed_sql}} AS open_p50, {p95_of:{nav_timed_sql}} AS open_p95, {p95_of:{data_timed_sql}} AS content_p95 {from} WHERE fespalier_route IS NOT NULL AND {svc} GROUP BY route ORDER BY open_p95 DESC NULLS LAST"
+  columns = [
+    { name = "route", axis = "x", label = "Screen" },
+    { name = "views", label = "Views" },
+    { name = "open_p50", label = "Open, typical" },
+    { name = "open_p95", label = "Open, slowest 5 %" },
+    { name = "content_p95", label = "Content, slowest 5 %" },
+  ]
+  rename = { fespalier_route = "route" }
+  promql = [
+    { expr = "sum by (fespalier_route) (sum_over_time(fespalier_calls{ {nav_ok_sel} }[$__range]))" },
+    { expr = "histogram_quantile(0.5, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__range])))" },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__range])))" },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
+  ]
+
+  [[dashboard.panels]]
+  id = "open_over_time"
+  title = "Are screens getting slower?"
+  type = "timeseries"
+  width = "full"
+  unit = "ms"
+  marks = "screen_open"
+  description = "The slowest-5 % open time over time. The dashed lines are the good (300 ms) and bad (1 s) marks. A jump right after a change points at that change."
+  sql = "SELECT histogram(_timestamp) AS t, {p95} AS p95_ms {from} WHERE {nav_timed_sql} AND {svc} GROUP BY t ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true, label = "Time" }, { name = "p95_ms", label = "Slowest 5 %" }]
+  promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {nav_timed_sel} }[$__interval])))", legend = "Slowest 5 %" }]
+
+  [[dashboard.panels]]
+  id = "most_viewed"
+  title = "Which screens do people open most?"
+  type = "bars"
+  description = "Your busiest screens: make these fast first."
+  sql = "SELECT fespalier_route AS route, COUNT(*) AS n {from} WHERE {nav_ok_sql} AND {svc} GROUP BY route ORDER BY n DESC LIMIT 10"
+  columns = [{ name = "route", axis = "x", label = "Screen" }, { name = "n", label = "Views" }]
+  rename = { fespalier_route = "route" }
+  promql = [{ expr = "topk(10, sum by (fespalier_route) (sum_over_time(fespalier_calls{ {nav_ok_sel} }[$__range])))" }]
+
+  [[dashboard.panels]]
+  id = "journeys"
+  title = "Where do people go next?"
+  type = "table"
+  grafana = false
+  description = "The most common moves from one screen to the next. A surprising path can mean a confusing button."
+  sql = "SELECT fespalier_navigation_from AS from_screen, fespalier_route AS to_screen, COUNT(*) AS n {from} WHERE {nav_ok_sql} AND fespalier_navigation_from IS NOT NULL AND {svc} GROUP BY from_screen, to_screen ORDER BY n DESC LIMIT 10"
+  columns = [{ name = "from_screen", axis = "x", label = "From" }, { name = "to_screen", axis = "x", label = "To" }, { name = "n", label = "Times" }]
+
+  [[dashboard.panels]]
+  id = "by_data"
+  title = "Which data.dart files are slow or failing?"
+  type = "table"
+  width = "full"
+  sort = "p95_ms"
+  verdicts = { failed_pct = "failure_rate", p95_ms = "content_load" }
+  units = { failed_pct = "percent", p50_ms = "ms", p95_ms = "ms" }
+  description = "Each data.dart with its loads, failure rate and slowest-5 % time. Abandoned means the user left before it finished; many abandoned loads mean it is too slow."
+  sql = "SELECT fespalier_file AS file, fespalier_route AS route, COUNT(*) AS loads, {rate_of:{data_error_sql}|{data_timed_sql}} AS failed_pct, {n_of:fespalier_data_state = 'disposed'} AS abandoned, {p50_of:{data_timed_sql}} AS p50_ms, {p95_of:{data_timed_sql}} AS p95_ms {from} WHERE {data_sql} AND {svc} GROUP BY file, route ORDER BY p95_ms DESC NULLS LAST"
+  columns = [
+    { name = "file", axis = "x", label = "File" },
+    { name = "route", axis = "x", label = "Screen" },
+    { name = "loads", label = "Loads" },
+    { name = "failed_pct", label = "Failed" },
+    { name = "abandoned", label = "Abandoned" },
+    { name = "p50_ms", label = "Typical" },
+    { name = "p95_ms", label = "Slowest 5 %" },
+  ]
+  rename = { fespalier_file = "file", fespalier_route = "route" }
+  promql = [
+    { expr = "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data} }[$__range]))" },
+    { expr = "100 * (sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {data_timed_sel} }[$__range])) - sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {data_ok_sel} }[$__range]))) / sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {data_timed_sel} }[$__range]))" },
+    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="disposed" }[$__range]))' },
+    { expr = "histogram_quantile(0.5, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
+  ]
+
+  [[dashboard.panels]]
+  id = "by_guard"
+  title = "Do checks slow screens down?"
+  type = "table"
+  verdicts = { wait_p95 = "guard_wait" }
+  units = { wait_p95 = "ms" }
+  sort = "ran"
+  description = "Each guard.dart and redirect.dart: how often it ran, sent people elsewhere or threw, and how long an async one kept them waiting. A check runs before the screen shows, so keep it under 100 ms."
+  sql = "SELECT fespalier_file AS file, COUNT(*) AS ran, {n_of:fespalier_guard_decision = 'redirect'} AS sent_elsewhere, {n_of:fespalier_guard_decision = 'error'} AS failed, {p95_of:fespalier_async = 'true'} AS wait_p95 {from} WHERE {guard_sql} AND {svc} GROUP BY file ORDER BY ran DESC"
+  columns = [
+    { name = "file", axis = "x", label = "File" },
+    { name = "ran", label = "Ran" },
+    { name = "sent_elsewhere", label = "Sent elsewhere" },
+    { name = "failed", label = "Failed" },
+    { name = "wait_p95", label = "Wait, slowest 5 %" },
+  ]
+  rename = { fespalier_file = "file" }
+  promql = [
+    { expr = "sum by (fespalier_file) (sum_over_time(fespalier_calls{ {guard_sel} }[$__range]))" },
+    { expr = 'sum by (fespalier_file) (sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="redirect" }[$__range]))' },
+    { expr = 'sum by (fespalier_file) (sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="error" }[$__range]))' },
+    { expr = 'histogram_quantile(0.95, sum by (le, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {guard_sel}, fespalier_async="true" }[$__range])))' },
+  ]
+
+  [[dashboard.panels]]
+  id = "sent_elsewhere"
+  title = "Where were people sent instead?"
+  type = "table"
+  description = "Screens people landed on after a guard or redirect.dart sent them away, usually the sign-in screen."
+  sql = "SELECT fespalier_route AS landed, COUNT(*) AS n {from} WHERE {nav_redirected_sql} AND {svc} GROUP BY landed ORDER BY n DESC"
+  columns = [{ name = "landed", axis = "x", label = "Landed on" }, { name = "n", label = "Times" }]
+  rename = { fespalier_route = "landed" }
+  promql = [{ expr = "sum by (fespalier_route) (sum_over_time(fespalier_calls{ {nav_redirected_sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "code_download"
+  title = "How long does a deferred page's code take to arrive?"
+  type = "table"
+  verdicts = { p95_ms = "code_download" }
+  units = { p95_ms = "ms" }
+  sort = "p95_ms"
+  description = "Only for deferred pages (deferred: true, mostly on the web): how long the page's code takes to download. Good: under 500 ms. If not: split it, or make fewer pages deferred."
+  sql = "SELECT fespalier_file AS file, COUNT(*) AS loads, {n_of:fespalier_deferred_result = 'error'} AS failed, {p95} AS p95_ms {from} WHERE {deferred_sql} AND {svc} GROUP BY file ORDER BY p95_ms DESC"
+  columns = [
+    { name = "file", axis = "x", label = "File" },
+    { name = "loads", label = "Loads" },
+    { name = "failed", label = "Failed" },
+    { name = "p95_ms", label = "Slowest 5 %" },
+  ]
+  rename = { fespalier_file = "file" }
+  promql = [
+    { expr = "sum by (fespalier_file) (sum_over_time(fespalier_calls{ {sel:deferred} }[$__range]))" },
+    { expr = 'sum by (fespalier_file) (sum_over_time(fespalier_calls{ {sel:deferred}, fespalier_deferred_result="error" }[$__range]))' },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:deferred} }[$__range])))" },
+  ]
+
+  [[dashboard.panels]]
+  id = "kinds"
+  title = "How do people get to screens?"
+  type = "bars"
+  labels = { kind = "navigation_kind" }
+  description = "How screens were reached: app start, a link or tab (go), pushed on top, back, replaced, or the same screen again."
+  sql = "SELECT {label:navigation_kind|fespalier_navigation_kind} AS kind, COUNT(*) AS n {from} WHERE fespalier_operation = 'navigate' AND {svc} GROUP BY kind ORDER BY n DESC"
+  columns = [{ name = "kind", axis = "x", label = "Reached by" }, { name = "n", label = "Screens" }]
+  rename = { fespalier_navigation_kind = "kind" }
+  promql = [{ expr = "sum by (fespalier_navigation_kind) (sum_over_time(fespalier_calls{ {sel:navigate} }[$__range]))" }]
+
+# ================================================================================================
+# Actions: what people do, and whether it works.
+# ================================================================================================
+[[dashboard]]
+id = "actions"
+title = "Actions"
+description = "What people do (each function in an action.dart), and whether it works."
+
+  [[dashboard.panels]]
+  id = "about"
+  title = "What an action is"
+  type = "text"
+  content = """An **action** is a function in an `action.dart`: a tap that changes something, like saving or paying. **Failed** means it threw. Colours as on App health: 🟢 good · 🟠 needs attention · 🔴 bad · grey: not enough data yet."""
+
+  [[dashboard.panels]]
+  id = "runs"
+  title = "How many actions ran?"
+  type = "stat"
+  description = "Every call of an action.dart function in this time range."
+  sql = "SELECT COUNT(*) AS runs {from} WHERE {action_sql} AND {svc}"
+  columns = [{ name = "runs" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {sel:action} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "action_failures"
+  same_as = "health.action_failures"
+  drilldown = ""
+
+  [[dashboard.panels]]
+  id = "actions_finish"
+  same_as = "health.actions_finish"
+  drilldown = ""
+
+  [[dashboard.panels]]
+  id = "failures"
+  title = "How many actions failed?"
+  type = "stat"
+  verdict = "error_count"
+  description = "Runs that threw. Good: none. If not: the table below names the action; Errors has the error type and message."
+  drilldown = "errors"
+  sql = "SELECT COUNT(*) AS failures {from} WHERE {action_error_sql} AND {svc}"
+  columns = [{ name = "failures" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {action_error_sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "by_action"
+  title = "Which actions are slow or failing?"
+  type = "table"
+  width = "full"
+  height = 10
+  sort = "failed_pct"
+  verdicts = { failed_pct = "failure_rate", p95_ms = "action_time" }
+  units = { failed_pct = "percent", p50_ms = "ms", p95_ms = "ms" }
+  description = "Each action with its runs, failure rate, typical and slowest-5 % time. File is the action.dart to open."
+  sql = "SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, {rate_of:{action_error_sql}|{action_sql}} AS failed_pct, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE {action_sql} AND {svc} GROUP BY action, file ORDER BY failed_pct DESC, runs DESC"
+  columns = [
+    { name = "action", axis = "x", label = "Action" },
+    { name = "file", axis = "x", label = "File" },
+    { name = "runs", label = "Runs" },
+    { name = "failed_pct", label = "Failed" },
+    { name = "p50_ms", label = "Typical" },
+    { name = "p95_ms", label = "Slowest 5 %" },
+  ]
+  rename = { fespalier_action_name = "action", fespalier_file = "file" }
+  promql = [
+    { expr = "sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action} }[$__range]))" },
+    { expr = "100 * (sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action} }[$__range])) - sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {action_ok_sel} }[$__range]))) / sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action} }[$__range]))" },
+    { expr = "histogram_quantile(0.5, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" },
+    { expr = "histogram_quantile(0.95, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" },
+  ]
+
+  [[dashboard.panels]]
+  id = "rate"
+  title = "When do people use each action?"
   type = "bars"
   width = "full"
-  sql = "SELECT histogram(_timestamp) AS t, fespalier_operation AS operation, COUNT(*) AS failed {from} WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND {svc} GROUP BY t, operation ORDER BY t"
-  columns = [{ name = "t", axis = "x", time = true }, { name = "operation", axis = "breakdown" }, { name = "failed" }]
+  description = "Runs over time, per action."
+  sql = "SELECT histogram(_timestamp) AS t, fespalier_action_name AS action, COUNT(*) AS runs {from} WHERE {action_sql} AND {svc} GROUP BY t, action ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true, label = "Time" }, { name = "action", axis = "breakdown", label = "Action" }, { name = "runs", label = "Runs" }]
+  promql = [{ expr = "sum by (fespalier_action_name) (sum_over_time(fespalier_calls{ {sel:action} }[$__interval]))", legend = "{{fespalier_action_name}}" }]
+
+  [[dashboard.panels]]
+  id = "failures_over_time"
+  title = "When did actions fail?"
+  type = "bars"
+  width = "full"
+  description = "Failed runs over time, per action. A spike usually lines up with a server problem or a release."
+  sql = "SELECT histogram(_timestamp) AS t, fespalier_action_name AS action, COUNT(*) AS failures {from} WHERE {action_error_sql} AND {svc} GROUP BY t, action ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true, label = "Time" }, { name = "action", axis = "breakdown", label = "Action" }, { name = "failures", label = "Failed" }]
+  promql = [{ expr = "sum by (fespalier_action_name) (sum_over_time(fespalier_calls{ {action_error_sel} }[$__interval]))", legend = "{{fespalier_action_name}}" }]
+
+# ================================================================================================
+# Errors: what broke, where, and with which error.
+# ================================================================================================
+[[dashboard]]
+id = "errors"
+title = "Errors"
+description = "What broke, where, and with which error: failed checks, loads, actions and code downloads, uncaught errors, and native crashes."
+
+  [[dashboard.panels]]
+  id = "about"
+  title = "What counts as a failure"
+  type = "text"
+  content = """A **failure** is a check (`guard.dart`, `redirect.dart`), a content load (`data.dart`), an action (`action.dart`) or a code download that threw. An **uncaught error** is one nothing caught. Colours as on App health: 🟢 none · 🟠 a few · 🔴 many."""
+
+  [[dashboard.panels]]
+  id = "failed_spans"
+  title = "How many operations failed?"
+  type = "stat"
+  verdict = "error_count"
+  description = "Checks, content loads, actions and code downloads that threw. Good: none. If not: the table below names each one with the file to open, such as a data.dart or action.dart."
+  sql = "SELECT COUNT(*) AS failed {from} WHERE {failed_sql} AND {svc}"
+  columns = [{ name = "failed" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {failed_sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "uncaught"
+  same_as = "health.uncaught"
+  drilldown = ""
+
+  [[dashboard.panels]]
+  id = "crashes"
+  same_as = "health.crashes"
+  drilldown = ""
+
+  [[dashboard.panels]]
+  id = "guard_errors"
+  title = "Did a check throw?"
+  type = "stat"
+  verdict = "error_count"
+  description = "A guard.dart or redirect.dart that threw blocks the screen behind it. Good: none. If not: the table below names the file; guard the code that can fail."
+  sql = "SELECT COUNT(*) AS errors {from} WHERE {guard_sql} AND fespalier_guard_decision = 'error' AND {svc}"
+  columns = [{ name = "errors" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="error" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "failed_over_time"
+  title = "When did things fail?"
+  type = "bars"
+  width = "full"
+  labels = { operation = "operation" }
+  description = "Failures over time, by kind."
+  sql = "SELECT histogram(_timestamp) AS t, {label:operation|fespalier_operation} AS operation, COUNT(*) AS failed {from} WHERE {failed_sql} AND {svc} GROUP BY t, operation ORDER BY t"
+  columns = [{ name = "t", axis = "x", time = true, label = "Time" }, { name = "operation", axis = "breakdown", label = "Kind" }, { name = "failed", label = "Failed" }]
   promql = [{ expr = "sum by (fespalier_operation) (sum_over_time(fespalier_calls{ {failed_sel} }[$__interval]))", legend = "{{fespalier_operation}}" }]
 
   [[dashboard.panels]]
   id = "by_type"
-  title = "By error type"
+  title = "What failed, and where?"
   type = "table"
-  sql = "SELECT error_type AS type, fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, COUNT(*) AS n {from} WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND {svc} GROUP BY type, operation, route, file ORDER BY n DESC"
-  columns = [{ name = "type", axis = "x" }, { name = "operation", axis = "x" }, { name = "route", axis = "x" }, { name = "file", axis = "x" }, { name = "n" }]
-  rename = { error_type = "type", fespalier_operation = "operation", fespalier_route = "route", fespalier_file = "file" }
-  promql = [{ expr = "sum by (error_type, fespalier_operation, fespalier_route, fespalier_file) (sum_over_time(fespalier_calls{ {failed_sel} }[$__range]))" }]
+  width = "full"
+  labels = { operation = "operation" }
+  description = "Each failure by kind, screen, file and error type, most frequent first. Open the file named here."
+  sql = "SELECT fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, error_type AS type, COUNT(*) AS n {from} WHERE {failed_sql} AND {svc} GROUP BY operation, route, file, type ORDER BY n DESC"
+  columns = [
+    { name = "operation", axis = "x", label = "Kind" },
+    { name = "route", axis = "x", label = "Screen" },
+    { name = "file", axis = "x", label = "File" },
+    { name = "type", axis = "x", label = "Error type" },
+    { name = "n", label = "Times" },
+  ]
+  rename = { fespalier_operation = "operation", fespalier_route = "route", fespalier_file = "file", error_type = "type" }
+  sort = "n"
+  promql = [{ expr = "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{ {failed_sel} }[$__range]))" }]
 
   [[dashboard.panels]]
   id = "uncaught_by_type"
-  title = "Uncaught errors by type"
+  title = "Which uncaught errors?"
   type = "table"
   stream_type = "logs"
+  description = "Uncaught errors by type. The message is in Recent uncaught errors."
   sql = "SELECT exception_type AS type, COUNT(*) AS n {from} WHERE {err_logs} AND {svc} GROUP BY type ORDER BY n DESC"
-  columns = [{ name = "type", axis = "x" }, { name = "n" }]
+  columns = [{ name = "type", axis = "x", label = "Error type" }, { name = "n", label = "Times" }]
   rename = { exception_type = "type" }
+  sort = "n"
   promql = [{ expr = "sum by (exception_type) (sum_over_time(fespalier_app_errors{ {sel} }[$__range]))" }]
 
   [[dashboard.panels]]
   id = "recent"
-  title = "Recent failures"
+  title = "What failed last?"
   type = "table"
   width = "full"
-  sql = "SELECT _timestamp AS time, fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, error_type AS type, status_message AS message, trace_id {from} WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND {svc} ORDER BY _timestamp DESC LIMIT 50"
-  columns = [{ name = "time", axis = "x", oo_only = true }, { name = "operation", axis = "x" }, { name = "route", axis = "x" }, { name = "file", axis = "x" }, { name = "type", axis = "x" }, { name = "message", axis = "x", oo_only = true }, { name = "trace_id", axis = "x", oo_only = true }]
+  labels = { operation = "operation" }
+  description = "The latest 50 failures with their message and trace id; click a trace id in OpenObserve's Traces to see the whole navigation."
+  sql = "SELECT _timestamp AS time, fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, error_type AS type, status_message AS message, trace_id {from} WHERE {failed_sql} AND {svc} ORDER BY _timestamp DESC LIMIT 50"
+  columns = [
+    { name = "time", axis = "x", label = "When", oo_only = true },
+    { name = "operation", axis = "x", label = "Kind" },
+    { name = "route", axis = "x", label = "Screen" },
+    { name = "file", axis = "x", label = "File" },
+    { name = "type", axis = "x", label = "Error type" },
+    { name = "message", axis = "x", label = "Message", oo_only = true },
+    { name = "trace_id", axis = "x", label = "Trace", oo_only = true },
+  ]
   rename = { fespalier_operation = "operation", fespalier_route = "route", fespalier_file = "file", error_type = "type" }
-  promql = [{ expr = "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{ {failed_sel} }[$__range]))", extra = true, name = "failures" }]
+  promql = [{ expr = "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{ {failed_sel} }[$__range]))", extra = true, name = "failures", label = "Times" }]
   links = [{ title = "Messages and traces in OpenObserve", url = "http://localhost:5080/web/traces" }]
 
   [[dashboard.panels]]
   id = "recent_uncaught"
-  title = "Recent uncaught errors"
+  title = "What was uncaught last?"
   type = "table"
   width = "full"
   stream_type = "logs"
   grafana = false
+  description = "The latest 50 uncaught errors with their message."
   sql = "SELECT _timestamp AS time, severity, exception_type AS type, exception_message AS message, body {from} WHERE {err_logs} AND {svc} ORDER BY _timestamp DESC LIMIT 50"
-  columns = [{ name = "time", axis = "x" }, { name = "severity", axis = "x" }, { name = "type", axis = "x" }, { name = "message", axis = "x" }, { name = "body", axis = "x" }]
+  columns = [
+    { name = "time", axis = "x", label = "When" },
+    { name = "severity", axis = "x", label = "Level" },
+    { name = "type", axis = "x", label = "Error type" },
+    { name = "message", axis = "x", label = "Message" },
+    { name = "body", axis = "x", label = "Text" },
+  ]

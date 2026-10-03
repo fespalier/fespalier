@@ -4,7 +4,7 @@ providers:
     folder: fespalier
     folderUid: fespalier
     type: file
-    disableDeletion: true
+    disableDeletion: false
     allowUiUpdates: false
     updateIntervalSeconds: 30
     options:

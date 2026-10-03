@@ -1,7 +1,7 @@
 {
   "version": 8,
   "title": "fespalier · Errors",
-  "description": "Failed guards, loads, actions and deferred loads; uncaught errors; native crashes and ANRs.",
+  "description": "What broke, where, and with which error: failed checks, loads, actions and code downloads, uncaught errors, and native crashes.",
   "role": "",
   "owner": "",
   "tabs": [
@@ -10,15 +10,76 @@
       "name": "Overview",
       "panels": [
         {
-          "id": "panel_failed_spans",
-          "type": "metric",
-          "title": "Failed guards, loads, actions and deferred loads",
+          "id": "panel_about",
+          "type": "markdown",
+          "title": "What counts as a failure",
           "description": "",
           "config": {
             "show_legends": false,
             "legends_position": null,
             "unit": null,
             "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 192,
+            "h": 6,
+            "i": 1
+          },
+          "markdownContent": "A **failure** is a check (`guard.dart`, `redirect.dart`), a content load (`data.dart`), an action (`action.dart`) or a code download that threw. An **uncaught error** is one nothing caught. Colours as on App health: 🟢 none · 🟠 a few · 🔴 many."
+        },
+        {
+          "id": "panel_failed_spans",
+          "type": "metric",
+          "title": "How many operations failed?",
+          "description": "Checks, content loads, actions and code downloads that threw. Good: none. If not: the table below names each one with the file to open, such as a data.dart or action.dart.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "1",
+                "color": "#fab219"
+              },
+              {
+                "type": "gte",
+                "value": "10",
+                "color": "#d03b3b"
+              }
+            ]
           },
           "queryType": "sql",
           "queries": [
@@ -53,22 +114,39 @@
           ],
           "layout": {
             "x": 0,
-            "y": 0,
+            "y": 6,
             "w": 48,
             "h": 8,
-            "i": 1
+            "i": 2
           }
         },
         {
           "id": "panel_uncaught",
           "type": "metric",
-          "title": "Uncaught errors",
-          "description": "",
+          "title": "Did anything throw an uncaught error?",
+          "description": "Errors nothing caught (logged at ERROR or above). Good: none. If not: Errors lists them by type with the message; most come from a widget build or an unawaited Future.",
           "config": {
             "show_legends": false,
             "legends_position": null,
             "unit": null,
-            "decimals": 0
+            "decimals": 0,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "1",
+                "color": "#fab219"
+              },
+              {
+                "type": "gte",
+                "value": "10",
+                "color": "#d03b3b"
+              }
+            ]
           },
           "queryType": "sql",
           "queries": [
@@ -103,22 +181,34 @@
           ],
           "layout": {
             "x": 48,
-            "y": 0,
+            "y": 6,
             "w": 48,
             "h": 8,
-            "i": 2
+            "i": 3
           }
         },
         {
           "id": "panel_crashes",
           "type": "metric",
-          "title": "Native crashes and ANRs (Android, iOS)",
-          "description": "",
+          "title": "Did the app crash or freeze?",
+          "description": "Native crashes and 'app not responding' freezes on Android and iOS. Good: none; even one is worth a look. If not: Errors has the time; read the device log.",
           "config": {
             "show_legends": false,
             "legends_position": null,
             "unit": null,
-            "decimals": 0
+            "decimals": 0,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "1",
+                "color": "#d03b3b"
+              }
+            ]
           },
           "queryType": "sql",
           "queries": [
@@ -153,17 +243,84 @@
           ],
           "layout": {
             "x": 96,
-            "y": 0,
+            "y": 6,
             "w": 48,
             "h": 8,
-            "i": 3
+            "i": 4
+          }
+        },
+        {
+          "id": "panel_guard_errors",
+          "type": "metric",
+          "title": "Did a check throw?",
+          "description": "A guard.dart or redirect.dart that threw blocks the screen behind it. Good: none. If not: the table below names the file; guard the code that can fail.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "1",
+                "color": "#fab219"
+              },
+              {
+                "type": "gte",
+                "value": "10",
+                "color": "#d03b3b"
+              }
+            ]
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS errors FROM \"default\" WHERE fespalier_operation IN ('guard', 'redirect') AND fespalier_guard_decision = 'error' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "errors",
+                    "alias": "errors",
+                    "column": "errors",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 144,
+            "y": 6,
+            "w": 48,
+            "h": 8,
+            "i": 5
           }
         },
         {
           "id": "panel_failed_over_time",
           "type": "bar",
-          "title": "Failures by operation",
-          "description": "",
+          "title": "When did things fail?",
+          "description": "Failures over time, by kind.",
           "config": {
             "show_legends": true,
             "legends_position": null,
@@ -173,7 +330,7 @@
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT histogram(_timestamp) AS t, fespalier_operation AS operation, COUNT(*) AS failed FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY t, operation ORDER BY t",
+              "query": "SELECT histogram(_timestamp) AS t, CASE fespalier_operation WHEN 'navigate' THEN 'Screen open' WHEN 'guard' THEN 'Check (guard.dart)' WHEN 'redirect' THEN 'Redirect (redirect.dart)' WHEN 'data' THEN 'Content load (data.dart)' WHEN 'action' THEN 'Action (action.dart)' WHEN 'deferred' THEN 'Code download (deferred page)' ELSE fespalier_operation END AS operation, COUNT(*) AS failed FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY t, operation ORDER BY t",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {
@@ -181,7 +338,7 @@
                 "stream_type": "traces",
                 "x": [
                   {
-                    "label": "t",
+                    "label": "Time",
                     "alias": "t",
                     "column": "t",
                     "color": null
@@ -189,7 +346,7 @@
                 ],
                 "y": [
                   {
-                    "label": "failed",
+                    "label": "Failed",
                     "alias": "failed",
                     "column": "failed",
                     "color": null
@@ -198,7 +355,7 @@
                 "z": [],
                 "breakdown": [
                   {
-                    "label": "operation",
+                    "label": "Kind",
                     "alias": "operation",
                     "column": "operation",
                     "color": null
@@ -217,27 +374,59 @@
           ],
           "layout": {
             "x": 0,
-            "y": 8,
+            "y": 14,
             "w": 192,
             "h": 16,
-            "i": 4
+            "i": 6
           }
         },
         {
           "id": "panel_by_type",
           "type": "table",
-          "title": "By error type",
-          "description": "",
+          "title": "What failed, and where?",
+          "description": "Each failure by kind, screen, file and error type, most frequent first. Open the file named here.",
           "config": {
             "show_legends": false,
             "legends_position": null,
             "unit": null,
-            "decimals": 0
+            "decimals": 0,
+            "mappings": [
+              {
+                "type": "value",
+                "value": "navigate",
+                "text": "Screen open"
+              },
+              {
+                "type": "value",
+                "value": "guard",
+                "text": "Check (guard.dart)"
+              },
+              {
+                "type": "value",
+                "value": "redirect",
+                "text": "Redirect (redirect.dart)"
+              },
+              {
+                "type": "value",
+                "value": "data",
+                "text": "Content load (data.dart)"
+              },
+              {
+                "type": "value",
+                "value": "action",
+                "text": "Action (action.dart)"
+              },
+              {
+                "type": "value",
+                "value": "deferred",
+                "text": "Code download (deferred page)"
+              }
+            ]
           },
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT error_type AS type, fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, COUNT(*) AS n FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY type, operation, route, file ORDER BY n DESC",
+              "query": "SELECT fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, error_type AS type, COUNT(*) AS n FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY operation, route, file, type ORDER BY n DESC",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {
@@ -245,33 +434,33 @@
                 "stream_type": "traces",
                 "x": [
                   {
-                    "label": "type",
-                    "alias": "type",
-                    "column": "type",
-                    "color": null
-                  },
-                  {
-                    "label": "operation",
+                    "label": "Kind",
                     "alias": "operation",
                     "column": "operation",
                     "color": null
                   },
                   {
-                    "label": "route",
+                    "label": "Screen",
                     "alias": "route",
                     "column": "route",
                     "color": null
                   },
                   {
-                    "label": "file",
+                    "label": "File",
                     "alias": "file",
                     "column": "file",
+                    "color": null
+                  },
+                  {
+                    "label": "Error type",
+                    "alias": "type",
+                    "column": "type",
                     "color": null
                   }
                 ],
                 "y": [
                   {
-                    "label": "n",
+                    "label": "Times",
                     "alias": "n",
                     "column": "n",
                     "color": null
@@ -292,17 +481,17 @@
           ],
           "layout": {
             "x": 0,
-            "y": 24,
-            "w": 96,
+            "y": 30,
+            "w": 192,
             "h": 16,
-            "i": 5
+            "i": 7
           }
         },
         {
           "id": "panel_uncaught_by_type",
           "type": "table",
-          "title": "Uncaught errors by type",
-          "description": "",
+          "title": "Which uncaught errors?",
+          "description": "Uncaught errors by type. The message is in Recent uncaught errors.",
           "config": {
             "show_legends": false,
             "legends_position": null,
@@ -320,7 +509,7 @@
                 "stream_type": "logs",
                 "x": [
                   {
-                    "label": "type",
+                    "label": "Error type",
                     "alias": "type",
                     "column": "type",
                     "color": null
@@ -328,7 +517,7 @@
                 ],
                 "y": [
                   {
-                    "label": "n",
+                    "label": "Times",
                     "alias": "n",
                     "column": "n",
                     "color": null
@@ -348,23 +537,55 @@
             }
           ],
           "layout": {
-            "x": 96,
-            "y": 24,
+            "x": 0,
+            "y": 46,
             "w": 96,
             "h": 16,
-            "i": 6
+            "i": 8
           }
         },
         {
           "id": "panel_recent",
           "type": "table",
-          "title": "Recent failures",
-          "description": "",
+          "title": "What failed last?",
+          "description": "The latest 50 failures with their message and trace id; click a trace id in OpenObserve's Traces to see the whole navigation.",
           "config": {
             "show_legends": false,
             "legends_position": null,
             "unit": null,
-            "decimals": 0
+            "decimals": 0,
+            "mappings": [
+              {
+                "type": "value",
+                "value": "navigate",
+                "text": "Screen open"
+              },
+              {
+                "type": "value",
+                "value": "guard",
+                "text": "Check (guard.dart)"
+              },
+              {
+                "type": "value",
+                "value": "redirect",
+                "text": "Redirect (redirect.dart)"
+              },
+              {
+                "type": "value",
+                "value": "data",
+                "text": "Content load (data.dart)"
+              },
+              {
+                "type": "value",
+                "value": "action",
+                "text": "Action (action.dart)"
+              },
+              {
+                "type": "value",
+                "value": "deferred",
+                "text": "Code download (deferred page)"
+              }
+            ]
           },
           "queryType": "sql",
           "queries": [
@@ -377,43 +598,43 @@
                 "stream_type": "traces",
                 "x": [
                   {
-                    "label": "time",
+                    "label": "When",
                     "alias": "time",
                     "column": "time",
                     "color": null
                   },
                   {
-                    "label": "operation",
+                    "label": "Kind",
                     "alias": "operation",
                     "column": "operation",
                     "color": null
                   },
                   {
-                    "label": "route",
+                    "label": "Screen",
                     "alias": "route",
                     "column": "route",
                     "color": null
                   },
                   {
-                    "label": "file",
+                    "label": "File",
                     "alias": "file",
                     "column": "file",
                     "color": null
                   },
                   {
-                    "label": "type",
+                    "label": "Error type",
                     "alias": "type",
                     "column": "type",
                     "color": null
                   },
                   {
-                    "label": "message",
+                    "label": "Message",
                     "alias": "message",
                     "column": "message",
                     "color": null
                   },
                   {
-                    "label": "trace_id",
+                    "label": "Trace",
                     "alias": "trace_id",
                     "column": "trace_id",
                     "color": null
@@ -435,17 +656,17 @@
           ],
           "layout": {
             "x": 0,
-            "y": 40,
+            "y": 62,
             "w": 192,
             "h": 16,
-            "i": 7
+            "i": 9
           }
         },
         {
           "id": "panel_recent_uncaught",
           "type": "table",
-          "title": "Recent uncaught errors",
-          "description": "",
+          "title": "What was uncaught last?",
+          "description": "The latest 50 uncaught errors with their message.",
           "config": {
             "show_legends": false,
             "legends_position": null,
@@ -463,31 +684,31 @@
                 "stream_type": "logs",
                 "x": [
                   {
-                    "label": "time",
+                    "label": "When",
                     "alias": "time",
                     "column": "time",
                     "color": null
                   },
                   {
-                    "label": "severity",
+                    "label": "Level",
                     "alias": "severity",
                     "column": "severity",
                     "color": null
                   },
                   {
-                    "label": "type",
+                    "label": "Error type",
                     "alias": "type",
                     "column": "type",
                     "color": null
                   },
                   {
-                    "label": "message",
+                    "label": "Message",
                     "alias": "message",
                     "column": "message",
                     "color": null
                   },
                   {
-                    "label": "body",
+                    "label": "Text",
                     "alias": "body",
                     "column": "body",
                     "color": null
@@ -509,10 +730,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 56,
+            "y": 78,
             "w": 192,
             "h": 16,
-            "i": 8
+            "i": 10
           }
         }
       ]

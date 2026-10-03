@@ -8,8 +8,9 @@ library only). OpenObserve does not read dashboard files, so this script:
 2. creates the `traces` and `logs` streams with the columns the panels name (a panel on a column
    that was never ingested fails with `unknown field`),
 3. creates the `fespalier` dashboard folder, and
-4. creates or updates each dashboards/*.json in it. A dashboard someone edited in OpenObserve is
-   left alone.
+4. creates or updates each dashboards/*.json in it, and removes a dashboard an earlier version
+   wrote and this one no longer ships. A dashboard someone edited in OpenObserve is left alone,
+   whichever way it would change.
 
 Settings (environment): FSP_O2_URL, FSP_O2_EMAIL, FSP_O2_PASSWORD, FSP_O2_WAIT (seconds to wait,
 180), FSP_STATE_DIR (where imported.json lives, /state) and FSP_SOURCE_DIR (the folder with
@@ -181,6 +182,31 @@ def import_dashboards(client, folder_id, source, state_path):
         state[title] = {"source": digest, "hash": reply["hash"]}
         save_state(state_path, state)
         say(f"{title}: {outcome}")
+    shipped = set()
+    for name in os.listdir(folder_dir):
+        if name.endswith(".json"):
+            with open(os.path.join(folder_dir, name), "rb") as handle:
+                shipped.add(json.load(handle)["title"])
+    for title in sorted(set(state) - shipped):
+        current = remote.get(title)
+        if current is None:
+            del state[title]
+            save_state(state_path, state)
+        elif state[title]["hash"] != current["hash"]:
+            say(
+                f"{title}: no longer shipped, but changed in OpenObserve since fsp telemetry "
+                "wrote it, left alone; delete it when you are done with it"
+            )
+        else:
+            query = urllib.parse.urlencode({"folder": folder_id})
+            status, reply = client.call(
+                "DELETE", f"/api/default/dashboards/{current['dashboard_id']}?{query}"
+            )
+            if status != 200:
+                fail(f"{title}: OpenObserve answered HTTP {status}: {reply}")
+            del state[title]
+            save_state(state_path, state)
+            say(f"{title}: removed (fsp telemetry no longer ships it)")
 
 
 def main():

@@ -2,10 +2,19 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use clap::Parser;
+
 use super::{
-    FILES, dashboard_count, parse_compose_version, parse_env, read_env, resolve_dir, stopped_line,
+    FILES, HOME_TITLE, REPORT_NEEDS_STACK, TelemetryCmd, dashboard_count, is_running,
+    parse_compose_version, parse_env, read_env, report_failed, resolve_dir, stopped_line,
     summary_lines, write_stack, wrote_lines,
 };
+
+#[derive(Parser)]
+struct Wrapper {
+    #[command(flatten)]
+    cmd: TelemetryCmd,
+}
 
 fn walk(dir: &Path, root: &Path, found: &mut BTreeSet<String>) {
     for entry in fs::read_dir(dir).unwrap() {
@@ -30,8 +39,112 @@ fn files_lists_every_file_under_the_template_folder() {
 }
 
 #[test]
-fn the_stack_carries_six_dashboards() {
-    assert_eq!(dashboard_count(), 6);
+fn the_stack_carries_four_dashboards() {
+    assert_eq!(dashboard_count(), 4);
+    for backend in ["openobserve", "grafana"] {
+        let mut names: Vec<&str> = FILES
+            .iter()
+            .filter_map(|(rel, _)| rel.strip_prefix(&format!("{backend}/dashboards/")))
+            .collect();
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            ["actions.json", "errors.json", "health.json", "screens.json"]
+        );
+    }
+    assert!(FILES.iter().any(|(rel, _)| *rel == "openobserve/report.py"));
+}
+
+#[test]
+fn the_home_title_is_the_title_of_the_generated_health_dashboard() {
+    for backend in ["openobserve", "grafana"] {
+        let (_, json) = FILES
+            .iter()
+            .find(|(rel, _)| *rel == format!("{backend}/dashboards/health.json"))
+            .unwrap();
+        let dashboard: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(dashboard["title"], HOME_TITLE, "{backend}");
+    }
+    let compose = FILES
+        .iter()
+        .find(|(rel, _)| *rel == "compose.yaml")
+        .unwrap()
+        .1;
+    assert!(compose.contains("/etc/fespalier/grafana-dashboards/health.json"));
+}
+
+#[test]
+fn a_dashboard_an_earlier_version_wrote_is_deleted_and_nothing_else() {
+    let dir = tempfile::tempdir().unwrap();
+    write_stack(dir.path()).unwrap();
+    for stale in [
+        "openobserve/dashboards/navigation.json",
+        "grafana/dashboards/guards.json",
+    ] {
+        fs::write(dir.path().join(stale), "{}").unwrap();
+    }
+    fs::write(dir.path().join("notes.txt"), "mine").unwrap();
+    fs::write(dir.path().join("openobserve/dashboards/notes.txt"), "mine").unwrap();
+    fs::write(dir.path().join(".env"), "FSP_O2_PORT=6000\n").unwrap();
+    write_stack(dir.path()).unwrap();
+    assert!(
+        !dir.path()
+            .join("openobserve/dashboards/navigation.json")
+            .exists()
+    );
+    assert!(!dir.path().join("grafana/dashboards/guards.json").exists());
+    for (rel, content) in FILES {
+        assert_eq!(
+            &fs::read_to_string(dir.path().join(rel)).unwrap(),
+            content,
+            "{rel}"
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(dir.path().join("notes.txt")).unwrap(),
+        "mine"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("openobserve/dashboards/notes.txt")).unwrap(),
+        "mine"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join(".env")).unwrap(),
+        "FSP_O2_PORT=6000\n"
+    );
+}
+
+#[test]
+fn report_conflicts_with_every_start_and_stop_flag() {
+    assert!(
+        Wrapper::try_parse_from(["fsp", "--report"])
+            .unwrap()
+            .cmd
+            .report
+    );
+    assert!(Wrapper::try_parse_from(["fsp", "--report", "--dir", "x"]).is_ok());
+    for flag in ["--grafana", "--lan", "--no-start", "--stop", "--reset"] {
+        let error = Wrapper::try_parse_from(["fsp", "--report", flag])
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(error.contains("cannot be used with"), "{flag}: {error}");
+    }
+}
+
+#[test]
+fn the_report_messages() {
+    assert_eq!(
+        REPORT_NEEDS_STACK,
+        "fsp telemetry --report needs the stack running: start it with `fsp telemetry`"
+    );
+    assert_eq!(
+        report_failed("1"),
+        "the report failed (exit 1); the lines above say why"
+    );
+    assert!(is_running("collector\nopenobserve\n"));
+    assert!(!is_running("collector\ngrafana\n"));
+    assert!(!is_running(""));
 }
 
 #[test]
@@ -146,7 +259,7 @@ fn the_summary_for_a_default_run() {
     assert_eq!(
         lines,
         vec![
-            "✓ telemetry stack running: 6 dashboards in OpenObserve, folder fespalier",
+            "✓ telemetry stack running: 4 dashboards in OpenObserve, folder fespalier; start with fespalier · App health",
             "  OpenObserve  http://localhost:5080  dev@fespalier.local / Fespalier-local-1",
             "  OTLP         http://localhost:4318 (HTTP), localhost:4317 (gRPC)",
             "  The app      FespalierOtel.endpoint() reaches it from an emulator, a simulator, desktop and the web",

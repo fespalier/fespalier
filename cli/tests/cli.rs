@@ -1766,7 +1766,8 @@ fn test_reports_config_and_file_errors_with_a_failing_exit() {
 /// A folder with a stand-in `docker`: it logs `cwd|args|bind|cors` per call to `$FAKE_LOG`, and
 /// answers `compose version --short` with `$FAKE_VERSION` (default 2.29.7). `$FAKE_INFO`,
 /// `$FAKE_UP`, `$FAKE_WAIT` and `$FAKE_DOWN` are the exit codes of `info`, `up -d`,
-/// `wait dashboards` and `down`.
+/// `wait dashboards` and `down`; `$FAKE_PS` is what `ps --services` lists and `$FAKE_RUN` the exit
+/// code of the report run.
 #[cfg(unix)]
 fn fake_docker(dir: &Path) -> std::path::PathBuf {
     use std::os::unix::fs::PermissionsExt;
@@ -1782,6 +1783,8 @@ case "$*" in
   "info --format {{.ServerVersion}}") exit "${FAKE_INFO:-0}" ;;
   *" up -d") exit "${FAKE_UP:-0}" ;;
   *" wait dashboards") exit "${FAKE_WAIT:-0}" ;;
+  *" ps --status running --services") printf '%b' "${FAKE_PS-collector\nopenobserve\ndashboards\n}"; exit 0 ;;
+  *" run --rm --no-deps -T dashboards python3 /fespalier/report.py") echo "the report"; exit "${FAKE_RUN:-0}" ;;
   *" down"*) exit "${FAKE_DOWN:-0}" ;;
 esac
 exit 9
@@ -1854,7 +1857,8 @@ fn telemetry_no_start_writes_the_stack_without_docker_or_a_project() {
         "collector/config.yaml",
         "openobserve/import.py",
         "openobserve/fields.json",
-        "openobserve/dashboards/navigation.json",
+        "openobserve/report.py",
+        "openobserve/dashboards/health.json",
         "grafana/dashboards/errors.json",
         "grafana/provisioning/datasources/fespalier.yaml",
     ] {
@@ -1889,6 +1893,14 @@ fn telemetry_flags_that_exclude_each_other_are_clap_errors() {
         (
             ["--no-start", "--stop"],
             "error: the argument '--no-start' cannot be used with '--stop'",
+        ),
+        (
+            ["--report", "--grafana"],
+            "error: the argument '--report' cannot be used with '--grafana'",
+        ),
+        (
+            ["--report", "--stop"],
+            "error: the argument '--report' cannot be used with '--stop'",
         ),
     ] {
         let args = ["telemetry", flags[0], flags[1]];
@@ -1943,7 +1955,8 @@ fn telemetry_starts_the_stack_and_waits_for_the_importer() {
     assert!(ok, "{err}");
     assert_eq!(
         err,
-        "✓ telemetry stack running: 6 dashboards in OpenObserve, folder fespalier\n  \
+        "✓ telemetry stack running: 4 dashboards in OpenObserve, folder fespalier; start with \
+         fespalier · App health\n  \
          OpenObserve  http://localhost:5080  dev@fespalier.local / Fespalier-local-1\n  \
          OTLP         http://localhost:4318 (HTTP), localhost:4317 (gRPC)\n  \
          The app      FespalierOtel.endpoint() reaches it from an emulator, a simulator, desktop \
@@ -1962,6 +1975,78 @@ fn telemetry_starts_the_stack_and_waits_for_the_importer() {
     assert_eq!(calls[3], "STACK|compose wait dashboards|bind=|cors=");
 }
 
+/// `fsp telemetry --report` with the fake docker: success, stdout, stderr and the docker calls.
+#[cfg(unix)]
+fn telemetry_report(root: &Path, extra: &[(&str, &str)]) -> (bool, String, String, Vec<String>) {
+    let work = root.join("work");
+    fs::create_dir_all(&work).unwrap();
+    let bin = fake_docker(root);
+    let log = root.join("docker.log");
+    let stack = root.join("stack");
+    let mut all = vec![
+        ("PATH", bin.to_str().unwrap()),
+        ("FAKE_LOG", log.to_str().unwrap()),
+        ("FSP_TELEMETRY_DIR", stack.to_str().unwrap()),
+    ];
+    all.extend_from_slice(extra);
+    let (ok, out, err) = fsp_full(&work, &["telemetry", "--report"], &all);
+    let calls = fs::read_to_string(&log)
+        .unwrap_or_default()
+        .lines()
+        .map(|l| l.replace(stack.to_str().unwrap(), "STACK"))
+        .collect();
+    (
+        ok,
+        out,
+        err.replace(stack.to_str().unwrap(), "STACK"),
+        calls,
+    )
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_report_runs_the_report_in_the_importer_container() {
+    let root = tempfile::tempdir().unwrap();
+    let (ok, out, err, calls) = telemetry_report(root.path(), &[]);
+    assert!(ok, "{err}");
+    assert_eq!(out, "the report\n");
+    assert_eq!(err, "");
+    assert_eq!(calls.len(), 4, "{calls:?}");
+    assert_eq!(
+        calls[2],
+        "STACK|compose ps --status running --services|bind=|cors="
+    );
+    assert_eq!(
+        calls[3],
+        "STACK|compose run --rm --no-deps -T dashboards python3 /fespalier/report.py|bind=|cors="
+    );
+    // It writes the stack first, so an older folder gets report.py.
+    assert!(root.path().join("stack/openobserve/report.py").is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_report_needs_the_stack_running() {
+    let root = tempfile::tempdir().unwrap();
+    let (ok, out, err, calls) = telemetry_report(root.path(), &[("FAKE_PS", "collector\n")]);
+    assert!(!ok);
+    assert_eq!(out, "");
+    assert_eq!(
+        err,
+        "fsp telemetry --report needs the stack running: start it with `fsp telemetry`\n"
+    );
+    assert_eq!(calls.len(), 3, "{calls:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_report_names_the_exit_code_when_the_report_fails() {
+    let root = tempfile::tempdir().unwrap();
+    let (ok, _, err, _) = telemetry_report(root.path(), &[("FAKE_RUN", "1")]);
+    assert!(!ok);
+    assert_eq!(err, "the report failed (exit 1); the lines above say why\n");
+}
+
 const TELEMETRY_W1: &str = "⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (README, \"Telemetry\")\n";
 
 #[cfg(unix)]
@@ -1974,7 +2059,7 @@ fn telemetry_warns_when_the_project_it_runs_in_has_telemetry_off() {
     // After the import, before the summary; the exit code is 0 and the summary is as ever.
     assert!(
         err.starts_with(&format!(
-            "{TELEMETRY_W1}✓ telemetry stack running: 6 dashboards in OpenObserve"
+            "{TELEMETRY_W1}✓ telemetry stack running: 4 dashboards in OpenObserve"
         )),
         "{err}"
     );

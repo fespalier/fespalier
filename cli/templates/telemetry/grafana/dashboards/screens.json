@@ -1,0 +1,1448 @@
+{
+  "uid": "fespalier-screens",
+  "title": "fespalier · Screens",
+  "description": "Are screens opening fast, where do people go, and what slows a screen down: its checks (guard.dart), its content (data.dart) or its code (deferred pages)?",
+  "tags": [
+    "fespalier"
+  ],
+  "editable": false,
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "links": [
+    {
+      "title": "fespalier",
+      "type": "dashboards",
+      "tags": [
+        "fespalier"
+      ],
+      "asDropdown": false,
+      "includeVars": true,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "App",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "fespalier-openobserve"
+        },
+        "query": {
+          "query": "label_values(fespalier_calls, service_name)",
+          "refId": "service"
+        },
+        "refresh": 2,
+        "includeAll": false,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "What a screen is",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "A **screen** is a route: a `page.dart` under `lib/app/`. **Open** runs from the tap to its first frame (redirects and guards included). **Content** is the `data.dart` load that follows. Colours as on App health: 🟢 good · 🟠 needs attention · 🔴 bad · grey: not enough data yet."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "How many screens were viewed?",
+      "description": "Screens that opened in this time range (back and tab switches included, refreshes not). It tells you how much the other tiles are based on.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome=\"ok\", fespalier_navigation_kind!=\"refresh\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Do screens open quickly?",
+      "description": "Time from a tap to the new screen's first frame, for the slowest 5 % of opens. Good: under 300 ms. If not: open Screens; slow ones usually wait on a guard.dart or build too much in page.dart.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range]))) and on() (sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])) >= 20)",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          },
+          "noValue": "Not enough data yet"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Does content load quickly?",
+      "description": "How long data.dart takes to deliver a screen's content, slowest 5 %. Good: under 1 s. If not: Screens lists each data.dart; cache it (dataCache), load less, or show what you have first.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=~\"data|error\"}[$__range]))) and on() (sum(sum_over_time(fespalier_calls{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=~\"data|error\"}[$__range])) >= 20)",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 3000
+              }
+            ]
+          },
+          "noValue": "Not enough data yet"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "How often does a link lead nowhere?",
+      "description": "Share of navigations that matched no route and showed not_found.dart. Good: under 1 %. If not: check the links you build by hand; typed routes (AppRoutes) cannot go wrong.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 3,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "100 * (sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])) - sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome=\"ok\"}[$__range]))) / sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])) and on() (sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])) >= 20)",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "noValue": "Not enough data yet"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "How long does each screen take?",
+      "description": "Every screen with its typical (p50) and slowest-5 % (p95) open time, and its content load. Sort by any column. A red Open usually means a slow guard.dart or a heavy page.dart build.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_route) (sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome=\"ok\", fespalier_navigation_kind!=\"refresh\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, fespalier_route) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=~\"data|error\"}[$__range])))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Open, typical"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Open, slowest 5 %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 300
+                    },
+                    {
+                      "color": "red",
+                      "value": 1000
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Content, slowest 5 %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1000
+                    },
+                    {
+                      "color": "red",
+                      "value": 3000
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Open, slowest 5 %",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "fespalier_route": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4
+            },
+            "renameByName": {
+              "fespalier_route": "Screen",
+              "Value #A": "Views",
+              "Value #B": "Open, typical",
+              "Value #C": "Open, slowest 5 %",
+              "Value #D": "Content, slowest 5 %"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Are screens getting slower?",
+      "description": "The slowest-5 % open time over time. The dashed lines are the good (300 ms) and bad (1 s) marks. A jump right after a change points at that change.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__interval])))",
+          "legendFormat": "Slowest 5 %",
+          "instant": false,
+          "range": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "type": "barchart",
+      "title": "Which screens do people open most?",
+      "description": "Your busiest screens: make these fast first.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "topk(10, sum by (fespalier_route) (sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome=\"ok\", fespalier_navigation_kind!=\"refresh\"}[$__range])))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "Screen",
+        "orientation": "auto",
+        "legend": {
+          "showLegend": false
+        },
+        "stacking": "none",
+        "showValue": "auto"
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "fespalier_route": 0,
+              "Value #A": 1,
+              "Value": 2
+            },
+            "renameByName": {
+              "fespalier_route": "Screen",
+              "Value #A": "Views",
+              "Value": "Views"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Which data.dart files are slow or failing?",
+      "description": "Each data.dart with its loads, failure rate and slowest-5 % time. Abandoned means the user left before it finished; many abandoned loads mean it is too slow.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 24,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{fespalier_operation=\"data\", service_name=\"$service\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "100 * (sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=~\"data|error\"}[$__range])) - sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=\"data\"}[$__range]))) / sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=~\"data|error\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=\"disposed\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=~\"data|error\"}[$__range])))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=~\"data|error\"}[$__range])))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Failed"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Typical"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Slowest 5 %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1000
+                    },
+                    {
+                      "color": "red",
+                      "value": 3000
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Slowest 5 %",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "fespalier_file": 0,
+              "fespalier_route": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6
+            },
+            "renameByName": {
+              "fespalier_file": "File",
+              "fespalier_route": "Screen",
+              "Value #A": "Loads",
+              "Value #B": "Failed",
+              "Value #C": "Abandoned",
+              "Value #D": "Typical",
+              "Value #E": "Slowest 5 %"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Do checks slow screens down?",
+      "description": "Each guard.dart and redirect.dart: how often it ran, sent people elsewhere or threw, and how long an async one kept them waiting. A check runs before the screen shows, so keep it under 100 ms.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=~\"guard|redirect\", service_name=\"$service\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=~\"guard|redirect\", service_name=\"$service\", fespalier_guard_decision=\"redirect\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=~\"guard|redirect\", service_name=\"$service\", fespalier_guard_decision=\"error\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, fespalier_file) (sum_over_time(fespalier_duration_bucket{fespalier_operation=~\"guard|redirect\", service_name=\"$service\", fespalier_async=\"true\"}[$__range])))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wait, slowest 5 %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 100
+                    },
+                    {
+                      "color": "red",
+                      "value": 300
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Ran",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "fespalier_file": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4
+            },
+            "renameByName": {
+              "fespalier_file": "File",
+              "Value #A": "Ran",
+              "Value #B": "Sent elsewhere",
+              "Value #C": "Failed",
+              "Value #D": "Wait, slowest 5 %"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Where were people sent instead?",
+      "description": "Screens people landed on after a guard or redirect.dart sent them away, usually the sign-in screen.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 41,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_route) (sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_redirected=\"true\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "fespalier_route": 0,
+              "Value #A": 1,
+              "Value": 2
+            },
+            "renameByName": {
+              "fespalier_route": "Landed on",
+              "Value #A": "Times",
+              "Value": "Times"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "How long does a deferred page's code take to arrive?",
+      "description": "Only for deferred pages (deferred: true, mostly on the web): how long the page's code takes to download. Good: under 500 ms. If not: split it, or make fewer pages deferred.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"deferred\", service_name=\"$service\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"deferred\", service_name=\"$service\", fespalier_deferred_result=\"error\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, fespalier_file) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"deferred\", service_name=\"$service\"}[$__range])))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Slowest 5 %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 500
+                    },
+                    {
+                      "color": "red",
+                      "value": 2000
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Slowest 5 %",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "fespalier_file": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            },
+            "renameByName": {
+              "fespalier_file": "File",
+              "Value #A": "Loads",
+              "Value #B": "Failed",
+              "Value #C": "Slowest 5 %"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "barchart",
+      "title": "How do people get to screens?",
+      "description": "How screens were reached: app start, a link or tab (go), pushed on top, back, replaced, or the same screen again.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 50,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_navigation_kind) (sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Reached by"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "initial": {
+                        "text": "App start",
+                        "index": 0
+                      },
+                      "go": {
+                        "text": "Link, tab or go()",
+                        "index": 1
+                      },
+                      "push": {
+                        "text": "Pushed on top",
+                        "index": 2
+                      },
+                      "pop": {
+                        "text": "Back",
+                        "index": 3
+                      },
+                      "replace": {
+                        "text": "Replaced",
+                        "index": 4
+                      },
+                      "refresh": {
+                        "text": "Same screen again",
+                        "index": 5
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "Reached by",
+        "orientation": "auto",
+        "legend": {
+          "showLegend": false
+        },
+        "stacking": "none",
+        "showValue": "auto"
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "fespalier_navigation_kind": 0,
+              "Value #A": 1,
+              "Value": 2
+            },
+            "renameByName": {
+              "fespalier_navigation_kind": "Reached by",
+              "Value #A": "Screens",
+              "Value": "Screens"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

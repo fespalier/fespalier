@@ -32,7 +32,8 @@ dependencies:
 <!-- x-release-please-end -->
 
 Needs Dart 3.8 and Flutter 3.32 or newer. `flutter_secure_storage` (the token store) is the only
-plugin it brings; on Android its minSdk is 24.
+plugin it brings; on Android its minSdk is 24. The rest is pure Dart: `http`, `crypto` (PKCE), `clock`
+and `dio` (tree-shaken unless you import `package:fespalier_auth/dio.dart`).
 
 ## Wire it
 
@@ -81,13 +82,29 @@ Future<List<Order>> data(Ref ref) async {
 ```
 
 `authHttpClient` attaches the session to requests to `AuthConfig.apiOrigins` only, waits for one
-shared refresh when the access token has expired, and sends a request once more after a 401.
+shared refresh when the access token has expired, and sends a request once more after a 401. That one
+replay is marked: `isAuthReplay(request)` (`options.extra[authReplayKey]` on dio), so a guard against
+re-sent writes can let it through. A request made with `http.AbortableRequest` keeps its abort trigger
+on the replay. Do not put `RetryClient` under it (it would re-send the same signature, which a DPoP server
+refuses); wrap it: `RetryClient(ref.watch(authHttpClient))`.
+
+With dio: `dio.interceptors.add(SessionInterceptor(ref.watch(authorizer), dio))`, from
+`package:fespalier_auth/dio.dart`.
 
 ## Backends
 
 An `AuthBackend` says how to sign in, refresh and sign out; the package keeps the session, the
 store and the single flight. `FakeAuthBackend` (in `package:fespalier_auth/testing.dart`) is the
 smallest example.
+
+- **OpenID Connect and Keycloak**, in the package: `OidcBackend` in `package:fespalier_auth/oidc.dart`,
+  the authorization code flow with PKCE for a public client, with Keycloak's endpoints, roles and
+  refresh-token rotation. The browser step is a function you give it (`flutter_web_auth_2` is the usual
+  one), so the package links no plugin for it. Read against Keycloak 26.8.0; `examples/auth` has the
+  realm and a Docker command.
+- **Firebase, Supabase and your own API**, as recipes: `skills/fespalier-guards/references/auth-backends.md`
+  has code that is compiled by CI. `examples/auth/lib/demo/demo_backend.dart` is a username-and-password
+  backend with tests.
 
 ## Tests
 

@@ -4752,8 +4752,128 @@ so a token cannot leak to a third party, and `apiOrigins` empty is an error the 
   `retry(attempt, statusCode:, headers:)` (send again?).
 - **One container.** The single flight is per `ProviderContainer`: a second isolate or a second web tab that
   refreshes the same rotating token gets `invalid_grant`. Refresh in one place, or do not turn rotation on.
+- **A replay is marked, and keeps its abort trigger.** A request that is sent again (after a 401 and a refresh, or after a DPoP nonce challenge) is `isAuthReplay(request)`
+  for `SessionClient` and `options.extra[authReplayKey]` (`'fespalier.auth.replay'`) for `SessionInterceptor`, so
+  a guard that refuses re-sends of writes can let that one through; the first send is not a replay. A request made
+  with `http.AbortableRequest(..., abortTrigger: future)` is copied with the same trigger (`package:http` 1.5.0 and
+  later), so aborting still cancels the replay when the page that wanted it goes away.
+- **Do not put `RetryClient` under the session.** `package:http`'s `RetryClient` sends the same headers again, so
+  under a client that signs requests it re-sends the same signature. With DPoP that is the same proof, and the server
+  refuses a reused `jti` (Keycloak answers `invalid_request` with `DPoP proof has already been used`). Wrap the
+  session client in a `RetryClient` instead, `RetryClient(ref.watch(authHttpClient))`, so each attempt asks the
+  authorizer for a proof of its own, and do not override `authBaseClient` with a `RetryClient` when the backend uses
+  DPoP.
 - **User data across users.** A `dataCache` keeps the previous user's data until it loads again: watch
   `authUserId` in user-owned data and clear the cache storage on sign-out.
+
+### OpenID Connect and Keycloak
+
+`package:fespalier_auth/oidc.dart` (a separate library: an app that signs in some other way links none of
+it) has `OidcBackend`: the authorization code flow with PKCE (S256) for a **public** client, in pure Dart over
+`package:http`, with Keycloak's defaults. It owns the token exchange and the refresh, which is what makes the
+single flight, refresh-token rotation and DPoP (device-bound tokens) on the
+token endpoint possible. The browser step is a function you give it, so the package links no plugin:
+`flutter_web_auth_2` (MIT; Android, iOS, macOS, web, Windows and Linux) is the usual one.
+
+```dart
+// lib/auth_setup.dart
+final issuer = Uri.parse('https://sso.example.com/realms/shop');
+
+AuthConfig authSetup() => AuthConfig(
+  backend: OidcBackend(
+    issuer: issuer,
+    clientId: 'shop-app',
+    redirectUri: Uri.parse('com.example.shop:/callback'),
+    endpoints: OidcEndpoints.keycloak(issuer), // no discovery request
+    openBrowser: openBrowser,
+  ),
+  apiOrigins: [Uri.parse('https://api.example.com')],
+);
+
+Future<Uri> openBrowser(Uri url, Uri redirect) async {
+  try {
+    return Uri.parse(
+      await FlutterWebAuth2.authenticate(
+        url: url.toString(),
+        callbackUrlScheme: redirect.scheme,
+        options: const FlutterWebAuth2Options(preferEphemeral: true),
+      ),
+    );
+  } on PlatformException catch (e) {
+    if (e.code == 'CANCELED') throw const AuthCancelled();
+    rethrow;
+  }
+}
+```
+
+The sign-in button calls `ref.read(authSession.notifier).signIn(const BrowserSignIn())` straight from its
+`onPressed` (a web popup is blocked when `signIn` runs later), and catches `AuthCancelled`. The sign-in guard
+moves the user. `BrowserSignIn` has `loginHint`, `prompt` (`login` shows the form over a single-sign-on cookie,
+`none` fails with `login_required`) and `parameters` (`{'kc_idp_hint': 'google'}`).
+
+- **What it checks.** The redirect: its `state`, its `error` (`access_denied` is `AuthCancelled`, anything
+  else an `OidcException`), its `iss` when present (RFC 9207, which Keycloak sends) and its `code`. Then the ID
+  token's `iss`, `aud` and `nonce`. The ID token's signature is **not** verified (OpenID Connect Core 3.1.3.7: it
+  came straight from the token endpoint over TLS). Every message is in the troubleshooting skill.
+- **Roles** come from the access token: `realm_access.roles` and `resource_access.<clientId>.roles`
+  (`keycloakRoles(clientId)`, the default; pass `roles:` to read another claim). Keycloak does not put them in
+  the ID token unless a mapper does.
+- **Discovery.** `OidcEndpoints.keycloak(issuer)` spells Keycloak's four endpoints, and
+  `OidcEndpoints.discover(issuer)` reads `<issuer>/.well-known/openid-configuration` and refuses a document whose
+  `issuer` is another one. Leave `endpoints:` out and discovery runs at the first sign-in or refresh, once.
+- **Sign-out** revokes the refresh token (RFC 7009), which makes Keycloak end the whole session, best effort.
+  `endBrowserSession(session)` also ends the browser's single-sign-on session through the end-session endpoint;
+  with `preferEphemeral: true` there is none to end.
+- **No timeout of its own** (that would be a timer): pass `client:` an `http.Client` that times out if you want one.
+  A confidential client (a `client_secret`) is out of scope: a mobile or web app is a public client.
+
+**Keycloak settings and traps**, read from a live Keycloak 26.8.0 (`examples/auth/keycloak/realm-fespalier.json`
+is a realm exported from it, and `packages/fespalier_auth/test/keycloak_live_test.dart` runs `OidcBackend`
+against it):
+
+- A **public client** with Standard flow on, Direct access grants off, and the client attribute
+  `pkce.code.challenge.method` set to `S256` (without a challenge the authorization endpoint answers
+  `error=invalid_request&error_description=Missing+parameter%3A+code_challenge_method`). Its **valid redirect
+  URIs** must list `redirectUri` exactly.
+- **"Revoke Refresh Token"** makes a refresh token good once: a second refresh with the same one answers
+  `invalid_grant` with `Maximum allowed refresh token reuse exceeded`, **and the whole session is then gone**.
+  That is why the refresh is a single flight, and why two isolates or two web tabs that share a session sign each
+  other out.
+- **The refresh token lives as long as the SSO session's idle timeout** (30 minutes by default; the token
+  response's `refresh_expires_in` says): a user who is away longer gets `invalid_grant` with `Token is not active`.
+  For longer sessions ask for the `offline_access` scope
+  (`OidcBackend(scopes: ['openid', 'profile', 'email', 'offline_access'])`).
+- **The issuer is Keycloak's configured hostname.** With `--hostname=http://10.0.2.2:8080` every token says
+  `http://10.0.2.2:8080/realms/...`, so an app that reaches the same Keycloak as `localhost` gets `the ID token was
+  issued by ..., not ...`. On an Android emulator, use `adb reverse tcp:8080 tcp:8080` and `localhost`, or give
+  Keycloak the `10.0.2.2` hostname.
+- **A single-sign-on cookie signs the user in again silently** after a sign-out, unless the browser session is
+  ephemeral (`preferEphemeral: true`) or the sign-in asks `BrowserSignIn(prompt: 'login')`.
+- `examples/auth` has the Docker command and the `--dart-define=OIDC_ISSUER=...` that runs the example against it.
+
+### Firebase, Supabase and your own API
+
+Firebase's and Supabase's SDKs keep the session and refresh it themselves, so their backends say
+`keepsOwnSession`: the token store is not used, `currentSession()` is read once at start-up (a one-shot read of the
+SDK, so the framework holds no listener), and `refresh` asks the SDK for new tokens. They are **recipes, not
+packages**: a first-party package for each would add a heavy SDK to every app and a release surface, and most of
+what `fespalier_auth` does would go unused there. The code, compiled by `just skill-samples`, is in
+`skills/fespalier-guards/references/auth-backends.md`:
+
+- **Firebase** (`firebase_auth`, no Linux): `signIn(PasswordSignIn)` is `signInWithEmailAndPassword`, whose
+  `wrong-password`, `invalid-credential` and `user-not-found` become `FieldErrors`; `refresh` is
+  `getIdTokenResult(true)`, and `user-disabled` or `user-token-expired` become `AuthRejected`. Initialise Firebase in
+  `startup()` before `restoreAuth`.
+- **Supabase** (`supabase_flutter`): its client **auto-refreshes with a timer by default**, so initialise it with
+  `authOptions: FlutterAuthClientOptions(autoRefreshToken: false)` and refresh lazily with `refreshSession()`.
+  Import it with a prefix: `gotrue` exports `AuthState`, `Session` and `User`.
+- **Your own API** (a username and a password): `examples/auth/lib/demo/demo_backend.dart`, which is tested. A wrong
+  password is a `FieldErrors`, a refused refresh token is `AuthRejected`, and a socket error or a 5xx keeps the session.
+
+`package:fespalier_auth/dio.dart` has `SessionInterceptor(authorizer, dio)`, the policy of `authHttpClient` on dio's
+types: `dio.interceptors.add(SessionInterceptor(ref.watch(authorizer), dio))`. `FormData` bodies are not sent again,
+and a refresh that could not run is a `DioException` whose `error` is the `AuthUnavailable`. dio is a dependency of
+`fespalier_auth`, and is tree-shaken when that library is not imported.
 
 ### Testing signed-in routes
 
@@ -5478,6 +5598,13 @@ lib/app.routes.g.dart`, with `Review` metas that `lib/main.dart` never imports),
 restore the selected tab, a background tab's stack and a page's state after a simulated
 restart.
 
+`examples/auth` (since 0.9.0) is [`fespalier_auth`](packages/fespalier_auth): a sign-in form on an action, a
+`requireSignedIn` guard that comes back to where the user was going, a `requireRole` one for `/admin`, orders
+pages whose two `data.dart` files call an API through `authHttpClient` (an expired token is refreshed once), and
+a first frame that is the app, not a splash, because `startup()` restores the session with no network. The
+API is an in-process server, so it runs and is tested with no network; run against Keycloak with
+`--dart-define=OIDC_ISSUER=...` and the realm in `examples/auth/keycloak/`.
+
 ## Development
 
 ```text
@@ -5493,6 +5620,7 @@ cli/templates/telemetry/   the stack `fsp telemetry` writes (compose file, colle
                      dashboards); runs as it is with `docker compose up -d`
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
+packages/fespalier_auth/   signed-in routes: session provider, guards, authenticated client, OpenID Connect
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed
@@ -5500,6 +5628,7 @@ examples/minimal/    the smallest app: `flutter create` + `fsp init` + three pag
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
 examples/features/   every binding rule, section data and nested not_found.dart, with widget tests
 examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
+examples/auth/       fespalier_auth: sign-in, guards, refresh and Keycloak, with widget tests
 skills/              agent skills: how to write lib/app/ and read fsp's errors (skills/README.md);
                      scripts/skills/ checks them against the code
 ```

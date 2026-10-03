@@ -7,6 +7,7 @@ import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_auth/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/retry.dart' as http_retry;
 import 'package:http/testing.dart';
 
 import 'support.dart';
@@ -438,4 +439,207 @@ void main() {
       },
     );
   });
+
+  group('a replay', () {
+    test(
+      'is marked: the first send is not, the replay after a 401 is',
+      () async {
+        final seen = <http.BaseRequest>[];
+        setUpClient();
+        final marked = SessionClient(
+          container.read(authorizer),
+          inner: _Spy(server.client, seen),
+        );
+        await marked.get(orders);
+        expect(seen, hasLength(2));
+        expect(isAuthReplay(seen[0]), isFalse);
+        expect(isAuthReplay(seen[1]), isTrue);
+        expect(isAuthReplay(http.Request('GET', orders)), isFalse);
+      },
+    );
+
+    test('a DPoP nonce challenge is a replay too', () async {
+      final seen = <http.BaseRequest>[];
+      final proof = FakeProof()..challengeNext = true;
+      setUpClient(use: FakeAuthBackend(proof: proof));
+      server.good = 'fake-access-0';
+      final marked = SessionClient(
+        container.read(authorizer),
+        inner: _Spy(server.client, seen),
+      );
+      await marked.get(orders);
+      expect(seen.map(isAuthReplay), [false, true]);
+    });
+
+    test(
+      'keeps the abort trigger: a replay can still be cancelled when its page goes away',
+      () async {
+        setUpClient();
+        final abort = Completer<void>();
+        final inner = _AbortAware(server.client);
+        final client = SessionClient(container.read(authorizer), inner: inner);
+        final request = http.AbortableRequest(
+          'GET',
+          orders,
+          abortTrigger: abort.future,
+        );
+        final pending = client.send(request);
+        final outcome = expectLater(
+          pending,
+          throwsA(isA<http.RequestAbortedException>()),
+        );
+        // The first send was answered 401 and the refresh ran: the replay is out, and held.
+        await inner.replayStarted.future;
+        expect(backend.refreshes, 1);
+        final replay = inner.sent.last;
+        expect(replay, isA<http.Abortable>());
+        expect((replay as http.Abortable).abortTrigger, same(abort.future));
+        expect(isAuthReplay(replay), isTrue);
+        expect(
+          replay,
+          isNot(same(request)),
+          reason: 'a copy: the original was finalized by the first send',
+        );
+        abort.complete();
+        await outcome;
+        expect(inner.aborted, isTrue, reason: 'the replay saw the trigger');
+      },
+    );
+
+    test(
+      'an abort before the replay is sent aborts the replay at once',
+      () async {
+        setUpClient();
+        final abort = Completer<void>();
+        final inner = _AbortAware(server.client, abortDuringFirst: abort);
+        final client = SessionClient(container.read(authorizer), inner: inner);
+        final request = http.AbortableRequest(
+          'GET',
+          orders,
+          abortTrigger: abort.future,
+        );
+        await expectLater(
+          client.send(request),
+          throwsA(isA<http.RequestAbortedException>()),
+        );
+      },
+    );
+
+    test('a request that was not abortable stays a plain request', () async {
+      final seen = <http.BaseRequest>[];
+      setUpClient();
+      final client = SessionClient(
+        container.read(authorizer),
+        inner: _Spy(server.client, seen),
+      );
+      await client.get(orders);
+      expect(seen, everyElement(isNot(isA<http.Abortable>())));
+    });
+  });
+
+  group('package:http\'s RetryClient and DPoP', () {
+    // A retry under SessionClient re-sends the proof it was given: the same jti, which a server
+    // refuses (Keycloak: "DPoP proof has already been used"). A retry over it asks for a new proof.
+    test('under the SessionClient the retry re-sends the same proof', () async {
+      var calls = 0;
+      final seen = <http.Request>[];
+      final flaky = MockClient((request) async {
+        seen.add(request);
+        return http.Response('', ++calls == 1 ? 503 : 200);
+      });
+      final proof = FakeProof();
+      setUpClient(use: FakeAuthBackend(proof: proof));
+      final retrying = http_retry.RetryClient(
+        flaky,
+        when: (r) => r.statusCode == 503,
+        delay: (_) => Duration.zero,
+      );
+      final client = SessionClient(container.read(authorizer), inner: retrying);
+      await client.get(orders);
+      expect(seen, hasLength(2));
+      expect(
+        seen[0].headers['DPoP'],
+        seen[1].headers['DPoP'],
+        reason: 'the same proof twice',
+      );
+      expect(proof.proofs, hasLength(1));
+    });
+
+    test(
+      'over the SessionClient every attempt has a proof of its own',
+      () async {
+        var calls = 0;
+        final seen = <http.Request>[];
+        final flaky = MockClient((request) async {
+          seen.add(request);
+          return http.Response('', ++calls == 1 ? 503 : 200);
+        });
+        final proof = FakeProof();
+        setUpClient(use: FakeAuthBackend(proof: proof));
+        final session = SessionClient(container.read(authorizer), inner: flaky);
+        final retrying = http_retry.RetryClient(
+          session,
+          when: (r) => r.statusCode == 503,
+          delay: (_) => Duration.zero,
+        );
+        await retrying.get(orders);
+        expect(seen, hasLength(2));
+        expect(seen[0].headers['DPoP'], isNot(seen[1].headers['DPoP']));
+        expect(proof.proofs, hasLength(2));
+      },
+    );
+  });
+}
+
+/// A client that records what was sent through it, then delegates.
+final class _Spy extends http.BaseClient {
+  _Spy(this.inner, this.seen);
+
+  final http.Client inner;
+  final List<http.BaseRequest> seen;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    seen.add(request);
+    return inner.send(request);
+  }
+}
+
+/// A client that honours `Abortable`: its second request is held until the abort trigger fires,
+/// and then fails with `RequestAbortedException`, as the real clients do.
+final class _AbortAware extends http.BaseClient {
+  _AbortAware(this.inner, {this.abortDuringFirst});
+
+  final http.Client inner;
+
+  /// Completed while the first request is being answered: the abort comes before the replay.
+  final Completer<void>? abortDuringFirst;
+
+  final List<http.BaseRequest> sent = [];
+  final Completer<void> replayStarted = Completer<void>();
+  bool aborted = false;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    sent.add(request);
+    final Object asObject = request;
+    final trigger = asObject is http.Abortable ? asObject.abortTrigger : null;
+    if (sent.length == 1) {
+      final response = await inner.send(request);
+      abortDuringFirst?.complete();
+      return response;
+    }
+    if (!replayStarted.isCompleted) replayStarted.complete();
+    if (trigger == null) return inner.send(request);
+    final held = Completer<http.StreamedResponse>();
+    unawaited(
+      trigger.then((_) {
+        aborted = true;
+        if (!held.isCompleted) {
+          held.completeError(http.RequestAbortedException(request.url));
+        }
+      }),
+    );
+    return held.future;
+  }
 }

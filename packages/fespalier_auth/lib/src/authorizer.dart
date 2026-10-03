@@ -43,9 +43,19 @@ final class AuthAttempt {
   /// Whether this send is the one that follows a refresh.
   final bool refreshRetried;
 
+  /// Whether this send is the one that follows a challenge or a refresh, so a request sent again
+  /// by the authorizer: `SessionClient` marks the request (`isAuthReplay`), and
+  /// `SessionInterceptor` sets `options.extra[authReplayKey]`.
+  bool get isReplay => proofRetried || refreshRetried;
+
   bool _proofRetryNext = false;
   bool _refreshRetryNext = false;
 }
+
+/// The `RequestOptions.extra` key `SessionInterceptor` sets to `true` on a request it sends again
+/// after a proof challenge or a 401 (since 0.9.0): `fespalier.auth.replay`. A write guard that
+/// refuses re-sends lets this one through. Never sent to a server.
+const String authReplayKey = 'fespalier.auth.replay';
 
 /// What an HTTP client needs from the session (since 0.9.0): the headers for a request, and the
 /// answer to "send it once more?". One per container: `ref.watch(authorizer)`.

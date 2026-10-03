@@ -21,7 +21,7 @@
 library;
 
 export 'src/authorizer.dart'
-    show AuthAttempt, Authorizer, authBaseClient, authorizer;
+    show AuthAttempt, Authorizer, authBaseClient, authReplayKey, authorizer;
 export 'src/backend.dart';
 export 'src/config.dart'
     show AuthConfig, authConfig, authInitialState, restoreAuth;
@@ -30,5 +30,6 @@ export 'src/guards.dart';
 export 'src/jwt.dart' show unverifiedJwtClaims;
 export 'src/notifier.dart';
 export 'src/session.dart';
-export 'src/session_client.dart' show SessionClient, authHttpClient;
+export 'src/session_client.dart'
+    show SessionClient, authHttpClient, isAuthReplay;
 export 'src/store.dart';

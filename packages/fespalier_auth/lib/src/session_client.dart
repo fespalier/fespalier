@@ -37,7 +37,7 @@ final class SessionClient extends http.BaseClient {
     var attempt = await authorizer.authorize(request.method, request.url);
     while (true) {
       final toSend = request is http.Request
-          ? _copy(request, attempt.headers)
+          ? _copy(request, attempt)
           : (request..headers.addAll(attempt.headers));
       final response = await _inner.send(toSend);
       final bool again;
@@ -69,16 +69,41 @@ final class SessionClient extends http.BaseClient {
 Future<void> _discard(http.StreamedResponse response) =>
     response.stream.drain<void>().then<void>((_) {}, onError: (Object _) {});
 
+/// The requests [SessionClient] sent again, by identity: see [isAuthReplay].
+final Expando<bool> _replays = Expando<bool>('fespalier_auth replay');
+
+/// Whether [request] is one `SessionClient` sent again, after a DPoP proof challenge or a 401 and a
+/// refresh (since 0.9.0): the single replay, which a write guard that refuses re-sends lets through.
+/// The first send of a request is not a replay. It reads the very object `SessionClient` handed
+/// to the client under it, so a wrapper that copies the request loses the mark. For `dio`, the
+/// same fact is `options.extra[authReplayKey]`.
+bool isAuthReplay(http.BaseRequest request) => _replays[request] ?? false;
+
 /// A request of its own to send: a [http.Request] is finalized by sending it, so each attempt
-/// needs a new one.
-http.Request _copy(http.Request original, Map<String, String> credentials) =>
-    http.Request(original.method, original.url)
-      ..headers.addAll(original.headers)
-      ..headers.addAll(credentials)
-      ..bodyBytes = original.bodyBytes
-      ..followRedirects = original.followRedirects
-      ..maxRedirects = original.maxRedirects
-      ..persistentConnection = original.persistentConnection;
+/// needs a new one. It keeps what makes the request the caller's: the headers, the body, the
+/// redirect settings, and the abort trigger of an [http.Abortable] request, so a replay can still
+/// be cancelled when the page that wanted it goes away.
+http.Request _copy(http.Request original, AuthAttempt attempt) {
+  // `Abortable` is a mixin of AbortableRequest, not of Request: promote through Object.
+  final Object asObject = original;
+  final trigger = asObject is http.Abortable ? asObject.abortTrigger : null;
+  final copy = trigger == null
+      ? http.Request(original.method, original.url)
+      : http.AbortableRequest(
+          original.method,
+          original.url,
+          abortTrigger: trigger,
+        );
+  copy
+    ..headers.addAll(original.headers)
+    ..headers.addAll(attempt.headers)
+    ..bodyBytes = original.bodyBytes
+    ..followRedirects = original.followRedirects
+    ..maxRedirects = original.maxRedirects
+    ..persistentConnection = original.persistentConnection;
+  if (attempt.isReplay) _replays[copy] = true;
+  return copy;
+}
 
 /// A [SessionClient] on [authBaseClient] (since 0.9.0), for a `data.dart` or an `action.dart`.
 ///

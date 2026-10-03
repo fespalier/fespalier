@@ -15,6 +15,10 @@ dependencies:
   # What every expiry check reads the time from, so a test's fake clock ages the tokens.
   clock: ^1.1.1
   collection: ^1.18.0
+  # PKCE's S256 challenge (package:fespalier_auth/oidc.dart).
+  crypto: ^3.0.6
+  # Only package:fespalier_auth/dio.dart imports it: pure Dart, and tree-shaken when it is not used.
+  dio: ^5.4.0
   flutter:
     sdk: flutter
   # The same repository dependency an app writes (same url, path and ref), so the two resolve to
@@ -26,7 +30,8 @@ dependencies:
       ref: v0.8.0 # x-release-please-version
   # SecureTokenStore. Both majors: only read/write/delete and the Apple accessibility option are used.
   flutter_secure_storage: ">=10.0.0 <12.0.0"
-  http: ^1.2.0
+  # 1.5.0: Abortable requests, which a replayed request keeps (the abort trigger is copied).
+  http: ^1.5.0
 
 dev_dependencies:
   flutter_lints: ^6.0.0

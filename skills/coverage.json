@@ -250,7 +250,12 @@
         "README.md#Signing in and out",
         "README.md#Calling your API",
         "packages/fespalier_auth/README.md",
-        "packages/fespalier_auth/lib/fespalier_auth.dart"
+        "packages/fespalier_auth/lib/fespalier_auth.dart",
+        "packages/fespalier_auth/lib/oidc.dart",
+        "packages/fespalier_auth/lib/dio.dart",
+        "README.md#OpenID Connect and Keycloak",
+        "README.md#Firebase, Supabase and your own API",
+        "examples/auth"
       ]
     },
     "fespalier-testing": {

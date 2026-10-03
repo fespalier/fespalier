@@ -11,6 +11,7 @@ import 'package:flutter/widgets.dart';
 
 import 'app.g.dart';
 import 'app/app.dart' as _i0;
+import 'app/startup.dart' as _i1;
 
 /// The app under lib/app/, from main() on: startup.dart, splash.dart and app.dart around
 /// [AppRoutes.router].
@@ -29,6 +30,7 @@ abstract final class AppMain {
   /// then a `ProviderScope` with the overrides it returned around app.dart, which gets
   /// [router]'s router. [router] is called once, after startup().
   static Widget root({GoRouter Function() router = AppRoutes.router}) => StartupGate(
+    overrides: _i1.startup,
     router: router,
     app: app,
   );

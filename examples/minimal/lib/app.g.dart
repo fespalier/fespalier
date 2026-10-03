@@ -71,7 +71,11 @@ abstract final class AppRoutes {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
     if (kFespalierDevTools)
-      devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
+      devToolsRegister(
+        tree: _devToolsTree,
+        matchUrl: matchUrl,
+        providers: _devToolsProviders,
+      );
     return [
       ShellRoute(
         pageBuilder: (context, state, child) => _i1.transition(
@@ -96,7 +100,7 @@ abstract final class AppRoutes {
                   buildWithParams(
                     () => _params3(state),
                     (v) => DataView(
-                      watch: (ref) => ref.watch(_data3(v.id)),
+                      watch: (ref) => watchData(ref, 'd3', _data3(v.id)),
                       refresh: (ref) => ref.invalidate(_data3(v.id)),
                       data: (d) => _i6.ItemPage(item: d, qty: v.qty),
                       loading: () => const _i7.ItemLoading(),
@@ -321,6 +325,9 @@ final _data3 = FutureProvider.autoDispose.family(
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
 );
+
+/// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
+Map<Object, String> _devToolsProviders() => {_data3: 'd3'};
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release

@@ -17,14 +17,16 @@ export 'package:hooks_riverpod/misc.dart' show ProviderListenable;
 export 'src/action.dart';
 export 'src/data_view.dart';
 export 'src/deferred.dart';
-// DevTools support (since 0.7.0): what a generated app.g.dart registers and attaches.
+// DevTools support (since 0.7.0): what a generated app.g.dart registers and attaches
+// (`watchData` since 0.8.0).
 export 'src/devtools/devtools.dart'
     show
         devToolsAttach,
         devToolsRegister,
         kFespalierDevTools,
         traceData,
-        traceGuard;
+        traceGuard,
+        watchData;
 export 'src/extra_codec.dart';
 export 'src/guards.dart';
 export 'src/heroes.dart';

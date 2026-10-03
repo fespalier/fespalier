@@ -5,6 +5,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart'
     show AsyncProviderListenable, ProviderListenable;
 
+import 'devtools/devtools.dart' show devToolsPrefetched, kFespalierDevTools;
+
 /// A prefetched provider, kept alive until [close] (or until the `keepFor` you gave
 /// it passes, or the widget whose `ref` started it is disposed: since 0.5.0 that also
 /// cancels the `keepFor` timer and closes the handle).
@@ -110,6 +112,9 @@ extension DataRef on WidgetRef {
     if (keepFor == null || keepFor <= Duration.zero) {
       handle = PrefetchHandle._(sub.close);
       if (keepFor != null) handle.close();
+      if (kFespalierDevTools) {
+        devToolsPrefetched(this, provider, handle, keepFor);
+      }
       return handle;
     }
     // A provider that only this call listens to: it hears when the listeners go, which
@@ -125,6 +130,7 @@ extension DataRef on WidgetRef {
       endedSub.close();
     });
     handle._timer = Timer(keepFor, handle.close);
+    if (kFespalierDevTools) devToolsPrefetched(this, provider, handle, keepFor);
     return handle;
   }
 

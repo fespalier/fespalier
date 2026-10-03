@@ -134,11 +134,14 @@ what is invalidated and a test that compiles.
 ## Seeing it in DevTools (since 0.7.0)
 
 The `fespalier` tab's **Data** tab lists each provider fespalier makes from a `data.dart`: its state
-(`loading`, `data`, `error`, `stream`, `disposed`), builds, key and value, with an **Invalidate** button;
-**Actions** lists the runs of the `action.dart` functions. The generated provider body is wrapped in
-`traceData`, which returns the function's own result (a value stays a value, a `Future` stays the `Future`).
-A `data.dart` that returns or selects a provider is **not traced**, and who holds a provider is not shown
-(`fespalier-troubleshooting`, its DevTools page).
+(`loading`, `data`, `error`, `stream`, `disposed`), builds, listeners, key and value, with an **Invalidate**
+button and, since 0.8.0, a **Holders** button that lists who keeps the provider (the page, a section, a
+`prefetch` / `preload` handle, a `RouteLink` preload) and counts the other listeners. **Actions** lists the
+runs of the `action.dart` functions. The generated provider body is wrapped in `traceData`, which returns the
+function's own result (a value stays a value, a `Future` stays the `Future`), and every view watches with
+`watchData(ref, 'd37', provider)`, which is `ref.watch`. A `data.dart` that returns or selects a provider is
+followed since 0.8.0 as an `app provider`, through the state the views got; its other listeners are not
+visible (`fespalier-troubleshooting`, its DevTools page).
 
 ## Common symptoms
 

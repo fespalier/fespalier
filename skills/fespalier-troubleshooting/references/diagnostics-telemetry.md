@@ -26,6 +26,16 @@ the use is in `fespalier-testing`, `references/observability.md`.
 | `there is no telemetry stack in {dir} (no compose.yaml): nothing to stop or reset`                                                                                                              | `--stop` or `--reset` in a folder `fsp telemetry` never wrote to. Pass the `--dir` it used.                                                                                                                                               |
 | `error: the argument '--stop' cannot be used with '--grafana'`                                                                                                                                  | clap, exit 2. Also `'--stop'` with `'--reset'`, `'--lan'` with `'--reset'` and `'--no-start'` with `'--stop'`. `--stop`/`--reset` take only `--dir`; `--no-start` takes the rest.                                                         |
 
+## A warning, not an error
+
+`fsp telemetry` (a start: not `--no-start`, `--stop` or `--reset`) looks for the app it is run in, from the working
+folder up or from `--project`, and prints this to stderr **after** the import succeeds and **before** the
+`✓ telemetry stack running` summary. The exit code stays 0:
+
+| Message                                                                                                                                               | Cause and fix                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ``⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (README, "Telemetry")`` | The project's `fespalier:` section has `telemetry` off (its default), so the generated file passes no call sites and the dashboards stay empty. Set `telemetry: true`, run `fsp gen`, and install `FespalierOtel` in the app (`fespalier-observability`). Outside a project, or in one whose pubspec does not load, nothing is printed. |
+
 ## The importer (`docker compose logs dashboards`)
 
 The one-shot `dashboards` container loads the dashboards into OpenObserve on every `fsp telemetry`; it

@@ -10,8 +10,10 @@ Writes, under cli/templates/telemetry/:
 `--check` writes nothing and exits 1 when a file on disk differs from what would be written. The
 output has no timestamps, so regenerating is byte-stable. `just telemetry-dashboards` runs this.
 
-A panel (or table column) whose `requires` names an attribute that the conventions
-(scripts/telemetry/conventions_v1.txt) do not have is left out.
+The names a query may use are read from packages/fespalier_otel/lib/src/conventions.dart
+(`FespalierConventions`), the one source of truth: a name that is not declared there is an error in
+test_telemetry.py. The only names declared here are the ones `otel_zone` and OpenTelemetry's semantic
+conventions add, which that file does not list.
 """
 
 import argparse
@@ -23,7 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = ROOT / "scripts/telemetry/dashboards.toml"
-CONVENTIONS = ROOT / "scripts/telemetry/conventions_v1.txt"
+CONVENTIONS = ROOT / "packages/fespalier_otel/lib/src/conventions.dart"
 OUT = ROOT / "cli/templates/telemetry"
 
 STALE = "stale: run `just telemetry-dashboards` and commit the result"
@@ -46,30 +48,65 @@ SPAN_METRICS = {"fespalier_calls", "fespalier_duration_bucket"}
 LABEL = re.compile(r"\b(fespalier_[a-z_]+|error_type)\b")
 
 
+# What fespalier_otel's conventions.dart does not list: the resource attributes `otel_zone` sets, the
+# `exception` event of OpenTelemetry's semantic conventions and its attributes, and which attributes
+# are booleans (the Dart constants only say what each key is called).
+OTEL_ZONE_RESOURCES = [
+    "service.name",
+    "service.version",
+    "app.build_id",
+    "deployment.environment.name",
+]
+SEMCONV_EVENTS = ["exception"]
+SEMCONV_EVENT_ATTRS = ["exception.type", "exception.message", "exception.stacktrace"]
+BOOLEAN_ATTRS = {"fespalier.async", "fespalier.navigation.redirected", "fespalier.data.keyed"}
+# A constant named `<prefix><Value>` is a value of the attribute on the right; one named
+# `result<Value>` is a value of both result attributes.
+VALUE_OF = {
+    "op": ["fespalier.operation"],
+    "kind": ["fespalier.navigation.kind"],
+    "outcome": ["fespalier.navigation.outcome"],
+    "decision": ["fespalier.guard.decision"],
+    "state": ["fespalier.data.state"],
+    "result": ["fespalier.action.result", "fespalier.deferred.result"],
+}
+DART_CONST = re.compile(r"^\s*static const String (\w+) = '([^']*)';", re.M)
+
+
 class Conventions:
-    """The names a query may use, read from the names file."""
+    """The names a query may use, read from fespalier_otel's conventions.dart."""
 
     def __init__(self, text):
         self.attrs = {}  # key -> list of values ([] when free-form)
-        self.resources = []
+        self.resources = list(OTEL_ZONE_RESOURCES)
         self.events = []
-        self.event_attrs = set()
-        for number, line in enumerate(text.splitlines(), 1):
-            line = line.split("#", 1)[0].strip()
-            if not line:
+        self.event_attrs = set(SEMCONV_EVENT_ATTRS)
+        values = {}  # attribute key -> its values, in declaration order
+        for name, value in DART_CONST.findall(text):
+            prefix = re.match(r"(op|kind|outcome|decision|state|result)[A-Z]", name)
+            if name in ("version", "scope", "spanNavigateNotFound"):
                 continue
-            kind, _, rest = line.partition(" ")
-            if kind == "attr":
-                key, _, values = rest.partition(" = ")
-                self.attrs[key.strip()] = values.split()
-            elif kind == "resource":
-                self.resources.append(rest.strip())
-            elif kind == "event":
-                self.events.append(rest.strip())
-            elif kind == "event_attr":
-                self.event_attrs.add(rest.strip())
+            if prefix:
+                for key in VALUE_OF[prefix.group(1)]:
+                    values.setdefault(key, []).append(value)
+            elif name.startswith("resource"):
+                self.resources.append(value)
+            elif name.startswith("event"):
+                self.events.append(value)
+            elif name == "pageDuration":
+                self.event_attrs.add(value)
             else:
-                raise SystemExit(f"{CONVENTIONS}:{number}: unknown declaration {line!r}")
+                self.attrs[value] = []
+        self.events.extend(SEMCONV_EVENTS)
+        for key in self.attrs:
+            if key in BOOLEAN_ATTRS:
+                self.attrs[key] = ["true", "false"]
+            elif key in values:
+                self.attrs[key] = values.pop(key)
+        if values:
+            raise SystemExit(f"{CONVENTIONS}: values of attributes that are not declared: {sorted(values)}")
+        if not self.attrs or not self.events:
+            raise SystemExit(f"{CONVENTIONS}: no conventions found; did its layout change?")
         self.columns = {}  # OpenObserve column / Prometheus label -> key
         for key in self.attrs:
             column = key.replace(".", "_")
@@ -116,25 +153,17 @@ def expand(text, macros):
     return re.sub(r"\{ +", "{", re.sub(r" +\}", "}", text))
 
 
-def kept(item, conventions):
-    return all(r in conventions.attrs for r in item.get("requires", []))
-
-
 def prepare(spec, conventions):
-    """The spec with macros expanded and the panels and columns without their attributes gone."""
+    """The spec with macros expanded."""
     macros = spec.get("macros", {})
     dashboards = []
     for dash in spec["dashboard"]:
         panels = []
         for panel in dash["panels"]:
-            if not kept(panel, conventions):
-                continue
             panel = dict(panel)
-            panel["columns"] = [dict(c) for c in panel["columns"] if kept(c, conventions)]
-            promql = [dict(p) for p in panel.get("promql", []) if kept(p, conventions)]
-            extra = "".join(f", {c['select']}" for c in panel["columns"] if "select" in c)
-            sql = panel["sql"].replace("{extra_columns}", extra)
-            panel["sql"] = expand(sql, macros)
+            panel["columns"] = [dict(c) for c in panel["columns"]]
+            promql = [dict(p) for p in panel.get("promql", [])]
+            panel["sql"] = expand(panel["sql"], macros)
             for target in promql:
                 target["expr"] = expand(target["expr"], macros)
             panel["promql"] = promql

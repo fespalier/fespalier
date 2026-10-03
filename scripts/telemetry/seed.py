@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sends a seeded, reproducible session of fespalier telemetry to a collector (OTLP/JSON over HTTP).
 
-The spans and logs use only the names in the conventions (scripts/telemetry/conventions_v1.txt);
+The spans and logs use only the names in the conventions (packages/fespalier_otel/lib/src/conventions.dart);
 scripts/test_telemetry.py checks that. `expected()` is what each count panel must show for the
 seed, which the smoke test (smoke.py) compares with both backends.
 

@@ -122,7 +122,8 @@ fn main() {
     let result = (|| {
         // The stack is per user, not per app: it needs no project.
         if let Cmd::Telemetry(cmd) = &cli.cmd {
-            return telemetry_stack::run(cmd);
+            let project = find_project(cli.project.clone()).ok();
+            return telemetry_stack::run(cmd, project.as_deref());
         }
         let project = find_project(cli.project)?;
         match cli.cmd {

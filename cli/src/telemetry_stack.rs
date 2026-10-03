@@ -19,6 +19,8 @@ use std::process::{Command, Stdio};
 use anyhow::{Result, bail};
 use clap::Args;
 
+use crate::config::Config;
+
 /// Every file of the stack, by its path in the stack folder. A test compares this list with the
 /// files under `cli/templates/telemetry`, so a new file cannot be forgotten.
 pub const FILES: &[(&str, &str)] = &[
@@ -126,8 +128,20 @@ pub struct TelemetryCmd {
     pub reset: bool,
 }
 
-/// `fsp telemetry`. Needs no project: the stack is per user, not per app.
-pub fn run(cmd: &TelemetryCmd) -> Result<()> {
+/// W1: printed after a successful start when the project `fsp` runs in (the working folder or
+/// `--project`) has `telemetry` off, so the app would send the stack nothing.
+const W1: &str = "⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (README, \"Telemetry\")";
+
+/// Whether W1 applies: a project was found and its config loads with `telemetry` off. A config
+/// that does not load is not this command's business.
+fn app_sends_nothing(project: Option<&Path>) -> bool {
+    project.is_some_and(|p| Config::load(p).is_ok_and(|config| !config.telemetry))
+}
+
+/// `fsp telemetry`. Needs no project: the stack is per user, not per app. [`project`] is the
+/// project found from the working folder or `--project`, if any; it only decides whether W1 is
+/// printed.
+pub fn run(cmd: &TelemetryCmd, project: Option<&Path>) -> Result<()> {
     let Some(dir) = resolve_dir(cmd.dir.as_deref(), &|name| std::env::var(name).ok()) else {
         bail!("fsp telemetry can't find your home folder: pass --dir or set FSP_TELEMETRY_DIR");
     };
@@ -147,6 +161,9 @@ pub fn run(cmd: &TelemetryCmd) -> Result<()> {
         write_dart_defines(&dir, ip, &setting(&env, "FSP_OTLP_HTTP_PORT"))?;
     }
     start(&dir, cmd.grafana, lan.as_deref())?;
+    if app_sends_nothing(project) {
+        eprintln!("{W1}");
+    }
     let env = read_env(&dir);
     eprintln!(
         "{}",

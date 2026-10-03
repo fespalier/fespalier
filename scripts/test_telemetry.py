@@ -5,8 +5,7 @@
 
 1. The generated dashboards, fields.json and the collector's dimension list are fresh.
 2. Every attribute and value a query, a collector dimension or fields.json names is in the telemetry
-   conventions (scripts/telemetry/conventions_v1.txt, a copy of contract v1 until
-   packages/fespalier_otel's conventions.dart is on main).
+   conventions (packages/fespalier_otel/lib/src/conventions.dart, read by build_dashboards.py).
 3. The OpenObserve and Grafana JSON have the structure each server needs, and the same panels.
 4. compose.yaml pins every image by tag and digest, binds ports to loopback, and agrees with
    env.example; `docker compose config` accepts it (skipped without Docker Compose, unless
@@ -48,8 +47,7 @@ COMPOSE = STACK / "compose.yaml"
 IMPORTER = STACK / "openobserve/import.py"
 
 print(
-    "telemetry conventions: read from scripts/telemetry/conventions_v1.txt "
-    "(a copy of contract v1; the source of truth will be packages/fespalier_otel's conventions.dart)",
+    "telemetry conventions: read from packages/fespalier_otel/lib/src/conventions.dart",
     file=sys.stderr,
 )
 
@@ -109,6 +107,24 @@ class Fresh(unittest.TestCase):
 class Conventions(unittest.TestCase):
     def setUp(self):
         self.conventions, _, self.dashboards = load()
+
+    def test_the_conventions_are_read_from_the_dart_file(self):
+        c = self.conventions
+        self.assertEqual(
+            ["navigate", "guard", "redirect", "data", "action", "deferred"],
+            c.attrs["fespalier.operation"],
+        )
+        self.assertEqual(["ok", "error"], c.attrs["fespalier.action.result"])
+        self.assertEqual(["ok", "error"], c.attrs["fespalier.deferred.result"])
+        self.assertEqual(["true", "false"], c.attrs["fespalier.async"])
+        self.assertEqual([], c.attrs["fespalier.route"])
+        self.assertIn("fespalier.telemetry.version", c.resources)
+        self.assertIn("service.name", c.resources)
+        self.assertIn("fespalier.page.leave", c.events)
+        self.assertIn("exception", c.events)
+        self.assertIn("fespalier.page.duration_ms", c.event_attrs)
+        self.assertNotIn("fespalier.data.attempt", c.attrs)
+        self.assertNotIn("fespalier.version", c.attrs)
 
     def lint(self, text, labels_only=False):
         """The names in a SQL query or PromQL expression that the conventions do not have."""
@@ -188,48 +204,6 @@ class Conventions(unittest.TestCase):
                 self.assertIn(event["name"], self.conventions.events)
         resource = {a["key"] for a in seed.resource()["attributes"]}
         self.assertLessEqual(resource, set(self.conventions.resources))
-
-    def test_every_new_name_in_the_spec_is_declared_in_requires(self):
-        maximal = bd.load_conventions()
-        proposed = set()
-        with open(bd.SPEC, "rb") as handle:
-            spec = bd.tomllib.load(handle)
-        for dash in spec["dashboard"]:
-            for panel in dash["panels"]:
-                proposed |= set(panel.get("requires", []))
-                for item in panel.get("columns", []) + panel.get("promql", []):
-                    proposed |= set(item.get("requires", []))
-        self.assertTrue(proposed)
-        for key in proposed:
-            self.assertNotIn(key, maximal.attrs, f"{key} is in the conventions now: drop its `requires`")
-            maximal.attrs[key] = []
-            maximal.columns[key.replace(".", "_")] = key
-        _, _, full = load(maximal)
-        for dash in full:
-            for panel in dash["panels"]:
-                texts = [panel["sql"]] + [t["expr"] for t in panel["promql"]]
-                names = {n for text in texts for n in bd.LABEL.findall(text)}
-                new = {n for n in names if n in maximal.columns and maximal.columns[n] in proposed}
-                declared = {k.replace(".", "_") for k in panel.get("requires", [])}
-                for item in panel["columns"] + panel["promql"]:
-                    declared |= {k.replace(".", "_") for k in item.get("requires", [])}
-                self.assertLessEqual(new, declared, f"{dash['id']}/{panel['id']} uses an undeclared name")
-
-    def test_conditional_panels_appear_when_the_conventions_have_the_attributes(self):
-        ids = {p["id"] for d in self.dashboards for p in d["panels"]}
-        self.assertTrue({"retries", "cache_hits", "rollbacks"}.isdisjoint(ids))
-        richer = bd.load_conventions()
-        for key in ("fespalier.data.attempt", "fespalier.data.source", "fespalier.action.rolled_back", "fespalier.action.invalid"):
-            richer.attrs[key] = []
-            richer.columns[key.replace(".", "_")] = key
-        _, _, full = load(richer)
-        ids = {p["id"] for d in full for p in d["panels"]}
-        self.assertTrue({"retries", "cache_hits", "rollbacks"} <= ids)
-        by_file = next(p for d in full for p in d["panels"] if p["id"] == "by_file")
-        self.assertIn("AS retries", by_file["sql"])
-        self.assertEqual(
-            len([c for c in by_file["columns"] if c["axis"] == "y"]), len(by_file["promql"])
-        )
 
 
 class Structure(unittest.TestCase):
@@ -316,7 +290,6 @@ class Structure(unittest.TestCase):
             for panel in dash["panels"]:
                 for text in [panel["sql"]] + [t["expr"] for t in panel["promql"]]:
                     self.assertNotRegex(text.replace("{{", "").replace("}}", ""), r"\{(?!\})[a-z_:|]+\}")
-                    self.assertNotIn("{extra_columns}", text)
                 self.assertIn("$service", panel["sql"])
 
     def test_the_seed_expects_a_count_for_every_count_stat(self):

@@ -1796,10 +1796,21 @@ exit 9
 /// `<root>/stack`. Returns success, stderr and the docker calls, with the stack path as `STACK`.
 #[cfg(unix)]
 fn telemetry(root: &Path, args: &[&str], extra: &[(&str, &str)]) -> (bool, String, Vec<String>) {
-    let bin = fake_docker(root);
-    let log = root.join("docker.log");
     let work = root.join("work");
     fs::create_dir_all(&work).unwrap();
+    telemetry_from(root, &work, args, extra)
+}
+
+/// [`telemetry`] run from `work` instead of a folder with no project.
+#[cfg(unix)]
+fn telemetry_from(
+    root: &Path,
+    work: &Path,
+    args: &[&str],
+    extra: &[(&str, &str)],
+) -> (bool, String, Vec<String>) {
+    let bin = fake_docker(root);
+    let log = root.join("docker.log");
     let stack = root.join("stack");
     let mut all = vec![
         ("PATH", bin.to_str().unwrap()),
@@ -1807,7 +1818,7 @@ fn telemetry(root: &Path, args: &[&str], extra: &[(&str, &str)]) -> (bool, Strin
         ("FSP_TELEMETRY_DIR", stack.to_str().unwrap()),
     ];
     all.extend_from_slice(extra);
-    let (ok, out, err) = fsp_full(&work, &[&["telemetry"], args].concat(), &all);
+    let (ok, out, err) = fsp_full(work, &[&["telemetry"], args].concat(), &all);
     assert!(out.is_empty(), "stdout: {out}");
     let stack = stack.to_str().unwrap();
     let calls = fs::read_to_string(&log)
@@ -1949,6 +1960,83 @@ fn telemetry_starts_the_stack_and_waits_for_the_importer() {
     );
     assert_eq!(calls[2], "STACK|compose up -d|bind=|cors=");
     assert_eq!(calls[3], "STACK|compose wait dashboards|bind=|cors=");
+}
+
+const TELEMETRY_W1: &str = "⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (README, \"Telemetry\")\n";
+
+#[cfg(unix)]
+#[test]
+fn telemetry_warns_when_the_project_it_runs_in_has_telemetry_off() {
+    let root = tempfile::tempdir().unwrap();
+    let app = project();
+    let (ok, err, _) = telemetry_from(root.path(), app.path(), &[], &[]);
+    assert!(ok, "{err}");
+    // After the import, before the summary; the exit code is 0 and the summary is as ever.
+    assert!(
+        err.starts_with(&format!(
+            "{TELEMETRY_W1}✓ telemetry stack running: 6 dashboards in OpenObserve"
+        )),
+        "{err}"
+    );
+    assert_eq!(err.matches('⚠').count(), 1, "{err}");
+
+    // A folder below the project finds it too.
+    let below = app.path().join("lib/app");
+    let (ok, err, _) = telemetry_from(root.path(), &below, &[], &[]);
+    assert!(ok && err.starts_with(TELEMETRY_W1), "{err}");
+
+    // `--project` names a project from anywhere else.
+    let elsewhere = tempfile::tempdir().unwrap();
+    let project_dir = app.path().to_str().unwrap();
+    let (ok, err, _) = telemetry_from(
+        root.path(),
+        elsewhere.path(),
+        &["--project", project_dir],
+        &[],
+    );
+    assert!(ok && err.starts_with(TELEMETRY_W1), "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_does_not_warn_with_telemetry_on_nor_outside_a_project() {
+    let root = tempfile::tempdir().unwrap();
+    let app = project();
+    fs::write(
+        app.path().join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  telemetry: true\n",
+    )
+    .unwrap();
+    let (ok, err, _) = telemetry_from(root.path(), app.path(), &[], &[]);
+    assert!(ok && !err.contains('⚠'), "{err}");
+    assert!(err.starts_with("✓ telemetry stack running"), "{err}");
+
+    // No project above the working folder: nothing to warn about.
+    let (ok, err, _) = telemetry(root.path(), &[], &[]);
+    assert!(ok && !err.contains('⚠'), "{err}");
+
+    // A project whose config does not load is not this command's business.
+    fs::write(
+        app.path().join("pubspec.yaml"),
+        "name: demo\nfespalier:\n  nope: 1\n",
+    )
+    .unwrap();
+    let (ok, err, _) = telemetry_from(root.path(), app.path(), &[], &[]);
+    assert!(ok && !err.contains('⚠'), "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn telemetry_warns_only_on_a_start() {
+    let root = tempfile::tempdir().unwrap();
+    let app = project();
+    // A stack to stop: the files from a `--no-start` run (which does not warn either).
+    let (ok, err, _) = telemetry_from(root.path(), app.path(), &["--no-start"], &[]);
+    assert!(ok && !err.contains('⚠'), "{err}");
+    let (ok, err, _) = telemetry_from(root.path(), app.path(), &["--stop"], &[]);
+    assert!(ok && !err.contains('⚠'), "{err}");
+    let (ok, err, _) = telemetry_from(root.path(), app.path(), &["--no-start"], &[]);
+    assert!(ok && !err.contains('⚠'), "{err}");
 }
 
 #[cfg(unix)]

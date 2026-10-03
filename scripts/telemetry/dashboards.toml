@@ -13,14 +13,10 @@
 #   width        quarter | half | full   (stat: quarter; anything else: half)
 #   unit         "ms" for values in milliseconds
 #   stream_type  traces (default) | logs
-#   requires     attributes of a proposed contract addition; the panel is left out while the
-#                conventions do not have them (scripts/telemetry/conventions_v1.txt)
 #   sql          one query; every alias named in `columns` appears as "AS <alias>"
 #   columns      name, axis (x | y | breakdown; default y), time = true on the time axis,
-#                requires, oo_only = true for a column Grafana cannot show (a message, a trace id),
-#                select = the SQL for a column that needs one of `requires` (it goes where the
-#                sql has {extra_columns}, and only while the column is kept)
-#   promql       the Grafana targets: expr, legend, requires; a table has one per y column that is
+#                oo_only = true for a column Grafana cannot show (a message, a trace id)
+#   promql       the Grafana targets: expr, legend; a table has one per y column that is
 #                not oo_only, in the same order, plus extra = true for a Grafana-only count column
 #   rename       Grafana tables: label name -> column title
 #   grafana      false: the panel is OpenObserve-only
@@ -242,37 +238,17 @@ description = "How data.dart loads behave: volume, failures, load time, and whic
   promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="disposed" }[$__range]))' }]
 
   [[dashboard.panels]]
-  id = "retries"
-  title = "Retries"
-  type = "stat"
-  requires = ["fespalier.data.attempt"]
-  sql = "SELECT COUNT(*) AS retries {from} WHERE fespalier_operation = 'data' AND fespalier_data_attempt <> '1' AND {svc}"
-  columns = [{ name = "retries" }]
-  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_attempt!="1" }[$__range]))' }]
-
-  [[dashboard.panels]]
-  id = "cache_hits"
-  title = "Cache hits"
-  type = "stat"
-  requires = ["fespalier.data.source"]
-  sql = "SELECT COUNT(*) AS cache_hits {from} WHERE fespalier_operation = 'data' AND fespalier_data_source = 'cache' AND {svc}"
-  columns = [{ name = "cache_hits" }]
-  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_source="cache" }[$__range]))' }]
-
-  [[dashboard.panels]]
   id = "by_file"
   title = "By data.dart"
   type = "table"
   width = "full"
-  sql = """SELECT fespalier_file AS file, fespalier_route AS route, COUNT(*) AS loads, SUM(CASE WHEN fespalier_data_state = 'error' THEN 1 ELSE 0 END) AS errors, SUM(CASE WHEN fespalier_data_state = 'disposed' THEN 1 ELSE 0 END) AS abandoned{extra_columns}, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE fespalier_operation = 'data' AND {svc} GROUP BY file, route ORDER BY loads DESC"""
+  sql = """SELECT fespalier_file AS file, fespalier_route AS route, COUNT(*) AS loads, SUM(CASE WHEN fespalier_data_state = 'error' THEN 1 ELSE 0 END) AS errors, SUM(CASE WHEN fespalier_data_state = 'disposed' THEN 1 ELSE 0 END) AS abandoned, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE fespalier_operation = 'data' AND {svc} GROUP BY file, route ORDER BY loads DESC"""
   columns = [
     { name = "file", axis = "x" },
     { name = "route", axis = "x" },
     { name = "loads" },
     { name = "errors" },
     { name = "abandoned" },
-    { name = "retries", requires = ["fespalier.data.attempt"], select = "SUM(CASE WHEN fespalier_data_attempt <> '1' THEN 1 ELSE 0 END) AS retries" },
-    { name = "cache_hits", requires = ["fespalier.data.source"], select = "SUM(CASE WHEN fespalier_data_source = 'cache' THEN 1 ELSE 0 END) AS cache_hits" },
     { name = "p50_ms" },
     { name = "p95_ms" },
   ]
@@ -281,8 +257,6 @@ description = "How data.dart loads behave: volume, failures, load time, and whic
     { expr = "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data} }[$__range]))" },
     { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="error" }[$__range]))' },
     { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="disposed" }[$__range]))' },
-    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_attempt!="1" }[$__range]))', requires = ["fespalier.data.attempt"] },
-    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_source="cache" }[$__range]))', requires = ["fespalier.data.source"] },
     { expr = "histogram_quantile(0.5, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
     { expr = "histogram_quantile(0.95, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
   ]
@@ -337,15 +311,6 @@ description = "How action.dart writes behave: volume, failures and latency per a
   promql = [{ expr = "histogram_quantile(0.95, sum by (le) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" }]
 
   [[dashboard.panels]]
-  id = "rollbacks"
-  title = "Optimistic rollbacks"
-  type = "stat"
-  requires = ["fespalier.action.rolled_back"]
-  sql = "SELECT COUNT(*) AS rollbacks {from} WHERE fespalier_operation = 'action' AND fespalier_action_rolled_back = 'true' AND {svc}"
-  columns = [{ name = "rollbacks" }]
-  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_rolled_back="true" }[$__range]))' }]
-
-  [[dashboard.panels]]
   id = "rate"
   title = "Runs by action"
   type = "bars"
@@ -366,14 +331,12 @@ description = "How action.dart writes behave: volume, failures and latency per a
   title = "By action"
   type = "table"
   width = "full"
-  sql = """SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, SUM(CASE WHEN fespalier_action_result = 'error' THEN 1 ELSE 0 END) AS failures{extra_columns}, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE fespalier_operation = 'action' AND {svc} GROUP BY action, file ORDER BY runs DESC"""
+  sql = """SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, SUM(CASE WHEN fespalier_action_result = 'error' THEN 1 ELSE 0 END) AS failures, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE fespalier_operation = 'action' AND {svc} GROUP BY action, file ORDER BY runs DESC"""
   columns = [
     { name = "action", axis = "x" },
     { name = "file", axis = "x" },
     { name = "runs" },
     { name = "failures" },
-    { name = "invalid", requires = ["fespalier.action.invalid"], select = "SUM(CASE WHEN fespalier_action_invalid = 'true' THEN 1 ELSE 0 END) AS invalid" },
-    { name = "rollbacks", requires = ["fespalier.action.rolled_back"], select = "SUM(CASE WHEN fespalier_action_rolled_back = 'true' THEN 1 ELSE 0 END) AS rollbacks" },
     { name = "p50_ms" },
     { name = "p95_ms" },
   ]
@@ -381,8 +344,6 @@ description = "How action.dart writes behave: volume, failures and latency per a
   promql = [
     { expr = "sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action} }[$__range]))" },
     { expr = 'sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_result="error" }[$__range]))' },
-    { expr = 'sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_invalid="true" }[$__range]))', requires = ["fespalier.action.invalid"] },
-    { expr = 'sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_rolled_back="true" }[$__range]))', requires = ["fespalier.action.rolled_back"] },
     { expr = "histogram_quantile(0.5, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" },
     { expr = "histogram_quantile(0.95, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" },
   ]

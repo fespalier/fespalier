@@ -15,6 +15,17 @@ final List<String> log = [];
 
 final Provider<int> three = Provider<int>((ref) => 3);
 
+/// What a hook writes down by changing a provider.
+class Views extends Notifier<List<String>> {
+  @override
+  List<String> build() => const [];
+
+  void add(String view) => state = [...state, view];
+}
+
+final NotifierProvider<Views, List<String>> views =
+    NotifierProvider<Views, List<String>>(Views.new);
+
 /// The hooks of the observe.dart of the whole app: they log the path they were bound for, which
 /// is what a generated hook gets as `uri`.
 List<RouteHooks> everywhere(Uri uri) => [
@@ -437,6 +448,23 @@ void main() {
         ],
       );
       expect(read, 3);
+    });
+
+    testWidgets('a hook may change another provider', (tester) async {
+      await boot(
+        tester,
+        hooks: (uri) => [
+          RouteHooks(
+            'observe.dart',
+            onEnter: (ref) => ref.read(views.notifier).add('enter ${uri.path}'),
+            onLeave: (ref) => ref.read(views.notifier).add('leave ${uri.path}'),
+          ),
+        ],
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(Scaffold)),
+      );
+      expect(container.read(views), ['enter /a']);
     });
 
     testWidgets('a hook that throws is reported, and the next one still runs', (

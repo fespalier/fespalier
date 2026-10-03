@@ -412,12 +412,18 @@ final class RouterWatch {
       if (context == null) return;
       try {
         final container = ProviderScope.containerOf(context, listen: false);
+        // The hook gets the `Ref` of a throwaway provider, but runs once that provider is
+        // built: Riverpod forbids changing another provider while one is being built, and a
+        // hook that notifies a notifier (`ref.read(views.notifier).add(...)`) must be able to.
+        Ref? captured;
         final sub = container.listen<void>(
-          Provider.autoDispose<void>(hook, retry: _noRetry),
+          Provider.autoDispose<void>((ref) => captured = ref, retry: _noRetry),
           (_, _) {},
         );
         try {
           sub.read();
+          final ref = captured;
+          if (ref != null) hook(ref);
         } finally {
           sub.close();
         }

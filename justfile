@@ -6,10 +6,10 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # The Dart package, the DevTools extension and every example: pub get, dart format, flutter analyze, flutter test.
-dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel examples/shop examples/features examples/tabs examples/minimal examples/telemetry"
+dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth"
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
-examples := "shop features tabs minimal telemetry"
+examples := "shop features tabs minimal telemetry auth"
 
 # List recipes
 default:

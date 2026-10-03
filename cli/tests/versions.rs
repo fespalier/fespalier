@@ -175,39 +175,50 @@ fn the_runtime_knows_its_version() {
     );
 }
 
+/// The companion packages that are released with fespalier (the OpenTelemetry adapter, and the
+/// ones that follow it): each has the version of the CLI and pins fespalier by a `ref: v…`.
+const COMPANIONS: [&str; 3] = [
+    "packages/fespalier_otel/pubspec.yaml",
+    "packages/fespalier_auth/pubspec.yaml",
+    "packages/fespalier_sign_keypair/pubspec.yaml",
+];
+
 #[test]
-fn the_otel_adapter_has_the_cli_version() {
-    // The adapter is released with fespalier: its own version, and the tag of the fespalier it
+fn the_companion_packages_have_the_cli_version() {
+    // A companion is released with fespalier: its own version, and the tag of the fespalier it
     // depends on (the same repository dependency an app writes, so the two resolve to one package).
+    // A dependency that is not on pub.dev and is not fespalier's (a package pinned by commit) must
+    // never be written as `ref: v…`: every one in these files is read as fespalier's own version.
     let cargo = env!("CARGO_PKG_VERSION");
-    let file = "packages/fespalier_otel/pubspec.yaml";
-    let text = read(file);
-    assert_eq!(
-        pubspec_version(&text),
-        cargo,
-        "{file} `version:` must equal cli/Cargo.toml"
-    );
-    let annotated = annotated_lines(&text);
-    let version_line = text
-        .lines()
-        .position(|l| l.starts_with("version:"))
-        .expect("the adapter has a version")
-        + 1;
-    assert!(
-        annotated.contains(&version_line),
-        "{file}:{version_line}: the version is not annotated"
-    );
-    let refs = versions_after(&text, "ref: v");
-    assert!(
-        !refs.is_empty(),
-        "{file} no longer pins fespalier with a `ref: v…`"
-    );
-    for (line, v) in refs {
-        assert_eq!(v, cargo, "{file}:{line}: `ref: v{v}`");
-        assert!(
-            annotated.contains(&line),
-            "{file}:{line}: the ref is not annotated"
+    for file in COMPANIONS {
+        let text = read(file);
+        assert_eq!(
+            pubspec_version(&text),
+            cargo,
+            "{file} `version:` must equal cli/Cargo.toml"
         );
+        let annotated = annotated_lines(&text);
+        let version_line = text
+            .lines()
+            .position(|l| l.starts_with("version:"))
+            .unwrap_or_else(|| panic!("{file} has a version"))
+            + 1;
+        assert!(
+            annotated.contains(&version_line),
+            "{file}:{version_line}: the version is not annotated"
+        );
+        let refs = versions_after(&text, "ref: v");
+        assert!(
+            !refs.is_empty(),
+            "{file} no longer pins fespalier with a `ref: v…`"
+        );
+        for (line, v) in refs {
+            assert_eq!(v, cargo, "{file}:{line}: `ref: v{v}`");
+            assert!(
+                annotated.contains(&line),
+                "{file}:{line}: the ref is not annotated"
+            );
+        }
     }
 }
 
@@ -298,6 +309,8 @@ fn the_readmes_pin_this_version() {
         "README.md",
         "packages/fespalier/README.md",
         "packages/fespalier_otel/README.md",
+        "packages/fespalier_auth/README.md",
+        "packages/fespalier_sign_keypair/README.md",
     ] {
         let text = read(file);
         for marker in MARKERS {
@@ -327,6 +340,10 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         "packages/fespalier/README.md",
         "packages/fespalier_otel/pubspec.yaml",
         "packages/fespalier_otel/README.md",
+        "packages/fespalier_auth/pubspec.yaml",
+        "packages/fespalier_auth/README.md",
+        "packages/fespalier_sign_keypair/pubspec.yaml",
+        "packages/fespalier_sign_keypair/README.md",
         // the agent skills' install pins (skills/README.md, "Versions")
         "skills/fespalier/SKILL.md",
         "skills/fespalier-migration/references/go-router-adoption.md",

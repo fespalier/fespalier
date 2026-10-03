@@ -44,6 +44,17 @@ abstract class FespalierTelemetry {
   /// the router is built, so that the initial navigation is reported too.
   static void install(FespalierTelemetry? sink) => _current = sink;
 
+  /// Starts an operation with the installed sink, for an adapter package such as
+  /// `fespalier_auth` (since 0.9.0): fespalier's own call sites use the internal functions of this
+  /// library. Returns what the sink's [start] returned, to hand to [finish]; null when no sink
+  /// is installed (the whole cost is one null check) or when the sink threw (printed once).
+  static Object? begin(TelemetryStart start) => telemetryBegin(start);
+
+  /// Ends the operation [token] came from (what [begin] returned), for an adapter package
+  /// (since 0.9.0). Does nothing without a sink; a sink that throws is printed once and dropped.
+  static void finish(Object? token, TelemetryEnd end) =>
+      telemetryFinish(token, end);
+
   /// An operation started. Returns a token that fespalier hands back to [end] (and, for a
   /// navigation, to [page] and as [TelemetryStart.parent] of what runs during it); null is fine.
   Object? start(TelemetryStart start) => null;
@@ -75,6 +86,9 @@ enum TelemetryOp {
 
   /// The code of a deferred page loaded.
   deferred,
+
+  /// `fespalier_auth` (since 0.9.0) restored, signed in, refreshed or signed out a session.
+  auth,
 }
 
 /// What started. [op] says which fields are set.
@@ -88,6 +102,10 @@ final class TelemetryStart {
     this.uri,
     this.parent,
     this.keyed = false,
+    this.authStep,
+    this.authBackend,
+    this.authTrigger,
+    this.authDpop = false,
   });
 
   /// Which kind of operation started.
@@ -112,6 +130,18 @@ final class TelemetryStart {
   /// data: whether the provider is a family (keyed by segments or query parameters). The key
   /// itself is never reported.
   final bool keyed;
+
+  /// auth (since 0.9.0): which step, `restore`, `sign_in`, `refresh` or `sign_out`.
+  final String? authStep;
+
+  /// auth: the backend's short constant name (`oidc`, `firebase`), never a URL or an id.
+  final String? authBackend;
+
+  /// auth, on a refresh: what asked for it, `expired`, `unauthorized` or `forced`.
+  final String? authTrigger;
+
+  /// auth: whether the backend binds its tokens with DPoP.
+  final bool authDpop;
 }
 
 /// The values of [TelemetryEnd.outcome]. They are the contract values of the telemetry
@@ -146,6 +176,20 @@ abstract final class TelemetryOutcome {
 
   /// data: the provider was disposed before its `Future` settled.
   static const String disposed = 'disposed';
+
+  /// auth, restore: nothing was stored (since 0.9.0).
+  static const String none = 'none';
+
+  /// auth, restore: the stored refresh token had expired, or the device key it was bound to is
+  /// gone (since 0.9.0).
+  static const String expired = 'expired';
+
+  /// auth: the server refused (wrong credentials, or a refresh token it no longer accepts); an
+  /// expected outcome, not an error (since 0.9.0).
+  static const String rejected = 'rejected';
+
+  /// auth, sign-in: the user closed the sign-in; an expected outcome (since 0.9.0).
+  static const String cancelled = 'cancelled';
 }
 
 /// How an operation ended.

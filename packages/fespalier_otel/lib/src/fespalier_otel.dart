@@ -144,6 +144,18 @@ final class FespalierOtel extends FespalierTelemetry {
             FespalierConventions.file: ?start.file,
           },
         ),
+        // Only the step, the backend's constant name, the trigger and whether tokens are bound:
+        // never a token, an id, a claim, an e-mail or a URL.
+        TelemetryOp.auth => (
+          'auth ${start.authStep}',
+          <String, Object>{
+            FespalierConventions.operation: FespalierConventions.opAuth,
+            FespalierConventions.authOperation: ?start.authStep,
+            FespalierConventions.authBackend: ?start.authBackend,
+            FespalierConventions.authTrigger: ?start.authTrigger,
+            FespalierConventions.authDpop: start.authDpop,
+          },
+        ),
       };
       final parent = start.parent;
       final span = tracer.startSpan(
@@ -166,7 +178,16 @@ final class FespalierOtel extends FespalierTelemetry {
     try {
       _describe(token, end);
       final error = end.error;
-      if (end.outcome == TelemetryOutcome.error && error != null) {
+      if (end.outcome == TelemetryOutcome.error &&
+          error != null &&
+          token.op == TelemetryOp.auth) {
+        // An auth error's text may name a host or an endpoint: the class is all that is kept.
+        span.setStringAttribute<String>(
+          FespalierConventions.errorType,
+          error.runtimeType.toString(),
+        );
+        span.setStatus(SpanStatusCode.Error);
+      } else if (end.outcome == TelemetryOutcome.error && error != null) {
         span.setStringAttribute<String>(
           FespalierConventions.errorType,
           error.runtimeType.toString(),
@@ -223,6 +244,12 @@ final class FespalierOtel extends FespalierTelemetry {
           FespalierConventions.deferredResult,
           end.outcome,
         );
+      case TelemetryOp.auth:
+        span.setStringAttribute<String>(
+          FespalierConventions.authResult,
+          end.outcome,
+        );
+        span.setBoolAttribute(FespalierConventions.isAsync, end.isAsync);
     }
   }
 

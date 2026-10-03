@@ -59,10 +59,18 @@ OTEL_ZONE_RESOURCES = [
 ]
 SEMCONV_EVENTS = ["exception"]
 SEMCONV_EVENT_ATTRS = ["exception.type", "exception.message", "exception.stacktrace"]
-BOOLEAN_ATTRS = {"fespalier.async", "fespalier.navigation.redirected", "fespalier.data.keyed"}
+BOOLEAN_ATTRS = {
+    "fespalier.async",
+    "fespalier.navigation.redirected",
+    "fespalier.data.keyed",
+    "fespalier.auth.dpop",
+}
 # A constant named `<prefix><Value>` is a value of the attribute on the right; one named
 # `result<Value>` is a value of both result attributes.
 VALUE_OF = {
+    "authOp": ["fespalier.auth.operation"],
+    "authResult": ["fespalier.auth.result"],
+    "authTrigger": ["fespalier.auth.trigger"],
     "op": ["fespalier.operation"],
     "kind": ["fespalier.navigation.kind"],
     "outcome": ["fespalier.navigation.outcome"],
@@ -83,7 +91,7 @@ class Conventions:
         self.event_attrs = set(SEMCONV_EVENT_ATTRS)
         values = {}  # attribute key -> its values, in declaration order
         for name, value in DART_CONST.findall(text):
-            prefix = re.match(r"(op|kind|outcome|decision|state|result)[A-Z]", name)
+            prefix = re.match(r"(authOp|authResult|authTrigger|op|kind|outcome|decision|state|result)[A-Z]", name)
             if name in ("version", "scope", "spanNavigateNotFound"):
                 continue
             if prefix:

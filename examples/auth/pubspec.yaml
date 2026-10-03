@@ -1,0 +1,45 @@
+name: auth
+description: fespalier example — signed-in routes with fespalier_auth, with guards, a sign-in form, lazy single-flight refresh, an API client and OpenID Connect with Keycloak.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  # What the demo server and backend read the time from, so a test's fake clock ages the tokens.
+  clock: ^1.1.1
+  # The demo server checks PKCE (S256) the way Keycloak does.
+  crypto: ^3.0.6
+  flutter:
+    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+  fespalier_auth:
+    path: ../../packages/fespalier_auth
+  # DPoP (--dart-define=DPOP=true): proofs signed by a device key, and verifyDpopProof, which the
+  # demo server checks them with.
+  fespalier_sign_keypair:
+    path: ../../packages/fespalier_sign_keypair
+  # The browser step of OpenID Connect (--dart-define=OIDC_ISSUER=...). A plugin, so it is the
+  # app's dependency and not fespalier_auth's: an app that signs in some other way links none.
+  flutter_web_auth_2: ^5.1.0
+  http: ^1.5.0
+
+dev_dependencies:
+  # restore_test.dart seeds the keychain with its mock.
+  flutter_secure_storage: ">=10.0.0 <12.0.0"
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# fespalier_auth and fespalier_sign_keypair depend on fespalier (and the second on the first) by
+# git, as an app does; here all are the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+  fespalier_auth:
+    path: ../../packages/fespalier_auth
+
+flutter:
+  uses-material-design: true

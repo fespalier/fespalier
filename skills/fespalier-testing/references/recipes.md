@@ -248,6 +248,56 @@ testWidgets('a deferred page, with a router of my own', (tester) async {
 `preload` of a deferred route starts its code as well as its data
 (`ProductRoute(id: 2).preload(ref)`); both are loaded after the same `pump`.
 
+## Signed-in routes (since 0.9.0)
+
+With `package:fespalier_auth`, `fakeAuth` is the `overrides` of `pumpRouter`. The guards, the sign-in form, the
+API call and these tests are a compiling starter in
+[`fespalier-guards`](../../fespalier-guards/references/auth-package.md), whose `test/auth_test.dart` has all
+of the following as running samples.
+
+```dart
+// signed in as ada (an admin), on a fake backend and a memory store: no startup(), no network
+await pumpRouter(
+  tester,
+  AppRoutes.router(initialLocation: '/admin'),
+  overrides: fakeAuth(signedInAs: const AuthUser(id: 'ada', roles: {'admin'})),
+);
+expect(currentLocation(tester), '/admin');
+
+// signed out: a guarded route asks for sign-in, and remembers where
+await pumpRouter(tester, AppRoutes.router(initialLocation: '/orders'), overrides: fakeAuth());
+expect(currentLocation(tester), '/sign-in?from=%2Forders');
+
+// a pending sign-in: the fake backend holds the call on a Completer
+final backend = FakeAuthBackend()..gate = Completer<void>();
+// ...enter text, tap, `await tester.pump()`, look at 'Signing in...', then:
+backend.gate!.complete();
+await tester.pumpAndSettle();
+```
+
+- `fakeAuth({signedInAs, backend, store, apiOrigins, client, tokenLifetime})`: `client` is a `MockClient` for
+  `authHttpClient` (the API calls), `apiOrigins` says which hosts get the token, `tokenLifetime` makes the
+  session expire against the fake clock (call `fakeAuth` inside the test body, where that clock starts).
+- `FakeAuthBackend` counts `signIns`, `refreshes` and `signOuts`, and fails with `signInError` (thrown by the
+  next sign-in: `AuthCancelled()`, `FieldErrors({...})`, `AuthRejected()`) or `refreshError` (every refresh
+  until cleared: `AuthRejected()` ends the session, anything else keeps it).
+- In `fsp test`'s `test/routes/setup.dart`, `List<Override> overrides(String pattern) =>
+fakeAuth(signedInAs: ...)` makes every guarded route render (otherwise a guarded route is skipped).
+- `RecordingTelemetry` sees the `auth` spans: `#2 start auth refresh backend=fake trigger=expired`.
+
+## DPoP proofs (since 0.9.0)
+
+With `package:fespalier_sign_keypair`, a test needs no secure element: `DpopProof(signer: FakeDpopSigner())` is a proof
+maker over a software key from a fixed scalar (the same key and signature on every run; `deleteKey`, which sign-out
+calls, moves to the next key), and `verifyDpopProof(proof, method:, uri:, accessToken:, nonce:, thumbprint:, now:)`
+(from `package:fespalier_sign_keypair/testing.dart`) is what a fake server checks each proof with: it throws a
+`DpopProofInvalid` that names the first check that failed (`htm is GET, not POST`, `ath does not match the access
+token`, `iat is 120 s from now`). It does not remember `jti`s: a fake server keeps a `Set` and refuses a repeat, which is
+how a `RetryClient` under the session client shows up. Call `DpopProof` inside the test body so `clock` is the test's;
+`withClock(Clock.fixed(...), ...)` pins `iat`. The whole story, against the demo server, is `examples/auth/test/dpop_test.dart`
+(a nonce challenge, a clock two minutes behind, a refresh with the same key, a rotated key, `keyLost`); a compiling sample
+is in [`fespalier-guards`](../../fespalier-guards/references/auth-dpop.md).
+
 ## A form and its pending state (since 0.8.1)
 
 A form's save is held on a `Completer` and the test pumps by frames: no timer, no `runAsync`.

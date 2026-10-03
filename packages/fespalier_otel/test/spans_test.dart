@@ -98,6 +98,9 @@ GoRouter router({String initial = '/home'}) {
   return r;
 }
 
+/// The string attribute [key] of [span].
+String? a(Span span, String key) => span.attributes.getString(key);
+
 List<Span> spans(String prefix) => exporter.findSpansStartingWith(prefix);
 
 Span only(String name) {
@@ -396,6 +399,103 @@ void main() {
     });
   });
 
+  group('an auth span (fespalier_auth, since 0.9.0)', () {
+    test(
+      'a refresh: its step, backend, trigger and DPoP, and nothing else',
+      () {
+        final token = FespalierTelemetry.begin(
+          const TelemetryStart(
+            TelemetryOp.auth,
+            authStep: 'refresh',
+            authBackend: 'oidc',
+            authTrigger: 'unauthorized',
+            authDpop: true,
+          ),
+        );
+        FespalierTelemetry.finish(
+          token,
+          const TelemetryEnd(TelemetryOutcome.ok, isAsync: true),
+        );
+        final span = only('auth refresh');
+        expect(span.parentSpanContext?.spanId.isValid ?? false, isFalse);
+        final a = span.attributes;
+        expect(a.getString('fespalier.operation'), 'auth');
+        expect(a.getString('fespalier.auth.operation'), 'refresh');
+        expect(a.getString('fespalier.auth.backend'), 'oidc');
+        expect(a.getString('fespalier.auth.trigger'), 'unauthorized');
+        expect(a.getBool('fespalier.auth.dpop'), true);
+        expect(a.getString('fespalier.auth.result'), 'ok');
+        expect(a.getBool('fespalier.async'), true);
+        expect(span.status, SpanStatusCode.Unset);
+        expect(a.keys.toSet(), {
+          'fespalier.operation',
+          'fespalier.auth.operation',
+          'fespalier.auth.backend',
+          'fespalier.auth.trigger',
+          'fespalier.auth.dpop',
+          'fespalier.auth.result',
+          'fespalier.async',
+        });
+      },
+    );
+
+    test('rejected, cancelled, none and expired are not errors', () {
+      for (final outcome in [
+        TelemetryOutcome.rejected,
+        TelemetryOutcome.cancelled,
+        TelemetryOutcome.none,
+        TelemetryOutcome.expired,
+      ]) {
+        exporter.clear();
+        final token = FespalierTelemetry.begin(
+          const TelemetryStart(
+            TelemetryOp.auth,
+            authStep: 'sign_in',
+            authBackend: 'fake',
+          ),
+        );
+        FespalierTelemetry.finish(token, TelemetryEnd(outcome));
+        final span = only('auth sign_in');
+        expect(span.status, SpanStatusCode.Unset, reason: outcome);
+        expect(a(span, 'fespalier.auth.result'), outcome);
+        expect(a(span, 'fespalier.auth.trigger'), isNull);
+        expect(span.attributes.getBool('fespalier.auth.dpop'), false);
+      }
+    });
+
+    test('an error is an error span with the class, never the text', () {
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(
+          TelemetryOp.auth,
+          authStep: 'refresh',
+          authBackend: 'oidc',
+        ),
+      );
+      FespalierTelemetry.finish(
+        token,
+        TelemetryEnd(
+          TelemetryOutcome.error,
+          isAsync: true,
+          error: const FormatException(
+            'https://sso.example.com/token for ada@example.com',
+          ),
+          stackTrace: StackTrace.current,
+        ),
+      );
+      final span = only('auth refresh');
+      expect(span.status, SpanStatusCode.Error);
+      expect(a(span, 'fespalier.auth.result'), 'error');
+      expect(a(span, 'error.type'), 'FormatException');
+      // The text of an auth error may name a host or an account: nothing of it is exported.
+      expect(span.statusDescription, isNull);
+      expect(span.spanEvents, isNull);
+      expect(
+        span.attributes.toList().map((e) => '${e.value}').join(' '),
+        isNot(anyOf(contains('example.com'), contains('ada'))),
+      );
+    });
+  });
+
   test('a span is exported at once when it ends: no waiting for a timer', () {
     final c = ProviderContainer();
     addTearDown(c.dispose);
@@ -422,6 +522,7 @@ void main() {
       'data',
       'action',
       'deferred',
+      'auth',
     });
     expect(seenKeys, {
       'fespalier.operation',
@@ -443,6 +544,11 @@ void main() {
       'fespalier.action.name',
       'fespalier.action.result',
       'fespalier.deferred.result',
+      'fespalier.auth.operation',
+      'fespalier.auth.result',
+      'fespalier.auth.backend',
+      'fespalier.auth.trigger',
+      'fespalier.auth.dpop',
     });
     expect(seenEvents, {
       'fespalier.page.enter',

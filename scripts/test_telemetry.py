@@ -118,9 +118,19 @@ class Conventions(unittest.TestCase):
     def test_the_conventions_are_read_from_the_dart_file(self):
         c = self.conventions
         self.assertEqual(
-            ["navigate", "guard", "redirect", "data", "action", "deferred"],
+            ["navigate", "guard", "redirect", "data", "action", "deferred", "auth"],
             c.attrs["fespalier.operation"],
         )
+        # fespalier_auth's attributes (since 0.9.0): the prefixed constants are values of their own
+        # attribute, and the attributes themselves keep their keys.
+        self.assertEqual(["restore", "sign_in", "refresh", "sign_out"], c.attrs["fespalier.auth.operation"])
+        self.assertEqual(
+            ["ok", "none", "expired", "rejected", "cancelled", "error"],
+            c.attrs["fespalier.auth.result"],
+        )
+        self.assertEqual(["expired", "unauthorized", "forced"], c.attrs["fespalier.auth.trigger"])
+        self.assertEqual(["true", "false"], c.attrs["fespalier.auth.dpop"])
+        self.assertEqual([], c.attrs["fespalier.auth.backend"])
         self.assertEqual(["ok", "error"], c.attrs["fespalier.action.result"])
         self.assertEqual(["ok", "error"], c.attrs["fespalier.deferred.result"])
         self.assertEqual(["true", "false"], c.attrs["fespalier.async"])

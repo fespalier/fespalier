@@ -909,6 +909,11 @@
                 "type": "value",
                 "value": "deferred",
                 "text": "Code download (deferred page)"
+              },
+              {
+                "type": "value",
+                "value": "auth",
+                "text": "Session (sign-in, refresh, sign-out)"
               }
             ],
             "drilldown": [

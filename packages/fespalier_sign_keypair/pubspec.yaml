@@ -1,0 +1,49 @@
+name: fespalier_sign_keypair
+description: Device-bound sessions for fespalier_auth — DPoP (RFC 9449) proofs signed by a hardware-backed ES256 key in the Secure Enclave or the AndroidKeyStore (flutter-sign-keypair).
+version: 0.8.1 # x-release-please-version
+# Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
+publish_to: 'none'
+homepage: https://github.com/fespalier/fespalier
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_sign_keypair
+issue_tracker: https://github.com/fespalier/fespalier/issues
+
+environment:
+  # flutter_sign_keypair needs Dart 3.12 (Flutter 3.44).
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  clock: ^1.1.1
+  crypto: ^3.0.6
+  # The same repository dependencies an app writes (same url, path and ref), so they resolve to
+  # one package each: a path dependency would resolve "at <sha>" and conflict with the app's tag.
+  fespalier_auth:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_auth
+      ref: v0.8.1 # x-release-please-version
+  flutter:
+    sdk: flutter
+  # Not on pub.dev (publish_to: none), so a git dependency, pinned to a commit: the one of its
+  # v0.1.2. Never a tag here: cli/tests/versions.rs reads every ref that starts with the letter v
+  # in this file as fespalier's own version. Bump it deliberately, after reading the diff.
+  flutter_sign_keypair:
+    git:
+      url: https://github.com/vaam-apps/flutter-sign-keypair
+      ref: c6a513781a3d11fd453268b0776447a45c679b32
+  http_parser: ^4.1.0
+  pointycastle: ^4.0.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  http: ^1.5.0
+
+# In this repository the packages are built against the ones beside them. A dependency's
+# overrides are ignored, so apps never see this.
+dependency_overrides:
+  fespalier:
+    path: ../fespalier
+  fespalier_auth:
+    path: ../fespalier_auth

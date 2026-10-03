@@ -166,6 +166,8 @@
         "README.md#Preloading the data behind a link",
         "README.md#Deferred routes: a page's code on demand",
         "README.md#`action.dart`: typed writes",
+        "README.md#Forms: `form()` and `validate()`",
+        "README.md#Optimistic updates: `optimistic()`",
         "README.md#Design notes",
         "kind:data.dart",
         "kind:action.dart",
@@ -177,7 +179,10 @@
         "packages/fespalier/lib/src/route_data.dart",
         "packages/fespalier/lib/src/route_match.dart",
         "packages/fespalier/lib/src/selected_data.dart",
-        "packages/fespalier/lib/src/action.dart"
+        "packages/fespalier/lib/src/action.dart",
+        "packages/fespalier/lib/src/action_form.dart",
+        "packages/fespalier/lib/src/optimistic.dart",
+        "cli/src/forms.rs"
       ]
     },
     "fespalier-layouts": {

@@ -12,7 +12,7 @@
 //!   remount: never          # default; on_segments or on_location give a page a fresh state when its URL changes (a route.dart sets it per folder)
 //!   deferred: false         # default; true loads each page's code on demand on the web (a route.dart sets it per folder)
 //!   data_retry: inherit     # default; `none` gives generated data() providers `retry: null`
-//!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads
+//!   keep_previous: true     # default; false shows loading.dart whenever data.dart loads (not while an optimistic() write settles)
 //!   push_updates_url: false # default; true puts a `push`ed route's URL in the browser's address bar
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
 //!   semantics_ids: false    # default; true gives each page `Semantics(identifier: 'route:/...')`, for Maestro

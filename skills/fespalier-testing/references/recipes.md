@@ -247,3 +247,22 @@ testWidgets('a deferred page, with a router of my own', (tester) async {
 
 `preload` of a deferred route starts its code as well as its data
 (`ProductRoute(id: 2).preload(ref)`); both are loaded after the same `pump`.
+
+## A form and its pending state (since 0.8.0)
+
+A form's save is held on a `Completer` and the test pumps by frames: no timer, no `runAsync`.
+The page and its `action.dart` are in `fespalier-data`, `references/forms-and-optimistic.md`,
+which has this test as a compiling sample.
+
+```dart
+final api = ProfileApi()..gate = Completer<void>();           // the fake backend holds the save
+await pumpRouter(tester, AppRoutes.router(initialLocation: '/nickname'),
+    overrides: [profileApiProvider.overrideWithValue(api)]);
+await tester.enterText(find.byType(TextField), 'Bob');         // types into the field's controller
+await tester.tap(find.text('Save'));
+await tester.pump();
+expect(find.text('Saving...'), findsOneWidget);                 // pending: onSubmit is null
+expect(find.text('Hello Bob'), findsOneWidget);                 // the optimistic patch, at once
+api.gate!.complete();
+await tester.pump();                                            // then assert the server's value
+```

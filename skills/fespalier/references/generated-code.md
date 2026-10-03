@@ -144,6 +144,11 @@ action factory gets `site: 'a37_0'`. The sites are the keys of the tree's `sites
 is not wrapped in another, and in a release build both are the identity, inlined away (a release build keeps
 only the action's `site` string). Never remove them by hand.
 
+Since 0.8.0, an `action.dart` with companions adds to this: `XRoute.useForm` (a real hook) for a `form()`,
+`validate:` and `optimistic:` arguments on the action's factory, and a private `_optimisticN` layer for each
+`data.dart` an `optimistic()` patches, which the `DataView`, `SectionView` and typed `watch` of that data
+read (`ref.watchOptimistic`). Nothing of it is generated for an app without companions.
+
 ## What the file does not do
 
 - A guard that takes a `Ref` is called as

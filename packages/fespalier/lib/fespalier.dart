@@ -28,6 +28,8 @@ export 'src/devtools/devtools.dart'
 export 'src/extra_codec.dart';
 export 'src/guards.dart';
 export 'src/layout_page.dart';
+// Route lifecycle (since 0.8.0): what a generated app.g.dart builds from observe.dart files.
+export 'src/lifecycle.dart' show RouteHooks, observeAttach;
 export 'src/location.dart';
 export 'src/not_found.dart';
 export 'src/remount.dart';

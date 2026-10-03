@@ -23,6 +23,9 @@ final class FakeState implements GoRouterState {
   final Uri uri;
 
   @override
+  String? get fullPath => null;
+
+  @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw UnsupportedError('${invocation.memberName}');
 }

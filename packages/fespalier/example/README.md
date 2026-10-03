@@ -2,7 +2,7 @@
 
 A route is a folder under `lib/app/`; the files in it say what it does.
 
-```
+```text
 lib/app/
   page.dart                 /
   products/

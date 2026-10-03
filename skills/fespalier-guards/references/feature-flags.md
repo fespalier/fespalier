@@ -113,7 +113,7 @@ class AppLayout extends ConsumerWidget {
 import 'package:fespalier/startup.dart';
 import 'package:fespalier_flags/fespalier_flags.dart';
 
-/// `--dart-define=LABS=true` turns the flag on. A vendor's SDK goes here instead.
+/// `--dart-define=LABS=true` turns the flag on. A vendor's SDK goes here instead ([`flag-sources.md`](flag-sources.md)).
 Future<List<Override>> startup() async => [
   flagSource.overrideWithValue(const ConstFlags({'labs': bool.fromEnvironment('LABS')})),
 ];
@@ -229,7 +229,8 @@ void main() {
 ## Traps
 
 - **A vendor's async API in a guard.** PostHog's `isFeatureEnabled` is a `Future`: the guard answers a `Future`, the menu
-  entry turns pending and the first frame is blank. Copy the value into a `FlagSource` and read that.
+  entry turns pending and the first frame is blank. Copy the value into a `FlagSource` and read that
+  ([`flag-sources.md`](flag-sources.md): PostHog).
 - **Two `guard.dart` files in one folder** is not a thing: compose with `??`.
 - **A flag that is always off:** the app never overrode `flagSource` (every flag is its fallback), or the key is
   misspelled (use `FakeFlags.strict` in tests).

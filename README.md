@@ -1646,7 +1646,7 @@ app that must see remote values before its first frame awaits the vendor in `sta
 if it wants one: that timer is the app's choice, and fespalier's tests never reach it (tests override `flagSource`).
 
 **Recipes.** Firebase Remote Config, LaunchDarkly, PostHog and GrowthBook have a recipe, compiled by `just
-skill-samples`, in [`skills/fespalier-guards`](skills/fespalier-guards/SKILL.md): about 15 to 40 lines each, a class
+skill-samples`, in [`skills/fespalier-guards/references/flag-sources.md`](skills/fespalier-guards/references/flag-sources.md): about 15 to 40 lines each, a class
 that `implements FlagSource` and a `startup()` that returns it. They are not packages because there is no fespalier
 logic left in them, and a package per vendor would cost a release, a CI entry that resolves the vendor's SDK and a
 fake of its singleton for 20 lines. A recipe becomes a package when its glue grows fespalier-specific logic or past

@@ -213,20 +213,22 @@ Future<List<Override>> startup() async => [
 - **Not built:** a `route.dart` constant for a flag, vendor packages, a DevTools flag panel.
 
 [`references/feature-flags.md`](references/feature-flags.md) has the package in full and a compiled starter (the route, the
-guard, the menu entry, `startup()` and the tests). `examples/features` has `/labs` behind a flag. The tests use
+guard, the menu entry, `startup()` and the tests); [`references/flag-sources.md`](references/flag-sources.md) has the vendor
+bridges as compiled recipes (Firebase Remote Config, LaunchDarkly, PostHog, GrowthBook, an OpenFeature sketch). `examples/features` has `/labs` behind a flag. The tests use
 `FakeFlags` from `package:fespalier_flags/testing.dart` ([`fespalier-testing`](../fespalier-testing/SKILL.md)); the run-time
 messages are in [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its
 `diagnostics-flags-storage-network.md` page).
 
 ## Where to read more
 
-| Need                                                                  | Reference                                                                  |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Every guard and redirect rule, compiled samples, `returnTo` details   | [`references/guards-and-redirects.md`](references/guards-and-redirects.md) |
-| Session provider, sign-in/out, guards that re-run, async guards       | [`references/auth-patterns.md`](references/auth-patterns.md)               |
-| `fespalier_auth` (since 0.9.0): restore, guards, refresh, HTTP, tests | [`references/auth-package.md`](references/auth-package.md)                 |
-| OpenID Connect, Keycloak, Firebase, Supabase, your own API, dio       | [`references/auth-backends.md`](references/auth-backends.md)               |
-| Device-bound tokens: DPoP, `fespalier_sign_keypair`, proofs in tests  | [`references/auth-dpop.md`](references/auth-dpop.md)                       |
-| Feature flags (since 0.9.0): `flagGuard`, flag providers, `FakeFlags` | [`references/feature-flags.md`](references/feature-flags.md)               |
-| Testing a guarded route                                               | `fespalier-testing`                                                        |
-| An `fsp` error on a guard or redirect                                 | `fespalier-troubleshooting`                                                |
+| Need                                                                         | Reference                                                                  |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Every guard and redirect rule, compiled samples, `returnTo` details          | [`references/guards-and-redirects.md`](references/guards-and-redirects.md) |
+| Session provider, sign-in/out, guards that re-run, async guards              | [`references/auth-patterns.md`](references/auth-patterns.md)               |
+| `fespalier_auth` (since 0.9.0): restore, guards, refresh, HTTP, tests        | [`references/auth-package.md`](references/auth-package.md)                 |
+| OpenID Connect, Keycloak, Firebase, Supabase, your own API, dio              | [`references/auth-backends.md`](references/auth-backends.md)               |
+| Device-bound tokens: DPoP, `fespalier_sign_keypair`, proofs in tests         | [`references/auth-dpop.md`](references/auth-dpop.md)                       |
+| Feature flags (since 0.9.0): `flagGuard`, flag providers, `FakeFlags`        | [`references/feature-flags.md`](references/feature-flags.md)               |
+| Flag sources (since 0.9.0): Remote Config, LaunchDarkly, PostHog, GrowthBook | [`references/flag-sources.md`](references/flag-sources.md)                 |
+| Testing a guarded route                                                      | `fespalier-testing`                                                        |
+| An `fsp` error on a guard or redirect                                        | `fespalier-troubleshooting`                                                |

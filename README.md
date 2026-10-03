@@ -3121,7 +3121,8 @@ top-level flows of the folder it is given, and skips subfolders unless a `config
 - **The web.** Maestro's web support is in beta. Serve the app at the `url`
   (`flutter run -d web-server --web-port 8080`, or a static server for `flutter build web`; with the
   path strategy it must serve `index.html` for unknown paths) and run the flows. `openLink` navigates
-  the browser, which reloads a Flutter web app.
+  the browser, which reloads a Flutter web app. Maestro 2.7.0 or later reads `id:` from
+  `flt-semantics-identifier`, the attribute Flutter's web engine writes for `Semantics(identifier:)`.
 - **Android and iOS.** The app must open the link: Android needs the intent filters, iOS the
   associated domains or the URL scheme, which [`fsp links`](#deep-links-and-a-sitemap-fsp-links) writes
   (paste them in, as it says). iOS may ask "Open in ...?" before a custom scheme opens the app; the
@@ -3131,25 +3132,40 @@ top-level flows of the folder it is given, and skips subfolders unless a `config
   On the web `openLink` reloads the app, so the sign-in has to survive a reload (a stored token, not
   in-memory state), or the guard will send the flow back to the login page.
 
-**In CI**, as documentation (this repository runs no Maestro): build and serve the web app, then
-run the flows and `fsp maestro --check`.
+**In CI.** Since 0.8.0 this repository's `web-routes` job builds `examples/shop` for the web (a release
+build with `--no-web-resources-cdn`, in a throwaway copy: the examples have no `web/` folder), serves it,
+and replays every committed flow in Chromium, with every request that is not to the local server blocked.
+It reads the very same YAML: `launchApp`, `openLink`, then it waits for the element whose
+`flt-semantics-identifier` is the flow's `id:`, within the flow's `timeout`. That is not Maestro (the
+browser is the Chromium that a pinned [Playwright](https://playwright.dev) installs, and Maestro's own
+driver is out of the picture), so it can gate a pull request: what it proves is what fespalier answers
+for (the identifier reaches the web DOM, `ensureWebSemantics()` ran, the link opens the route, its
+guards, data and deferred chunk let the page build in time). `just web-routes` runs it (Flutter and Node
+needed, about two minutes, not part of `just ci`), and `scripts/check-web-routes.sh <example>` with
+`ci/web-routes/` is a template for an app's own CI.
+
+To run Maestro itself, build and serve the web app, then run the flows and `fsp maestro --check`.
+Maestro's web driver follows Chrome and has broken on Chrome upgrades before (its changelog has
+Chrome-version fixes in 2.1.0, 2.2.0 and 2.9.0), so pin the Maestro version, check the download's sha256, and do not make it
+the only gate. This repository runs it weekly and on demand (`maestro-web.yml`, Maestro 2.11.0), and a
+red run there is not a failed pull request.
 
 ```yaml
 - run: fsp maestro --check
 - run: curl -fsSL "https://get.maestro.mobile.dev" | bash
-- run: flutter build web
+- run: flutter build web --release --no-web-resources-cdn
 - run: python3 -m http.server 8080 --directory build/web &
-- run: maestro test .maestro/routes
+- run: maestro test --headless .maestro/routes
 ```
 
 **What is not verified, and what is not built.**
 
-- Nothing here runs Maestro. The identifier is covered by widget tests (`find.bySemanticsIdentifier`)
-  and the flows by golden files. That Maestro's `id:` selector matches Flutter's
-  `Semantics(identifier:)` is what Maestro's documentation promises for Flutter; **on the web and on
-  iOS it has not been verified in this repository.** If a flow waits and times out on a page you can
-  see, check that first.
-- No `link:` identifier on `RouteLink`, no `samples` in `meta.dart`, and no web run of the examples in CI.
+- On the web, CI opens every committed flow's link in Chromium and finds the identifier (`web-routes`,
+  since 0.8.0), and a weekly job runs Maestro itself (`maestro-web`, not a gate). The identifier is also
+  covered by widget tests (`find.bySemanticsIdentifier`) and the flows by golden files. **On iOS it has
+  not been verified in this repository.** If a flow waits and times out on a page you can see, check
+  that first.
+- No `link:` identifier on `RouteLink` and no `samples` in `meta.dart`.
 - A route reached by a query parameter or a localized spelling has no flow of its own.
 
 ### Performance
@@ -3434,6 +3450,7 @@ skills/              agent skills: how to write lib/app/ and read fsp's errors (
 just ci          # everything CI runs on the code, locally (needs Flutter, Node, just, cargo-deny)
 just --list      # the individual steps: fmt, lint, test, deny, examples, flutter, devtools, packaging, skills
 just devtools-build   # rebuild the DevTools extension after touching its source (see below)
+just web-routes  # the shop's Maestro flows open their routes in Chromium (needs Flutter and Node; not in `just ci`)
 ```
 
 [AGENTS.md](AGENTS.md) is the contributor and agent guide: the layout, the gate commands,
@@ -3468,6 +3485,12 @@ or a version no newer than the package's). You do not bump any of them: release-
 (see [Releasing](#releasing)). After changing the emitter or a
 template, regenerate with `cargo run -- gen --project ../examples/<name>`. A test fails if
 a committed `app.g.dart` is stale.
+
+Two more jobs build `examples/shop` for the web in a throwaway copy (`scripts/web-copy.sh`), outside
+`just ci`: `web` checks that each deferred page is a chunk of its own (`just web-chunks`), and
+`web-routes` replays the committed Maestro flows in a pinned Chromium, with every request that is
+not to the local server blocked (`just web-routes`; `ci/web-routes/`). `maestro-web.yml` runs real
+Maestro on the same build weekly; it is not a required check.
 
 ### Releasing
 

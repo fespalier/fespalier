@@ -5,7 +5,7 @@
 # and checks that dart2js split the deferred pages out: there is at least one
 # `main.dart.js_N.part.js`, and each marker (a string only a deferred page contains) is in a part
 # file and not in `main.dart.js`. The examples stay platform-free: the `web/` folder that
-# `flutter create` adds lives in the copy, which is removed on exit.
+# `flutter create` adds lives in the copy (scripts/web-copy.sh), which is removed on exit.
 #
 # Usage: scripts/check-deferred-chunks.sh <example-dir> <marker>...
 #   scripts/check-deferred-chunks.sh examples/shop 'Place order' 'Add to cart'
@@ -16,25 +16,10 @@ if [ "$#" -lt 2 ]; then
   exit 2
 fi
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-example="$(cd "$1" && pwd)"
+# shellcheck source=web-copy.sh
+source "$(dirname "${BASH_SOURCE[0]}")/web-copy.sh"
+web_copy "$1"
 shift
-
-work="$(mktemp -d)"
-trap 'rm -rf "$work"' EXIT
-
-# The example refers to the package by `path: ../../packages/fespalier`: keep that layout.
-name="$(basename "$example")"
-mkdir -p "$work/examples" "$work/packages"
-cp -R "$example" "$work/examples/$name"
-cp -R "$root/packages/fespalier" "$work/packages/fespalier"
-rm -rf \
-  "$work/examples/$name/build" "$work/examples/$name/.dart_tool" \
-  "$work/packages/fespalier/build" "$work/packages/fespalier/.dart_tool"
-
-cd "$work/examples/$name"
-flutter create --platforms web --no-pub .
-flutter pub get
 flutter build web --release
 
 out=build/web

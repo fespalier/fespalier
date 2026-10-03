@@ -179,10 +179,11 @@ page to see`); with `app_id`, a `const linkable = false;` route is skipped; a ro
 - **Running them:** `maestro test .maestro/routes`, **not** `maestro test .maestro` (Maestro runs only the
   top-level flows of the folder it is given, and a `config.yaml` has to list subfolders in `flows:`).
 - **Verified here:** the identifier in widget tests (`find.bySemanticsIdentifier`) and the flows as
-  golden files. **Not verified:** that Maestro's `id:` selector matches Flutter's
-  `Semantics(identifier:)` on the web and on iOS (nothing in this repository runs Maestro).
+  golden files; since 0.8.0 also, on the web, that CI opens every committed flow's link in Chromium and
+  finds the identifier (`web-routes`; a weekly `maestro-web` job runs Maestro itself and is not a gate).
+  **Not verified:** the same on iOS.
 - **Not built:** a `link:` identifier on `RouteLink`, `samples` in `meta.dart`, a flow for a layout,
-  a not-found view, a query parameter or a localized spelling, and a Maestro run in this repository's CI.
+  a not-found view, a query parameter or a localized spelling.
 - The config values are checked only by `fsp maestro` (a mistake there never stops `gen`); the
   messages are in `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`. The
   recipe for testing the identifier is in `fespalier-testing`, `references/maestro.md`.

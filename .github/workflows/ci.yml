@@ -181,6 +181,15 @@ jobs:
           cd fresh_app
           flutter pub add fespalier --path "$GITHUB_WORKSPACE/packages/fespalier"
           "$FSP_BIN" init
+          # init writes lib/app/app.dart and, from it, the generated main() (lib/app.main.g.dart);
+          # lib/main.dart is the app's own, so it is made to run that one, as init prints.
+          test -f lib/app/app.dart
+          test -f lib/app.main.g.dart
+          cat > lib/main.dart <<'DART'
+          import 'package:fresh_app/app.main.g.dart';
+
+          Future<void> main() => AppMain.run();
+          DART
           find lib -name '*.dart' ! -name '*.g.dart' -print0 |
             xargs -0 dart format --output=none --set-exit-if-changed
           flutter analyze

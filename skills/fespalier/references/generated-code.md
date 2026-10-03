@@ -122,6 +122,13 @@ A `data()` function becomes `FutureProvider.autoDispose.family(...)` (or
 policy, so the app's `ProviderScope(retry:)` applies. A `data.dart` that
 exports its own provider (`final data = ...`) or selects one is used as is.
 
+## Scroll restoration (since 0.8.0)
+
+With `scroll_restoration: true` each page's view (inside its transition, under its layouts: the
+`DataView`, `DeferredView` or `buildWithParams` call included) is wrapped in
+`RouteScrollMemory(state: state, child: ...)`. Layouts, redirects and not-found views are not.
+Off, the file has no `RouteScrollMemory`. See `fespalier-layouts`.
+
 ## DevTools hooks (since 0.7.0)
 
 The file calls the runtime's DevTools support in three places, all under `if (kFespalierDevTools)`:

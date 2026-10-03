@@ -40,7 +40,7 @@ void main() {
               result: GuardOutcome.redirect,
               location: '/login?from=%2Fadmin',
             ),
-            guardRecord(11, site: 'r32', uri: '/login?from=%2Fadmin'),
+            guardRecord(11, site: 'r33', uri: '/login?from=%2Fadmin'),
           ],
           history: [
             navigation(1, '/'),
@@ -127,7 +127,7 @@ void main() {
       await pumpApp(tester, client);
       await openTab(tester, 'Routes');
       await select(tester, 'RefundRoute', '/orders/:id/refund');
-      final button = find.byKey(const Key('open-site-g37@37'));
+      final button = find.byKey(const Key('open-site-g38@38'));
       // The details pane scrolls on its own.
       await tester.ensureVisible(button);
       await tester.pumpAndSettle();

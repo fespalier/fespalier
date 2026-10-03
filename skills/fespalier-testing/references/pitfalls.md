@@ -194,6 +194,64 @@ An unescaped `$id` in an import is a Dart string-interpolation error
 import 'package:my_app/app/products/\$id/page.dart';
 ```
 
+## Playing the browser's back button (scroll restoration, since 0.8.0)
+
+A widget test plays back and forward with a `pushRouteInformation` platform message, and
+`scroll_restoration` only restores when that message carries **the history state the app gave
+the platform**: a location alone is a link from outside, which starts at the top. Record
+the state from `routeInformationUpdated` and send it back:
+
+```dart
+// test/scroll_test.dart
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// What the app reported to the platform for each location, as the browser keeps it.
+Map<String, Object?> history(WidgetTester tester) {
+  final entries = <String, Object?>{};
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.navigation,
+    (call) async {
+      if (call.method == 'routeInformationUpdated') {
+        final args = call.arguments as Map<Object?, Object?>;
+        entries[args['uri']! as String] = args['state'];
+      }
+      return null;
+    },
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.navigation,
+      null,
+    ),
+  );
+  return entries;
+}
+
+Future<void> browserGoesTo(
+  WidgetTester tester,
+  Map<String, Object?> entries,
+  String location,
+) async {
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    'flutter/navigation',
+    const JSONMethodCodec().encodeMethodCall(
+      MethodCall('pushRouteInformation', {
+        'location': location,
+        'state': entries[location],
+      }),
+    ),
+    (_) {},
+  );
+  await tester.pumpAndSettle();
+}
+```
+
+Install the recorder **before** `pumpRouter`. Scroll with `tester.drag` and compare
+`ScrollableState.position.pixels` before and after. A router remembers where it went, so
+use a fresh one per test. `examples/features/test/scroll_restoration_test.dart` is the
+full version.
+
 ## State restoration needs your own app
 
 `pumpRouter` sets no `restorationScopeId`. For a restoration test build the router in

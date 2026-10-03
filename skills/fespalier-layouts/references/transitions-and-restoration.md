@@ -273,6 +273,59 @@ ProductRoute(id: product.id).hero('avatar', child: CircleAvatar(radius: 40, chil
 
 Not built: generated per-route hero names (use an enum), and a lint for a name used on one side only.
 
+## Scroll restoration on back and forward (since 0.8.0)
+
+Flutter builds a page from nothing when the browser's back or forward button brings it
+back, so a long list starts at the top. `scroll_restoration: true` in the pubspec's
+`fespalier:` section (off by default; `fsp gen` after) wraps each page's own view in
+`RouteScrollMemory(state: state, child: ...)`, which gives the page a `PageStorage`
+bucket per history entry:
+
+```yaml
+# pubspec.yaml
+fespalier:
+  scroll_restoration: true
+```
+
+```dart
+// lib/app/feed/page.dart
+import 'package:flutter/material.dart';
+
+class FeedPage extends StatelessWidget {
+  const FeedPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => ListView.builder(
+    key: const PageStorageKey<String>('feed'),
+    itemCount: 100,
+    itemBuilder: (_, i) => ListTile(title: Text('Item $i')),
+  );
+}
+```
+
+- **Only a scrollable under a `PageStorageKey` is restored.** Flutter stores an offset by
+  key and stores nothing for a scrollable without one; fespalier does not invent keys.
+  Give each scrollable of a page its own key (a carousel in a list), or two lists could
+  swap offsets.
+- **Back and forward restore; the app's own navigation does not.** The entry gets its
+  bucket back only when the browser brought it back. `go`, `push`, `replace`, a
+  `RouteLink` and the first route get a fresh bucket and start at the top. A location the
+  platform reports without history state (a link opened from outside) counts as the app's.
+- **An entry is its matched location**, plus the query for the top page: `/search?q=a`
+  and `/search?q=b` are two entries.
+- **A page that stays mounted keeps its live scroll** (the page below a child route, a tab,
+  a page whose URL changes in place under `remount: never`): nothing is restored for it,
+  its bucket moves to the new location. On Android and iOS back is a pop, so the page below
+  is still mounted.
+- **In memory only**: 64 entries per router (the oldest forgotten first), a reload of the tab
+  starts empty, the same location twice in the history is one entry. A list that grows as it
+  scrolls is clamped to the items it has when rebuilt.
+- **Layouts, redirects and not-found views are not wrapped**; with the key off the generated
+  file has no `RouteScrollMemory`.
+- **Testing it**: play the browser with `pushRouteInformation` _and the state the app
+  reported_ (`routeInformationUpdated` on `SystemChannels.navigation`); a location alone is a
+  link from outside and starts at the top. See `fespalier-testing`, `references/pitfalls.md`.
+
 ## State restoration
 
 Pass a scope id to the router, and give the app one too, and Flutter saves what the

@@ -195,13 +195,16 @@
         "README.md#Transitions",
         "README.md#Shared elements (heroes)",
         "README.md#State restoration",
+        "README.md#Scroll restoration",
         "kind:layout.dart",
         "kind:transition.dart",
         "packages/fespalier/lib/src/layout_page.dart",
         "packages/fespalier/lib/src/heroes.dart",
+        "config:scroll_restoration",
         "packages/fespalier/lib/src/platform_page.dart",
         "packages/fespalier/lib/src/tab_options.dart",
-        "packages/fespalier/lib/src/transitions.dart"
+        "packages/fespalier/lib/src/transitions.dart",
+        "packages/fespalier/lib/src/scroll_memory.dart"
       ]
     },
     "fespalier-guards": {

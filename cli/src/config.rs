@@ -16,6 +16,7 @@
 //!   push_updates_url: false # default; true puts a `push`ed route's URL in the browser's address bar
 //!   file_style: snake       # default; `kebab` makes `fsp init` and `fsp new` write not-found.dart
 //!   semantics_ids: false    # default; true gives each page `Semantics(identifier: 'route:/...')`, for Maestro
+//!   scroll_restoration: false # default; true keeps a page's scroll positions for the browser's back and forward
 //!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
 //!     domains: [shop.example.com]
 //!     scheme: myshop
@@ -209,6 +210,10 @@ pub struct Config {
     /// `AppRoutes.mount()` turns the semantics tree on on the web, so a driver that reads the
     /// screen from the outside (Maestro) finds the page.
     pub semantics_ids: bool,
+    /// `scroll_restoration`: each page is wrapped in `RouteScrollMemory`, which keeps a
+    /// `PageStorage` bucket per history entry and hands it back only when the browser brings
+    /// that entry back (since 0.8.0).
+    pub scroll_restoration: bool,
     /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
     pub file_style: FileStyle,
     /// The `links:` section, as written. Only `fsp links` reads it, and it checks the values
@@ -244,6 +249,7 @@ impl Default for Config {
             keep_previous: true,
             push_updates_url: false,
             semantics_ids: false,
+            scroll_restoration: false,
             file_style: FileStyle::Snake,
             links: None,
             lints: Lints::default(),
@@ -289,6 +295,7 @@ struct RawConfig {
     links: Option<LinksConfig>,
     lints: Option<LintsConfig>,
     semantics_ids: Option<bool>,
+    scroll_restoration: Option<bool>,
     maestro: Option<MaestroConfig>,
     size: Option<SizeConfig>,
     test: Option<TestConfig>,
@@ -1034,6 +1041,7 @@ impl Pubspec {
             config.links = c.links;
             config.lints.unknown_path = c.lints.and_then(|l| l.unknown_path).unwrap_or_default();
             config.semantics_ids = c.semantics_ids.unwrap_or(false);
+            config.scroll_restoration = c.scroll_restoration.unwrap_or(false);
             config.maestro = c.maestro;
             config.size = c.size;
             config.test = c.test;

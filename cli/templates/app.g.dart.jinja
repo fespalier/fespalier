@@ -41,6 +41,12 @@ guardWithParams(
   (v) => {{ call }},
 )
 {%- endmacro %}
+{% macro scroll_memory(page) -%}
+RouteScrollMemory(
+  state: state,
+  child: {{ page | indent(2) }},
+)
+{%- endmacro %}
 {% macro with_transition(t, page) -%}
 {{ t.call }}(
 {% for a in t.args %}
@@ -134,6 +140,9 @@ GoRoute(
 {% endif %}
 {% if r.page %}
 {% set page = with_segments(r.seg_fn, view(r), r.not_found) if r.seg_fn else view(r) %}
+{% if scroll_restoration %}
+{% set page = scroll_memory(page) %}
+{% endif %}
 {% if r.transition %}
   pageBuilder: (context, state) => {{ with_transition(r.transition, page) | indent(2) }},
 {% elif r.remount %}

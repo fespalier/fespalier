@@ -32,7 +32,7 @@ void main() {
           result: GuardOutcome.redirect,
           location: '/login?from=%2Finbox',
         ),
-        guardRecord(3, uri: '/old-search', site: 'r32'),
+        guardRecord(3, uri: '/old-search', site: 'r33'),
       ]),
     );
     await openTab(tester, 'Guards');

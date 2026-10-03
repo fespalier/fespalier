@@ -45,7 +45,7 @@ What they print, to stderr unless noted:
   `redirect`, `data`, `action` (since 0.5.0), `guard`, `layout`, `present` or `transition`, `root`,
   `sibling` (a [`nest = false`](../../fespalier-routing/references/route-dart.md) route,
   since 0.4.0), `remount` (a page that starts again when its URL changes, since 0.6.0) and `deferred` (a page whose code loads on demand,
-  since 0.7.0), in that order. `routes --json` prints, per line, in
+  since 0.7.0), in that order; `fresh` (its data has a `freshness`) and `cached` (a `dataCache`), since 0.8.0, follow `data`. `routes --json` prints, per line, in
   this order: `pattern`, `route`, `file`, `tags`, `params` (`{name, type, in}`
   with `in` of `path` or `query`), `folder`, `presentation` (`page`, `redirect`,
   `root`, `custom`), `groups`, `layouts`, `tabs`, `data_keys`, `meta`,

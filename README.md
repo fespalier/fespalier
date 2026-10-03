@@ -363,23 +363,23 @@ in the file as long as exactly one of them extends a `…Widget` class (a `class
 `StatelessWidget` is fine); when `fsp` can't tell which is the view it says "expected one public
 widget class" and lists them. Make helpers private (`_Name`) rather than lean on that.
 
-| File               | Exports                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Its constructor / signature can ask for                                                                                                                       |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `page.dart`        | a widget                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | segments; query; what `data.dart` yields; the navigation [`extra`](#typed-extra)                                                                              |
-| `data.dart`        | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | segments, query (named)                                                                                                                                       |
-| `action.dart`      | `action(Ref ref, {…, required Input input})` (any number of functions of that shape) returning `Future<T>`, `FutureOr<T>` or `T`, and optionally `const invalidates = [...]`. Beside a `page.dart` it is that route's [write](#actiondart-typed-writes); in a page-less folder with a `layout.dart`, the [section's](#actiondart-typed-writes)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | segments, query (named), and the one `input`                                                                                                                  |
-| `loading.dart`     | a widget, inherited by subfolders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | segments; query                                                                                                                                               |
-| `error.dart`       | a widget, inherited by subfolders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | segments; query; `error`, `stackTrace`, `retry`                                                                                                               |
-| `layout.dart`      | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs. A tab layout can also export a [`container`](#tab-layouts) function                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside; the navigation [`extra`](#typed-extra) |
-| `guard.dart`       | `GuardResult guard(Ref ref, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder, and runs again when what it `ref.watch`es changes (since 0.5.0; `ProviderContainer c` first is the older form, read once)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `uri`; segments at or above its folder; query (named); `extra`                                                                                                |
-| `redirect.dart`    | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `Ref ref` first (since 0.5.0), or `ProviderContainer c`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `uri`; segments; query (named); `extra`                                                                                                                       |
-| `transition.dart`  | `Page<…> transition(…)`; applies to this folder and below, layouts' shells included                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `key`, `child`, `state`, `shell` (a `bool`)                                                                                                                   |
-| `present.dart`     | `Page<…> present(…)`: the app builds this route's own page (a sheet, say), on the [root navigator](#presentdart-a-page-of-your-own); this folder only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `key`, `child`, `state`                                                                                                                                       |
-| `navigator.dart`   | `const navigator = RouteNavigator.root;`: this folder and below [render on the root navigator](#the-root-navigator-navigatordart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data                                                                                                                                           |
-| `not_found.dart`   | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `uri`                                                                                                                                                         |
-| `meta.dart`        | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | nothing: it is data                                                                                                                                           |
-| `extra_codec.dart` | at the root of the app folder only: a top-level `extraCodec`, the `Codec<Object?, Object?>` the router saves an [`extra`](#restoring-extra-on-the-web) with                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | nothing: it is data                                                                                                                                           |
-| `route.dart`       | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`; and/or `const paths = {'fr': 'produits'};` in a static folder: [its other spellings per locale](#localized-paths); and/or `const nest = false;` beside a `page.dart` or `redirect.dart`: [its route is a sibling of the page above, not a child](#a-sibling-with-a-compound-path); and/or `const linkable = false;` (since 0.5.0): [`fsp links`](#deep-links-and-a-sitemap-fsp-links) leaves this folder's routes and those below it out, [the nearest one winning](#case-and-trailing-slashes); and/or `const remount = Remount.onSegments;` (since 0.6.0): [when the pages in this folder and below get a fresh state because their URL changed](#remounting-a-page-remount), the nearest one winning over the pubspec's `remount`; and/or `const deferred = true;` (since 0.7.0): [the pages in this folder and below load their code on demand](#deferred-routes-a-pages-code-on-demand), the nearest one winning over the pubspec's `deferred`. Read from the source, never imported | nothing: it is data                                                                                                                                           |
+| File               | Exports                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Its constructor / signature can ask for                                                                                                                       |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `page.dart`        | a widget                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | segments; query; what `data.dart` yields; the navigation [`extra`](#typed-extra)                                                                              |
+| `data.dart`        | `data(Ref ref, {…})` returning `Future<T>`, `Stream<T>` or `T` — **or** `ProviderListenable<AsyncValue<T>> data({…})` selecting a provider you have — **or** `final data = <Provider>(…)`. Beside a `page.dart` it feeds the page; in a page-less folder with a `layout.dart`, the whole [section](#section-data)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | segments, query (named)                                                                                                                                       |
+| `action.dart`      | `action(Ref ref, {…, required Input input})` (any number of functions of that shape) returning `Future<T>`, `FutureOr<T>` or `T`, and optionally `const invalidates = [...]`. Beside a `page.dart` it is that route's [write](#actiondart-typed-writes); in a page-less folder with a `layout.dart`, the [section's](#actiondart-typed-writes)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | segments, query (named), and the one `input`                                                                                                                  |
+| `loading.dart`     | a widget, inherited by subfolders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | segments; query                                                                                                                                               |
+| `error.dart`       | a widget, inherited by subfolders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | segments; query; `error`, `stackTrace`, `retry`                                                                                                               |
+| `layout.dart`      | a widget; wraps this folder and below (ShellRoute), or holds its subfolders as tabs. A tab layout can also export a [`container`](#tab-layouts) function                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `child` or `navigationShell`; segments at or above it; query; the [section data](#section-data) it wraps or is inside; the navigation [`extra`](#typed-extra) |
+| `guard.dart`       | `GuardResult guard(Ref ref, {…})`; `GuardResult` is `FutureOr<String?>`: a location to redirect to, or `null` to let the navigation through. Guards every route at and below its folder, and runs again when what it `ref.watch`es changes (since 0.5.0; `ProviderContainer c` first is the older form, read once)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `uri`; segments at or above its folder; query (named); `extra`                                                                                                |
+| `redirect.dart`    | `String redirect({…})` in place of `page.dart`: a route that only redirects; may take `Ref ref` first (since 0.5.0), or `ProviderContainer c`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `uri`; segments; query (named); `extra`                                                                                                                       |
+| `transition.dart`  | `Page<…> transition(…)`; applies to this folder and below, layouts' shells included                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `key`, `child`, `state`, `shell` (a `bool`)                                                                                                                   |
+| `present.dart`     | `Page<…> present(…)`: the app builds this route's own page (a sheet, say), on the [root navigator](#presentdart-a-page-of-your-own); this folder only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `key`, `child`, `state`                                                                                                                                       |
+| `navigator.dart`   | `const navigator = RouteNavigator.root;`: this folder and below [render on the root navigator](#the-root-navigator-navigatordart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | nothing: it is data                                                                                                                                           |
+| `not_found.dart`   | a widget, optional, in any folder ([nearest wins](#not-found-views); without one at the root, a plain "Nothing at /path" view); unknown paths and unparsable segments                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `uri`                                                                                                                                                         |
+| `meta.dart`        | `const meta = <any const expression>;`, beside a `page.dart` or `redirect.dart`: that route's own facts, passed [untouched into the manifest](#route-manifest-and-metadart)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data                                                                                                                                           |
+| `extra_codec.dart` | at the root of the app folder only: a top-level `extraCodec`, the `Codec<Object?, Object?>` the router saves an [`extra`](#restoring-extra-on-the-web) with                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | nothing: it is data                                                                                                                                           |
+| `route.dart`       | `const caseSensitive = <true or false>;` in any folder: whether paths match by case in this folder and below, [the nearest one winning](#case-and-trailing-slashes) over the pubspec's `case_sensitive`; and/or `const paths = {'fr': 'produits'};` in a static folder: [its other spellings per locale](#localized-paths); and/or `const nest = false;` beside a `page.dart` or `redirect.dart`: [its route is a sibling of the page above, not a child](#a-sibling-with-a-compound-path); and/or `const linkable = false;` (since 0.5.0): [`fsp links`](#deep-links-and-a-sitemap-fsp-links) leaves this folder's routes and those below it out, [the nearest one winning](#case-and-trailing-slashes); and/or `const remount = Remount.onSegments;` (since 0.6.0): [when the pages in this folder and below get a fresh state because their URL changed](#remounting-a-page-remount), the nearest one winning over the pubspec's `remount`; and/or `const deferred = true;` (since 0.7.0): [the pages in this folder and below load their code on demand](#deferred-routes-a-pages-code-on-demand), the nearest one winning over the pubspec's `deferred`; and/or `const freshness = Freshness(staleTime: Duration(minutes: 5));` (since 0.8.0): [the default for when the data.dart functions in this folder and below load again](#freshness-staletime-resume-and-reconnect), the nearest one winning, a data.dart's own over all. Read from the source, never imported | nothing: it is data                                                                                                                                           |
 
 ### Function views
 
@@ -1841,6 +1841,314 @@ With `keep_previous: false` a retry shows `loading.dart` again.
 `retry: (retryCount, error) => null`, whatever the app's policy is: a failure is final until
 `error.dart`'s `retry` runs it again, which is how 0.1.1 behaved.
 
+**A route with a `freshness` or a `dataCache`** (since 0.8.0) keeps its data when a reload fails,
+whatever `keep_previous` says: `error.dart` only shows when there is nothing to show (see
+[Freshness](#freshness-staletime-resume-and-reconnect)). And `DataView` shows a value that
+Riverpod's offline persistence restored (`isFromCache`) while the fresh one loads, with
+`keep_previous: false` too.
+
+#### Freshness: `staleTime`, resume and reconnect
+
+Since 0.8.0 a `data.dart` can say when its value is old enough to load again. It is opt in: a
+route without the declaration below loads once and keeps the value for as long as something
+watches it, as before.
+
+```dart
+// lib/app/products/$id/data.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:shop/api.dart';
+
+/// Fresh for a minute; loaded again when the app comes back to the foreground.
+const freshness = Freshness(
+  staleTime: Duration(minutes: 1),
+  refetchOnResume: true,
+);
+
+Future<Product> data(Ref ref, {required int id}) =>
+    ref.watch(apiProvider).product(id);
+```
+
+`freshness` is a top-level variable of exactly that name, `const` or `final`, whose initializer is
+a `Freshness(...)` call (`const Freshness(...)` and `prefix.Freshness(...)` are fine). fsp does not
+read the duration: the generated file refers to `_i13.freshness`, and the Dart analyzer checks it.
+It applies to the **function form** that returns a `Future<T>`, a `FutureOr<T>` or a plain `T`. In
+a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider it is
+an error that says what to do instead (below).
+
+**A folder's default.** The same constant in a `route.dart` is the default of every `data()`
+function at and below that folder (a [section's](#section-data) included): the nearest
+`route.dart` wins, and a `data.dart`'s own `freshness` wins over all of them. A root
+`lib/app/route.dart` is the app-wide default.
+
+```dart
+// lib/app/teams/$teamId/route.dart
+import 'package:fespalier/fespalier.dart';
+
+/// Every data() function at and below /teams/:teamId is fresh for 30 seconds.
+const freshness = Freshness(staleTime: Duration(seconds: 30));
+```
+
+The cascade is a default, not a demand: a selector, a provider form or a `Stream` below is skipped
+without a word. A `route.dart` whose `freshness` applies to no `data.dart` is a warning. There is no
+`fespalier:` key for it: a Dart constant is type-checked, and needs no duration grammar in YAML.
+
+**What "stale" means.** A value is stale once it has been in memory for `staleTime` since it
+_arrived_ (the `Future` completed; for a synchronous `data()`, the microtask after it was built).
+A value that is still loading, or an error, is never stale; Riverpod's retry and `error.dart`'s
+retry handle those. Nothing polls: no timer starts, and data on screen that goes stale stays as
+it is until something reads it. A stale value is loaded again **when something reads it**:
+
+1. **A new listener.** A page opening on it (`DataView`), a `SectionView` of a page that opens
+   below a section, `XRoute.watch` in a widget that mounts, `prefetch` / `preload` /
+   `AppRoutes.preload`, a [`RouteLink`](#preloading-the-data-behind-a-link) preloading on hover,
+   `XRoute.read`.
+2. **A listener coming back.** A page uncovered by a pop, a tab shown again: Flutter turns
+   `TickerMode` back on, and Riverpod resumes the subscription.
+3. **A signal**, with `refetchOnResume` or `refetchOnReconnect` (below).
+
+The stale value shows **at once** (no `Future`, no blank frame), and the new one replaces it
+(stale-while-revalidate). With `keep_previous: true` (the default) the old page stays until the new
+value arrives; with `keep_previous: false` `loading.dart` shows while it loads, as for any refresh.
+If the load fails, the page **keeps its data** (see `keepDataOnError`, below), the error is in
+`XRoute.watch(ref).error`, and `XRoute.refresh(ref)` completes with it.
+
+Things to know:
+
+- **Every new reader counts.** With a small `staleTime`, a section's data loads again each time a
+  page below it opens, because that page's `SectionView` is a new listener. `Duration.zero` loads
+  on every open, and a prefetch is then only a head start for the first paint.
+- **`read` returns what is in memory**, stale or not, and starts the reload. Use `refresh` for a
+  value that is surely fresh: it waits for the network.
+- **An invalidation is not a read.** `ref.invalidate`, `XRoute.refresh` and an
+  [`action.dart`](#actiondart-typed-writes)'s `invalidates` load at once, whatever the `staleTime`:
+  `staleTime` is for reads only.
+- **`keepFor` is another thing.** `prefetch(ref, keepFor: …)` is how long a handle keeps a value in
+  memory with nothing on screen; `staleTime` is how long it counts as fresh. With a ten minute
+  `keepFor` and a one minute `staleTime`, opening the page five minutes later shows the kept value
+  at once and loads it again. A handle that is still alive across an app resume loads under
+  `refetchOnResume` too (it is alive, so it listens); `staleTime` bounds that.
+
+**Resume and reconnect.** `refetchOnResume: true` loads the value again when the app comes back to
+the foreground (`AppLifecycleListener.onResume`), and `refetchOnReconnect: true` when
+`reconnectSignal` fires. Both use the threshold `staleTime ?? Duration.zero`: without a
+`staleTime`, every signal loads again, so set one with `refetchOnResume` unless every focus should
+reload (an iOS notification shade or a browser window regaining focus is a resume too). Each is a
+Riverpod provider holding a count, a `RefetchSignal`, that the data provider listens to:
+
+- `appResumeSignal` fires on resume. It is created only while a provider with `refetchOnResume`
+  listens to it, and its `AppLifecycleListener` goes with it.
+- `reconnectSignal` **never fires by itself**: Flutter has no API for "the network is back". Plug
+  your connectivity source in by overriding it, or call `ref.read(reconnectSignal.notifier).fire()`
+  where you know. With `connectivity_plus`:
+
+```dart
+// lib/connectivity_signal.dart
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:fespalier/fespalier.dart';
+
+/// Fires when the device goes from offline to online.
+class ConnectivitySignal extends RefetchSignal {
+  @override
+  int build() {
+    var online = true;
+    final subscription = Connectivity().onConnectivityChanged.listen((results) {
+      final now = !results.contains(ConnectivityResult.none);
+      if (now && !online) fire();
+      online = now;
+    });
+    ref.onDispose(subscription.cancel);
+    return 0;
+  }
+}
+
+// main.dart: ProviderScope(overrides: [reconnectSignal.overrideWith(ConnectivitySignal.new)], …)
+```
+
+**Your own provider.** `freshData(ref, const Freshness(...), value)` is what the generated provider
+wraps its value in. It returns `value` itself (a `Future` stays the `Future`, a value stays a
+value), so a selector's target or a provider-form `data.dart` can give itself the same rules:
+`Future<Product> build() => freshData(ref, const Freshness(…), _fetch());`.
+
+**A failed reload keeps the page.** A route whose `data.dart` has a `freshness` or a `dataCache`
+(or inherits one) gets `keepDataOnError: true` on its `DataView`: a reload that fails (a stale
+value loaded again, a start offline) leaves the page on its data, and `error.dart` only shows
+when there is nothing to show. The cost is that a failed `refresh()` is hidden behind the old
+page: `refresh()` completes with the error (show a snackbar), and `XRoute.watch(ref).hasError`
+is there for a banner.
+
+**Testing.** `testWidgets` runs in fake async and ages data by `clock.now()`, so
+`await tester.pump(const Duration(minutes: 6))` makes a value stale without waiting and without a
+timer. A resume is `tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive)`
+and then `.resumed`, or `container.read(appResumeSignal.notifier).fire()` (the container is what
+`pumpRouter` returns); a reconnect is `container.read(reconnectSignal.notifier).fire()`. A test
+that builds a `refetchOnResume` provider in a bare `ProviderContainer`, with no binding, throws
+when the signal is built: use `testWidgets`, or override
+`appResumeSignal.overrideWith(RefetchSignal.new)`. Two things need a frame or two to show: a
+reload starts on a frame and its value shows on the next, so `pump()` a few times (or
+`pumpAndSettle` when nothing waits on a real delay).
+
+`examples/shop` carries `freshness` on `products/$id/data.dart`, `examples/features` the
+`route.dart` default on `teams/$teamId/`; each has a `test/freshness_test.dart`.
+
+**Diagnostics.** A `freshness` that is not a `Freshness(...)` call, a second one, one in a
+`data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider, and a
+`dataCache` in a `route.dart`, are errors that say what to write instead; their messages are in the
+[troubleshooting skill](skills/fespalier-troubleshooting/references/diagnostics-data-and-hooks.md).
+`freshness` and `dataCache` are names fsp now reads in a `data.dart`, so an app with a public
+top-level variable of one of those names and another type gets the first error: rename it (a
+private `_freshness` is never read).
+
+#### A cache that survives a restart: `dataCache`
+
+Since 0.8.0 a `data.dart` can save its last value, and show it at the next start while the fresh one
+loads. It is built on Riverpod 3's **experimental** offline persistence (`persist()` and its
+`Storage` interface), isolated in one runtime file, and it is opt in twice: the `data.dart` declares
+how its value is saved, and the app gives a place to save it.
+
+```dart
+// lib/app/products/$id/data.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:shop/api.dart';
+
+final dataCache = DataCache<Product>.json(
+  toJson: (p) => p.toJson(),
+  fromJson: (j) => Product.fromJson(j! as Map<String, Object?>),
+);
+
+Future<Product> data(Ref ref, {required int id}) =>
+    ref.watch(apiProvider).product(id);
+```
+
+`dataCache` is a top-level variable of exactly that name, `const` or `final`, whose initializer is
+`DataCache(...)`, `DataCache<T>(...)`, `DataCache.json(...)` or `DataCache<T>.json(...)`. `.json`
+saves `jsonEncode(toJson(value))` and reads back `fromJson(jsonDecode(saved))`; the plain
+constructor takes `encode` and `decode` between your value and a `String`. `maxAge` (default two
+days) is how long a saved value may be shown at a start, and `version` is a string you change when
+what `encode` writes changes shape: values saved under another version are dropped, not decoded.
+Like `freshness` it applies to the function form that loads once, and a `route.dart` can't have
+one (each data type has its own encode and decode).
+
+**Where it is saved.** `dataCacheStorage` is a provider that is `null` by default, so **nothing is
+saved** until the app gives one in its `ProviderScope`:
+
+```dart
+ProviderScope(
+  overrides: [dataCacheStorage.overrideWithValue(MemoryDataStorage())],
+  child: const ShopApp(),
+)
+```
+
+- `MemoryDataStorage` keeps values while the app runs: a page that is disposed and opened again
+  shows its last value at once. For the web, examples and tests; it does not survive a restart.
+- A `Storage<String, String>` on disk survives one. `riverpod_sqflite`'s `JsonSqFliteStorage`
+  plugs in as it is. To write your own, import `package:fespalier/persist.dart` (it re-exports
+  `Storage`, `PersistedData`, `StorageOptions` and `StorageCacheTime`, so the app needn't depend
+  on `hooks_riverpod` directly). One over `shared_preferences`, whose synchronous `getString`
+  shows the saved value on the **first frame**:
+
+```dart
+// lib/prefs_storage.dart
+import 'dart:convert';
+
+import 'package:fespalier/persist.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+final class PrefsStorage extends Storage<String, String> {
+  PrefsStorage(this._prefs);
+
+  final SharedPreferencesWithCache _prefs;
+
+  @override
+  PersistedData<String>? read(String key) {
+    final saved = _prefs.getString(key);
+    if (saved == null) return null;
+    final json = jsonDecode(saved) as Map<String, Object?>;
+    final expireAt = json['expireAt'] as String?;
+    return PersistedData(
+      json['data']! as String,
+      destroyKey: json['destroyKey'] as String?,
+      expireAt: expireAt == null ? null : DateTime.parse(expireAt),
+    );
+  }
+
+  @override
+  Future<void> write(String key, String value, StorageOptions options) {
+    final age = options.cacheTime.duration;
+    return _prefs.setString(
+      key,
+      jsonEncode({
+        'data': value,
+        'destroyKey': options.destroyKey,
+        'expireAt': age == null
+            ? null
+            : DateTime.now().toUtc().add(age).toIso8601String(),
+      }),
+    );
+  }
+
+  @override
+  Future<void> delete(String key) => _prefs.remove(key);
+
+  @override
+  void deleteOutOfDate() {} // read() of an expired value is dropped by Riverpod
+}
+
+// main(): final prefs = await SharedPreferencesWithCache.create(cacheOptions: const SharedPreferencesWithCacheOptions());
+//         … dataCacheStorage.overrideWithValue(PrefsStorage(prefs))
+```
+
+A storage whose `read` is synchronous gives the saved value on the first frame. A `Future<Storage>`
+is fine too: there is one `loading.dart` frame, then the saved value.
+
+**What happens.**
+
+1. The first time a route's provider is built (and each time after it was disposed), a saved value
+   that has not expired and has the same `version` is the state: `AsyncLoading(value: saved)` with
+   `isFromCache == true`, and the fetch starts at the same time. `DataView` shows such a value
+   whatever `keep_previous` says, because the cache is pointless otherwise. Read `isFromCache` from
+   `XRoute.watch(ref)` for an "offline copy" banner.
+2. The fetch succeeds: the state is the fresh `AsyncData`, and it is saved.
+3. The fetch fails: the page keeps the saved value (`keepDataOnError`), **and the saved value is
+   kept**. Riverpod's `persist` deletes it on any error, so an offline start would lose the cache
+   for the next one; fespalier guards that. An offline cold start shows the last data, and so does
+   the next one, until `maxAge`.
+4. A saved value that does not decode is dropped, not reported as an error, and the load goes on.
+   In debug a line says so (below). A storage that throws never becomes the route's error either.
+5. A cold start always loads again, whatever the `staleTime` is. Nothing the storage answers after
+   the load has finished replaces the fresh value.
+
+In debug (`debugPrint`, nothing in a release build):
+
+- `fespalier: dataCache of <name> could not read a saved value, dropped it: <error>`
+- `fespalier: dataCache of <name> could not save: <error>`
+
+The key a value is saved under is `fespalier:<folder>` plus the route's keys in path order as JSON,
+e.g. `fespalier:products/$id[42]`. The folder is the `data.dart`'s folder relative to the app folder,
+so it is stable across `fsp gen`. An enum key is saved by its `name`, a `DateTime` as ISO 8601, a list
+as a list, and anything else by its `toString()`, which is how a custom segment type is spelled in
+a URL: keep that stable (a web release build that minifies class names would change it).
+
+Don't write an optimistic value with `state =` on this provider's notifier: Riverpod saves every
+`AsyncData` it sets, so the guess would be saved. Keep optimistic values in a layer above the data
+provider.
+
+**Testing.** With no `dataCacheStorage` override, nothing is saved. To test the cache, share a
+`MemoryDataStorage` between two `pumpRouter` calls, which stands in for a restart:
+
+```dart
+final storage = MemoryDataStorage();
+await pumpRouter(tester, AppRoutes.router(initialLocation: '/products/1'),
+    overrides: [dataCacheStorage.overrideWithValue(storage)]);
+await tester.pumpWidget(const SizedBox());
+await pumpRouter(tester, AppRoutes.router(initialLocation: '/products/1'),
+    overrides: [dataCacheStorage.overrideWithValue(storage), apiProvider.overrideWithValue(OfflineApi())]);
+expect(find.text('Coffee beans, 500 g'), findsOneWidget); // the saved product, not error.dart
+```
+
+`MemoryDataStorage` is synchronous, so a test leaves no pending future, and
+`await tester.pump(const Duration(days: 3))` expires a value under the fake clock. `examples/shop`
+has the two tests (`test/freshness_test.dart`).
+
 ### Typed helpers on the route
 
 A route with a `data.dart` has three more helpers next to `.data` and `.refresh` (and every
@@ -1862,7 +2170,9 @@ inference, so `Product` flows through and is never `dynamic`. (More in
 [Design notes](#design-notes).)
 
 `read` keeps the provider alive until it completes, which a plain `ref.read(p.future)`
-doesn't for an `autoDispose` provider. Don't call it from `build`.
+doesn't for an `autoDispose` provider. Don't call it from `build`. On a route with a
+[`freshness`](#freshness-staletime-resume-and-reconnect) (since 0.8.0) `read` returns the value in
+memory even if it is stale, and starts the reload; `refresh` waits for the network.
 
 `prefetch(ref)` starts the load and returns a `PrefetchHandle` that **keeps the provider alive
 until you call `close()`** on it, so the page you navigate to next shows the value at once. The
@@ -2542,7 +2852,11 @@ with [localized paths](#localized-paths) has one more key after `catch_all`, `"p
 (since 0.6.0) has `"remount":"on_segments"` or `"remount":"on_location"` before `paths`, and the other
 routes have none; it is in `fsp routes --json` only, not in the manifest. A route whose page is
 [deferred](#deferred-routes-a-pages-code-on-demand) (since 0.7.0) has `"deferred":true` after `remount`, and the other
-routes have none; the manifest says it as `RouteInfo.deferred`.
+routes have none; the manifest says it as `RouteInfo.deferred`. A route whose own `data.dart` has a
+[`freshness`](#freshness-staletime-resume-and-reconnect) (since 0.8.0) has `"freshness":"lib/app/teams/$teamId/route.dart"`
+after `deferred`: the file whose `Freshness` applies (the `data.dart` itself, or the nearest `route.dart` above it, relative to the
+project root like `file`); and one whose `data.dart` has a [`dataCache`](#a-cache-that-survives-a-restart-datacache) has
+`"cache":true` after it. The other routes have neither, and the manifest does not carry them.
 
 ### State restoration
 
@@ -2637,7 +2951,8 @@ until you add a route inside the group. That's expected.
 route class, its `page.dart` and its tags (`redirect`, `data`, `action`, `guard`, `layout`, `transition`,
 `present`, `root`, `sibling` for a route with [`nest = false`](#a-sibling-with-a-compound-path), and
 `remount` for a page that [starts again when its URL changes](#remounting-a-page-remount), and last `deferred` for a page whose
-[code loads on demand](#deferred-routes-a-pages-code-on-demand), since 0.7.0).
+[code loads on demand](#deferred-routes-a-pages-code-on-demand), since 0.7.0). Since 0.8.0 `fresh` follows `data` for a route whose data has a
+[`freshness`](#freshness-staletime-resume-and-reconnect), and `cached` for one with a [`dataCache`](#a-cache-that-survives-a-restart-datacache).
 
 ```text
 /products/:id  ProductRoute   products/$id/page.dart  (data, transition)
@@ -2651,7 +2966,7 @@ GitHub renders in Markdown, and `--graph dot` a Graphviz `digraph` (`fsp routes 
 It draws what `app.g.dart` gives go_router, not the folders:
 
 - **Nodes** are routes: the URL pattern, the route class, each spelling of a
-  [localized path](#localized-paths) and the markers (`redirect`, `data`, `action`, `guard`,
+  [localized path](#localized-paths) and the markers (`redirect`, `data`, `fresh`, `cached`, `action`, `guard`,
   `present`, `root`, `sibling`, and `deferred`, as in the tags above). A `redirect.dart` route is dashed.
 - **Edges** are nesting: a page is the parent of the routes in the folders below it, and a route with
   [`nest = false`](#a-sibling-with-a-compound-path) hangs from the page above its parent instead.

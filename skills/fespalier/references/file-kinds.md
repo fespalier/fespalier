@@ -5,23 +5,23 @@ file by its **name**; nothing else marks a route. Each view file exports one
 public widget class, **or** one top-level function named after the file, never
 both.
 
-| File               | Applies to                                                                                     | Can ask for                                                                          |
-| ------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `page.dart`        | its own folder's URL                                                                           | segments; query; `data`; `extra`                                                     |
-| `data.dart`        | the page beside it, or a section                                                               | segments; query (a section's: segments and query too since 0.3.0)                    |
-| `action.dart`      | the page beside it, or a section (since 0.5.0)                                                 | segments; query; the one `input`                                                     |
-| `loading.dart`     | its folder and below (inherited, nearest wins)                                                 | segments; query                                                                      |
-| `error.dart`       | its folder and below (inherited, nearest wins)                                                 | segments; query; `error`, `stackTrace`, `retry`                                      |
-| `layout.dart`      | its folder and below                                                                           | `child` or `navigationShell`; segments at or above; query; section data; `extra`     |
-| `guard.dart`       | every route at and below its folder                                                            | `uri`; segments at or above; query; `extra`                                          |
-| `redirect.dart`    | its own folder's URL, in place of `page.dart`                                                  | `uri`; segments; query; `extra`; optional `Ref ref` first (or `ProviderContainer c`) |
-| `transition.dart`  | its folder and below; layout shells too                                                        | `key`, `child`, `state`, `shell` (a `bool`)                                          |
-| `present.dart`     | its own folder only                                                                            | `key`, `child`, `state`                                                              |
-| `navigator.dart`   | its folder and below (nearest wins)                                                            | nothing: it is data                                                                  |
-| `not_found.dart`   | unknown URLs under its folder; bad segments                                                    | `uri`; its own path's segments, as `String`s                                         |
-| `meta.dart`        | its own route only (not inherited)                                                             | nothing: it is data                                                                  |
-| `route.dart`       | `caseSensitive`, `linkable`, `remount`, `deferred`: folder and below; `paths`: its own segment | nothing: it is data                                                                  |
-| `extra_codec.dart` | the app root only                                                                              | nothing: it is data                                                                  |
+| File               | Applies to                                                                                                  | Can ask for                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `page.dart`        | its own folder's URL                                                                                        | segments; query; `data`; `extra`                                                     |
+| `data.dart`        | the page beside it, or a section                                                                            | segments; query (a section's: segments and query too since 0.3.0)                    |
+| `action.dart`      | the page beside it, or a section (since 0.5.0)                                                              | segments; query; the one `input`                                                     |
+| `loading.dart`     | its folder and below (inherited, nearest wins)                                                              | segments; query                                                                      |
+| `error.dart`       | its folder and below (inherited, nearest wins)                                                              | segments; query; `error`, `stackTrace`, `retry`                                      |
+| `layout.dart`      | its folder and below                                                                                        | `child` or `navigationShell`; segments at or above; query; section data; `extra`     |
+| `guard.dart`       | every route at and below its folder                                                                         | `uri`; segments at or above; query; `extra`                                          |
+| `redirect.dart`    | its own folder's URL, in place of `page.dart`                                                               | `uri`; segments; query; `extra`; optional `Ref ref` first (or `ProviderContainer c`) |
+| `transition.dart`  | its folder and below; layout shells too                                                                     | `key`, `child`, `state`, `shell` (a `bool`)                                          |
+| `present.dart`     | its own folder only                                                                                         | `key`, `child`, `state`                                                              |
+| `navigator.dart`   | its folder and below (nearest wins)                                                                         | nothing: it is data                                                                  |
+| `not_found.dart`   | unknown URLs under its folder; bad segments                                                                 | `uri`; its own path's segments, as `String`s                                         |
+| `meta.dart`        | its own route only (not inherited)                                                                          | nothing: it is data                                                                  |
+| `route.dart`       | `caseSensitive`, `linkable`, `remount`, `deferred`, `freshness`: folder and below; `paths`: its own segment | nothing: it is data                                                                  |
+| `extra_codec.dart` | the app root only                                                                                           | nothing: it is data                                                                  |
 
 `not_found.dart` also reads as `not-found.dart` (kebab), whatever `file_style`
 says; `file_style` only picks what `fsp init` and `fsp new` write.
@@ -108,7 +108,9 @@ or `redirect.dart`. Copied into the manifest by reference.
 `const linkable = false;` (0.5.0) and/or `const remount = Remount.onSegments;`
 (0.6.0: when a page starts again because its URL changed) and/or `const deferred = true;`
 (0.7.0: the pages in this folder and below load their code on demand; only `page.dart` is
-deferred, never a layout). Each must be a literal:
+deferred, never a layout) and/or `const freshness = Freshness(...);` (0.8.0: when the data of
+this folder and below loads again). Each must be a literal, except `freshness`, a `Freshness(...)`
+call:
 `fsp` reads the source. A `route.dart` with none of them is an error.
 
 **`extra_codec.dart`**: a top-level `extraCodec` (a `const`, a `final` or a

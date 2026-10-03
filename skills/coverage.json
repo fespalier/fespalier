@@ -160,6 +160,8 @@
       "covers": [
         "README.md#`data.dart`: a function, a selector or a provider",
         "README.md#Retries and reloads",
+        "README.md#Freshness: `staleTime`, resume and reconnect",
+        "README.md#A cache that survives a restart: `dataCache`",
         "README.md#Typed helpers on the route",
         "README.md#From a location to its data",
         "README.md#Section data",
@@ -177,7 +179,10 @@
         "packages/fespalier/lib/src/route_data.dart",
         "packages/fespalier/lib/src/route_match.dart",
         "packages/fespalier/lib/src/selected_data.dart",
-        "packages/fespalier/lib/src/action.dart"
+        "packages/fespalier/lib/src/action.dart",
+        "packages/fespalier/lib/src/freshness.dart",
+        "packages/fespalier/lib/src/data_cache.dart",
+        "packages/fespalier/lib/persist.dart"
       ]
     },
     "fespalier-layouts": {

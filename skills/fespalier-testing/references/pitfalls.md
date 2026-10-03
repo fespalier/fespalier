@@ -147,6 +147,24 @@ router.routerDelegate.currentConfiguration.last.matchedLocation   // '/products/
   runs `/products`' `data.dart` underneath. If your fakes delay, pump long enough
   for both, or `pumpAndSettle`.
 
+## Aging data and the cache (since 0.8.0)
+
+- `await tester.pump(const Duration(minutes: 6))` makes data with a `freshness` stale: `clock.now()` is
+  `testWidgets`' fake clock, and nothing starts a timer. A stale value loads again when something **reads** it,
+  so open the page, resume or fire a signal after pumping.
+- A resume is `tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive)` then `.resumed` (or
+  `container.read(appResumeSignal.notifier).fire()`); a reconnect is
+  `container.read(reconnectSignal.notifier).fire()`. A `ProviderContainer` test with no binding that builds a
+  `refetchOnResume` provider throws: use `testWidgets` or override
+  `appResumeSignal.overrideWith(RefetchSignal.new)`.
+- A reload starts on a frame and its value shows on the next: `pump()` a few times. A fake that delays needs
+  `pump(duration)` past it, as always.
+- Nothing is saved without a `dataCacheStorage` override. For a restart, give two `pumpRouter` calls the same
+  `MemoryDataStorage()` (and a `tester.pumpWidget(const SizedBox())` between them so the second boots afresh).
+  It is synchronous, so no future is left pending, and `pump(const Duration(days: 3))` expires a value.
+- An action's invalidation and a plain `ref.invalidate` load at once, `staleTime` or not.
+  See `fespalier-data`, `references/freshness-and-cache.md`.
+
 ## Hovering a `RouteLink`
 
 A `RouteLink` with `preload: Preload.intent` starts loading on a **mouse** hover, a

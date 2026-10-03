@@ -1059,7 +1059,7 @@ fn no_companions_generate_what_0_7_0_did() {
              );\n",
             // The read sites: `DataView` and `SectionView` as they were.
             "(v) => DataView(\n\
-             \x20               watch: (ref) => ref.watch(_data2(v.id)),\n\
+             \x20               watch: (ref) => watchData(ref, 'd2', _data2(v.id)),\n\
              \x20               refresh: (ref) => ref.invalidate(_data2(v.id)),\n\
              \x20               data: (d) => _i3.OrderPage(id: v.id, order: d),\n\
              \x20               loading: () => const DefaultLoading(),\n\
@@ -1067,7 +1067,7 @@ fn no_companions_generate_what_0_7_0_did() {
              \x20               keepPrevious: true,\n\
              \x20             ),\n",
             "(v) => SectionView(\n\
-             \x20                   watch: (ref) => ref.watch(_data4(v.teamId)),\n\
+             \x20                   watch: (ref) => watchData(ref, 'd4', _data4(v.teamId)),\n\
              \x20                   data: (s4) => _i7.MembersPage(team: s4, teamId: v.teamId),\n\
              \x20                 ),\n",
         ],

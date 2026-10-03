@@ -63,6 +63,9 @@ Bump to `v0.9.0`, regenerate (`lib/app.g.dart` is unchanged for an app that opts
    another signature: rename it), `FespalierTelemetry.run` for adapter packages, and `navigateFrom` with
    `NavigationSource` and the attribute `fespalier.navigation.source` (contract version 1 gains a key; absent
    unless a bridge marks the navigation). `RecordingTelemetry` gains `recordWithin:` and `source=`.
+6. **The package asks for `hooks_riverpod: ^3.3.2`** (it was `^3.2.1`): on riverpod 3.2.1, the lowest the old
+   constraint admitted, a closed `PrefetchHandle` left its provider alive and `freshness` did not load again.
+   An app already resolves 3.3.2 or newer; one pinned lower must raise its own constraint.
 
 ## 0.7 to 0.8: what to check
 

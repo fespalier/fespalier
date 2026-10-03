@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show PlatformDispatcher;
+import 'dart:ui' show Brightness, PlatformDispatcher;
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/widgets.dart';

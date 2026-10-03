@@ -36,6 +36,7 @@ export 'src/route_link.dart';
 export 'src/route_match.dart';
 export 'src/route_navigator.dart';
 export 'src/route_data.dart';
+export 'src/scroll_memory.dart';
 export 'src/segments.dart';
 export 'src/selected_data.dart';
 export 'src/tab_options.dart';

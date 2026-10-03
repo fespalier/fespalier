@@ -502,6 +502,8 @@ mod rest_types_tests;
 #[cfg(test)]
 mod route_api_tests;
 #[cfg(test)]
+mod scroll_tests;
+#[cfg(test)]
 mod selector_tests;
 #[cfg(test)]
 mod semantics_tests;

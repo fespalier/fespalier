@@ -286,6 +286,7 @@ fespalier:
   #   ios_app_id: TEAMID.com.example.shop
   #   out: links                  # default
   semantics_ids: false # `true` (since 0.7.0): every page wears `Semantics(identifier: 'route:/...')`, for Maestro
+  scroll_restoration: false # `true` (since 0.8.0): the browser's back and forward bring a page's scroll offsets back
   # maestro:                      # no default: what `fsp maestro` writes (see below)
   #   url: http://localhost:8080  # the web; or `app_id: com.example.shop` for Android and iOS
   #   link: http://localhost:8080/#
@@ -326,6 +327,9 @@ is always a valid page. Without the key, `push` leaves the address bar on the pa
 reported: `unknown_path` is `warning` (the default), `error` or `off`.
 `semantics_ids` (since 0.7.0) and `maestro:` are about [Maestro](#maestro-flows-fsp-maestro): the first
 changes the generated file, the second is read, and checked, only by `fsp maestro`.
+`scroll_restoration` (since 0.8.0) is `true` or `false`: whether each page is wrapped in a `PageStorage` that the
+browser's back and forward button hand back (see [Scroll restoration](#scroll-restoration)). A value that isn't a
+bool is an error.
 The router's [`extraCodec`](#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
 
@@ -2589,6 +2593,93 @@ Ids come from folder names, so renaming a folder drops what was saved under the 
 a page's `RestorableInt` and a page's `extra` with `tester.restartAndRestore()`. Build the router in a
 `State`, not a `final`, in such a test: a router remembers where it went.
 
+### Scroll restoration
+
+Since 0.8.0. Flutter builds a page from nothing when the browser's back or forward button brings it
+back, so a long list starts at the top again. `scroll_restoration: true` in the `fespalier:` section of
+`pubspec.yaml` (off by default) gives each page's scroll offsets back:
+
+```yaml
+fespalier:
+  scroll_restoration: true
+```
+
+```dart
+// lib/app/products/page.dart
+ListView.builder(
+  key: const PageStorageKey<String>('products'), // without this key, nothing is restored
+  itemBuilder: (context, i) => ...,
+)
+```
+
+**Only a scrollable under a `PageStorageKey` is restored.** Flutter keeps an offset in the nearest
+`PageStorage`, by key, and stores nothing for a scrollable that has none; fespalier does not make keys up. It
+also means two scrollables on one page can't swap offsets: give each its own key (a carousel in a list,
+`PageStorageKey('featured')` and `PageStorageKey('feed')`). A `PageView` and an `ExpansionTile` keep their
+position in the same place, so the same key restores them.
+
+What the generated router does with the key on is wrap the page's own view, inside its transition and under
+its layouts, in `RouteScrollMemory`:
+
+```dart
+GoRoute(
+  path: 'about',
+  builder: (context, state) => RouteScrollMemory(
+    state: state,
+    child: _i4.page(),
+  ),
+),
+```
+
+(`data.dart`, `deferred`, `remount` and segment pages are wrapped the same way; layouts, redirects and
+not-found views are not.) `RouteScrollMemory` gives the page a `PageStorage` bucket of its own per history
+entry, and what it does with it depends on how the page was reached:
+
+- **The browser brought the entry back** (back, forward, or a reload of the tab): the page gets the bucket the
+  entry had, so its keyed scrollables return to where they were. fespalier tells from go_router: it keeps the
+  history state the platform hands over, and replaces it with a marker of its own for every navigation the app
+  starts.
+- **Anything the app starts** (`go`, `push`, `replace`, a `RouteLink`, the first route) gets a fresh bucket, so
+  the page starts at the top, and the bucket replaces the one kept for that location.
+- **A location the platform reports without history state** (a link opened from outside) counts as the app's,
+  so it starts at the top too.
+
+An entry is its matched location, plus the query for the page that is the top of the location
+(`/search?q=a` and `/search?q=b` are two entries; `/products` below `/products/42` is `/products`).
+
+Things to know:
+
+- **A page that stays mounted keeps its live scroll.** The page below a child route, a tab, and a page whose URL
+  changes in place (`remount: never`, `/c/1` to `/c/2`, or `?page=2` through `copyWith`) are the same widgets
+  throughout, so nothing is restored for them; the bucket just moves to the new location. On Android and iOS
+  back is a pop and the page below is still mounted.
+- **The memory is in memory.** A router keeps the buckets of its 64 most recent entries (the oldest is
+  forgotten first), each router has its own, and a reload of the browser tab starts empty. The same location
+  twice in the history is one entry: A, B, A, B and back twice restores the second A's offset.
+- **A list that grows as it scrolls** (infinite scroll) is rebuilt with its first items only, and Flutter
+  clamps the saved offset to what is there. A list that waits for `data.dart` is fine: its offset is applied
+  when the list is first built, after `loading.dart`.
+- Off, the generated file has no `RouteScrollMemory` at all.
+
+To test it, play the browser: the entry has to come back with the history state the app gave the platform
+(`routeInformationUpdated`), as it does in a browser. A `pushRouteInformation` with a location alone is a
+location from outside, and starts at the top. `examples/features/test/scroll_restoration_test.dart` records the
+state with a mock handler on `SystemChannels.navigation` and sends it back:
+
+```dart
+await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+  'flutter/navigation',
+  const JSONMethodCodec().encodeMethodCall(
+    MethodCall('pushRouteInformation', {'location': '/feed', 'state': saved.state}),
+  ),
+  (_) {},
+);
+await tester.pumpAndSettle();
+```
+
+`examples/features` has `/feed` with two keyed lists, a horizontal one and a vertical one, and tests for back,
+forward, a `go` that starts at the top, and the two lists keeping their own offsets.
+
 ## The generator
 
 `cli/` is a Rust binary, `fsp`. A full scan, check and emit of an example runs in a few
@@ -3401,7 +3492,8 @@ route (`/photos/:id`), a bottom sheet (`/photos/sort`), a full-screen dialog
 (`/photos/upload`) and an app-owned sheet with a URL (`/photos/share`, `present.dart`, with a page
 on top of it at `/photos/share/terms`) opening over it. Some of its routes have a `meta.dart` (`PageMeta`), which
 its root layout reads through the route manifest to set the page title, and its tests join a
-review-code check on `AppRoutes.all`.
+review-code check on `AppRoutes.all`. It sets `scroll_restoration: true` (since 0.8.0): `/feed` has two
+lists under `PageStorageKey`s, and its tests play the browser's back and forward.
 
 `examples/tabs` also keeps its manifest in a library of its own (`output_manifest:
 lib/app.routes.g.dart`, with `Review` metas that `lib/main.dart` never imports), and its tests
@@ -3703,12 +3795,12 @@ than from a global, so that a route stays a value: see [Localized paths](#locali
 
 This is an early version.
 
-- **Generator:** 798 tests (746 unit, 41 CLI integration, 11 version checks) cover parsing, every binding rule and contract error, query
+- **Generator:** 812 tests (759 unit, 41 CLI integration, 12 version checks) cover parsing, every binding rule and contract error, query
   parameters, `(group)` folders and route order, tab layouts, navigators and shells, transitions, all three data
   forms, section data, nested `not_found.dart`, the typed helpers, guards and redirects, `extra` for pages, layouts and guards and `extra_codec.dart`,
-  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), string paths that match no route (the lint, its matching, mount point and ignore comments), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
+  scaffolding, the route manifest, meta.dart (and `meta_unique`) and restoration ids, `match` / `dataAt`, typed catch-alls, enum segments, per-folder case, localized paths (spellings, non-ASCII, collisions, and `route.dart` `paths` edits in the incremental test), routes that leave the page above (`nest = false`), deferred routes (the `route.dart` switch and what it inherits, the `deferred as` imports and views, `preload`, the type rule), scroll restoration (what is wrapped, the config key), string paths that match no route (the lint, its matching, mount point and ignore comments), that the committed outputs are up to date, and that `watch`'s incremental runs equal a from-scratch `gen` after random edits (enum files outside the app folder included). Clippy is clean.
 - **Runtime + examples:** `flutter analyze` is clean on Flutter 3.47 (go_router 17 and 18,
-  hooks_riverpod 3, flutter_hooks 0.21). 988 Flutter tests (the package 477, the DevTools extension 178, `shop` 64, `features` 222, `tabs` 39, `minimal` 8); the example tests drive the generated router through every
+  hooks_riverpod 3, flutter_hooks 0.21). 1006 Flutter tests (the package 491, the DevTools extension 178, `shop` 64, `features` 226, `tabs` 39, `minimal` 8); the example tests drive the generated router through every
   file kind.
 - **Types are compared by spelling, not resolved.** The generator reads a syntax tree,
   not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The

@@ -96,6 +96,7 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 | A `WidgetRef` (prefetch, refresh)  | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                     |
 | An action (a write, since 0.5.0)   | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                      |
 | Restoration                        | your own app widget building the router in `State`, `restartAndRestore()`                                                                          |
+| Scroll restoration (0.8.0)         | play the browser with `pushRouteInformation` **and the state the app reported**; a location alone starts at the top (`pitfalls.md`)                |
 | A deferred route (0.7.0)           | `pumpRouter` loads it; with your own router, `await tester.runAsync(AppRoutes.loadDeferred)` before `pumpWidget` (`pitfalls.md`)                   |
 | A `RouteLink` hover (0.5.0)        | a mouse `createGesture`, `moveTo`, `pump`; `container.exists(XRoute.data(...))` (`pitfalls.md`)                                                    |
 

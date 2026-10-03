@@ -1,0 +1,12 @@
+# Written by `fsp maestro` from lib/app/feed/page.dart: don't edit it, run `fsp maestro` again.
+appId: "com.example.features"
+name: "/feed"
+tags:
+  - "fespalier"
+---
+- launchApp
+- openLink: "features://app.example.com/feed"
+- extendedWaitUntil:
+    visible:
+      id: "route:/feed"
+    timeout: 20000

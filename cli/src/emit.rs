@@ -63,6 +63,8 @@ struct FileCx {
     /// `semantics_ids` from the config: pages wear `Semantics(identifier:)`, and `mount()`
     /// turns the semantics tree on on the web.
     semantics_ids: bool,
+    /// `scroll_restoration` from the config: each page's view is wrapped in `RouteScrollMemory`.
+    scroll_restoration: bool,
     /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
     /// (`_keep`) that tells a parameter left out from one passed as `null`.
     copy_with: bool,
@@ -543,6 +545,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
         semantics_ids: cfg.semantics_ids,
+        scroll_restoration: cfg.scroll_restoration,
     };
     templates::render("app.g.dart", &cx)
 }

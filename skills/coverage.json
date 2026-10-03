@@ -184,10 +184,12 @@
       "covers": [
         "README.md#Tab layouts",
         "README.md#Transitions",
+        "README.md#Shared elements (heroes)",
         "README.md#State restoration",
         "kind:layout.dart",
         "kind:transition.dart",
         "packages/fespalier/lib/src/layout_page.dart",
+        "packages/fespalier/lib/src/heroes.dart",
         "packages/fespalier/lib/src/platform_page.dart",
         "packages/fespalier/lib/src/tab_options.dart",
         "packages/fespalier/lib/src/transitions.dart"

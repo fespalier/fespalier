@@ -1,6 +1,6 @@
 # The file kinds
 
-Fifteen kinds, as of 0.5.0 (`Kind::ALL` in `cli/src/scan.rs`; `action.dart` is new in it). `fsp` reads a
+Eighteen kinds, as of 0.8.0 (`Kind::ALL` in `cli/src/scan.rs`; `action.dart` is new in 0.5.0, and `app.dart`, `startup.dart` and `splash.dart` in 0.8.0). `fsp` reads a
 file by its **name**; nothing else marks a route. Each view file exports one
 public widget class, **or** one top-level function named after the file, never
 both.
@@ -22,6 +22,9 @@ both.
 | `meta.dart`        | its own route only (not inherited)                                                             | nothing: it is data                                                                  |
 | `route.dart`       | `caseSensitive`, `linkable`, `remount`, `deferred`: folder and below; `paths`: its own segment | nothing: it is data                                                                  |
 | `extra_codec.dart` | the app root only                                                                              | nothing: it is data                                                                  |
+| `app.dart`         | the app root only (since 0.8.0)                                                                | `router` (a `GoRouter`); everything else optional                                    |
+| `startup.dart`     | the app root only (since 0.8.0)                                                                | nothing: `startup()` takes no parameters                                             |
+| `splash.dart`      | the app root only (since 0.8.0)                                                                | `error`, `stackTrace`, `retry`, each nullable                                        |
 
 `not_found.dart` also reads as `not-found.dart` (kebab), whatever `file_style`
 says; `file_style` only picks what `fsp init` and `fsp new` write.
@@ -113,6 +116,14 @@ deferred, never a layout). Each must be a literal:
 
 **`extra_codec.dart`**: a top-level `extraCodec` (a `const`, a `final` or a
 getter). In a subfolder it is ignored with a warning.
+
+**`app.dart`**, **`startup.dart`** and **`splash.dart`** (since 0.8.0) are read **at the app
+root only**: below it they are ignored with a warning (`app.dart is only read at the root of the
+app folder, so this one is ignored`). They make `fsp` write `lib/app.main.g.dart` (class `AppMain`)
+unless `main: manual` is set, in which case they are not read at all. `app.dart` and `splash.dart`
+are view files (a class or `Widget app(...)` / `Widget splash(...)`); `startup.dart` exports
+`startup()`, `zone()`, `providerObservers`, `routerObservers` and `retry()` by name. All of it is in
+[`app-main.md`](app-main.md).
 
 ## Folder names
 

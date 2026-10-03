@@ -126,19 +126,21 @@ fn committed_output_is_up_to_date() {
     for name in ["shop", "features", "tabs", "minimal"] {
         // The examples' own pubspec.yaml: `output_manifest:` and `meta:` change what is written.
         let cfg = Config::load(&examples(name)).unwrap();
-        let (code, diags, app) = crate::analyze(&examples(name).join("lib/app"), &cfg).unwrap();
+        let (code, main, diags, app) =
+            crate::analyze_with_main(&examples(name).join("lib/app"), &cfg).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
         // `format: true` (examples/minimal) commits the output as `dart format` leaves it. Without
         // `dart` on PATH (the generator's CI job) there is nothing to compare it with: skip.
-        let code = if cfg.format {
-            let (formatted, warning) =
-                crate::format::format_dart(&code, &examples(name).join(&cfg.output));
-            if warning.is_some() {
-                continue;
+        let format = |code: String, path: &str| {
+            if !cfg.format {
+                return Some(code);
             }
-            formatted
-        } else {
-            code
+            let (formatted, warning) =
+                crate::format::format_dart(&code, &examples(name).join(path));
+            warning.is_none().then_some(formatted)
+        };
+        let Some(code) = format(code, &cfg.output) else {
+            continue;
         };
         let committed = fs::read_to_string(examples(name).join(&cfg.output)).unwrap_or_default();
         assert!(
@@ -146,6 +148,25 @@ fn committed_output_is_up_to_date() {
             "examples/{name}/{} is stale; run `fsp gen --project examples/{name}`",
             cfg.output
         );
+        // The generated main() (`lib/app.main.g.dart`) is checked in when the app has one, and
+        // is absent when it has none.
+        let main_path = examples(name).join(cfg.output_main());
+        match main {
+            Some(main) => {
+                let main = format(main, &cfg.output_main()).unwrap();
+                let committed = fs::read_to_string(&main_path).unwrap_or_default();
+                assert!(
+                    committed == main,
+                    "examples/{name}/{} is stale; run `fsp gen --project examples/{name}`",
+                    cfg.output_main()
+                );
+            }
+            None => assert!(
+                !main_path.exists(),
+                "examples/{name}/{} is there but the app has no main to generate",
+                cfg.output_main()
+            ),
+        }
         // A separate manifest library is checked in too.
         if let Some(path) = &cfg.output_manifest {
             let manifest = crate::manifest::emit(&app, &cfg).unwrap();

@@ -470,6 +470,8 @@ mod enum_tests;
 #[cfg(test)]
 mod extra_tests;
 #[cfg(test)]
+mod freshness_tests;
+#[cfg(test)]
 mod graph_tests;
 #[cfg(test)]
 mod incremental_tests;

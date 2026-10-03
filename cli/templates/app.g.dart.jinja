@@ -20,6 +20,9 @@ DataView(
   loading: () => {{ b.data.loading }},
   error: (e, st, retry) => {{ b.data.error }},
   keepPrevious: {{ "true" if keep_previous else "false" }},
+{% if b.data.keep_data_on_error %}
+  keepDataOnError: true,
+{% endif %}
 {% if b.data.library %}
   library: {{ b.data.library }},
 {% endif %}
@@ -527,10 +530,31 @@ final _data{{ p.id }} = ({{ p.params }}) => {{ p.call }};
 
 /// data.dart selects the app's own provider: nothing wraps it.
 final _data{{ p.id }} = {{ p.call }};
+{% elif p.cache %}
+
+final _data{{ p.id }} = {{ "cachedDataFamily" if p.family else "cachedData" }}(
+  ({{ p.params }}) => traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}),
+  cache: {{ p.cache.expr }},
+  name: {{ p.cache.name }},
+{% if p.cache.key_param %}
+  keyParts: ({{ p.cache.key_param }}) => {{ p.cache.key_parts }},
+{% endif %}
+{% if p.freshness %}
+  freshness: {{ p.freshness }},
+{% endif %}
+{% if p.no_retry %}
+  // No automatic retry: error.dart and its Retry button are the retry UX.
+  retry: (retryCount, error) => null,
+{% endif %}
+);
 {% else %}
 
 final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
+{% if p.freshness %}
+  ({{ p.params }}) => freshData(ref, {{ p.freshness }}, traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }})),
+{% else %}
   ({{ p.params }}) => traceData(ref, '{{ p.site }}', {{ p.key_expr }}, {{ p.call }}),
+{% endif %}
 {% if p.no_retry %}
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,

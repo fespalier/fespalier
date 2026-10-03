@@ -69,10 +69,10 @@ digraph routes {
         n44 [label="/shops/:shop/items/:id\nItemRoute\n(data)"];
       }
       subgraph cluster_b5 {
-        label="layout teams/$teamId/layout.dart (data)";
+        label="layout teams/$teamId/layout.dart (data, fresh)";
         style=rounded;
         n45 [label="/teams/:teamId/members\nMembersRoute"];
-        n46 [label="/teams/:teamId/members/:member\nMemberRoute\n(data)"];
+        n46 [label="/teams/:teamId/members/:member\nMemberRoute\n(data, fresh)"];
         n47 [label="/teams/:teamId/settings\nTeamSettingsRoute"];
       }
       n48 [label="/browse/*categories\nBrowseRoute\n(data)"];

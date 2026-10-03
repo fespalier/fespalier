@@ -721,7 +721,7 @@ fn check_reports_a_bad_deferred_with_a_failing_exit() {
     fs::write(&route, "const nothing = 1;").unwrap();
     let (ok, err) = fsp(dir.path(), &["check"]);
     assert!(
-        !ok && err.contains("expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;`"),
+        !ok && err.contains("expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;`, `const deferred = true;` or `const freshness = Freshness(staleTime: Duration(minutes: 5));`"),
         "{err}"
     );
     // The key in pubspec.yaml is serde's to check.

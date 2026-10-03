@@ -601,7 +601,7 @@ fn a_route_dart_with_nothing_it_knows_lists_what_it_does() {
     assert_eq!(
         e,
         [
-            "✗ route.dart  expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;` or `const deferred = true;`"
+            "✗ route.dart  expected `const caseSensitive = false;` (or `true`), `const paths = {'fr': 'produits'};`, `const nest = false;`, `const linkable = false;`, `const remount = Remount.onSegments;`, `const deferred = true;` or `const freshness = Freshness(staleTime: Duration(minutes: 5));`"
         ]
     );
 }

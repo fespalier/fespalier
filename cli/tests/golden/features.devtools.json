@@ -820,7 +820,8 @@
               "file": "teams/$teamId/layout.dart",
               "folder": "teams/$teamId",
               "markers": [
-                "data"
+                "data",
+                "fresh"
               ],
               "items": [
                 {
@@ -846,7 +847,8 @@
                       "file": "teams/$teamId/members/$member/page.dart",
                       "folder": "teams/$teamId/members/$member",
                       "markers": [
-                        "data"
+                        "data",
+                        "fresh"
                       ],
                       "params": [
                         {

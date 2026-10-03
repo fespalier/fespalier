@@ -45,7 +45,11 @@ Bump to `v0.8.0`, regenerate, and look at these:
 2. **The package asks for `hooks_riverpod: ^3.2.1`** (it was `^3.0.0`): `Ref.mounted` is right for a stale ref and a
    paused provider resumes, which `freshness` relies on, and the experimental `persist()` that `dataCache` is built on
    is there. An app already resolves 3.4.x; one pinned lower must raise its own constraint.
-3. **Nothing else changes for an app that opts in to nothing**: its `lib/app.g.dart` is byte-identical to 0.7.0's.
+3. **An app that opts in to nothing regenerates with DevTools-only changes.** A data route's view now watches through
+   `watchData(ref, 'dN', provider)` and `lib/app.g.dart` gains a `_devToolsProviders()` map that `devToolsRegister`
+   receives. `watchData` returns `ref.watch(provider)` unchanged (a pass-through: no `Future`, no microtask, and in a
+   release build it is `ref.watch`) and the map is only read under `kFespalierDevTools`, so behaviour, timing and the
+   release build are the same; only the diff of the generated file is new.
 4. **`freshness` and `dataCache` are now names `fsp` reads in a `data.dart`.** A public top-level variable of that name and
    another type is an error (`` `freshness` must be a `Freshness(...)` ``); rename it. A private `_freshness` is never read.
    A `route.dart` may hold `const freshness = Freshness(...)` too (the "expected ..." error now names seven constants).

@@ -1668,6 +1668,184 @@ context.go(returnTo(from));                  // from if it's a location in the a
 and the like fall back, so a crafted `?from=` can't send people off your app. Both `uri` and
 the typed routes include the mount prefix when the tree is mounted with `at:`.
 
+### Feature flags: fespalier_flags
+
+Since 0.9.0. A feature flag is a value the app asks for by name and that a server, a vendor SDK or a build can
+change: show `/labs` to some users, move `checkout` to its second version. fespalier's core has no flag feature and
+gains none: no file kind, no `fespalier:` key, no `fsp` command, and `app.g.dart` is the same bytes.
+`package:fespalier_flags` is [Guards](#guards) with a source of values: a flag is a provider that answers **at
+once** (never an `AsyncValue`, never a `Future`), so a guard that watches one stays synchronous, and a menu entry
+behind it follows the flag because [menus run guards](#menus-and-breadcrumbs-navdart). An app that does not depend on
+it is unchanged. It adds no dependency beyond fespalier, no timer and no polling.
+
+Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if they are
+the same repository dependency; a mismatch fails with `Because every version of fespalier_flags from path depends on
+fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and demo depends on
+fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier, fespalier_flags from path
+is forbidden.`, the form it takes when the first is a path):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1
+  fespalier_flags:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_flags
+      ref: v0.8.1
+```
+
+<!-- x-release-please-end -->
+
+Declare each flag once, `const`, gate a route with `flagGuard` in its `guard.dart`, and read a flag anywhere that has a
+`Ref` or a `WidgetRef`:
+
+```dart
+// lib/flags.dart
+const labs = BoolFlag('labs');
+const checkoutV2 = BoolFlag('checkout_v2');
+const pageSize = IntFlag('page_size', fallback: 20);
+
+// lib/app/labs/guard.dart: /labs is there while the flag is on
+GuardResult guard(Ref ref) => flagGuard(ref, labs, orElse: const HomeRoute().location);
+
+// a widget, a provider, a guard: the value is there at once
+final size = ref.watch(flag(pageSize));
+```
+
+`BoolFlag` is off unless the source says otherwise (its `fallback` is `false`); `StringFlag`, `IntFlag` and
+`DoubleFlag` have a required `fallback`. A flag is its **fallback** whenever the source has no value for its key, has
+one of another type, throws, or has not started yet, so a flag is never loading. Two declarations with the same type,
+key and fallback are the same flag. A `nav.dart` beside the `guard.dart` needs nothing else: while the flag is off
+the guard refuses the entry, and a refused entry is hidden (`NavRefused.hide`, the default; `whenRefused:
+NavRefused.disable` greys it out instead).
+
+- **A new route behind a flag:** `lib/app/checkout-v2/guard.dart` is `flagGuard(ref, checkoutV2, orElse: const
+  CartRoute().location)`. A whole section: the guard goes in a `(group)` or in the section's folder, as any guard.
+- **The old URL goes to the new one while the flag is on:** `checkout/guard.dart` is `flagGuard(ref, checkoutV2,
+  whenOff: true, orElse: const CheckoutV2Route().location)`.
+- **The same URL, two pages:** no guard; the page switches: `ref.watch(flag(checkoutV2)) ? const CheckoutV2() : const
+  CheckoutV1()`.
+- **A flag and a sign-in:** a folder has one `guard.dart`, so compose with `??`. `flagGuard` returns a `String?`,
+  synchronously: `flagGuard(ref, labs, orElse: '/') ?? (ref.watch(session) ? null :
+  LoginRoute(from: uri.toString()).location)` (with [`fespalier_auth`](#authentication): `?? requireSignedIn(ref,
+  uri, signIn: ...)`).
+- **A flow that must not be pulled from under the user** (a checkout): `flagGuard(ref, checkoutV2, orElse: '/',
+  follow: false)` reads the flag once per navigation (`ref.read`): the page stays open when the flag turns off, the
+  next navigation applies it, and a menu does not follow.
+
+**Live updates.** A source can send an event when values change (`FlagSource.changes`: `FlagsChanged({'labs'})` names
+the keys, `FlagsChanged.all()` means any). `fespalier_flags` listens with **one subscription per `ProviderContainer`**,
+opened when the first flag is watched and cancelled when the last watched flag goes, and reads again only the watched
+flags the event names. A guard, a menu or a widget runs again only when the value it reads **differs**, so a flag that
+turns off on `/labs` takes the app to `orElse` in the next frame and a menu entry under it hides, with no navigation.
+Nothing in the package polls or starts a timer; a vendor's own streaming or polling runs inside its SDK, by its settings.
+
+**What to know.**
+
+- **A guard that redirected stays subscribed until the next navigation.** fespalier keeps a `ref.watch`ing guard
+  while the committed location runs it, and a guard that redirected is kept until the next commit (see
+  [Guards](#guards)). So a flag's subscription can outlive the page it gated by one navigation: a cold deep link to
+  `/labs` with the flag off lands on `/`, and the flag is still listened to until the user goes somewhere else.
+  `packages/fespalier_flags/test/guard_test.dart` pins this, so a change in fespalier's guard lifetime is noticed.
+- **A guarded page under a pushed page** does not react until it is uncovered (the rule of every guard).
+- **A cold deep link before the source is ready** sees the fallback, so a guard sends it to `orElse`: await the
+  vendor's local load in `startup()` (below).
+- **Never call a vendor's async API in a guard.** PostHog's `isFeatureEnabled` is a `Future`: the guard answers a
+  `Future`, the menu entry turns pending and the first frame is blank. Copy the value into a
+  [`FlagSource`](#where-flag-values-come-from) and read that.
+- **`follow: true` (the default) takes a user off a page** when the flag turns off mid-flow. Use `follow: false` for a
+  flow.
+- **Each change re-reads the watched flags the event names.** Vendors that count evaluations (LaunchDarkly) or track
+  exposures (GrowthBook) see those reads; a keyed `FlagsChanged` keeps them to the keys that changed.
+
+**Not built.** A `route.dart` constant (`const flag = 'checkout_v2'`): it would be a second gating mechanism, with
+binding rules, diagnostics and an order to define against `guard.dart`, `nest = false` and menus, to save one line.
+Vendor **packages**: each bridge is 15 to 40 lines of mapping, so they are recipes, below. A DevTools panel for flag
+values.
+
+#### Where flag values come from
+
+`startup()` returns the source, once: `flagSource.overrideWithValue(source)`. Without one, `flagSource` is
+`const ConstFlags()`: every flag is its fallback.
+
+```dart
+// lib/app/startup.dart
+Future<List<Override>> startup() async => [
+  flagSource.overrideWithValue(const ConstFlags({'labs': bool.fromEnvironment('LABS')})),
+];
+```
+
+A `FlagSource` is four synchronous typed reads (`boolValue(key, fallback)`, `stringValue`, `intValue`,
+`doubleValue`) and `Stream<FlagsChanged>? get changes`. The typed reads are what OpenFeature's static-context client
+and LaunchDarkly's variations are, so a bridge to a vendor is a line per method. Every read must answer **from
+memory**: guards and menus call it, so never from the network, a file or a platform channel. A read that throws is the
+flag's fallback (printed in debug).
+
+| Source               | What it is                                                                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ConstFlags({...})`  | Fixed values, or `--dart-define`d ones. `changes` is `null`. A bool reads a `bool`, a double any `num`; a value of another type is the fallback |
+| `AsyncFlags(future)` | A source that is not ready at start: reads come from `meanwhile` until the future completes, then one `FlagsChanged.all()`                      |
+| A vendor bridge      | Your own `FlagSource` over the vendor's SDK: a recipe, below                                                                                    |
+| `FakeFlags({...})`   | For tests: [Testing flagged routes](#testing-flagged-routes)                                                                                    |
+
+**Initial values, with no timer.** `startup()` awaits only what is **local**: Remote Config's `ensureInitialized()`
+and `activate()` (the values the previous session fetched), LaunchDarkly's construction, PostHog's `setup()` and a read
+of the app's keys from the native SDK's cache. From the first frame every read is a synchronous call into the vendor's
+memory. A vendor whose start waits for the network (GrowthBook past its cache's TTL, LaunchDarkly's `start()` on a first
+launch, which "may not complete until ... the device leaves airplane mode") goes in `AsyncFlags(start(), meanwhile:
+...)`: the fallbacks (or the app's last known values) until the `Future` completes, then one `FlagsChanged.all()`. An
+app that must see remote values before its first frame awaits the vendor in `startup()` with a `.timeout()` of its own
+if it wants one: that timer is the app's choice, and fespalier's tests never reach it (tests override `flagSource`).
+
+**Recipes.** Firebase Remote Config, LaunchDarkly, PostHog and GrowthBook have a recipe, compiled by `just
+skill-samples`, in [`skills/fespalier-guards/references/flag-sources.md`](skills/fespalier-guards/references/flag-sources.md): about 15 to 40 lines each, a class
+that `implements FlagSource` and a `startup()` that returns it. They are not packages because there is no fespalier
+logic left in them, and a package per vendor would cost a release, a CI entry that resolves the vendor's SDK and a
+fake of its singleton for 20 lines. A recipe becomes a package when its glue grows fespalier-specific logic or past
+about 60 lines. **OpenFeature** is the common interface to converge on, but is not adopted: its Dart SDK is a beta. A
+bridge over it is about 25 lines, and `FlagSource` mirrors its typed reads and its configuration-changed event.
+
+#### Testing flagged routes
+
+`FakeFlags` (in `package:fespalier_flags/testing.dart`) is a `FlagSource` that holds values in memory. Give it to
+`pumpRouter` as an override, or to the setup file of `fsp test`:
+
+```dart
+testWidgets('labs is there with the flag on, and goes with it', (tester) async {
+  final flags = FakeFlags({'labs': true});
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/labs'),
+    overrides: [flagSource.overrideWithValue(flags)],
+  );
+  expect(currentLocation(tester), '/labs');
+
+  flags.set('labs', false);   // delivered synchronously
+  await tester.pump();        // one frame: the guard ran again, the router moved
+  expect(currentLocation(tester), '/');
+});
+```
+
+```dart
+// test/routes/setup.dart: `fsp test` tests a flagged route instead of skipping it
+List<Override> overrides(String pattern) => [
+  flagSource.overrideWithValue(FakeFlags({'labs': pattern == '/labs'})),
+];
+```
+
+- **`set(key, value)`** sends `FlagsChanged({key})` before it returns, `setAll({...})` one event for several keys, and
+  a `null` value removes the key. Call them from the test body, not while a widget builds.
+- **`FakeFlags.strict({...})`** throws a `StateError` for a key it lacks or a value of another type, and reports it
+  to `FlutterError.reportError`, so a typo in a key fails a `testWidgets` instead of reading the fallback.
+- **`listenerCount`** is how many listen to its changes: `0` once nothing watches a flag.
+- Without an override, every flag is its fallback, so existing tests of an app that adds a flag see the flag off.
+
 ### Route lifecycle: `observe.dart`
 
 Since 0.8.1, an `observe.dart` runs code when a page becomes the one the user sees, when it is on
@@ -2528,32 +2706,11 @@ Riverpod provider holding a count, a `RefetchSignal`, that the data provider lis
 
 - `appResumeSignal` fires on resume. It is created only while a provider with `refetchOnResume`
   listens to it, and its `AppLifecycleListener` goes with it.
-- `reconnectSignal` **never fires by itself**: Flutter has no API for "the network is back". Plug
-  your connectivity source in by overriding it, or call `ref.read(reconnectSignal.notifier).fire()`
-  where you know. With `connectivity_plus`:
-
-```dart
-// lib/connectivity_signal.dart
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:fespalier/fespalier.dart';
-
-/// Fires when the device goes from offline to online.
-class ConnectivitySignal extends RefetchSignal {
-  @override
-  int build() {
-    var online = true;
-    final subscription = Connectivity().onConnectivityChanged.listen((results) {
-      final now = !results.contains(ConnectivityResult.none);
-      if (now && !online) fire();
-      online = now;
-    });
-    ref.onDispose(subscription.cancel);
-    return 0;
-  }
-}
-
-// main.dart: ProviderScope(overrides: [reconnectSignal.overrideWith(ConnectivitySignal.new)], …)
-```
+- `reconnectSignal` **never fires by itself**: Flutter has no API for "the network is back". Override it with
+  a `RefetchSignal` of your own that listens to your connectivity source, or call
+  `ref.read(reconnectSignal.notifier).fire()` where you know. `fespalier_connectivity` (since 0.9.0,
+  [below](#reconnects-fespalier_connectivity)) is that signal from `connectivity_plus`, tested:
+  `reconnectSignal.overrideWith(ConnectivitySignal.new)` in `startup()`.
 
 **Your own provider.** `freshData(ref, const Freshness(...), value)` is what the generated provider
 wraps its value in. It returns `value` itself (a `Future` stays the `Future`, a value stays a
@@ -2588,6 +2745,119 @@ reload starts on a frame and its value shows on the next, so `pump()` a few time
 `freshness` and `dataCache` are names fsp now reads in a `data.dart`, so an app with a public
 top-level variable of one of those names and another type gets the first error: rename it (a
 private `_freshness` is never read).
+
+#### Reconnects: fespalier_connectivity
+
+Since 0.9.0. `refetchOnReconnect: true` waits for [`reconnectSignal`](#freshness-staletime-resume-and-reconnect), which
+never fires by itself. `package:fespalier_connectivity` is that signal, from `connectivity_plus`, tested, with the two
+platform repairs below and a `hasNetwork` provider for an offline banner. fespalier's core depends on neither the plugin nor
+this package, the generated code is the same bytes, and an app that does not depend on it pays nothing for it.
+
+Add it next to fespalier, with the same `url` and the same `ref` (as for [`fespalier_flags`](#feature-flags-fespalier_flags)):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1
+  fespalier_connectivity:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_connectivity
+      ref: v0.8.1
+```
+
+<!-- x-release-please-end -->
+
+It needs Dart 3.8 and Flutter 3.32 or newer, and takes `connectivity_plus` `>=6.0.1 <8.0.0`. One line in `startup()`, which
+stays synchronous (no first-frame cost):
+
+```dart
+// lib/app/startup.dart
+List<Override> startup() => [reconnectSignal.overrideWith(ConnectivitySignal.new)];
+
+// lib/app/teams/$teamId/route.dart: every data() at and below is loaded again when the device gets a network back,
+// if its value is at least 30 seconds old
+const freshness = Freshness(staleTime: Duration(seconds: 30), refetchOnReconnect: true);
+```
+
+**What fires and what does not.** `ConnectivitySignal` fires when the device goes **from no network to a network**
+(`[none]` to anything else). It does not fire on the first answer, and not on a Wi-Fi to mobile switch. Every data provider
+that listens loads again if its value is at least `staleTime` old (stale-while-revalidate: the old value stays on screen,
+and `keepDataOnError` keeps the page if the reload fails); within `staleTime` nothing loads. A reload already under way is
+not repeated (a value that is loading is never stale), so a flapping network needs no debounce timer: it fires each time and
+loads once. The signal exists while a `data.dart` with `refetchOnReconnect` is alive, and so does its subscription to
+`connectivity_plus`: an app with no such data subscribes to nothing.
+
+**A banner.** `hasNetwork` is a `bool` provider: `false` only once the device has said "no network", and `true` before the
+first answer, so nothing flashes offline at start. It pairs with `XRoute.watch(ref).isFromCache` ("offline copy"):
+
+```dart
+if (!ref.watch(hasNetwork)) const Text('No network')
+```
+
+`networkConnectivity` is the `List<ConnectivityResult>?` behind it (null until the first answer), for an app that shows the
+kind of network.
+
+**Connectivity versus reachability.** This package, like `navigator.onLine` on the web, answers "is a network interface up?".
+That is local, instant and event-driven. Reachability answers "does the server I need answer?", and only a request can tell:
+
+- Connected but unreachable: a captive portal (hotel Wi-Fi before its login page), a router with no uplink, a VPN that is
+  down, a firewall, the server down. Reachable over a link the OS reports oddly: a VPN reported as `other` on iOS, the iOS
+  simulator's missed Wi-Fi events.
+- So `refetchOnReconnect` on connectivity can fire on a captive portal: the reload fails and `keepDataOnError` keeps the
+  page. `hasNetwork == false` is reliable ("no network at all"); `true` promises nothing. An offline banner should say "No
+  network", and a failed load should show its own error.
+- fespalier does not ship reachability: it needs a request to **your** server (not a third party's: privacy, and a third
+  party answering says nothing about yours), and any polling is a timer. A compiled recipe in
+  [`skills/fespalier-data/references/reconnect-and-network.md`](skills/fespalier-data/references/reconnect-and-network.md) asks
+  your own API once per connectivity change and per resume, never on a timer, and turns that into a `RefetchSignal`.
+
+**Two platform repairs.** The web sends nothing when a stream starts listening (only `online` and `offline` events), so the
+first state is asked with `check()` (which reads `navigator.onLine`); an event that arrives before that answer wins over it.
+And iOS drops connectivity events while the app is in the background (the plugin resyncs "on the next listen or check"), so
+`networkConnectivity` asks `check()` again on each resume, through fespalier's own `appResumeSignal`: an offline banner does
+not stay up after the network came back in the background. Neither starts a timer.
+
+**Testing.** `package:fespalier_connectivity/testing.dart` has `FakeConnectivity`, a `ConnectivitySource` whose `set`, `offline()`
+and `online([via])` deliver a change **synchronously**, whose `check()` answers `now`, and which sends nothing on listen
+(like the web). Override `connectivitySource` with it (and `reconnectSignal` with `ConnectivitySignal.new`, as `startup()`
+does; `pumpRouter` does not run `startup()`):
+
+```dart
+final fake = FakeConnectivity();
+await pumpRouter(
+  tester,
+  AppRoutes.router(initialLocation: '/teams/acme/members/7'),
+  overrides: [
+    connectivitySource.overrideWithValue(fake),
+    reconnectSignal.overrideWith(ConnectivitySignal.new),
+  ],
+);
+await tester.pump(const Duration(seconds: 31)); // the team is stale now (the fake clock)
+fake.offline();
+fake.online(); // a reconnect: the team loads again, once
+await tester.pumpAndSettle();
+```
+
+A widget test that reaches the plugin without that override **fails**, with Flutter's report
+`while activating platform stream on channel dev.fluttercommunity.plus/connectivity_status` and
+`MissingPluginException(No implementation found for method listen on channel dev.fluttercommunity.plus/connectivity_status)`
+(a test that shows `hasNetwork`, or builds a `refetchOnReconnect` provider with the package's signal, and no
+`FakeConnectivity`). `examples/features` carries it: `teams/$teamId/route.dart` has `refetchOnReconnect: true`,
+`startup.dart` overrides `reconnectSignal`, and `test/offline_test.dart` flaps the network.
+
+In debug (`debugPrint`, nothing in a release build):
+
+- `fespalier_connectivity: the connectivity stream reported an error: <error>`
+- `fespalier_connectivity: checking connectivity failed: <error>`
+
+Both leave the state as it was. Their causes are in the
+[troubleshooting skill](skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md).
 
 #### A cache that survives a restart: `dataCache`
 
@@ -2631,62 +2901,12 @@ ProviderScope(
 
 - `MemoryDataStorage` keeps values while the app runs: a page that is disposed and opened again
   shows its last value at once. For the web, examples and tests; it does not survive a restart.
-- A `Storage<String, String>` on disk survives one. `riverpod_sqflite`'s `JsonSqFliteStorage`
-  plugs in as it is. To write your own, import `package:fespalier/persist.dart` (it re-exports
-  `Storage`, `PersistedData`, `StorageOptions` and `StorageCacheTime`, so the app needn't depend
-  on `hooks_riverpod` directly). One over `shared_preferences`, whose synchronous `getString`
-  shows the saved value on the **first frame**:
-
-```dart
-// lib/prefs_storage.dart
-import 'dart:convert';
-
-import 'package:fespalier/persist.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-final class PrefsStorage extends Storage<String, String> {
-  PrefsStorage(this._prefs);
-
-  final SharedPreferencesWithCache _prefs;
-
-  @override
-  PersistedData<String>? read(String key) {
-    final saved = _prefs.getString(key);
-    if (saved == null) return null;
-    final json = jsonDecode(saved) as Map<String, Object?>;
-    final expireAt = json['expireAt'] as String?;
-    return PersistedData(
-      json['data']! as String,
-      destroyKey: json['destroyKey'] as String?,
-      expireAt: expireAt == null ? null : DateTime.parse(expireAt),
-    );
-  }
-
-  @override
-  Future<void> write(String key, String value, StorageOptions options) {
-    final age = options.cacheTime.duration;
-    return _prefs.setString(
-      key,
-      jsonEncode({
-        'data': value,
-        'destroyKey': options.destroyKey,
-        'expireAt': age == null
-            ? null
-            : DateTime.now().toUtc().add(age).toIso8601String(),
-      }),
-    );
-  }
-
-  @override
-  Future<void> delete(String key) => _prefs.remove(key);
-
-  @override
-  void deleteOutOfDate() {} // read() of an expired value is dropped by Riverpod
-}
-
-// main(): final prefs = await SharedPreferencesWithCache.create(cacheOptions: const SharedPreferencesWithCacheOptions());
-//         … dataCacheStorage.overrideWithValue(PrefsStorage(prefs))
-```
+- A `Storage<String, String>` on disk survives one. `fespalier_storage` (since 0.9.0,
+  [below](#a-cache-on-disk-fespalier_storage)) is a tested one on shared_preferences or Hive, with a size
+  budget; `riverpod_sqflite`'s `JsonSqFliteStorage` plugs in as it is. To write your own, import
+  `package:fespalier/persist.dart` (it re-exports `Storage`, `PersistedData`, `StorageOptions` and
+  `StorageCacheTime`, so the app needn't depend on `hooks_riverpod` directly); `read` returns a
+  `PersistedData<String>?`.
 
 A storage whose `read` is synchronous gives the saved value on the first frame. A `Future<Storage>`
 is fine too: there is one `loading.dart` frame, then the saved value.
@@ -2739,6 +2959,130 @@ expect(find.text('Coffee beans, 500 g'), findsOneWidget); // the saved product, 
 `MemoryDataStorage` is synchronous, so a test leaves no pending future, and
 `await tester.pump(const Duration(days: 3))` expires a value under the fake clock. `examples/shop`
 has the two tests (`test/freshness_test.dart`).
+
+#### A cache on disk: fespalier_storage
+
+Since 0.9.0. `package:fespalier_storage` is a tested `Storage<String, String>` for the [`dataCache`](#a-cache-that-survives-a-restart-datacache)
+above, on **shared_preferences** (`PrefsDataStorage`) or **Hive** (`HiveDataStorage`), with a size budget. A route's
+value is saved when it loads, and at the next start it is **on the first frame** while the fresh one loads. fespalier's
+core depends on neither plugin, the generated code is the same bytes, and an app that does not depend on this package
+pays nothing for it.
+
+Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if they are
+the same repository dependency, as for [`fespalier_flags`](#feature-flags-fespalier_flags)):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1
+  fespalier_storage:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_storage
+      ref: v0.8.1
+```
+
+<!-- x-release-please-end -->
+
+It needs Dart 3.8 and Flutter 3.32 or newer. Open a storage in `startup()` and give it to `dataCacheStorage`:
+
+```dart
+// lib/app/startup.dart
+Future<List<Override>> startup() async => [
+  dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
+];
+```
+
+`open()` is awaited there, so the first frame is the app: `startup()` costs one frame behind `splash.dart` (or the native
+splash), and no more. `read()` is then a synchronous map lookup and a header parse, so Riverpod's `persist` gives the saved
+value to the first `build`. A `startup()` that prefers no extra frame can pass the `Future` itself
+(`dataCacheStorage.overrideWithValue(PrefsDataStorage.open())`): one `loading.dart` frame, then the saved value. `open()`
+returns `null` (and prints a debug line) when the store cannot open, and `dataCacheStorage` takes `null` as "save
+nothing": a cache never stops an app from starting.
+
+| What                 | `PrefsDataStorage`                                                                      | `HiveDataStorage`                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Backend              | `SharedPreferencesWithCache`; localStorage on the web                                   | a `hive_ce` `Box<String>`; IndexedDB on the web                                       |
+| Reads                | synchronous                                                                             | synchronous once the box is open                                                      |
+| Default budget       | 1,000,000 characters, 200 entries                                                       | 4,000,000 characters, 1,000 entries                                                   |
+| Plugins              | `shared_preferences` (most apps have it)                                                | none: `hive_ce` is pure Dart; `path_provider` for the cache directory                 |
+| Where on disk        | the platform's preferences, beside the app's own keys                                   | `getApplicationCacheDirectory()` (OS-purgeable, not backed up), none on the web       |
+| Pick it when         | a few small values; on the web localStorage is about 5 MB per origin, shared            | more or larger values; opening reads the whole box, so `maxSize` also bounds startup  |
+
+**The budget.** `maxSize` is in `String.length` units (UTF-16 code units, what browsers count localStorage in), keys and
+headers included, and `maxEntries` is a count. Over either, the entries **written longest ago** go first, ties by key
+(deterministic: a function of the store and `clock.now()`, with no timer and no background sweep). A route's value is
+written each time it is fetched fresh, so what is read is rewritten; reads never write. A value too large for `maxSize`
+is not saved: it fails with `DataEntryTooLarge`, which fespalier prints after `could not save`, and the route works.
+Expired and unreadable entries are deleted once, when the storage is made. A web `localStorage` that is full is a
+`QuotaExceededError` on the write: the entry is dropped and fespalier prints "could not save"; keep `maxSize` well below,
+or use Hive.
+
+**Versioning, corrupt entries, sign-out.**
+
+- `DataCache(version: '2')` is Riverpod's `destroyKey`: stored in the entry's header and compared on read, so another
+  version is deleted, not decoded. The format of the storage itself is versioned by the entry's first line, `fsc1`; a
+  later format is read as unreadable, which for a cache means "dropped and loaded again". To drop everything on an app
+  update, call `clear()` (the app knows its build number); there is no storage-wide version key.
+- **An unreadable entry** (not written by this storage, a truncated one, a value of another type under its key) is dropped
+  at start and counted, and at a read it is a `FormatException` that fespalier prints (`dropped it`) and deletes. Hive
+  also truncates a corrupt frame when it opens a box.
+- **`clear()` is what a sign-out does**: the next start shows nothing from the previous user. It deletes every entry
+  this storage saved, indexed or not, and nothing else. Values in memory are the app's to invalidate (watch
+  [`authUserId`](#the-session) in a `data.dart` that belongs to the user).
+- **One writer per store.** A background isolate that writes the same store makes the in-memory index stale until the
+  next start; the index is never saved, so it cannot disagree with the store across a crash.
+
+In debug (`debugPrint`, nothing in a release build), next to fespalier's two lines above:
+
+- `fespalier_storage: dropped <n> saved entries that could not be read`, at start
+- `fespalier_storage: could not open shared preferences, so nothing is saved: <error>` and
+  `fespalier_storage: could not open the Hive box <name>, so nothing is saved: <error>`, when `open()` returns `null`
+- a value over the budget, after fespalier's `could not save:`:
+  `fespalier_storage: the value saved under <key> is <size> characters, more than maxSize (<maxSize>), so it was not saved`
+
+A budget of 0 or less throws an `ArgumentError` (`Invalid argument (maxSize): must be more than 0: 0`), and so does a
+`SharedPreferencesWithCache` with an allowList given to `PrefsDataStorage(prefs)`: the keys of a `dataCache` are not known
+in advance, so use `PrefsDataStorage.open()`. The messages are in the
+[troubleshooting skill](skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md).
+
+**Testing.** `package:fespalier_storage/testing.dart` has `fakePrefsStore([values])`, which makes shared_preferences an
+in-memory store for the test, and `memoryBox()`, a Hive box in memory (no file, no plugin) for
+`HiveDataStorage(await memoryBox())`. Two `open()`s in one test share the store: that is a restart.
+
+```dart
+setUp(fakePrefsStore); // also before a test that boots AppMain.run() or AppMain.root(): startup() opens a storage
+
+testWidgets('the saved team is on the first frame of the next start', (tester) async {
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/teams/acme/members'),
+    overrides: [dataCacheStorage.overrideWithValue(await PrefsDataStorage.open())],
+  );
+  await tester.pumpWidget(const SizedBox()); // the restart
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/teams/acme/members'),
+    overrides: [dataCacheStorage.overrideWithValue(await PrefsDataStorage.open())],
+    settle: false, // one frame, no more
+  );
+  expect(find.text('Team ACME'), findsOneWidget); // the saved team, not loading.dart
+});
+```
+
+Without `fakePrefsStore()`, `open()` finds no platform and returns `null` (a debug line says
+`Bad state: The SharedPreferencesAsyncPlatform instance must be set.`): the cache is silently off. `examples/features`
+carries it: `teams/$teamId/data.dart` has a `dataCache`, `startup.dart` opens a `PrefsDataStorage`, and
+`test/offline_test.dart` is this test.
+
+**Not built.** A storage-wide version key; a byte-exact size (units are `String.length`); multi-isolate safety;
+encryption (open your own Hive box with a cipher and pass it to `HiveDataStorage(box)`). `riverpod_sqflite` still plugs in as
+it is.
 
 ### Typed helpers on the route
 
@@ -6601,6 +6945,22 @@ its root layout reads through the route manifest to set the page title, and its 
 review-code check on `AppRoutes.all`. It sets `scroll_restoration: true` (since 0.8.1): `/feed` has two
 lists under `PageStorageKey`s, and its tests play the browser's back and forward.
 
+Since 0.9.0 `examples/features` has `/labs`, a route behind a feature flag ([`fespalier_flags`](#feature-flags-fespalier_flags)):
+`lib/app/labs/guard.dart` is one `flagGuard`, and the menu entry is hidden while the flag is off. It is off by default;
+run with `--dart-define=FEATURES_LABS=true` to see it. `test/flags_test.dart` turns the flag on and off with a
+`FakeFlags` while the menu is open and while the app is on `/labs`.
+
+Since 0.9.0 it also keeps its team in shared preferences ([`fespalier_storage`](#a-cache-on-disk-fespalier_storage)):
+`teams/$teamId/data.dart` has a `dataCache`, `startup.dart` opens a `PrefsDataStorage`, and `test/offline_test.dart`
+restarts the app over the same store: the first frame of the second start is the saved team, not `loading.dart`, and a
+start that cannot load it shows the saved one.
+
+Since 0.9.0 the team also loads again when the device gets a network back
+([`fespalier_connectivity`](#reconnects-fespalier_connectivity)): `teams/$teamId/route.dart` has
+`refetchOnReconnect: true`, `startup.dart` overrides `reconnectSignal`, and `test/offline_test.dart` flaps a
+`FakeConnectivity` (within the 30 seconds nothing loads, a Wi-Fi to mobile switch is not a reconnect, and a network that
+flaps loads once).
+
 `examples/tabs` also keeps its manifest in a library of its own (`output_manifest:
 lib/app.routes.g.dart`, with `Review` metas that `lib/main.dart` never imports), and its tests
 restore the selected tab, a background tab's stack and a page's state after a simulated
@@ -6632,6 +6992,9 @@ packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, 
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
 packages/fespalier_auth/   signed-in routes: session provider, guards, authenticated client, OpenID Connect
 packages/fespalier_sign_keypair/   DPoP proofs for fespalier_auth, signed by a device key (Secure Enclave, AndroidKeyStore)
+packages/fespalier_flags/   feature flags: FlagSource, flag() providers that guards watch, flagGuard (since 0.9.0)
+packages/fespalier_storage/   dataCache storages on shared_preferences and Hive, with a size budget (since 0.9.0)
+packages/fespalier_connectivity/   reconnectSignal from connectivity_plus, and hasNetwork for offline banners (since 0.9.0)
 packages/fespalier_adaptive/   nav.dart menus as a bar, a rail or a drawer by window width
 packages/fespalier_image/   responsive CDN images (ResponsiveImage, the URL builders), with FakeImages for tests
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)

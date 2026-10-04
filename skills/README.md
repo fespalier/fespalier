@@ -82,7 +82,11 @@ widget test.
 - **The code samples compile.** A Dart block that starts with a `// lib/...` or
   `// test/...` comment is written into a scratch copy of `examples/minimal`, run
   through `fsp gen`, `flutter analyze` and, where it has tests, `flutter test`.
-  `just skill-samples` does that for every page.
+  `just skill-samples` does that for every page. A page that imports
+  `package:fespalier_<name>/` (since 0.9.0: `fespalier_auth`, `fespalier_flags`, and every
+  other `packages/fespalier_<name>/` of the checkout) builds against that package by path,
+  with no edit to the script; a plugin or SDK a recipe needs goes in a
+  `# pubspec.yaml dependencies` YAML block, whose lines are merged under `dependencies:`.
 - **The diagnostics are real.** Each message in `fespalier-troubleshooting` was read
   from the generator's source or reproduced with `fsp check` on a tree that triggers it.
 - **Where the README and the code disagree, the code wins**, the README is fixed, and

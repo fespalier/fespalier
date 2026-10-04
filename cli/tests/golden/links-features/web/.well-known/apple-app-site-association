@@ -149,6 +149,10 @@
             "caseSensitive": false
           },
           {
+            "/": "/labs",
+            "caseSensitive": false
+          },
+          {
             "/": "/login",
             "caseSensitive": false
           },

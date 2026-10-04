@@ -25,6 +25,7 @@ class StartupGate extends StatefulWidget {
     super.key,
     this.startup,
     this.overrides,
+    this.extraOverrides,
     this.splash,
     this.observers,
     this.retry,
@@ -40,6 +41,10 @@ class StartupGate extends StatefulWidget {
 
   /// startup.dart's `startup()` when it returns the providers to override.
   final FutureOr<List<Override>> Function()? overrides;
+
+  /// Overrides the generated `main()` adds before `startup()`'s own (the adapters', since
+  /// 0.9.0): read once, after `startup()` succeeded.
+  final List<Override> Function()? extraOverrides;
 
   /// splash.dart: [error] is null while `startup()` runs, and [retry] too.
   final Widget Function(
@@ -119,7 +124,9 @@ class _StartupGateState extends State<StartupGate> {
     final List<Override> overrides;
     final List<ProviderObserver>? observers;
     try {
-      overrides = value is List<Override> ? value : const [];
+      final own = value is List<Override> ? value : const <Override>[];
+      final extra = widget.extraOverrides?.call() ?? const <Override>[];
+      overrides = extra.isEmpty ? own : [...extra, ...own];
       observers = widget.observers?.call();
     } catch (error, stackTrace) {
       _failed(error, stackTrace, direct: direct);

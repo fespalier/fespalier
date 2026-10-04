@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import 'platform_page.dart';
+import 'transitions.dart';
 
 /// When a page gets a fresh state because its URL changed.
 ///
@@ -66,6 +67,9 @@ ValueKey<String> remountKey(
 /// under [key] (see [remountKey]) instead of `state.pageKey`.
 ///
 /// A Material page, or a Cupertino one inside a `CupertinoApp`.
+///
+/// Named by the route's pattern (`Transitions.pageName`, set by the generated `namedPage`, since
+/// 0.9.0), `/c/:id` where go_router's own name was `:id`; outside `namedPage` it keeps that name.
 Page<void> remountPage(
   BuildContext context,
   GoRouterState state,
@@ -74,7 +78,7 @@ Page<void> remountPage(
 ) => platformPage(
   context,
   key: key,
-  name: state.name ?? state.path,
+  name: Transitions.pageName ?? state.name ?? state.path,
   arguments: <String, String>{
     ...state.pathParameters,
     ...state.uri.queryParameters,

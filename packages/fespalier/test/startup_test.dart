@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final greeting = Provider<String>((ref) => 'default');
+final other = Provider<String>((ref) => 'default');
 
 GoRouter makeRouter() => GoRouter(
   routes: [
@@ -16,6 +17,19 @@ GoRouter makeRouter() => GoRouter(
       path: '/',
       builder: (_, _) => Consumer(
         builder: (_, ref, _) => Text('home: ${ref.watch(greeting)}'),
+      ),
+    ),
+  ],
+);
+
+/// A router that shows [other] as well: for what the adapters override.
+GoRouter makeBothRouter() => GoRouter(
+  routes: [
+    GoRoute(
+      path: '/',
+      builder: (_, _) => Consumer(
+        builder: (_, ref, _) =>
+            Text('home: ${ref.watch(greeting)} ${ref.watch(other)}'),
       ),
     ),
   ],
@@ -215,6 +229,135 @@ void main() {
     expect(reads, 1);
     await tester.pumpAndSettle();
     expect(reads, 1);
+  });
+
+  testWidgets(
+    "extraOverrides (the adapters', since 0.9.0) come first and are in the first frame",
+    (tester) async {
+      final own = greeting.overrideWithValue('own');
+      final extra = other.overrideWithValue('extra');
+      var reads = 0;
+      await tester.pumpWidget(
+        StartupGate(
+          extraOverrides: () {
+            reads++;
+            return [extra];
+          },
+          overrides: () => [own],
+          router: makeBothRouter,
+          app: app,
+        ),
+      );
+      // A sync startup() is done in the first frame, and so are the extra overrides.
+      expect(find.text('home: own extra'), findsOneWidget);
+      final scope = tester.widget<ProviderScope>(find.byType(ProviderScope));
+      expect(scope.overrides.length, 2);
+      expect(identical(scope.overrides.first, extra), isTrue);
+      expect(identical(scope.overrides.last, own), isTrue);
+      await tester.pumpAndSettle();
+      expect(reads, 1);
+    },
+  );
+
+  testWidgets(
+    'extraOverrides are read once, after an async startup() succeeded',
+    (tester) async {
+      var started = false;
+      var reads = 0;
+      final done = Completer<List<Override>>();
+      await tester.pumpWidget(
+        StartupGate(
+          extraOverrides: () {
+            reads++;
+            expect(started, isTrue, reason: 'read before startup() finished');
+            return [other.overrideWithValue('extra')];
+          },
+          overrides: () async {
+            final own = await done.future;
+            started = true;
+            return own;
+          },
+          splash: splash,
+          router: makeBothRouter,
+          app: app,
+        ),
+      );
+      expect(reads, 0);
+      done.complete([greeting.overrideWithValue('own')]);
+      await tester.pumpAndSettle();
+      expect(reads, 1);
+      expect(find.text('home: own extra'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'extraOverrides with a startup that returns none, or no startup',
+    (tester) async {
+      await tester.pumpWidget(
+        StartupGate(
+          extraOverrides: () => [greeting.overrideWithValue('extra')],
+          startup: () {},
+          router: makeBothRouter,
+          app: app,
+        ),
+      );
+      expect(find.text('home: extra default'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        StartupGate(
+          extraOverrides: () => [greeting.overrideWithValue('only')],
+          router: makeBothRouter,
+          app: app,
+        ),
+      );
+      expect(find.text('home: only default'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'without extraOverrides, or with none, the scope has the startup() ones as before',
+    (tester) async {
+      final own = greeting.overrideWithValue('own');
+      await tester.pumpWidget(
+        StartupGate(overrides: () => [own], router: makeRouter, app: app),
+      );
+      expect(
+        tester.widget<ProviderScope>(find.byType(ProviderScope)).overrides,
+        [own],
+      );
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        StartupGate(
+          extraOverrides: () => const [],
+          overrides: () => [own],
+          router: makeRouter,
+          app: app,
+        ),
+      );
+      expect(
+        tester.widget<ProviderScope>(find.byType(ProviderScope)).overrides,
+        [own],
+      );
+    },
+  );
+
+  testWidgets('an extraOverrides that throws is a startup that failed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      StartupGate(
+        extraOverrides: () => throw StateError('adapter boom'),
+        splash: splash,
+        router: makeRouter,
+        app: app,
+      ),
+    );
+    expect(tester.takeException(), isA<StateError>());
+    expect(
+      find.text('splash error=Bad state: adapter boom trace=true retry=true'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('retry reaches the ProviderScope', (tester) async {

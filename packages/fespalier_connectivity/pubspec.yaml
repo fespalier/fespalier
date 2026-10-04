@@ -14,7 +14,8 @@ environment:
 dependencies:
   # Event-driven (no polling): Android's NetworkCallback, iOS's NWPathMonitor, the web's online/offline events.
   # 6.0 made a change a List<ConnectivityResult>; LaunchDarkly's own range (>=5.0.2 <8.0.0) intersects this one.
-  connectivity_plus: ">=6.0.0 <8.0.0"
+  # 6.0.1, not 6.0.0: 6.0.0 asked for platform interface ^1.2.4 and does not compile against it (CI's floor job).
+  connectivity_plus: ">=6.0.1 <8.0.0"
   flutter:
     sdk: flutter
   # The same repository dependency an app writes (same url, path and ref), so the two resolve to

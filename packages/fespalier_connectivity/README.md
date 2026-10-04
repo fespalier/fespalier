@@ -37,7 +37,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-It needs Dart 3.8 and Flutter 3.32 or newer, and takes `connectivity_plus` `>=6.0.0 <8.0.0`.
+It needs Dart 3.8 and Flutter 3.32 or newer, and takes `connectivity_plus` `>=6.0.1 <8.0.0`.
 
 ## Wire it
 

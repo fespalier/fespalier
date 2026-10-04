@@ -535,6 +535,51 @@ fn the_weekly_maestro_workflow_builds_with_the_flutter_of_ci() {
 }
 
 #[test]
+fn the_floor_job_runs_the_flutter_the_packages_claim() {
+    // `ci.yml`'s `floor` job runs on FLUTTER_FLOOR_VERSION, the one place the floor is spelled
+    // out for CI (`just floor` reads it from there). What the pubspecs and READMEs claim must be
+    // that minor, or the job proves a floor nobody states.
+    let ci = read(".github/workflows/ci.yml");
+    let floor = ci
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("FLUTTER_FLOOR_VERSION:"))
+        .map(|v| v.split('#').next().unwrap_or("").trim().to_string())
+        .filter(|v| !v.is_empty())
+        .expect("ci.yml has no `FLUTTER_FLOOR_VERSION:` line");
+    let minor = floor.rsplit_once('.').map(|(minor, _)| minor).unwrap();
+    assert_eq!(
+        minor.matches('.').count(),
+        1,
+        "FLUTTER_FLOOR_VERSION is `{floor}`, not major.minor.patch"
+    );
+    assert!(
+        ci.contains("flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}"),
+        "the floor job must install Flutter from FLUTTER_FLOOR_VERSION, not a second spelling"
+    );
+    for pubspec in [
+        "packages/fespalier/pubspec.yaml",
+        "packages/fespalier_otel/pubspec.yaml",
+        "packages/fespalier_auth/pubspec.yaml",
+        "packages/fespalier_adaptive/pubspec.yaml",
+    ] {
+        assert!(
+            read(pubspec).contains(&format!("flutter: \">={minor}.0\"")),
+            "{pubspec} does not claim `flutter: \">={minor}.0\"`, the floor job's Flutter {floor}"
+        );
+    }
+    for readme in [
+        "README.md",
+        "packages/fespalier/README.md",
+        "packages/fespalier_auth/README.md",
+    ] {
+        assert!(
+            read(readme).contains(&format!("Flutter {minor} or newer")),
+            "{readme} does not say `Flutter {minor} or newer`, the floor job's Flutter {floor}"
+        );
+    }
+}
+
+#[test]
 fn the_pinned_checksums_are_none_or_belong_to_a_version_up_to_this_one() {
     // `release_checksums.dart` is written by the `release-pins` workflow (scripts/pin_checksums.py)
     // onto the release-please PR branch. Whatever state `main` or a release PR is in, the pins

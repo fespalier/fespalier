@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:url_launcher/link.dart' as url;
 
+import 'support/floor.dart';
+
 /// How often a provider's body ran; autoDispose, like the generated ones.
 var loads = 0;
 final item = FutureProvider.autoDispose.family<String, int>((ref, n) async {
@@ -294,8 +296,11 @@ void main() {
       await boot(tester, linkTile(const ItemRoute(2), 'Two'));
       final node = tester.getSemantics(find.text('Two'));
       final data = node.getSemanticsData();
-      expect(data.flagsCollection.isLink, isTrue);
-      expect(data.linkUrl, Uri.parse('/items/2'));
+      // Deprecated in newer Flutter (for isSemantics), which 3.32, the floor, does not have yet.
+      // ignore: deprecated_member_use
+      expect(node, containsSemantics(isLink: true));
+      // Flutter 3.32 (the floor) drops the linkUrl when it merges the link's semantics.
+      if (!onFlutterFloor) expect(data.linkUrl, Uri.parse('/items/2'));
       expect(data.label, 'Two');
       expect(data.hasAction(SemanticsAction.tap), isTrue);
       semantics.dispose();

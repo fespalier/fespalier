@@ -56,10 +56,12 @@ before changing how it behaves.
 | `just gen-examples` | Regenerate every example's committed `lib/app.g.dart`, and `examples/shop`'s `.maestro/routes/` and `test/routes/routes_test.dart` |
 | `just fmt` | `cargo fmt` and `dart format` over everything |
 | `just vscode`, `just intellij` | The editor plugins (need Node / JDK 21; CI runs them, `just ci` does not) |
+| `just floor <sdk dir>` | The declared floor: with a Flutter 3.32 SDK (`FLUTTER_FLOOR` also names it; its minor must match `env.FLUTTER_FLOOR_VERSION` of `ci.yml`), `flutter pub downgrade` (every dependency at its lowest allowed version), `flutter analyze` and `flutter test` in the package, `fespalier_otel`, `fespalier_auth`, `fespalier_adaptive` and `examples/minimal`. CI's `floor` job runs it; `just ci` does not. A failure there is a call to an API newer than 3.32, or a dependency constraint lower than what works: fix the code, or raise the constraint |
 
 The toolchains are pinned: Rust in `cli/rust-toolchain.toml` (CI reads the channel from that file,
 and `rust-version` in `cli/Cargo.toml` moves with it), Flutter in `env.FLUTTER_VERSION` of
-`.github/workflows/ci.yml`. `just ci` also needs `just`, `cargo-deny`, `python3` and `node` on `PATH`.
+`.github/workflows/ci.yml` (and the floor the package declares, Flutter 3.32, in `env.FLUTTER_FLOOR_VERSION`).
+`just ci` also needs `just`, `cargo-deny`, `python3` and `node` on `PATH`.
 CI additionally scaffolds every file kind with `fsp new` and `fsp init` and checks the result
 with `flutter analyze` and `dart format`; that job has no `just` recipe because it writes into
 the examples. A `telemetry-smoke` job runs the telemetry stack in Docker (`just telemetry-smoke`; `just ci` leaves it out).

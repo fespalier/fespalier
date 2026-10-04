@@ -51,13 +51,13 @@
 //!     skip: [/admin]        # patterns as `fsp routes` prints them
 //!   tasks:                  # default: none; what `fsp dev`, `fsp build` and `fsp run` run (see `tasks.rs`)
 //!     dev:
-//!       before: dart run build_runner build -d   # one command, or a list; the first that fails stops
+//!       before: dart run build_runner build   # one command, or a list; the first that fails stops
 //!       with:                                    # long-running, next to flutter, one pane each
-//!         build_runner: dart run build_runner watch -d
+//!         build_runner: dart run build_runner watch
 //!       run: flutter run                         # default; fsp adds --machine, -d and the args after --
 //!       env: { API_URL: "http://localhost:8080" }
 //!       hot_reload: true                         # default
-//!     codegen: dart run build_runner build -d    # `fsp run codegen`
+//!     codegen: dart run build_runner build    # `fsp run codegen`
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because

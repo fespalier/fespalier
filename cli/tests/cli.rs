@@ -2813,12 +2813,12 @@ fn fsp_task(root: &Path, args: &[&str], env: &[(&str, &str)]) -> (Option<i32>, S
 #[cfg(unix)]
 #[test]
 fn run_lists_the_tasks_on_stdout() {
-    let dir = dev_project("    codegen: dart run build_runner build -d\n");
+    let dir = dev_project("    codegen: dart run build_runner build\n");
     let (code, out, _) = fsp_task(dir.path(), &["run"], &[]);
     assert_eq!(code, Some(0));
     assert_eq!(
         out,
-        "dev      flutter run   (fsp dev)\nbuild    flutter build (fsp build <target>)\ncodegen  dart run build_runner build -d\n"
+        "dev      flutter run   (fsp dev)\nbuild    flutter build (fsp build <target>)\ncodegen  dart run build_runner build\n"
     );
     // With no section at all: the built-ins.
     let dir = dev_project("");
@@ -2962,7 +2962,7 @@ fn fsp_in_a_command_is_this_fsp() {
 #[test]
 fn dry_runs_print_the_plan_and_run_nothing() {
     let dir = dev_project(
-        "    dev:\n      before: dart run build_runner build -d\n      with:\n        build_runner: dart run build_runner watch -d\n      env:\n        API_URL: http://localhost:8080\n    codegen:\n      run: dart run build_runner build -d\n      after: echo done\n",
+        "    dev:\n      before: dart run build_runner build\n      with:\n        build_runner: dart run build_runner watch\n      env:\n        API_URL: http://localhost:8080\n    codegen:\n      run: dart run build_runner build\n      after: echo done\n",
     );
     let root = dir.path().display().to_string();
     let (code, out, err) = fsp_task(dir.path(), &["dev", "--dry-run", "--", "-d", "chrome"], &[]);
@@ -2974,8 +2974,8 @@ fn dry_runs_print_the_plan_and_run_nothing() {
             "\
 fsp dev in {root}
   gen     lib/app.g.dart, kept current while it runs
-  before  dart run build_runner build -d
-  with    build_runner: dart run build_runner watch -d
+  before  dart run build_runner build
+  with    build_runner: dart run build_runner watch
   run     flutter run --machine -d chrome
   after   (nothing)
   env     API_URL=http://localhost:8080
@@ -3016,7 +3016,7 @@ fsp build web in {root}
 fsp run codegen in {root}
   before  (nothing)
   with    (nothing)
-  run     dart run build_runner build -d --x
+  run     dart run build_runner build --x
   after   echo done
   env     (nothing)
 "

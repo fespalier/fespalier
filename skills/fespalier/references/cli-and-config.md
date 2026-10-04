@@ -354,17 +354,17 @@ hot reload; a pass with errors sends nothing, and `app.g.dart` is left as it was
 fespalier:
   tasks: # since 0.9.0; read only by `fsp dev`, `fsp build` and `fsp run`
     dev:
-      before: dart run build_runner build -d # one command, or a list; in order; the first that fails stops
+      before: dart run build_runner build # one command, or a list; in order; the first that fails stops
       with: # long-running, next to flutter; each gets a pane named by its key
-        build_runner: dart run build_runner watch -d
+        build_runner: dart run build_runner watch
       run: fvm flutter run # default `flutter run`; fsp adds --machine, -d <device> and the args after --
       env: # for every command of this task, not for the app (that is --dart-define)
         API_URL: http://localhost:8080
       hot_reload: true # default; false: no automatic reload or restart (r and R still work)
       after: [] # runs when `run` exits 0
     build: # `fsp build <target>`: fsp gen, then `<run> <target> <args>`
-      before: [dart run build_runner build -d]
-    codegen: dart run build_runner build -d # a task that is only `run`; `fsp run codegen`
+      before: [dart run build_runner build]
+    codegen: dart run build_runner build # a task that is only `run`; `fsp run codegen`
     check: # `fsp run check`
       before: [fsp check, fsp test --check]
       run: [flutter, test] # a list is argv: no shell, the same on every OS
@@ -474,7 +474,7 @@ fespalier:
   # maestro: {url: http://localhost:8080}  # see `fsp maestro` above
   # size: {main: 3 MB, routes: {/checkout: 8 KB}}  # since 0.8.1; see `fsp size` above
   # test: {timeout: 30000}                # since 0.8.1; see `fsp test` above
-  # tasks: {codegen: dart run build_runner build -d}   # since 0.9.0; see `fsp dev` below
+  # tasks: {codegen: dart run build_runner build}   # since 0.9.0; see `fsp dev` below
 ```
 
 | Key                  | Values                                           | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

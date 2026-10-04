@@ -335,10 +335,10 @@ fespalier:
   #   skip: [/admin]              # patterns as `fsp routes` prints them
   # tasks:                        # no default: what `fsp dev`, `fsp build` and `fsp run` run (since 0.9.0)
   #   dev:
-  #     before: dart run build_runner build -d
+  #     before: dart run build_runner build
   #     with:
-  #       build_runner: dart run build_runner watch -d
-  #   codegen: dart run build_runner build -d
+  #       build_runner: dart run build_runner watch
+  #   codegen: dart run build_runner build
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
@@ -459,12 +459,12 @@ Add what your app needs around `flutter run` under `tasks:` in the `fespalier:` 
 fespalier:
   tasks:
     dev:
-      before: dart run build_runner build -d # runs first; if it fails, fsp dev stops
+      before: dart run build_runner build # runs first; if it fails, fsp dev stops
       with:
-        build_runner: dart run build_runner watch -d # runs alongside, in a pane of its own
+        build_runner: dart run build_runner watch # runs alongside, in a pane of its own
       env:
         API_URL: http://localhost:8080
-    codegen: dart run build_runner build -d # fsp run codegen
+    codegen: dart run build_runner build # fsp run codegen
 ```
 
 | Key          | What it is                                                                                                                                                                                                   |

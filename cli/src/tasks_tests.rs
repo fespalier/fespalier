@@ -51,7 +51,7 @@ fn no_section_is_no_tasks() {
 fn a_task_can_be_a_string_a_list_or_a_map() {
     let t = parse(
         "
-codegen: dart run build_runner build -d
+codegen: dart run build_runner build
 check: [flutter, test]
 web:
   run: fsp build web --release
@@ -61,7 +61,7 @@ web:
     .unwrap();
     assert_eq!(
         task(&t, "codegen").run,
-        Some(sh("dart run build_runner build -d"))
+        Some(sh("dart run build_runner build"))
     );
     assert_eq!(task(&t, "check").run, Some(argv(&["flutter", "test"])));
     assert_eq!(task(&t, "web").run, Some(sh("fsp build web --release")));
@@ -78,7 +78,7 @@ fn before_and_after_take_a_command_or_a_list_of_commands() {
     let t = parse(
         "
 dev:
-  before: dart run build_runner build -d
+  before: dart run build_runner build
   after: [echo one, [echo, two]]
 build:
   before: [dart, run, x]
@@ -88,7 +88,7 @@ build:
     .unwrap();
     assert_eq!(
         task(&t, "dev").before,
-        vec![sh("dart run build_runner build -d")]
+        vec![sh("dart run build_runner build")]
     );
     assert_eq!(
         task(&t, "dev").after,
@@ -161,7 +161,7 @@ fn dev_and_build_have_defaults() {
 
 #[test]
 fn c1_tasks_must_be_a_map() {
-    let want = "`fespalier.tasks` must be a map of task names to tasks, e.g. `codegen: dart run build_runner build -d`";
+    let want = "`fespalier.tasks` must be a map of task names to tasks, e.g. `codegen: dart run build_runner build`";
     assert_eq!(err("[a, b]"), want);
     assert_eq!(err("just a string"), want);
 }
@@ -268,7 +268,7 @@ fn c7_each_step_of_a_list_is_a_command() {
 fn c8_with_is_a_map() {
     assert_eq!(
         err("dev:\n  with: dart run x"),
-        "`fespalier.tasks.dev.with` must be a map of names to commands, e.g. `build_runner: dart run build_runner watch -d`, got `dart run x`"
+        "`fespalier.tasks.dev.with` must be a map of names to commands, e.g. `build_runner: dart run build_runner watch`, got `dart run x`"
     );
 }
 
@@ -548,9 +548,9 @@ fn dev_dry_run_text() {
     let t = parse(
         "
 dev:
-  before: dart run build_runner build -d
+  before: dart run build_runner build
   with:
-    build_runner: dart run build_runner watch -d
+    build_runner: dart run build_runner watch
   env:
     API_URL: http://localhost:8080
 ",
@@ -562,8 +562,8 @@ dev:
         "\
 fsp dev in /abs/project
   gen     lib/app.g.dart, kept current while it runs
-  before  dart run build_runner build -d
-  with    build_runner: dart run build_runner watch -d
+  before  dart run build_runner build
+  with    build_runner: dart run build_runner watch
   run     flutter run --machine -d chrome
   after   (nothing)
   env     API_URL=http://localhost:8080
@@ -616,13 +616,13 @@ fn run_args_add_machine_once_and_the_device() {
 
 #[test]
 fn the_listing_pads_names_and_shows_the_defaults() {
-    let t = parse("codegen: dart run build_runner build -d\n").unwrap();
+    let t = parse("codegen: dart run build_runner build\n").unwrap();
     assert_eq!(
         t.listing(),
         "\
 dev      flutter run   (fsp dev)
 build    flutter build (fsp build <target>)
-codegen  dart run build_runner build -d
+codegen  dart run build_runner build
 "
     );
     // With nothing configured: the built-ins only.

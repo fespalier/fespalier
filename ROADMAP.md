@@ -7,20 +7,31 @@ it ships.
 
 ## In progress (0.9.0)
 
-`fsp dev`, `fsp build` and `fsp run` (tasks in `pubspec.yaml`, a terminal UI), and the Flutter
-packages `fespalier_auth` (sessions, guards, OpenID Connect and Keycloak, `dio`),
-`fespalier_sign_keypair` (DPoP, device-bound tokens), `fespalier_image` (images at the size
-their layout needs, from an image CDN, with `RouteLink(onPreload:)` to warm a page's image) and
-`fespalier_sentry` (errors first: every error and crash tagged with the route and the file, page
-breadcrumbs, the OpenTelemetry trace id on each event; screen-load transactions on request) ship in
-0.9.0, and so do the generated `main()`'s adapters (`fespalier: adapters:`, a `FespalierAdapter` per
-package) and pages named by their route pattern, so vendor navigator observers see screens.
+`fsp dev`, `fsp build` and `fsp run` (tasks in `pubspec.yaml`, a terminal UI), and these Flutter
+packages ship in 0.9.0:
+
+- `fespalier_auth` (sessions, guards, OpenID Connect and Keycloak, `dio`) and
+  `fespalier_sign_keypair` (DPoP, device-bound tokens);
+- `fespalier_adaptive` (`nav.dart` menus as a bar, a rail or a drawer by window width);
+- `fespalier_image` (images at the size their layout needs, from an image CDN, with
+  `RouteLink(onPreload:)` to warm a page's image);
+- `fespalier_flags`, `fespalier_storage` and `fespalier_connectivity` (flag-gated routes, a
+  `dataCache` that shows the saved value on the first frame, refetch on reconnect);
+- `fespalier_dio` and its `http` variant (requests cancelled with their page, server validation
+  errors on form fields, no retried writes);
+- `fespalier_sentry` (errors first: every error and crash tagged with the route and the file, page
+  breadcrumbs, the OpenTelemetry trace id on each event; screen-load transactions on request).
+
+In core: `FespalierTelemetry.combine` (several sinks at once), the `within` hook that puts HTTP
+spans under the data span, `navigateFrom` for launches from notifications, the generated `main()`'s
+adapters (`fespalier: adapters:`, a `FespalierAdapter` per package), pages named by their route
+pattern so vendor navigator observers see screens, and CI runs every package on its declared floor,
+Flutter 3.32, with the lowest dependencies it allows.
 
 ## Next
 
-- **Core seams the adapters need.** `FespalierTelemetry.combine` (several sinks at once),
-  `traceData` taking a closure (HTTP spans under the data span), `AppRoutes.urlOf`, a DevTools
-  panel adapters can post to, and `test: a11y: true` in `fsp test`.
+- **Core seams the adapters need.** `AppRoutes.urlOf`, a DevTools panel adapters can post to, and
+  `test: a11y: true` in `fsp test`.
 - **Adapters**, each a small package:
   - `fespalier_launch`: notification, shortcut and home-widget taps open typed routes, the first
     screen on a cold start.
@@ -28,12 +39,9 @@ package) and pages named by their route pattern, so vendor navigator observers s
     the file that threw (three calls in a sink of your own until then).
   - `fespalier_sentry`, the rest: Sentry's span streaming (`traceLifecycle: stream`, for which
     `tracing: true` makes no spans yet) and HTTP spans under the data span in Sentry's own tracing.
-  - `fespalier_flags`: feature flags that guards watch, so menus hide flagged routes.
-  - `fespalier_dio` (and an `http` variant): cancellation when a page goes away, server validation
-    errors on form fields, no retried writes, trace headers.
+  - `fespalier_dio`, the rest: composed with `fespalier_auth` (DPoP and refresh under a retry
+    layer) and OpenTelemetry trace headers on each request.
   - `fespalier_analytics`: screen views and time on screen, named from `meta.dart`, with consent.
-  - `fespalier_storage`: `dataCache` storage that shows the saved value on the first frame.
-  - `fespalier_connectivity`: the reconnect signal that `refetchOnReconnect` waits for.
 - **Instrumentation the app doesn't have to write.** With `telemetry: true` and an `app.dart`, the
   generated `main()` installs `FespalierOtel` and its zone itself.
 - **The four telemetry attributes documented as not emitted**: `fespalier.data.attempt`,

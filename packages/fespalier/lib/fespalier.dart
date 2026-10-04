@@ -60,7 +60,7 @@ export 'src/segments.dart';
 export 'src/selected_data.dart';
 export 'src/tab_options.dart';
 // Telemetry (since 0.8.1): a sink an adapter implements, and what a generated app.g.dart passes
-// (`NavigationSource` and `navigateFrom` since 0.9.0).
+// (`NavigationSource`, `navigateFrom` and `TelemetryTrace` since 0.9.0).
 export 'src/telemetry.dart'
     show
         FespalierTelemetry,
@@ -72,6 +72,7 @@ export 'src/telemetry.dart'
         TelemetryPageKind,
         TelemetrySite,
         TelemetryStart,
+        TelemetryTrace,
         navigateFrom,
         telemetryAttach;
 export 'src/transitions.dart';

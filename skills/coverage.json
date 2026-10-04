@@ -400,7 +400,22 @@
         "examples/telemetry",
         "README.md#Several sinks: combine and add",
         "README.md#Spans around data() and actions",
-        "README.md#Where a navigation came from: navigateFrom"
+        "README.md#Where a navigation came from: navigateFrom",
+        "README.md#Sentry: fespalier_sentry",
+        "README.md#What Sentry gets from fespalier",
+        "README.md#Wiring Sentry",
+        "README.md#One transaction per screen",
+        "README.md#Sentry defaults and privacy",
+        "README.md#Testing with Sentry",
+        "README.md#Crashlytics",
+        "packages/fespalier_sentry/README.md",
+        "packages/fespalier_sentry/lib/fespalier_sentry.dart",
+        "packages/fespalier_sentry/lib/testing.dart",
+        "packages/fespalier_sentry/lib/src/fespalier_sentry.dart",
+        "packages/fespalier_sentry/lib/src/keys.dart",
+        "packages/fespalier_sentry/lib/src/options.dart",
+        "packages/fespalier_sentry/lib/src/scrub.dart",
+        "packages/fespalier_sentry/lib/src/tokens.dart"
       ]
     },
     "fespalier-images": {

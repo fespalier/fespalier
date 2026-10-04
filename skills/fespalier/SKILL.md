@@ -181,6 +181,7 @@ and the reserved names.
 | A cache on disk, a saved value on the first frame (`fespalier_storage`, since 0.9.0)                                         | `fespalier-data`                                |
 | Reconnects, `refetchOnReconnect`, offline banners, connectivity versus reachability (`fespalier_connectivity`, since 0.9.0)  | `fespalier-data`                                |
 | `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.1)                     | `fespalier-observability`                       |
+| Sentry, errors first: events tagged with route, file and action, page breadcrumbs, the OpenTelemetry trace id (since 0.9.0)  | `fespalier-observability`                       |
 | Network images, an image CDN, signing image URLs, image heroes (since 0.9.0)                                                 | `fespalier-images`                              |
 | `app.dart`, `startup.dart`, `splash.dart`, `main: manual`, `AppMain` (the generated `main()`)                                | this skill: `references/app-main.md`            |
 | Widget tests: `pumpRouter`, `currentLocation`, deep links, data states                                                       | `fespalier-testing`                             |

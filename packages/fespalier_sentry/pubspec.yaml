@@ -1,0 +1,39 @@
+name: fespalier_sentry
+description: Sentry for fespalier — errors and crashes tagged with the route pattern, the app file and the action, page breadcrumbs and release health, linked to an OpenTelemetry trace; screen-load transactions and spans on request.
+version: 0.8.1 # x-release-please-version
+# Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
+publish_to: 'none'
+homepage: https://github.com/fespalier/fespalier
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_sentry
+issue_tracker: https://github.com/fespalier/fespalier/issues
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  # The repeat window reads the time from here, so a test's withClock decides it.
+  clock: ^1.1.1
+  flutter:
+    sdk: flutter
+  # The same repository dependency an app writes (same url, path and ref), so the two resolve to
+  # one package: a path dependency would resolve "at <sha>" and conflict with the app's tag.
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1 # x-release-please-version
+  # 9.26.0: standalone app start, which the first-screen rule of `tracing: true` reads. It
+  # re-exports package:sentry and pins it exactly, so it is the only Sentry import.
+  sentry_flutter: ">=9.26.0 <10.0.0"
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# In this repository the package is built against the fespalier beside it. A dependency's
+# overrides are ignored, so apps never see this.
+dependency_overrides:
+  fespalier:
+    path: ../fespalier

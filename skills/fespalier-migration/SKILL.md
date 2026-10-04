@@ -78,6 +78,13 @@ Bump to `v0.9.0`, regenerate (`lib/app.g.dart` is unchanged for an app that opts
    `ref.abortable(client)`, `withFieldErrors()` and `WriteGuard` for Dio and `package:http`. A repository dependency
    with the same `url` and `ref` as `fespalier`; an app that does not add it is unchanged (no generated code, file kind,
    key or command).
+9. **New, opt-in:** `package:fespalier_sentry` ([`fespalier-observability`](../fespalier-observability/SKILL.md)):
+   Sentry, errors first (events tagged with the route pattern, the app file and the action, one breadcrumb per page
+   change, the OpenTelemetry trace id on each event next to `fespalier_otel`; screen-load transactions only with
+   `tracing: true`). The same `url` and `ref` as `fespalier`, and `sentry_flutter` 9.26.0 or newer. No generated code,
+   file kind, key or command changes. `FespalierTelemetry` gains `traceOf` and `linkTrace` (instance members with
+   defaults) and `TelemetryTrace`, which `combine` uses to tell a sink which trace an operation is in (`FespalierOtel`
+   answers it): a sink that already had a member named `traceOf` or `linkTrace` with another signature must rename it.
 
 ## 0.7 to 0.8: what to check
 

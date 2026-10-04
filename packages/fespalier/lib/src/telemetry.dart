@@ -143,6 +143,47 @@ abstract class FespalierTelemetry {
   /// does, fespalier returns the operation's own result, the very object; a sink cannot replace
   /// it. The default calls [body].
   void within(Object? token, Object? Function() body) => body();
+
+  /// The trace the operation [token] came from is in, on this sink's own tracing backend (since
+  /// 0.9.0), or null when it has none. A sink that makes OpenTelemetry spans answers with the
+  /// trace and span id of the span it made for [token]; one that makes none keeps the default.
+  ///
+  /// [FespalierTelemetry.combine] asks it once per operation, right after every sink has started
+  /// it, and tells the other sinks through [linkTrace]. It must return at once and never throw.
+  TelemetryTrace? traceOf(Object? token) => null;
+
+  /// Another sink of the same [combine] says that the operation [token] (a token this sink
+  /// returned from [start]) is in [trace] (since 0.9.0): `fespalier_sentry` tags its events with
+  /// it, so an error links to the OpenTelemetry trace of the screen or the call it came from. It
+  /// is called at most once per operation, before the operation's [within] and [end]. The default
+  /// ignores it.
+  void linkTrace(Object? token, TelemetryTrace trace) {}
+}
+
+/// A trace and a span, as a sink reports them for an operation (since 0.9.0): the W3C Trace
+/// Context identifiers every tracing backend uses, so one sink can tell another which trace an
+/// operation is in ([FespalierTelemetry.traceOf], [FespalierTelemetry.linkTrace]).
+final class TelemetryTrace {
+  /// The trace [traceId] (32 lowercase hex digits) and its span [spanId] (16).
+  const TelemetryTrace(this.traceId, this.spanId);
+
+  /// The trace id, 32 lowercase hex digits.
+  final String traceId;
+
+  /// The span id, 16 lowercase hex digits.
+  final String spanId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TelemetryTrace &&
+      other.traceId == traceId &&
+      other.spanId == spanId;
+
+  @override
+  int get hashCode => Object.hash(traceId, spanId);
+
+  @override
+  String toString() => '$traceId-$spanId';
 }
 
 /// What an operation is, which says which fields of [TelemetryStart] are set.
@@ -890,7 +931,39 @@ final class _Combined extends FespalierTelemetry {
         child.failed(e);
       }
     }
-    return tokens == null ? null : _Tokens(tokens);
+    if (tokens == null) return null;
+    _linkTraces(tokens);
+    return _Tokens(tokens);
+  }
+
+  /// Tells every sink the trace the others put an operation in: [FespalierTelemetry.traceOf] of
+  /// the sink that has one, [FespalierTelemetry.linkTrace] of each of the others. The first
+  /// answer is the one every other sink gets.
+  void _linkTraces(List<Object?> tokens) {
+    TelemetryTrace? trace;
+    var from = -1;
+    for (var i = 0; i < _children.length && trace == null; i++) {
+      final token = tokens[i];
+      if (token == null) continue;
+      final child = _children[i];
+      try {
+        trace = child.sink.traceOf(token);
+        from = i;
+      } catch (e) {
+        child.failed(e);
+      }
+    }
+    if (trace == null) return;
+    for (var i = 0; i < _children.length; i++) {
+      final token = tokens[i];
+      if (i == from || token == null) continue;
+      final child = _children[i];
+      try {
+        child.sink.linkTrace(token, trace);
+      } catch (e) {
+        child.failed(e);
+      }
+    }
   }
 
   @override

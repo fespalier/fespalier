@@ -29,13 +29,18 @@ dependencies:
   hive_ce: ^2.16.0
   # HiveDataStorage.open(): the app's cache directory (getApplicationCacheDirectory, 2.1.0).
   path_provider: ^2.1.0
-  # SharedPreferencesWithCache (2.3.0): synchronous reads after an async create.
-  shared_preferences: ^2.3.0
+  # SharedPreferencesWithCache (2.3.0): synchronous reads after an async create; 2.5.1 is the first to
+  # export SharedPreferencesOptions, which `PrefsDataStorage.open(options:)` takes (CI's `floor` job).
+  shared_preferences: ^2.5.1
   # testing.dart: InMemorySharedPreferencesAsync.
   shared_preferences_platform_interface: ^2.4.0
 
 dev_dependencies:
   flutter_lints: ^6.0.0
+  # Not imported. path_provider_platform_interface allows platform 3.0.0, which reads
+  # `Platform.packageRoot`, gone from Dart 3; `flutter pub downgrade` (CI's `floor` job) would pick
+  # it and no test would compile. A dev dependency only steers this package's own resolution.
+  platform: ^3.1.4
   flutter_test:
     sdk: flutter
 

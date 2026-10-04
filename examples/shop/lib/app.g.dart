@@ -86,29 +86,29 @@ abstract final class AppRoutes {
     if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return [
       ShellRoute(
-        pageBuilder: (context, state, child) => _i3.transition(
+        pageBuilder: (context, state, child) => namedPage('/', () => _i3.transition(
           const ValueKey<String>('layout:/'),
           _i4.AppLayout(child: child),
-        ),
+        )),
         routes: [
           GoRoute(
             path: joinLocation(at, '/'),
-            pageBuilder: (context, state) => _i3.transition(
+            pageBuilder: (context, state) => namedPage('/', () => _i3.transition(
               state.pageKey,
               Semantics(identifier: 'route:/', container: true, child: const _i0.HomePage()),
-            ),
+            )),
             routes: [
               GoRoute(
                 path: 'cart',
-                pageBuilder: (context, state) => _i3.transition(
+                pageBuilder: (context, state) => namedPage('/cart', () => _i3.transition(
                   state.pageKey,
                   Semantics(identifier: 'route:/cart', container: true, child: const _i6.CartPage()),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'checkout',
                 redirect: (context, state) => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false))),
-                pageBuilder: (context, state) => _i3.transition(
+                pageBuilder: (context, state) => namedPage('/checkout', () => _i3.transition(
                   state.pageKey,
                   DeferredView(
                     library: _lib2,
@@ -116,11 +116,11 @@ abstract final class AppRoutes {
                     loading: () => const _i1.RootLoading(),
                     error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'products',
-                pageBuilder: (context, state) => _i3.transition(
+                pageBuilder: (context, state) => namedPage('/products', () => _i3.transition(
                   state.pageKey,
                   buildWithParams(
                     () => _params5(state),
@@ -134,11 +134,11 @@ abstract final class AppRoutes {
                     ),
                     () => notFound(state.uri),
                   ),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: ':id',
-                    pageBuilder: (context, state) => _i3.transition(
+                    pageBuilder: (context, state) => namedPage('/products/:id', () => _i3.transition(
                       state.pageKey,
                       buildWithParams(
                         () => _params6(state),
@@ -154,20 +154,20 @@ abstract final class AppRoutes {
                         ),
                         () => notFound(state.uri),
                       ),
-                    ),
+                    )),
                   ),
                 ],
               ),
               GoRoute(
                 path: 'greet/:name',
-                pageBuilder: (context, state) => _i3.transition(
+                pageBuilder: (context, state) => namedPage('/greet/:name', () => _i3.transition(
                   state.pageKey,
                   buildWithParams(
                     () => _params4(state),
                     (v) => Semantics(identifier: 'route:/greet/:name', container: true, child: _i9.GreetPage(name: v.name)),
                     () => notFound(state.uri),
                   ),
-                ),
+                )),
               ),
             ],
           ),

@@ -204,7 +204,7 @@ fn a_layouts_data_dart_is_the_data_of_its_section() {
         &c,
         &[
             // The layout waits for the data, showing the default loading and error views.
-            "pageBuilder: (context, state, child) => layoutPage(",
+            "pageBuilder: (context, state, child) => namedPage('/', () => layoutPage(",
             "DataView(",
             "watch: (ref) => watchData(ref, 'd1', _data1),",
             "data: (d) => _i1.ShopLayout(child: child, shop: d),",
@@ -396,7 +396,7 @@ fn a_tab_layout_can_be_a_section_too() {
         &c,
         &[
             "StatefulShellRoute.indexedStack(",
-            "pageBuilder: (context, state, navigationShell) => layoutPage(",
+            "pageBuilder: (context, state, navigationShell) => namedPage('/', () => layoutPage(",
             "DataView(",
             "_i1.TabsLayout(navigationShell: navigationShell, me: d)",
         ],
@@ -654,7 +654,7 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
     has(
         &code,
         &[
-            "pageBuilder: (context, state, child) => layoutPage(",
+            "pageBuilder: (context, state, child) => namedPage('/', () => layoutPage(",
             "DataView(",
             "final _data1 = FutureProvider.autoDispose(",
         ],
@@ -743,7 +743,7 @@ fn a_tab_section_keeps_its_tab_options() {
     has(
         &c,
         &[
-            "pageBuilder: (context, state, navigationShell) => layoutPage(",
+            "pageBuilder: (context, state, navigationShell) => namedPage('/', () => layoutPage(",
             "DataView(",
             "preload: true,",
         ],

@@ -3068,3 +3068,45 @@ fsp run codegen in {root}
     assert!(!dir.path().join("flutter.log").exists());
     assert!(!dir.path().join("lib/app.g.dart").exists());
 }
+
+/// `fespalier: adapters:` (since 0.9.0) writes the generated `main()` on its own, importing each
+/// package's `fespalier_adapter.dart`, and `main: manual` with it is refused by every command.
+#[test]
+fn adapters_write_the_main_and_main_manual_refuses_them() {
+    let dir = project();
+    fs::write(
+        dir.path().join("pubspec.yaml"),
+        "name: demo\ndependencies:\n  fespalier_sentry: ^1.0.0\nfespalier:\n  adapters: [fespalier_sentry]\n",
+    )
+    .unwrap();
+    assert_eq!(
+        fsp(dir.path(), &["gen"]),
+        (
+            true,
+            "✓ 1 route → lib/app.g.dart, lib/app.main.g.dart\n".into()
+        )
+    );
+    let main = fs::read_to_string(dir.path().join("lib/app.main.g.dart")).unwrap();
+    assert!(
+        main.contains("import 'package:fespalier_sentry/fespalier_adapter.dart' as _a0;")
+            && main.contains("static Future<void> run() => _a0.adapter.zone(_main);"),
+        "{main}"
+    );
+    assert_eq!(
+        fsp(dir.path(), &["check"]),
+        (true, "✓ 1 route, no errors\n".into())
+    );
+
+    fs::write(
+        dir.path().join("pubspec.yaml"),
+        "name: demo\ndependencies:\n  fespalier_sentry: ^1.0.0\nfespalier:\n  main: manual\n  adapters: [fespalier_sentry]\n",
+    )
+    .unwrap();
+    for command in ["check", "gen"] {
+        let (ok, err) = fsp(dir.path(), &[command]);
+        assert!(
+            !ok && err.contains("`fespalier.adapters` is wired by the generated main(), and `main: manual` writes none; remove `main: manual`, or wire each adapter in your own main() and remove `adapters`"),
+            "{command}: {err}"
+        );
+    }
+}

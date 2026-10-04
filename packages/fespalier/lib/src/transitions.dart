@@ -10,6 +10,29 @@ import 'heroes.dart';
 String? _restorationId(LocalKey key) =>
     key is ValueKey<String> ? key.value : null;
 
+/// The pattern of the route whose page is being built, set by [namedPage].
+String? _pageName;
+
+/// Builds the page of the route whose pattern is [name] (since 0.9.0): [build] runs once,
+/// synchronously, and the pages [Transitions], `layoutPage` and `remountPage` make while it runs
+/// are named [name] (`RouteSettings.name`), so a `NavigatorObserver` (Sentry's, Firebase
+/// Analytics', PostHog's) sees `/products/:id`. The generated file calls it around each page
+/// builder.
+///
+/// Nothing is left behind: the name in force before is back when [build] returns or throws, and
+/// what [build] returns is returned, the very object.
+@pragma('vm:prefer-inline')
+@pragma('dart2js:tryInline')
+T namedPage<T>(String name, T Function() build) {
+  final outer = _pageName;
+  _pageName = name;
+  try {
+    return build();
+  } finally {
+    _pageName = outer;
+  }
+}
+
 /// [child] inside a [RouteHeroScope] for [heroes], or [child] itself without any, so a
 /// page that doesn't opt in builds the tree it always did.
 Widget _withHeroes(Heroes? heroes, Widget child) =>
@@ -21,11 +44,21 @@ Widget _withHeroes(Heroes? heroes, Widget child) =>
 /// page keeps in a `RestorationMixin` survive state restoration. A `Page` you
 /// build yourself should pass `restorationId: key.value` too.
 ///
+/// Every page is named by its route's pattern (since 0.9.0), `/products/:id`, which is what a
+/// `NavigatorObserver` reads as `RouteSettings.name`; a `Page` you build yourself passes
+/// `name: Transitions.pageName` for the same.
+///
 /// The pages (every one but [dialog] and [sheet]) take `heroes:` (since 0.8.1): how the
 /// `RouteHero`s below them fly, see [Heroes]. A `Page` of your own wraps its child in a
 /// [RouteHeroScope] to give the same. Flutter flies heroes between page routes only, so a
 /// [dialog] or a [sheet] has no `heroes:`: nothing flies into them.
 abstract final class Transitions {
+  /// The pattern of the route whose page is being built (since 0.9.0), for a `Page` of your own
+  /// in a transition.dart or present.dart: `MaterialPage(key: key, name: Transitions.pageName,
+  /// child: child)`. Null outside the generated page builders (a test that calls `transition`
+  /// itself, say).
+  static String? get pageName => _pageName;
+
   /// Cross-fades the page in and out.
   static Page<void> fade(
     LocalKey key,
@@ -34,6 +67,7 @@ abstract final class Transitions {
     Heroes? heroes,
   }) => CustomTransitionPage<void>(
     key: key,
+    name: _pageName,
     restorationId: _restorationId(key),
     child: _withHeroes(heroes, child),
     transitionDuration: duration,
@@ -62,6 +96,7 @@ abstract final class Transitions {
     };
     return CustomTransitionPage<void>(
       key: key,
+      name: _pageName,
       restorationId: _restorationId(key),
       child: _withHeroes(heroes, child),
       transitionDuration: duration,
@@ -81,6 +116,7 @@ abstract final class Transitions {
   static Page<void> none(LocalKey key, Widget child, {Heroes? heroes}) =>
       NoTransitionPage<void>(
         key: key,
+        name: _pageName,
         restorationId: _restorationId(key),
         child: _withHeroes(heroes, child),
       );
@@ -89,6 +125,7 @@ abstract final class Transitions {
   static Page<void> material(LocalKey key, Widget child, {Heroes? heroes}) =>
       MaterialPage<void>(
         key: key,
+        name: _pageName,
         restorationId: _restorationId(key),
         child: _withHeroes(heroes, child),
       );
@@ -97,6 +134,7 @@ abstract final class Transitions {
   static Page<void> cupertino(LocalKey key, Widget child, {Heroes? heroes}) =>
       CupertinoPage<void>(
         key: key,
+        name: _pageName,
         restorationId: _restorationId(key),
         child: _withHeroes(heroes, child),
       );
@@ -124,6 +162,7 @@ abstract final class Transitions {
     AnimationStyle? animationStyle,
   }) => _DialogPage(
     key: key,
+    name: _pageName,
     restorationId: _restorationId(key),
     child: child,
     barrierDismissible: barrierDismissible,
@@ -154,6 +193,7 @@ abstract final class Transitions {
     AnimationStyle? animationStyle,
   }) => _SheetPage(
     key: key,
+    name: _pageName,
     restorationId: _restorationId(key),
     child: child,
     isScrollControlled: isScrollControlled,
@@ -175,6 +215,7 @@ abstract final class Transitions {
     Heroes? heroes,
   }) => MaterialPage<void>(
     key: key,
+    name: _pageName,
     restorationId: _restorationId(key),
     child: _withHeroes(heroes, child),
     fullscreenDialog: true,
@@ -184,6 +225,7 @@ abstract final class Transitions {
 class _DialogPage extends Page<void> {
   const _DialogPage({
     super.key,
+    super.name,
     super.restorationId,
     required this.child,
     required this.barrierDismissible,
@@ -224,6 +266,7 @@ class _DialogPage extends Page<void> {
 class _SheetPage extends Page<void> {
   const _SheetPage({
     super.key,
+    super.name,
     super.restorationId,
     required this.child,
     required this.isScrollControlled,

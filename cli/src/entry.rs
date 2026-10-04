@@ -14,8 +14,8 @@ use crate::resolve::{App, view_class};
 use crate::scan::{Kind, Node};
 use crate::templates;
 
-/// What other features add to the generated `main()` (instrumentation, a cache to open).
-/// Nothing fills it yet; with every field empty the output is what the root files alone say.
+/// What other features add to the generated `main()`. `fespalier: adapters:` fills it (since
+/// 0.9.0, see `adapters.rs`); with every field empty the output is what the root files alone say.
 #[derive(Debug, Default)]
 pub struct MainHooks {
     /// Extra imports of the main file, as written (`import 'package:x/x.dart' as _o;`).
@@ -27,17 +27,30 @@ pub struct MainHooks {
     pub before_run: Vec<String>,
     /// Expressions of `List<ProviderObserver>` spread before startup.dart's `providerObservers`.
     pub provider_observers: Vec<String>,
+    /// Expressions of `List<Override>`, spread in order into `StartupGate(extraOverrides:)`:
+    /// before `startup()`'s own overrides, read once after it succeeded (since 0.9.0).
+    pub overrides: Vec<String>,
+    /// Expressions of `List<NavigatorObserver>`, spread in order before startup.dart's
+    /// `routerObservers` into `AppMain.routerObservers()`, which the generated router passes to
+    /// `AppRoutes.router(observers:)` (since 0.9.0).
+    pub router_observers: Vec<String>,
+    /// Expressions of `Widget Function(Widget)`, outermost first, around the `StartupGate` that
+    /// `AppMain.root()` returns (since 0.9.0).
+    pub root_wrappers: Vec<String>,
 }
 
 const ROOT_FILES: [Kind; 3] = [Kind::App, Kind::Startup, Kind::Splash];
 
 /// Whether `lib/app.main.g.dart` is written: always with `main: generated`, never with
-/// `main: manual`, and with `main: auto` when the app folder's root has one of the three files.
+/// `main: manual`, and with `main: auto` when the app folder's root has one of the three files or
+/// the app lists `adapters:` (since 0.9.0: an adapter with no generated `main()` would do nothing).
 pub fn wanted(root: &Node, cfg: &Config) -> bool {
     match cfg.main {
         MainMode::Generated => true,
         MainMode::Manual => false,
-        MainMode::Auto => ROOT_FILES.iter().any(|k| root.files.contains_key(k)),
+        MainMode::Auto => {
+            !cfg.adapters.is_empty() || ROOT_FILES.iter().any(|k| root.files.contains_key(k))
+        }
     }
 }
 
@@ -92,6 +105,18 @@ pub fn emit(
     let own_router = app_file
         .as_ref()
         .is_some_and(|m| app_router_fn(root, m, diags));
+    // The adapters' router observers reach an app.dart router() only when it passes them on.
+    if own_router
+        && !hooks.router_observers.is_empty()
+        && let (Some(m), Some(src)) = (&app_file, root.files.get(&Kind::App))
+        && let Some(f) = function(m, "router")
+        && src
+            .get(f.extent.clone())
+            .is_some_and(|text| !text.contains("routerObservers"))
+    {
+        let msg = "app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there";
+        diags.warn(&root.rel(Kind::App), Some(&f.span), msg);
+    }
 
     // startup.dart: startup(), zone(), observers and retry.
     let startup_file = module(Kind::Startup);
@@ -148,13 +173,37 @@ pub fn emit(
     };
 
     let has_app = app_widget.is_some();
-    let router_fn = match (own_router, startup.router_observers) {
-        (true, _) => Some(format!(
+    let hook_observers = !hooks.router_observers.is_empty();
+    let router_fn = match (own_router, startup.router_observers, hook_observers) {
+        (true, ..) => Some(format!(
             "{}.router()",
             app_alias.as_deref().unwrap_or_default()
         )),
-        (false, true) => Some(format!("AppRoutes.router(observers: {sx}.routerObservers)")),
-        (false, false) => None,
+        (false, _, true) => Some("AppRoutes.router(observers: AppMain.routerObservers())".into()),
+        (false, true, false) => Some(format!("AppRoutes.router(observers: {sx}.routerObservers)")),
+        (false, false, false) => None,
+    };
+    // The adapters' observers, then startup.dart's (which an app.dart router() has none of).
+    let router_observers = hook_observers.then(|| {
+        let mut parts: Vec<String> = hooks
+            .router_observers
+            .iter()
+            .map(|o| format!("...{o}"))
+            .collect();
+        if startup.router_observers {
+            parts.push(format!("...{sx}.routerObservers"));
+        }
+        format!("[{}]", parts.join(", "))
+    });
+    let extra_overrides = (!hooks.overrides.is_empty()).then(|| {
+        let parts: Vec<String> = hooks.overrides.iter().map(|o| format!("...{o}")).collect();
+        format!("[{}]", parts.join(", "))
+    });
+    let zone_note = match (hooks.wrappers.is_empty(), startup.zone.is_some()) {
+        (true, true) => "everything runs inside startup.dart's `zone()`: ",
+        (true, false) => "",
+        (false, true) => "everything runs inside the adapters' zones and startup.dart's `zone()`: ",
+        (false, false) => "everything runs inside the adapters' zones: ",
     };
     let cx = FileCx {
         app_dir: &cfg.app_dir,
@@ -163,9 +212,12 @@ pub fn emit(
         material: !has_app,
         extra_imports: &hooks.imports,
         imports: &imports,
-        zone: startup.zone.is_some(),
+        zone_note,
         run,
         before_run: &hooks.before_run,
+        root_wrappers: &hooks.root_wrappers,
+        extra_overrides,
+        router_observers,
         overrides: startup
             .startup
             .filter(|s| s.overrides)
@@ -201,11 +253,19 @@ struct FileCx<'a> {
     material: bool,
     extra_imports: &'a [String],
     imports: &'a [ImportCx],
-    /// startup.dart has a `zone()`.
-    zone: bool,
+    /// How the doc comment of `run` says what runs inside the zones: startup.dart's `zone()` and
+    /// the adapters', or nothing.
+    zone_note: &'a str,
     /// What `AppMain.run()` returns, wrappers and `zone()` included.
     run: String,
     before_run: &'a [String],
+    /// The adapters' widget wrappers, outermost first, around what `AppMain.root()` returns.
+    root_wrappers: &'a [String],
+    /// The expression of `StartupGate(extraOverrides:)`'s list (the adapters' overrides), when
+    /// there are any.
+    extra_overrides: Option<String>,
+    /// The body of `AppMain.routerObservers()`, when the adapters add router observers.
+    router_observers: Option<String>,
     /// `startup()` that returns the overrides, or the one that returns none (never both).
     overrides: Option<String>,
     startup: Option<String>,

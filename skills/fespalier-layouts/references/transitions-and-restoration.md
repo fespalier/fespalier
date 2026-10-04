@@ -77,6 +77,25 @@ something its shell should not get) takes **`bool shell`** (or `isShell`): `true
 for a layout's shell, `false` for a route's page. It is the only extra parameter
 besides `key`, `child` and `state`.
 
+## Page names (since 0.9.0)
+
+Each `pageBuilder:` the generated file writes (a `transition.dart` or `present.dart` route, a `remount` route, a
+layout's shell) is wrapped in `namedPage('/products/:id', () => ...)`, and the pages `Transitions.*`, `layoutPage`
+and `remountPage` build while it runs are named by the route's pattern (`RouteSettings.name`). A
+`NavigatorObserver` (Sentry's, Firebase Analytics', PostHog's) sees `/products/:id` where it saw `null` (a
+`remount` page saw `:id`).
+
+- A shell is named by its section's pattern: `/` for a root layout or a `(tabs)/` group, `/shop` for
+  `shop/layout.dart`.
+- go_router forwards a shell navigator's pushes to the root navigator's observers, so observers given to
+  `AppRoutes.router(observers: ...)` see the pages inside a shell too.
+- A route with **no** `pageBuilder:` (a bare `builder:`) is go_router's own page, named `state.name ?? state.path`
+  (`items/:id`, not a full pattern). A root `transition.dart`, which `fsp init` writes, names every page.
+- A `Page` of your own in a `transition.dart` or `present.dart` reads the name from `Transitions.pageName` (the
+  pattern; null outside the generated builders): `MaterialPage(key: key, name: Transitions.pageName, child: child)`.
+  `present.dart`'s page is used verbatim, so it is unnamed unless you pass that.
+- Keys, restoration ids, transitions and heroes are unchanged.
+
 ```dart
 // lib/app/(admin)/transition.dart
 import 'package:fespalier/fespalier.dart';

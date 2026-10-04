@@ -67,9 +67,9 @@ fn example_app_generates_cleanly() {
             "path: 'greet/:name'",
             "path: joinLocation(at, '/')",
             // The root transition.dart covers every route.
-            "pageBuilder: (context, state) => _i3.transition(",
+            "pageBuilder: (context, state) => namedPage('/', () => _i3.transition(",
             // ...and the root layout's shell too, under a key that doesn't change.
-            "pageBuilder: (context, state, child) => _i3.transition(\n          const ValueKey<String>('layout:/'),\n          _i4.AppLayout(child: child),",
+            "pageBuilder: (context, state, child) => namedPage('/', () => _i3.transition(\n          const ValueKey<String>('layout:/'),\n          _i4.AppLayout(child: child),",
             "({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
             "_i9.GreetPage(name: v.name)",
             "data: (d) => _i14.ProductPage(product: d),",
@@ -553,7 +553,7 @@ fn layouts_get_child_and_segments_above_them() {
     has(
         &c,
         &[
-            "pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:\\$shop/',\n          buildWithParams(\n            () => _layout1(state),\n            (v) => _i1.ShopLayout(child: child, shop: v.shop),",
+            "pageBuilder: (context, state, child) => namedPage('/:shop', () => layoutPage(\n          context,\n          state,\n          'layout:\\$shop/',\n          buildWithParams(\n            () => _layout1(state),\n            (v) => _i1.ShopLayout(child: child, shop: v.shop),",
             "redirect: (context, state) => traceGuard(state, 'g1@1', guardWithParams(\n              () => _params1(state),\n              (v) => _i2.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),",
             "path: joinLocation(at, '/:shop')",
         ],
@@ -1007,7 +1007,7 @@ fn query_params_reach_every_file_and_key_data() {
             "final List<String> tags;",
             "String get location => withQuery(joinLocation(AppRoutes.base, '/search'), {'q': q, 'page': page, 'tags': tags, 'admin': admin});",
             // A layout reads the query too, through its own parser.
-            "pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:/',\n          buildWithParams(\n            () => _layout0(state),\n            (v) => _i0.Shell(child: child, theme: v.theme),",
+            "pageBuilder: (context, state, child) => namedPage('/', () => layoutPage(\n          context,\n          state,\n          'layout:/',\n          buildWithParams(\n            () => _layout0(state),\n            (v) => _i0.Shell(child: child, theme: v.theme),",
             "({String? theme}) _layout0(GoRouterState s) => (theme: Query.asString(s, 'theme'));",
         ],
     );
@@ -1072,10 +1072,10 @@ fn group_folders_share_a_layout_without_adding_to_the_url() {
             "//   /:id    ItemRoute   (app)/$id/page.dart  (data)\n//   /       HomeRoute   (marketing)/page.dart  (layout)",
             // Each group is its own ShellRoute; the URLs have no trace of it.
             // The one holding `/:id` goes last, so `/about` isn't read as an id.
-            "      ShellRoute(\n        pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:(marketing)/',\n          _i5.MarketingLayout(child: child),",
-            "      ShellRoute(\n        pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:(app)/',\n          _i1.AppShell(child: child),\n        ),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/:id'),",
+            "      ShellRoute(\n        pageBuilder: (context, state, child) => namedPage('/', () => layoutPage(\n          context,\n          state,\n          'layout:(marketing)/',\n          _i5.MarketingLayout(child: child),",
+            "      ShellRoute(\n        pageBuilder: (context, state, child) => namedPage('/', () => layoutPage(\n          context,\n          state,\n          'layout:(app)/',\n          _i1.AppShell(child: child),\n        )),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/:id'),",
             "loading: () => const _i0.AppLoading(),",
-            "_i5.MarketingLayout(child: child),\n        ),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/'),",
+            "_i5.MarketingLayout(child: child),\n        )),\n        routes: [\n          GoRoute(\n            path: joinLocation(at, '/'),",
             "GoRoute(\n                path: 'about',",
             "String get location => joinLocation(AppRoutes.base, '/about');",
             "String get location => joinLocation(AppRoutes.base, '/$id');",
@@ -1213,10 +1213,10 @@ fn transition_applies_to_every_page_below_it() {
             "//   /about  AboutRoute  about/page.dart  (transition)",
             "import 'app/transition.dart' as _i1;",
             // The page is exactly what `builder:` would have returned.
-            "pageBuilder: (context, state) => _i1.transition(\n          state.pageKey,\n          const _i0.HomePage(),\n        ),",
-            "pageBuilder: (context, state) => _i1.transition(\n              state.pageKey,\n              buildWithParams(\n                () => _params1(state),\n                (v) => DataView(",
+            "pageBuilder: (context, state) => namedPage('/', () => _i1.transition(\n          state.pageKey,\n          const _i0.HomePage(),\n        )),",
+            "pageBuilder: (context, state) => namedPage('/:id', () => _i1.transition(\n              state.pageKey,\n              buildWithParams(\n                () => _params1(state),\n                (v) => DataView(",
             "data: (d) => _i3.ItemPage(data: d),",
-            "                () => notFound(state.uri),\n              ),\n            ),\n",
+            "                () => notFound(state.uri),\n              ),\n            )),\n",
         ],
     );
     assert!(!c.contains("builder: (context, state) =>"), "{c}");
@@ -1297,7 +1297,7 @@ fn transition_params_are_filled_by_name_then_type() {
     has(
         &c,
         &[
-            "_i1.transition(\n          const _i0.HomePage(),\n          state.pageKey,\n          state: state,\n        ),",
+            "_i1.transition(\n          const _i0.HomePage(),\n          state.pageKey,\n          state: state,\n        )),",
         ],
     );
     assert!(!c.contains("duration") && !c.contains("slow"), "{c}");
@@ -1376,7 +1376,7 @@ fn scaffold_writes_a_transition() {
         &code,
         &[
             "(transition)",
-            "pageBuilder: (context, state) => _i2.transition(",
+            "pageBuilder: (context, state) => namedPage('/docs', () => _i2.transition(",
         ],
     );
 }
@@ -1403,7 +1403,7 @@ fn tab_layout_makes_a_branch_of_each_folder() {
     has(
         &c,
         &[
-            "StatefulShellRoute.indexedStack(\n        pageBuilder: (context, state, navigationShell) => layoutPage(\n          context,\n          state,\n          'layout:/',\n          _i1.TabsLayout(navigationShell: navigationShell),\n        ),\n        branches: [",
+            "StatefulShellRoute.indexedStack(\n        pageBuilder: (context, state, navigationShell) => namedPage('/', () => layoutPage(\n          context,\n          state,\n          'layout:/',\n          _i1.TabsLayout(navigationShell: navigationShell),\n        )),\n        branches: [",
             "StatefulShellBranch(\n            routes: [\n              GoRoute(\n                path: joinLocation(at, '/'),\n                builder: (context, state) => const _i0.HomePage(),\n              ),\n            ],\n            restorationScopeId: 'tab:/.',\n          ),",
             "path: joinLocation(at, '/search'),",
             // A group is a branch too, and adds nothing to the URL.
@@ -1612,9 +1612,9 @@ fn a_tab_holds_nested_routes_data_guards_and_transitions() {
             "data: (d) => _i9.ItemPage(data: d),",
             "data: (d) => _i6.ShopPage(d),",
             "loading: () => const _i7.Busy(),",
-            "pageBuilder: (context, state) => _i0.transition(",
+            "pageBuilder: (context, state) => namedPage('/shop', () => _i0.transition(",
             // A plain layout inside a tab is still a ShellRoute, within the branch.
-            "ShellRoute(\n                pageBuilder: (context, state, child) => _i0.transition(\n                  const ValueKey<String>('layout:(tabs)/help/'),\n                  _i4.HelpLayout(child: child),\n                ),",
+            "ShellRoute(\n                pageBuilder: (context, state, child) => namedPage('/help', () => _i0.transition(\n                  const ValueKey<String>('layout:(tabs)/help/'),\n                  _i4.HelpLayout(child: child),\n                )),",
         ],
     );
     assert!(at(&c, "path: 'cart',") < at(&c, "path: ':id',"), "{c}");
@@ -1638,7 +1638,7 @@ fn tab_layouts_read_segments_and_query_like_other_layouts() {
     has(
         &c,
         &[
-            "StatefulShellRoute.indexedStack(\n            pageBuilder: (context, state, navigationShell) => layoutPage(\n              context,\n              state,\n              'layout:\\$shop/(tabs)/',\n              buildWithParams(\n                () => _layout2(state),\n                (v) => _i1.ShopTabs(shell: navigationShell, shop: v.shop, theme: v.theme),\n                () => notFound(state.uri),\n              ),\n            ),",
+            "StatefulShellRoute.indexedStack(\n            pageBuilder: (context, state, navigationShell) => namedPage('/:shop', () => layoutPage(\n              context,\n              state,\n              'layout:\\$shop/(tabs)/',\n              buildWithParams(\n                () => _layout2(state),\n                (v) => _i1.ShopTabs(shell: navigationShell, shop: v.shop, theme: v.theme),\n                () => notFound(state.uri),\n              ),\n            )),",
             "({int shop, String? theme}) _layout2(GoRouterState s) => (shop: Segment.asInt(s, 'shop'), theme: Query.asString(s, 'theme'));",
             // Below the page that holds `$shop`, the tabs' paths are relative to it.
             "path: joinLocation(at, '/:shop'),",

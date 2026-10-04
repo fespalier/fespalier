@@ -125,6 +125,9 @@ struct TreeCx {
     not_found_builder: bool,
     seg_fn: Option<String>,
     page: String,
+    /// The route's pattern, as a Dart string literal: what `namedPage` names the page with, so a
+    /// `NavigatorObserver` sees `/products/:id` (since 0.9.0). Empty for what has no page.
+    page_name: String,
     data: Option<ViewDataCx>,
     /// What an unparsable segment shows.
     not_found: String,
@@ -234,6 +237,9 @@ struct CallCx {
 struct LayoutCx {
     seg_fn: Option<String>,
     page: String,
+    /// The layout's section pattern, as a Dart string literal: what `namedPage` names the shell
+    /// with (`'/'` for a root `(tabs)/`, since 0.9.0).
+    page_name: String,
     data: Option<ViewDataCx>,
     not_found: String,
     /// The Navigator's `restorationScopeId`, from the layout's folder.
@@ -1001,6 +1007,7 @@ fn routes_of(
             not_found_builder: false,
             seg_fn: None,
             page: String::new(),
+            page_name: String::new(),
             data: None,
             not_found: String::new(),
             transition: None,
@@ -1164,6 +1171,7 @@ fn layout_cx(
         restoration_id,
         seg_fn,
         page: wrapped,
+        page_name: dart_str(&resolve::pattern(&r.url)),
         data: section.map(|d| {
             let (loading, error) = fallbacks(r);
             ViewDataCx {
@@ -1496,6 +1504,7 @@ fn page_route(
         not_found_builder: false,
         seg_fn,
         page: page_expr,
+        page_name: dart_str(&resolve::pattern(&r.url)),
         data,
         not_found: not_found_call(r),
         remount: remount.clone(),
@@ -1556,6 +1565,7 @@ fn redirect_route(
             .any(|(_, t)| t != "String" && t != "List<String>"),
         seg_fn,
         page: String::new(),
+        page_name: String::new(),
         data: None,
         not_found: not_found_call(r),
         transition: None,
@@ -1655,6 +1665,7 @@ fn tab_routes(
         not_found_builder: false,
         seg_fn: None,
         page: String::new(),
+        page_name: String::new(),
         data: None,
         not_found: String::new(),
         transition: None,

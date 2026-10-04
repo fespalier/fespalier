@@ -23,14 +23,15 @@ packages ship in 0.9.0:
   breadcrumbs, the OpenTelemetry trace id on each event; screen-load transactions on request).
 
 In core: `FespalierTelemetry.combine` (several sinks at once), the `within` hook that puts HTTP
-spans under the data span, `navigateFrom` for launches from notifications, and CI runs every
-package on its declared floor, Flutter 3.32, with the lowest dependencies it allows.
+spans under the data span, `navigateFrom` for launches from notifications, the generated `main()`'s
+adapters (`fespalier: adapters:`, a `FespalierAdapter` per package), pages named by their route
+pattern so vendor navigator observers see screens, and CI runs every package on its declared floor,
+Flutter 3.32, with the lowest dependencies it allows.
 
 ## Next
 
-- **Core seams the adapters need.** The route pattern as each page's `name` (so vendor navigator
-  observers see screens), adapter wiring in the generated `main()` from one pubspec key,
-  `AppRoutes.urlOf`, a DevTools panel adapters can post to, and `test: a11y: true` in `fsp test`.
+- **Core seams the adapters need.** `AppRoutes.urlOf`, a DevTools panel adapters can post to, and
+  `test: a11y: true` in `fsp test`.
 - **Adapters**, each a small package:
   - `fespalier_launch`: notification, shortcut and home-widget taps open typed routes, the first
     screen on a cold start.

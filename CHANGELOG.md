@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/fespalier/fespalier/compare/v0.9.0...v0.9.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* semantics_ids keeps each page's text as separate nodes ([#84](https://github.com/fespalier/fespalier/issues/84)) ([31e3d46](https://github.com/fespalier/fespalier/commit/31e3d46b50c1f608c8552d4129e209f1de33cbe1))
+
 ## [0.9.0](https://github.com/fespalier/fespalier/compare/v0.8.1...v0.9.0) (2026-10-04)
 
 

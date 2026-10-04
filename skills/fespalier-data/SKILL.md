@@ -1,6 +1,6 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 its forms: form(), validate() and optimistic()). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 its forms: form(), validate() and optimistic()), and since 0.9.0 fespalier_dio, which ties Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
@@ -80,17 +80,17 @@ const freshness = Freshness(staleTime: Duration(minutes: 1), refetchOnResume: tr
 final dataCache = DataCache<Product>.json(toJson: (p) => p.toJson(), fromJson: (j) => Product.fromJson(j! as Map<String, Object?>)); // data.dart only
 ```
 
-| Rule                                                                     | What it means                                                                                                                                                                                  |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Where                                                                    | `freshness` in a `data.dart` (that data) or a `route.dart` (every function-form `data()` at and below; the nearest wins, a `data.dart`'s own wins over all). `dataCache` in a `data.dart` only |
-| Which forms                                                              | The function form (`Future<T>`, `FutureOr<T>` or `T`). A `Stream`, a selector and a provider form are errors; a `route.dart` default skips them silently                                       |
-| Stale                                                                    | In memory for `staleTime` **since it arrived**. Loading and error values are never stale. Nothing polls                                                                                        |
-| What loads a stale value                                                 | A **read**: a new listener (a page opening, `SectionView`, `prefetch`/`preload`, `read`), a listener coming back (page uncovered, tab shown), or a resume/reconnect signal                     |
-| What it shows meanwhile                                                  | The stale value **at once**, then the new one (`keep_previous` decides if `loading.dart` shows)                                                                                                |
-| `refetchOnResume` / `refetchOnReconnect`                                 | Signals (`appResumeSignal`, `reconnectSignal`); threshold `staleTime ?? Duration.zero`. `reconnectSignal` **never fires by itself**: override it or call `fire()`                              |
-| A failed reload                                                          | Keeps the page on its data (`keepDataOnError: true` on the `DataView`); `error.dart` only when there is nothing to show                                                                        |
-| An invalidation (`ref.invalidate`, `refresh`, an action's `invalidates`) | Loads **at once**, whatever the `staleTime`: it is not a read                                                                                                                                  |
-| `dataCache`                                                              | Saved only if the app overrides `dataCacheStorage` (`null` by default). `MemoryDataStorage` for tests and the web; a `Storage<String, String>` on disk to survive a restart                    |
+| Rule                                                                     | What it means                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Where                                                                    | `freshness` in a `data.dart` (that data) or a `route.dart` (every function-form `data()` at and below; the nearest wins, a `data.dart`'s own wins over all). `dataCache` in a `data.dart` only                                                                              |
+| Which forms                                                              | The function form (`Future<T>`, `FutureOr<T>` or `T`). A `Stream`, a selector and a provider form are errors; a `route.dart` default skips them silently                                                                                                                    |
+| Stale                                                                    | In memory for `staleTime` **since it arrived**. Loading and error values are never stale. Nothing polls                                                                                                                                                                     |
+| What loads a stale value                                                 | A **read**: a new listener (a page opening, `SectionView`, `prefetch`/`preload`, `read`), a listener coming back (page uncovered, tab shown), or a resume/reconnect signal                                                                                                  |
+| What it shows meanwhile                                                  | The stale value **at once**, then the new one (`keep_previous` decides if `loading.dart` shows)                                                                                                                                                                             |
+| `refetchOnResume` / `refetchOnReconnect`                                 | Signals (`appResumeSignal`, `reconnectSignal`); threshold `staleTime ?? Duration.zero`. `reconnectSignal` **never fires by itself**: override it or call `fire()` `fespalier_connectivity` (0.9.0) is that signal: `reconnectSignal.overrideWith(ConnectivitySignal.new)`   |
+| A failed reload                                                          | Keeps the page on its data (`keepDataOnError: true` on the `DataView`); `error.dart` only when there is nothing to show                                                                                                                                                     |
+| An invalidation (`ref.invalidate`, `refresh`, an action's `invalidates`) | Loads **at once**, whatever the `staleTime`: it is not a read                                                                                                                                                                                                               |
+| `dataCache`                                                              | Saved only if the app overrides `dataCacheStorage` (`null` by default). `MemoryDataStorage` for tests and the web; a `Storage<String, String>` on disk to survive a restart: `fespalier_storage` (0.9.0), `PrefsDataStorage` or `HiveDataStorage`, first frame, size budget |
 
 Gotchas: every new reader counts (a small `staleTime` reloads a section each time a page below it opens);
 `read` returns what is in memory even if stale (`refresh` waits for the network); `keepFor` is how long a
@@ -98,7 +98,11 @@ handle holds a value, not freshness; a failed user `refresh()` is hidden behind 
 always loads again; a failed load never deletes the saved value; `freshness` and `dataCache` are names `fsp`
 now reads in a `data.dart` (a public variable of that name and another type is an error: rename it).
 [`references/freshness-and-cache.md`](references/freshness-and-cache.md) has the samples that compile, the
-reconnect signal, the storage, the key format and the tests.
+reconnect signal, the storage, the key format and the tests. [`references/reconnect-and-network.md`](references/reconnect-and-network.md) (since 0.9.0) is `fespalier_connectivity`: the
+reconnect signal, `hasNetwork` and an offline banner, connectivity versus reachability, a reachability recipe, and tests with
+`FakeConnectivity`. [`references/storage-backends.md`](references/storage-backends.md)
+(since 0.9.0) is `fespalier_storage`: choosing Prefs or Hive, the budget and eviction, versioning, corrupt entries, sign-out, the web's
+quota, and a restart test that compiles.
 
 ## Typed helpers, prefetch, lookup
 
@@ -190,6 +194,44 @@ Profile optimistic(Profile current, NicknameFields input) => Profile(input.nickn
 [`references/forms-and-optimistic.md`](references/forms-and-optimistic.md) has every rule and a
 sample that compiles, with its test.
 
+## HTTP clients: `fespalier_dio` (since 0.9.0)
+
+The core has no HTTP client. `package:fespalier_dio` (a repository dependency next to fespalier, **same `url` and
+`ref`**) makes Dio and `package:http` keep three promises. It changes no generated code, file kind, key or command,
+and starts no timer.
+
+```dart
+final cancel = ref.cancelToken();                       // Dio, in a data.dart: before the first await
+final client = ref.abortable(ref.watch(httpClient));    // package:http: every request of the build
+await ref.read(dio).put<Object?>('/me', data: body).withFieldErrors();   // in an action.dart
+WriteGuard.install(dio);                                // the last call on the Dio: it goes first
+```
+
+- **A load whose page is gone stops.** `ref.cancelToken()`, `ref.abortTrigger()` and `ref.abortable(client)` fire in
+  `ref.onDispose`: on dispose **and** before a rebuild. **Ask before the first `await`**: on a stale `ref` the token
+  comes back already cancelled. The request fails after its provider is gone (`DioException` of type `cancel`, whose
+  `error` is `fespalier_dio: the provider that started this request was disposed`; `RequestAbortedException` for
+  `package:http`), so telemetry shows `disposed`, never an error.
+- **A server's validation error is the form's `FieldErrors`.** `.withFieldErrors()` is an extension on the action's
+  `Future`, **not an interceptor** (an interceptor can only reject with a `DioException`, and a form reads a
+  `FieldErrors`). For 400 and 422 it reads RFC 9457 and 7807, ASP.NET Core, Laravel and Rails, Spring, JSON:API,
+  FastAPI and Django REST framework, with the **first** message per field. `fieldName:` maps the server's names to the
+  record's (`FieldNames.camelCase` changes case only: `nick_name` is `nickName`, not `nickname`). A **422** with only a
+  `detail` or `message` is `form.error`; a 400 like that is never converted (it is a bug, let it reach Sentry).
+  Anything else rethrows the same error.
+- **A write is never sent twice.** `dio_smart_retry` and `RetryClient` retry writes by default. `WriteGuard.install(dio)`
+  puts a guard **first** that refuses a second send of a write (any method but `GET`, `HEAD`, `OPTIONS`, `TRACE`, unless
+  it has an `Idempotency-Key` header or `extra[WriteGuard.idempotent]`) and returns the first error, except after a 401
+  (an auth refresh). `WriteGuard.readsOnly(evaluator)` keeps the retrier from trying. For `package:http`, put
+  `WriteGuardClient(inner)` inside the `RetryClient` and pass it `when: WriteGuardClient.readsOnly()` and
+  `whenError: WriteGuardClient.readErrorsOnly(rule)`. A retrier **before** the guard gives `WriteNotRetried`.
+- **Keep one retry layer**: Riverpod's data retry and an HTTP retrier multiply each other's attempts.
+- **Not in it:** a retry policy of its own (a backoff needs a timer), logging, tracing (use `otel_dio` or `sentry_dio`).
+
+[`references/http.md`](references/http.md) has the samples that compile and every rule; its tests are in
+[`fespalier-testing`](../fespalier-testing/SKILL.md) (its `http.md`), its messages in
+[`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its `diagnostics-errors-and-http.md`).
+
 ## Seeing it in DevTools (since 0.7.0)
 
 The `fespalier` tab's **Data** tab lists each provider fespalier makes from a `data.dart`: its state
@@ -204,17 +246,23 @@ visible (`fespalier-troubleshooting`, its DevTools page).
 
 ## Common symptoms
 
-| Symptom                                            | Look at                                                                                                                       |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Page blinks to `loading.dart` on every reload      | `keep_previous: false` in `pubspec.yaml` (the default is `true`)                                                              |
-| A failing `data.dart` runs several times in a test | Default `data_retry: inherit`; `pumpRouter` already disables retries (`fespalier-testing`)                                    |
-| `error.dart` never shows during a retry            | A function-form `data()` wrapping `.future` of your provider: use a selector                                                  |
-| `refresh`/`retry` throws a `StateError`            | A selector that returns `.select(...)` of a provider: return the provider itself                                              |
-| A prefetched page still loads                      | The handle was closed, or the id/query differs from the key the page uses                                                     |
-| `dataAt` is `null` for a URL that works in the app | The segment fails to parse, or the URL is outside the mount prefix                                                            |
-| A page doesn't refresh after a write               | The data is another route's: list it in `invalidates` (`references/actions.md`)                                               |
-| A stale value stays on screen                      | Nothing read it: `freshness` loads on a read, a resume or a reconnect, never by a timer (`references/freshness-and-cache.md`) |
-| Offline start shows `error.dart`                   | No `dataCache`/`dataCacheStorage`, or nothing was saved yet or it passed `maxAge`                                             |
-| The form forgot what I typed (0.8.1)               | The data loaded again while the fields were untouched: only fields the user changed are kept                                  |
-| The page flashes the old value after a save        | `optimistic()` patches another type than the page shows, or the data is not in `invalidates`                                  |
-| An fsp error on `data.dart` or `action.dart`       | `fespalier-troubleshooting`                                                                                                   |
+| Symptom                                                        | Look at                                                                                                                                                                         |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Page blinks to `loading.dart` on every reload                  | `keep_previous: false` in `pubspec.yaml` (the default is `true`)                                                                                                                |
+| A failing `data.dart` runs several times in a test             | Default `data_retry: inherit`; `pumpRouter` already disables retries (`fespalier-testing`)                                                                                      |
+| `error.dart` never shows during a retry                        | A function-form `data()` wrapping `.future` of your provider: use a selector                                                                                                    |
+| `refresh`/`retry` throws a `StateError`                        | A selector that returns `.select(...)` of a provider: return the provider itself                                                                                                |
+| A prefetched page still loads                                  | The handle was closed, or the id/query differs from the key the page uses                                                                                                       |
+| `dataAt` is `null` for a URL that works in the app             | The segment fails to parse, or the URL is outside the mount prefix                                                                                                              |
+| A page doesn't refresh after a write                           | The data is another route's: list it in `invalidates` (`references/actions.md`)                                                                                                 |
+| A stale value stays on screen                                  | Nothing read it: `freshness` loads on a read, a resume or a reconnect, never by a timer (`references/freshness-and-cache.md`)                                                   |
+| Offline start shows `error.dart`                               | No `dataCache`/`dataCacheStorage`, or nothing was saved yet or it passed `maxAge`                                                                                               |
+| A saved value is not on the first frame (0.9.0)                | `open()` was not awaited in `startup()`, a `Future` was passed (one `loading.dart` frame), or in a test no `fakePrefsStore()`                                                   |
+| `refetchOnReconnect` never reloads (0.9.0)                     | `startup()` does not override `reconnectSignal` (`ConnectivitySignal.new`), or the value is younger than its `staleTime`, or the network went Wi-Fi to mobile (not a reconnect) |
+| An offline banner stays up after the network came back (0.9.0) | A hand-written signal that never asks again on a resume (iOS drops background events): use `fespalier_connectivity`                                                             |
+| The form forgot what I typed (0.8.1)                           | The data loaded again while the fields were untouched: only fields the user changed are kept                                                                                    |
+| The page flashes the old value after a save                    | `optimistic()` patches another type than the page shows, or the data is not in `invalidates`                                                                                    |
+| A request outlives its page (0.9.0)                            | `fespalier_dio`: the token was asked after an `await`, or not given to the request (`references/http.md`)                                                                       |
+| A 422 is not under its field (0.9.0)                           | `fespalier_dio`: `withFieldErrors()` is missing or found no field: statuses, decoder, names (`references/http.md`)                                                              |
+| A write is retried, or `WriteNotRetried` (0.9.0)               | `WriteGuard` is not first (`WriteGuard.install(dio)` last), or the retrier has no `readsOnly` (`references/http.md`)                                                            |
+| An fsp error on `data.dart` or `action.dart`                   | `fespalier-troubleshooting`                                                                                                                                                     |

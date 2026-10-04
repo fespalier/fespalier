@@ -1,0 +1,38 @@
+name: fespalier_connectivity
+description: "fespalier's reconnectSignal from connectivity_plus, so refetchOnReconnect works, and a hasNetwork provider for offline banners."
+version: 0.8.1 # x-release-please-version
+# Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
+publish_to: 'none'
+homepage: https://github.com/fespalier/fespalier
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_connectivity
+issue_tracker: https://github.com/fespalier/fespalier/issues
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  # Event-driven (no polling): Android's NetworkCallback, iOS's NWPathMonitor, the web's online/offline events.
+  # 6.0 made a change a List<ConnectivityResult>; LaunchDarkly's own range (>=5.0.2 <8.0.0) intersects this one.
+  # 6.0.1, not 6.0.0: 6.0.0 asked for platform interface ^1.2.4 and does not compile against it (CI's floor job).
+  connectivity_plus: ">=6.0.1 <8.0.0"
+  flutter:
+    sdk: flutter
+  # The same repository dependency an app writes (same url, path and ref), so the two resolve to
+  # one package: a path dependency would resolve "at <sha>" and conflict with the app's tag.
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1 # x-release-please-version
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# In this repository the package is built against the fespalier beside it. A dependency's
+# overrides are ignored, so apps never see this.
+dependency_overrides:
+  fespalier:
+    path: ../fespalier

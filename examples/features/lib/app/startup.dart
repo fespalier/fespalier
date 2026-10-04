@@ -1,7 +1,12 @@
 import 'dart:async';
 
 import 'package:features/auth.dart';
+import 'package:fespalier/fespalier.dart'
+    show dataCacheStorage, reconnectSignal;
 import 'package:fespalier/startup.dart';
+import 'package:fespalier_connectivity/fespalier_connectivity.dart';
+import 'package:fespalier_flags/fespalier_flags.dart';
+import 'package:fespalier_storage/fespalier_storage.dart';
 
 /// What the app asked this file for, in order. The tests read it to check when each runs.
 final List<String> startupLog = [];
@@ -37,7 +42,17 @@ Future<void> zone(Future<void> Function() body) {
 Future<List<Override>> startup() async {
   startupLog.add(Zone.current[_inZone] == true ? 'startup in zone' : 'startup');
   final signedIn = await sessionStore.restore();
-  return [session.overrideWith(() => _Restored(signedIn))];
+  return [
+    session.overrideWith(() => _Restored(signedIn)),
+    // --dart-define=FEATURES_LABS=true shows /labs (fespalier_flags).
+    flagSource.overrideWithValue(
+      const ConstFlags({'labs': bool.fromEnvironment('FEATURES_LABS')}),
+    ),
+    // fespalier_storage: the team's dataCache in shared preferences (null if they could not open: nothing saved).
+    dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
+    // fespalier_connectivity: refetchOnReconnect (teams/$teamId/route.dart) follows connectivity_plus.
+    reconnectSignal.overrideWith(ConnectivitySignal.new),
+  ];
 }
 
 class _Restored extends Flag {

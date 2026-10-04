@@ -83,7 +83,11 @@ jobs:
           - packages/fespalier_auth
           - packages/fespalier_sign_keypair
           - packages/fespalier_adaptive
+          - packages/fespalier_flags
+          - packages/fespalier_storage
+          - packages/fespalier_connectivity
           - packages/fespalier_image
+          - packages/fespalier_dio
           - packages/fespalier_sentry
           - examples/shop
           - examples/features
@@ -150,6 +154,10 @@ jobs:
           - packages/fespalier_auth
           - packages/fespalier_adaptive
           - packages/fespalier_image
+          - packages/fespalier_flags
+          - packages/fespalier_storage
+          - packages/fespalier_connectivity
+          - packages/fespalier_dio
           - packages/fespalier_sentry
           - examples/minimal
     defaults:

@@ -3314,15 +3314,15 @@ The rules, in order (`fieldErrorsOf`):
    a bug of the client, which should reach your error reporting.
 5. Anything else: the original error is rethrown, the very same object.
 
-| Decoder          | Body (abridged)                                                         | Becomes                                                                                                                      |
-| ---------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `problemDetails` | RFC 9457 `errors: [{detail, pointer: "#/age"}]`                         | `age: ...`; a pointer is a dotted path (`#/profile/color` is `profile.color`); an entry with no pointer is the message       |
-| `problemDetails` | RFC 7807 `invalid-params: [{name, reason}]`                             | `name: reason`                                                                                                               |
-| `problemDetails` | Spring `errors: [{field, defaultMessage}]`                              | `field: defaultMessage`                                                                                                      |
-| `errorsMap`      | ASP.NET Core, Laravel, Rails: `errors: {field: [message]}`              | `field: first message` (a `""` or `$` key is the message; the generic `message` of Laravel is not used while fields matched) |
-| `jsonApi`        | `errors: [{source: {pointer: "/data/attributes/name"}, detail}]`        | `name: detail` (`/data/attributes/` and `/data/relationships/` are dropped)                                                  |
-| `fastApi`        | `detail: [{loc: ["body", "age"], msg}]`                                 | `age: msg` (a leading `body`, `query`, `path`, `header` or `cookie` is dropped)                                              |
-| `flatMap`        | Django REST framework `{field: [message], non_field_errors: [message]}` | `field: ...`, and `non_field_errors` as the message. Not when `type`, `title`, `status`, `errors` or `detail` is a key       |
+| Decoder          | Body (abridged)                                                         | Becomes                                                                                                                                                             |
+| ---------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `problemDetails` | RFC 9457 `errors: [{detail, pointer: "#/age"}]`                         | `age: ...`; a pointer is a dotted path (`#/profile/color` is `profile.color`); an entry with no pointer is the message                                              |
+| `problemDetails` | RFC 7807 `invalid-params: [{name, reason}]`                             | `name: reason`                                                                                                                                                      |
+| `problemDetails` | Spring `errors: [{field, defaultMessage}]`                              | `field: defaultMessage`                                                                                                                                             |
+| `errorsMap`      | ASP.NET Core, Laravel, Rails: `errors: {field: [message]}`              | `field: first message` (a `""` or `$` key is the message; the generic `message` of Laravel is not used while fields matched)                                        |
+| `jsonApi`        | `errors: [{source: {pointer: "/data/attributes/name"}, detail}]`        | `name: detail` (`/data/attributes/` and `/data/relationships/` are dropped)                                                                                         |
+| `fastApi`        | `detail: [{loc: ["body", "age"], msg}]`                                 | `age: msg` (a leading `body`, `query`, `path`, `header` or `cookie` is dropped)                                                                                     |
+| `flatMap`        | Django REST framework `{field: [message], non_field_errors: [message]}` | `field: ...`, and `non_field_errors` as the message. Not when `type`, `title`, `status`, `errors` or `detail` is a key, nor for a plain-string `message` or `error` |
 
 Each decoder asks for its exact shape and returns null for anything else, so a body that is not a validation error
 is never read as one; `standard` tries them in the order above. `FieldNames.camelCase` turns `first_name`,
@@ -3355,7 +3355,7 @@ final httpClient = Provider<http.Client>((ref) {
   final client = RetryClient(                            // package:http/retry.dart: reads only
     WriteGuardClient(http.Client()),                     // inside the RetryClient
     when: WriteGuardClient.readsOnly(),                  // 503, for reads
-    whenError: WriteGuardClient.readErrorsOnly((error, stackTrace) => error is SocketException),
+    whenError: WriteGuardClient.readErrorsOnly((error, stackTrace) => error is http.ClientException),
   );
   ref.onDispose(client.close);
   return client;

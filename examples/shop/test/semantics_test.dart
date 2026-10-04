@@ -6,9 +6,10 @@ import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shop/app.g.dart';
+import 'images.dart';
 
 Future<void> boot(WidgetTester tester, String location) async {
-  final container = ProviderContainer();
+  final container = ProviderContainer(overrides: [fakeImages()]);
   addTearDown(container.dispose);
   // /checkout and /products/:id are deferred routes (`const deferred = true;`): their code loads
   // on the real event loop, which a widget test's pumps never run, so load it first.

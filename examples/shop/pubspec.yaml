@@ -11,11 +11,19 @@ dependencies:
     sdk: flutter
   fespalier:
     path: ../../packages/fespalier
+  # Product photos at the size their layout needs, from an image CDN (README, "Images").
+  fespalier_image:
+    path: ../../packages/fespalier_image
 
 dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
+
+# fespalier_image depends on fespalier by git, as an app does; here both are the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
 
 flutter:
   uses-material-design: true
@@ -40,7 +48,8 @@ fespalier:
       greet/$name: Ada
       products/$id: 1
   # `fsp size` reads build/web after `flutter build web`; `just web-chunks` checks these budgets
-  # (README, "Web chunk sizes (`fsp size`)"). The measured sizes are 2.27 MB, 5,259 B and 5,982 B.
+  # (README, "Web chunk sizes (`fsp size`)"). The measured sizes are 2.38 MB, 5,266 B and 6,028 B (fespalier_image
+  # is in the first: the product list is eager, and its photos with it).
   size:
     main: 3 MB
     routes:

@@ -109,9 +109,19 @@ RouteLink(
   locale: 'fr',                     // optional: the localized spelling (locationFor)
   method: LinkMethod.go,            // go (default) | push | replace
   preload: Preload.visible,         // none | intent | visible; null: the RouteLinkScope's
+  onPreload: (context) => ...,      // since 0.9.0: runs when the link starts a preload
   builder: (context, follow) => ...,
 )
 ```
+
+- **`onPreload`** (since 0.9.0) is `void Function(BuildContext context)`: it runs with the link's context right
+  after the link starts `route.preload(ref)`, for what the page needs that is not a provider (its image at the
+  size it shows it: `ResponsiveImage.precache(context, p.image, width: pagePhotoSize, aspectRatio: 1)` from
+  `package:fespalier_image`). For `Preload.intent` it runs on the first intent and on the next one after a failed
+  preload; for `Preload.visible` each time the link comes back on screen. It is **not** called when the link
+  preloads nothing (`Preload.none`, or a `uri:` link no `RouteLinkScope.match` matches). It must return at once;
+  what it throws is reported with `FlutterError.reportError` (library `fespalier`, context `while running
+onPreload of a RouteLink to /products/3`) and the preload goes on.
 
 - **Exactly one of `to` and `uri`** (an assertion). `to` is a `TypedLocation`;
   `uri` is a path of **this app with the mount prefix and query**

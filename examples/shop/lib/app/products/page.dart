@@ -1,7 +1,9 @@
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_image/fespalier_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shop/api.dart';
 import 'package:shop/app.g.dart';
+import 'package:shop/product_photo.dart';
 
 /// How the list is ordered: `?sort=name` or `?sort=expensive`. An enum in the
 /// page's own file can be a query parameter; a missing or unknown value is null.
@@ -56,14 +58,25 @@ class ProductsPage extends ConsumerWidget {
                     RouteLink(
                       to: ProductRoute(id: p.id),
                       preload: Preload.intent,
+                      // And the photo the page shows, at the size it shows it
+                      // (since 0.9.0): warm that size, not the row's. Both
+                      // sides use [pagePhotoSize], so the URL is the same.
+                      onPreload: (context) => ResponsiveImage.precache(
+                        context,
+                        p.image,
+                        width: pagePhotoSize,
+                        aspectRatio: 1,
+                      ),
                       builder: (context, follow) => ListTile(
-                        // The same line is on the product's page: the avatar
+                        // The same line is on the product's page: the photo
                         // flies from the row to there (since 0.8.1). It
                         // needs the page's data in its first frame, which the
-                        // preload above provides.
-                        leading: ProductRoute(id: p.id).hero(
-                          'avatar',
-                          child: CircleAvatar(child: Text(p.name[0])),
+                        // preload above provides, and `imageHero` makes the
+                        // photo in flight start no download and show what is
+                        // loaded (since 0.9.0).
+                        leading: ProductRoute(id: p.id).imageHero(
+                          'photo',
+                          child: ProductPhoto(p, size: rowPhotoSize),
                         ),
                         title: Text(p.name),
                         trailing: Text('€${p.price.toStringAsFixed(2)}'),

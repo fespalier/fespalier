@@ -138,7 +138,7 @@ and, with `scheme`, `ios/info-url-types.xml` (iOS, when `ios_app_id` is set); an
 
 Writes one [Maestro](https://docs.maestro.dev) smoke flow per route. Maestro reads the platform's
 accessibility tree, never a `Key`, so it **needs `semantics_ids: true`**: every page's own widget
-call is then wrapped in `Semantics(identifier: 'route:<pattern>', container: true, child: ...)`
+call is then wrapped in `Semantics(identifier: 'route:<pattern>', container: true, explicitChildNodes: true, child: ...)`
 (`route:/`, `route:/products/:id`, `route:/docs/*rest`, `route:/files/*path?`), and a flow waits for it.
 
 ```yaml

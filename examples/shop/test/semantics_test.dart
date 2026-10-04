@@ -1,8 +1,11 @@
 // `semantics_ids: true` in pubspec.yaml: each page's own widget wears
 // `Semantics(identifier: 'route:<pattern>')`, which is what Maestro's `id:` selector matches
 // (see .maestro/routes/). It is in the tree when the route's page is built, not while a loading
-// or a not-found view shows, and not for a page underneath.
+// or a not-found view shows, and not for a page underneath. It marks the page and nothing else: the
+// text a page draws outside a scroll view keeps its own semantics nodes, so a screen reader reads
+// it one line at a time and not as one block.
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shop/app.g.dart';
@@ -79,6 +82,54 @@ void main() {
     expect(find.text('Hello, Ada'), findsOneWidget);
     expect(find.bySemanticsIdentifier('route:/greet/:name'), findsOneWidget);
     expect(find.bySemanticsIdentifier('route:/greet/Ada'), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets(
+      'the identifier node has no label: the text of a page keeps its own nodes',
+      (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await boot(tester, '/products/1');
+    await tester.pump(const Duration(seconds: 1));
+
+    // The product page draws its name and price in a Column, outside any scroll view. Both are
+    // plain `Text`, with no semantics node of their own unless the wrapper above them asks for one.
+    final page = tester.getSemantics(
+      find.bySemanticsIdentifier('route:/products/:id'),
+    );
+    expect(page.identifier, 'route:/products/:id');
+    // What `fsp test` looks for is the widget, and Maestro the node: both are still there.
+    expect(findRoutePage('/products/:id'), findsOneWidget);
+    expect(page.label, isEmpty,
+        reason: 'the page node must not read its children out as one block');
+
+    for (final text in ['Coffee beans, 500 g', '€9.50']) {
+      final node = tester.getSemantics(find.text(text));
+      expect(node.id, isNot(page.id),
+          reason: '"$text" is merged into the page node');
+      expect(node.label, text);
+      expect(node.identifier, isEmpty);
+    }
+    handle.dispose();
+  });
+
+  testWidgets(
+      'a page with one line of text still has a label-free identifier node', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await boot(tester, '/greet/Ada');
+    await tester.pumpAndSettle();
+
+    final page = tester.getSemantics(
+      find.bySemanticsIdentifier('route:/greet/:name'),
+    );
+    expect(page.label, isEmpty);
+    final line = tester.getSemantics(find.text('Hello, Ada'));
+    expect(line.id, isNot(page.id));
+    expect(line.label, 'Hello, Ada');
     handle.dispose();
   });
 }

@@ -7,6 +7,8 @@ import 'package:fespalier_flags/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support.dart';
+
 const labs = BoolFlag('labs');
 
 /// A second reason to refuse a route, for the guards that compose.
@@ -105,6 +107,8 @@ void main() {
       fake.set('labs', false);
       await tester.pump();
       expect(currentLocation(tester), '/');
+      // go_router 17.0.0, the only one Flutter 3.32 resolves, builds the page a frame later.
+      if (onFlutterFloor) await tester.pump();
       expect(find.text('Home'), findsOneWidget);
     },
   );

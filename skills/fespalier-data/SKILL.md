@@ -1,6 +1,6 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 its forms: form(), validate() and optimistic()). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 its forms: form(), validate() and optimistic()), and since 0.9.0 how models, immutable collections, validation libraries and results meet it (freezed, dart_mappable, fast_immutable_collections, acanthis, result_dart). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
@@ -189,6 +189,26 @@ Profile optimistic(Profile current, NicknameFields input) => Profile(input.nickn
 
 [`references/forms-and-optimistic.md`](references/forms-and-optimistic.md) has every rule and a
 sample that compiles, with its test.
+
+## Models, collections, validation and results (since 0.9.0)
+
+fespalier depends on **none** of freezed, dart_mappable, fast_immutable_collections, acanthis, luthor,
+result_dart or fpdart, and `fsp` does not read them: they meet it in the value `data()` returns (Riverpod 3 filters
+updates by `==`), an `extra` (freezed's factory syntax is a private `_Note`: `ExtraCodec.of`), `DataCache.json`
+(dart_mappable's `toJson()` is a String: pass `toMap`), an action's record `input`, `validate()` and the failures
+`data()` and `action()` throw.
+
+- **Pick by Dart:** freezed 4.0.2 needs Dart 3.13 (Flutter 3.47), freezed 3.2.5 covers Dart 3.8 and up, dart_mappable
+  4.10 needs 3.7; acanthis 2 needs Dart 3.13 (1.x, a different API, below it).
+- **A selected `List` field notifies on every reload**, equal or not; an `IList` from fast_immutable_collections 12
+  does not (measured, with a test that builds).
+- **`validate()` stays a plain function**; a schema library is an adapter inside it. **Unwrap a result in `data()`**
+  (`getOrThrow()`, or fpdart's `getOrElse((l) => throw l)`), so `error.dart` can switch on the sealed failure.
+- A model class is not a form's `input` (a record is), and `build_runner` can delete `lib/app.g.dart`
+  (`fespalier-troubleshooting`, its flutter-pitfalls page).
+
+[`references/models-and-libraries.md`](references/models-and-libraries.md) has the samples that compile, the
+primary-constructor note and what is not built.
 
 ## Seeing it in DevTools (since 0.7.0)
 

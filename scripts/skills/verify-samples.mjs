@@ -12,8 +12,11 @@
 //   - A fenced ```dart block whose FIRST line is `// lib/<path>` or
 //     `// test/<path>` (nothing else on the line) is written to that path in a
 //     scratch app. A ```yaml block whose first line is `# pubspec.yaml` is
-//     appended to the scratch app's pubspec.yaml. Every other block is a
-//     fragment and is not built.
+//     appended to the scratch app's pubspec.yaml, except that a `dependencies:`
+//     or `dev_dependencies:` section in it is merged into the pubspec's own
+//     (a second `dependencies:` key would not be valid), so a page can name the
+//     packages its samples import. Every other block is a fragment and is not
+//     built.
 //   - The scratch app is a copy of the fespalier checkout's `examples/minimal`
 //     (the checkout is never modified): renamed `my_app` (the package name the
 //     skills' imports use), depending on the checkout's packages/fespalier by
@@ -43,7 +46,6 @@ import {
   rmSync,
   statSync,
   writeFileSync,
-  appendFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -94,7 +96,7 @@ cpSync(minimal, base, {
   filter: (src) => !skip.has(src.slice(minimal.length + 1).split("/")[0]),
 });
 rmSync(join(base, "lib", "app"), { recursive: true, force: true });
-for (const f of ["app.g.dart", "items.dart"]) {
+for (const f of ["app.g.dart", "app.main.g.dart", "items.dart"]) {
   rmSync(join(base, "lib", f), { force: true });
 }
 
@@ -156,6 +158,38 @@ Page<void> transition(LocalKey key, Widget child) =>
 
 // ------------------------------------------------------------------- the files
 
+// `block` added to `pubspec`: its `dependencies:` and `dev_dependencies:` entries go into the
+// sections the pubspec has (or new ones), and everything else is appended.
+function addToPubspec(pubspec, block) {
+  let text = pubspec.trimEnd() + "\n";
+  const rest = [];
+  const lines = block.split("\n");
+  for (let i = 0; i < lines.length; ) {
+    const m = /^(dependencies|dev_dependencies):\s*$/.exec(lines[i]);
+    if (!m) {
+      rest.push(lines[i++]);
+      continue;
+    }
+    const entries = [];
+    for (i++; i < lines.length && (/^\s/.test(lines[i]) || lines[i] === ""); i++) {
+      if (lines[i].trim()) entries.push(lines[i]);
+    }
+    const all = text.split("\n");
+    const at = all.indexOf(`${m[1]}:`);
+    if (at < 0) {
+      text = `${text}\n${m[1]}:\n${entries.join("\n")}\n`;
+      continue;
+    }
+    let end = at + 1;
+    while (end < all.length && (/^\s/.test(all[end]) || all[end] === "")) end++;
+    while (end > at + 1 && all[end - 1].trim() === "") end--;
+    all.splice(end, 0, ...entries);
+    text = all.join("\n");
+  }
+  const tail = rest.join("\n").trim();
+  return tail ? `${text}\n${tail}\n` : text;
+}
+
 const markdown = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = join(dir, e.name);
@@ -216,7 +250,11 @@ for (const file of files) {
     mkdirSync(dirname(join(app, path)), { recursive: true });
     writeFileSync(join(app, path), body);
   }
-  if (pubs.length) appendFileSync(join(app, "pubspec.yaml"), "\n" + pubs.join("\n"));
+  if (pubs.length) {
+    let text = readFileSync(join(app, "pubspec.yaml"), "utf8");
+    for (const block of pubs) text = addToPubspec(text, block);
+    writeFileSync(join(app, "pubspec.yaml"), text);
+  }
 
   const steps = [];
   if (pubs.length) steps.push(["pub get", FLUTTER, ["pub", "get"]]);

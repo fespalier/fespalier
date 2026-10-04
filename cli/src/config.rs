@@ -57,7 +57,8 @@
 //!       run: flutter run                         # default; fsp adds --machine, -d and the args after --
 //!       env: { API_URL: "http://localhost:8080" }
 //!       hot_reload: true                         # default
-//!     codegen: dart run build_runner build    # `fsp run codegen`
+//!     codegen: dart run build_runner build      # `fsp run codegen`
+//!   adapters: [fespalier_sentry]   # default: none; packages that plug into the generated main() (see `adapters.rs`)
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -264,6 +265,9 @@ pub struct Config {
     pub tasks: Option<Value>,
     /// `main:`: whether the generated `main()` is written (see [`MainMode`]).
     pub main: MainMode,
+    /// `adapters:`: Dart packages, in order, that plug into the generated `main()` through
+    /// `package:<name>/fespalier_adapter.dart` (see `adapters.rs`, since 0.9.0).
+    pub adapters: Vec<String>,
     /// `build_runner` is listed under `dependencies` or `dev_dependencies`: what makes a
     /// generated `X.g.dart` next to an `X.dart` a file it deletes (see `build_runner.rs`, since
     /// 0.9.0). Read from the pubspec, never from `fespalier:`.
@@ -297,6 +301,7 @@ impl Default for Config {
             test: None,
             tasks: None,
             main: MainMode::Auto,
+            adapters: vec![],
             build_runner: false,
         }
     }
@@ -345,6 +350,7 @@ struct RawConfig {
     test: Option<TestConfig>,
     main: Option<MainMode>,
     tasks: Option<Value>,
+    adapters: Option<Vec<String>>,
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -1105,6 +1111,12 @@ impl Pubspec {
             config.test = c.test;
             config.tasks = c.tasks;
             config.main = c.main.unwrap_or_default();
+            config.adapters = adapters(c.adapters.unwrap_or_default(), &raw.dependencies)?;
+            if config.main == MainMode::Manual && !config.adapters.is_empty() {
+                bail!(
+                    "`fespalier.adapters` is wired by the generated main(), and `main: manual` writes none; remove `main: manual`, or wire each adapter in your own main() and remove `adapters`"
+                );
+            }
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }
@@ -1165,6 +1177,40 @@ impl Pubspec {
             config,
         })
     }
+}
+
+/// `adapters:`, checked: each a Dart package name, none twice, none `fespalier` itself, and each
+/// under `dependencies:` (the generated `main()` imports `package:<name>/fespalier_adapter.dart`).
+fn adapters(names: Vec<String>, dependencies: &Option<Value>) -> Result<Vec<String>> {
+    let mut out: Vec<String> = vec![];
+    for name in names {
+        let ident = name.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+            && name
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+        if !ident {
+            bail!(
+                "`fespalier.adapters` lists Dart packages by name, like `fespalier_sentry`; `{name}` is not one"
+            );
+        }
+        if out.contains(&name) {
+            bail!("`fespalier.adapters` lists `{name}` twice");
+        }
+        if name == "fespalier" {
+            bail!(
+                "`fespalier.adapters` lists packages that plug into fespalier's generated main(); `fespalier` is the framework itself, not an adapter"
+            );
+        }
+        let declared =
+            matches!(dependencies, Some(Value::Mapping(m)) if m.contains_key(name.as_str()));
+        if !declared {
+            bail!(
+                "`fespalier.adapters` lists `{name}`, which is not under `dependencies:` in pubspec.yaml; add it there (next to fespalier, at the same git ref)"
+            );
+        }
+        out.push(name);
+    }
+    Ok(out)
 }
 
 /// Normalizes a project-relative path that must sit under `lib/`.

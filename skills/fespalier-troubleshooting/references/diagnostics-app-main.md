@@ -13,6 +13,22 @@ Printed without a code frame, exit 1.
 | ``invalid pubspec.yaml: fespalier.main: unknown variant `always`, expected one of `auto`, `generated`, `manual` at line 3 column 9``                | `main:` is `auto`, `generated` or `manual`                                                          |
 | `` `fespalier.output_manifest` is `lib/app.main.g.dart`, the file the generated main() goes in (`output` with `.main.g.dart`); pick another name `` | `output_manifest` named the generated main's path (`output` with `.main.g.dart`): pick another name |
 
+## `adapters:` (since 0.9.0)
+
+Printed without a code frame, exit 1. `adapters:` is explained in `fespalier` (`references/app-main.md`); an `fsp`
+older than 0.9.0 rejects the key itself, as an unknown field (see `diagnostics-config-and-meta.md`).
+
+| Message                                                                                                                                                                                 | Cause and fix                                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `invalid pubspec.yaml: fespalier.adapters: invalid type: string "fespalier_sentry", expected a sequence at line 3 column 13`                                                            | `adapters:` is a list: `adapters: [fespalier_sentry]`                                                                                  |
+| `invalid pubspec.yaml: fespalier.adapters[0]: invalid type: map, expected a string at line 4 column 7` (a nested list says `invalid type: sequence`)                                    | An entry is a package name, nothing more (no options per adapter: they come from `--dart-define`)                                      |
+| `` `fespalier.adapters` lists Dart packages by name, like `fespalier_sentry`; `Sentry` is not one ``                                                                                    | A name that is not a Dart package name (lowercase letters, digits and `_`, starting with a letter); a YAML number reads as its text    |
+| `` `fespalier.adapters` lists `fespalier_sentry` twice ``                                                                                                                               | Each package once                                                                                                                      |
+| `` `fespalier.adapters` lists packages that plug into fespalier's generated main(); `fespalier` is the framework itself, not an adapter ``                                              | Remove `fespalier` from the list                                                                                                       |
+| `` `fespalier.adapters` lists `fespalier_sentry`, which is not under `dependencies:` in pubspec.yaml; add it there (next to fespalier, at the same git ref) ``                          | Add the package under `dependencies:` (`dev_dependencies:` does not count: the generated `main()` imports it)                          |
+| `` `fespalier.adapters` is wired by the generated main(), and `main: manual` writes none; remove `main: manual`, or wire each adapter in your own main() and remove `adapters` ``       | `main: manual` writes no `main()`, so nothing would call the adapters                                                                  |
+| warning ``app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there`` | app.dart's `router()` does not mention `routerObservers`: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there |
+
 ## Root files
 
 | Message                                                                                                                                                          | Cause and fix                                                                                              |
@@ -52,9 +68,11 @@ Printed without a code frame, exit 1.
 
 ## At run time
 
-| What you see                                                                    | Cause and fix                                                                                                                                      |
-| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "Couldn't start the app." and "Try again" (the error text too, in debug builds) | `startup()` threw and there is no `splash.dart`. The error was also reported to `FlutterError.onError` ("while running startup() in startup.dart") |
-| A widget test fails with the `startup()` error                                  | It was reported; `tester.takeException()` takes it                                                                                                 |
-| The web app is blank when `zone()` calls a telemetry SDK's `runGuarded`         | The SDK's `runGuarded` never runs its body in a browser (`otel_zone`): `kIsWeb ? body() : observability.runGuarded(body)`                          |
-| Web URLs still have `#` with the generated `main()`                             | Call `usePathUrlStrategy()` as the first line of `startup()` (and add `flutter_web_plugins` to `pubspec.yaml`)                                     |
+| What you see                                                                       | Cause and fix                                                                                                                                                   |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Couldn't start the app." and "Try again" (the error text too, in debug builds)    | `startup()` threw and there is no `splash.dart`. The error was also reported to `FlutterError.onError` ("while running startup() in startup.dart")              |
+| A widget test fails with the `startup()` error                                     | It was reported; `tester.takeException()` takes it                                                                                                              |
+| The web app is blank when `zone()` calls a telemetry SDK's `runGuarded`            | The SDK's `runGuarded` never runs its body in a browser (`otel_zone`): `kIsWeb ? body() : observability.runGuarded(body)`                                       |
+| Web URLs still have `#` with the generated `main()`                                | Call `usePathUrlStrategy()` as the first line of `startup()` (and add `flutter_web_plugins` to `pubspec.yaml`)                                                  |
+| `adapters:` lists a package and nothing happens (no zone, no observer, no wrapper) | `lib/main.dart` does not call the generated main: it has to be `Future<void> main() => AppMain.run();`. `fsp` does not read `lib/main.dart`, so it says nothing |
+| In debug, Riverpod says "Tried to override a provider twice" at startup            | An adapter's `overrides()` and `startup()` override the same provider (the adapters' come first): override it in one place                                      |

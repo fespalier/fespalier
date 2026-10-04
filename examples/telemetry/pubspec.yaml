@@ -1,5 +1,5 @@
 name: telemetry
-description: fespalier example — route lifecycle (observe.dart) and OpenTelemetry spans through otel_zone.
+description: fespalier example — route lifecycle (observe.dart), OpenTelemetry spans through otel_zone and errors in Sentry.
 publish_to: none
 version: 0.1.0
 
@@ -13,6 +13,8 @@ dependencies:
     path: ../../packages/fespalier
   fespalier_otel:
     path: ../../packages/fespalier_otel
+  fespalier_sentry:
+    path: ../../packages/fespalier_sentry
   # Not on pub.dev: a git dependency, pinned to a commit (v0.5.0). It is a Flutter plugin (native
   # crash capture on Android and iOS). It depends on otel_go_router, which declares
   # `go_router: ^17.0.0`, so this is the one example on go_router 17.
@@ -20,6 +22,9 @@ dependencies:
     git:
       url: https://github.com/vaam-apps/flutter-otel-zone
       ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21
+  # Sentry's SDK: fespalier_sentry re-exports nothing of it, and `SentryFlutter.init` is the app's.
+  # 9.26.0 is the oldest the package supports (it reads `enableStandaloneAppStartTracing`).
+  sentry_flutter: ">=9.26.0 <10.0.0"
 
 dev_dependencies:
   # The SDK's in-memory exporter, which the tests read the spans from.

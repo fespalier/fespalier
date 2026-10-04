@@ -418,7 +418,7 @@ fn a_page_without_a_transition_is_keyed_by_its_segments() {
     has(
         &c,
         &[
-            "pageBuilder: (context, state) => remountPage(\n          context,\n          state,\n          remountKey(state, Remount.onSegments, const ['id']),\n",
+            "pageBuilder: (context, state) => namedPage('/items/:id', () => remountPage(\n          context,\n          state,\n          remountKey(state, Remount.onSegments, const ['id']),\n",
         ],
     );
     // The home page, outside the folder, is as before.

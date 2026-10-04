@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shop/api.dart';
 import 'package:shop/app.g.dart';
 import 'package:shop/app/products/page.dart';
+import 'images.dart';
 
 /// What the app told the platform (the browser's history) about its location.
 typedef HistoryUpdate = ({String uri, bool replace});
@@ -34,8 +35,12 @@ Future<void> boot(
     () => tester.binding.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.navigation, null),
   );
-  await pumpRouter(tester, AppRoutes.router(initialLocation: location),
-      settle: false);
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: location),
+    overrides: [fakeImages()],
+    settle: false,
+  );
   await tester.pump(const Duration(seconds: 1)); // FakeApi's 700 ms
   await tester.pump();
 }
@@ -298,7 +303,7 @@ void main() {
     ) async {
       final api = _CountingApi();
       final container = ProviderContainer(
-        overrides: [apiProvider.overrideWithValue(api)],
+        overrides: [apiProvider.overrideWithValue(api), fakeImages()],
       );
       addTearDown(container.dispose);
       await pumpRouter(
@@ -324,7 +329,12 @@ void main() {
           ...AppRoutes.mount(at: '/shop'),
         ],
       );
-      await pumpRouter(tester, router, settle: false);
+      await pumpRouter(
+        tester,
+        router,
+        overrides: [fakeImages()],
+        settle: false,
+      );
       await tester.pump(const Duration(seconds: 1));
       final context = tester.element(find.byType(ListView));
       final route = ProductsRoute.of(context);

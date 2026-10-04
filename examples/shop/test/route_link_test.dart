@@ -9,6 +9,7 @@ import 'package:shop/api.dart';
 import 'package:shop/app.g.dart';
 import 'package:shop/app/layout.dart';
 import 'package:shop/app/products/loading.dart';
+import 'images.dart';
 
 class CountingApi extends FakeApi {
   var productCalls = 0;
@@ -31,7 +32,7 @@ Future<(CountingApi, ProviderContainer)> boot(
   final container = await pumpRouter(
     tester,
     AppRoutes.router(initialLocation: location),
-    overrides: [apiProvider.overrideWithValue(api)],
+    overrides: [apiProvider.overrideWithValue(api), fakeImages()],
   );
   // data.dart is slow on purpose (a timer, not a frame): wait it out.
   await tester.pump(const Duration(seconds: 1));

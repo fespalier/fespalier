@@ -1,17 +1,23 @@
-// The product avatar flies from its row to the product's page (since 0.8.1): one
-// `ProductRoute(id: ...).hero('avatar', child: ...)` on each side.
+// The product photo flies from its row to the product's page (since 0.8.1): one
+// `ProductRoute(id: ...).imageHero('photo', child: ...)` on each side (`imageHero` since 0.9.0).
+// The photos load through fakes that never answer here, so each shows the product's initial.
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shop/app.g.dart';
 import 'package:shop/app/layout.dart';
 import 'package:shop/app/products/loading.dart';
+import 'images.dart';
 
-/// The pour-over kettle's avatar is the only 'P' on the list.
+/// The pour-over kettle's photo (its initial, while it loads) is the only 'P' on the list.
 final avatar = find.text('P');
 
 Future<void> boot(WidgetTester tester) async {
-  await pumpRouter(tester, AppRoutes.router(initialLocation: '/products'));
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/products'),
+    overrides: [fakeImages()],
+  );
   // data.dart is slow on purpose (a timer, not a frame): wait it out.
   await tester.pump(const Duration(seconds: 1));
 }

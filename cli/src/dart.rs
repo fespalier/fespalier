@@ -101,6 +101,8 @@ pub struct Function {
     pub ret: Option<Ty>,
     pub params: Vec<Param>,
     pub span: Span,
+    /// The whole declaration, signature and body: where its source text is in the file.
+    pub extent: Range<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -509,6 +511,7 @@ impl Reader<'_> {
             ret,
             params,
             span: Span::of(name_node),
+            extent: n.byte_range(),
         })
     }
 

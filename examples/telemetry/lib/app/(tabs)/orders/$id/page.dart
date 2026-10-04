@@ -18,6 +18,18 @@ class OrderPage extends ConsumerWidget {
           onPressed: () => OrderRoute.submit(ref, id: id, input: 'refund'),
           child: const Text('Refund'),
         ),
+        TextButton(
+          // This order cannot be refunded: the action throws. The page would say so; Sentry
+          // (`fespalier_sentry`) has the event, tagged with this route, this file and `action`.
+          onPressed: () async {
+            try {
+              await OrderRoute.submit(ref, id: id, input: 'refuse');
+            } on StateError {
+              // Shown to the user in a real app.
+            }
+          },
+          child: const Text('Refuse'),
+        ),
       ],
     ),
   );

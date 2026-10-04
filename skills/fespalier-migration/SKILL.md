@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -29,6 +29,79 @@ flutter analyze && flutter test
 `fsp --version` must print the package's version (`ref: vX.Y.Z` needs `fsp X.Y.Z`); an `fsp` of another
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
+
+## 0.8 to 0.9: what to check
+
+Bump to `v0.9.0`, regenerate (`lib/app.g.dart` changes in every app, by its page names: item 10), and look at these:
+
+1. **A `FespalierTelemetry` sink that switches exhaustively over `TelemetryOp` stops compiling** (`The type 'TelemetryOp' isn't exhaustively matched by the switch cases since it doesn't match the pattern 'TelemetryOp.auth'`, and `'TelemetryOp.image'`). Add a `TelemetryOp.auth` case (it is what `package:fespalier_auth` reports, with
+   `TelemetryStart.authStep`, `authBackend`, `authTrigger` and `authDpop`) and a `TelemetryOp.image` case (what `package:fespalier_image` reports, with
+   `TelemetryStart.imageCdn`, `imageWidth` and `imagePreload`, and `TelemetryEnd.imageStatus`), or end the switch with `_ =>`.
+   `fespalier_otel` and `RecordingTelemetry` have it. A sink with a `default`, or one that does not switch, is
+   unaffected. `TelemetryOutcome` gains `none`, `expired`, `rejected` and `cancelled`, and
+   `FespalierTelemetry.begin` and `finish` (for adapter packages).
+2. **The telemetry conventions gain an `auth` and an `image` operation, with `fespalier.auth.*` and
+   `fespalier.image.*` attributes**, within contract version 1 (new values of `fespalier.operation`, new keys): a
+   dashboard that lists the operations shows two more. `fsp telemetry`'s dashboards label them "Session (sign-in,
+   refresh, sign-out)" and "Image load".
+3. **New, opt-in:** `package:fespalier_auth` ([`fespalier-guards`](../fespalier-guards/SKILL.md), its
+   `auth-package.md`), with OpenID Connect and Keycloak (`package:fespalier_auth/oidc.dart`), a dio interceptor
+   (`package:fespalier_auth/dio.dart`) and, as a separate package, device-bound tokens
+   (`package:fespalier_sign_keypair`, DPoP; its `auth-dpop.md`). An app that adds `fespalier_sign_keypair` needs
+   **Dart 3.12 and Flutter 3.44**, the same `url` and `ref` as `fespalier` and `fespalier_auth` for the three, and
+   network access to `github.com/vaam-apps/flutter-sign-keypair` at `pub get` (it is a git dependency, not on
+   pub.dev). Nothing else changes: no generated code, file kind, key or command.
+4. **An app with `telemetry: true` regenerates a different `app.g.dart`.** Each data provider calls `data()`
+   through `traceDataCall(ref, 'd4', id, () => _i5.data(ref, id: id), telemetry: ...)` instead of
+   `traceData(ref, 'd4', id, _i5.data(ref, id: id), telemetry: ...)` (an app without `telemetry: true` keeps
+   `traceData`). It costs one closure per provider build, with no `Future` and no microtask.
+   What follows: a `data` span **starts before `data()` runs**, so its duration includes the synchronous part;
+   a `data()` that throws before it returns now gets a `data` span (`fespalier.data.state = error`,
+   `fespalier.async = false`; before 0.9.0 it got none); and `FespalierOtel` makes data and action spans
+   current while they run, so the spans of `otel_http` and `otel_dio` made inside are their children.
+5. **New, opt-in:** `package:fespalier_image` ([`fespalier-images`](../fespalier-images/SKILL.md)): a
+   `ResponsiveImage` that fetches a network image at the width its box needs through an image CDN (imgproxy,
+   EmgR, Cloudinary, imgix, Thumbor, a template or a signed srcset), and `RouteLink(onPreload:)` in fespalier
+   itself, which runs a callback when a link starts a preload (a nullable parameter: nothing changes for a link
+   that does not pass it). The same `url` and `ref` as `fespalier` for the two. No generated code, file kind,
+   key or command changes.
+6. **New, opt-in, in `fespalier-observability`:** `FespalierTelemetry.combine` and `add` (several sinks in
+   the one slot, each with its own tokens and isolated), the `within` hook a sink may override (an instance
+   member with a default, so a sink compiles unchanged unless it already had a member named `within` with
+   another signature: rename it), `FespalierTelemetry.run` for adapter packages, and `navigateFrom` with
+   `NavigationSource` and the attribute `fespalier.navigation.source` (contract version 1 gains a key; absent
+   unless a bridge marks the navigation). `RecordingTelemetry` gains `recordWithin:` and `source=`.
+7. **The package asks for `hooks_riverpod: ^3.3.2`** (it was `^3.2.1`): on riverpod 3.2.1, the lowest the old
+   constraint admitted, a closed `PrefetchHandle` left its provider alive and `freshness` did not load again.
+   An app already resolves 3.3.2 or newer; one pinned lower must raise its own constraint.
+8. **New, opt-in:** `package:fespalier_dio` ([`fespalier-data`](../fespalier-data/SKILL.md), its `http.md`): `ref.cancelToken()` and
+   `ref.abortable(client)`, `withFieldErrors()` and `WriteGuard` for Dio and `package:http`. A repository dependency
+   with the same `url` and `ref` as `fespalier`; an app that does not add it is unchanged (no generated code, file kind,
+   key or command).
+9. **New, opt-in:** `package:fespalier_sentry` ([`fespalier-observability`](../fespalier-observability/SKILL.md)):
+   Sentry, errors first (events tagged with the route pattern, the app file and the action, one breadcrumb per page
+   change, the OpenTelemetry trace id on each event next to `fespalier_otel`; screen-load transactions only with
+   `tracing: true`). The same `url` and `ref` as `fespalier`, and `sentry_flutter` 9.26.0 or newer. No generated code,
+   file kind, key or command changes. `FespalierTelemetry` gains `traceOf` and `linkTrace` (instance members with
+   defaults) and `TelemetryTrace`, which `combine` uses to tell a sink which trace an operation is in (`FespalierOtel`
+   answers it): a sink that already had a member named `traceOf` or `linkTrace` with another signature must rename it.
+10. **An app that opts in to nothing regenerates with page-name changes only (since 0.9.0).** Each `pageBuilder:`
+    fespalier writes (a route with a `transition.dart` or `present.dart`, a `remount` route, a layout's
+    shell) is wrapped in `namedPage('<pattern>', () => ...)`: two lines per page builder, the first
+    gaining `namedPage('/products/:id', () =>` and the last a `)`. The pages `Transitions.*`,
+    `layoutPage` and `remountPage` build are then named by their route pattern (`RouteSettings.name`),
+    so a `NavigatorObserver` (Sentry's, Firebase Analytics', PostHog's) sees `/products/:id` where it
+    saw `null` (a `remount` page saw `:id`). Keys, restoration ids, transitions and the release build
+    are otherwise the same. A route with neither (a bare `builder:`) is go_router's own page and
+    unchanged. With `telemetry: true` each `data.dart` provider also becomes
+    `traceDataCall(..., () => data(...), telemetry: ...)` (item 4). A `transition.dart` that builds a
+    `Page` of its own can pass `name: Transitions.pageName`.
+11. **New, opt-in, in [`fespalier`](../fespalier/SKILL.md) (its app-main page):** the `fespalier: adapters:`
+    key in `pubspec.yaml` (a list of package names), and `FespalierAdapter` in `package:fespalier/startup.dart`. Each listed
+    package ships `lib/fespalier_adapter.dart` with a top-level `adapter`, and the generated `main()` calls its
+    `zone`, `beforeRun`, `overrides`, `providerObservers`, `routerObservers` and `wrap`; the key makes `main: auto`
+    write `lib/app.main.g.dart` on its own. An app without the key regenerates the same `lib/app.main.g.dart`
+    as before. An `fsp` older than 0.9.0 rejects the key as an unknown field.
 
 ## 0.7 to 0.8: what to check
 

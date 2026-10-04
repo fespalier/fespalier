@@ -43,6 +43,7 @@
     <data android:path="/help/contact" />
     <data android:path="/aide/contact" />
     <data android:path="/hilfe/kontakt" />
+    <data android:path="/labs" />
     <data android:path="/login" />
     <data android:pathPattern="/notes/..*" />
     <data android:path="/old-search" />
@@ -117,6 +118,7 @@
     <data android:path="/help/contact" />
     <data android:path="/aide/contact" />
     <data android:path="/hilfe/kontakt" />
+    <data android:path="/labs" />
     <data android:path="/login" />
     <data android:pathPattern="/notes/..*" />
     <data android:path="/old-search" />
@@ -192,6 +194,7 @@
     <data android:path="/help/contact" />
     <data android:path="/aide/contact" />
     <data android:path="/hilfe/kontakt" />
+    <data android:path="/labs" />
     <data android:path="/login" />
     <data android:pathPattern="/notes/..*" />
     <data android:path="/old-search" />

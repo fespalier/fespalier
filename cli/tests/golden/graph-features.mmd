@@ -25,47 +25,48 @@ flowchart TD
       n19["/help/contact<br/>ContactRoute<br/>fr /aide/contact, de /hilfe/kontakt"]
       n20["/help/:topic<br/>HelpTopicRoute<br/>fr /aide/:topic, de /hilfe/:topic"]
       n21["/help/:topic/examples<br/>HelpExamplesRoute<br/>fr /aide/:topic/exemples, de /hilfe/:topic/beispiele"]
-      n22["/login<br/>LoginRoute"]
-      n23["/old-search<br/>OldSearchRoute<br/>(redirect)"]
-      n24["/photos<br/>PhotosRoute"]
-      n25["/photos/share<br/>ShareSheetRoute<br/>(present, root)"]
-      n26["/photos/share/terms<br/>TermsRoute<br/>(root)"]
-      n27["/photos/sort<br/>SortRoute"]
-      n28["/photos/upload<br/>UploadRoute"]
-      n29["/photos/:id<br/>PhotoRoute"]
+      n22["/labs<br/>LabsRoute<br/>(guard)"]
+      n23["/login<br/>LoginRoute"]
+      n24["/old-search<br/>OldSearchRoute<br/>(redirect)"]
+      n25["/photos<br/>PhotosRoute"]
+      n26["/photos/share<br/>ShareSheetRoute<br/>(present, root)"]
+      n27["/photos/share/terms<br/>TermsRoute<br/>(root)"]
+      n28["/photos/sort<br/>SortRoute"]
+      n29["/photos/upload<br/>UploadRoute"]
+      n30["/photos/:id<br/>PhotoRoute"]
       subgraph b2["layout reports/layout.dart (data)"]
-        n30["/reports/monthly<br/>MonthlyReportRoute"]
-        n31["/reports/yearly<br/>YearlyReportRoute"]
+        n31["/reports/monthly<br/>MonthlyReportRoute"]
+        n32["/reports/yearly<br/>YearlyReportRoute"]
       end
-      n32["/search<br/>SearchRoute<br/>(data)"]
-      n33["/ticks<br/>TicksRoute<br/>(data)"]
-      n34["/vault<br/>VaultRoute<br/>(guard)"]
-      n35["/:slug<br/>SlugRoute"]
+      n33["/search<br/>SearchRoute<br/>(data)"]
+      n34["/ticks<br/>TicksRoute<br/>(data)"]
+      n35["/vault<br/>VaultRoute<br/>(guard)"]
+      n36["/:slug<br/>SlugRoute"]
       subgraph b3["layout notes/layout.dart"]
-        n36["/notes/:id<br/>NoteRoute<br/>(guard)"]
+        n37["/notes/:id<br/>NoteRoute<br/>(guard)"]
       end
-      n37["/old-shops/:shop<br/>OldShopsShopRoute<br/>(redirect)"]
-      n38["/orders/:id<br/>OrderRoute"]
-      n39["/orders/:id/refund<br/>RefundRoute<br/>(data, action, guard)"]
-      n40["/orders/:id/refund/receipt<br/>ReceiptRoute"]
-      n41["/orders/:id/refund/confirm<br/>ConfirmRefundRoute<br/>(guard, sibling)"]
-      n42["/remount/location/:id<br/>RemountLocationRoute"]
-      n43["/remount/never/:id<br/>RemountNeverRoute"]
-      n44["/remount/segments/:id<br/>RemountSegmentsRoute"]
-      n45["/shop/:category<br/>CategoryShopRoute<br/>fr /boutique/:category, de /laden/:category<br/>(data)"]
+      n38["/old-shops/:shop<br/>OldShopsShopRoute<br/>(redirect)"]
+      n39["/orders/:id<br/>OrderRoute"]
+      n40["/orders/:id/refund<br/>RefundRoute<br/>(data, action, guard)"]
+      n41["/orders/:id/refund/receipt<br/>ReceiptRoute"]
+      n42["/orders/:id/refund/confirm<br/>ConfirmRefundRoute<br/>(guard, sibling)"]
+      n43["/remount/location/:id<br/>RemountLocationRoute"]
+      n44["/remount/never/:id<br/>RemountNeverRoute"]
+      n45["/remount/segments/:id<br/>RemountSegmentsRoute"]
+      n46["/shop/:category<br/>CategoryShopRoute<br/>fr /boutique/:category, de /laden/:category<br/>(data)"]
       subgraph b4["layout shops/#36;shop/layout.dart (guard)"]
-        n46["/shops/:shop<br/>ShopRoute<br/>(guard)"]
-        n47["/shops/:shop/items/:id<br/>ItemRoute<br/>(data)"]
+        n47["/shops/:shop<br/>ShopRoute<br/>(guard)"]
+        n48["/shops/:shop/items/:id<br/>ItemRoute<br/>(data)"]
       end
-      subgraph b5["layout teams/#36;teamId/layout.dart (data, fresh)"]
-        n48["/teams/:teamId/members<br/>MembersRoute"]
-        n49["/teams/:teamId/members/:member<br/>MemberRoute<br/>(data, fresh)"]
-        n50["/teams/:teamId/settings<br/>TeamSettingsRoute"]
+      subgraph b5["layout teams/#36;teamId/layout.dart (data, fresh, cached)"]
+        n49["/teams/:teamId/members<br/>MembersRoute"]
+        n50["/teams/:teamId/members/:member<br/>MemberRoute<br/>(data, fresh)"]
+        n51["/teams/:teamId/settings<br/>TeamSettingsRoute"]
       end
-      n51["/browse/*categories<br/>BrowseRoute<br/>(data)"]
-      n52["/compare/*ids<br/>CompareRoute<br/>(data)"]
-      n53["/files/*path?<br/>FilesRoute"]
-      n54["/wiki/*article<br/>WikiRoute<br/>(data)"]
+      n52["/browse/*categories<br/>BrowseRoute<br/>(data)"]
+      n53["/compare/*ids<br/>CompareRoute<br/>(data)"]
+      n54["/files/*path?<br/>FilesRoute"]
+      n55["/wiki/*article<br/>WikiRoute<br/>(data)"]
     end
   end
   n0 --> n1
@@ -85,7 +86,7 @@ flowchart TD
   n0 --> n22
   n0 --> n23
   n0 --> n24
-  n0 --> n30
+  n0 --> n25
   n0 --> n31
   n0 --> n32
   n0 --> n33
@@ -94,17 +95,18 @@ flowchart TD
   n0 --> n36
   n0 --> n37
   n0 --> n38
-  n0 --> n42
+  n0 --> n39
   n0 --> n43
   n0 --> n44
   n0 --> n45
   n0 --> n46
-  n0 --> n48
-  n0 --> n50
+  n0 --> n47
+  n0 --> n49
   n0 --> n51
   n0 --> n52
   n0 --> n53
   n0 --> n54
+  n0 --> n55
   n8 --> n9
   n9 --> n10
   n12 --> n13
@@ -112,15 +114,15 @@ flowchart TD
   n18 --> n19
   n18 --> n20
   n20 --> n21
-  n24 --> n25
-  n24 --> n27
-  n24 --> n28
-  n24 --> n29
   n25 --> n26
-  n38 --> n39
-  n38 --> n41
+  n25 --> n28
+  n25 --> n29
+  n25 --> n30
+  n26 --> n27
   n39 --> n40
-  n46 --> n47
-  n48 --> n49
+  n39 --> n42
+  n40 --> n41
+  n47 --> n48
+  n49 --> n50
   classDef redirect stroke-dasharray: 5 5
-  class n23,n37 redirect
+  class n24,n38 redirect

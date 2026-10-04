@@ -15,6 +15,7 @@ import 'package:fespalier/src/devtools/protocol.dart';
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hooks_riverpod/misc.dart' show ProviderException;
 
 const _tree = {
   'protocol': 1,
@@ -753,6 +754,150 @@ void main() {
       await pumpEventQueue();
       await debugDevToolsCall(DevToolsMethods.clear, {'what': ClearWhat.all});
       expect((await snapshot()).data.map((d) => d.key!.text), ['1']);
+    });
+  });
+
+  // What an app made with `telemetry: true` calls (since 0.9.0): the same pass-through as
+  // traceData, around a closure, so a telemetry sink can run `data()` within its span.
+  group('traceDataCall', () {
+    const site = TelemetrySite(
+      'products/\$id/data.dart',
+      route: '/products/:id',
+    );
+
+    ProviderContainer container() {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    test('a value is returned as it is, and DevTools records it', () async {
+      final c = container();
+      final value = Object();
+      Object? returned;
+      final provider = Provider.autoDispose<Object>((ref) {
+        returned = traceDataCall(ref, 'd7', null, () => value, telemetry: site);
+        return returned!;
+      });
+      c.listen(provider, (_, _) {});
+      expect(identical(returned, value), isTrue);
+      final record = (await snapshot()).data.single;
+      expect(record.site, 'd7');
+      expect(record.state, DataState.data);
+      expect(record.value!.type, 'Object');
+    });
+
+    test('a Future is the very Future, and DevTools sees it load', () async {
+      final c = container();
+      final completer = Completer<String>();
+      final future = completer.future;
+      Object? returned;
+      final provider = FutureProvider.autoDispose<String>((ref) {
+        final result = traceDataCall(
+          ref,
+          'd7',
+          3,
+          () => future,
+          telemetry: site,
+        );
+        returned = result;
+        return result;
+      });
+      c.listen(provider, (_, _) {});
+      expect(identical(returned, future), isTrue);
+      var record = (await snapshot()).data.single;
+      expect(record.state, DataState.loading);
+      expect(record.key, const Shown('int', '3'));
+      completer.complete('hello');
+      await pumpEventQueue();
+      record = (await snapshot()).data.single;
+      expect(record.state, DataState.data);
+      expect(record.value, const Shown('String', 'hello'));
+    });
+
+    test('a Stream is the very Stream, and is never listened to', () async {
+      final c = container();
+      var listened = false;
+      final controller = StreamController<int>(onListen: () => listened = true);
+      addTearDown(() => unawaited(controller.close()));
+      final stream = controller.stream;
+      Object? returned;
+      final provider = Provider.autoDispose<Stream<int>>((ref) {
+        final result = traceDataCall(
+          ref,
+          'd7',
+          null,
+          () => stream,
+          telemetry: site,
+        );
+        returned = result;
+        return result;
+      });
+      c.listen(provider, (_, _) {});
+      await pumpEventQueue();
+      expect(identical(returned, stream), isTrue);
+      expect((await snapshot()).data.single.state, DataState.stream);
+      expect(listened, isFalse);
+    });
+
+    test('with no sink the call runs once, and adds no microtask', () {
+      final c = container();
+      late Ref captured;
+      final provider = Provider.autoDispose<int>((ref) {
+        captured = ref;
+        return 1;
+      });
+      c.listen(provider, (_, _) {});
+      var runs = 0;
+      expect(
+        microtasksIn(() {
+          traceDataCall<int>(
+            captured,
+            'd7',
+            null,
+            () => ++runs,
+            telemetry: site,
+          );
+        }),
+        0,
+      );
+      expect(
+        microtasksIn(() {
+          traceDataCall<String>(
+            captured,
+            'd7',
+            'k',
+            () => 'v',
+            telemetry: site,
+          );
+        }),
+        0,
+      );
+      expect(runs, 1);
+    });
+
+    test('a body that throws is rethrown as it was, and Riverpod gets it', () {
+      final c = container();
+      final error = StateError('sync');
+      final provider = Provider.autoDispose<int>(
+        (ref) => traceDataCall<int>(
+          ref,
+          'd7',
+          null,
+          () => throw error,
+          telemetry: site,
+        ),
+      );
+      expect(
+        () => c.read(provider),
+        throwsA(
+          isA<ProviderException>().having(
+            (e) => e.exception,
+            'exception',
+            same(error),
+          ),
+        ),
+      );
     });
   });
 

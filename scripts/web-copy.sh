@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Sourced by the web scripts (check-deferred-chunks.sh, check-web-routes.sh), not run.
 #
-# `web_copy <example-dir>` copies the example and the package into a throwaway folder, keeping the
-# `path: ../../packages/fespalier` layout, adds a `web/` folder with `flutter create`, runs
+# `web_copy <example-dir>` copies the example and the packages it depends on by path
+# (`path: ../../packages/fespalier`, and `fespalier_image` for the shop) into a throwaway folder,
+# keeping that layout, adds a `web/` folder with `flutter create`, runs
 # `flutter pub get` and changes into the copy. The examples stay platform-free: the `web/` folder
 # is never committed.
 #
@@ -29,10 +30,17 @@ web_copy() {
   name="$(basename "$example")"
   mkdir -p "$work/examples" "$work/packages"
   cp -R "$example" "$work/examples/$name"
-  cp -R "$root/packages/fespalier" "$work/packages/fespalier"
-  rm -rf \
-    "$work/examples/$name/build" "$work/examples/$name/.dart_tool" \
-    "$work/packages/fespalier/build" "$work/packages/fespalier/.dart_tool"
+  rm -rf "$work/examples/$name/build" "$work/examples/$name/.dart_tool"
+  # fespalier, and every other package of this repository that the example's pubspec.yaml names
+  # by a path (fespalier_image, since 0.9.0).
+  local package
+  # shellcheck disable=SC2046 # the names are words
+  for package in fespalier $(sed -n 's|^ *path: \.\./\.\./packages/\([a-z_]*\) *$|\1|p' "$example/pubspec.yaml"); do
+    if [ ! -d "$work/packages/$package" ]; then
+      cp -R "$root/packages/$package" "$work/packages/$package"
+      rm -rf "$work/packages/$package/build" "$work/packages/$package/.dart_tool"
+    fi
+  done
 
   copy="$work/examples/$name"
   cd "$copy" || return 1

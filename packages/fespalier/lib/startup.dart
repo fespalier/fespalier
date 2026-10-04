@@ -17,4 +17,6 @@ export 'package:flutter/widgets.dart' show NavigatorObserver;
 export 'package:hooks_riverpod/hooks_riverpod.dart' show ProviderObserver;
 export 'package:hooks_riverpod/misc.dart' show Override;
 
+// What a package plugs into the generated main() (since 0.9.0).
+export 'src/adapter.dart' show FespalierAdapter;
 export 'src/startup.dart' show StartupGate;

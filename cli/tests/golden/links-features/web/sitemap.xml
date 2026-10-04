@@ -94,6 +94,9 @@
     <xhtml:link rel="alternate" hreflang="de" href="https://shop.example.com/hilfe/kontakt" />
   </url>
   <url>
+    <loc>https://shop.example.com/labs</loc>
+  </url>
+  <url>
     <loc>https://shop.example.com/login</loc>
   </url>
   <url>

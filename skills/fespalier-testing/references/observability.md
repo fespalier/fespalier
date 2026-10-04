@@ -143,6 +143,22 @@ new version`). Delete it, run `fsp telemetry`, and it comes back. Grafana's are 
 - The dashboards are **generated** from `scripts/telemetry/dashboards.toml` in the fespalier repository
   (`just telemetry-dashboards`); a fespalier contributor never edits the JSON.
 
+## Asserting what fespalier reports, in a widget test
+
+Not `fsp telemetry`: install a `RecordingTelemetry` (`package:fespalier/testing.dart`) in `setUp` and
+`FespalierTelemetry.install(null)` in `tearDown`, and compare its `log` lines (the grammar is in its doc
+comment, and [`fespalier-observability`](../../fespalier-observability/references/telemetry.md) has the
+rest). Two options since 0.9.0:
+
+- A navigation that `navigateFrom` marked has `source=notification` at the end of its start line
+  (`#1 start navigate /orders/42 source=notification`); an unmarked one has none.
+- `RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and `#n within exit` around what
+  runs inside a `data()` or an action. It is off by default so a log written before 0.9.0 reads the same.
+
+To run two sinks in a test, `FespalierTelemetry.combine([recording, other])`; a sink that throws is isolated
+and printed once per sink (`fespalier telemetry: <error> in <Sink> (not shown again)`), so a test that
+asserts on `debugPrint` sees one line.
+
 ## Traps
 
 - **Empty dashboards** is almost always the app: telemetry not switched on or installed, a web app inside

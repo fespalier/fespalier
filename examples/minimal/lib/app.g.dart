@@ -78,37 +78,47 @@ abstract final class AppRoutes {
       );
     return [
       ShellRoute(
-        pageBuilder: (context, state, child) => _i1.transition(
-          const ValueKey<String>('layout:/'),
-          _i2.AppLayout(child: child),
+        pageBuilder: (context, state, child) => namedPage(
+          '/',
+          () => _i1.transition(
+            const ValueKey<String>('layout:/'),
+            _i2.AppLayout(child: child),
+          ),
         ),
         routes: [
           GoRoute(
             path: joinLocation(at, '/'),
-            pageBuilder: (context, state) =>
-                _i1.transition(state.pageKey, const _i0.HomePage()),
+            pageBuilder: (context, state) => namedPage(
+              '/',
+              () => _i1.transition(state.pageKey, const _i0.HomePage()),
+            ),
             routes: [
               GoRoute(
                 path: 'about',
-                pageBuilder: (context, state) =>
-                    _i1.transition(state.pageKey, _i4.page()),
+                pageBuilder: (context, state) => namedPage(
+                  '/about',
+                  () => _i1.transition(state.pageKey, _i4.page()),
+                ),
               ),
               GoRoute(
                 path: 'items/:id',
-                pageBuilder: (context, state) => _i1.transition(
-                  state.pageKey,
-                  buildWithParams(
-                    () => _params3(state),
-                    (v) => DataView(
-                      watch: (ref) => watchData(ref, 'd3', _data3(v.id)),
-                      refresh: (ref) => ref.invalidate(_data3(v.id)),
-                      data: (d) => _i6.ItemPage(item: d, qty: v.qty),
-                      loading: () => const _i7.ItemLoading(),
-                      error: (e, st, retry) =>
-                          _i8.ItemError(id: v.id, error: e, retry: retry),
-                      keepPrevious: true,
+                pageBuilder: (context, state) => namedPage(
+                  '/items/:id',
+                  () => _i1.transition(
+                    state.pageKey,
+                    buildWithParams(
+                      () => _params3(state),
+                      (v) => DataView(
+                        watch: (ref) => watchData(ref, 'd3', _data3(v.id)),
+                        refresh: (ref) => ref.invalidate(_data3(v.id)),
+                        data: (d) => _i6.ItemPage(item: d, qty: v.qty),
+                        loading: () => const _i7.ItemLoading(),
+                        error: (e, st, retry) =>
+                            _i8.ItemError(id: v.id, error: e, retry: retry),
+                        keepPrevious: true,
+                      ),
+                      () => notFound(state.uri),
                     ),
-                    () => notFound(state.uri),
                   ),
                 ),
               ),

@@ -7,6 +7,7 @@ import 'package:shop/app.g.dart';
 import 'package:shop/app.main.g.dart';
 import 'package:shop/app/products/loading.dart';
 import 'package:shop/cart.dart';
+import 'images.dart';
 
 /// Boots the generated router at [location], the same way main.dart does.
 Future<ProviderContainer> boot(
@@ -15,7 +16,10 @@ Future<ProviderContainer> boot(
   FakeApi? api,
 }) async {
   final container = ProviderContainer(
-    overrides: [if (api != null) apiProvider.overrideWithValue(api)],
+    overrides: [
+      if (api != null) apiProvider.overrideWithValue(api),
+      fakeImages()
+    ],
   );
   addTearDown(container.dispose);
   // /checkout and /products/:id are deferred routes (`const deferred = true;`): their code

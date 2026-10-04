@@ -531,7 +531,7 @@ fn a_transition_wraps_the_deferred_view() {
     has(
         &c,
         &[
-            "pageBuilder: (context, state) => _i0.transition( state.pageKey, DeferredView( library: _lib1, page: () => _i1.APage(),",
+            "pageBuilder: (context, state) => namedPage('/a', () => _i0.transition( state.pageKey, DeferredView( library: _lib1, page: () => _i1.APage(),",
         ],
     );
 }

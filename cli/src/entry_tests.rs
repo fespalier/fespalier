@@ -442,6 +442,7 @@ fn main_hooks_wrap_main_outside_the_zone() {
         wrappers: vec!["_o.zone".into()],
         before_run: vec!["await _o.open();".into()],
         provider_observers: vec!["_o.observers()".into()],
+        ..MainHooks::default()
     });
     has(
         &main,
@@ -932,4 +933,291 @@ fn init_app_dart_is_dart_format_clean_for_short_and_long_names() {
         }
         assert_eq!(written, formatted, "{name}");
     }
+}
+
+// --- adapters (since 0.9.0) --------------------------------------------------
+
+/// A pubspec that depends on the adapters it lists.
+fn with_adapters(list: &str, extra: &str) -> String {
+    format!(
+        "dependencies:\n  fespalier_sentry: ^1.0.0\n  fespalier_connectivity: ^1.0.0\nfespalier:\n  adapters: {list}\n{extra}"
+    )
+}
+
+#[test]
+fn no_key_an_empty_list_and_a_bare_key_are_no_adapters() {
+    assert!(Config::default().adapters.is_empty());
+    assert!(cfg("").unwrap().adapters.is_empty());
+    assert!(
+        cfg("fespalier:\n  adapters: []\n")
+            .unwrap()
+            .adapters
+            .is_empty()
+    );
+    assert!(
+        cfg("fespalier:\n  adapters:\n")
+            .unwrap()
+            .adapters
+            .is_empty()
+    );
+}
+
+#[test]
+fn adapters_are_read_in_order() {
+    let c = cfg(&with_adapters(
+        "[fespalier_connectivity, fespalier_sentry]",
+        "",
+    ))
+    .unwrap();
+    assert_eq!(c.adapters, ["fespalier_connectivity", "fespalier_sentry"]);
+    let block = "dependencies:\n  a_b2: any\nfespalier:\n  adapters:\n    - a_b2\n";
+    assert_eq!(cfg(block).unwrap().adapters, ["a_b2"]);
+}
+
+/// The message of a pubspec that is refused, without the file's path.
+fn refused(yaml: &str) -> String {
+    format!("{:#}", cfg(yaml).unwrap_err())
+}
+
+#[test]
+fn a_bad_adapters_list_says_what_it_wants() {
+    // A string is not a list, and neither is a map or a list inside one.
+    assert_eq!(
+        refused("fespalier:\n  adapters: fespalier_sentry\n"),
+        "invalid pubspec.yaml: fespalier.adapters: invalid type: string \"fespalier_sentry\", expected a sequence at line 3 column 13"
+    );
+    assert_eq!(
+        refused("fespalier:\n  adapters:\n    - fespalier_sentry: {x: 1}\n"),
+        "invalid pubspec.yaml: fespalier.adapters[0]: invalid type: map, expected a string at line 4 column 7"
+    );
+    assert!(
+        refused("fespalier:\n  adapters:\n    - [a]\n").contains("invalid type: sequence"),
+        "a nested list"
+    );
+    // Each name is a Dart package name; a YAML number arrives as its text.
+    for raw in ["Sentry", "fespalier-sentry", "3", "_x", "a.b", "a b"] {
+        assert_eq!(
+            refused(&format!("fespalier:\n  adapters: [\"{raw}\"]\n")),
+            format!(
+                "`fespalier.adapters` lists Dart packages by name, like `fespalier_sentry`; `{raw}` is not one"
+            ),
+            "{raw}"
+        );
+    }
+    assert!(refused("fespalier:\n  adapters: [3]\n").ends_with("`3` is not one"));
+    assert_eq!(
+        refused(&with_adapters("[fespalier_sentry, fespalier_sentry]", "")),
+        "`fespalier.adapters` lists `fespalier_sentry` twice"
+    );
+    assert_eq!(
+        refused("dependencies:\n  fespalier: any\nfespalier:\n  adapters: [fespalier]\n"),
+        "`fespalier.adapters` lists packages that plug into fespalier's generated main(); `fespalier` is the framework itself, not an adapter"
+    );
+    let not_there = "`fespalier.adapters` lists `fespalier_flags`, which is not under `dependencies:` in pubspec.yaml; add it there (next to fespalier, at the same git ref)";
+    assert_eq!(refused(&with_adapters("[fespalier_flags]", "")), not_there);
+    // No dependencies at all, and one under `dev_dependencies:` only, are the same.
+    assert_eq!(
+        refused("fespalier:\n  adapters: [fespalier_flags]\n"),
+        not_there
+    );
+    assert_eq!(
+        refused(
+            "dev_dependencies:\n  fespalier_flags: any\nfespalier:\n  adapters: [fespalier_flags]\n"
+        ),
+        not_there
+    );
+    assert_eq!(
+        refused(&with_adapters("[fespalier_sentry]", "  main: manual\n")),
+        "`fespalier.adapters` is wired by the generated main(), and `main: manual` writes none; remove `main: manual`, or wire each adapter in your own main() and remove `adapters`"
+    );
+    // `main: manual` with no adapters is as before, and `generated` is fine with them.
+    assert!(cfg("fespalier:\n  main: manual\n  adapters: []\n").is_ok());
+    assert!(cfg(&with_adapters("[fespalier_sentry]", "  main: generated\n")).is_ok());
+}
+
+#[test]
+fn the_unknown_key_list_ends_with_adapters() {
+    let err = refused("fespalier:\n  nope: 1\n");
+    assert!(
+        err.contains("`main`, `tasks`, `adapters` at line 3 column 3"),
+        "{err}"
+    );
+}
+
+#[test]
+fn adapters_write_a_main_with_no_root_file() {
+    let yaml = with_adapters("[fespalier_sentry]", "");
+    let g = run_yaml(&yaml, &[("page.dart", HOME)]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    let main = g.main.expect("an adapter wants a generated main()");
+    has(
+        &main,
+        &[
+            "import 'package:fespalier_sentry/fespalier_adapter.dart' as _a0;",
+            "static Future<void> run() => _a0.adapter.zone(_main);",
+            "    WidgetsFlutterBinding.ensureInitialized();\n    if (_a0.adapter.beforeRun() case final ready?) await ready;\n    runApp(root());",
+            "static Widget root({GoRouter Function() router = _router}) => _a0.adapter.wrap(StartupGate(\n    extraOverrides: _extraOverrides,\n    observers: _providerObservers,\n    router: router,\n    app: app,\n  ));",
+            "everything runs inside the adapters' zones: the binding,",
+            "static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers()];",
+            "GoRouter _router() => AppRoutes.router(observers: AppMain.routerObservers());",
+            "List<Override> _extraOverrides() => [..._a0.adapter.overrides()];",
+            "List<ProviderObserver> _providerObservers() => [..._a0.adapter.providerObservers()];",
+        ],
+    );
+    // Without the key the same app writes no main at all.
+    let plain = run_gen(&[("page.dart", HOME)]);
+    assert!(plain.main.is_none());
+}
+
+#[test]
+fn two_adapters_around_startup_dart_are_the_documented_main() {
+    let yaml = with_adapters("[fespalier_sentry, fespalier_connectivity]", "");
+    let g = run_yaml(
+        &yaml,
+        &[
+            ("page.dart", HOME),
+            ("app.dart", APP),
+            ("startup.dart", STARTUP_FULL),
+        ],
+    );
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    let main = g.main.unwrap();
+    has(
+        &main,
+        &[
+            "import 'package:flutter/widgets.dart';\nimport 'package:fespalier_sentry/fespalier_adapter.dart' as _a0;\nimport 'package:fespalier_connectivity/fespalier_adapter.dart' as _a1;\n\nimport 'app.g.dart';",
+            "everything runs inside the adapters' zones and startup.dart's `zone()`: the binding,",
+            // The first adapter is the outermost: zone, wrapper.
+            "static Future<void> run() => _a0.adapter.zone(() => _a1.adapter.zone(() => _i1.zone(_main)));",
+            "    WidgetsFlutterBinding.ensureInitialized();\n    if (_a0.adapter.beforeRun() case final ready?) await ready;\n    if (_a1.adapter.beforeRun() case final ready?) await ready;\n    runApp(root());",
+            "=> _a0.adapter.wrap(_a1.adapter.wrap(StartupGate(\n    extraOverrides: _extraOverrides,\n    overrides: _i1.startup,\n    observers: _providerObservers,\n    retry: _i1.retry,\n    router: router,\n    app: app,\n  )));",
+            "static Widget app(GoRouter router) => _i0.App(router: router);",
+            // The adapters' observers come first, then startup.dart's.
+            "static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers(), ..._a1.adapter.routerObservers(), ..._i1.routerObservers];",
+            "GoRouter _router() => AppRoutes.router(observers: AppMain.routerObservers());",
+            "List<Override> _extraOverrides() => [..._a0.adapter.overrides(), ..._a1.adapter.overrides()];",
+            "List<ProviderObserver> _providerObservers() => [..._a0.adapter.providerObservers(), ..._a1.adapter.providerObservers(), ..._i1.providerObservers];",
+        ],
+    );
+}
+
+#[test]
+fn an_app_dart_router_that_ignores_the_adapters_observers_is_warned_about() {
+    let yaml = with_adapters("[fespalier_sentry]", "");
+    let own = format!("{APP}\nGoRouter router() => AppRoutes.router(restorationScopeId: 'r');");
+    let g = run_yaml(&yaml, &[("page.dart", HOME), ("app.dart", &own)]);
+    assert_eq!(g.diags.len(), 1, "{:?}", g.diags);
+    assert!(
+        g.diags[0].starts_with("! app.dart:")
+            && g.diags[0].ends_with("app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there"),
+        "{:?}",
+        g.diags
+    );
+    // It is a warning: the main is still written, with the router app.dart builds.
+    let main = g.main.unwrap();
+    has(
+        &main,
+        &[
+            "GoRouter _router() => _i0.router();",
+            "static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers()];",
+        ],
+    );
+    // A router() that passes them on has nothing to be told.
+    let passes = format!(
+        "import '../app.main.g.dart';\n{APP}\nGoRouter router() => AppRoutes.router(observers: AppMain.routerObservers());"
+    );
+    let g = run_yaml(&yaml, &[("page.dart", HOME), ("app.dart", &passes)]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    // And with no adapters there is no warning, whatever router() does.
+    let g = run_gen(&[("page.dart", HOME), ("app.dart", &own)]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+}
+
+#[test]
+fn the_hooks_fill_the_new_places_and_leave_the_old_ones_alone() {
+    let dir = project(
+        "",
+        &[
+            ("page.dart", HOME),
+            ("startup.dart", STARTUP_FULL),
+            ("app.dart", APP),
+        ],
+    );
+    let cfg = Config::load(dir.path()).unwrap();
+    let app_dir = dir.path().join("lib/app");
+    let mut diags = crate::diag::Diags::default();
+    let tree = scan::scan(&app_dir, &mut diags).unwrap();
+    let libs = enums::Libs::for_app(&app_dir, &cfg);
+    let app = resolve::resolve(&tree, true, cfg.remount, false, &libs, &mut diags);
+    let emit = |hooks: MainHooks| {
+        let mut diags = crate::diag::Diags::default();
+        entry::emit(&tree, &app, &cfg, &hooks, &mut diags).unwrap()
+    };
+    let main = emit(MainHooks {
+        overrides: vec!["_o.overrides()".into()],
+        router_observers: vec!["_o.observers()".into()],
+        root_wrappers: vec!["_o.wrap".into()],
+        ..MainHooks::default()
+    });
+    has(
+        &main,
+        &[
+            "=> _o.wrap(StartupGate(\n    extraOverrides: _extraOverrides,\n    overrides: _i1.startup,",
+            "  ));\n",
+            "static List<NavigatorObserver> routerObservers() => [..._o.observers(), ..._i1.routerObservers];",
+            "GoRouter _router() => AppRoutes.router(observers: AppMain.routerObservers());",
+            "List<Override> _extraOverrides() => [..._o.overrides()];",
+            // The zone is startup.dart's alone: no adapter wrapped it.
+            "static Future<void> run() => _i1.zone(_main);",
+            "everything runs inside startup.dart's `zone()`: the binding,",
+        ],
+    );
+    // With every field empty the file is what the root files alone say.
+    let plain = emit(MainHooks::default());
+    has_not(
+        &plain,
+        &[
+            "extraOverrides",
+            "routerObservers()",
+            "_extraOverrides",
+            "_a0",
+        ],
+    );
+}
+
+#[test]
+fn adapters_with_each_root_file_combination() {
+    let yaml = with_adapters("[fespalier_sentry]", "");
+    // app.dart alone: the router is AppRoutes.router with the adapters' observers.
+    let g = run_yaml(&yaml, &[("page.dart", HOME), ("app.dart", APP)]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    has(
+        &g.main.unwrap(),
+        &[
+            "static Future<void> run() => _a0.adapter.zone(_main);",
+            "static Widget app(GoRouter router) => _i0.App(router: router);",
+            "static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers()];",
+        ],
+    );
+    // startup.dart with a zone, and none of its observers: startup's zone is inside the adapter's.
+    let startup = "Future<void> zone(Future<void> Function() body) => body();";
+    let g = run_yaml(&yaml, &[("page.dart", HOME), ("startup.dart", startup)]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    has(
+        &g.main.unwrap(),
+        &[
+            "static Future<void> run() => _a0.adapter.zone(() => _i0.zone(_main));",
+            "everything runs inside the adapters' zones and startup.dart's `zone()`: the binding,",
+            "static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers()];",
+        ],
+    );
+    // startup.dart's own provider observers come after the adapters'.
+    let observers = "List<ProviderObserver> get providerObservers => [];";
+    let g = run_yaml(&yaml, &[("page.dart", HOME), ("startup.dart", observers)]);
+    has(
+        &g.main.unwrap(),
+        &[
+            "List<ProviderObserver> _providerObservers() => [..._a0.adapter.providerObservers(), ..._i0.providerObservers];",
+        ],
+    );
 }

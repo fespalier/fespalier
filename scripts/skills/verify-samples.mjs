@@ -12,11 +12,17 @@
 //   - A fenced ```dart block whose FIRST line is `// lib/<path>` or
 //     `// test/<path>` (nothing else on the line) is written to that path in a
 //     scratch app. A ```yaml block whose first line is `# pubspec.yaml` is
-//     appended to the scratch app's pubspec.yaml, except that a `dependencies:`
-//     or `dev_dependencies:` section in it is merged into the pubspec's own
-//     (a second `dependencies:` key would not be valid), so a page can name the
-//     packages its samples import. Every other block is a fragment and is not
-//     built.
+//     appended to the scratch app's pubspec.yaml, and one whose first line is
+//     `# pubspec.yaml dependencies` has its lines merged under `dependencies:`
+//     (a recipe's plugin: firebase_auth, supabase_flutter, flutter_web_auth_2;
+//     since 0.9.0). Every other block is a fragment and is not built.
+//   - A page with a block that imports `package:fespalier_<name>/` (since 0.9.0), for
+//     every `packages/fespalier_<name>/pubspec.yaml` of this checkout (fespalier_auth,
+//     fespalier_sign_keypair, fespalier_adaptive, fespalier_flags, ...: generic, so a new
+//     companion package needs no edit here), gets that package as a path dependency of
+//     this checkout, and a `dependency_overrides:` block pointing `fespalier` and the
+//     companions at it: the companions pin fespalier by repository tag, which a path
+//     dependency of the app cannot be resolved against.
 //   - The scratch app is a copy of the fespalier checkout's `examples/minimal`
 //     (the checkout is never modified): renamed `my_app` (the package name the
 //     skills' imports use), depending on the checkout's packages/fespalier by
@@ -46,6 +52,7 @@ import {
   rmSync,
   statSync,
   writeFileSync,
+  appendFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -96,6 +103,8 @@ cpSync(minimal, base, {
   filter: (src) => !skip.has(src.slice(minimal.length + 1).split("/")[0]),
 });
 rmSync(join(base, "lib", "app"), { recursive: true, force: true });
+// app.main.g.dart is the example's generated main(): `fsp gen` writes a new one when a sample has a
+// startup.dart, app.dart or splash.dart, and the old one would import files that are not there.
 for (const f of ["app.g.dart", "app.main.g.dart", "items.dart"]) {
   rmSync(join(base, "lib", f), { force: true });
 }
@@ -158,38 +167,6 @@ Page<void> transition(LocalKey key, Widget child) =>
 
 // ------------------------------------------------------------------- the files
 
-// `block` added to `pubspec`: its `dependencies:` and `dev_dependencies:` entries go into the
-// sections the pubspec has (or new ones), and everything else is appended.
-function addToPubspec(pubspec, block) {
-  let text = pubspec.trimEnd() + "\n";
-  const rest = [];
-  const lines = block.split("\n");
-  for (let i = 0; i < lines.length; ) {
-    const m = /^(dependencies|dev_dependencies):\s*$/.exec(lines[i]);
-    if (!m) {
-      rest.push(lines[i++]);
-      continue;
-    }
-    const entries = [];
-    for (i++; i < lines.length && (/^\s/.test(lines[i]) || lines[i] === ""); i++) {
-      if (lines[i].trim()) entries.push(lines[i]);
-    }
-    const all = text.split("\n");
-    const at = all.indexOf(`${m[1]}:`);
-    if (at < 0) {
-      text = `${text}\n${m[1]}:\n${entries.join("\n")}\n`;
-      continue;
-    }
-    let end = at + 1;
-    while (end < all.length && (/^\s/.test(all[end]) || all[end] === "")) end++;
-    while (end > at + 1 && all[end - 1].trim() === "") end--;
-    all.splice(end, 0, ...entries);
-    text = all.join("\n");
-  }
-  const tail = rest.join("\n").trim();
-  return tail ? `${text}\n${tail}\n` : text;
-}
-
 const markdown = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = join(dir, e.name);
@@ -222,6 +199,7 @@ for (const file of files) {
   const label = relative(ROOT, file);
   const written = new Map();
   const pubs = [];
+  const deps = [];
   const problems = [];
   for (const { lang, body } of blocks(readFileSync(file, "utf8"))) {
     const first = body.split("\n", 1)[0].trim();
@@ -237,9 +215,15 @@ for (const file of files) {
       written.set(path, body);
     } else if ((lang === "yaml" || lang === "yml") && first === "# pubspec.yaml") {
       pubs.push(body.split("\n").slice(1).join("\n"));
+    } else if (
+      (lang === "yaml" || lang === "yml") &&
+      first === "# pubspec.yaml dependencies"
+    ) {
+      // Lines for the `dependencies:` section (a recipe's plugin).
+      deps.push(body.split("\n").slice(1).join("\n").trimEnd());
     }
   }
-  if (written.size === 0 && pubs.length === 0 && problems.length === 0) {
+  if (written.size === 0 && pubs.length === 0 && deps.length === 0 && problems.length === 0) {
     skipped++;
     continue;
   }
@@ -250,14 +234,39 @@ for (const file of files) {
     mkdirSync(dirname(join(app, path)), { recursive: true });
     writeFileSync(join(app, path), body);
   }
-  if (pubs.length) {
-    let text = readFileSync(join(app, "pubspec.yaml"), "utf8");
-    for (const block of pubs) text = addToPubspec(text, block);
-    writeFileSync(join(app, "pubspec.yaml"), text);
+  // A page that imports the companion packages gets them as path dependencies of this checkout,
+  // and `fespalier` overridden to the checkout's too: the companions pin it by repository tag,
+  // which a path dependency of the app cannot be resolved against.
+  const companions = [
+    ...new Set(
+      [...written.values()].flatMap((body) =>
+        [...body.matchAll(/package:(fespalier_[a-z0-9_]+)\//g)].map((m) => m[1]),
+      ),
+    ),
+  ].filter((name) => existsSync(join(checkout, "packages", name, "pubspec.yaml")));
+  const depLines = [
+    ...companions.map((name) => `  ${name}:\n    path: ${join(checkout, "packages", name)}`),
+    // `# pubspec.yaml dependencies` blocks: indented under `dependencies:` as written.
+    ...deps.flatMap((d) => d.split("\n")),
+  ];
+  if (depLines.length) {
+    const path = join(app, "pubspec.yaml");
+    const lines = readFileSync(path, "utf8").split("\n");
+    const at = lines.findIndex((l) => /^dependencies:/.test(l));
+    lines.splice(at + 1, 0, ...depLines);
+    writeFileSync(path, lines.join("\n"));
+  }
+  if (pubs.length) appendFileSync(join(app, "pubspec.yaml"), "\n" + pubs.join("\n"));
+  if (companions.length) {
+    const overrides = ["dependency_overrides:", "  fespalier:", `    path: ${pkg}`];
+    for (const name of companions) {
+      overrides.push(`  ${name}:`, `    path: ${join(checkout, "packages", name)}`);
+    }
+    appendFileSync(join(app, "pubspec.yaml"), "\n" + overrides.join("\n") + "\n");
   }
 
   const steps = [];
-  if (pubs.length) steps.push(["pub get", FLUTTER, ["pub", "get"]]);
+  if (pubs.length || depLines.length) steps.push(["pub get", FLUTTER, ["pub", "get"]]);
   steps.push(["fsp gen", FSP, ["gen", "--project", app]]);
   steps.push(["flutter analyze", FLUTTER, ["analyze", "--no-fatal-infos"]]);
   if ([...written.keys()].some((p) => p.startsWith("test/"))) {

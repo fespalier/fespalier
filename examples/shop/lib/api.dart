@@ -14,6 +14,9 @@ class Product {
   final String name;
   final double price;
 
+  /// The photo's path on the image server's origin (`ImageCdn`'s `sourceBase`).
+  String get image => 'products/$id.jpg';
+
   Map<String, Object?> toJson() => {'id': id, 'name': name, 'price': price};
 }
 

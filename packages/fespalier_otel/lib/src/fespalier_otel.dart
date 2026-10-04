@@ -23,8 +23,13 @@ import 'conventions.dart';
 ///
 /// Nothing is emitted until [isReady] says the SDK is up (dartastic's entry points throw before
 /// `OTel.initialize`), every SDK call is inside a `try`, and the adapter starts no timer and no
-/// zone: a failure costs a span, never a feature. The names and attributes it emits are the
+/// error zone: a failure costs a span, never a feature. The names and attributes it emits are the
 /// telemetry conventions, contract version 1 ([FespalierConventions]).
+///
+/// Since 0.9.0 a data span and an action span are the current span while `data()` or the action
+/// runs ([within]), so the spans that `otel_http` and `otel_dio` make inside them, after an
+/// `await` too, are their children. Next to another sink (Sentry, analytics), install both with
+/// `FespalierTelemetry.combine` or `FespalierTelemetry.add`.
 final class FespalierOtel extends FespalierTelemetry {
   /// [isReady] says whether the SDK is up: pass `() => observability.isReady` with `otel_zone`.
   /// Leave it out when the app initialises the SDK itself before installing this.
@@ -108,6 +113,7 @@ final class FespalierOtel extends FespalierTelemetry {
           FespalierConventions.opNavigate,
           <String, Object>{
             FespalierConventions.operation: FespalierConventions.opNavigate,
+            FespalierConventions.navigationSource: ?start.source,
           },
         ),
         TelemetryOp.guard || TelemetryOp.redirect => (
@@ -144,6 +150,29 @@ final class FespalierOtel extends FespalierTelemetry {
             FespalierConventions.file: ?start.file,
           },
         ),
+        // Only the step, the backend's constant name, the trigger and whether tokens are bound:
+        // never a token, an id, a claim, an e-mail or a URL.
+        TelemetryOp.auth => (
+          'auth ${start.authStep}',
+          <String, Object>{
+            FespalierConventions.operation: FespalierConventions.opAuth,
+            FespalierConventions.authOperation: ?start.authStep,
+            FespalierConventions.authBackend: ?start.authBackend,
+            FespalierConventions.authTrigger: ?start.authTrigger,
+            FespalierConventions.authDpop: start.authDpop,
+          },
+        ),
+        // Only the builder's name, the bucket and whether a precache started it: never the URL, the
+        // source or a signature.
+        TelemetryOp.image => (
+          'image ${start.imageCdn}',
+          <String, Object>{
+            FespalierConventions.operation: FespalierConventions.opImage,
+            FespalierConventions.imageCdn: ?start.imageCdn,
+            FespalierConventions.imageWidth: ?start.imageWidth,
+            FespalierConventions.imagePreload: start.imagePreload,
+          },
+        ),
       };
       final parent = start.parent;
       final span = tracer.startSpan(
@@ -159,6 +188,42 @@ final class FespalierOtel extends FespalierTelemetry {
     }
   }
 
+  /// Makes the span of a data load or an action the current one while `data()` or the action
+  /// runs, as the SDK does it: with zone values only (`Context.runSync` is
+  /// `runZoned(zoneValues:)`), so what the call awaits keeps its context, and with no error
+  /// handler, so a `Future` that fails still reaches Riverpod.
+  @override
+  void within(Object? token, Object? Function() body) {
+    if (token is! _Running) {
+      body();
+      return; // a block-bodied `void` method may not `return body();`
+    }
+    try {
+      Context.current.withSpan(token.span).runSync(body);
+    } catch (_) {
+      // A failing SDK costs the parenting, never the call: fespalier runs the body itself when
+      // it did not run.
+    }
+  }
+
+  /// The trace and span id of the span this adapter made for [token], so that another sink of a
+  /// `FespalierTelemetry.combine` (`fespalier_sentry`) can link its own records to the trace
+  /// (since 0.9.0). Null for a token that is not a span of ours, or when the SDK cannot say.
+  @override
+  TelemetryTrace? traceOf(Object? token) {
+    if (token is! _Running) return null;
+    try {
+      final context = token.span.spanContext;
+      if (!context.isValid) return null;
+      return TelemetryTrace(
+        context.traceId.hexString,
+        context.spanId.hexString,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void end(Object? token, TelemetryEnd end) {
     if (token is! _Running) return;
@@ -166,7 +231,17 @@ final class FespalierOtel extends FespalierTelemetry {
     try {
       _describe(token, end);
       final error = end.error;
-      if (end.outcome == TelemetryOutcome.error && error != null) {
+      if (end.outcome == TelemetryOutcome.error &&
+          error != null &&
+          (token.op == TelemetryOp.auth || token.op == TelemetryOp.image)) {
+        // An auth error's text may name a host or an endpoint, an image error's the URL: the class
+        // is all that is kept.
+        span.setStringAttribute<String>(
+          FespalierConventions.errorType,
+          error.runtimeType.toString(),
+        );
+        span.setStatus(SpanStatusCode.Error);
+      } else if (end.outcome == TelemetryOutcome.error && error != null) {
         span.setStringAttribute<String>(
           FespalierConventions.errorType,
           error.runtimeType.toString(),
@@ -223,6 +298,21 @@ final class FespalierOtel extends FespalierTelemetry {
           FespalierConventions.deferredResult,
           end.outcome,
         );
+      case TelemetryOp.auth:
+        span.setStringAttribute<String>(
+          FespalierConventions.authResult,
+          end.outcome,
+        );
+        span.setBoolAttribute(FespalierConventions.isAsync, end.isAsync);
+      case TelemetryOp.image:
+        span.setStringAttribute<String>(
+          FespalierConventions.imageResult,
+          end.outcome,
+        );
+        final status = end.imageStatus;
+        if (status != null) {
+          span.setIntAttribute(FespalierConventions.imageStatus, status);
+        }
     }
   }
 

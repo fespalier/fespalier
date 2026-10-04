@@ -9,6 +9,7 @@ import 'package:shop/app.g.dart';
 import 'package:shop/app/checkout/page.dart' deferred as checkout;
 import 'package:shop/app/layout.dart';
 import 'package:shop/cart.dart';
+import 'images.dart';
 
 WidgetRef rootRef(WidgetTester tester) =>
     tester.element(find.byType(AppLayout)) as WidgetRef;
@@ -19,7 +20,10 @@ void main() {
       tester,
     ) async {
       await pumpRouter(
-          tester, AppRoutes.router(initialLocation: '/products/2'));
+        tester,
+        AppRoutes.router(initialLocation: '/products/2'),
+        overrides: [fakeImages()],
+      );
       // data.dart is slow on purpose (a timer, not a frame): wait it out.
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('Ceramic mug'), findsOneWidget);

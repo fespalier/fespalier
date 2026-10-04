@@ -1,6 +1,7 @@
 // The telemetry conventions, contract version 1 (README, "Telemetry conventions"): every name
 // below is a string literal on purpose. A dashboard is built on these, so renaming one must
 // fail here before it can ship; adding one is allowed (add its line).
+import 'package:fespalier/fespalier.dart' show NavigationSource;
 import 'package:fespalier_otel/fespalier_otel.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -37,6 +38,8 @@ void main() {
     expect(FespalierConventions.opData, 'data');
     expect(FespalierConventions.opAction, 'action');
     expect(FespalierConventions.opDeferred, 'deferred');
+    expect(FespalierConventions.opAuth, 'auth');
+    expect(FespalierConventions.opImage, 'image');
     expect(FespalierConventions.spanNavigateNotFound, 'navigate (not found)');
   });
 
@@ -67,6 +70,73 @@ void main() {
     expect(FespalierConventions.actionResult, 'fespalier.action.result');
     expect(FespalierConventions.deferredResult, 'fespalier.deferred.result');
     expect(FespalierConventions.pageDuration, 'fespalier.page.duration_ms');
+  });
+
+  test('the auth attributes and values (since 0.9.0)', () {
+    expect(FespalierConventions.authOperation, 'fespalier.auth.operation');
+    expect(FespalierConventions.authResult, 'fespalier.auth.result');
+    expect(FespalierConventions.authBackend, 'fespalier.auth.backend');
+    expect(FespalierConventions.authTrigger, 'fespalier.auth.trigger');
+    expect(FespalierConventions.authDpop, 'fespalier.auth.dpop');
+    expect(
+      [
+        FespalierConventions.authOpRestore,
+        FespalierConventions.authOpSignIn,
+        FespalierConventions.authOpRefresh,
+        FespalierConventions.authOpSignOut,
+      ],
+      ['restore', 'sign_in', 'refresh', 'sign_out'],
+    );
+    expect(
+      [
+        FespalierConventions.authResultOk,
+        FespalierConventions.authResultNone,
+        FespalierConventions.authResultExpired,
+        FespalierConventions.authResultRejected,
+        FespalierConventions.authResultCancelled,
+        FespalierConventions.authResultError,
+      ],
+      ['ok', 'none', 'expired', 'rejected', 'cancelled', 'error'],
+    );
+    expect(
+      [
+        FespalierConventions.authTriggerExpired,
+        FespalierConventions.authTriggerUnauthorized,
+        FespalierConventions.authTriggerForced,
+      ],
+      ['expired', 'unauthorized', 'forced'],
+    );
+  });
+
+  test('the image attributes (since 0.9.0)', () {
+    expect(FespalierConventions.imageCdn, 'fespalier.image.cdn');
+    expect(FespalierConventions.imageWidth, 'fespalier.image.width');
+    expect(FespalierConventions.imagePreload, 'fespalier.image.preload');
+    expect(FespalierConventions.imageResult, 'fespalier.image.result');
+    expect(FespalierConventions.imageStatus, 'fespalier.image.status');
+  });
+
+  test('where a navigation came from (since 0.9.0)', () {
+    expect(
+      FespalierConventions.navigationSource,
+      'fespalier.navigation.source',
+    );
+    expect(
+      [
+        FespalierConventions.sourceNotification,
+        FespalierConventions.sourceShortcut,
+        FespalierConventions.sourceWidget,
+        FespalierConventions.sourceLink,
+      ],
+      ['notification', 'shortcut', 'widget', 'link'],
+    );
+    // The contract's values are fespalier's NavigationSource, one for one.
+    expect(NavigationSource.values, [
+      FespalierConventions.sourceNotification,
+      FespalierConventions.sourceShortcut,
+      FespalierConventions.sourceWidget,
+      FespalierConventions.sourceLink,
+    ]);
   });
 
   test('the events', () {

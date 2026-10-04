@@ -185,7 +185,9 @@ byUri.close();
   override that returns a closed handle (it holds nothing). The code, once loaded, stays loaded:
   closing the handle releases the data only. `AppRoutes.preload` goes through
   `matchUrl(uri)?.route.preload(ref)` in an app that has a deferred route (otherwise it is
-  `ref.prefetchAll(dataAt(uri) ?? const [])` as before). Before 0.7.0 preloading was data only.
+  `ref.prefetchAll(dataAt(uri) ?? const [])` as before). Before 0.7.0 preloading was data only. A link's `onPreload:` (since 0.9.0) runs right after the link starts
+  `preload`, for what the page needs that is not a provider (an image at the size the page shows it); it is no part
+  of `route.preload(ref)`, which has no `BuildContext` to measure with.
 - Two preloads of one provider (two links to the same product) load it **once**.
 - `RouteLink` calls it for you: `RouteLink(to: ..., preload: Preload.intent)`
   starts it on hover, focus or touch, `Preload.visible` when the link is on screen,

@@ -96,7 +96,7 @@ You need Flutter 3.32 or newer (Dart 3.8) for the package. go_router 18 needs Fl
 curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 ```
 
-It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.8.1` <!-- x-release-please-version -->
+It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.9.0` <!-- x-release-please-version -->
 to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install
 elsewhere. On Windows, in PowerShell:
 
@@ -112,7 +112,7 @@ any platform:
 <!-- x-release-please-start-version -->
 
 ```sh
-cargo install --git https://github.com/fespalier/fespalier --tag v0.8.1 fespalier
+cargo install --git https://github.com/fespalier/fespalier --tag v0.9.0 fespalier
 ```
 
 <!-- x-release-please-end -->
@@ -164,7 +164,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.8.1
+      ref: v0.9.0
 ```
 
 <!-- x-release-please-end -->
@@ -339,6 +339,7 @@ fespalier:
   #     with:
   #       build_runner: dart run build_runner watch
   #   codegen: dart run build_runner build
+  # adapters: [my_tools]         # no default: packages that plug into the generated main() (since 0.9.0)
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
@@ -382,11 +383,16 @@ bool is an error.
 before, next to and after `flutter run`. Only those commands check it; `fsp gen` never reports a mistake in it.
 
 `main` (since 0.8.1) is `auto`, `generated` or `manual`: whether `fsp` writes [`lib/app.main.g.dart`](#main-appdart-startupdart-and-splashdart),
-with `AppMain`. `auto` writes it when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart`,
-`generated` always, `manual` never (and then those three files are not read). Any other value is an error that lists
+with `AppMain`. `auto` writes it when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart`
+(or, since 0.9.0, when `adapters:` lists a package), `generated` always, `manual` never (and then those three
+files are not read). Any other value is an error that lists
 the three: ``unknown variant `always`, expected one of `auto`, `generated`, `manual` ``. The file sits beside
 `output`, with `.main.g.dart` in place of `.g.dart` (`lib/router/routes.g.dart` makes `lib/router/routes.main.g.dart`);
 there is no key for the path, and `output_manifest` cannot be it.
+
+`adapters` (since 0.9.0) is a list of Dart package names that plug into the generated `main()`; see
+[Adapters in the generated `main()`](#adapters-in-the-generated-main). The key makes `main: auto` write
+`lib/app.main.g.dart`, and `main: manual` with it is an error.
 
 `telemetry` (since 0.8.1) is `true` or `false`: whether the generated file tells fespalier where each guard,
 data provider, action and deferred page is, and follows the router's navigations (see
@@ -1198,7 +1204,9 @@ a tab (`/profile/edit`), use [`navigator.dart`](#the-root-navigator-navigatordar
 know: go_router opens a tab on its first route, which can't have a `:segment` in its own
 path, so a tab made only of dynamic routes, or a tab layout placed directly in a
 `$folder`, is an error (put the layout in a `(group)` below that folder instead); and `tabs` in a tab layout must be string literals, so name another list of destinations
-something else. See `examples/tabs`.
+something else. See `examples/tabs`. Since 0.9.0, `package:fespalier_adaptive` can draw the bar from
+the menu, as a bar, a rail or a drawer by window width: see
+[A bar, a rail or a drawer](#a-bar-a-rail-or-a-drawer-fespalier_adaptive).
 
 **Nested tab layouts.** A tab layout can sit inside a tab of another one: put a
 `layout.dart` that takes a `StatefulNavigationShell` in a folder that is a branch of the
@@ -1391,6 +1399,162 @@ Not built: more than one menu per app (use `under:` and `inMenu`), labels from `
 the routes whose folder has one (`file`, `label` when it is a string literal, `order`), and
 `examples/features` has a menu, a team sub-menu and breadcrumbs, with tests for each guard case.
 
+#### A bar, a rail or a drawer: fespalier_adaptive
+
+Since 0.9.0. The menu is one list, and what changes with the screen is the component that shows it.
+`package:fespalier_adaptive` draws `AppMenu.watch` as a `NavigationBar` on a phone, a `NavigationRail` on a
+tablet and a permanent `NavigationDrawer` on a wide window, around a layout's body. The bar is no longer a
+second list of destinations that can drift from the routes, and guards hide or disable entries as they do in
+any menu. It is a package of its own: no `fsp` change, no `fespalier:` key, the same `app.g.dart`, no
+third-party dependency, and an app that does not depend on it is unchanged. Add it next to fespalier, with
+the same `url` and the same `ref` (pub resolves the two to one package only if they are the same repository
+dependency; [Installing fespalier_auth](#installing-fespalier_auth) quotes what it says when they differ):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.9.0
+  fespalier_adaptive:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_adaptive
+      ref: v0.9.0
+```
+
+<!-- x-release-please-end -->
+
+It needs Dart 3.8 and Flutter 3.32 or newer. The tab layout of [Tab layouts](#tab-layouts), with a `nav.dart`
+in each tab's folder for its label and icon, becomes:
+
+```dart
+// lib/app/(tabs)/layout.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_adaptive/material.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+class TabsLayout extends StatelessWidget {
+  const TabsLayout({super.key, required this.navigationShell});
+  final StatefulNavigationShell navigationShell;
+
+  @override
+  Widget build(BuildContext context) => AdaptiveNavScaffold(
+    shell: navigationShell,
+    // under: the tab layout's folder, so each entry knows which tab it is
+    menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),
+    breakpoints: const NavBreakpoints(rail: 840),
+  );
+}
+```
+
+`tabs`, `tabOptions` and `container` stay as they are. A plain layout (one that takes a `Widget child`)
+passes `child: child` instead of `shell:`, and exactly one of the two is asserted. `examples/tabs` is this,
+with its six `nav.dart` files and tests that resize the window.
+
+**Breakpoints.** The component follows the window's width in logical pixels
+(`MediaQuery.sizeOf(context).width`):
+
+| Width             | Component                                                  | `NavMode` |
+| ----------------- | ---------------------------------------------------------- | --------- |
+| under 600         | `NavigationBar` at the bottom                              | `bar`     |
+| 600 to 1199       | `NavigationRail` at the start, every label shown           | `rail`    |
+| 1200 and wider    | a permanent `NavigationDrawer`, with the nested entries    | `drawer`  |
+
+Those are `NavBreakpoints(rail: 600, drawer: 1200)`, Material 3's compact, medium and large window size
+classes (`WindowSizeClass.of(width)` names all five). Both are configurable, and `null` means never:
+`NavBreakpoints.noDrawer`, or `NavBreakpoints(rail: 840)`, which `examples/tabs` uses so that a bar serves up
+to small tablets in portrait (and so that Flutter's default 800 × 600 test window keeps the bar). A `drawer`
+below the `rail` is an assertion. A layout inside a split view that needs the width of its own box builds an
+`AdaptiveNav` itself, under a `LayoutBuilder` (below).
+
+**Which entries.**
+
+- The bar and the rail list the top-level entries that go somewhere: an entry with a route or, in a tab layout,
+  an entry that is a tab, even a heading. Library in `examples/tabs` is a folder with no `page.dart`, and it is
+  the fourth destination. A heading that is not a tab is replaced by the entries below it.
+- The drawer lists every entry that goes somewhere, depth first. A heading is the title of a section over the
+  entries below it (Books and Authors under Library), and a route's own children stay in its section, so a
+  tree of three levels or more is flattened under one level of headings.
+- **Pass `under:` the tab layout's folder.** That is what gives each entry its `tab`: the selected destination
+  is the one whose `tab` is the shell's current index (the drawer's: the deepest selected entry with a route),
+  tapping a tab is `goBranch`, and tapping the current one goes back to its first page. Any other entry is
+  `item.go(context)`. Without `under:` no entry has a tab, so the entries go by the page: a heading is no
+  destination and the current tab does not reset.
+- **Guards** are whatever `AppMenu.watch` answers. A `NavRefused.hide` entry is absent, and the destinations
+  are mapped through their tab, so a tap never lands on the wrong page after another entry went away. A
+  `NavRefused.disable` entry is listed and turned off, and a `pending` one is on. The menu runs your guards
+  while the layout is on screen, which is always: keep them cheap, as [Guards](#guards) says.
+
+**The phone's bar is hidden on a page no entry covers.** A `NavigationBar` cannot show "nothing selected": it
+asserts a selected index. When no destination is the current tab (a plain layout: none is selected), or there
+are fewer than two destinations, the bar is not built and the body is shown alone. A debug build says so once:
+
+```text
+fespalier_adaptive: no menu entry is the current tab (3) of the tab layout, so the navigation bar is hidden. Give the tab's folder a nav.dart (not inMenu: false), and pass AppMenu.watch(ref, under: <the tab layout's folder>).
+```
+
+The fix is in the source of the layout: give the page's folder (the tab's) a `nav.dart`, put the page below an
+entry, or render the menu yourself with an `AdaptiveNavBuilder`. A rail and a drawer have no such limit: they
+show the page with no destination selected.
+
+**State.** The body (the shell or the child) sits at one place in the tree in every mode, so a tab keeps its
+stack and its state when the window is resized or a tablet is rotated. Nothing animates and nothing runs in
+between: no timer, no listener, the width is read when the layout builds.
+
+**Slots.** `icon:` builds each destination's icon (wrap it in a `Badge`), `leading:` and `trailing:` go above
+and below the destinations of the rail and the drawer (a logo, a button) and are not shown with the bar, and
+`floatingActionButton:` is the scaffold's, asked in every mode: return `null` where the button went into
+`leading`.
+
+```dart
+AdaptiveNavScaffold(
+  shell: navigationShell,
+  menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),
+  icon: (context, item, selected) => Badge(
+    isLabelVisible: item.folder.endsWith('inbox'),
+    child: defaultNavIcon(context, item, selected),
+  ),
+  leading: (context, nav) => const FlutterLogo(),
+)
+```
+
+**Your own widgets.** `AdaptiveNavBuilder` hands the model, an `AdaptiveNav` (`destinations`, `sections`,
+`selectedIndex`, `visible`, `enabled(i)` and `select(context, i)`), to a builder you write: chips, Cupertino
+widgets, or `package:material_ui`'s. The Library layout of `examples/tabs` draws its two inner tabs as chips
+this way.
+
+```dart
+AdaptiveNavBuilder(
+  menu: (ref) => AppMenu.watch(ref, under: '(tabs)/library'),
+  shell: navigationShell,
+  builder: (context, nav) => Row(children: [
+    for (final (i, item) in nav.destinations.indexed)
+      ChoiceChip(
+        label: Text(item.label(context)),
+        selected: nav.selectedIndex == i,
+        onSelected: (_) => nav.select(context, i),
+      ),
+  ]),
+)
+```
+
+`package:fespalier_adaptive/fespalier_adaptive.dart` (the model, `NavBreakpoints`, `AdaptiveNavBuilder`) imports
+no Material. `package:fespalier_adaptive/material.dart` (the scaffold, and a re-export of the model) draws
+Flutter's Material widgets, which do not read `package:material_ui`'s theme (see
+[go_router 18 and Material](#getting-started)): an app on `material_ui` renders the model itself, or copies the
+scaffold, one file, with the other import. The scaffold builds on Flutter 3.32: it leaves out
+`NavigationDrawer.header` and `footer` (3.35), and puts `leading` and `trailing` among the drawer's children.
+
+**Testing.** A test sizes the window with `tester.view.physicalSize` (and `devicePixelRatio = 1`, and
+`addTearDown(tester.view.reset)`). Flutter's default test window is 800 × 600 logical pixels, which is a rail
+with the default breakpoints and a bar with `rail: 840`. `examples/tabs/test/adaptive_test.dart` checks each
+component by width and that a tab keeps its state across a resize.
+
 ### Guards
 
 `guard.dart` exports `GuardResult guard(Ref ref, {…})`. It returns a location to
@@ -1518,6 +1682,184 @@ context.go(returnTo(from));                  // from if it's a location in the a
 `returnTo(from, fallback: '/home')` only lets an absolute path through: `https://…`, `//host`
 and the like fall back, so a crafted `?from=` can't send people off your app. Both `uri` and
 the typed routes include the mount prefix when the tree is mounted with `at:`.
+
+### Feature flags: fespalier_flags
+
+Since 0.9.0. A feature flag is a value the app asks for by name and that a server, a vendor SDK or a build can
+change: show `/labs` to some users, move `checkout` to its second version. fespalier's core has no flag feature and
+gains none: no file kind, no `fespalier:` key, no `fsp` command, and `app.g.dart` is the same bytes.
+`package:fespalier_flags` is [Guards](#guards) with a source of values: a flag is a provider that answers **at
+once** (never an `AsyncValue`, never a `Future`), so a guard that watches one stays synchronous, and a menu entry
+behind it follows the flag because [menus run guards](#menus-and-breadcrumbs-navdart). An app that does not depend on
+it is unchanged. It adds no dependency beyond fespalier, no timer and no polling.
+
+Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if they are
+the same repository dependency; a mismatch fails with `Because every version of fespalier_flags from path depends on
+fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and demo depends on
+fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier, fespalier_flags from path
+is forbidden.`, the form it takes when the first is a path):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.9.0
+  fespalier_flags:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_flags
+      ref: v0.9.0
+```
+
+<!-- x-release-please-end -->
+
+Declare each flag once, `const`, gate a route with `flagGuard` in its `guard.dart`, and read a flag anywhere that has a
+`Ref` or a `WidgetRef`:
+
+```dart
+// lib/flags.dart
+const labs = BoolFlag('labs');
+const checkoutV2 = BoolFlag('checkout_v2');
+const pageSize = IntFlag('page_size', fallback: 20);
+
+// lib/app/labs/guard.dart: /labs is there while the flag is on
+GuardResult guard(Ref ref) => flagGuard(ref, labs, orElse: const HomeRoute().location);
+
+// a widget, a provider, a guard: the value is there at once
+final size = ref.watch(flag(pageSize));
+```
+
+`BoolFlag` is off unless the source says otherwise (its `fallback` is `false`); `StringFlag`, `IntFlag` and
+`DoubleFlag` have a required `fallback`. A flag is its **fallback** whenever the source has no value for its key, has
+one of another type, throws, or has not started yet, so a flag is never loading. Two declarations with the same type,
+key and fallback are the same flag. A `nav.dart` beside the `guard.dart` needs nothing else: while the flag is off
+the guard refuses the entry, and a refused entry is hidden (`NavRefused.hide`, the default; `whenRefused:
+NavRefused.disable` greys it out instead).
+
+- **A new route behind a flag:** `lib/app/checkout-v2/guard.dart` is `flagGuard(ref, checkoutV2, orElse: const
+  CartRoute().location)`. A whole section: the guard goes in a `(group)` or in the section's folder, as any guard.
+- **The old URL goes to the new one while the flag is on:** `checkout/guard.dart` is `flagGuard(ref, checkoutV2,
+  whenOff: true, orElse: const CheckoutV2Route().location)`.
+- **The same URL, two pages:** no guard; the page switches: `ref.watch(flag(checkoutV2)) ? const CheckoutV2() : const
+  CheckoutV1()`.
+- **A flag and a sign-in:** a folder has one `guard.dart`, so compose with `??`. `flagGuard` returns a `String?`,
+  synchronously: `flagGuard(ref, labs, orElse: '/') ?? (ref.watch(session) ? null :
+  LoginRoute(from: uri.toString()).location)` (with [`fespalier_auth`](#authentication): `?? requireSignedIn(ref,
+  uri, signIn: ...)`).
+- **A flow that must not be pulled from under the user** (a checkout): `flagGuard(ref, checkoutV2, orElse: '/',
+  follow: false)` reads the flag once per navigation (`ref.read`): the page stays open when the flag turns off, the
+  next navigation applies it, and a menu does not follow.
+
+**Live updates.** A source can send an event when values change (`FlagSource.changes`: `FlagsChanged({'labs'})` names
+the keys, `FlagsChanged.all()` means any). `fespalier_flags` listens with **one subscription per `ProviderContainer`**,
+opened when the first flag is watched and cancelled when the last watched flag goes, and reads again only the watched
+flags the event names. A guard, a menu or a widget runs again only when the value it reads **differs**, so a flag that
+turns off on `/labs` takes the app to `orElse` in the next frame and a menu entry under it hides, with no navigation.
+Nothing in the package polls or starts a timer; a vendor's own streaming or polling runs inside its SDK, by its settings.
+
+**What to know.**
+
+- **A guard that redirected stays subscribed until the next navigation.** fespalier keeps a `ref.watch`ing guard
+  while the committed location runs it, and a guard that redirected is kept until the next commit (see
+  [Guards](#guards)). So a flag's subscription can outlive the page it gated by one navigation: a cold deep link to
+  `/labs` with the flag off lands on `/`, and the flag is still listened to until the user goes somewhere else.
+  `packages/fespalier_flags/test/guard_test.dart` pins this, so a change in fespalier's guard lifetime is noticed.
+- **A guarded page under a pushed page** does not react until it is uncovered (the rule of every guard).
+- **A cold deep link before the source is ready** sees the fallback, so a guard sends it to `orElse`: await the
+  vendor's local load in `startup()` (below).
+- **Never call a vendor's async API in a guard.** PostHog's `isFeatureEnabled` is a `Future`: the guard answers a
+  `Future`, the menu entry turns pending and the first frame is blank. Copy the value into a
+  [`FlagSource`](#where-flag-values-come-from) and read that.
+- **`follow: true` (the default) takes a user off a page** when the flag turns off mid-flow. Use `follow: false` for a
+  flow.
+- **Each change re-reads the watched flags the event names.** Vendors that count evaluations (LaunchDarkly) or track
+  exposures (GrowthBook) see those reads; a keyed `FlagsChanged` keeps them to the keys that changed.
+
+**Not built.** A `route.dart` constant (`const flag = 'checkout_v2'`): it would be a second gating mechanism, with
+binding rules, diagnostics and an order to define against `guard.dart`, `nest = false` and menus, to save one line.
+Vendor **packages**: each bridge is 15 to 40 lines of mapping, so they are recipes, below. A DevTools panel for flag
+values.
+
+#### Where flag values come from
+
+`startup()` returns the source, once: `flagSource.overrideWithValue(source)`. Without one, `flagSource` is
+`const ConstFlags()`: every flag is its fallback.
+
+```dart
+// lib/app/startup.dart
+Future<List<Override>> startup() async => [
+  flagSource.overrideWithValue(const ConstFlags({'labs': bool.fromEnvironment('LABS')})),
+];
+```
+
+A `FlagSource` is four synchronous typed reads (`boolValue(key, fallback)`, `stringValue`, `intValue`,
+`doubleValue`) and `Stream<FlagsChanged>? get changes`. The typed reads are what OpenFeature's static-context client
+and LaunchDarkly's variations are, so a bridge to a vendor is a line per method. Every read must answer **from
+memory**: guards and menus call it, so never from the network, a file or a platform channel. A read that throws is the
+flag's fallback (printed in debug).
+
+| Source               | What it is                                                                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ConstFlags({...})`  | Fixed values, or `--dart-define`d ones. `changes` is `null`. A bool reads a `bool`, a double any `num`; a value of another type is the fallback |
+| `AsyncFlags(future)` | A source that is not ready at start: reads come from `meanwhile` until the future completes, then one `FlagsChanged.all()`                      |
+| A vendor bridge      | Your own `FlagSource` over the vendor's SDK: a recipe, below                                                                                    |
+| `FakeFlags({...})`   | For tests: [Testing flagged routes](#testing-flagged-routes)                                                                                    |
+
+**Initial values, with no timer.** `startup()` awaits only what is **local**: Remote Config's `ensureInitialized()`
+and `activate()` (the values the previous session fetched), LaunchDarkly's construction, PostHog's `setup()` and a read
+of the app's keys from the native SDK's cache. From the first frame every read is a synchronous call into the vendor's
+memory. A vendor whose start waits for the network (GrowthBook past its cache's TTL, LaunchDarkly's `start()` on a first
+launch, which "may not complete until ... the device leaves airplane mode") goes in `AsyncFlags(start(), meanwhile:
+...)`: the fallbacks (or the app's last known values) until the `Future` completes, then one `FlagsChanged.all()`. An
+app that must see remote values before its first frame awaits the vendor in `startup()` with a `.timeout()` of its own
+if it wants one: that timer is the app's choice, and fespalier's tests never reach it (tests override `flagSource`).
+
+**Recipes.** Firebase Remote Config, LaunchDarkly, PostHog and GrowthBook have a recipe, compiled by `just
+skill-samples`, in [`skills/fespalier-guards/references/flag-sources.md`](skills/fespalier-guards/references/flag-sources.md): about 15 to 40 lines each, a class
+that `implements FlagSource` and a `startup()` that returns it. They are not packages because there is no fespalier
+logic left in them, and a package per vendor would cost a release, a CI entry that resolves the vendor's SDK and a
+fake of its singleton for 20 lines. A recipe becomes a package when its glue grows fespalier-specific logic or past
+about 60 lines. **OpenFeature** is the common interface to converge on, but is not adopted: its Dart SDK is a beta. A
+bridge over it is about 25 lines, and `FlagSource` mirrors its typed reads and its configuration-changed event.
+
+#### Testing flagged routes
+
+`FakeFlags` (in `package:fespalier_flags/testing.dart`) is a `FlagSource` that holds values in memory. Give it to
+`pumpRouter` as an override, or to the setup file of `fsp test`:
+
+```dart
+testWidgets('labs is there with the flag on, and goes with it', (tester) async {
+  final flags = FakeFlags({'labs': true});
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/labs'),
+    overrides: [flagSource.overrideWithValue(flags)],
+  );
+  expect(currentLocation(tester), '/labs');
+
+  flags.set('labs', false);   // delivered synchronously
+  await tester.pump();        // one frame: the guard ran again, the router moved
+  expect(currentLocation(tester), '/');
+});
+```
+
+```dart
+// test/routes/setup.dart: `fsp test` tests a flagged route instead of skipping it
+List<Override> overrides(String pattern) => [
+  flagSource.overrideWithValue(FakeFlags({'labs': pattern == '/labs'})),
+];
+```
+
+- **`set(key, value)`** sends `FlagsChanged({key})` before it returns, `setAll({...})` one event for several keys, and
+  a `null` value removes the key. Call them from the test body, not while a widget builds.
+- **`FakeFlags.strict({...})`** throws a `StateError` for a key it lacks or a value of another type, and reports it
+  to `FlutterError.reportError`, so a typo in a key fails a `testWidgets` instead of reading the fallback.
+- **`listenerCount`** is how many listen to its changes: `0` once nothing watches a flag.
+- Without an override, every flag is its fallback, so existing tests of an app that adds a flag see the flag off.
 
 ### Route lifecycle: `observe.dart`
 
@@ -1659,6 +2001,21 @@ A `transition()` that needs to tell a shell from a route (to wrap a route's page
 its shell shouldn't get) can take `bool shell` (or `isShell`): `true` for a layout's shell, `false`
 for a route's page. It is the only extra parameter besides `key`, `child` and `state`.
 
+**Page names** (since 0.9.0). Each `pageBuilder:` the generated file writes (a route with a `transition.dart`
+or a `present.dart`, a [`remount`](#remounting-a-page-remount) route, a layout's shell) is wrapped in
+`namedPage('/products/:id', () => ...)`, and the pages `Transitions.*`, `layoutPage` and `remountPage` build
+while it runs are named by the route's pattern (`RouteSettings.name`). So a `NavigatorObserver` (Sentry's,
+Firebase Analytics', PostHog's) sees `/products/:id` instead of `null` (a `remount` page used to be `:id`).
+A layout's shell is named by its section's pattern: `/` for a root layout or a `(tabs)/` group, `/shop`
+for `shop/layout.dart`. go_router forwards a shell navigator's pushes to the root navigator's observers, so
+an observer given to `AppRoutes.router(observers: ...)` sees the pages inside a shell too. A route with no
+`pageBuilder:` (a bare `builder:`) is go_router's own page, named `state.name ?? state.path`, and unchanged:
+a root `transition.dart`, which `fsp init` writes, names every page. A `Page` of your own in a
+`transition.dart` reads the name from `Transitions.pageName` (null outside the generated page builders):
+`MaterialPage(key: key, name: Transitions.pageName, child: child)`. Keys, restoration ids, transitions and
+heroes are the same. `namedPage` runs its builder once, synchronously, and brings the previous name back
+when it returns or throws.
+
 **Dialogs and sheets.** `Transitions.dialog`, `Transitions.sheet` and
 `Transitions.fullscreenDialog` make a route open over the previous page instead of
 replacing it. The page's widget is what shows up: for `dialog` it is the dialog itself
@@ -1762,6 +2119,7 @@ What flies, and what doesn't:
 | A [remounted](#remounting-a-page-remount) page                                                                                                         | it is a new route: a tag made from the segments differs between the two pages, so nothing flies, while a tag that is the same on both pages flies                                                            |
 | A page with [`data.dart`](#datadart-a-function-a-selector-or-a-provider) or a [deferred](#deferred-routes-a-pages-code-on-demand) one                  | flies when the page is in the destination's first frame: [preload it](#preloading-the-data-behind-a-link) (`RouteLink(preload: Preload.intent)`, `route.preload`), or `loading.dart` shows and nothing flies |
 | A back swipe or predictive back                                                                                                                        | flies only with `onBackGesture: true` on **both** pages (Flutter checks each side): set it in the root `transition.dart`                                                                                     |
+| A [`ResponsiveImage`](#images-in-heroes) hero                                                                                                          | without `ResponsiveImage.flightShuttle` the shuttle measures itself at every size of the flight and asks for a URL; with it (`route.imageHero`, since 0.9.0) it shows what is loaded and asks for nothing    |
 | One tag twice on one page                                                                                                                              | Flutter's assertion: give the second one another name, or wrap it in `HeroMode(enabled: false)`                                                                                                              |
 
 A hero name declared in a deferred `page.dart` would make the list page import that page and load
@@ -1824,8 +2182,9 @@ Page<void> present(LocalKey key, Widget child) => SheetPage(key: key, child: chi
 ```
 
 It is bound like `transition.dart` (`key`, `child`, `state`), and what it returns is used
-**verbatim**: fespalier adds no scrim, handle or shape, and ships no sheet widget. Unlike
-`transition.dart`:
+**verbatim**: fespalier adds no scrim, handle or shape, and ships no sheet widget. It does not name the
+page either: pass `name: Transitions.pageName` (since 0.9.0, the route's pattern) for an observer to see it.
+Unlike `transition.dart`:
 
 - it applies to **its own folder only**: a folder below keeps the nearest `transition.dart` for
   its own page;
@@ -2400,32 +2759,11 @@ Riverpod provider holding a count, a `RefetchSignal`, that the data provider lis
 
 - `appResumeSignal` fires on resume. It is created only while a provider with `refetchOnResume`
   listens to it, and its `AppLifecycleListener` goes with it.
-- `reconnectSignal` **never fires by itself**: Flutter has no API for "the network is back". Plug
-  your connectivity source in by overriding it, or call `ref.read(reconnectSignal.notifier).fire()`
-  where you know. With `connectivity_plus`:
-
-```dart
-// lib/connectivity_signal.dart
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:fespalier/fespalier.dart';
-
-/// Fires when the device goes from offline to online.
-class ConnectivitySignal extends RefetchSignal {
-  @override
-  int build() {
-    var online = true;
-    final subscription = Connectivity().onConnectivityChanged.listen((results) {
-      final now = !results.contains(ConnectivityResult.none);
-      if (now && !online) fire();
-      online = now;
-    });
-    ref.onDispose(subscription.cancel);
-    return 0;
-  }
-}
-
-// main.dart: ProviderScope(overrides: [reconnectSignal.overrideWith(ConnectivitySignal.new)], …)
-```
+- `reconnectSignal` **never fires by itself**: Flutter has no API for "the network is back". Override it with
+  a `RefetchSignal` of your own that listens to your connectivity source, or call
+  `ref.read(reconnectSignal.notifier).fire()` where you know. `fespalier_connectivity` (since 0.9.0,
+  [below](#reconnects-fespalier_connectivity)) is that signal from `connectivity_plus`, tested:
+  `reconnectSignal.overrideWith(ConnectivitySignal.new)` in `startup()`.
 
 **Your own provider.** `freshData(ref, const Freshness(...), value)` is what the generated provider
 wraps its value in. It returns `value` itself (a `Future` stays the `Future`, a value stays a
@@ -2460,6 +2798,119 @@ reload starts on a frame and its value shows on the next, so `pump()` a few time
 `freshness` and `dataCache` are names fsp now reads in a `data.dart`, so an app with a public
 top-level variable of one of those names and another type gets the first error: rename it (a
 private `_freshness` is never read).
+
+#### Reconnects: fespalier_connectivity
+
+Since 0.9.0. `refetchOnReconnect: true` waits for [`reconnectSignal`](#freshness-staletime-resume-and-reconnect), which
+never fires by itself. `package:fespalier_connectivity` is that signal, from `connectivity_plus`, tested, with the two
+platform repairs below and a `hasNetwork` provider for an offline banner. fespalier's core depends on neither the plugin nor
+this package, the generated code is the same bytes, and an app that does not depend on it pays nothing for it.
+
+Add it next to fespalier, with the same `url` and the same `ref` (as for [`fespalier_flags`](#feature-flags-fespalier_flags)):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.9.0
+  fespalier_connectivity:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_connectivity
+      ref: v0.9.0
+```
+
+<!-- x-release-please-end -->
+
+It needs Dart 3.8 and Flutter 3.32 or newer, and takes `connectivity_plus` `>=6.0.1 <8.0.0`. One line in `startup()`, which
+stays synchronous (no first-frame cost):
+
+```dart
+// lib/app/startup.dart
+List<Override> startup() => [reconnectSignal.overrideWith(ConnectivitySignal.new)];
+
+// lib/app/teams/$teamId/route.dart: every data() at and below is loaded again when the device gets a network back,
+// if its value is at least 30 seconds old
+const freshness = Freshness(staleTime: Duration(seconds: 30), refetchOnReconnect: true);
+```
+
+**What fires and what does not.** `ConnectivitySignal` fires when the device goes **from no network to a network**
+(`[none]` to anything else). It does not fire on the first answer, and not on a Wi-Fi to mobile switch. Every data provider
+that listens loads again if its value is at least `staleTime` old (stale-while-revalidate: the old value stays on screen,
+and `keepDataOnError` keeps the page if the reload fails); within `staleTime` nothing loads. A reload already under way is
+not repeated (a value that is loading is never stale), so a flapping network needs no debounce timer: it fires each time and
+loads once. The signal exists while a `data.dart` with `refetchOnReconnect` is alive, and so does its subscription to
+`connectivity_plus`: an app with no such data subscribes to nothing.
+
+**A banner.** `hasNetwork` is a `bool` provider: `false` only once the device has said "no network", and `true` before the
+first answer, so nothing flashes offline at start. It pairs with `XRoute.watch(ref).isFromCache` ("offline copy"):
+
+```dart
+if (!ref.watch(hasNetwork)) const Text('No network')
+```
+
+`networkConnectivity` is the `List<ConnectivityResult>?` behind it (null until the first answer), for an app that shows the
+kind of network.
+
+**Connectivity versus reachability.** This package, like `navigator.onLine` on the web, answers "is a network interface up?".
+That is local, instant and event-driven. Reachability answers "does the server I need answer?", and only a request can tell:
+
+- Connected but unreachable: a captive portal (hotel Wi-Fi before its login page), a router with no uplink, a VPN that is
+  down, a firewall, the server down. Reachable over a link the OS reports oddly: a VPN reported as `other` on iOS, the iOS
+  simulator's missed Wi-Fi events.
+- So `refetchOnReconnect` on connectivity can fire on a captive portal: the reload fails and `keepDataOnError` keeps the
+  page. `hasNetwork == false` is reliable ("no network at all"); `true` promises nothing. An offline banner should say "No
+  network", and a failed load should show its own error.
+- fespalier does not ship reachability: it needs a request to **your** server (not a third party's: privacy, and a third
+  party answering says nothing about yours), and any polling is a timer. A compiled recipe in
+  [`skills/fespalier-data/references/reconnect-and-network.md`](skills/fespalier-data/references/reconnect-and-network.md) asks
+  your own API once per connectivity change and per resume, never on a timer, and turns that into a `RefetchSignal`.
+
+**Two platform repairs.** The web sends nothing when a stream starts listening (only `online` and `offline` events), so the
+first state is asked with `check()` (which reads `navigator.onLine`); an event that arrives before that answer wins over it.
+And iOS drops connectivity events while the app is in the background (the plugin resyncs "on the next listen or check"), so
+`networkConnectivity` asks `check()` again on each resume, through fespalier's own `appResumeSignal`: an offline banner does
+not stay up after the network came back in the background. Neither starts a timer.
+
+**Testing.** `package:fespalier_connectivity/testing.dart` has `FakeConnectivity`, a `ConnectivitySource` whose `set`, `offline()`
+and `online([via])` deliver a change **synchronously**, whose `check()` answers `now`, and which sends nothing on listen
+(like the web). Override `connectivitySource` with it (and `reconnectSignal` with `ConnectivitySignal.new`, as `startup()`
+does; `pumpRouter` does not run `startup()`):
+
+```dart
+final fake = FakeConnectivity();
+await pumpRouter(
+  tester,
+  AppRoutes.router(initialLocation: '/teams/acme/members/7'),
+  overrides: [
+    connectivitySource.overrideWithValue(fake),
+    reconnectSignal.overrideWith(ConnectivitySignal.new),
+  ],
+);
+await tester.pump(const Duration(seconds: 31)); // the team is stale now (the fake clock)
+fake.offline();
+fake.online(); // a reconnect: the team loads again, once
+await tester.pumpAndSettle();
+```
+
+A widget test that reaches the plugin without that override **fails**, with Flutter's report
+`while activating platform stream on channel dev.fluttercommunity.plus/connectivity_status` and
+`MissingPluginException(No implementation found for method listen on channel dev.fluttercommunity.plus/connectivity_status)`
+(a test that shows `hasNetwork`, or builds a `refetchOnReconnect` provider with the package's signal, and no
+`FakeConnectivity`). `examples/features` carries it: `teams/$teamId/route.dart` has `refetchOnReconnect: true`,
+`startup.dart` overrides `reconnectSignal`, and `test/offline_test.dart` flaps the network.
+
+In debug (`debugPrint`, nothing in a release build):
+
+- `fespalier_connectivity: the connectivity stream reported an error: <error>`
+- `fespalier_connectivity: checking connectivity failed: <error>`
+
+Both leave the state as it was. Their causes are in the
+[troubleshooting skill](skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md).
 
 #### A cache that survives a restart: `dataCache`
 
@@ -2503,62 +2954,12 @@ ProviderScope(
 
 - `MemoryDataStorage` keeps values while the app runs: a page that is disposed and opened again
   shows its last value at once. For the web, examples and tests; it does not survive a restart.
-- A `Storage<String, String>` on disk survives one. `riverpod_sqflite`'s `JsonSqFliteStorage`
-  plugs in as it is. To write your own, import `package:fespalier/persist.dart` (it re-exports
-  `Storage`, `PersistedData`, `StorageOptions` and `StorageCacheTime`, so the app needn't depend
-  on `hooks_riverpod` directly). One over `shared_preferences`, whose synchronous `getString`
-  shows the saved value on the **first frame**:
-
-```dart
-// lib/prefs_storage.dart
-import 'dart:convert';
-
-import 'package:fespalier/persist.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-final class PrefsStorage extends Storage<String, String> {
-  PrefsStorage(this._prefs);
-
-  final SharedPreferencesWithCache _prefs;
-
-  @override
-  PersistedData<String>? read(String key) {
-    final saved = _prefs.getString(key);
-    if (saved == null) return null;
-    final json = jsonDecode(saved) as Map<String, Object?>;
-    final expireAt = json['expireAt'] as String?;
-    return PersistedData(
-      json['data']! as String,
-      destroyKey: json['destroyKey'] as String?,
-      expireAt: expireAt == null ? null : DateTime.parse(expireAt),
-    );
-  }
-
-  @override
-  Future<void> write(String key, String value, StorageOptions options) {
-    final age = options.cacheTime.duration;
-    return _prefs.setString(
-      key,
-      jsonEncode({
-        'data': value,
-        'destroyKey': options.destroyKey,
-        'expireAt': age == null
-            ? null
-            : DateTime.now().toUtc().add(age).toIso8601String(),
-      }),
-    );
-  }
-
-  @override
-  Future<void> delete(String key) => _prefs.remove(key);
-
-  @override
-  void deleteOutOfDate() {} // read() of an expired value is dropped by Riverpod
-}
-
-// main(): final prefs = await SharedPreferencesWithCache.create(cacheOptions: const SharedPreferencesWithCacheOptions());
-//         … dataCacheStorage.overrideWithValue(PrefsStorage(prefs))
-```
+- A `Storage<String, String>` on disk survives one. `fespalier_storage` (since 0.9.0,
+  [below](#a-cache-on-disk-fespalier_storage)) is a tested one on shared_preferences or Hive, with a size
+  budget; `riverpod_sqflite`'s `JsonSqFliteStorage` plugs in as it is. To write your own, import
+  `package:fespalier/persist.dart` (it re-exports `Storage`, `PersistedData`, `StorageOptions` and
+  `StorageCacheTime`, so the app needn't depend on `hooks_riverpod` directly); `read` returns a
+  `PersistedData<String>?`.
 
 A storage whose `read` is synchronous gives the saved value on the first frame. A `Future<Storage>`
 is fine too: there is one `loading.dart` frame, then the saved value.
@@ -2611,6 +3012,130 @@ expect(find.text('Coffee beans, 500 g'), findsOneWidget); // the saved product, 
 `MemoryDataStorage` is synchronous, so a test leaves no pending future, and
 `await tester.pump(const Duration(days: 3))` expires a value under the fake clock. `examples/shop`
 has the two tests (`test/freshness_test.dart`).
+
+#### A cache on disk: fespalier_storage
+
+Since 0.9.0. `package:fespalier_storage` is a tested `Storage<String, String>` for the [`dataCache`](#a-cache-that-survives-a-restart-datacache)
+above, on **shared_preferences** (`PrefsDataStorage`) or **Hive** (`HiveDataStorage`), with a size budget. A route's
+value is saved when it loads, and at the next start it is **on the first frame** while the fresh one loads. fespalier's
+core depends on neither plugin, the generated code is the same bytes, and an app that does not depend on this package
+pays nothing for it.
+
+Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if they are
+the same repository dependency, as for [`fespalier_flags`](#feature-flags-fespalier_flags)):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.9.0
+  fespalier_storage:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_storage
+      ref: v0.9.0
+```
+
+<!-- x-release-please-end -->
+
+It needs Dart 3.8 and Flutter 3.32 or newer. Open a storage in `startup()` and give it to `dataCacheStorage`:
+
+```dart
+// lib/app/startup.dart
+Future<List<Override>> startup() async => [
+  dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
+];
+```
+
+`open()` is awaited there, so the first frame is the app: `startup()` costs one frame behind `splash.dart` (or the native
+splash), and no more. `read()` is then a synchronous map lookup and a header parse, so Riverpod's `persist` gives the saved
+value to the first `build`. A `startup()` that prefers no extra frame can pass the `Future` itself
+(`dataCacheStorage.overrideWithValue(PrefsDataStorage.open())`): one `loading.dart` frame, then the saved value. `open()`
+returns `null` (and prints a debug line) when the store cannot open, and `dataCacheStorage` takes `null` as "save
+nothing": a cache never stops an app from starting.
+
+| What                 | `PrefsDataStorage`                                                                      | `HiveDataStorage`                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Backend              | `SharedPreferencesWithCache`; localStorage on the web                                   | a `hive_ce` `Box<String>`; IndexedDB on the web                                       |
+| Reads                | synchronous                                                                             | synchronous once the box is open                                                      |
+| Default budget       | 1,000,000 characters, 200 entries                                                       | 4,000,000 characters, 1,000 entries                                                   |
+| Plugins              | `shared_preferences` (most apps have it)                                                | none: `hive_ce` is pure Dart; `path_provider` for the cache directory                 |
+| Where on disk        | the platform's preferences, beside the app's own keys                                   | `getApplicationCacheDirectory()` (OS-purgeable, not backed up), none on the web       |
+| Pick it when         | a few small values; on the web localStorage is about 5 MB per origin, shared            | more or larger values; opening reads the whole box, so `maxSize` also bounds startup  |
+
+**The budget.** `maxSize` is in `String.length` units (UTF-16 code units, what browsers count localStorage in), keys and
+headers included, and `maxEntries` is a count. Over either, the entries **written longest ago** go first, ties by key
+(deterministic: a function of the store and `clock.now()`, with no timer and no background sweep). A route's value is
+written each time it is fetched fresh, so what is read is rewritten; reads never write. A value too large for `maxSize`
+is not saved: it fails with `DataEntryTooLarge`, which fespalier prints after `could not save`, and the route works.
+Expired and unreadable entries are deleted once, when the storage is made. A web `localStorage` that is full is a
+`QuotaExceededError` on the write: the entry is dropped and fespalier prints "could not save"; keep `maxSize` well below,
+or use Hive.
+
+**Versioning, corrupt entries, sign-out.**
+
+- `DataCache(version: '2')` is Riverpod's `destroyKey`: stored in the entry's header and compared on read, so another
+  version is deleted, not decoded. The format of the storage itself is versioned by the entry's first line, `fsc1`; a
+  later format is read as unreadable, which for a cache means "dropped and loaded again". To drop everything on an app
+  update, call `clear()` (the app knows its build number); there is no storage-wide version key.
+- **An unreadable entry** (not written by this storage, a truncated one, a value of another type under its key) is dropped
+  at start and counted, and at a read it is a `FormatException` that fespalier prints (`dropped it`) and deletes. Hive
+  also truncates a corrupt frame when it opens a box.
+- **`clear()` is what a sign-out does**: the next start shows nothing from the previous user. It deletes every entry
+  this storage saved, indexed or not, and nothing else. Values in memory are the app's to invalidate (watch
+  [`authUserId`](#the-session) in a `data.dart` that belongs to the user).
+- **One writer per store.** A background isolate that writes the same store makes the in-memory index stale until the
+  next start; the index is never saved, so it cannot disagree with the store across a crash.
+
+In debug (`debugPrint`, nothing in a release build), next to fespalier's two lines above:
+
+- `fespalier_storage: dropped <n> saved entries that could not be read`, at start
+- `fespalier_storage: could not open shared preferences, so nothing is saved: <error>` and
+  `fespalier_storage: could not open the Hive box <name>, so nothing is saved: <error>`, when `open()` returns `null`
+- a value over the budget, after fespalier's `could not save:`:
+  `fespalier_storage: the value saved under <key> is <size> characters, more than maxSize (<maxSize>), so it was not saved`
+
+A budget of 0 or less throws an `ArgumentError` (`Invalid argument (maxSize): must be more than 0: 0`), and so does a
+`SharedPreferencesWithCache` with an allowList given to `PrefsDataStorage(prefs)`: the keys of a `dataCache` are not known
+in advance, so use `PrefsDataStorage.open()`. The messages are in the
+[troubleshooting skill](skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md).
+
+**Testing.** `package:fespalier_storage/testing.dart` has `fakePrefsStore([values])`, which makes shared_preferences an
+in-memory store for the test, and `memoryBox()`, a Hive box in memory (no file, no plugin) for
+`HiveDataStorage(await memoryBox())`. Two `open()`s in one test share the store: that is a restart.
+
+```dart
+setUp(fakePrefsStore); // also before a test that boots AppMain.run() or AppMain.root(): startup() opens a storage
+
+testWidgets('the saved team is on the first frame of the next start', (tester) async {
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/teams/acme/members'),
+    overrides: [dataCacheStorage.overrideWithValue(await PrefsDataStorage.open())],
+  );
+  await tester.pumpWidget(const SizedBox()); // the restart
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/teams/acme/members'),
+    overrides: [dataCacheStorage.overrideWithValue(await PrefsDataStorage.open())],
+    settle: false, // one frame, no more
+  );
+  expect(find.text('Team ACME'), findsOneWidget); // the saved team, not loading.dart
+});
+```
+
+Without `fakePrefsStore()`, `open()` finds no platform and returns `null` (a debug line says
+`Bad state: The SharedPreferencesAsyncPlatform instance must be set.`): the cache is silently off. `examples/features`
+carries it: `teams/$teamId/data.dart` has a `dataCache`, `startup.dart` opens a `PrefsDataStorage`, and
+`test/offline_test.dart` is this test.
+
+**Not built.** A storage-wide version key; a byte-exact size (units are `String.length`); multi-isolate safety;
+encryption (open your own Hive box with a cipher and pass it to `HiveDataStorage(box)`). `riverpod_sqflite` still plugs in as
+it is.
 
 ### Typed helpers on the route
 
@@ -3065,6 +3590,206 @@ Future<void> addMember(Ref ref, {required String teamId, required String input})
   never turns into `error.dart`.
 - If the page leaves in the middle of a write, the write still finishes and still invalidates.
 
+### HTTP clients: fespalier_dio
+
+Since 0.9.0. fespalier's core has no HTTP client, and gains none: no file kind, no `fespalier:` key, no `fsp`
+command, and `app.g.dart` is the same bytes. `package:fespalier_dio` is what the two clients most apps use,
+[Dio](https://pub.dev/packages/dio) and [`package:http`](https://pub.dev/packages/http), need to keep three of
+fespalier's promises: **a load whose page is gone stops**, **a server's validation error lands under its form
+field**, and **a write is never sent twice**. An app that does not depend on it is unchanged, and it starts no
+timer and no listener in one that does.
+
+Add it next to fespalier, with the same `url` and the same `ref`
+([Installing fespalier_auth](#installing-fespalier_auth) quotes what pub says when they differ):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.9.0
+  fespalier_dio:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_dio
+      ref: v0.9.0
+```
+
+<!-- x-release-please-end -->
+
+It needs Dart 3.8 and Flutter 3.32 or newer, and depends on `dio` (`^5.7.0`) and `http` (`^1.5.0`, the first
+release with abortable requests). It is three libraries, so an app that uses one client imports only that one:
+
+| Library                                    | For            | What is in it                                                                                                     |
+| ------------------------------------------ | -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_dio/fespalier_dio.dart` | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`                                         |
+| `package:fespalier_dio/http.dart`          | `package:http` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `WriteGuardClient`                            |
+| `package:fespalier_dio/problem.dart`       | no client      | `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf`: for chopper, or a client of your own (both above export it) |
+
+Nothing here retries, logs or traces by itself: there is no retry policy of its own (a backoff needs a timer, and
+fespalier has none), and the HTTP spans and the trace headers come from the instrumentation you add to the client
+(`otel_dio`, `sentry_dio`), not from this package.
+
+#### Cancelling a load whose page is gone
+
+A `data.dart` runs again when its provider is rebuilt (an invalidation, a changed key) and is dropped when its page
+is left. The result of the old build is thrown away either way, but a request goes on to its end. `ref.cancelToken()`
+(Dio) and `ref.abortTrigger()` or `ref.abortable(client)` (`package:http`) tie the request to the build that made
+it: they fire in `ref.onDispose`, which runs when the provider is disposed **and** before it rebuilds.
+
+```dart
+// lib/app/products/$id/data.dart
+Future<Product> data(Ref ref, {required int id}) async {
+  final cancel = ref.cancelToken();  // before the first await
+  final res = await ref.watch(dio).get<Map<String, Object?>>('/products/$id', cancelToken: cancel);
+  return Product.fromJson(res.data!);
+}
+```
+
+```dart
+// package:http: every request of this build, through one client
+Future<Product> data(Ref ref, {required int id}) async {
+  final client = ref.abortable(ref.watch(httpClient));  // before the first await
+  final res = await client.get(Uri.https('api.example.com', '/products/$id'));
+  return Product.fromJson(jsonDecode(res.body) as Map<String, Object?>);
+}
+// or one request: http.AbortableRequest('GET', url, abortTrigger: ref.abortTrigger())
+```
+
+- **Ask before the first `await`.** After the provider is gone (a stale `ref`), `onDispose` would throw, so the token
+  comes back already cancelled and the trigger already fired: the request fails at once instead of running for a
+  page nobody sees.
+- **One token serves every request of the build**, and a request that a retrier or an authentication refresh sends
+  again keeps it, because it sends the same options.
+- **What the request fails with.** Dio: a `DioException` of type `cancel` whose `error` is `fespalier_dio: the
+  provider that started this request was disposed`. `package:http`: `RequestAbortedException` ("Request aborted by
+  `abortTrigger`"). It fails after its provider is gone: fespalier's data span has ended as `disposed`, so with
+  [telemetry](#telemetry) it is not an error, and Riverpod ignores the old build's result.
+- **`ref.abortable(client)`** sends each request as its `Abortable` twin (`Request`, `MultipartRequest` or
+  `StreamedRequest`, with the headers, the body and the redirect settings; a request that has a trigger of its own
+  is aborted by whichever fires first). Closing the wrapper does not close your client. The abort reaches the
+  network only if the client under it honours the trigger: `package:http`'s own clients and `RetryClient` do, a
+  `MockClient` leaves it to its handler.
+- It starts **no timer**: the cancellation runs inside `dispose`, which is synchronous.
+
+#### Server validation errors on forms
+
+A form shows the [`FieldErrors`](#forms-form-and-validate) its action threw under the field of the same name, and
+`form.error` shows `FieldErrors.message` and the messages of keys that are no field. `withFieldErrors()` on the
+action's own `Future` turns the server's answer into that exception, in whichever shape the server sends it:
+
+```dart
+// lib/app/(account)/nickname/action.dart
+Future<Profile> action(Ref ref, {required NicknameFields input}) async {
+  final res = await ref
+      .read(dio)
+      .put<Map<String, Object?>>('/me', data: {'nick_name': input.nickname, 'age': input.age})
+      // 422 {"errors": {"nick_name": ["That nickname is taken"]}} lands under the `nickname` field.
+      .withFieldErrors(fieldName: (key) => const {'nick_name': 'nickname'}[key] ?? key);
+  return Profile.fromJson(res.data!);
+}
+```
+
+It is an extension on the `Future`, **not an interceptor**: an interceptor can only reject with a `DioException`,
+and a form reads a `FieldErrors`. So it works on any `Future<T>`: a retrofit client's
+`api.updateProfile(...).withFieldErrors()` too, and for `package:http` there is one on `Future<http.Response>` (it
+returns the response when there is nothing to throw). Use it in an `action.dart`: a `data.dart` that gets a 422
+wants its `error.dart`. For a client with no `Future` to extend (chopper), `fieldErrorsOf(response.statusCode,
+response.body)` returns the `FieldErrors`, or null, and you throw it.
+
+The rules, in order (`fieldErrorsOf`):
+
+1. Only a status in `statuses` (default 400 and 422).
+2. The body is a JSON object: a decoded map, or a `String` or bytes holding one.
+3. The `decoder` (default `FieldErrorsDecoders.standard`, below) names the fields. Each field gets the **first**
+   message the server gave it, and `fieldName` renames the keys to the fields of the form's record (the first
+   wins when two keys end up with one name). A key that is no field shows in `form.error`.
+4. A **422** that names no field but says what is wrong in a string `detail` (problem+json) or `message` is a
+   `FieldErrors` with only that message. A 400 is never converted like that: a 400 with no field errors is usually
+   a bug of the client, which should reach your error reporting.
+5. Anything else: the original error is rethrown, the very same object.
+
+| Decoder          | Body (abridged)                                                         | Becomes                                                                                                                                                             |
+| ---------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `problemDetails` | RFC 9457 `errors: [{detail, pointer: "#/age"}]`                         | `age: ...`; a pointer is a dotted path (`#/profile/color` is `profile.color`); an entry with no pointer is the message                                              |
+| `problemDetails` | RFC 7807 `invalid-params: [{name, reason}]`                             | `name: reason`                                                                                                                                                      |
+| `problemDetails` | Spring `errors: [{field, defaultMessage}]`                              | `field: defaultMessage`                                                                                                                                             |
+| `errorsMap`      | ASP.NET Core, Laravel, Rails: `errors: {field: [message]}`              | `field: first message` (a `""` or `$` key is the message; the generic `message` of Laravel is not used while fields matched)                                        |
+| `jsonApi`        | `errors: [{source: {pointer: "/data/attributes/name"}, detail}]`        | `name: detail` (`/data/attributes/` and `/data/relationships/` are dropped)                                                                                         |
+| `fastApi`        | `detail: [{loc: ["body", "age"], msg}]`                                 | `age: msg` (a leading `body`, `query`, `path`, `header` or `cookie` is dropped)                                                                                     |
+| `flatMap`        | Django REST framework `{field: [message], non_field_errors: [message]}` | `field: ...`, and `non_field_errors` as the message. Not when `type`, `title`, `status`, `errors` or `detail` is a key, nor for a plain-string `message` or `error` |
+
+Each decoder asks for its exact shape and returns null for anything else, so a body that is not a validation error
+is never read as one; `standard` tries them in the order above. `FieldNames.camelCase` turns `first_name`,
+`FirstName` and `first-name` into `firstName`, each dotted segment on its own. It changes case only: `nick_name`
+becomes `nickName`, not `nickname`, so a name that differs by more is mapped by hand, as in the sample. A decoder of
+your own is a `FieldErrors? Function(Object? body)` that gets the body as a map.
+
+#### Writes are never retried, over HTTP too
+
+fespalier promises [a write is never retried](#actiondart-typed-writes): its generated provider does not use
+Riverpod's retry. A client's retry layer would break that promise from below: `dio_smart_retry` retries every method
+by default, and `package:http`'s `RetryClient` retries a 503 for every method. `WriteGuard` (Dio) and
+`WriteGuardClient` (`package:http`) keep it.
+
+```dart
+final dio = Provider<Dio>((ref) {
+  final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'));
+  dio.interceptors.add(
+    RetryInterceptor(                                    // dio_smart_retry: reads only
+      dio: dio,
+      retryEvaluator: WriteGuard.readsOnly(DefaultRetryEvaluator(defaultRetryableStatuses).evaluate),
+    ),
+  );
+  WriteGuard.install(dio);                               // the last call: it goes first
+  ref.onDispose(dio.close);
+  return dio;
+});
+
+final httpClient = Provider<http.Client>((ref) {
+  final client = RetryClient(                            // package:http/retry.dart: reads only
+    WriteGuardClient(http.Client()),                     // inside the RetryClient
+    when: WriteGuardClient.readsOnly(),                  // 503, for reads
+    whenError: WriteGuardClient.readErrorsOnly((error, stackTrace) => error is http.ClientException),
+  );
+  ref.onDispose(client.close);
+  return client;
+});
+```
+
+- **A write** is any method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, unless it carries an `Idempotency-Key` header
+  or `Options(extra: {WriteGuard.idempotent: true})` (a write you know is safe to repeat). `Options(extra:
+  {WriteGuard.write: true})` makes any request one. `WriteGuardClient.isWrite(request)` is the same rule, without the
+  `extra`.
+- **`WriteGuard` refuses a second send of a write** and hands the caller the error of the first, so a retrier that is
+  not told about writes still cannot repeat one. It must be **first** in the interceptors: it records the error of
+  the first send before any interceptor that re-sends sees it. `WriteGuard.install(dio)` puts it there, once, so call
+  it after adding the others. With a retrier that is asked "is this retryable?", `WriteGuard.readsOnly(evaluator)`
+  answers no for a write before calling yours, so it does not even wait out its delay.
+- **A debug build says why**, once per request, with the method and the path (never the host, the query or the
+  body):
+
+  ```text
+  fespalier_dio: PUT /me failed and was about to be sent again. A write is never retried, so its first error is returned. Give the retry interceptor WriteGuard.readsOnly(...) as its evaluator, or add an Idempotency-Key header to a write that is safe to repeat.
+  ```
+
+  A retrier that sits **before** the guard sees the error first and sends the write again before the guard has
+  recorded anything: the second send fails with a `DioException` whose `error` is `WriteNotRetried`.
+- **One exception: a send after a 401.** The server refused it before running it, and that is what an
+  authentication refresh sends again (`fespalier_auth`'s `SessionInterceptor` marks it `authReplayKey`). It is
+  allowed once per 401, for a response the client accepted as well (`validateStatus`).
+- **`package:http`.** `WriteGuardClient` forwards every request unchanged and remembers, by identity, which responses
+  and which errors came from a write; `readsOnly()` and `readErrorsOnly(whenError)` consult that. Put it inside the
+  `RetryClient`, and give the retry client **both** predicates: `RetryClient` retries a 503 for any method otherwise.
+  A response that says nothing about its request, and went through no `WriteGuardClient`, is not retried.
+- **Two retry layers multiply.** fespalier already retries a failing `data.dart` (Riverpod's retry, see
+  [Retries and reloads](#retries-and-reloads)), and an HTTP retrier under it multiplies the attempts. Keep one:
+  either the data retry with no HTTP retrier, or an HTTP retrier for reads with `data_retry: none` (or a
+  `ProviderScope(retry:)` that returns null).
+
 ### Links: `RouteLink`
 
 `RouteLink` (since 0.5.0) is a link to a route: a real `<a href>` on the web, a plain widget
@@ -3074,6 +3799,7 @@ everywhere else, and a click that goes through go_router either way.
 RouteLink(
   to: ProductRoute(id: p.id),     // any typed route; or `uri: Uri.parse('/products/2')`
   preload: Preload.intent,        // none (default) | intent | visible
+  onPreload: (context) => ...,    // runs when the preload starts: what else the page needs (since 0.9.0)
   method: LinkMethod.go,          // go (default) | push | replace
   builder: (context, follow) => ListTile(title: Text(p.name), onTap: follow),
 )
@@ -3149,6 +3875,27 @@ releasing its handle drops the data only.
 
 The same call is there without a widget, for your own queue: `ProductRoute(id: 2).preload(ref)`
 and `AppRoutes.preload(ref, uri)` return one `PrefetchHandle`; close it when the lease ends.
+
+**`onPreload`** (since 0.9.0) is for what the page needs that is not a provider, such as the image it shows,
+at the size it shows it. It runs with the link's `BuildContext` right after the link starts `route.preload(ref)`:
+for `Preload.intent` on the first intent (and on the next one after a failed preload), for `Preload.visible`
+each time the link comes back on screen. It is not called when the link preloads nothing (`Preload.none`,
+or a `uri:` link no `RouteLinkScope.match` matches). It must return at once, and what it throws is reported
+with `FlutterError.reportError` (library `fespalier`, `while running onPreload of a RouteLink to
+/products/3`) while the preload goes on. The page's size is known only where there is a `BuildContext`,
+which is why this is a callback of the link and not part of `route.preload(ref)`:
+
+```dart
+RouteLink(
+  to: ProductRoute(id: p.id),
+  preload: Preload.intent,
+  // The page shows the photo pagePhotoSize wide: warm that size, not the row's.
+  onPreload: (context) => ResponsiveImage.precache(context, p.image, width: pagePhotoSize, aspectRatio: 1),
+  builder: (context, follow) => ListTile(title: Text(p.name), onTap: follow),
+)
+```
+
+See [Precaching an image behind a link](#precaching-an-image-behind-a-link).
 
 `RouteLink` needs the app's `ProviderScope` above it, like every fespalier page, even when it
 preloads nothing. It depends on `package:url_launcher` (only its `Link`; nothing is launched,
@@ -3515,8 +4262,9 @@ lib/app/
 ```
 
 All three are optional. With none of them, `main: auto` (the default) writes nothing and your own
-`main()` keeps working; any one of them makes `fsp` write `lib/app.main.g.dart`. `app.g.dart` is
-the same bytes whether or not they exist.
+`main()` keeps working; any one of them makes `fsp` write `lib/app.main.g.dart`, and so does an
+[`adapters:`](#adapters-in-the-generated-main) list (since 0.9.0). `app.g.dart` is the same bytes whether
+or not they exist.
 
 **`app.dart`** is a view file: one public widget class (of any kind: a `ConsumerWidget` to read a
 theme-mode provider is the point) or a function `Widget app({required GoRouter router})`. It
@@ -3667,6 +4415,105 @@ parameter says "the app's widget gets the router: add `required this.router` (a 
 file is not the app around the router, move it out of the app folder's root or set `main: manual`".
 `examples/minimal`, `shop` and `features` use the generated `main()` (`features` has all three
 files and a `zone()`), and `examples/tabs` keeps a `main()` of its own.
+
+### Adapters in the generated `main()`
+
+Since 0.9.0 a package can plug into the generated `main()` (the [section above](#main-appdart-startupdart-and-splashdart))
+with one line in `pubspec.yaml`, instead of code you write in `startup.dart`:
+
+```yaml
+dependencies:
+  my_tools: ^1.0.0 # a package that ships lib/fespalier_adapter.dart
+  my_reporter: ^1.0.0
+fespalier:
+  adapters: [my_tools, my_reporter] # Dart package names, in order
+```
+
+**The convention.** `fsp` has no table of packages and reads no manifest: for each name `n` it imports
+`package:n/fespalier_adapter.dart` and calls its top-level `adapter`, a `FespalierAdapter` from
+`package:fespalier/startup.dart`. The output depends on the pubspec alone, never on `pub get` or the pub
+cache, so `fsp check` gives the same bytes before and after it, and a package of your own can be an adapter:
+
+```dart
+// package:my_tools/fespalier_adapter.dart
+import 'package:fespalier/startup.dart';
+
+const adapter = MyToolsAdapter();
+
+class MyToolsAdapter extends FespalierAdapter {
+  const MyToolsAdapter();
+
+  @override
+  List<ProviderObserver> providerObservers() => [MyObserver()];
+}
+```
+
+The adapters on the [roadmap](ROADMAP.md) (error reporting, analytics, notification and shortcut launches, ...)
+are packages of this kind. `FespalierAdapter` has six members, each with a default that adds nothing, so an
+adapter overrides what it needs:
+
+| Member                | When it runs                                                                           | What it is for                                                                                                 |
+| --------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `zone(body)`          | Around **all** of `main()`, outside startup.dart's `zone()`; before the binding exists | An SDK that wraps the app (`SentryFlutter.init(..., appRunner: body)`). Call `body` once                       |
+| `beforeRun()`         | In `main()` after `WidgetsFlutterBinding.ensureInitialized()`, before `runApp`         | Installing a telemetry sink (`FespalierTelemetry.add`), opening a store. Return `null` for nothing to wait for |
+| `overrides()`         | Once, after `startup()` succeeded, **before** `startup()`'s own overrides              | `dataCacheStorage`, `reconnectSignal`, a flag source                                                           |
+| `providerObservers()` | With `startup()`'s `providerObservers`, the adapters' first                            | A `ProviderObserver`                                                                                           |
+| `routerObservers()`   | When the router is built, before startup.dart's `routerObservers`                      | A `NavigatorObserver` (a new one on each call: an observer belongs to one navigator)                           |
+| `wrap(root)`          | Around the root widget, outside the `ProviderScope` and the splash too                 | `SentryWidget`, `PostHogWidget`                                                                                |
+
+The first package in the list is the outermost: its zone and its wrapper go around the others'. Each name
+must be under `dependencies:` in the pubspec; a name that is
+not a package name, is listed twice, is `fespalier` itself, or is not a dependency is an error, and so is
+`main: manual` with `adapters:` (the generated `main()` is what calls them). `adapters:` makes `main: auto`
+write `lib/app.main.g.dart` even with no `app.dart`, `startup.dart` or `splash.dart`. There are no
+per-adapter options in the pubspec: what an adapter needs at deploy time comes from `--dart-define`, and
+anything custom stays in `startup.dart`, which is yours.
+
+With `adapters: [my_tools, my_reporter]` and a `startup.dart` with a `zone()` and a
+`routerObservers`, the lines of `lib/app.main.g.dart` that are new (the rest is what the root files
+alone make):
+
+```dart
+import 'package:my_tools/fespalier_adapter.dart' as _a0;
+import 'package:my_reporter/fespalier_adapter.dart' as _a1;
+
+  static Future<void> run() => _a0.adapter.zone(() => _a1.adapter.zone(() => _i1.zone(_main)));
+
+    if (_a0.adapter.beforeRun() case final ready?) await ready;
+    if (_a1.adapter.beforeRun() case final ready?) await ready;
+
+  static Widget root({GoRouter Function() router = _router}) => _a0.adapter.wrap(_a1.adapter.wrap(StartupGate(
+    extraOverrides: _extraOverrides,
+    // ... overrides:, observers:, router:, app: as before
+  )));
+
+  static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers(), ..._a1.adapter.routerObservers(), ..._i1.routerObservers];
+
+GoRouter _router() => AppRoutes.router(observers: AppMain.routerObservers());
+List<Override> _extraOverrides() => [..._a0.adapter.overrides(), ..._a1.adapter.overrides()];
+```
+
+Without `adapters:` none of these lines is written, and the file is what it was.
+
+**What stays true.** An adapter follows the rules of fespalier itself: no timer, sync stays sync (a
+`beforeRun()` that returns `null` is not awaited, so no `Future` and no microtask; a `Future` is awaited and
+delays the first frame, with the platform's native splash still showing, so keep it to a local read, never
+the network), and nothing touches a platform plugin until it is used, so `AppMain.root()` boots in a widget
+test. `overrides()` goes before `startup()`'s: overriding a provider `startup()` also overrides is
+Riverpod's "Tried to override a provider twice" in debug.
+
+**Two things to check.**
+
+- **`lib/main.dart` has to call `AppMain.run()`.** Adapters are wired by the generated `main()`: an app
+  whose own `main()` still runs `runApp` by hand ignores them, without a message (`fsp` does not read
+  `lib/main.dart`). The line is `Future<void> main() => AppMain.run();`.
+- **An `app.dart` that builds the router** (`GoRouter router()`) has to pass the adapters' observers on:
+  `AppRoutes.router(observers: AppMain.routerObservers())`. Without that `fsp` warns, on app.dart at the
+  function: ``app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there``.
+
+**In tests.** `pumpRouter(tester, router, app: AppMain.app)` (see [Testing](#testing)) never sees the
+adapters, and neither do the [`fsp test`](#route-smoke-tests-fsp-test) smoke tests. `AppMain.root()` is the
+app as it runs, adapters included.
 
 ### Scroll restoration
 
@@ -4694,13 +5541,454 @@ for a saving smaller than its bookkeeping. The walk is 80 ms at 5,000 routes, an
 files a small part of it; a cache keyed on modification times would save less than it risks
 (an edit in the same timestamp tick, a file replaced by one with the same size and time).
 
+## Authentication
+
+Since 0.9.0. fespalier's core has no auth feature, and gains none: no file kind, no `fespalier:` key, no `fsp`
+command, and `app.g.dart` is the same bytes. `package:fespalier_auth` is the pattern of
+[Guards](#guards) packaged: a session provider, guards for `guard.dart`, token storage, lazy refresh with a
+single flight and an authenticated HTTP client, behind one `AuthBackend` interface. An app that does not
+depend on it is unchanged, and it adds no timer and no listener to one that does.
+
+- **The session** is a provider, `authSession`, whose state is sealed: `SessionRestoring`,
+  `SignedOut(reason)` and `SignedIn(session)`.
+- **`restoreAuth(config)`** in `startup()` reads the stored session before the first frame, and never touches
+  the network.
+- **The guard helpers** (`requireSignedIn`, `requireRole`, `requireUser`, `redirectIfSignedIn`) are plain
+  Dart over a `Ref`, so a guard stays synchronous, and signing in navigates back by itself.
+- **`authHttpClient`** is a `package:http` client that attaches the session to your API's requests, refreshes
+  once when the token has expired and sends a request again after a 401.
+- **`package:fespalier_auth/testing.dart`** has `fakeAuth(...)`: a signed-in or signed-out test in one line.
+
+### Installing fespalier_auth
+
+Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if
+they are the same repository dependency; a mismatch fails with `Because every version of fespalier_auth from
+path depends on fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and
+demo depends on fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier,
+fespalier_auth from path is forbidden.`, the form it takes when the first is a path):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.9.0
+  fespalier_auth:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_auth
+      ref: v0.9.0
+```
+
+<!-- x-release-please-end -->
+
+The package needs Dart 3.8 and Flutter 3.32 or newer. Its one plugin is `flutter_secure_storage` (the token
+store; its Android minSdk is 24, and `>=10.0.0 <12.0.0` is accepted), so it is in an app that imports this
+package whichever backend it uses. A backend that is an SDK of its own (Firebase, Supabase) keeps its own
+session and does not use the store.
+
+### The session
+
+```dart
+final state = ref.watch(authSession); // SessionRestoring | SignedOut | SignedIn
+```
+
+| Provider                         | What it is                                                                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `authSession`                    | The `SessionState`, and `ref.read(authSession.notifier)` for `signIn`, `adopt`, `signOut` and `tokens()`. Not auto-disposed           |
+| `isSignedIn` (a `bool`)          | What a guard watches: a token refresh does not change it                                                                              |
+| `authUser` (`AuthUser?`)         | The user: `id`, `roles`, `claims`, `email`, `name`. Changes when the user or their roles do, never on a refresh that changes nothing  |
+| `authUserId` (`String?`)         | Watch it in a `data.dart` whose data belongs to the user: another user loads it again, a token refresh does not                       |
+| `authConfig`, `authInitialState` | The app's `AuthConfig`, and what `restoreAuth` read. Reading `authConfig` with no override throws a `StateError` that says what to do |
+
+There is **no `refreshing` state**: a refresh keeps `SignedIn` and swaps the tokens, so a guard that watches
+the session never runs again, and a request is never bounced to the sign-in page in the middle of one. When
+the server refuses the refresh token, the state becomes `SignedOut(reason: SignOutReason.expired)` (the
+sign-in page can say "your session expired"); `SignOutReason.user` is a sign-out, and `keyLost` is a session
+bound to a device key that is gone (see below). `AuthTokens`, `AuthUser`, `AuthSession` and `PasswordSignIn`
+print without a token, an id, an e-mail or a password (`AuthUser(roles: {admin})`), so a log line is safe.
+`unverifiedJwtClaims(token)` reads a JWT's payload for display and routing; it does not verify it, and the
+server still decides.
+
+### Restoring at startup
+
+```dart
+// lib/app/startup.dart
+FutureOr<List<Override>> startup() => restoreAuth(authSetup());
+
+// lib/auth_setup.dart
+AuthConfig authSetup() => AuthConfig(
+  backend: ApiBackend(Uri.parse('https://api.example.com')), // an AuthBackend
+  apiOrigins: [Uri.parse('https://api.example.com')],        // where the session is sent: nothing else
+);
+```
+
+`restoreAuth` returns the overrides for the app's `ProviderScope` (the generated `main()` calls
+[`startup()`](#main-appdart-startupdart-and-splashdart) and passes them), so every guard is synchronous from
+the first navigation: a cold deep link to a signed-in page has no blank frame and no redirect. It is
+**synchronous** when the store answers synchronously (`MemoryTokenStore`, a backend that keeps its own
+session) and one keychain read otherwise (`SecureTokenStore`, the default), shown behind `splash.dart`, or the
+native splash when there is none. It does **no network**: an expired access token is refreshed by the first
+request that needs it, so an offline start works. It drops what it cannot trust, without a request:
+
+| Stored session                                                                                  | Result                                                                                                      |
+| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| none                                                                                            | `SignedOut()`                                                                                               |
+| another backend's (`AuthBackend.name` differs)                                                  | deleted, `SignedOut()`                                                                                      |
+| refresh token expired (`refresh_expires_in`), or the access token expired with no refresh token | deleted, `SignedOut(reason: SignOutReason.expired)`                                                         |
+| bound to a DPoP key that is gone, or another                                                    | deleted, `SignedOut(reason: SignOutReason.keyLost)`                                                         |
+| corrupt                                                                                         | reported (`FlutterError.reportError`, context `while restoring the stored session`), deleted, `SignedOut()` |
+
+A store that cannot be read at all (a locked keychain) makes `startup()` fail, which the generated `main()`
+shows with a retry. `AuthConfig` has `backend`, `store`, `apiOrigins` and `leeway` (30 seconds before expiry
+an access token counts as expired). A stored session is `AuthSession.toJson` under one key
+(`fespalier_auth.session`): the Keychain with `first_unlock_this_device` (not in backups, not on another device),
+Android's encrypted storage, and on the web encrypted `localStorage`, which a script on the page can read: use
+`MemoryTokenStore` there (a reload signs out) for anything that matters. Install the telemetry sink first in
+`startup()` to see the restore as a span.
+
+An app with no `startup.dart` still works: add `authConfig.overrideWithValue(config)` to the `ProviderScope`,
+and the session restores itself at the first read. The state is `SessionRestoring` meanwhile, and the guard
+helpers return a `Future` for that long, which costs a frame.
+
+### Guarding signed-in routes
+
+```dart
+// lib/app/(signed-in)/guard.dart: every route under the group needs a session
+GuardResult guard(Ref ref, {required Uri uri}) =>
+    requireSignedIn(ref, uri, signIn: (from) => SignInRoute(from: from));
+
+// lib/app/(signed-in)/admin/guard.dart: and this one an admin
+GuardResult guard(Ref ref, {required Uri uri}) => requireRole(
+  ref, uri, 'admin',
+  signIn: (from) => SignInRoute(from: from),
+  forbidden: const ForbiddenRoute(),
+);
+
+// lib/app/sign-in/guard.dart: the sign-in page's own guard, beside the group
+GuardResult guard(Ref ref, {String? from}) => redirectIfSignedIn(ref, from: from);
+```
+
+- **`requireSignedIn(ref, uri, signIn:)`** returns `null` when signed in, else `signIn(uri.toString()).location`:
+  a typed call the compiler checks, with the requested location (query included) as `from`. It watches only
+  the session's phase, so it runs again on sign-out (the user is moved in that frame) and never on a refresh.
+  It answers **synchronously**, unless the session is still being restored.
+- **`requireRole(ref, uri, role, signIn:, forbidden:)`** is `requireSignedIn`, then `forbidden` when the user
+  lacks the role. **`requireUser(ref, uri, test, ...)`** takes a function of the `AuthUser` instead. They
+  watch only their own answer, so a role gained or lost runs the guard again, and a refresh does not.
+- **`redirectIfSignedIn(ref, from:)`** is for the **sign-in route's own** `guard.dart`: when there is a
+  session it returns `returnTo(from)`. It watches the session, so **signing in on that page sends the user
+  back to `from` by itself**, and the page has no navigation code. Without it, signing in changes the state
+  and nothing moves. `returnTo` refuses `//host`, `https://…` and `/\`, so a crafted `?from=` cannot send
+  the user elsewhere.
+- **The sign-in page sits beside the guarded group**, never inside it: a guard on the sign-in page would send
+  the user to the sign-in page. A guard under a **pushed** page reacts only when you pop back to it (see
+  [Guards](#guards)), so a sign-out button over a pushed page should navigate too:
+  `const HomeRoute().go(context)`.
+- A guard is not access control: the server decides what a token may do.
+
+### Signing in and out
+
+The sign-in page is a [form on an action](#forms-form-and-validate), and the backend throws
+`FieldErrors` for wrong credentials, which the form shows under its field:
+
+```dart
+// lib/app/sign-in/action.dart
+typedef SignInFields = ({String username, String password});
+
+SignInFields form() => (username: '', password: '');
+
+FieldErrors? validate(SignInFields input) => FieldErrors({
+  if (input.username.trim().isEmpty) 'username': 'Enter your user name',
+  if (input.password.isEmpty) 'password': 'Enter your password',
+});
+
+Future<void> action(Ref ref, {required SignInFields input}) async {
+  await ref
+      .read(authSession.notifier)
+      .signIn(PasswordSignIn(username: input.username.trim(), password: input.password));
+}
+```
+
+`signIn(request)` asks the backend, **stores the session, then** sets `SignedIn`, and rethrows what the
+backend threw with the state unchanged: `AuthCancelled` (the user closed a browser sign-in), `FieldErrors`
+(wrong credentials), `AuthRejected` (the server refused), or any other error (it could not ask). A sign-in
+overtaken by another one, or by a sign-out, throws `NotSignedIn` and changes nothing. The request is typed:
+`PasswordSignIn`, `BrowserSignIn`, or a subclass of `SignInRequest` of your own, so a page is the same
+whichever backend is configured, and a test swaps in `FakeAuthBackend`. `adopt(session)` signs in with a
+session the app obtained itself (a deep-link callback, a multi-step SDK flow), and throws an `ArgumentError`
+when it comes from another backend than the configured one.
+
+`signOut()` sets `SignedOut(reason: SignOutReason.user)` **synchronously**, so the guards move the user in that
+frame, then clears the store, runs the backend's `signOut` (best effort: its errors are swallowed, the user is
+out anyway) and resets the proof of possession. It does nothing when nobody is signed in.
+
+A backend is `AuthBackend`: `name` (a short constant, `oidc`, `firebase`, `api`: what a stored session is
+tied to, and telemetry's `fespalier.auth.backend`), `signIn`, `refresh` and `signOut`. `refresh` throws
+`AuthRejected` when the server refused (the session is over) and anything else when it could not ask (the
+session stays). The starter in `skills/fespalier-guards/references/auth-package.md` is a complete one over
+a JSON API: a `POST /auth/login` and `/auth/refresh`.
+
+### Calling your API
+
+```dart
+// lib/app/(signed-in)/orders/data.dart
+Future<List<Order>> data(Ref ref) async {
+  ref.watch(authUserId); // another user: load again; a token refresh: nothing
+  final response = await ref.watch(authHttpClient).get(Uri.parse('https://api.example.com/orders'));
+  if (response.statusCode != 200) throw ApiError(response.statusCode);
+  return Order.listFromJson(response.body);
+}
+```
+
+`authHttpClient` is a `SessionClient` on `authBaseClient` (override it with a `MockClient` in a test). A request
+to an origin in `AuthConfig.apiOrigins` carries `Authorization: Bearer <token>`; any other origin gets nothing,
+so a token cannot leak to a third party, and `apiOrigins` empty is an error the first time `authorizer` is read.
+
+- **Refresh is lazy and single-flight, with no timer.** `ref.read(authSession.notifier).tokens()` returns the
+  tokens **synchronously** while the access token is good, and starts one shared refresh when it has expired
+  (`expiresAt` less `leeway`, against `clock.now()`), after a 401 to the token in use, or when forced. Any number
+  of requests that find it expired wait for the same `Future`: with refresh-token rotation (Keycloak's "Revoke
+  Refresh Token"), a second refresh with the same token would sign the user out. The new tokens are stored
+  before the state publishes them, so a kill between the two leaves the store on the token the server accepts.
+- **A refresh the server refuses** (`AuthRejected`, an OAuth `invalid_grant`) signs the user out with `expired`
+  and clears the store. **One that could not run** (offline, a 5xx: `AuthUnavailable`, a `ClientException`)
+  keeps the session, and the next request asks again.
+- **At most three sends per request**: the first, one after a DPoP nonce challenge, and one after a 401 and a
+  refresh. Only a request that can be sent again (what `get`, `post`, `put`, `patch` and `delete` make) is:
+  a multipart or streamed body is sent once, and its caller gets the 401, after the refresh, so its next
+  attempt works. A second 401 is returned as it is.
+- **For a client of your own**, `ref.watch(authorizer)` has `authorize(method, uri)` (the headers) and
+  `retry(attempt, statusCode:, headers:)` (send again?).
+- **One container.** The single flight is per `ProviderContainer`: a second isolate or a second web tab that
+  refreshes the same rotating token gets `invalid_grant`. Refresh in one place, or do not turn rotation on.
+- **A replay is marked, and keeps its abort trigger.** A request that is sent again (after a 401 and a refresh, or after a DPoP nonce challenge) is `isAuthReplay(request)`
+  for `SessionClient` and `options.extra[authReplayKey]` (`'fespalier.auth.replay'`) for `SessionInterceptor`, so
+  a guard that refuses re-sends of writes can let that one through; the first send is not a replay. A request made
+  with `http.AbortableRequest(..., abortTrigger: future)` is copied with the same trigger (`package:http` 1.5.0 and
+  later), so aborting still cancels the replay when the page that wanted it goes away.
+- **Do not put `RetryClient` under the session.** `package:http`'s `RetryClient` sends the same headers again, so
+  under a client that signs requests it re-sends the same signature. With DPoP that is the same proof, and the server
+  refuses a reused `jti` (Keycloak answers `invalid_request` with `DPoP proof has already been used`). Wrap the
+  session client in a `RetryClient` instead, `RetryClient(ref.watch(authHttpClient))`, so each attempt asks the
+  authorizer for a proof of its own, and do not override `authBaseClient` with a `RetryClient` when the backend uses
+  DPoP.
+- **User data across users.** A `dataCache` keeps the previous user's data until it loads again: watch
+  `authUserId` in user-owned data and clear the cache storage on sign-out.
+
+### OpenID Connect and Keycloak
+
+`package:fespalier_auth/oidc.dart` (a separate library: an app that signs in some other way links none of
+it) has `OidcBackend`: the authorization code flow with PKCE (S256) for a **public** client, in pure Dart over
+`package:http`, with Keycloak's defaults. It owns the token exchange and the refresh, which is what makes the
+single flight, refresh-token rotation and [DPoP](#device-bound-tokens-dpop-with-fespalier_sign_keypair) on the
+token endpoint possible. The browser step is a function you give it, so the package links no plugin:
+`flutter_web_auth_2` (MIT; Android, iOS, macOS, web, Windows and Linux) is the usual one.
+
+```dart
+// lib/auth_setup.dart
+final issuer = Uri.parse('https://sso.example.com/realms/shop');
+
+AuthConfig authSetup() => AuthConfig(
+  backend: OidcBackend(
+    issuer: issuer,
+    clientId: 'shop-app',
+    redirectUri: Uri.parse('com.example.shop:/callback'),
+    endpoints: OidcEndpoints.keycloak(issuer), // no discovery request
+    openBrowser: openBrowser,
+  ),
+  apiOrigins: [Uri.parse('https://api.example.com')],
+);
+
+Future<Uri> openBrowser(Uri url, Uri redirect) async {
+  try {
+    return Uri.parse(
+      await FlutterWebAuth2.authenticate(
+        url: url.toString(),
+        callbackUrlScheme: redirect.scheme,
+        options: const FlutterWebAuth2Options(preferEphemeral: true),
+      ),
+    );
+  } on PlatformException catch (e) {
+    if (e.code == 'CANCELED') throw const AuthCancelled();
+    rethrow;
+  }
+}
+```
+
+The sign-in button calls `ref.read(authSession.notifier).signIn(const BrowserSignIn())` straight from its
+`onPressed` (a web popup is blocked when `signIn` runs later), and catches `AuthCancelled`. The sign-in guard
+moves the user. `BrowserSignIn` has `loginHint`, `prompt` (`login` shows the form over a single-sign-on cookie,
+`none` fails with `login_required`) and `parameters` (`{'kc_idp_hint': 'google'}`).
+
+- **What it checks.** The redirect: its `state`, its `error` (`access_denied` is `AuthCancelled`, anything
+  else an `OidcException`), its `iss` when present (RFC 9207, which Keycloak sends) and its `code`. Then the ID
+  token's `iss`, `aud` and `nonce`. The ID token's signature is **not** verified (OpenID Connect Core 3.1.3.7: it
+  came straight from the token endpoint over TLS). Every message is in the troubleshooting skill.
+- **Roles** come from the access token: `realm_access.roles` and `resource_access.<clientId>.roles`
+  (`keycloakRoles(clientId)`, the default; pass `roles:` to read another claim). Keycloak does not put them in
+  the ID token unless a mapper does.
+- **Discovery.** `OidcEndpoints.keycloak(issuer)` spells Keycloak's four endpoints, and
+  `OidcEndpoints.discover(issuer)` reads `<issuer>/.well-known/openid-configuration` and refuses a document whose
+  `issuer` is another one. Leave `endpoints:` out and discovery runs at the first sign-in or refresh, once.
+- **Sign-out** revokes the refresh token (RFC 7009), which makes Keycloak end the whole session, best effort.
+  `endBrowserSession(session)` also ends the browser's single-sign-on session through the end-session endpoint;
+  with `preferEphemeral: true` there is none to end.
+- **No timeout of its own** (that would be a timer): pass `client:` an `http.Client` that times out if you want one.
+  A confidential client (a `client_secret`) is out of scope: a mobile or web app is a public client.
+
+**Keycloak settings and traps**, read from a live Keycloak 26.8.0 (`examples/auth/keycloak/realm-fespalier.json`
+is a realm exported from it, and `packages/fespalier_auth/test/keycloak_live_test.dart` runs `OidcBackend`
+against it):
+
+- A **public client** with Standard flow on, Direct access grants off, and the client attribute
+  `pkce.code.challenge.method` set to `S256` (without a challenge the authorization endpoint answers
+  `error=invalid_request&error_description=Missing+parameter%3A+code_challenge_method`). Its **valid redirect
+  URIs** must list `redirectUri` exactly.
+- **"Revoke Refresh Token"** makes a refresh token good once: a second refresh with the same one answers
+  `invalid_grant` with `Maximum allowed refresh token reuse exceeded`, **and the whole session is then gone**.
+  That is why the refresh is a single flight, and why two isolates or two web tabs that share a session sign each
+  other out.
+- **The refresh token lives as long as the SSO session's idle timeout** (30 minutes by default; the token
+  response's `refresh_expires_in` says): a user who is away longer gets `invalid_grant` with `Token is not active`.
+  For longer sessions ask for the `offline_access` scope
+  (`OidcBackend(scopes: ['openid', 'profile', 'email', 'offline_access'])`).
+- **The issuer is Keycloak's configured hostname.** With `--hostname=http://10.0.2.2:8080` every token says
+  `http://10.0.2.2:8080/realms/...`, so an app that reaches the same Keycloak as `localhost` gets `the ID token was
+  issued by ..., not ...`. On an Android emulator, use `adb reverse tcp:8080 tcp:8080` and `localhost`, or give
+  Keycloak the `10.0.2.2` hostname.
+- **A single-sign-on cookie signs the user in again silently** after a sign-out, unless the browser session is
+  ephemeral (`preferEphemeral: true`) or the sign-in asks `BrowserSignIn(prompt: 'login')`.
+- `examples/auth` has the Docker command and the `--dart-define=OIDC_ISSUER=...` that runs the example against it.
+
+### Firebase, Supabase and your own API
+
+Firebase's and Supabase's SDKs keep the session and refresh it themselves, so their backends say
+`keepsOwnSession`: the token store is not used, `currentSession()` is read once at start-up (a one-shot read of the
+SDK, so the framework holds no listener), and `refresh` asks the SDK for new tokens. They are **recipes, not
+packages**: a first-party package for each would add a heavy SDK to every app and a release surface, and most of
+what `fespalier_auth` does would go unused there. The code, compiled by `just skill-samples`, is in
+`skills/fespalier-guards/references/auth-backends.md`:
+
+- **Firebase** (`firebase_auth`, no Linux): `signIn(PasswordSignIn)` is `signInWithEmailAndPassword`, whose
+  `wrong-password`, `invalid-credential` and `user-not-found` become `FieldErrors`; `refresh` is
+  `getIdTokenResult(true)`, and `user-disabled` or `user-token-expired` become `AuthRejected`. Initialise Firebase in
+  `startup()` before `restoreAuth`.
+- **Supabase** (`supabase_flutter`): its client **auto-refreshes with a timer by default**, so initialise it with
+  `authOptions: FlutterAuthClientOptions(autoRefreshToken: false)` and refresh lazily with `refreshSession()`.
+  Import it with a prefix: `gotrue` exports `AuthState`, `Session` and `User`.
+- **Your own API** (a username and a password): `examples/auth/lib/demo/demo_backend.dart`, which is tested. A wrong
+  password is a `FieldErrors`, a refused refresh token is `AuthRejected`, and a socket error or a 5xx keeps the session.
+
+`package:fespalier_auth/dio.dart` has `SessionInterceptor(authorizer, dio)`, the policy of `authHttpClient` on dio's
+types: `dio.interceptors.add(SessionInterceptor(ref.watch(authorizer), dio))`. `FormData` bodies are not sent again,
+and a refresh that could not run is a `DioException` whose `error` is the `AuthUnavailable`. dio is a dependency of
+`fespalier_auth`, and is tree-shaken when that library is not imported.
+
+### Device-bound tokens: DPoP with fespalier_sign_keypair
+
+`package:fespalier_sign_keypair` (a separate package, since 0.9.0) is **DPoP**
+([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449)) for `OidcBackend`: every token request, refresh and API call
+carries a proof, a JWT signed by a key that lives in the Secure Enclave (iOS, macOS) or the AndroidKeyStore
+(StrongBox or the TEE), through [flutter-sign-keypair](https://github.com/vaam-apps/flutter-sign-keypair). The server
+binds the access and refresh tokens to that key (`cnf.jkt`), so a token copied off the device is useless without the
+device. It implements `fespalier_auth`'s `ProofOfPossession`, so nothing else in the app changes:
+
+```dart
+// lib/auth_setup.dart
+AuthConfig authSetup() => AuthConfig(
+  backend: OidcBackend(
+    issuer: issuer,
+    clientId: 'shop-app',
+    redirectUri: Uri.parse('com.example.shop:/callback'),
+    endpoints: OidcEndpoints.keycloak(issuer),
+    openBrowser: openBrowser,
+    proof: DpopProof.device(), // throws DpopUnavailable on the web unless a fallback is given
+  ),
+  apiOrigins: [Uri.parse('https://api.example.com')],
+);
+```
+
+Install it next to `fespalier` and `fespalier_auth`, with the same `url` and `ref` for the three (its README has the
+block). It needs Dart 3.12 and Flutter 3.44, Android minSdk 24, iOS 15 and macOS 10.15, and it depends on
+flutter-sign-keypair **by git, pinned to a commit** (the repository is not on pub.dev), so `flutter pub get` clones
+`github.com/vaam-apps/flutter-sign-keypair`.
+
+- **What is sent.** A proof is `{typ: dpop+jwt, alg: ES256, jwk}` and `{jti, htm, htu, iat, ath?, nonce?}`, ES256
+  signed: `jti` is new for every send (retries included), `htu` has no query or fragment, `ath` is only on requests
+  that carry an access token, and the authorization request carries `dpop_jkt`, so the code is bound to the key too.
+  One signature per request, made by the secure element; nothing is cached (a proof is single-use), and no timer or
+  listener is started.
+- **Nonces and the clock.** A `DPoP-Nonce` from any response is kept per origin, and a `use_dpop_nonce` challenge
+  (an authorization server's `400`, a resource server's `401`) is answered once. When a server refuses a proof as not
+  active and its `Date` header says the device clock is more than 5 seconds off, the difference is applied to every
+  later `iat` and the request is sent once more. **Keycloak sends neither a nonce nor a `Date`**, so a wrong clock
+  there is `invalid_request` / `DPoP proof is not active`: set the clock.
+- **The key.** An *ambient* key (it never prompts), made on first use under the key id `fespalier_dpop`. Sign-out
+  deletes it (`rotateKeyOnSignOut`), so the next sign-in makes a new one and an old refresh token, even a stolen one,
+  is useless. `restoreAuth` signs the user out (`SignedOut(reason: SignOutReason.keyLost)`) when the key a stored
+  session is bound to is gone: a restored backup, a wiped keychain.
+- **Where there is no secure element** (the web, Windows, Linux, Fuchsia) `DpopFallback.refuse`, the default, throws
+  `DpopUnavailable`: a library that promises tokens bound to a device must not quietly give you tokens bound to
+  nothing. `DpopFallback.software` is a key in memory (its scalar is in the process; on the web it does not survive a
+  reload, so the session is signed out, unless you pass a `softwareStore`), and `DpopFallback.bearer` is no DPoP
+  (`device()` returns null; the client must not require DPoP-bound tokens). `requireHardware: true` makes a device
+  without a secure element fail instead (the iOS simulator has only the keychain).
+- **Keycloak** supports DPoP since 26.4. Switch on **Require DPoP bound tokens** on the client (the attribute
+  `dpop.bound.access.tokens`; `examples/auth/keycloak/` has a realm with such a client,
+  `fespalier-auth-example-dpop`). Read from Keycloak 26.8.0: errors are `invalid_request` with descriptions
+  (`DPoP proof is missing`, `DPoP proof is not active`, `DPoP proof has already been used`), a refresh token bound to
+  another key is `invalid_grant` / `DPoP confirmation doesn't match DPoP proof`, and a resource server's 401 is
+  `WWW-Authenticate: DPoP ... error="invalid_token"` for every problem with the proof.
+- **`RetryClient` goes over the session client**, never under it: it would send the same proof again, and the
+  server refuses a reused `jti` (see Calling your API).
+- **Tests.** `package:fespalier_sign_keypair/testing.dart` has `FakeDpopSigner` (a software key from a fixed scalar:
+  the same key and signature on every run) and `verifyDpopProof`, which a fake server checks every proof with and
+  which names the first check that failed. `examples/auth` runs a DPoP-checking demo server.
+
+### Testing signed-in routes
+
+`package:fespalier_auth/testing.dart` has `fakeAuth(...)`, the overrides for `pumpRouter`: signed in as the
+`AuthUser` you give, or signed out, on a `FakeAuthBackend` and a `MemoryTokenStore`, with no `startup()` and no
+network:
+
+```dart
+testWidgets('a member sees the orders', (tester) async {
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/orders'),
+    overrides: fakeAuth(signedInAs: const AuthUser(id: 'ada', roles: {'admin'})),
+  );
+  expect(currentLocation(tester), '/orders');
+});
+```
+
+Call it inside the test body, where the fake clock starts. Pass `backend:` to read its counters
+(`signIns`, `refreshes`, `signOuts`), to make it fail (`signInError`, `refreshError`) or to hold a call open
+(`gate`, a `Completer<void>`: a pending state to look at), `tokenLifetime:` to age the session with
+`tester.pump(const Duration(minutes: 6))`, `apiOrigins:` and `client:` (a `MockClient`) to test an API call.
+Signed out, a guarded route lands on `/sign-in?from=%2Forders`. In [`fsp test`](#route-smoke-tests-fsp-test),
+the setup file returns `fakeAuth(signedInAs: …)` from `overrides`, so guarded routes render:
+
+```dart
+// test/routes/setup.dart
+List<Override> overrides(String pattern) => fakeAuth(signedInAs: const AuthUser(id: 'ada'));
+```
+
+`FakeProof` stands in for a proof of possession, and `RecordingTelemetry` sees the `auth` spans (`#2 start auth
+refresh backend=fake trigger=expired`); [Telemetry conventions](#telemetry-conventions) lists their attributes.
+
 ## Telemetry
 
 Since 0.8.1, fespalier reports what it does while it routes: each navigation, guard and
 `redirect.dart` decision, `data.dart` load, action run and deferred-page load, with the pages that
 entered, were focused or left. fespalier has no OpenTelemetry dependency: it tells a
 `FespalierTelemetry` sink, and `package:fespalier_otel` is the sink that turns it into spans on the SDK
-that [`otel_zone`](https://github.com/vaam-apps/flutter-otel-zone) starts. A test installs a
+that [`otel_zone`](https://github.com/vaam-apps/flutter-otel-zone) starts. Since 0.9.0
+`package:fespalier_sentry` is the sink for [Sentry](#sentry-fespalier_sentry), errors first. A test installs a
 `RecordingTelemetry` instead.
 
 ### Turning it on
@@ -4715,8 +6003,10 @@ fespalier:
 `fsp gen` then passes a `const TelemetrySite('products/$id/data.dart', route: '/products/:id')` to each
 guard, `data.dart` provider and action, gives each deferred library its page's pattern, and has
 `AppRoutes.attach` follow the router (`AppRoutes.router()` calls it; an app that mounts the tree in a
-`GoRouter` of its own calls `AppRoutes.attach(router)` once with that router). A value that is not a bool
-is an error. Without the key, the generated file is exactly what it was before 0.8.1.
+`GoRouter` of its own calls `AppRoutes.attach(router)` once with that router). Since 0.9.0 each data
+provider also calls `data()` inside a closure, `traceDataCall(ref, 'd4', id, () => data(ref, id: id), ...)`,
+so a sink can [run it inside the span](#spans-around-data-and-actions). A value that is not a bool is an
+error. Without the key, the generated file is exactly what it was before 0.8.1.
 
 At run time nothing is reported until the app installs a sink, before `runApp` and before the router is
 built, so the first navigation is reported too:
@@ -4727,7 +6017,8 @@ FespalierTelemetry.install(sink); // null uninstalls
 
 A sink is called synchronously from the router, a provider or an action: it must return at once, must not
 throw (fespalier catches what it throws and prints `fespalier telemetry: <error> (not shown again)`
-once), and must not navigate or read a provider.
+once), and must not navigate or read a provider. There is one slot: a second `install` replaces the
+first. To report to several sinks, [combine them](#several-sinks-combine-and-add) (since 0.9.0).
 
 ### OpenTelemetry with otel_zone
 
@@ -4746,12 +6037,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.8.1
+      ref: v0.9.0
   fespalier_otel:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_otel
-      ref: v0.8.1
+      ref: v0.9.0
 ```
 
 <!-- x-release-please-end -->
@@ -4767,7 +6058,8 @@ dependencies:
 go_router 17 (fespalier accepts 17 and 18). An app that needs 18 adds `dependency_overrides: go_router:
 ^18.0.0`, as `otel_zone`'s README says. `examples/telemetry` is the one example on go_router 17.
 
-The wiring, in `main.dart` (`examples/telemetry` is this):
+The wiring, in `main.dart` (`examples/telemetry` is this, inside Sentry's zone since 0.9.0: see
+[Sentry](#sentry-fespalier_sentry)):
 
 ```dart
 final observability = OtelZone(
@@ -4808,6 +6100,397 @@ its body, so the app stays blank: it builds a `ReceivePort` first, which `dart:i
 there. `start()` itself works on the web. Until `otel_zone` guards that call, run the body as it is on the
 web, as `guarded` above does; the error hooks `runGuarded` installs are then not installed there.
 
+### Sentry: fespalier_sentry
+
+Since 0.9.0. `package:fespalier_sentry` is the `FespalierTelemetry` sink for [Sentry](https://sentry.io), and
+it is **errors first**: out of the box it sends what a team that debugs a production app asks for, and
+leaves performance monitoring to the teams that want it.
+
+- **Every error and crash, with where it happened.** An error that a guard, a `data.dart`, an action or a
+  deferred load threw is a Sentry event tagged with the route pattern (`/products/:id`, never the URL), the
+  app file (`products/$id/data.dart`) and, for an action, its function name, grouped by that file and not
+  by the Riverpod frames on top of the stack. The screen is also the scope's *transaction* name, the field
+  Sentry's issue list groups and searches by, so a crash that no fespalier operation reported says which
+  screen it happened on too.
+- **One breadcrumb per page change**, from the pattern of the page that was left to the pattern of the page
+  that is shown, so a report reads as the path the user took.
+- **Release health.** Sessions, crash-free users and crash-free sessions are the SDK's; a handled error
+  marks its session *errored*.
+- **A link to the OpenTelemetry trace.** Next to `fespalier_otel` (installed together with
+  [`FespalierTelemetry.combine`](#several-sinks-combine-and-add)), each event carries `otel.trace_id` and
+  `otel.span_id`: the trace of the span the failing call made, or, for a crash, of the navigation that
+  opened the screen. Search the trace id in your OpenTelemetry backend to see what the app did.
+
+Screen-load transactions, spans for guards, data loads and actions, and time to full display are opt-in
+(`FespalierSentry(tracing: true)`), for a team that has only Sentry: with `fespalier_otel` the traces are
+there already. fespalier has no Sentry dependency: `SentryFlutter.init` still starts the SDK, which owns
+the crash capture, the sessions, the native integrations and the transport, and this package only tells it
+what the router knows. Add it next to fespalier, with the same `url` and the same `ref` (as for
+`fespalier_otel`), and `sentry_flutter` 9.26.0 or newer, which the app needs for `SentryFlutter.init`:
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.9.0
+  fespalier_sentry:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_sentry
+      ref: v0.9.0
+  sentry_flutter: ">=0.9.0 <10.0.0"
+```
+
+<!-- x-release-please-end -->
+
+An error, from the call that failed to sentry.io (every arrow into the sink is a plain synchronous call; every
+SDK call that returns a `Future` is fired and forgotten):
+
+```text
+ your app (lib/app/**)          package:fespalier        package:fespalier_sentry            Sentry SDK
+ ─────────────────────          ─────────────────        ────────────────────────            ──────────
+ ProductRoute(id: 7).go(ctx)
+        └─────────────────────▶ navigation commits ─end(navigate)──▶ scope: transaction = '/products/:id',
+                                page events ───────page(enter)────▶ tag fespalier.route, tag otel.trace_id;
+                                                                    breadcrumb 'navigation' from → to
+ orders/$id/action.dart throws ─ action ends ───────end(error)─────▶ captureException(error,
+                                                                      tags: fespalier.route, .file,
+                                                                      .operation, .action, otel.*;
+                                                                      fingerprint: {{default}} + file) ──▶ event ──▶ sentry.io
+ something else crashes ───────────────────────────────────────────▶ the SDK's own capture: the event
+                                                                      has the scope's transaction and tags
+```
+
+#### What Sentry gets from fespalier
+
+| fespalier reports                                                       | In Sentry, by default                                                                                                                                                                         | With `tracing: true` too                                                                                |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| outcome `error` with an exception (guard, `data`, `action`, `deferred`) | an event, **handled**, mechanism `fespalier.{operation}`, tags `fespalier.operation`, `.route`, `.file` and `.action` (an action), fingerprint `['{{ default }}', file]`, context `fespalier` | the event belongs to the span of the operation that failed (status `internal_error`)                    |
+| the same failure again within `repeatWindow` (30 s)                     | a breadcrumb `data products/$id/data.dart StateError again`, not another event (Riverpod retries a failing `data()` up to ten times)                                                          | —                                                                                                       |
+| a `FieldErrors` (a validation answer)                                   | **not** an event: a breadcrumb `action ... rejected` (its messages can echo what the user typed)                                                                                              | the span has status `invalid_argument`                                                                  |
+| an `auth` step that fails (`fespalier_auth`)                            | not an event (the next request retries it): a breadcrumb with the class of the error, never its text                                                                                          | a span `fespalier.auth`                                                                                 |
+| an `image` that fails (`fespalier_image`)                               | a breadcrumb `image emgr error status=404`, never the URL                                                                                                                                     | a span `fespalier.image`, a child of the navigation in progress                                         |
+| a committed navigation                                                  | the scope's transaction name is the pattern, the tag `fespalier.route` too; with `fespalier_otel`, the tags `otel.trace_id` and `otel.span_id`                                                | a `ui.load` transaction named by the pattern, with `time_to_initial_display` and `time_to_full_display` |
+| a page `enter` or `focus`                                               | one breadcrumb, type `navigation`, `from` and `to` patterns (a leave is no breadcrumb: a page change is one)                                                                                  | —                                                                                                       |
+| a location that matched no route                                        | a warning breadcrumb `not found`, the transaction name `navigate (not found)`, no route tag                                                                                                   | a transaction with that name                                                                            |
+| a guard or `redirect.dart` that redirects                               | a breadcrumb `redirect by checkout/guard.dart` (the target only with `recordLocations: true`)                                                                                                 | spans `fespalier.guard` and `fespalier.redirect`                                                        |
+| an action that works                                                    | a breadcrumb `items/$id/action.dart#rename ok`, never its input or its result                                                                                                                 | a span `fespalier.action`, a child of the open screen's transaction or a transaction of its own         |
+| a `data` load, a `deferred` load                                        | nothing                                                                                                                                                                                       | spans `fespalier.data` and `fespalier.deferred`; the screen ends when its last data load does           |
+| a pop, a refresh                                                        | a breadcrumb and the scope's name                                                                                                                                                             | no transaction: they show a page that is already built                                                  |
+| a navigation that a newer one superseded                                | nothing                                                                                                                                                                                       | not sent                                                                                                |
+
+The keys are the telemetry conventions' names (contract version 1), so a search in Sentry and a query in
+OpenObserve use the same words. How they map onto Sentry is documented with this package and is not part of
+contract version 1.
+
+What leaves the app, and what never does:
+
+| Sent                                                                                 | Never sent by `fespalier_sentry`                                                                                                                      |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| route patterns, app file paths, action function names, enum-like outcomes, durations | segment values, query values (`recordLocations: true` adds only the committed **path**), family keys, `extra`, action inputs and results, data values |
+| the exception, its type and its stack                                                | a `FieldErrors`                                                                                                                                       |
+
+Exception **text** is the app's: Sentry sends it as it is, so redact what your app knows to be sensitive in
+`options.beforeSend`, as with any Sentry app.
+
+#### Wiring Sentry
+
+Sentry starts first: its `appRunner` runs the binding, `startup()` and `runApp`, so crashes are Sentry's. In
+`lib/app/startup.dart`:
+
+```dart
+Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
+  (options) => FespalierSentry.configure(
+    options,
+    dsn: const String.fromEnvironment('SENTRY_DSN'), // empty: Sentry is off
+    propagateTraceTo: const ['api.example.com'],
+  ),
+  appRunner: body,
+);
+
+/// Before the router is built, so the first navigation is reported. Sync: the first frame is the app.
+void startup() => FespalierTelemetry.install(FespalierSentry());
+
+/// Release health on the web needs it; it makes no transaction.
+List<NavigatorObserver> get routerObservers => [
+  if (kIsWeb) FespalierSentry.navigatorObserver(),
+];
+```
+
+Next to OpenTelemetry (`otel_zone`), install both in the one slot. Do **not** also use `OtelZone.runGuarded`:
+its zone sends an uncaught async error to Talker only, and Sentry would never see it (it is also blank on the
+web); start the SDK with `observability.start()` in `startup()` instead:
+
+```dart
+Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
+  (options) => FespalierSentry.configure(options, dsn: const String.fromEnvironment('SENTRY_DSN')),
+  appRunner: body, // not observability.runGuarded: Sentry captures the crashes
+);
+
+Future<void> startup() async {
+  FespalierTelemetry.install(
+    FespalierTelemetry.combine([
+      FespalierSentry(),
+      FespalierOtel(isReady: () => observability.isReady), // emits once start() below is done
+    ]),
+  );
+  await observability.start(serviceVersion: '1.4.0', resourceAttributes: {...FespalierOtel.resourceAttributes});
+}
+```
+
+The order rules:
+
+1. **Sentry is the outermost zone.** A zone around `SentryFlutter.init` on the web makes Sentry skip its own
+   `runZonedGuarded`, and uncaught errors go to that zone instead. Nothing may call
+   `WidgetsFlutterBinding.ensureInitialized()` before it.
+2. **Install the sink before the router exists**, in `startup()` or in `appRunner`.
+3. With `fespalier_auth`'s `restoreAuth`, install first, so the restore is reported.
+4. A failure while the app starts reaches Sentry through `FlutterError.reportError`, with no extra code.
+
+`FespalierSentry`'s options: `breadcrumbs: false` drops every breadcrumb but keeps the events;
+`routeTag: false` stops naming the scope after the screen (`fespalier.route` and the transaction name);
+`capture:` decides which failures are events (`FespalierSentry.unexpected` by default: all but a
+`FieldErrors` and an `auth` step); `repeatWindow:` is the 30 seconds after which the same failure is an
+event again (`Duration.zero`: every one); `recordLocations: true` adds a guard's redirect target and, with
+`tracing`, the committed path.
+
+#### One transaction per screen
+
+Performance monitoring is opt-in, and it is for a team that has only Sentry. Turn it on in both places, so
+that the SDK samples and the sink makes the transactions:
+
+```dart
+FespalierSentry.configure(options, dsn: dsn, tracing: true); // tracesSampleRate 1.0 in debug, 0.1 in release
+FespalierTelemetry.install(FespalierSentry(tracing: true));
+```
+
+Each navigation is then a `ui.load` transaction named by the route pattern, started as `navigate` (so the HTTP
+calls made during it have a parent) and renamed when the page is on screen; guards, redirects, data loads,
+deferred loads and actions are its child spans; the first frame is the transaction's *time to initial
+display* (`ui.load.initial_display`) and the arrival of the screen's last data load its *time to full
+display* (`ui.load.full_display`), the two spans and measurements that Sentry's Screen Loads view reads. A
+transaction ends when its data arrives or when the next navigation starts, whichever is first (the old
+screen's time to full display is then `deadline_exceeded`, with no measurement): fespalier starts no timer
+for it. `fullDisplay: false` ends it at the first frame.
+
+Sentry's own `SentryNavigatorObserver` also makes one `ui.load` per route it sees pushed: run both and every
+screen has **two transactions**. Use one or the other. With `FespalierSentry(tracing: true)` add
+`FespalierSentry.navigatorObserver()`, a `SentryNavigatorObserver(enableAutoTransactions: false)`, never a
+plain `SentryNavigatorObserver()`; with `transactions: false` a plain observer makes the transactions and
+the sink adds its data spans, time to full display, events and breadcrumbs to them (no guard, redirect or
+deferred span: they run before the observer's transaction exists).
+
+The first screen on Android and iOS has a transaction already: with tracing on and Sentry's defaults, its own
+app start is the first screen's `ui.load` (from the process start to the first frame, with the native spans).
+The sink opens none for that screen, and tells it when the screen's data is in
+(`SentryFlutter.currentDisplay()?.reportFullyDisplayed()`); that screen's guard and data spans are not
+recorded. With `enableStandaloneAppStartTracing: true` (Sentry 9.26.0, experimental) app start is a trace of
+its own, and the first screen is an ordinary one with all its spans: **recommended** with `tracing: true`.
+On the web and on the desktop the first screen is an ordinary one.
+
+An HTTP span made inside `data()` is a child of the screen's transaction, beside the data span, and not
+of the data span: Sentry's HTTP integrations parent to the scope's span. (`fespalier_otel` next to it
+parents them to the data span.)
+
+#### Sentry defaults and privacy
+
+`FespalierSentry.configure(options, dsn:, ...)` is called first in `SentryFlutter.init`'s configuration; a
+callback the app set before it is kept and runs before its own:
+
+| Option                                    | Set to                                                                                                                                                                                                  | Sentry's default  | Why                                                                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `dsn`                                     | `dsn` (`''` sends nothing)                                                                                                                                                                              | none              | `const String.fromEnvironment('SENTRY_DSN')`: a build without the define is silent                                             |
+| `sendDefaultPii`                          | `false`                                                                                                                                                                                                 | `false`           | explicit                                                                                                                       |
+| `attachScreenshot`, `attachViewHierarchy` | `false`                                                                                                                                                                                                 | `false`           | a screenshot or a widget tree can show user data                                                                               |
+| `enableAutoSessionTracking`               | `true`                                                                                                                                                                                                  | `true`            | release health                                                                                                                 |
+| `tracesSampleRate`                        | `tracesSampleRate:`; with `tracing: true` and none, 1.0 in debug and profile and 0.1 in release; else untouched                                                                                         | none (no tracing) | tracing is the opt-in; 10 % in release caps the quota                                                                          |
+| `enableTimeToFullDisplayTracing`          | `true` with `tracing: true`                                                                                                                                                                             | `false`           | time to full display of Sentry's app start                                                                                     |
+| `tracePropagationTargets`                 | `propagateTraceTo:` (empty: no trace header leaves the app)                                                                                                                                             | `['.*']`          | `baggage` names the release, the environment, the public key and the screen: send it to your API only                          |
+| `beforeBreadcrumb`                        | the app's, then the query and fragment taken off HTTP breadcrumbs (`recordQueries: true` keeps them), then `SentryNavigatorObserver`'s own breadcrumbs dropped (`observerBreadcrumbs: true` keeps them) | none              | `sentry_dio` and `SentryHttpClient` breadcrumbs carry `http.query`; this sink's page breadcrumbs say the same with the pattern |
+| `beforeSend`                              | the app's, then the query and fragment taken off the event's request                                                                                                                                    | none              | a request carries `queryString`                                                                                                |
+| `beforeSendTransaction`                   | the app's, then the query taken off span data (`recordQueries: true` keeps it), and a superseded navigation dropped                                                                                     | none              | HTTP spans carry `http.query`; a superseded navigation never showed a screen                                                   |
+
+Not touched: `environment`, `release`, `dist` (Sentry derives `name@version+build`), `captureFailedRequests`
+and session replay (off by default). Two lines are printed in a debug build, once: with `tracing: true` on
+an SDK whose `traceLifecycle` is `stream` (this version makes no spans for it; the events and breadcrumbs are
+still sent), and with `tracing: true` on an SDK that samples nothing (no transaction is sent). A
+`tracesSampleRate` outside 0 to 1 throws an `ArgumentError`. **What it costs:** not installed, nothing: no
+code of it runs and `app.g.dart` is the same bytes. Installed, every call is synchronous and returns at once,
+a sync guard or `data()` stays sync, it starts no timer and no listener (the SDK's own timers belong to the
+SDK, and `tracing: true` never asks for one), and every SDK call is inside a `try`, so a failing SDK costs an
+event, never a feature.
+
+#### Testing with Sentry
+
+`package:fespalier_sentry/testing.dart` has `RecordingSentry`: a real Sentry `Hub` over `SentryFlutterOptions`
+whose transport keeps what it would send, so a test reads the naming, the tags, the fingerprint and the
+envelope the SDK built, with no `SentryFlutter.init`, no native SDK, no timer and no network:
+
+```dart
+testWidgets('a refused refund is an event on its route and its file', (tester) async {
+  final sentry = RecordingSentry();
+  FespalierTelemetry.install(FespalierSentry(hub: sentry.hub));
+  final router = AppRoutes.router(initialLocation: '/orders/1');
+  await pumpRouter(tester, router);
+  await tester.tap(find.text('Refuse'));
+  await tester.pumpAndSettle();
+  await tester.pump(); // the SDK hands the event to its transport a few microtasks later
+  expect(await sentry.lines(), [
+    r'event StateError operation=action route=/orders/:id file=(tabs)/orders/$id/action.dart action=action',
+  ]);
+  expect(sentry.breadcrumbs, ['navigation enter /orders/:id']);
+});
+```
+
+`lines()` is one line per transaction, span and event without timestamps or ids (`transaction ui.load
+/orders/:id status=ok ttid ttfd`, then one indented `span fespalier.data ...` line for each of its spans, and
+`event StateError operation=data ...`); `sent()`
+is the JSON the SDK built, for the tags, the fingerprint and the contexts; `breadcrumbs`, `tags` and
+`transactionName` read the scope. `RecordingSentry(configure: (options) => ...)` runs after the test defaults
+(a made-up DSN, `tracesSampleRate` 1.0): run `FespalierSentry.configure` in it to test the defaults. A test
+of `tracing: true` navigates after the first screen, because on Android and iOS Sentry's app start owns
+that one (pass `platform: TargetPlatform.linux` to `FespalierSentry`, a `@visibleForTesting` parameter, to
+avoid it). `examples/telemetry/test/sentry_test.dart` does this next to the OpenTelemetry SDK's in-memory
+exporter.
+
+### Crashlytics
+
+Since 0.9.0 there is no `fespalier_crashlytics` package, on purpose. Crashlytics has no spans: its
+integration is three calls (`recordError`, `log`, `setCustomKey`), and the policy (skip a `FieldErrors`; tag the
+route and the file) is a few lines in a `FespalierTelemetry` subclass of your own whose `end` records a
+non-fatal error, whose `page` logs the page change and whose navigation end sets the route as a custom key.
+It uses `if` chains and not a `switch` over `TelemetryOp`, so an operation added later never breaks the app's
+build, and `FespalierTelemetry.combine([FespalierSentry(), yourSink])` sends to both.
+
+### Several sinks: combine and add
+
+Since 0.9.0. `install` holds one sink, so OpenTelemetry for the traces, Sentry for the crashes and an
+analytics SDK for the screens would replace one another. `FespalierTelemetry.combine` makes one sink of
+several, which tells each of them everything, in the order of the list:
+
+```dart
+FespalierTelemetry.install(
+  FespalierTelemetry.combine([
+    FespalierOtel(isReady: () => observability.isReady),
+    AnalyticsTelemetry(),
+  ]),
+);
+```
+
+`FespalierTelemetry.add(sink)` is `install(combine([?current, sink]))`: it puts a sink next to the
+installed one. Use it where two places each install a sink, such as a package's setup and the app's own
+`startup()`, so that neither replaces the other. `install` still replaces everything and `install(null)`
+removes everything. A second `install` that was meant to add is the usual mistake: use `add`.
+
+- **Each sink has its own tokens.** The token a sink returns from `start` is what that sink, and only
+  that sink, gets back at `end`, at `page`, in `within`, and as the `TelemetryStart.parent` of what runs
+  during one of its navigations. A sink never sees another sink's token, so one sink's spans cannot become
+  another sink's parents, and `FespalierOtel` keeps its navigation as the parent of its guard, data and
+  deferred spans behind a `combine`.
+- **Each sink is isolated.** A sink that throws does not stop the others or the app: its error is printed
+  once, per sink, as `fespalier telemetry: <error> in <Sink> (not shown again)`, and it is called again at
+  the next operation. A sink that has no token for an operation (it returned null from `start`) is still
+  told the end, with null.
+- **Nesting.** A combined sink in the list is flattened, `combine([])` reports nothing and
+  `combine([sink])` is `sink`. For [`within`](#spans-around-data-and-actions) the first sink is the
+  outermost.
+- **Trace links.** A sink that makes OpenTelemetry spans can say which trace an operation is in: it
+  overrides `traceOf(token)` to return a `TelemetryTrace(traceId, spanId)` (32 and 16 lowercase hex
+  digits), and `combine` tells every other sink with `linkTrace(token, trace)`: with that sink's own token,
+  once per operation, right after every sink started it and before its `within` and `end`. `FespalierOtel`
+  answers `traceOf` with the span it made, and [`fespalier_sentry`](#sentry-fespalier_sentry) keeps what it
+  is told and tags its events with `otel.trace_id` and `otel.span_id` (since 0.9.0). The order of the list
+  does not matter, and with no sink that answers nothing is called.
+
+### Spans around data() and actions
+
+Since 0.9.0. A sink can make the span of a data load or an action the **current** one while `data()` or
+the action runs, so that the spans an HTTP client makes inside it (after an `await` too) are its children
+instead of the roots of traces of their own. fespalier calls `FespalierTelemetry.within` around them:
+
+```dart
+/// Runs [body] inside the operation [token] came from. The default calls [body].
+void within(Object? token, Object? Function() body) => body();
+```
+
+`FespalierOtel` overrides it with `Context.current.withSpan(span).runSync(body)`, so what Dartastic's
+`otel_http` and `otel_dio` instrument inside a `data()` or an action takes that span as its parent. A sink
+of your own overrides it the same way. The rules:
+
+- Call `body` once, synchronously, before you return. It returns what the operation returned (null when
+  it threw, which `end` says), so you may observe it: hand a `Future` to a vendor API that ends a span
+  when it settles. It never throws; fespalier rethrows what the operation threw after your method
+  returns.
+- fespalier returns the operation's **own** result, the very object, whatever `within` does: a value
+  stays a value (a sync `data()` is never made a `Future`, and no microtask is scheduled), and a `Future`
+  is the one Riverpod awaits. A sink cannot replace it. `body` runs exactly once, even for a sink that
+  never calls it, calls it twice or throws.
+- Run `body` in a zone you make with zone values only (`runZoned(body, zoneValues: {...})`). **Never give
+  that zone an error handler** (`runZonedGuarded`, `onError:`, a `ZoneSpecification` with
+  `handleUncaughtError`): a `Future` that fails in another error zone never reaches Riverpod, and the
+  page would stay on its loading view. fespalier refuses such a zone at run time: it runs `body` in the
+  caller's zone instead and prints, once, `fespalier telemetry: <Sink>.within changed the error zone, so
+  data() and actions run outside it (use runZoned with zoneValues, not runZonedGuarded) (not shown
+  again)`.
+- Behind a `combine`, each sink's `within` runs the next one's, so every sink's scope wraps `data()`, and
+  each sees what it returned.
+- Guards and deferred loads do not get `within`: a guard must stay cheap and a deferred load runs no app
+  code.
+
+`FespalierTelemetry.run(token, body)` is the same thing for an adapter package that starts operations of
+its own with `FespalierTelemetry.begin`: `body` runs once, synchronously, and what it returns or throws
+comes back. With no sink, or a null token, it is `body()`.
+
+Since 0.9.0 the generated data provider of an app made with `telemetry: true` is
+`traceDataCall(ref, 'd4', id, () => data(ref, id: id), telemetry: ...)`, and the data span starts
+**before** `data()` runs. What that changes for an app that already had telemetry:
+
+- `app.g.dart` gains the closure on each data provider (regenerate with `fsp gen`): one closure per
+  provider build, with no `Future` and no microtask. An app without `telemetry: true` keeps
+  `traceData(...)`, and its file does not change.
+- A `data` span's duration now includes the synchronous part of `data()`.
+- A `data()` that throws before it returns now has a `data` span, with `fespalier.data.state = error`
+  and `fespalier.async = false`; before 0.9.0 it had none.
+- `FespalierOtel` makes data and action spans current, so the HTTP spans of `otel_http` and `otel_dio` are
+  their children. A sink of your own that already had a member named `within` with another signature must
+  rename it.
+
+### Where a navigation came from: navigateFrom
+
+Since 0.9.0. A navigation that starts from a tap on a notification, a home-screen shortcut or widget, or a
+link a bridge handed over looks like any other `go` to fespalier. `navigateFrom` marks it:
+
+```dart
+// The app is running: a tap on a notification.
+navigateFrom(NavigationSource.notification, () => router.go('/orders/42'));
+
+// A cold start from the same tap: the router's initial location is the launch.
+final router = navigateFrom(
+  NavigationSource.notification,
+  () => AppRoutes.router(initialLocation: '/orders/42'),
+);
+```
+
+`NavigationSource` has `notification`, `shortcut`, `widget` and `link`. Telemetry reports the mark as
+`TelemetryStart.source` and, in `FespalierOtel`, as the attribute `fespalier.navigation.source` of the
+`navigate` span; a navigation the app's own code started has none. Nothing else changes: guards run as
+for any link, and `fespalier.navigation.kind` still says how the stack changed (a cold start is `initial`,
+a warm one `go` or `push`).
+
+- The closure runs once, synchronously, and what it returns is returned. The mark is taken by the **first**
+  navigation the closure starts and is dropped when the closure returns, so it cannot reach a later one.
+  A closure that starts no navigation, or goes where the router already is, leaves nothing behind.
+- fespalier never sets it by itself: a platform deep link and the browser's back button look the same to
+  it as any other navigation. The bridge that knows (a notification handler) calls `navigateFrom`.
+- A source that is not one of the four values is an `AssertionError` in debug: ``navigateFrom: `banner`
+  is not a NavigationSource value (notification, shortcut, widget or link)``.
+- `RecordingTelemetry` writes it as `source=notification` on the start line of the navigation, and only
+  when it is set.
+
 ### Telemetry conventions
 
 This section is **contract version 1**: dashboards and alerts are built on it. Within version 1 a change
@@ -4843,12 +6526,17 @@ redirects, async guards, the build of the new page and its first-frame loads.
 | `navigate`            | `navigate {route}`; `navigate (not found)`; `navigate` when superseded | a location is requested (`go`, `push`, `replace`, a tab switch, a deep link), a pop or a guard's refresh commits, or the router is attached | the end of the first frame rendered after the commit, or when a newer navigation starts before this one committed | none (a root span)                               |
 | `guard`               | `guard {file}`, e.g. `guard (members)/guard.dart`                      | the guard returned                                                                                                                          | the answer is known (sync: at once; async: when its `Future` settles)                                             | the pending `navigate`, else the current context |
 | `redirect`            | `redirect {file}`                                                      | as `guard`                                                                                                                                  | as `guard`                                                                                                        | as `guard`                                       |
-| `data`                | `data {file}`, e.g. `data products/$id/data.dart`                      | the provider of a `data.dart` runs `data()`                                                                                                 | the value is there, its `Future` settles, or the provider is disposed first; a `Stream` ends at once              | the pending `navigate`, else the current context |
-| `action`              | `action {file}#{name}`                                                 | `ActionNotifier.call`                                                                                                                       | the result is there, or its `Future` settles                                                                      | the current context (usually none)               |
+| `data`                | `data {file}`, e.g. `data products/$id/data.dart`                      | the provider of a `data.dart` runs `data()` (since 0.9.0: before it runs, and the span is the current one while it runs)                    | the value is there, its `Future` settles, or the provider is disposed first; a `Stream` ends at once              | the pending `navigate`, else the current context |
+| `action`              | `action {file}#{name}`                                                 | `ActionNotifier.call` (since 0.9.0 the span is the current one while the function runs)                                                     | the result is there, or its `Future` settles                                                                      | the current context (usually none)               |
 | `deferred`            | `deferred {file}`                                                      | `DeferredLibrary.load()` starts a load (not one that joins a load in flight)                                                                | the load completes or fails                                                                                       | the pending `navigate`, else the current context |
+| `auth`                | `auth {operation}`, e.g. `auth refresh` (since 0.9.0)                  | `restoreAuth`, `signIn` or `adopt`, a refresh, `signOut` (`fespalier_auth`)                                                                 | the outcome is known                                                                                              | the current context (usually none)               |
+| `image`               | `image {cdn}`, e.g. `image emgr` (since 0.9.0)                         | a network image starts loading (`fespalier_image`: a widget or a precache; not a cache hit, and not a load already in flight)               | the image is decoded, or the load fails                                                                           | the navigation in progress, if there is one      |
 
 A span's status is `Error` (with the exception's text) exactly when its outcome attribute is `error`; a
-`not_found` navigation is not an error.
+`not_found` navigation is not an error, and neither is an `auth` span that ends `rejected` or `cancelled`.
+An `auth` span that ends `error` has the status and `error.type`, but never the exception's text, which
+can name a host. An `image` span that ends `error` has the status and, when the load carries one,
+`fespalier.image.status`; the exception's text is never recorded, since it holds the URL.
 
 **Events.** On one `navigate` span the order is every `leave`, most recently entered first, then one
 `enter` or `focus`. The page events fire whether or not the app has an `observe.dart`.
@@ -4864,22 +6552,23 @@ A span's status is `Error` (with the exception's text) exactly when its outcome 
 
 | Key                   | Type   | Values and meaning                                                                                                                                                                                      |
 | --------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fespalier.operation` | string | `navigate`, `guard`, `redirect`, `data`, `action` or `deferred`                                                                                                                                         |
+| `fespalier.operation` | string | `navigate`, `guard`, `redirect`, `data`, `action`, `deferred`, `auth` or `image`                                                                                                                        |
 | `fespalier.route`     | string | the route pattern, as `fsp routes` prints it and `AppManifest.byPath` keys it: `/`, `/products/:id`, `/docs/*rest`. Absent when not found. For a section's data or action, the section folder's pattern |
 | `fespalier.file`      | string | the app file, relative to the app folder, as spelled on disk: `products/$id/data.dart`. Absent on `navigate`                                                                                            |
-| `fespalier.async`     | bool   | whether the operation returned a `Future` (`guard`, `redirect`, `data`, `action`)                                                                                                                       |
+| `fespalier.async`     | bool   | whether the operation returned a `Future` (`guard`, `redirect`, `data`, `action`, `auth`)                                                                                                               |
 | `error.type`          | string | semconv: on an error, the exception's class (minified on a release web build)                                                                                                                           |
 
 **On a `navigate` span:**
 
-| Key (`navigate`)                  | Type   | Values and meaning                                                                                                 |
-| --------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
-| `fespalier.navigation.kind`       | string | `initial`, `go`, `push`, `pop`, `replace` or `refresh` (the classification DevTools shows); absent when superseded |
-| `fespalier.navigation.outcome`    | string | `ok`, `not_found` or `superseded`                                                                                  |
-| `fespalier.navigation.from`       | string | the pattern of the page that was on top before (absent at the start)                                               |
-| `fespalier.navigation.redirected` | bool   | the committed path differs from the requested one: a guard or a `redirect.dart` sent it elsewhere                  |
-| `fespalier.navigation.depth`      | int    | how many pushed pages the stack holds after the commit (0 for a plain `go`)                                        |
-| `url.path`, `url.query`           | string | semconv: the committed location, mount prefix included. Only with `recordLocations: true`                          |
+| Key (`navigate`)                  | Type   | Values and meaning                                                                                                                                                                                        |
+| --------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fespalier.navigation.kind`       | string | `initial`, `go`, `push`, `pop`, `replace` or `refresh` (the classification DevTools shows); absent when superseded                                                                                        |
+| `fespalier.navigation.outcome`    | string | `ok`, `not_found` or `superseded`                                                                                                                                                                         |
+| `fespalier.navigation.from`       | string | the pattern of the page that was on top before (absent at the start)                                                                                                                                      |
+| `fespalier.navigation.redirected` | bool   | the committed path differs from the requested one: a guard or a `redirect.dart` sent it elsewhere                                                                                                         |
+| `fespalier.navigation.depth`      | int    | how many pushed pages the stack holds after the commit (0 for a plain `go`)                                                                                                                               |
+| `fespalier.navigation.source`     | string | since 0.9.0: where it came from when the app's own code did not start it: `notification`, `shortcut`, `widget` or `link` ([`navigateFrom`](#where-a-navigation-came-from-navigatefrom)); absent otherwise |
+| `url.path`, `url.query`           | string | semconv: the committed location, mount prefix included. Only with `recordLocations: true`                                                                                                                 |
 
 **On the other spans and events:**
 
@@ -4894,6 +6583,28 @@ A span's status is `Error` (with the exception's text) exactly when its outcome 
 | `fespalier.deferred.result` (`deferred`)                 | string | `ok` or `error`                                                                                                                                                      |
 | `fespalier.page.duration_ms` (on `fespalier.page.leave`) | int    | milliseconds from that instance's enter to its leave, covered time included                                                                                          |
 
+**On an `auth` span** (since 0.9.0; `fespalier_auth`; no new contract version, as a new operation and its
+attributes only add):
+
+| Key                        | Type   | Values and meaning                                                                                                                                                                                                                                                                                   |
+| -------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fespalier.auth.operation` | string | `restore` (the stored session was read at start-up), `sign_in` (also a session the app adopted), `refresh` or `sign_out`                                                                                                                                                                             |
+| `fespalier.auth.result`    | string | `ok`; `none` (restore: nothing was stored); `expired` (restore: the stored refresh token had expired, or the device key is gone); `rejected` (the server refused: wrong credentials, or a refresh token it no longer accepts); `cancelled` (the user closed the sign-in); `error` (it could not run) |
+| `fespalier.auth.backend`   | string | the backend's short constant name: `oidc`, `firebase`, `fake`, or an app's own                                                                                                                                                                                                                       |
+| `fespalier.auth.trigger`   | string | refresh only: `expired` (before a request), `unauthorized` (after a 401) or `forced`                                                                                                                                                                                                                 |
+| `fespalier.auth.dpop`      | bool   | the backend binds its tokens with DPoP                                                                                                                                                                                                                                                               |
+
+**On an `image` span** (since 0.9.0; `fespalier_image`; no new contract version, as a new operation and its
+attributes only add):
+
+| Key                       | Type   | Values and meaning                                                                                                                  |
+| ------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `fespalier.image.cdn`     | string | the URL builder's name: `imgproxy`, `emgr`, `cloudinary`, `imgix`, `thumbor`, `template`, `srcset`, `direct`, or a builder's own    |
+| `fespalier.image.width`   | int    | the width asked for, in physical pixels (a bucket)                                                                                  |
+| `fespalier.image.preload` | bool   | a precache started the load, not a widget                                                                                           |
+| `fespalier.image.result`  | string | `ok` or `error`                                                                                                                     |
+| `fespalier.image.status`  | int    | the HTTP status of a failed load, when the error carries one                                                                        |
+
 **Metrics.** fespalier emits none: `otel_zone` turns metrics off on purpose (a periodic reader is a timer
 that keeps the radio busy), and rates and latencies are on the wire as spans already. Derive metrics in the
 collector with the `spanmetrics` connector, with `fespalier.operation`, `fespalier.route`,
@@ -4901,10 +6612,17 @@ collector with the `spanmetrics` connector, with `fespalier.operation`, `fespali
 `fespalier.data.state`, `fespalier.action.name`, `fespalier.action.result`, `fespalier.deferred.result`
 and `fespalier.file` as dimensions, next to the resource's `service.name`, `service.version` and
 `fespalier.version`. A data attempt, a data source, an action rolled back and an action rejected by
-validation are not recorded in 0.8.1.
+validation are not recorded in 0.8.1. The `fespalier.auth.*` attributes are not dimensions of the
+collector `fsp telemetry` starts yet (since 0.9.0): its dashboards label an `auth` span as a
+session operation, and nothing more. Nor is `fespalier.navigation.source` (since 0.9.0): the bundled stack
+keeps it as a span column, with no panel and no spanmetrics dimension of its own yet. The same goes for
+`fespalier.image.*` (since 0.9.0): span columns, no panel, no dimension; a failed image load is on the
+Errors dashboard under "Image load".
 
 **Never recorded.** Segment and query values (unless `recordLocations: true`), family keys, `extra`, action
-inputs and results, data values and guard inputs. What is recorded is a route pattern, a file path, a
+inputs and results, data values and guard inputs; and, from `fespalier_auth`, tokens, user ids, claims, user
+names, e-mails, issuer and endpoint URLs, DPoP proofs and key thumbprints; and, from `fespalier_image`, an image's
+URL, source and signature. What is recorded is a route pattern, a file path, a
 function name or an enum-like value, all fixed when the app is built, and exception text, which
 `otel_zone` scrubs (`redact`) as it scrubs every span string.
 
@@ -4931,7 +6649,12 @@ testWidgets('opens an order', (tester) async {
 ```
 
 Each operation is `#n`, which ties its `start` line to its `end` line and names the navigation it ran
-under (`parent=#2`). To see real spans, initialise the SDK in `setUpAll` with `SimpleSpanProcessor` and
+under (`parent=#2`). A navigation that `navigateFrom` marked has `source=notification` at the end of its
+start line (since 0.9.0), and `RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and
+`#n within exit` around what runs inside a `data()` or an action, so a test can see a call run within its
+operation. An `image` operation (since 0.9.0) is `#4 start image emgr w=640 preload` and, when it ends,
+`#4 end image ok async` or `#5 end image error async status=404`: the builder's name and the width, never the
+URL. To see real spans, initialise the SDK in `setUpAll` with `SimpleSpanProcessor` and
 `InMemorySpanExporter` from `package:dartastic_opentelemetry/testing.dart`, install `FespalierOtel()`, and
 read the exporter after a `pump()`: a span is exported when it ends. `OTel.initialize` runs once per
 isolate, so once per test file. `examples/telemetry/test/` does both.
@@ -4948,7 +6671,8 @@ its start and its end in the same call stack, an async one through a side listen
 they were given. What does schedule microtasks is the OpenTelemetry SDK itself, whose span processors are
 `async` methods: they run when a span starts or ends, never in the path of a value the app gets. A
 backgrounded app draws no frames, so a navigation made in the background ends its span at the next frame
-after the app resumes.
+after the app resumes. Since 0.9.0 a telemetry app's data providers call `data()` through
+`traceDataCall`, which costs one closure per provider build (an app without `telemetry: true` has none).
 
 ### Dashboards on your computer: `fsp telemetry`
 
@@ -5136,6 +6860,510 @@ _Sample data from `scripts/telemetry/seed.py --showcase`._
 
 Images are pinned by tag and digest (collector `0.161.0`, OpenObserve `v1.0.4`, Grafana `13.2.3`), for `amd64` and `arm64`.
 
+## Images
+
+Since 0.9.0. `package:fespalier_image` shows a network image at the size its layout needs. A
+`ResponsiveImage` measures its box, multiplies by the device pixel ratio, rounds up to one of a few widths (a
+_bucket_) and asks the app's image CDN for that one: a 40-point avatar downloads 128 pixels, not the original.
+Which CDN, and which URL it writes, is the app's choice: imgproxy and EmgR, Cloudinary, imgix, Thumbor, a URL
+template, or a srcset that the backend already signed. fespalier's core is unchanged: no file kind, no
+`fespalier:` key (a CDN's address differs per flavour and per test, so it is Dart and not `pubspec.yaml`), no
+`fsp` command, and `app.g.dart` is the same bytes. An app that does not depend on the package has none of it.
+
+- **`imageCdnProvider`** is the app's `ImageCdn`: the URL builder, the width buckets, the format and the
+  quality, set once in `startup()`.
+- **`ResponsiveImage('products/3.jpg', aspectRatio: 1)`** is the widget: a placeholder while it loads (or the
+  widest variant of the same picture that is already loaded), an error view with a retry, and no new download
+  when the layout animates.
+- **The URL builders** write the URL for one CDN. They are plain `const` classes whose output is pinned by
+  exact-string tests.
+- **No key.** The package has no parameter for a signing key and ships no HMAC code. A key in an app is
+  public: [Signed image URLs](#signed-image-urls) says what to do instead.
+- **`package:fespalier_image/testing.dart`** has `FakeImages`: image loads in a widget test, without a
+  network.
+
+### Installing `fespalier_image`
+
+Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if
+they are the same repository dependency; a mismatch fails with `Because every version of fespalier_image from
+path depends on fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and
+demo depends on fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier,
+fespalier_image from path is forbidden.`, the form it takes when the first is a path):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.9.0
+  fespalier_image:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_image
+      ref: v0.9.0
+```
+
+<!-- x-release-please-end -->
+
+The package needs Dart 3.8 and Flutter 3.32 or newer. It has no plugin and no dependency of its own beyond
+fespalier; `crypto` is a dev dependency of its tests. It does not wrap `cached_network_image` or any CDN's
+SDK: it chooses a width and writes a URL, and Flutter's `Image` does the rest ([Caching images](#caching-images)
+says how to plug a disk cache in).
+
+### The image CDN: `imageCdnProvider`
+
+The app's choice lives in a provider, overridden in `startup()` like everything else a fespalier app
+configures, so a test swaps it with one line:
+
+```dart
+// lib/app/startup.dart
+Future<List<Override>> startup() async => [
+  imageCdnProvider.overrideWithValue(
+    const ImageCdn(
+      builder: ImgproxyUrlBuilder.emgr(
+        baseUrl: String.fromEnvironment('IMAGES', defaultValue: 'https://img.example.com'),
+        sourceBase: 'https://images.example.com/',
+      ),
+      quality: 80,
+    ),
+  ),
+];
+```
+
+Without an override the provider holds `const ImageCdn()`, which is no CDN: a source is a URL and is fetched
+as it is, decoded at the width the box needs (`ResizeImage`, off the web). A source that is not a URL (it has
+no scheme) then prints `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it
+is fetched as it is. Override imageCdnProvider in startup() (README, "Images").` once in a debug build.
+
+| `ImageCdn` field         | What it is                                                                                                                        |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `builder`                | The [URL builder](#url-builders) (`DirectUrlBuilder` by default)                                                                  |
+| `buckets`                | The [widths](#buckets-the-widths-an-image-is-fetched-at) an image may be asked for (`ImageBuckets.standard`)                      |
+| `format`                 | `ImageFormat.webp` (default), `jpeg`, `png`, `avif` or `auto` (see [URL builders](#url-builders): name a format)                  |
+| `quality`                | 1 to 100, or null to leave it to the CDN                                                                                          |
+| `maxPixelRatio`          | The device pixel ratio is capped at this (3 by default): a 3.5× phone asks for 3× widths                                          |
+| `providerFactory`        | `ImageProvider<Object> Function(String url)`: the provider of a URL. Null is a `NetworkImage`; plug a disk cache in here          |
+| `webHtmlElementStrategy` | On the web, whether a failed fetch falls back to an `<img>` element ([Images on the web](#images-on-the-web)); `never` by default |
+| `placeholder`            | What shows while an image loads (a box in the theme's `surfaceContainerHighest` by default)                                       |
+| `errorBuilder`           | What a failed image shows: `(context, error, retry)`; that box with a broken-image icon by default                                |
+| `fadeIn`                 | How long a loaded image fades in; zero (the default) shows it at once                                                             |
+
+Every argument of `ResponsiveImage` that has a counterpart overrides the CDN's for that one image. The provider
+is scoped (`dependencies: const []`), so a subtree, a feature or a test can override it in a nested
+`ProviderScope`; a provider of yours that reads it must list it in its own `dependencies`. `cdn.copyWith(...)`
+makes a variant, and `cdn.resolve(source, logicalWidth: ..., devicePixelRatio: ...)` is the pure function the
+widget calls, which answers with the request and its URL: it is how a test (or a precache) knows what a box
+asks for without building one.
+
+### Buckets: the widths an image is fetched at
+
+A CDN caches by URL, so an app that asks for 187 pixels here and 191 there gets a miss for each. The widget
+rounds up to one of a short list instead, Next.js 16's `imageSizes` and `deviceSizes`, in physical pixels:
+
+```text
+32, 48, 64, 96, 128, 256, 384, 640, 750, 828, 1080, 1200, 1920, 2048, 3840
+```
+
+The width needed is `(logical × min(devicePixelRatio, maxPixelRatio) − 0.5).ceil()`, and the request gets
+the smallest bucket at least that wide (the largest when none is). The half pixel is a tolerance: a 411.43-point
+box at 2.625× is 1079.99… pixels, and asks for 1080, not 1200. `maxPixelRatio` is 3 so a phone at 3.5× neither
+downloads nor decodes a third more pixels than it can show; a 640×640 image decodes to 1.6 MB and a 3840×3840
+one to 59 MB, which is also why the list stops at 3840.
+
+`ImageBuckets([...])` replaces the list, for a CDN that only has presets (`ImageBuckets([128, 640])`, with
+the presets named `w128` and `w640`); the widths must be positive and strictly increasing, or the first
+use throws `ImageBuckets: the widths must be positive and increasing, got [64, 32]`. Because the widths are
+few, the URL that [a precache](#precaching-an-image-behind-a-link) computes is the one the page later asks for,
+whatever the padding does to the box by a few points. A srcset has its own widths, and those replace the
+buckets ([Already sized: a srcset](#already-sized-a-srcset)).
+
+### `ResponsiveImage`
+
+```dart
+ResponsiveImage('products/3.jpg', width: 160, aspectRatio: 1)   // a 160-point square: the 640 bucket at 3×
+ResponsiveImage(product.photo, aspectRatio: 16 / 9)             // as wide as the layout gives it
+```
+
+| Argument                                           | What it does                                                                                                     |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `source`                                           | A path or public id the CDN knows, a URL, or a srcset                                                            |
+| `width`, `height`                                  | The box in logical pixels. A `width` is not measured, so the widget also works inside `IntrinsicWidth`           |
+| `aspectRatio`                                      | The shape. The CDN crops to it (`resize`) and the box takes it                                                   |
+| `resize`, `fit`, `alignment`                       | `ImageResize.fill` (cover and crop, the default) or `fit`, on the server; `BoxFit` and `Alignment` on the device |
+| `quality`, `format`, `extra`, `builder`, `buckets` | Override the CDN's; `extra` is provider-specific options ([URL builders](#url-builders))                         |
+| `growWithBox`                                      | Asks for a wider bucket when the box grows past the one shown                                                    |
+| `placeholder`, `errorBuilder`, `fadeIn`            | Override the CDN's                                                                                               |
+| `semanticLabel`, `excludeFromSemantics`            | `Image`'s                                                                                                        |
+
+**The box.** `width` and `height` make a `SizedBox`; an `aspectRatio` (or both `width` and `height`, which are
+one) makes an `AspectRatio`, in a `SizedBox` when there is a `width`; otherwise the parent decides. The image,
+the placeholder and the error view fill it, and a side the parent leaves unbounded collapses instead of
+throwing. Without a `width`, a `LayoutBuilder` measures: the maximum width when it is bounded, else the
+maximum height times the aspect ratio, else the view's width. A `LayoutBuilder` cannot be asked for its
+intrinsic size, so inside `IntrinsicHeight` give the widget a `width`.
+
+**The shape is the app's, not the box's.** The server crops only when you say the shape: `aspectRatio: 1`
+(or a `width` and a `height`) asks for `rs:fill:640:640`, and without one the request is width-only
+(`rs:fit:640:0`) and `fit` crops on the device. A ratio measured from the box (358×200 here, 360×200 there)
+would make a new URL, and a new cache entry, for every pixel of padding; a design constant (1, 4/3, 16/9) does
+not.
+
+**It chooses once, and only grows.** The bucket is picked at the first layout of an element, again when its
+inputs change (the source, the options, the builder, the CDN), and when the view's size or the device pixel
+ratio changes, but then only upward; with `growWithBox: true` also when the box grows. It is never smaller
+than what is on screen, so an animation of the box (a hero flight, an `AnimatedSize`) asks for one width and
+not one per frame, and a window that gets narrower downloads nothing. Browser zoom changes the device pixel
+ratio, so the bucket grows and does not shrink.
+
+**It is never blank when something is loaded.** While its URL loads, the widget shows the widest variant of the
+same picture (the same source, builder, shape, quality, format and options, at another width) that is already
+in the image cache, instead of the placeholder: a thumbnail already on screen stands in for the large image,
+with no flicker on a detail page. "Loaded" is read synchronously from Flutter's `ImageCache`. The widget
+builds no `Future` and no microtask of its own and starts no timer; only `Image` and the image cache are
+involved.
+
+**Placeholders and errors.** `placeholder` is a `WidgetBuilder`; the default is a box in the theme's
+`surfaceContainerHighest`. A failed load shows `errorBuilder(context, error, retry)`, and `retry` evicts the
+provider and loads again. `fadeIn: Duration(milliseconds: 200)` fades a load that arrives later in over what
+was showing (a load that was ready in the first frame does not fade). A builder or bucket that is
+misconfigured is a bug in the app and not a network failure: it shows the error view and reports an
+`ImageUrlError` once (`FlutterError.reportError`, library `fespalier_image`, while building the URL of the
+image); every message of the package is quoted in the `fespalier-troubleshooting` skill.
+
+### URL builders
+
+An `ImageUrlBuilder` turns an `ImageRequest` (the source, a width, an optional height, the resize mode, the
+quality, the format and `extra`) into a URL. All of them are `const`, compare equal by their fields, throw an
+`ImageUrlError` when misconfigured, and are **unsigned** unless you give them a `signer:`
+([Signed image URLs](#signed-image-urls)). `ImageFormat` defaults to `webp`, which Flutter decodes on every
+platform. `ImageFormat.auto` asks the CDN to choose from the request's `Accept` header, which Flutter cannot
+steer (`dart:io` sends none, a browser's XHR sends `*/*`), so it can answer an AVIF the platform does not
+decode: name a format instead.
+
+| Builder                                         | For                                                     | `name` (telemetry)          |
+| ----------------------------------------------- | ------------------------------------------------------- | --------------------------- |
+| `ImgproxyUrlBuilder`, `ImgproxyUrlBuilder.emgr` | imgproxy, and EmgR (vaam-apps/image-resizer)            | `imgproxy`, `emgr`          |
+| `CloudinaryUrlBuilder`                          | Cloudinary delivery URLs                                | `cloudinary`                |
+| `ImgixUrlBuilder`                               | imgix                                                   | `imgix`                     |
+| `ThumborUrlBuilder`                             | Thumbor and imagor                                      | `thumbor`                   |
+| `TemplateUrlBuilder`                            | any CDN whose URLs are a path and a query               | `template` (or the `name:`) |
+| `SrcsetUrlBuilder`                              | images that arrive already sized, signed by the backend | `srcset`                    |
+| `DirectUrlBuilder`                              | no CDN: the source is the URL (the default)             | `direct`                    |
+
+Subclass `ImageUrlBuilder` for another CDN: `url(request)` and `name` are all it needs, `resizes` says whether
+the CDN returns the width asked for (when false, the widget decodes at that width), and `widthsOf(source)`
+gives the widths a source exists at.
+
+#### imgproxy and EmgR
+
+`{baseUrl}/{signature}/{options}/{source}`. The options are `rs:fill:W:H` (or `rs:fit:W:H`; `rs:fit:W:0`
+without a height), then `q:Q` when there is a quality, then `extra`. The source is URL-safe base64 without
+padding and the extension (`.webp`), or, with `encoding: ImgproxySourceEncoding.plain`, `plain/` and the
+percent-encoded URL. A source without a scheme gets `sourceBase` in front of it.
+
+```dart
+const ImgproxyUrlBuilder(baseUrl: 'https://imgproxy.example.com')
+// https://imgproxy.example.com/insecure/rs:fill:640:640/aHR0cHM6Ly9pbWFnZXMuZXhhbXBsZS5jb20vcGhvdG8uanBn.webp
+
+const ImgproxyUrlBuilder.emgr(baseUrl: 'http://localhost:13001', sourceBase: 'https://images.example.com/')
+// photo.jpg at 1080: http://localhost:13001/unsigned/rs:fit:1080:0/aHR0cHM6Ly9pbWFnZXMuZXhhbXBsZS5jb20vcGhvdG8uanBn.webp
+```
+
+Where EmgR differs from imgproxy, and `.emgr` follows EmgR: an unsigned URL says `unsigned` (imgproxy's docs
+say `insecure`), a plain source takes its extension after a dot (`….jpg.png`, imgproxy writes `@png`),
+`ImageFormat.auto` is the extension `.auto` (imgproxy: none), and **`g:` is grayscale and gravity is `gr:`**
+(`gr:ce`; pass either through `extra`). `processing: (r) => ['pr:w${r.width}']` replaces the options, for a
+server that takes presets only. A `baseUrl` that is not an absolute `http` or `https` URL is an
+`ImageUrlError`. imgproxy's source URL encryption (`enc/`, Pro) is not built.
+
+#### Cloudinary
+
+`{baseUrl}/{cloudName}/image/{upload|fetch}/{transformation}/{source}`, with the transformation's qualifiers
+sorted by name as Cloudinary's SDKs write them: `c_fill` (with a height) or `c_limit`, `f_webp`, `h_`, `q_`
+(`q_auto` without a quality) and `w_`; then each `extra` as a component of its own. An uploaded asset's
+public id that has a `/` and no version gets `v1/` (`forceVersion: false` turns it off), and a fetched URL
+is escaped the way Cloudinary expects.
+
+```dart
+const CloudinaryUrlBuilder(cloudName: 'demo')
+// docs/shoes.jpg at 640×480: https://res.cloudinary.com/demo/image/upload/c_fill,f_webp,h_480,q_auto,w_640/v1/docs/shoes.jpg
+
+const CloudinaryUrlBuilder(cloudName: 'demo', delivery: CloudinaryDelivery.fetch)
+// a URL at 256×256, quality 80, jpeg: https://res.cloudinary.com/demo/image/fetch/c_fill,f_jpg,h_256,q_80,w_256/https://images.example.com/photo.jpg
+```
+
+There is no `signer:`: a signed Cloudinary URL needs the account's API secret, which also authorises uploads
+and deletes. Let the backend send signed URLs and use [a srcset](#already-sized-a-srcset).
+
+#### imgix
+
+`https://{domain}/{path}?{parameters}`, the parameters sorted by name: `fm` (or `auto=format`), `fit=crop`
+(with a height) or `fit=max`, `h`, `q`, `w`, then each `extra` as `key=value` (it replaces a built-in
+parameter of its name). A source with a scheme is one encoded path segment, for imgix's web-proxy sources.
+
+```dart
+const ImgixUrlBuilder(domain: 'demos.imgix.net')
+// bridge.png at 640×480: https://demos.imgix.net/bridge.png?fit=crop&fm=webp&h=480&w=640
+// with extra: ['crop=faces', 'sat=-100']: …?crop=faces&fit=crop&fm=webp&h=480&sat=-100&w=640
+```
+
+`domain` is a host name, without a scheme or a path. A `signer:` gets `/path?query` (the parameters sorted,
+without `s`) and returns the `s` value.
+
+#### Thumbor
+
+`{baseUrl}/{signature}/{path}`, with the path `fit-in/` (a fit with a height), `WxH`, `smart/`
+(`smart: true`), `filters:quality(Q):format(webp):…` and the source as written. imagor reads the same.
+Unsigned URLs say `unsafe`, which Thumbor refuses unless `ALLOW_UNSAFE_URL` is on.
+
+```dart
+const ThumborUrlBuilder(baseUrl: 'https://thumbor.example.com')
+// images.example.com/photo.jpg at 640×480: https://thumbor.example.com/unsafe/640x480/filters:format(webp)/images.example.com/photo.jpg
+```
+
+A `signer:` gets the path **without** a leading `/` (this is where Thumbor and imgproxy differ) and returns
+the signature segment. Encode a query string in the source yourself.
+
+#### A URL template
+
+For a CDN whose URLs are a path and a query. `{source}`, `{width}`, `{height}` (0 when not set), `{quality}`
+(the request's, else the builder's `quality`, 80) and `{format}` are replaced; anything else in braces is an
+error naming it.
+
+```dart
+const TemplateUrlBuilder('https://cdn.example.com/{source}?w={width}&h={height}&q={quality}&fm={format}')
+// products/1.jpg at 640: https://cdn.example.com/products/1.jpg?w=640&h=0&q=80&fm=webp
+```
+
+`resizes` is true when the template has `{width}`; without it the CDN does not size the image, and the widget
+decodes it at the width the box needs.
+
+#### Already sized: a srcset
+
+When the backend sends the photo's URLs, one per width, signed if they need to be, the source is a srcset and
+the URLs are used as they are:
+
+```dart
+ResponsiveImage(
+  product.photo, // "https://a.example/p-256.webp 256w, https://a.example/p-640.webp 640w"
+  builder: const SrcsetUrlBuilder(),
+  aspectRatio: 1,
+)
+```
+
+The widths of the srcset replace the buckets: a 100-point image at 3× needs 300 pixels and gets the 640
+candidate; a width wider than the widest candidate gets the widest. `SrcsetUrlBuilder.parse` reads a srcset
+(a candidate is a URL and a `640w` descriptor; a URL may contain commas), `SrcsetUrlBuilder.of({256: a,
+640: b})` writes one. An empty srcset, or a candidate without a `w` descriptor (`2x`, or none), is an
+`ImageUrlError`.
+
+### Signed image URLs
+
+**The package never takes a key.** A key in an app is public: the Android and iOS binaries are unpacked with
+standard tools, a Flutter web app's `main.dart.js` is downloaded by every visitor, `--dart-define` values are
+compiled in, and obfuscation renames symbols, not string constants. With the key anyone signs any URL, and the
+resizer becomes an open image proxy (any allowed source, in every size), a CPU amplifier (a new size per
+request defeats its result cache) and a bandwidth bill: the whole point of signing is lost. So no parameter
+named or typed like a key or a salt exists in `fespalier_image`, no HMAC, SHA or MD5 code ships in it, and
+every builder is unsigned by default. Three ways, in the order to prefer them:
+
+1. **The backend signs.** The API that returns a product returns its photo's URLs, signed, one per width the
+   app uses, as a srcset. The page shows `ResponsiveImage(product.photo, builder: const SrcsetUrlBuilder(), aspectRatio: 1)`.
+   The backend owns the key, the widths and the options; it works for every CDN, Cloudinary's and imgix's
+   secure URLs included; and the URLs arrive with `data.dart`, which `RouteLink` preloads, so the widget stays
+   synchronous. A signing endpoint is the same thing called from `data.dart` (`GET /images/sign?src=…&w=256,640`):
+   the asynchronous part lives in the data layer, never in the widget.
+
+   ```json
+   {
+     "id": 3,
+     "photo": "https://img.example.com/Kx…/rs:fill:256:256/aHR0….webp 256w, https://img.example.com/Q9…/rs:fill:640:640/aHR0….webp 640w"
+   }
+   ```
+
+2. **Unsigned, with the server's allowlists.** Fine for development, and for production when the server takes
+   presets only, so the URL space is finite (sources × presets) and every result is cached once. EmgR:
+   `ALLOW_UNSIGNED_REQUESTS=true`, `ALLOWED_SOURCES=https://images.example.com/`, `ALLOWED_PROCESSING_OPTIONS=pr`
+   and `PRESETS=w128=rs:fill:128:128,w640=rs:fill:640:640`; the app writes
+   `processing: (r) => ['pr:w${r.width}']` with `buckets: ImageBuckets([128, 640])`. imgproxy:
+   `IMGPROXY_ALLOWED_SOURCES` and `IMGPROXY_ONLY_PRESETS=true`. EmgR documents `ALLOW_UNSIGNED_REQUESTS` as a
+   local-development escape hatch, and without the allowlists an unsigned server is the open proxy above.
+3. **A `signer:` that looks signatures up.** `String Function(String payload)`, called synchronously while the
+   widget builds, so it must return at once: for a backend that sends `{payload: signature}` pairs, for
+   server-side Dart, and for tests. The payload is documented per builder and pinned by the tests against each
+   provider's published examples, so a backend that signs the same string gets the same signature.
+
+| Provider         | Unsigned                                           | Signed                                                | In the package                                         |
+| ---------------- | -------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------ |
+| imgproxy / EmgR  | `insecure` / `unsigned` (the server must allow it) | HMAC-SHA256 over the salt and the path                | `signer:` gets the path, leading `/` included          |
+| Thumbor / imagor | `unsafe` (`ALLOW_UNSAFE_URL`)                      | HMAC-SHA1 over the path without `/`, padded base64url | `signer:` gets the path without a leading `/`          |
+| imgix            | a plain source                                     | `s` = MD5 of the token, the path, `?` and the query   | `signer:` gets `/path?query` and returns the `s` value |
+| Cloudinary       | strict transformations off                         | `s--8 chars--` from the account's API secret          | no signer: backend URLs through `SrcsetUrlBuilder`     |
+
+The HMAC belongs in **your backend**, never in the app. For an imgproxy or EmgR backend written in Dart:
+
+```dart
+// On your server, never in the app: an imgproxy or EmgR signature.
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+
+String signImgproxy(List<int> key, List<int> salt, String path) => base64Url
+    .encode(Hmac(sha256, key).convert([...salt, ...utf8.encode(path)]).bytes)
+    .replaceAll('=', '');
+```
+
+### Precaching an image behind a link
+
+Since 0.9.0. A page that shows an image at one size, behind a link that shows it at another, should have the
+page's image warm when the link is followed. `ResponsiveImage.precache(context, source, width:, aspectRatio:)`
+computes the very URL a `ResponsiveImage` of that size will ask for, with the CDN of `context`
+(`imageCdnProvider`), and loads it into Flutter's image cache; `RouteLink(onPreload:)` calls it when the link
+starts a preload ([Links: `RouteLink`](#links-routelink)):
+
+```dart
+// lib/app/products/page.dart: in the row of each product
+RouteLink(
+  to: ProductRoute(id: p.id),
+  preload: Preload.intent,
+  // The page shows the photo pagePhotoSize wide: warm that size, not the row's.
+  onPreload: (context) => ResponsiveImage.precache(context, p.image, width: pagePhotoSize, aspectRatio: 1),
+  builder: (context, follow) => ListTile(...),
+)
+```
+
+Imperative uses need nothing new: call `ResponsiveImage.precache(context, ...)` before `route.go(context)`. It
+completes when the image is loaded or has failed (a failure is dropped: the widget shows its own error), and
+without a `width` it uses the view's width. The page's size is known only where there is a `BuildContext`
+(`MediaQuery`), not in `route.preload(ref)`. Buckets absorb a few points of padding, so the precache's URL
+equals the page's whenever both use the same constant for the photo's size, as `examples/shop` does
+(`pagePhotoSize`, used by the page and by the row's `onPreload`); a precache at another bucket than the page's
+is a wasted download. A misconfigured builder is reported as `ImageUrlError` with the context
+`while precaching the image "products/3.jpg"`, and the call returns at once.
+
+### Images in heroes
+
+A hero flight rebuilds the destination's child at every rectangle of the flight. A widget that measures its
+box would ask for a new URL at each, and an image in a hero would download a large variant of the _list's_
+shape just to fly. `ResponsiveImage.flightShuttle` is a `Hero.flightShuttleBuilder` that marks the flight: an
+image in flight **never starts a load** and shows the widest variant of its source that is already loaded, of
+any shape, else its placeholder. `route.imageHero(name, child:)` is `route.hero(name, shuttle:
+ResponsiveImage.flightShuttle, child:)`, so it takes the [shared element](#shared-elements-heroes) on both pages
+in one line each:
+
+```dart
+// lib/app/products/page.dart: in the row of each product
+leading: ProductRoute(id: p.id).imageHero('photo', child: ResponsiveImage(p.image, width: 40, height: 40)),
+
+// lib/app/products/$id/page.dart
+ProductRoute(id: product.id).imageHero('photo', child: ResponsiveImage(product.image, width: 160, height: 160)),
+```
+
+`Heroes(shuttle: ResponsiveImage.flightShuttle)` in the root `transition.dart` sets it for every hero (it is
+harmless for a hero without an image). With the page's size [precached](#precaching-an-image-behind-a-link)
+the shuttle shows that variant at every size of the flight and neither the push nor the pop makes a request;
+without a precache it shows the row's thumbnail, and the page shows the thumbnail (the same picture) until its
+own image arrives. Different shapes on the two sides (1:1 in the row, 4:3 on the page) still fly the loaded
+variant; at rest the page shows its placeholder until its own shape loads, because a stand-in of another shape
+would jump.
+
+There is no automatic detection of a flight: an image in a tooltip or an `OverlayPortal` is also outside any
+route, so "no `ModalRoute`" would freeze it. Without the shuttle, Flutter's default measures the image again
+inside the overlay and it asks for a URL for the rectangle of the moment (`hero_test.dart` has the control).
+
+### Images on the web
+
+Flutter 3.32 and later have no HTML renderer: CanvasKit and skwasm fetch an image's bytes with XHR, so the
+image server must send CORS headers on the image **and on the redirect target**. EmgR sends
+`Access-Control-Allow-Origin: *` on every route; its `CDN_BASE_URL` host must as well, since it answers the
+redirect to the stored file. imgproxy: `IMGPROXY_ALLOW_ORIGIN`. A blank image on the web and nothing on the
+other platforms is this.
+
+`ImageCdn.webHtmlElementStrategy` is Flutter's: `never` by default; `fallback` shows an `<img>` platform view
+when the fetch fails (no CORS needed, but a platform view per image, which is costly in a long list, and no
+request headers); `prefer` always uses `<img>`. Leave it on `never` unless the server cannot send CORS. The
+browser's HTTP cache works for XHR, so EmgR's `immutable` downloads are cached across reloads, and
+`ResizeImage` does not shrink a web `NetworkImage`, so a `DirectUrlBuilder` saves no memory there. A browser's
+XHR sends `Accept: */*`, so `ImageFormat.auto` can answer AVIF: do not use it. The package's code is part of
+`main.dart.js` when an eager page uses it ([Web chunk sizes](#web-chunk-sizes-fsp-size) has the budgets).
+
+### Caching images
+
+By default Flutter's in-memory `ImageCache` (1000 images, 100 MB). On Android, iOS and desktop there is no disk
+cache: `dart:io`'s `HttpClient` has no HTTP cache, so a restart downloads again. Plug one in with
+`providerFactory`, a one-line recipe on `cached_network_image` (the app adds the dependency; it needs Flutter
+3.44 and Dart 3.12, above fespalier's own floor, which is why the package does not depend on it):
+
+```dart
+// lib/app/startup.dart
+import 'package:cached_network_image/cached_network_image.dart';
+
+List<Override> startup() => [
+  imageCdnProvider.overrideWithValue(
+    ImageCdn(
+      builder: const ImgproxyUrlBuilder.emgr(baseUrl: 'https://img.example.com'),
+      providerFactory: (url) => CachedNetworkImageProvider(url),
+    ),
+  ),
+];
+```
+
+`extended_image`'s `ExtendedNetworkImageProvider(url, cache: true)` is the alternative without `sqflite`. A
+provider from a factory takes part in everything above (the stand-in, the precache, the flight) as long as its
+key is available synchronously, as `NetworkImage`'s is. On the web the browser's cache does it.
+
+### Testing images
+
+`package:fespalier_image/testing.dart` has `FakeImages`: a `providerFactory` whose providers record each URL
+and complete when the test says, or at once, with no network, no timer and no `HttpClient` (flutter_test's
+fake one answers every request with a 400 and a warning).
+
+```dart
+// test/images_test.dart
+final fakes = FakeImages(image: await createTestImage()); // made once, in setUpAll
+// every load completes in the frame that asks for it; without `image:`, call fakes.complete(url, image) or fakes.fail(url)
+await pumpRouter(tester, overrides: [imageCdnProvider.overrideWithValue(fakes.cdn(shopImages))]);
+expect(fakes.requested, ['http://localhost:13001/unsigned/rs:fill:128:128/aHR0….webp']);
+```
+
+`fakes.cdn(cdn)` is `cdn` loading through the fakes, so the test asserts the exact URLs of the app's real
+builder. Put the override in `pumpRouter(overrides:)` and in `test/routes/setup.dart`'s `overrides(pattern)`
+([Route smoke tests](#route-smoke-tests-fsp-test)), or every test that reaches a page with an image goes through the fake `HttpClient`.
+A `FakeImages`' providers are equal for one URL of one instance and never equal to another's, so an image
+cached by an earlier test is not reused. `cdn.resolve(...)` tests a size rule without a widget.
+
+### Image loads in telemetry
+
+Since 0.9.0. With a telemetry sink installed, each network load is an `image` operation:
+`TelemetryOp.image` through `FespalierTelemetry.begin` and `finish`, and a span `image {cdn}` (for example
+`image emgr`) with `fespalier.image.cdn`, `fespalier.image.width` (the bucket), `fespalier.image.preload`
+(a precache started it), `fespalier.image.result` and, for a failed load that carries one,
+`fespalier.image.status` ([Telemetry conventions](#telemetry-conventions)). One span per load that starts: a
+cache hit and a load already in flight make none, and an image in a hero flight starts no load. A load that
+starts while a page is being reached is a child of that navigation. **The URL, the source, the signature
+and the error's text are never recorded** (the exception's message holds the URL): only the builder's name, the
+bucket, the HTTP status and the outcome. Image spans need no `telemetry: true`: they follow the installed
+sink, like the auth spans. `RecordingTelemetry` writes them as `#4 start image emgr w=640 preload` and
+`#4 end image ok async`, or `#5 end image error async status=404`.
+
+A load that fails (an offline phone) is a failure like any other, so the Errors dashboard of `fsp telemetry`
+lists it under the kind "Image load"; filter on `fespalier_operation <> 'image'` if they drown the rest.
+
+An exhaustive `switch` over `TelemetryOp` in a sink of your own needs a case for `image` (since 0.9.0, next to
+`auth`): the new value is a source break for such a switch.
+
+### What images cost
+
+An app that does not depend on `fespalier_image` has none of it, not even in analysis, and `app.g.dart` is the
+same bytes. One that does gets a widget that builds no `Future` and no microtask of its own while building,
+starts no timer, and adds no listener of its own except a `fadeIn`'s animation (only when you ask for one);
+the stand-in and the "loaded" check read Flutter's `ImageCache` synchronously. The one process-wide state is
+a list of the providers it made, by source (256 sources, least recently used first out), so a thumbnail can
+stand in for the large image; it is keyed by the builder and the provider factory, so two CDNs and the fakes of
+two tests never see each other's entries.
+
 ## DevTools extension
 
 Since 0.7.0, fespalier has an extension for [Flutter DevTools](https://docs.flutter.dev/tools/devtools): a
@@ -5306,6 +7534,13 @@ flutter pub get
 flutter run
 ```
 
+Since 0.9.0 the product photos come from an [EmgR](https://github.com/vaam-apps/image-resizer) on this
+computer, unsigned: `examples/shop/lib/images.dart` says how to run it (`ALLOW_UNSIGNED_REQUESTS=true`, and
+`ALLOWED_SOURCES` set to the photos' origin) and which `--dart-define`s point it elsewhere. Without a server each
+photo fails and shows the product's initial. Hovering a row precaches the photo at the size its page shows
+([Precaching an image behind a link](#precaching-an-image-behind-a-link)), and the photo flies to the page as
+an [image hero](#images-in-heroes). Its tests use `FakeImages`.
+
 Try `/products/13`: it fails once, so you see `error.dart` and **Retry**. Try `/products/abc`
 (the int parse fails → `not_found.dart`), `/checkout` with an empty cart (the guard redirects
 to `/cart`), and `/greet/you`.
@@ -5322,7 +7557,10 @@ query parameter, enum segments, query parameters and catch-alls (`shop/$category
 `examples/telemetry` (since 0.8.1) is the route lifecycle and OpenTelemetry: three tabs, an order page with a
 `data.dart`, an `action.dart` and an `observe.dart`, a guarded and deferred settings page, `telemetry: true`,
 and a `main.dart` that wires `otel_zone` (on go_router 17, which `otel_zone` requires). Its tests read the
-hooks' log and the spans from an in-memory exporter.
+hooks' log and the spans from an in-memory exporter. Since 0.9.0 that `main.dart` also starts Sentry
+(`SENTRY_DSN` is empty, so nothing is sent), an order page has a `Refuse` button whose action throws, and
+`test/sentry_test.dart` shows the event with its route, its file and the OpenTelemetry trace of the same
+call.
 
 `examples/features` also has `orders/$id/refund/confirm`, a route that is a sibling of the `refund`
 page instead of a child of it (`nest = false`; `refund/receipt` next to it nests), with a guard on
@@ -5351,7 +7589,10 @@ pages, and a Library tab that is a tab layout of its own, with two inner tabs), 
 counter that survives switching tabs, `tabOptions`, a cross-fading `container`, a Search tab that also answers `/recherche` (`route.dart` with `paths`), a full-screen route
 outside them (`/settings`), one that stays under `/profile` but renders on the root navigator
 (`/profile/edit`, `navigator.dart`), and a Cupertino `transition.dart` that also moves the tab layout
-itself aside when one of those opens over it.
+itself aside when one of those opens over it. Since 0.9.0 its bar is the menu: six `nav.dart` files, drawn
+by [`fespalier_adaptive`](#a-bar-a-rail-or-a-drawer-fespalier_adaptive) as a bar, a rail or a drawer by window
+width (the Library tab's two inner tabs are chips from an `AdaptiveNavBuilder`), and its tests resize the
+window and check that a tab keeps its state.
 
 `examples/features` also has a guard in a page-less `(members)` group (with a login page that
 returns to where you were), a second guard below it that runs after the first, two
@@ -5363,10 +7604,35 @@ its root layout reads through the route manifest to set the page title, and its 
 review-code check on `AppRoutes.all`. It sets `scroll_restoration: true` (since 0.8.1): `/feed` has two
 lists under `PageStorageKey`s, and its tests play the browser's back and forward.
 
+Since 0.9.0 `examples/features` has `/labs`, a route behind a feature flag ([`fespalier_flags`](#feature-flags-fespalier_flags)):
+`lib/app/labs/guard.dart` is one `flagGuard`, and the menu entry is hidden while the flag is off. It is off by default;
+run with `--dart-define=FEATURES_LABS=true` to see it. `test/flags_test.dart` turns the flag on and off with a
+`FakeFlags` while the menu is open and while the app is on `/labs`.
+
+Since 0.9.0 it also keeps its team in shared preferences ([`fespalier_storage`](#a-cache-on-disk-fespalier_storage)):
+`teams/$teamId/data.dart` has a `dataCache`, `startup.dart` opens a `PrefsDataStorage`, and `test/offline_test.dart`
+restarts the app over the same store: the first frame of the second start is the saved team, not `loading.dart`, and a
+start that cannot load it shows the saved one.
+
+Since 0.9.0 the team also loads again when the device gets a network back
+([`fespalier_connectivity`](#reconnects-fespalier_connectivity)): `teams/$teamId/route.dart` has
+`refetchOnReconnect: true`, `startup.dart` overrides `reconnectSignal`, and `test/offline_test.dart` flaps a
+`FakeConnectivity` (within the 30 seconds nothing loads, a Wi-Fi to mobile switch is not a reconnect, and a network that
+flaps loads once).
+
 `examples/tabs` also keeps its manifest in a library of its own (`output_manifest:
 lib/app.routes.g.dart`, with `Review` metas that `lib/main.dart` never imports), and its tests
 restore the selected tab, a background tab's stack and a page's state after a simulated
 restart.
+
+`examples/auth` (since 0.9.0) is [`fespalier_auth`](packages/fespalier_auth): a sign-in form on an action, a
+`requireSignedIn` guard that comes back to where the user was going, a `requireRole` one for `/admin`, orders
+pages whose two `data.dart` files call an API through `authHttpClient` (an expired token is refreshed once), and
+a first frame that is the app, not a splash, because `startup()` restores the session with no network. The
+API is an in-process server, so it runs and is tested with no network; run against Keycloak with
+`--dart-define=OIDC_ISSUER=...` and the realm in `examples/auth/keycloak/`. With
+`--dart-define=OIDC_ISSUER=demo --dart-define=DPOP=true` it signs in against the demo server's own provider with
+device-bound tokens (DPoP), and its tests check every proof the way a server does.
 
 ## Development
 
@@ -5383,6 +7649,15 @@ cli/templates/telemetry/   the stack `fsp telemetry` writes (compose file, colle
                      dashboards); runs as it is with `docker compose up -d`
 packages/fespalier/  the runtime app.g.dart imports (DataView, segment parsing, TypedLocation),
                      testing.dart, and bin/fespalier.dart, the `dart run fespalier` launcher for `fsp`
+packages/fespalier_auth/   signed-in routes: session provider, guards, authenticated client, OpenID Connect
+packages/fespalier_sign_keypair/   DPoP proofs for fespalier_auth, signed by a device key (Secure Enclave, AndroidKeyStore)
+packages/fespalier_flags/   feature flags: FlagSource, flag() providers that guards watch, flagGuard (since 0.9.0)
+packages/fespalier_storage/   dataCache storages on shared_preferences and Hive, with a size budget (since 0.9.0)
+packages/fespalier_connectivity/   reconnectSignal from connectivity_plus, and hasNetwork for offline banners (since 0.9.0)
+packages/fespalier_adaptive/   nav.dart menus as a bar, a rail or a drawer by window width
+packages/fespalier_image/   responsive CDN images (ResponsiveImage, the URL builders), with FakeImages for tests
+packages/fespalier_dio/   Dio and package:http: requests cancelled with their page, server field errors, writes never retried
+packages/fespalier_sentry/   Sentry: errors tagged with the route and the file, page breadcrumbs, optional screen-load transactions
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed
@@ -5390,6 +7665,7 @@ examples/minimal/    the smallest app: `flutter create` + `fsp init` + three pag
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
 examples/features/   every binding rule, section data and nested not_found.dart, with widget tests
 examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
+examples/auth/       fespalier_auth: sign-in, guards, refresh and Keycloak, with widget tests
 skills/              agent skills: how to write lib/app/ and read fsp's errors (skills/README.md);
                      scripts/skills/ checks them against the code
 ```

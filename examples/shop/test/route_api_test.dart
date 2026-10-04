@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shop/api.dart';
 import 'package:shop/app.g.dart';
 import 'package:shop/app/layout.dart';
+import 'images.dart';
 
 /// The static type of the expression it's given: `dynamic` if inference failed.
 Type staticType<T>(T value) => T;
@@ -52,7 +53,7 @@ void main() {
       await pumpRouter(
         tester,
         AppRoutes.router(),
-        overrides: [apiProvider.overrideWithValue(api)],
+        overrides: [apiProvider.overrideWithValue(api), fakeImages()],
       );
       final product = ProductRoute.read(rootRef(tester), id: 2);
       await tester.pump(const Duration(seconds: 1));
@@ -61,7 +62,11 @@ void main() {
     });
 
     testWidgets('an error is thrown to the caller', (tester) async {
-      await pumpRouter(tester, AppRoutes.router());
+      await pumpRouter(
+        tester,
+        AppRoutes.router(),
+        overrides: [fakeImages()],
+      );
       final product = ProductRoute.read(rootRef(tester), id: 99);
       // Hand the future its handler before time passes, so the error isn't unhandled.
       final caught = expectLater(product, throwsA(isA<ProductNotFound>()));
@@ -95,7 +100,7 @@ void main() {
       await pumpRouter(
         tester,
         AppRoutes.router(),
-        overrides: [apiProvider.overrideWithValue(api)],
+        overrides: [apiProvider.overrideWithValue(api), fakeImages()],
       );
       final handle = const ProductRoute(id: 2).prefetch(rootRef(tester));
       await tester.pump(const Duration(seconds: 1));
@@ -118,7 +123,7 @@ void main() {
       final container = await pumpRouter(
         tester,
         AppRoutes.router(),
-        overrides: [apiProvider.overrideWithValue(api)],
+        overrides: [apiProvider.overrideWithValue(api), fakeImages()],
       );
       final handle = const ProductRoute(id: 2).prefetch(rootRef(tester));
       await tester.pump(const Duration(minutes: 2));
@@ -132,7 +137,11 @@ void main() {
     testWidgets('without it the same navigation shows loading first', (
       tester,
     ) async {
-      await pumpRouter(tester, AppRoutes.router());
+      await pumpRouter(
+        tester,
+        AppRoutes.router(),
+        overrides: [fakeImages()],
+      );
       ProductRoute(id: 2).go(tester.element(find.text('Browse products')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
@@ -147,7 +156,7 @@ void main() {
       final container = await pumpRouter(
         tester,
         AppRoutes.router(),
-        overrides: [apiProvider.overrideWithValue(api)],
+        overrides: [apiProvider.overrideWithValue(api), fakeImages()],
       );
       const ProductRoute(id: 2)
           .prefetch(rootRef(tester), keepFor: const Duration(seconds: 5));
@@ -164,7 +173,7 @@ void main() {
       final container = await pumpRouter(
         tester,
         AppRoutes.router(),
-        overrides: [apiProvider.overrideWithValue(api)],
+        overrides: [apiProvider.overrideWithValue(api), fakeImages()],
       );
       final handle = const ProductRoute(id: 99).prefetch(rootRef(tester));
       await tester.pump(const Duration(seconds: 1));

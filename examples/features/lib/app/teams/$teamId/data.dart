@@ -11,6 +11,18 @@ class Team {
 /// How many times [data] ran; the tests read it to see it's shared.
 int teamFetches = 0;
 
+/// The team is saved for the next start (shared preferences, see startup.dart): it shows at once while the team
+/// loads again, and when it can't load.
+final dataCache = DataCache<Team>.json(
+  toJson: (t) => {'name': t.name, 'members': t.members},
+  fromJson: (j) {
+    final m = j! as Map<String, Object?>;
+    return Team(m['name']! as String, [
+      for (final x in m['members']! as List<Object?>) x! as String,
+    ]);
+  },
+);
+
 /// This folder has a layout.dart and no page.dart, so this is the data of the
 /// whole section below it: the layout and the pages under it can take a [Team].
 /// The section shows loading.dart or error.dart until it has loaded. `action.dart` beside

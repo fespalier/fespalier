@@ -413,14 +413,14 @@ fn present_builds_its_own_page_only_and_implies_the_root_navigator_below() {
     has(
         &c,
         &[
-            "path: 'buy',\n                parentNavigatorKey: rootNavigatorKey,\n                pageBuilder: (context, state) => _i4.present(\n                  state.pageKey,\n                  buildWithParams(",
+            "path: 'buy',\n                parentNavigatorKey: rootNavigatorKey,\n                pageBuilder: (context, state) => namedPage('/products/:id/buy', () => _i4.present(\n                  state.pageKey,\n                  buildWithParams(",
         ],
     );
     // Its child keeps the nearest transition.dart for its own page, and is on the root navigator too.
     has(
         &c,
         &[
-            "path: 'confirm',\n                    parentNavigatorKey: rootNavigatorKey,\n                    pageBuilder: (context, state) => _i0.transition(",
+            "path: 'confirm',\n                    parentNavigatorKey: rootNavigatorKey,\n                    pageBuilder: (context, state) => namedPage('/products/:id/buy/confirm', () => _i0.transition(",
         ],
     );
     // The parent is untouched.
@@ -643,7 +643,7 @@ fn a_container_makes_the_tabs_a_stateful_shell_with_its_own_navigator_container(
     has(
         &c,
         &[
-            "StatefulShellRoute(\n        navigatorContainerBuilder: _i0.container,\n        pageBuilder: (context, state, navigationShell) => layoutPage(",
+            "StatefulShellRoute(\n        navigatorContainerBuilder: _i0.container,\n        pageBuilder: (context, state, navigationShell) => namedPage('/', () => layoutPage(",
             "branches: [",
             "restorationScopeId: 'layout:/',",
         ],
@@ -661,7 +661,7 @@ fn without_a_container_the_output_is_the_same_as_before() {
     has(
         &c,
         &[
-            "StatefulShellRoute.indexedStack(\n        pageBuilder: (context, state, navigationShell) => layoutPage(\n          context,\n          state,\n          'layout:/',\n          _i0.TabsLayout(navigationShell: navigationShell),\n        ),\n        branches: [",
+            "StatefulShellRoute.indexedStack(\n        pageBuilder: (context, state, navigationShell) => namedPage('/', () => layoutPage(\n          context,\n          state,\n          'layout:/',\n          _i0.TabsLayout(navigationShell: navigationShell),\n        )),\n        branches: [",
         ],
     );
     assert!(!c.contains("navigatorContainerBuilder"), "{c}");
@@ -777,8 +777,8 @@ fn a_shell_takes_the_nearest_transition_under_a_key_that_is_stable() {
     has(
         &c,
         &[
-            "ShellRoute(\n        pageBuilder: (context, state, child) => _i1.transition(\n          const ValueKey<String>('layout:/'),\n          _i2.BoxLayout(child: child),\n        ),",
-            "StatefulShellRoute.indexedStack(\n            pageBuilder: (context, state, navigationShell) => _i1.transition(\n              const ValueKey<String>('layout:(tabs)/'),\n              _i3.TabsLayout(navigationShell: navigationShell),\n            ),",
+            "ShellRoute(\n        pageBuilder: (context, state, child) => namedPage('/', () => _i1.transition(\n          const ValueKey<String>('layout:/'),\n          _i2.BoxLayout(child: child),\n        )),",
+            "StatefulShellRoute.indexedStack(\n            pageBuilder: (context, state, navigationShell) => namedPage('/', () => _i1.transition(\n              const ValueKey<String>('layout:(tabs)/'),\n              _i3.TabsLayout(navigationShell: navigationShell),\n            )),",
             "restorationScopeId: 'layout:/',",
             "restorationScopeId: 'layout:(tabs)/',",
         ],
@@ -792,7 +792,7 @@ fn a_shell_without_a_transition_keeps_layout_page() {
     has(
         &c,
         &[
-            "pageBuilder: (context, state, child) => layoutPage(\n          context,\n          state,\n          'layout:/',",
+            "pageBuilder: (context, state, child) => namedPage('/', () => layoutPage(\n          context,\n          state,\n          'layout:/',",
         ],
     );
 }
@@ -866,7 +866,7 @@ fn a_shell_on_the_root_navigator_still_gets_its_transition() {
     has(
         &c,
         &[
-            "ShellRoute(\n            parentNavigatorKey: rootNavigatorKey,\n            pageBuilder: (context, state, child) => _i1.transition(\n              const ValueKey<String>('layout:wizard/steps/'),",
+            "ShellRoute(\n            parentNavigatorKey: rootNavigatorKey,\n            pageBuilder: (context, state, child) => namedPage('/wizard/steps', () => _i1.transition(\n              const ValueKey<String>('layout:wizard/steps/'),",
         ],
     );
 }
@@ -968,7 +968,7 @@ fn a_function_layout_shell_takes_the_transition_and_the_root_key() {
     has(
         &c,
         &[
-            "ShellRoute( parentNavigatorKey: rootNavigatorKey, pageBuilder: (context, state, child) => _i1.transition( const ValueKey<String>('layout:wizard/steps/'),",
+            "ShellRoute( parentNavigatorKey: rootNavigatorKey, pageBuilder: (context, state, child) => namedPage('/wizard/steps', () => _i1.transition( const ValueKey<String>('layout:wizard/steps/'),",
         ],
     );
 }

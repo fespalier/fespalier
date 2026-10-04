@@ -19,11 +19,11 @@ the same** whether or not these files exist.
 
 `fespalier: main:` in `pubspec.yaml`:
 
-| Value       | `lib/app.main.g.dart`                                                                                                                         |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auto`      | the default: written when the root has an `app.dart`, `startup.dart` or `splash.dart`; otherwise nothing is written                           |
-| `generated` | always written; without an `app.dart` the app is `MaterialApp.router(routerConfig: router)`                                                   |
-| `manual`    | never written; the three files are **not read**, and each one that exists gets a warning (below). `fsp init` then writes no `app.dart` either |
+| Value       | `lib/app.main.g.dart`                                                                                                                                                  |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto`      | the default: written when the root has an `app.dart`, `startup.dart` or `splash.dart`, or, since 0.9.0, when `adapters:` lists a package; otherwise nothing is written |
+| `generated` | always written; without an `app.dart` the app is `MaterialApp.router(routerConfig: router)`                                                                            |
+| `manual`    | never written; the three files are **not read**, and each one that exists gets a warning (below). `fsp init` then writes no `app.dart` either                          |
 
 The path is `output` with `.main.g.dart` in place of `.g.dart`, in the same folder
 (`lib/router/routes.g.dart` makes `lib/router/routes.main.g.dart`); there is no key for it.
@@ -134,6 +134,61 @@ class Splash extends StatelessWidget {
   Tests pump it to boot everything.
 - `AppMain.app(router)`: `app.dart`'s widget around a router; `pumpRouter(tester, router, app: AppMain.app)`
   (see `fespalier-testing`).
+- `AppMain.routerObservers()` (since 0.9.0, only with `adapters:`): the adapters' router observers, then
+  startup.dart's `routerObservers`. An app.dart `router()` passes it on (below).
+
+## Adapters: `fespalier: adapters:` (since 0.9.0)
+
+A package that plugs into the generated `main()` is listed by name, in order; the generator needs no table
+and reads no manifest:
+
+```yaml
+# in pubspec.yaml
+dependencies:
+  my_tools: ^1.0.0 # a package that ships lib/fespalier_adapter.dart
+  my_reporter: ^1.0.0
+fespalier:
+  adapters: [my_tools, my_reporter] # the first is the outermost
+```
+
+For each name `n`, at index `i`, `lib/app.main.g.dart` imports `package:n/fespalier_adapter.dart as _a{i}` and calls
+`_a{i}.adapter`, a **`FespalierAdapter`** (`package:fespalier/startup.dart`) that the package exports as a
+top-level `adapter`. The output depends on the pubspec alone, never on `pub get` or the pub cache, so `fsp check`
+gives the same bytes before and after it. An app can write one in a package of its own:
+
+```dart
+// package:my_tools/fespalier_adapter.dart
+import 'package:fespalier/startup.dart';
+
+const adapter = MyToolsAdapter();
+
+class MyToolsAdapter extends FespalierAdapter {
+  const MyToolsAdapter();
+
+  @override
+  List<NavigatorObserver> routerObservers() => [MyNavigatorObserver()];
+}
+```
+
+| Member                | Runs                                                                      | Notes                                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zone(body)`          | around **all** of `main()`, outside startup.dart's `zone()`               | `Future<void>`; call `body` once. Before the binding exists                                                                                                            |
+| `beforeRun()`         | after `ensureInitialized()`, before `runApp`                              | `Future<void>?`: return `null` for nothing to wait for (not awaited: no `Future`, no microtask). A `Future` delays the first frame, so a local read, never the network |
+| `overrides()`         | once, after `startup()` succeeded, **before** `startup()`'s own overrides | Overriding a provider `startup()` also overrides is Riverpod's "Tried to override a provider twice" in debug                                                           |
+| `providerObservers()` | with `providerObservers` of startup.dart, the adapters' first             |                                                                                                                                                                        |
+| `routerObservers()`   | when the router is built, before startup.dart's `routerObservers`         | A new observer on each call: an observer belongs to one navigator                                                                                                      |
+| `wrap(root)`          | around the root widget, outside the `ProviderScope` and the splash        | `SentryWidget`, `PostHogWidget`                                                                                                                                        |
+
+Each default adds nothing. The rules are fespalier's own: no timer, sync stays sync, nothing touches a platform
+plugin until it is used (so `AppMain.root()` boots in a widget test).
+
+- **Order.** The first package is the outermost: its zone and its wrapper go around the others'.
+- **Errors, all from `fsp`** (quoted in `fespalier-troubleshooting`, its app-main diagnostics page): a name that is
+  not a package name, a duplicate, `fespalier` itself, a name not under `dependencies:`, and `main: manual` with
+  `adapters:` (a generated `main()` is what calls them).
+- **No per-adapter keys.** Deploy-time options come from `--dart-define`; anything custom stays in `startup.dart`.
+- **Tests.** `pumpRouter(tester, router, app: AppMain.app)` and `fsp test` never see the adapters; `AppMain.root()`
+  is the app as it runs, adapters included.
 
 ## Gotchas
 
@@ -142,6 +197,10 @@ class Splash extends StatelessWidget {
 - **`zone()` runs on the web.** A zone that needs `dart:io` or an isolate must behave there:
   `otel_zone`'s `runGuarded` never runs its body in a browser and leaves the app blank, so write
   `kIsWeb ? body() : observability.runGuarded(body)`.
+- **Adapters do nothing unless `lib/main.dart` is `Future<void> main() => AppMain.run();`.** `fsp` does not
+  read `lib/main.dart`: an app whose own `main()` still calls `runApp` by hand ignores them, without a message.
+- **An app.dart `router()` must pass `observers: AppMain.routerObservers()`** to `AppRoutes.router(...)`, or the
+  adapters' router observers are not added (a warning from `fsp`, quoted in `fespalier-troubleshooting`).
 - **A `startup()` failure fails a widget test** until `tester.takeException()` takes it.
 - **A root file that is something else** (a helper that happens to be `lib/app/app.dart`): rename it
   into `_components/`, or set `main: manual`.

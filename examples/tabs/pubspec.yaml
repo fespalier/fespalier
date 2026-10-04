@@ -1,5 +1,5 @@
 name: tabs
-description: fespalier example — a bottom navigation bar with one StatefulShellRoute branch per tab.
+description: fespalier example — tabs with one StatefulShellRoute branch per tab, shown as a bar, a rail or a drawer by fespalier_adaptive.
 publish_to: none
 version: 0.1.0
 
@@ -11,6 +11,9 @@ dependencies:
     sdk: flutter
   fespalier:
     path: ../../packages/fespalier
+  # The tab bar is the menu: a bar, a rail or a drawer by window width.
+  fespalier_adaptive:
+    path: ../../packages/fespalier_adaptive
 
 dev_dependencies:
   flutter_lints: ^6.0.0
@@ -19,6 +22,11 @@ dev_dependencies:
   # go_router 18 looks for material_ui's MaterialApp, go_router 17 for
   # flutter's; the tests nest both so they pass on either.
   material_ui: ^1.0.0
+
+# fespalier_adaptive depends on fespalier by git, as an app does; here both are the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
 
 # The route manifest and its meta.dart files go in a library of their own, so
 # lib/main.dart (which only needs the router) never imports them.

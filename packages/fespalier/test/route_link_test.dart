@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:url_launcher/link.dart' as url;
 
+import 'support/floor.dart';
+
 /// How often a provider's body ran; autoDispose, like the generated ones.
 var loads = 0;
 final item = FutureProvider.autoDispose.family<String, int>((ref, n) async {
@@ -294,8 +296,11 @@ void main() {
       await boot(tester, linkTile(const ItemRoute(2), 'Two'));
       final node = tester.getSemantics(find.text('Two'));
       final data = node.getSemanticsData();
-      expect(data.flagsCollection.isLink, isTrue);
-      expect(data.linkUrl, Uri.parse('/items/2'));
+      // Deprecated in newer Flutter (for isSemantics), which 3.32, the floor, does not have yet.
+      // ignore: deprecated_member_use
+      expect(node, containsSemantics(isLink: true));
+      // Flutter 3.32 (the floor) drops the linkUrl when it merges the link's semantics.
+      if (!onFlutterFloor) expect(data.linkUrl, Uri.parse('/items/2'));
       expect(data.label, 'Two');
       expect(data.hasAction(SemanticsAction.tap), isTrue);
       semantics.dispose();
@@ -666,6 +671,186 @@ void main() {
       await boot(tester, list(preload: Preload.none));
       await tester.pump();
       expect(loads, 0);
+    });
+  });
+
+  group('onPreload (since 0.9.0)', () {
+    Widget tile(
+      void Function(BuildContext context) onPreload, {
+      Preload? preload = Preload.intent,
+      TypedLocation to = const ItemRoute(2),
+    }) => RouteLink(
+      to: to,
+      preload: preload,
+      onPreload: onPreload,
+      builder: (context, follow) =>
+          ListTile(title: const Text('Two'), onTap: follow),
+    );
+
+    testWidgets(
+      'runs once on hover, with the link\'s context, after the data started',
+      (tester) async {
+        final contexts = <BuildContext>[];
+        final loadsSeen = <int>[];
+        await boot(
+          tester,
+          tile((context) {
+            contexts.add(context);
+            loadsSeen.add(loads);
+          }),
+        );
+        expect(contexts, isEmpty);
+        final pointer = await mouse(tester);
+        await hover(tester, pointer, find.text('Two'));
+        expect(contexts, hasLength(1));
+        expect(
+          identical(contexts.single, tester.element(find.byType(RouteLink))),
+          isTrue,
+        );
+        // After `route.preload(ref)` started the provider.
+        expect(loadsSeen, [1]);
+        // However often the pointer comes back: the preload is held, so it is not started again.
+        for (var i = 0; i < 3; i++) {
+          await hover(tester, pointer, find.text('Two'));
+        }
+        expect(contexts, hasLength(1));
+      },
+    );
+
+    testWidgets('a touch going down, and focus, are intent too', (
+      tester,
+    ) async {
+      var calls = 0;
+      await boot(tester, tile((context) => calls++));
+      final touch = await tester.startGesture(
+        tester.getCenter(find.text('Two')),
+      );
+      await touch.cancel();
+      await tester.pump();
+      expect(calls, 1);
+    });
+
+    testWidgets('is not called without a preload', (tester) async {
+      var calls = 0;
+      await boot(tester, tile((context) => calls++, preload: Preload.none));
+      final pointer = await mouse(tester);
+      await hover(tester, pointer, find.text('Two'));
+      expect(calls, 0);
+      expect(loads, 0);
+    });
+
+    testWidgets('a RouteLinkScope\'s preload counts', (tester) async {
+      var calls = 0;
+      await boot(
+        tester,
+        tile((context) => calls++, preload: null),
+        scope: (child) => RouteLinkScope(preload: Preload.intent, child: child),
+      );
+      final pointer = await mouse(tester);
+      await hover(tester, pointer, find.text('Two'));
+      expect(calls, 1);
+    });
+
+    testWidgets(
+      'visible: runs when the link is on screen, and again when it comes back',
+      (tester) async {
+        var calls = 0;
+        await boot(
+          tester,
+          ListView(
+            children: [
+              tile((context) => calls++, preload: Preload.visible),
+              const SizedBox(height: 3000),
+            ],
+          ),
+        );
+        expect(calls, 1);
+        await tester.drag(find.byType(ListView), const Offset(0, -2000));
+        await tester.pump();
+        await tester.pump();
+        expect(calls, 1);
+        await tester.drag(find.byType(ListView), const Offset(0, 2000));
+        await tester.pump();
+        await tester.pump();
+        expect(calls, 2);
+      },
+    );
+
+    testWidgets('runs again on the next intent after a failed preload', (
+      tester,
+    ) async {
+      var calls = 0;
+      await boot(tester, tile((context) => calls++, to: const ItemRoute(-1)));
+      final pointer = await mouse(tester);
+      await hover(tester, pointer, find.text('Two'));
+      await tester.pump();
+      await tester.pump();
+      expect(calls, 1);
+      await hover(tester, pointer, find.text('Two'));
+      expect(calls, 2);
+    });
+
+    Widget uriLink(void Function(BuildContext context) onPreload) => RouteLink(
+      uri: Uri.parse('/items/2'),
+      preload: Preload.intent,
+      onPreload: onPreload,
+      builder: (context, follow) =>
+          ListTile(title: const Text('Two'), onTap: follow),
+    );
+
+    testWidgets(
+      'a uri: link with no match preloads nothing, so it does not call it',
+      (tester) async {
+        var calls = 0;
+        await boot(tester, uriLink((context) => calls++));
+        final pointer = await mouse(tester);
+        await hover(tester, pointer, find.text('Two'));
+        expect(calls, 0);
+      },
+    );
+
+    testWidgets('a uri: link calls it when the scope\'s match found a route', (
+      tester,
+    ) async {
+      var calls = 0;
+      await boot(
+        tester,
+        uriLink((context) => calls++),
+        scope: (child) => RouteLinkScope(
+          match: (uri) =>
+              UrlMatch(uri, const ItemRoute(2), const {}, [item(2)]),
+          child: child,
+        ),
+      );
+      final pointer = await mouse(tester);
+      await hover(tester, pointer, find.text('Two'));
+      expect(calls, 1);
+    });
+
+    testWidgets('what it throws is reported, and the preload goes on', (
+      tester,
+    ) async {
+      final reported = <FlutterErrorDetails>[];
+      final saved = FlutterError.onError;
+      final (_, container) = await boot(
+        tester,
+        tile((context) => throw StateError('boom')),
+      );
+      FlutterError.onError = reported.add;
+      try {
+        final pointer = await mouse(tester);
+        await hover(tester, pointer, find.text('Two'));
+      } finally {
+        FlutterError.onError = saved;
+      }
+      expect(reported, hasLength(1));
+      expect(reported.single.exception, isA<StateError>());
+      expect(reported.single.library, 'fespalier');
+      expect(
+        reported.single.context.toString(),
+        'while running onPreload of a RouteLink to /items/2',
+      );
+      expect(container.exists(item(2)), isTrue);
     });
   });
 

@@ -1,8 +1,10 @@
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_image/fespalier_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shop/api.dart';
 import 'package:shop/app.g.dart';
 import 'package:shop/cart.dart';
+import 'package:shop/product_photo.dart';
 
 class ProductPage extends HookConsumerWidget {
   const ProductPage({super.key, required this.product});
@@ -17,11 +19,12 @@ class ProductPage extends HookConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // The row's avatar on the list flies here: both sides name the same
-          // route and the same element.
-          ProductRoute(id: product.id).hero(
-            'avatar',
-            child: CircleAvatar(radius: 40, child: Text(product.name[0])),
+          // The row's photo on the list flies here: both sides name the same
+          // route and the same element. It is [pagePhotoSize] wide, the size
+          // the list's link precached it at.
+          ProductRoute(id: product.id).imageHero(
+            'photo',
+            child: ProductPhoto(product, size: pagePhotoSize),
           ),
           const SizedBox(height: 16),
           Text(product.name, style: Theme.of(context).textTheme.headlineSmall),

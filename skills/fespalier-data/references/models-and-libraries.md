@@ -87,8 +87,7 @@ had notified twice, the whole value once). An `IList` from `fast_immutable_colle
 not.
 
 ```yaml
-# pubspec.yaml
-dependencies:
+# pubspec.yaml dependencies
   fast_immutable_collections: ^12.0.0
 ```
 
@@ -196,8 +195,7 @@ one schema that also exports JSON Schema or OpenAPI. It is an **adapter inside `
   same `validatePage(page)`: the query parameter is already typed and parsed, so a schema library adds nothing there.
 
 ```yaml
-# pubspec.yaml
-dependencies:
+# pubspec.yaml dependencies
   acanthis: ^2.0.0
   result_dart: ^2.2.0
   fpdart: ^1.2.0

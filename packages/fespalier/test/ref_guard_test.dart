@@ -5,6 +5,8 @@ import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/floor.dart';
+
 class Session extends Notifier<bool> {
   @override
   bool build() => true;
@@ -116,10 +118,10 @@ void main() {
       // The very first frame already shows the page: a sync guard adds no frame.
       expect(find.text('INBOX'), findsOneWidget);
       r.go('/other');
-      await tester.pump();
+      await pumpNavigation(tester);
       expect(find.text('OTHER'), findsOneWidget);
       r.go('/inbox');
-      await tester.pump();
+      await pumpNavigation(tester);
       expect(find.text('INBOX'), findsOneWidget);
     });
 
@@ -132,7 +134,7 @@ void main() {
       final r = router(initial: '/other');
       await pumpRouter(tester, r, container: c);
       r.go('/inbox');
-      await tester.pump();
+      await pumpNavigation(tester);
       expect(find.text('LOGIN'), findsOneWidget);
     });
 

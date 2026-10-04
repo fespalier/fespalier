@@ -41,7 +41,14 @@ import '../route_data.dart' show PrefetchHandle, SectionView;
 import '../route_match.dart' show UrlMatch;
 import '../segments.dart' show GuardResult;
 import '../telemetry.dart'
-    show TelemetrySite, telemetryDataTrace, telemetryGuardTrace;
+    show
+        TelemetrySite,
+        telemetryDataEnd,
+        telemetryDataStart,
+        telemetryDataThrew,
+        telemetryDataTrace,
+        telemetryGuardTrace,
+        telemetryWithin;
 import 'protocol.dart';
 
 /// Whether fespalier's DevTools support is compiled in: false in release builds, and in any
@@ -628,6 +635,36 @@ T traceData<T>(
   if (telemetry != null) {
     telemetryDataTrace(ref, telemetry, key != null, result);
   }
+  return result;
+}
+
+/// What a generated `data.dart` provider of an app made with `telemetry: true` wraps its body in
+/// (since 0.9.0): [call] is `() => data(...)`. The data span starts first, [call] runs once,
+/// synchronously, within it (`FespalierTelemetry.within`), and its result is returned, the very
+/// object: a value stays a value, and a `Future` is the `Future` Riverpod awaits. A `data()` that
+/// throws before it returns ends the span with `error` and is rethrown.
+///
+/// Otherwise it is [traceData]: [site] and [key] are what DevTools is told, and [telemetry] says
+/// where the call is. With no sink installed it adds one closure and a null check.
+@pragma('vm:prefer-inline')
+@pragma('dart2js:tryInline')
+T traceDataCall<T>(
+  Ref ref,
+  String site,
+  Object? key,
+  T Function() call, {
+  required TelemetrySite telemetry,
+}) {
+  final token = telemetryDataStart(telemetry, key != null);
+  final T result;
+  try {
+    result = telemetryWithin(token, call);
+  } catch (error, stackTrace) {
+    telemetryDataThrew(token, error, stackTrace);
+    rethrow;
+  }
+  if (kFespalierDevTools) _traceData(ref, site, key, result);
+  telemetryDataEnd(ref, token, result);
   return result;
 }
 

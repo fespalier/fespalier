@@ -235,7 +235,15 @@
         "packages/fespalier_storage/lib/fespalier_storage.dart",
         "README.md#Reconnects: fespalier_connectivity",
         "packages/fespalier_connectivity/README.md",
-        "packages/fespalier_connectivity/lib/fespalier_connectivity.dart"
+        "packages/fespalier_connectivity/lib/fespalier_connectivity.dart",
+        "README.md#HTTP clients: fespalier_dio",
+        "README.md#Cancelling a load whose page is gone",
+        "README.md#Server validation errors on forms",
+        "README.md#Writes are never retried, over HTTP too",
+        "packages/fespalier_dio/README.md",
+        "packages/fespalier_dio/lib/fespalier_dio.dart",
+        "packages/fespalier_dio/lib/http.dart",
+        "packages/fespalier_dio/lib/problem.dart"
       ]
     },
     "fespalier-layouts": {

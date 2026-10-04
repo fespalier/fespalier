@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth package and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -32,7 +32,7 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 ## 0.8 to 0.9: what to check
 
-Bump to `v0.9.0`, regenerate (`lib/app.g.dart` changes in every app, by its page names: item 8), and look at these:
+Bump to `v0.9.0`, regenerate (`lib/app.g.dart` changes in every app, by its page names: item 9), and look at these:
 
 1. **A `FespalierTelemetry` sink that switches exhaustively over `TelemetryOp` stops compiling** (`The type 'TelemetryOp' isn't exhaustively matched by the switch cases since it doesn't match the pattern 'TelemetryOp.auth'`, and `'TelemetryOp.image'`). Add a `TelemetryOp.auth` case (it is what `package:fespalier_auth` reports, with
    `TelemetryStart.authStep`, `authBackend`, `authTrigger` and `authDpop`) and a `TelemetryOp.image` case (what `package:fespalier_image` reports, with
@@ -74,7 +74,11 @@ Bump to `v0.9.0`, regenerate (`lib/app.g.dart` changes in every app, by its page
 7. **The package asks for `hooks_riverpod: ^3.3.2`** (it was `^3.2.1`): on riverpod 3.2.1, the lowest the old
    constraint admitted, a closed `PrefetchHandle` left its provider alive and `freshness` did not load again.
    An app already resolves 3.3.2 or newer; one pinned lower must raise its own constraint.
-8. **An app that opts in to nothing regenerates with page-name changes only (since 0.9.0).** Each `pageBuilder:`
+8. **New, opt-in:** `package:fespalier_dio` ([`fespalier-data`](../fespalier-data/SKILL.md), its `http.md`): `ref.cancelToken()` and
+   `ref.abortable(client)`, `withFieldErrors()` and `WriteGuard` for Dio and `package:http`. A repository dependency
+   with the same `url` and `ref` as `fespalier`; an app that does not add it is unchanged (no generated code, file kind,
+   key or command).
+9. **An app that opts in to nothing regenerates with page-name changes only (since 0.9.0).** Each `pageBuilder:`
    fespalier writes (a route with a `transition.dart` or `present.dart`, a `remount` route, a layout's
    shell) is wrapped in `namedPage('<pattern>', () => ...)`: two lines per page builder, the first
    gaining `namedPage('/products/:id', () =>` and the last a `)`. The pages `Transitions.*`,
@@ -85,12 +89,12 @@ Bump to `v0.9.0`, regenerate (`lib/app.g.dart` changes in every app, by its page
    unchanged. With `telemetry: true` each `data.dart` provider also becomes
    `traceDataCall(..., () => data(...), telemetry: ...)` (item 4). A `transition.dart` that builds a
    `Page` of its own can pass `name: Transitions.pageName`.
-9. **New, opt-in, in [`fespalier`](../fespalier/SKILL.md) (its app-main page):** the `fespalier: adapters:`
-   key in `pubspec.yaml` (a list of package names), and `FespalierAdapter` in `package:fespalier/startup.dart`. Each listed
-   package ships `lib/fespalier_adapter.dart` with a top-level `adapter`, and the generated `main()` calls its
-   `zone`, `beforeRun`, `overrides`, `providerObservers`, `routerObservers` and `wrap`; the key makes `main: auto`
-   write `lib/app.main.g.dart` on its own. An app without the key regenerates the same `lib/app.main.g.dart`
-   as before. An `fsp` older than 0.9.0 rejects the key as an unknown field.
+10. **New, opt-in, in [`fespalier`](../fespalier/SKILL.md) (its app-main page):** the `fespalier: adapters:`
+    key in `pubspec.yaml` (a list of package names), and `FespalierAdapter` in `package:fespalier/startup.dart`. Each listed
+    package ships `lib/fespalier_adapter.dart` with a top-level `adapter`, and the generated `main()` calls its
+    `zone`, `beforeRun`, `overrides`, `providerObservers`, `routerObservers` and `wrap`; the key makes `main: auto`
+    write `lib/app.main.g.dart` on its own. An app without the key regenerates the same `lib/app.main.g.dart`
+    as before. An `fsp` older than 0.9.0 rejects the key as an unknown field.
 
 ## 0.7 to 0.8: what to check
 

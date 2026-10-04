@@ -86,7 +86,7 @@ flutter:
     done
 
 # What CI's `floor` job runs: the package, its companions that claim Flutter 3.32 and examples/minimal.
-floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive examples/minimal"
+floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive packages/fespalier_image examples/minimal"
 
 # Needs a Flutter 3.32 SDK, whose minor must match FLUTTER_FLOOR_VERSION in ci.yml:
 # `git clone --depth 1 -b 3.32.8 https://github.com/flutter/flutter ~/flutter-3.32`. Each pubspec.lock

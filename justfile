@@ -6,7 +6,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # The Dart package, the DevTools extension and every example: pub get, dart format, flutter analyze, flutter test.
-dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth"
+dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive packages/fespalier_image examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth"
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
 examples := "shop features tabs minimal telemetry auth"
@@ -68,7 +68,7 @@ gen-examples:
     cargo run --quiet -- maestro --project ../examples/shop
     cargo run --quiet -- test --project ../examples/shop
 
-# The package, the DevTools extension, the OpenTelemetry adapter and every example: pub get, dart format (generated *.g.dart left out), analyze, test,
+# The package, the DevTools extension, the OpenTelemetry adapter, the image package and every example: pub get, dart format (generated *.g.dart left out), analyze, test,
 # and the const lints on each example's generated code (scripts/check-const-lints.sh)
 flutter:
     #!/usr/bin/env bash
@@ -86,7 +86,7 @@ flutter:
     done
 
 # What CI's `floor` job runs: the package, its companions that claim Flutter 3.32 and examples/minimal.
-floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive examples/minimal"
+floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive packages/fespalier_image examples/minimal"
 
 # Needs a Flutter 3.32 SDK, whose minor must match FLUTTER_FLOOR_VERSION in ci.yml:
 # `git clone --depth 1 -b 3.32.8 https://github.com/flutter/flutter ~/flutter-3.32`. Each pubspec.lock

@@ -465,6 +465,18 @@
                 "value": "Session (sign-in, refresh, sign-out)"
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "image"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Image load"
+              }
+            ]
           }
         ]
       },
@@ -556,6 +568,10 @@
                       "auth": {
                         "text": "Session (sign-in, refresh, sign-out)",
                         "index": 6
+                      },
+                      "image": {
+                        "text": "Image load",
+                        "index": 7
                       }
                     }
                   }
@@ -771,6 +787,10 @@
                       "auth": {
                         "text": "Session (sign-in, refresh, sign-out)",
                         "index": 6
+                      },
+                      "image": {
+                        "text": "Image load",
+                        "index": 7
                       }
                     }
                   }

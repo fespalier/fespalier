@@ -34,14 +34,16 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 Bump to `v0.9.0`, regenerate (`lib/app.g.dart` is unchanged for an app that opts in to nothing), and look at these:
 
-1. **A `FespalierTelemetry` sink that switches exhaustively over `TelemetryOp` stops compiling** (`The type 'TelemetryOp' isn't exhaustively matched by the switch cases since it doesn't match the pattern 'TelemetryOp.auth'`). Add a `TelemetryOp.auth` case (it is what `package:fespalier_auth` reports, with
-   `TelemetryStart.authStep`, `authBackend`, `authTrigger` and `authDpop`), or end the switch with `_ =>`.
+1. **A `FespalierTelemetry` sink that switches exhaustively over `TelemetryOp` stops compiling** (`The type 'TelemetryOp' isn't exhaustively matched by the switch cases since it doesn't match the pattern 'TelemetryOp.auth'`, and `'TelemetryOp.image'`). Add a `TelemetryOp.auth` case (it is what `package:fespalier_auth` reports, with
+   `TelemetryStart.authStep`, `authBackend`, `authTrigger` and `authDpop`) and a `TelemetryOp.image` case (what `package:fespalier_image` reports, with
+   `TelemetryStart.imageCdn`, `imageWidth` and `imagePreload`, and `TelemetryEnd.imageStatus`), or end the switch with `_ =>`.
    `fespalier_otel` and `RecordingTelemetry` have it. A sink with a `default`, or one that does not switch, is
    unaffected. `TelemetryOutcome` gains `none`, `expired`, `rejected` and `cancelled`, and
    `FespalierTelemetry.begin` and `finish` (for adapter packages).
-2. **The telemetry conventions gain an `auth` operation and `fespalier.auth.*` attributes**, within contract
-   version 1 (a new value of `fespalier.operation`, new keys): a dashboard that lists the operations shows one
-   more. `fsp telemetry`'s dashboards label it "Session (sign-in, refresh, sign-out)".
+2. **The telemetry conventions gain an `auth` and an `image` operation, with `fespalier.auth.*` and
+   `fespalier.image.*` attributes**, within contract version 1 (new values of `fespalier.operation`, new keys): a
+   dashboard that lists the operations shows two more. `fsp telemetry`'s dashboards label them "Session (sign-in,
+   refresh, sign-out)" and "Image load".
 3. **New, opt-in:** `package:fespalier_auth` ([`fespalier-guards`](../fespalier-guards/SKILL.md), its
    `auth-package.md`), with OpenID Connect and Keycloak (`package:fespalier_auth/oidc.dart`), a dio interceptor
    (`package:fespalier_auth/dio.dart`) and, as a separate package, device-bound tokens
@@ -57,13 +59,19 @@ Bump to `v0.9.0`, regenerate (`lib/app.g.dart` is unchanged for an app that opts
    a `data()` that throws before it returns now gets a `data` span (`fespalier.data.state = error`,
    `fespalier.async = false`; before 0.9.0 it got none); and `FespalierOtel` makes data and action spans
    current while they run, so the spans of `otel_http` and `otel_dio` made inside are their children.
-5. **New, opt-in, in `fespalier-observability`:** `FespalierTelemetry.combine` and `add` (several sinks in
+5. **New, opt-in:** `package:fespalier_image` ([`fespalier-images`](../fespalier-images/SKILL.md)): a
+   `ResponsiveImage` that fetches a network image at the width its box needs through an image CDN (imgproxy,
+   EmgR, Cloudinary, imgix, Thumbor, a template or a signed srcset), and `RouteLink(onPreload:)` in fespalier
+   itself, which runs a callback when a link starts a preload (a nullable parameter: nothing changes for a link
+   that does not pass it). The same `url` and `ref` as `fespalier` for the two. No generated code, file kind,
+   key or command changes.
+6. **New, opt-in, in `fespalier-observability`:** `FespalierTelemetry.combine` and `add` (several sinks in
    the one slot, each with its own tokens and isolated), the `within` hook a sink may override (an instance
    member with a default, so a sink compiles unchanged unless it already had a member named `within` with
    another signature: rename it), `FespalierTelemetry.run` for adapter packages, and `navigateFrom` with
    `NavigationSource` and the attribute `fespalier.navigation.source` (contract version 1 gains a key; absent
    unless a bridge marks the navigation). `RecordingTelemetry` gains `recordWithin:` and `source=`.
-6. **The package asks for `hooks_riverpod: ^3.3.2`** (it was `^3.2.1`): on riverpod 3.2.1, the lowest the old
+7. **The package asks for `hooks_riverpod: ^3.3.2`** (it was `^3.2.1`): on riverpod 3.2.1, the lowest the old
    constraint admitted, a closed `PrefetchHandle` left its provider alive and `freshness` did not load again.
    An app already resolves 3.3.2 or newer; one pinned lower must raise its own constraint.
 

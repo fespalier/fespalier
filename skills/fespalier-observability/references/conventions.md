@@ -20,9 +20,10 @@ spans                   navigate {route} | navigate (not found) | navigate   (su
                         guard {file} | redirect {file} | data {file}
                         action {file}#{name} | deferred {file}
                         auth {operation}   (since 0.9.0, fespalier_auth)
+                        image {cdn}   (since 0.9.0, fespalier_image)
 events (on navigate)    fespalier.page.enter | fespalier.page.focus | fespalier.page.leave
                         exception (semconv, on an error span)
-every span              fespalier.operation = navigate | guard | redirect | data | action | deferred | auth
+every span              fespalier.operation = navigate | guard | redirect | data | action | deferred | auth | image
                         fespalier.route, fespalier.file, fespalier.async, error.type
 navigate                fespalier.navigation.kind = initial | go | push | pop | replace | refresh
                         fespalier.navigation.outcome = ok | not_found | superseded
@@ -40,6 +41,11 @@ auth (since 0.9.0)      fespalier.auth.operation = restore | sign_in | refresh |
                         fespalier.auth.backend (the backend's constant name: oidc, firebase, fake, your own)
                         fespalier.auth.trigger = expired | unauthorized | forced   (refresh only)
                         fespalier.auth.dpop (bool: the backend binds its tokens)
+image (since 0.9.0)     fespalier.image.cdn (the URL builder's name: imgproxy, emgr, cloudinary, imgix, thumbor, template, srcset, direct)
+                        fespalier.image.width (int: the bucket, in physical pixels)
+                        fespalier.image.preload (bool: a precache started the load)
+                        fespalier.image.result = ok | error
+                        fespalier.image.status (int: the HTTP status of a failed load, when known)
 leave event             fespalier.route, fespalier.page.duration_ms (int)
 enter, focus events     fespalier.route
 ```
@@ -58,6 +64,12 @@ enter, focus events     fespalier.route
   installed sink and need no `telemetry: true`. A refresh is one span however many requests wait for it.
   `auth` is also the first word of the span name: `auth restore`, `auth sign_in`, `auth refresh`,
   `auth sign_out`. A sink that switches exhaustively over `TelemetryOp` needs an `auth` case (0.9.0).
+- **`image` spans** (since 0.9.0, `fespalier_image`, within version 1) are one per network load that starts
+  (a cache hit and a load already in flight make none), named `image emgr`, `image cloudinary`, and so on. They
+  are a child of the navigation in progress when there is one, follow the installed sink and need no
+  `telemetry: true`. An `image` span that ends `error` has the status and, when known,
+  `fespalier.image.status`; **never the URL, the source, the signature or the error's text**. A sink that
+  switches exhaustively over `TelemetryOp` needs an `image` case too (0.9.0).
 - A **guard parent**: guard, redirect, data and deferred spans started while a navigation is pending are
   children of its `navigate` span; an action is a root span (a user's tap).
 - **A data or action span is the current span while `data()` or the action runs** (since 0.9.0, through
@@ -71,14 +83,14 @@ enter, focus events     fespalier.route
 - **Never recorded**: segment and query values (unless `recordLocations: true`), family keys, `extra`,
   action input and result, data values, guard inputs. Exception text is scrubbed by `otel_zone`. From
   `fespalier_auth`: tokens, user ids, claims, user names, e-mails, issuer and endpoint URLs, DPoP proofs
-  and key thumbprints.
+  and key thumbprints; from `fespalier_image`, an image's URL, source and signature.
 - **Superseded** navigations never committed: no kind, no route, no `redirected` or `depth`. Leave them
   out of latency panels.
 - **Not emitted** (so no dashboard panel charts one): a data attempt (Riverpod does not tell a
   provider its retry count), a data source (network or cache), an action rolled back, an action rejected
   by validation.
 - **Metrics**: none. Derive them in the collector with the `spanmetrics` connector, using these
-  attributes as dimensions. The `fespalier.auth.*` attributes and `fespalier.navigation.source` are not
+  attributes as dimensions. The `fespalier.auth.*` and `fespalier.image.*` attributes and `fespalier.navigation.source` are not
   dimensions of the collector `fsp telemetry` starts yet (since 0.9.0).
 - **The backend decides the column names.** OpenObserve turns `.` into `_` and stores every span
   attribute as a string (a bool is `'true'`), keeps resource attributes under `service_`, and has no

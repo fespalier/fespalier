@@ -39,6 +39,7 @@ void main() {
     expect(FespalierConventions.opAction, 'action');
     expect(FespalierConventions.opDeferred, 'deferred');
     expect(FespalierConventions.opAuth, 'auth');
+    expect(FespalierConventions.opImage, 'image');
     expect(FespalierConventions.spanNavigateNotFound, 'navigate (not found)');
   });
 
@@ -105,6 +106,14 @@ void main() {
       ],
       ['expired', 'unauthorized', 'forced'],
     );
+  });
+
+  test('the image attributes (since 0.9.0)', () {
+    expect(FespalierConventions.imageCdn, 'fespalier.image.cdn');
+    expect(FespalierConventions.imageWidth, 'fespalier.image.width');
+    expect(FespalierConventions.imagePreload, 'fespalier.image.preload');
+    expect(FespalierConventions.imageResult, 'fespalier.image.result');
+    expect(FespalierConventions.imageStatus, 'fespalier.image.status');
   });
 
   test('where a navigation came from (since 0.9.0)', () {

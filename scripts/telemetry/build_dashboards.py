@@ -64,6 +64,7 @@ BOOLEAN_ATTRS = {
     "fespalier.navigation.redirected",
     "fespalier.data.keyed",
     "fespalier.auth.dpop",
+    "fespalier.image.preload",
 }
 # A constant named `<prefix><Value>` is a value of the attribute on the right; one named
 # `result<Value>` is a value of both result attributes.
@@ -76,7 +77,7 @@ VALUE_OF = {
     "outcome": ["fespalier.navigation.outcome"],
     "decision": ["fespalier.guard.decision"],
     "state": ["fespalier.data.state"],
-    "result": ["fespalier.action.result", "fespalier.deferred.result"],
+    "result": ["fespalier.action.result", "fespalier.deferred.result", "fespalier.image.result"],
     "source": ["fespalier.navigation.source"],
 }
 DART_CONST = re.compile(r"^\s*static const String (\w+) = '([^']*)';", re.M)

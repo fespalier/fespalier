@@ -87,6 +87,7 @@ route at the current location, change one query parameter, `null` clears it),
 RouteLink(
   to: ProductRoute(id: 42),          // or uri: Uri.parse('/products/42')
   preload: Preload.intent,           // none (default) | intent | visible
+  onPreload: (context) => ...,       // 0.9.0: what else the page needs, when the preload starts
   method: LinkMethod.go,             // go (default) | push | replace
   builder: (context, follow) => ListTile(title: Text(p.name), onTap: follow),
 )
@@ -97,7 +98,9 @@ RouteLink(
 prefix and `locale:` spelling), a plain widget elsewhere, and a plain click that goes
 through go_router with `method`. **Give `follow` to the child**, or the link shows a
 URL and does nothing. It carries no `extra`. `preload:` starts the data of the page it
-points at (`fespalier-data`), and since 0.7.0 its code when the page is [deferred](references/route-dart.md#deferred-load-a-pages-code-on-demand); `RouteLinkScope` sets the default for the app. In debug a
+points at (`fespalier-data`), and since 0.7.0 its code when the page is [deferred](references/route-dart.md#deferred-load-a-pages-code-on-demand); `RouteLinkScope` sets the default for the app. `onPreload:` (since 0.9.0) runs with the link's context when the preload starts, for what the page needs that is
+not a provider, such as its image at the size it shows it (`ResponsiveImage.precache`,
+[`fespalier-images`](../fespalier-images/SKILL.md)). In debug a
 `uri:` that matches no route throws. Detail, the web click path and tests:
 [`references/links.md`](references/links.md).
 

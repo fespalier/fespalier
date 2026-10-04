@@ -6,6 +6,8 @@ import 'dart:async';
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 import 'package:dartastic_opentelemetry/testing.dart';
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/src/telemetry.dart'
+    show telemetryNavigationEnd, telemetryNavigationStart;
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_otel/fespalier_otel.dart';
 import 'package:flutter/material.dart';
@@ -695,6 +697,117 @@ void main() {
     });
   });
 
+  group('an image span (fespalier_image, since 0.9.0)', () {
+    test(
+      'a load: the builder, the bucket and whether a precache started it',
+      () {
+        final token = FespalierTelemetry.begin(
+          const TelemetryStart(
+            TelemetryOp.image,
+            imageCdn: 'emgr',
+            imageWidth: 640,
+            imagePreload: true,
+          ),
+        );
+        FespalierTelemetry.finish(
+          token,
+          const TelemetryEnd(TelemetryOutcome.ok, isAsync: true),
+        );
+        final span = only('image emgr');
+        final attrs = span.attributes;
+        expect(attrs.getString('fespalier.operation'), 'image');
+        expect(attrs.getString('fespalier.image.cdn'), 'emgr');
+        expect(attrs.getInt('fespalier.image.width'), 640);
+        expect(attrs.getBool('fespalier.image.preload'), true);
+        expect(attrs.getString('fespalier.image.result'), 'ok');
+        expect(span.status, SpanStatusCode.Unset);
+        expect(attrs.keys.toSet(), {
+          'fespalier.operation',
+          'fespalier.image.cdn',
+          'fespalier.image.width',
+          'fespalier.image.preload',
+          'fespalier.image.result',
+        });
+      },
+    );
+
+    test(
+      'a failed load is an error span with its HTTP status, and no exception event',
+      () {
+        final token = FespalierTelemetry.begin(
+          const TelemetryStart(
+            TelemetryOp.image,
+            imageCdn: 'cloudinary',
+            imageWidth: 128,
+          ),
+        );
+        FespalierTelemetry.finish(
+          token,
+          const TelemetryEnd(
+            TelemetryOutcome.error,
+            isAsync: true,
+            imageStatus: 404,
+          ),
+        );
+        final span = only('image cloudinary');
+        expect(span.status, SpanStatusCode.Error);
+        expect(span.statusDescription, isNull);
+        expect(a(span, 'fespalier.image.result'), 'error');
+        expect(span.attributes.getInt('fespalier.image.status'), 404);
+        expect(span.attributes.getBool('fespalier.image.preload'), false);
+        expect(span.spanEvents, isNull);
+      },
+    );
+
+    test('an error object is never exported, its text holds the URL', () {
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(
+          TelemetryOp.image,
+          imageCdn: 'imgix',
+          imageWidth: 32,
+        ),
+      );
+      FespalierTelemetry.finish(
+        token,
+        TelemetryEnd(
+          TelemetryOutcome.error,
+          isAsync: true,
+          error: const FormatException('https://img.example.com/Kx/photo.jpg'),
+          stackTrace: StackTrace.current,
+        ),
+      );
+      final span = only('image imgix');
+      expect(span.status, SpanStatusCode.Error);
+      expect(span.statusDescription, isNull);
+      expect(span.spanEvents, isNull);
+      expect(
+        span.attributes.toList().map((e) => '${e.value}').join(' '),
+        isNot(contains('example.com')),
+      );
+    });
+
+    test('begun under a navigation, it is that navigation\'s child', () {
+      final navigation = telemetryNavigationStart(Uri.parse('/items/1'));
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(
+          TelemetryOp.image,
+          imageCdn: 'emgr',
+          imageWidth: 128,
+        ),
+        underNavigation: true,
+      );
+      FespalierTelemetry.finish(token, const TelemetryEnd(TelemetryOutcome.ok));
+      telemetryNavigationEnd(
+        navigation,
+        const TelemetryEnd(TelemetryOutcome.ok),
+      );
+      expect(
+        only('image emgr').parentSpanContext?.spanId,
+        only('navigate').spanContext.spanId,
+      );
+    });
+  });
+
   test('a span is exported at once when it ends: no waiting for a timer', () {
     final c = ProviderContainer();
     addTearDown(c.dispose);
@@ -722,6 +835,7 @@ void main() {
       'action',
       'deferred',
       'auth',
+      'image',
     });
     expect(seenKeys, {
       'fespalier.operation',
@@ -749,6 +863,11 @@ void main() {
       'fespalier.auth.backend',
       'fespalier.auth.trigger',
       'fespalier.auth.dpop',
+      'fespalier.image.cdn',
+      'fespalier.image.width',
+      'fespalier.image.preload',
+      'fespalier.image.result',
+      'fespalier.image.status',
     });
     expect(seenEvents, {
       'fespalier.page.enter',

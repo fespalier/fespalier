@@ -8,13 +8,10 @@ it ships.
 ## In progress (0.9.0)
 
 `fsp dev`, `fsp build` and `fsp run` (tasks in `pubspec.yaml`, a terminal UI), and the Flutter
-packages `fespalier_auth` (sessions, guards, OpenID Connect and Keycloak, `dio`) and
-`fespalier_sign_keypair` (DPoP, device-bound tokens) ship in 0.9.0. Next, as a Flutter
-package next to `fespalier_otel`:
-
-- **`fespalier_image`.** A widget that requests the image size its layout needs, from a configured
-  set of widths, through a URL builder for imgproxy and EmgR, Cloudinary, imgix, Thumbor, a template
-  or a list of sized URLs. No signing key in the app. `RouteLink` can warm the destination's image.
+packages `fespalier_auth` (sessions, guards, OpenID Connect and Keycloak, `dio`),
+`fespalier_sign_keypair` (DPoP, device-bound tokens) and `fespalier_image` (images at the size
+their layout needs, from an image CDN, with `RouteLink(onPreload:)` to warm a page's image) ship in
+0.9.0.
 
 ## Next
 

@@ -132,6 +132,7 @@ class RouteLink extends ConsumerStatefulWidget {
     this.locale,
     this.method = LinkMethod.go,
     this.preload,
+    this.onPreload,
     required this.builder,
   }) : assert(
          (to == null) != (uri == null),
@@ -160,6 +161,27 @@ class RouteLink extends ConsumerStatefulWidget {
   /// loading; null for the
   /// nearest [RouteLinkScope]'s, or [Preload.none] without one.
   final Preload? preload;
+
+  /// Runs with the link's context when the link starts a preload (since 0.9.0), right after it
+  /// starts `route.preload(ref)`: for [Preload.intent] on the first intent (and on the next one
+  /// after a failed preload), for [Preload.visible] each time the link comes back on screen. Not
+  /// called when the link preloads nothing ([Preload.none], or a `uri:` link no
+  /// `RouteLinkScope.match` matches).
+  ///
+  /// For what the page needs that is not a provider, such as the image it shows at the size it
+  /// shows it (`ResponsiveImage.precache` in `package:fespalier_image`). It must return at once;
+  /// what it throws is reported with `FlutterError.reportError` (library `fespalier`, context
+  /// "while running onPreload of a RouteLink to" and the link's location), and the preload goes on.
+  ///
+  /// ```dart
+  /// RouteLink(
+  ///   to: ProductRoute(id: p.id),
+  ///   preload: Preload.intent,
+  ///   onPreload: (context) => ResponsiveImage.precache(context, p.image, width: 160, aspectRatio: 1),
+  ///   builder: (context, follow) => ListTile(title: Text(p.name), onTap: follow),
+  /// )
+  /// ```
+  final void Function(BuildContext context)? onPreload;
 
   /// Builds the child, given the callback that follows the link.
   final RouteLinkBuilder builder;
@@ -318,6 +340,23 @@ class _RouteLinkState extends ConsumerState<RouteLink> {
           : match.route.preload(ref);
     }
     _startedFor = (_location, _preload);
+    final onPreload = widget.onPreload;
+    if (onPreload != null) {
+      try {
+        onPreload(context);
+      } catch (error, stack) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stack,
+            library: 'fespalier',
+            context: ErrorDescription(
+              'while running onPreload of a RouteLink to ${widget.location}',
+            ),
+          ),
+        );
+      }
+    }
   }
 
   void _release() {

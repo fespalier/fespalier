@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shop/api.dart';
 import 'package:shop/app.g.dart';
+import 'images.dart';
 
 class CountingApi extends FakeApi {
   final calls = <int, int>{};
@@ -42,7 +43,7 @@ void main() {
       await pumpRouter(
         tester,
         router,
-        overrides: [apiProvider.overrideWithValue(api)],
+        overrides: [fakeImages(), apiProvider.overrideWithValue(api)],
         settle: false,
       );
       await idle(tester);
@@ -83,7 +84,7 @@ void main() {
     await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/products/2'),
-      overrides: [apiProvider.overrideWithValue(api)],
+      overrides: [fakeImages(), apiProvider.overrideWithValue(api)],
       settle: false,
     );
     await idle(tester);
@@ -109,7 +110,7 @@ void main() {
     final container = await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/products/2'),
-      overrides: [apiProvider.overrideWithValue(api)],
+      overrides: [fakeImages(), apiProvider.overrideWithValue(api)],
       settle: false,
     );
     await idle(tester);
@@ -129,7 +130,7 @@ void main() {
     await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/products/1'),
-      overrides: [dataCacheStorage.overrideWithValue(storage)],
+      overrides: [fakeImages(), dataCacheStorage.overrideWithValue(storage)],
       settle: false,
     );
     await idle(tester);
@@ -141,6 +142,7 @@ void main() {
       tester,
       AppRoutes.router(initialLocation: '/products/1'),
       overrides: [
+        fakeImages(),
         apiProvider.overrideWithValue(OfflineApi()),
         dataCacheStorage.overrideWithValue(storage),
       ],
@@ -157,6 +159,7 @@ void main() {
       tester,
       AppRoutes.router(initialLocation: '/products/2'),
       overrides: [
+        fakeImages(),
         apiProvider.overrideWithValue(OfflineApi()),
         dataCacheStorage.overrideWithValue(storage),
       ],
@@ -174,7 +177,7 @@ void main() {
     await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/products/3'),
-      overrides: [dataCacheStorage.overrideWithValue(storage)],
+      overrides: [fakeImages(), dataCacheStorage.overrideWithValue(storage)],
       settle: false,
     );
     await idle(tester);
@@ -184,6 +187,7 @@ void main() {
       tester,
       AppRoutes.router(initialLocation: '/products/3'),
       overrides: [
+        fakeImages(),
         apiProvider.overrideWithValue(api),
         dataCacheStorage.overrideWithValue(storage),
       ],

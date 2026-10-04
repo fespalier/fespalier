@@ -177,11 +177,15 @@ fn the_runtime_knows_its_version() {
 
 /// The companion packages that are released with fespalier (the OpenTelemetry adapter, and the
 /// ones that follow it): each has the version of the CLI and pins fespalier by a `ref: v…`.
-const COMPANIONS: [&str; 5] = [
+const COMPANIONS: [&str; 9] = [
     "packages/fespalier_otel/pubspec.yaml",
     "packages/fespalier_auth/pubspec.yaml",
     "packages/fespalier_sign_keypair/pubspec.yaml",
     "packages/fespalier_adaptive/pubspec.yaml",
+    "packages/fespalier_flags/pubspec.yaml",
+    "packages/fespalier_storage/pubspec.yaml",
+    "packages/fespalier_connectivity/pubspec.yaml",
+    "packages/fespalier_image/pubspec.yaml",
     "packages/fespalier_dio/pubspec.yaml",
 ];
 
@@ -314,6 +318,10 @@ fn the_readmes_pin_this_version() {
         "packages/fespalier_auth/README.md",
         "packages/fespalier_sign_keypair/README.md",
         "packages/fespalier_adaptive/README.md",
+        "packages/fespalier_flags/README.md",
+        "packages/fespalier_storage/README.md",
+        "packages/fespalier_connectivity/README.md",
+        "packages/fespalier_image/README.md",
         "packages/fespalier_dio/README.md",
     ] {
         let text = read(file);
@@ -350,6 +358,14 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         "packages/fespalier_sign_keypair/README.md",
         "packages/fespalier_adaptive/pubspec.yaml",
         "packages/fespalier_adaptive/README.md",
+        "packages/fespalier_flags/pubspec.yaml",
+        "packages/fespalier_flags/README.md",
+        "packages/fespalier_storage/pubspec.yaml",
+        "packages/fespalier_storage/README.md",
+        "packages/fespalier_connectivity/pubspec.yaml",
+        "packages/fespalier_connectivity/README.md",
+        "packages/fespalier_image/pubspec.yaml",
+        "packages/fespalier_image/README.md",
         "packages/fespalier_dio/pubspec.yaml",
         "packages/fespalier_dio/README.md",
         // the agent skills' install pins (skills/README.md, "Versions")
@@ -532,6 +548,98 @@ fn the_weekly_maestro_workflow_builds_with_the_flutter_of_ci() {
         flutter_version(".github/workflows/ci.yml"),
         "FLUTTER_VERSION differs between maestro-web.yml (left) and ci.yml (right)"
     );
+}
+
+/// The `dir:` entries of the matrix of ci.yml's `floor` job, in order.
+fn floor_matrix(ci: &str) -> Vec<String> {
+    let job = ci
+        .split_once("\n  floor:\n")
+        .expect("ci.yml has no `floor` job")
+        .1;
+    let dirs = job
+        .split_once("\n        dir:\n")
+        .expect("the floor job has no `dir:` matrix")
+        .1;
+    let dirs: Vec<String> = dirs
+        .lines()
+        .map_while(|l| l.trim().strip_prefix("- "))
+        .map(str::to_string)
+        .collect();
+    assert!(!dirs.is_empty(), "the floor job's `dir:` matrix is empty");
+    dirs
+}
+
+#[test]
+fn the_floor_job_runs_the_flutter_the_packages_claim() {
+    // `ci.yml`'s `floor` job runs on FLUTTER_FLOOR_VERSION, the one place the floor is spelled
+    // out for CI (`just floor` reads it from there). What the pubspecs and READMEs claim must be
+    // that minor, or the job proves a floor nobody states.
+    let ci = read(".github/workflows/ci.yml");
+    let floor = ci
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("FLUTTER_FLOOR_VERSION:"))
+        .map(|v| v.split('#').next().unwrap_or("").trim().to_string())
+        .filter(|v| !v.is_empty())
+        .expect("ci.yml has no `FLUTTER_FLOOR_VERSION:` line");
+    let minor = floor.rsplit_once('.').map(|(minor, _)| minor).unwrap();
+    assert_eq!(
+        minor.matches('.').count(),
+        1,
+        "FLUTTER_FLOOR_VERSION is `{floor}`, not major.minor.patch"
+    );
+    assert!(
+        ci.contains("flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}"),
+        "the floor job must install Flutter from FLUTTER_FLOOR_VERSION, not a second spelling"
+    );
+    // The job runs exactly the packages that claim the floor (and `examples/minimal`), so a new
+    // companion that says `flutter: ">=3.32.0"` is run there from its first PR. fespalier_devtools
+    // claims it too but is an app whose build and lockfile are committed (see the job's comment).
+    let matrix = floor_matrix(&ci);
+    let recipe: Vec<String> = read("justfile")
+        .lines()
+        .find_map(|l| l.strip_prefix("floor_dirs := "))
+        .expect("the justfile has no `floor_dirs := ` line")
+        .trim_matches('"')
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        recipe, matrix,
+        "`floor_dirs` in the justfile (left) and the floor job's matrix in ci.yml (right) differ"
+    );
+    let claim = format!("flutter: \">={minor}.0\"");
+    let mut claiming: Vec<String> = fs::read_dir(root().join("packages"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .filter(|name| name != "fespalier_devtools")
+        .map(|name| format!("packages/{name}"))
+        .filter(|dir| {
+            fs::read_to_string(root().join(dir).join("pubspec.yaml"))
+                .is_ok_and(|pubspec| pubspec.contains(&claim))
+        })
+        .collect();
+    claiming.sort();
+    let mut run: Vec<String> = matrix
+        .iter()
+        .filter(|dir| dir.starts_with("packages/"))
+        .cloned()
+        .collect();
+    run.sort();
+    assert_eq!(
+        run, claiming,
+        "the floor job's packages (left) are not the packages that claim `{claim}` (right): add a \
+         new one to the matrix in ci.yml and to `floor_dirs` in the justfile"
+    );
+    for readme in [
+        "README.md",
+        "packages/fespalier/README.md",
+        "packages/fespalier_auth/README.md",
+    ] {
+        assert!(
+            read(readme).contains(&format!("Flutter {minor} or newer")),
+            "{readme} does not say `Flutter {minor} or newer`, the floor job's Flutter {floor}"
+        );
+    }
 }
 
 #[test]

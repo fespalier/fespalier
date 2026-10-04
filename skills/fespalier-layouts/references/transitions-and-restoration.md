@@ -260,6 +260,11 @@ ProductRoute(id: product.id).hero('avatar', child: CircleAvatar(radius: 40, chil
   `RouteHeroScope`, which a `RouteHero`'s own `onBackGesture:`, `path:` and `shuttle:` override; the
   nearest `transition.dart` that passes it wins, and one that doesn't leaves the tree as it was. A
   `present.dart` page or a `Page` of your own wraps its child in `RouteHeroScope(heroes: ...)`.
+- **An image in a hero** (since 0.9.0, `package:fespalier_image`): use `route.imageHero(name, child: ResponsiveImage(...))`
+  on both pages, or `Heroes(shuttle: ResponsiveImage.flightShuttle)` in the root `transition.dart`. Flutter's default
+  shuttle rebuilds the destination's child at every rectangle of the flight, so an image that measures its box would ask for
+  a URL of its own; the flight shuttle makes an image in flight start no load and show the widest variant already loaded
+  ([`fespalier-images`](../../fespalier-images/references/integration.md)).
 - **What does not fly.** A `dialog` or `sheet` (and a `present.dart` that builds a `PopupRoute`):
   Flutter flies heroes between page routes only, so use `fullscreenDialog`, `material` or a
   `PageRoute`. A tab switch (`goBranch`) pushes no route. A remounted page is a new route: a tag

@@ -405,6 +405,9 @@ void main() {
           authTrigger: 'expired',
           authDpop: true,
           source: NavigationSource.notification,
+          imageCdn: 'emgr',
+          imageWidth: 640,
+          imagePreload: true,
         );
         FespalierTelemetry.begin(start);
         for (final (spy, parent) in [(a, 'a:1'), (b, 'b:1')]) {
@@ -422,6 +425,9 @@ void main() {
           expect(copy.authTrigger, 'expired');
           expect(copy.authDpop, isTrue);
           expect(copy.source, NavigationSource.notification);
+          expect(copy.imageCdn, 'emgr');
+          expect(copy.imageWidth, 640);
+          expect(copy.imagePreload, isTrue);
         }
       },
     );

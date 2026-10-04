@@ -17,17 +17,18 @@ point at a checkout of this repository.
 
 ## The skills
 
-| Skill                                                     | Load it when                                                                                                   |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| [`fespalier`](fespalier/)                                 | Anything. Orientation, the file kinds, install, the golden rules, the map                                      |
-| [`fespalier-routing`](fespalier-routing/)                 | Folders, segments, enums, typed routes, `route.dart` (incl. `nest`), `extra`, the manifest                     |
-| [`fespalier-data`](fespalier-data/)                       | `data.dart`, loading and error views, retries, sections, prefetch, `dataAt`                                    |
-| [`fespalier-layouts`](fespalier-layouts/)                 | `layout.dart`, tabs, transitions, dialogs, restoration, adaptive layouts                                       |
-| [`fespalier-guards`](fespalier-guards/)                   | `guard.dart`, `redirect.dart`, `returnTo`, sign-in and refresh on auth change                                  |
-| [`fespalier-testing`](fespalier-testing/)                 | `pumpRouter`, deep links, data states, and the traps that hang a test                                          |
-| [`fespalier-observability`](fespalier-observability/)     | `observe.dart` hooks (analytics, titles), telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions |
-| [`fespalier-troubleshooting`](fespalier-troubleshooting/) | **An `fsp` error, a stale `app.g.dart`, a URL that shows the wrong page**                                      |
-| [`fespalier-migration`](fespalier-migration/)             | Upgrading between releases, or adopting fespalier in a go_router app                                           |
+| Skill                                                     | Load it when                                                                                                                                                                 |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`fespalier`](fespalier/)                                 | Anything. Orientation, the file kinds, install, the golden rules, the map                                                                                                    |
+| [`fespalier-routing`](fespalier-routing/)                 | Folders, segments, enums, typed routes, `route.dart` (incl. `nest`), `extra`, the manifest                                                                                   |
+| [`fespalier-data`](fespalier-data/)                       | `data.dart`, loading and error views, retries, sections, prefetch, `dataAt`                                                                                                  |
+| [`fespalier-layouts`](fespalier-layouts/)                 | `layout.dart`, tabs, transitions, dialogs, restoration, adaptive layouts                                                                                                     |
+| [`fespalier-guards`](fespalier-guards/)                   | `guard.dart`, `redirect.dart`, `returnTo`, sign-in and refresh on auth change                                                                                                |
+| [`fespalier-testing`](fespalier-testing/)                 | `pumpRouter`, deep links, data states, and the traps that hang a test                                                                                                        |
+| [`fespalier-observability`](fespalier-observability/)     | `observe.dart` hooks (analytics, titles), telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions                                                               |
+| [`fespalier-images`](fespalier-images/)                   | Network images: `ResponsiveImage`, an image CDN (imgproxy, EmgR, Cloudinary, imgix, Thumbor), signed URLs without a key in the app, image heroes, `FakeImages` (since 0.9.0) |
+| [`fespalier-troubleshooting`](fespalier-troubleshooting/) | **An `fsp` error, a stale `app.g.dart`, a URL that shows the wrong page**                                                                                                    |
+| [`fespalier-migration`](fespalier-migration/)             | Upgrading between releases, or adopting fespalier in a go_router app                                                                                                         |
 
 Start with `fespalier`: it is the orientation skill and it routes to the rest. If
 something is not working, read
@@ -81,7 +82,11 @@ widget test.
 - **The code samples compile.** A Dart block that starts with a `// lib/...` or
   `// test/...` comment is written into a scratch copy of `examples/minimal`, run
   through `fsp gen`, `flutter analyze` and, where it has tests, `flutter test`.
-  `just skill-samples` does that for every page.
+  `just skill-samples` does that for every page. A page that imports
+  `package:fespalier_<name>/` (since 0.9.0: `fespalier_auth`, `fespalier_flags`, and every
+  other `packages/fespalier_<name>/` of the checkout) builds against that package by path,
+  with no edit to the script; a plugin or SDK a recipe needs goes in a
+  `# pubspec.yaml dependencies` YAML block, whose lines are merged under `dependencies:`.
 - **The diagnostics are real.** Each message in `fespalier-troubleshooting` was read
   from the generator's source or reproduced with `fsp check` on a tree that triggers it.
 - **Where the README and the code disagree, the code wins**, the README is fixed, and

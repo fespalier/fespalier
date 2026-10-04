@@ -16,13 +16,13 @@
 //     `# pubspec.yaml dependencies` has its lines merged under `dependencies:`
 //     (a recipe's plugin: firebase_auth, supabase_flutter, flutter_web_auth_2;
 //     since 0.9.0). Every other block is a fragment and is not built.
-//   - A page with a block that imports `package:fespalier_<x>/`, where
-//     `packages/fespalier_<x>` exists in the checkout (`fespalier_auth`,
-//     `fespalier_sign_keypair`, `fespalier_adaptive`, `fespalier_dio`; since 0.9.0), gets that package
-//     as a path dependency of this checkout, and a `dependency_overrides:` block
-//     pointing `fespalier` and the companions at it: the companions pin
-//     fespalier by repository tag, which a path dependency of the app cannot
-//     be resolved against.
+//   - A page with a block that imports `package:fespalier_<name>/` (since 0.9.0), for
+//     every `packages/fespalier_<name>/pubspec.yaml` of this checkout (fespalier_auth,
+//     fespalier_sign_keypair, fespalier_adaptive, fespalier_flags, ...: generic, so a new
+//     companion package needs no edit here), gets that package as a path dependency of
+//     this checkout, and a `dependency_overrides:` block pointing `fespalier` and the
+//     companions at it: the companions pin fespalier by repository tag, which a path
+//     dependency of the app cannot be resolved against.
 //   - The scratch app is a copy of the fespalier checkout's `examples/minimal`
 //     (the checkout is never modified): renamed `my_app` (the package name the
 //     skills' imports use), depending on the checkout's packages/fespalier by
@@ -78,18 +78,6 @@ if (!existsSync(minimal) || !existsSync(join(pkg, "pubspec.yaml"))) {
 const FSP = process.env.FSP ?? "fsp";
 const FLUTTER = process.env.FLUTTER ?? "flutter";
 const env = { ...process.env, CI: "true" };
-
-// The companion packages (`packages/fespalier_<x>` of the checkout) that some block imports,
-// whatever they are called: a new companion needs no edit here.
-const companionsOf = (bodies) => {
-  const found = new Set();
-  for (const body of bodies) {
-    for (const [, name] of body.matchAll(/package:(fespalier_[a-z0-9_]+)\//g)) {
-      if (existsSync(join(checkout, "packages", name, "pubspec.yaml"))) found.add(name);
-    }
-  }
-  return [...found].sort();
-};
 
 const run = (cmd, args, cwd) =>
   spawnSync(cmd, args, { cwd, env, encoding: "utf8", maxBuffer: 1 << 28 });
@@ -249,7 +237,13 @@ for (const file of files) {
   // A page that imports the companion packages gets them as path dependencies of this checkout,
   // and `fespalier` overridden to the checkout's too: the companions pin it by repository tag,
   // which a path dependency of the app cannot be resolved against.
-  const companions = companionsOf([...written.values()]);
+  const companions = [
+    ...new Set(
+      [...written.values()].flatMap((body) =>
+        [...body.matchAll(/package:(fespalier_[a-z0-9_]+)\//g)].map((m) => m[1]),
+      ),
+    ),
+  ].filter((name) => existsSync(join(checkout, "packages", name, "pubspec.yaml")));
   const depLines = [
     ...companions.map((name) => `  ${name}:\n    path: ${join(checkout, "packages", name)}`),
     // `# pubspec.yaml dependencies` blocks: indented under `dependencies:` as written.

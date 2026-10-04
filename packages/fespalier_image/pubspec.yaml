@@ -1,0 +1,37 @@
+name: fespalier_image
+description: Network images sized by their layout and fetched from an image CDN (imgproxy and EmgR, Cloudinary, imgix, Thumbor, a URL template or a srcset), for fespalier apps.
+version: 0.8.1 # x-release-please-version
+# Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
+publish_to: 'none'
+homepage: https://github.com/fespalier/fespalier
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_image
+issue_tracker: https://github.com/fespalier/fespalier/issues
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # The same repository dependency an app writes (same url, path and ref), so the two resolve to
+  # one package: a path dependency would resolve "at <sha>" and conflict with the app's tag.
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1 # x-release-please-version
+
+dev_dependencies:
+  # Only the signing tests use it, to check each builder's payload against the providers' published
+  # examples. The package itself computes no signature and takes no key (README, "Signed image URLs").
+  crypto: ^3.0.6
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# In this repository the package is built against the fespalier beside it. A dependency's
+# overrides are ignored, so apps never see this.
+dependency_overrides:
+  fespalier:
+    path: ../fespalier

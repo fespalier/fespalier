@@ -13,7 +13,10 @@ environment:
 
 dependencies:
   # Pure Dart, both: an app pays only for the library it imports (fespalier_dio.dart or http.dart).
-  dio: ^5.4.0
+  # 5.7.0: the lowest the floor job can test. The tests run WriteGuard against dio_smart_retry,
+  # whose own constraint is `dio: ^5.7.0`, so `flutter pub downgrade` cannot resolve anything
+  # lower; a constraint no run exercises is not claimed (the library alone compiles on 5.4.0).
+  dio: ^5.7.0
   flutter:
     sdk: flutter
   # The same repository dependency an app writes (same url, path and ref), so the two resolve to

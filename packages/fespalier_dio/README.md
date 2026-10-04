@@ -31,7 +31,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `dio` (`^5.4.0`) and `http` (`^1.5.0`), both pure Dart.
+Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `dio` (`^5.7.0`) and `http` (`^1.5.0`), both pure Dart.
 
 ## Three libraries
 

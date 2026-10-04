@@ -17,7 +17,7 @@ testing it, and a test of each piece that compiles.
 
 ```yaml
 # pubspec.yaml dependencies
-  dio: ^5.4.0
+  dio: ^5.7.0
   dio_smart_retry: ^7.0.1
   http: ^1.5.0
 ```

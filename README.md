@@ -3567,7 +3567,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-It needs Dart 3.8 and Flutter 3.32 or newer, and depends on `dio` (`^5.4.0`) and `http` (`^1.5.0`, the first
+It needs Dart 3.8 and Flutter 3.32 or newer, and depends on `dio` (`^5.7.0`) and `http` (`^1.5.0`, the first
 release with abortable requests). It is three libraries, so an app that uses one client imports only that one:
 
 | Library                                    | For            | What is in it                                                                                                     |

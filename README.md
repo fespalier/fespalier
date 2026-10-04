@@ -5262,7 +5262,8 @@ Since 0.8.1, fespalier reports what it does while it routes: each navigation, gu
 `redirect.dart` decision, `data.dart` load, action run and deferred-page load, with the pages that
 entered, were focused or left. fespalier has no OpenTelemetry dependency: it tells a
 `FespalierTelemetry` sink, and `package:fespalier_otel` is the sink that turns it into spans on the SDK
-that [`otel_zone`](https://github.com/vaam-apps/flutter-otel-zone) starts. A test installs a
+that [`otel_zone`](https://github.com/vaam-apps/flutter-otel-zone) starts. Since 0.9.0
+`package:fespalier_sentry` is the sink for [Sentry](#sentry-fespalier_sentry), errors first. A test installs a
 `RecordingTelemetry` instead.
 
 ### Turning it on
@@ -5332,7 +5333,8 @@ dependencies:
 go_router 17 (fespalier accepts 17 and 18). An app that needs 18 adds `dependency_overrides: go_router:
 ^18.0.0`, as `otel_zone`'s README says. `examples/telemetry` is the one example on go_router 17.
 
-The wiring, in `main.dart` (`examples/telemetry` is this):
+The wiring, in `main.dart` (`examples/telemetry` is this, inside Sentry's zone since 0.9.0: see
+[Sentry](#sentry-fespalier_sentry)):
 
 ```dart
 final observability = OtelZone(
@@ -5373,6 +5375,272 @@ its body, so the app stays blank: it builds a `ReceivePort` first, which `dart:i
 there. `start()` itself works on the web. Until `otel_zone` guards that call, run the body as it is on the
 web, as `guarded` above does; the error hooks `runGuarded` installs are then not installed there.
 
+### Sentry: fespalier_sentry
+
+Since 0.9.0. `package:fespalier_sentry` is the `FespalierTelemetry` sink for [Sentry](https://sentry.io), and
+it is **errors first**: out of the box it sends what a team that debugs a production app asks for, and
+leaves performance monitoring to the teams that want it.
+
+- **Every error and crash, with where it happened.** An error that a guard, a `data.dart`, an action or a
+  deferred load threw is a Sentry event tagged with the route pattern (`/products/:id`, never the URL), the
+  app file (`products/$id/data.dart`) and, for an action, its function name, grouped by that file and not
+  by the Riverpod frames on top of the stack. The screen is also the scope's *transaction* name, the field
+  Sentry's issue list groups and searches by, so a crash that no fespalier operation reported says which
+  screen it happened on too.
+- **One breadcrumb per page change**, from the pattern of the page that was left to the pattern of the page
+  that is shown, so a report reads as the path the user took.
+- **Release health.** Sessions, crash-free users and crash-free sessions are the SDK's; a handled error
+  marks its session *errored*.
+- **A link to the OpenTelemetry trace.** Next to `fespalier_otel` (installed together with
+  [`FespalierTelemetry.combine`](#several-sinks-combine-and-add)), each event carries `otel.trace_id` and
+  `otel.span_id`: the trace of the span the failing call made, or, for a crash, of the navigation that
+  opened the screen. Search the trace id in your OpenTelemetry backend to see what the app did.
+
+Screen-load transactions, spans for guards, data loads and actions, and time to full display are opt-in
+(`FespalierSentry(tracing: true)`), for a team that has only Sentry: with `fespalier_otel` the traces are
+there already. fespalier has no Sentry dependency: `SentryFlutter.init` still starts the SDK, which owns
+the crash capture, the sessions, the native integrations and the transport, and this package only tells it
+what the router knows. Add it next to fespalier, with the same `url` and the same `ref` (as for
+`fespalier_otel`), and `sentry_flutter` 9.26.0 or newer, which the app needs for `SentryFlutter.init`:
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.8.1
+  fespalier_sentry:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_sentry
+      ref: v0.8.1
+  sentry_flutter: ">=9.26.0 <10.0.0"
+```
+
+<!-- x-release-please-end -->
+
+An error, from the call that failed to sentry.io (every arrow into the sink is a plain synchronous call; every
+SDK call that returns a `Future` is fired and forgotten):
+
+```text
+ your app (lib/app/**)          package:fespalier        package:fespalier_sentry            Sentry SDK
+ ─────────────────────          ─────────────────        ────────────────────────            ──────────
+ ProductRoute(id: 7).go(ctx)
+        └─────────────────────▶ navigation commits ─end(navigate)──▶ scope: transaction = '/products/:id',
+                                page events ───────page(enter)────▶ tag fespalier.route, tag otel.trace_id;
+                                                                    breadcrumb 'navigation' from → to
+ orders/$id/action.dart throws ─ action ends ───────end(error)─────▶ captureException(error,
+                                                                      tags: fespalier.route, .file,
+                                                                      .operation, .action, otel.*;
+                                                                      fingerprint: {{default}} + file) ──▶ event ──▶ sentry.io
+ something else crashes ───────────────────────────────────────────▶ the SDK's own capture: the event
+                                                                      has the scope's transaction and tags
+```
+
+#### What Sentry gets from fespalier
+
+| fespalier reports                                                       | In Sentry, by default                                                                                                                                                                         | With `tracing: true` too                                                                                |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| outcome `error` with an exception (guard, `data`, `action`, `deferred`) | an event, **handled**, mechanism `fespalier.{operation}`, tags `fespalier.operation`, `.route`, `.file` and `.action` (an action), fingerprint `['{{ default }}', file]`, context `fespalier` | the event belongs to the span of the operation that failed (status `internal_error`)                    |
+| the same failure again within `repeatWindow` (30 s)                     | a breadcrumb `data products/$id/data.dart StateError again`, not another event (Riverpod retries a failing `data()` up to ten times)                                                          | —                                                                                                       |
+| a `FieldErrors` (a validation answer)                                   | **not** an event: a breadcrumb `action ... rejected` (its messages can echo what the user typed)                                                                                              | the span has status `invalid_argument`                                                                  |
+| an `auth` step that fails (`fespalier_auth`)                            | not an event (the next request retries it): a breadcrumb with the class of the error, never its text                                                                                          | a span `fespalier.auth`                                                                                 |
+| an `image` that fails (`fespalier_image`)                               | a breadcrumb `image emgr error status=404`, never the URL                                                                                                                                     | a span `fespalier.image`, a child of the navigation in progress                                         |
+| a committed navigation                                                  | the scope's transaction name is the pattern, the tag `fespalier.route` too; with `fespalier_otel`, the tags `otel.trace_id` and `otel.span_id`                                                | a `ui.load` transaction named by the pattern, with `time_to_initial_display` and `time_to_full_display` |
+| a page `enter` or `focus`                                               | one breadcrumb, type `navigation`, `from` and `to` patterns (a leave is no breadcrumb: a page change is one)                                                                                  | —                                                                                                       |
+| a location that matched no route                                        | a warning breadcrumb `not found`, the transaction name `navigate (not found)`, no route tag                                                                                                   | a transaction with that name                                                                            |
+| a guard or `redirect.dart` that redirects                               | a breadcrumb `redirect by checkout/guard.dart` (the target only with `recordLocations: true`)                                                                                                 | spans `fespalier.guard` and `fespalier.redirect`                                                        |
+| an action that works                                                    | a breadcrumb `items/$id/action.dart#rename ok`, never its input or its result                                                                                                                 | a span `fespalier.action`, a child of the open screen's transaction or a transaction of its own         |
+| a `data` load, a `deferred` load                                        | nothing                                                                                                                                                                                       | spans `fespalier.data` and `fespalier.deferred`; the screen ends when its last data load does           |
+| a pop, a refresh                                                        | a breadcrumb and the scope's name                                                                                                                                                             | no transaction: they show a page that is already built                                                  |
+| a navigation that a newer one superseded                                | nothing                                                                                                                                                                                       | not sent                                                                                                |
+
+The keys are the telemetry conventions' names (contract version 1), so a search in Sentry and a query in
+OpenObserve use the same words. How they map onto Sentry is documented with this package and is not part of
+contract version 1.
+
+What leaves the app, and what never does:
+
+| Sent                                                                                 | Never sent by `fespalier_sentry`                                                                                                                      |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| route patterns, app file paths, action function names, enum-like outcomes, durations | segment values, query values (`recordLocations: true` adds only the committed **path**), family keys, `extra`, action inputs and results, data values |
+| the exception, its type and its stack                                                | a `FieldErrors`                                                                                                                                       |
+
+Exception **text** is the app's: Sentry sends it as it is, so redact what your app knows to be sensitive in
+`options.beforeSend`, as with any Sentry app.
+
+#### Wiring Sentry
+
+Sentry starts first: its `appRunner` runs the binding, `startup()` and `runApp`, so crashes are Sentry's. In
+`lib/app/startup.dart`:
+
+```dart
+Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
+  (options) => FespalierSentry.configure(
+    options,
+    dsn: const String.fromEnvironment('SENTRY_DSN'), // empty: Sentry is off
+    propagateTraceTo: const ['api.example.com'],
+  ),
+  appRunner: body,
+);
+
+/// Before the router is built, so the first navigation is reported. Sync: the first frame is the app.
+void startup() => FespalierTelemetry.install(FespalierSentry());
+
+/// Release health on the web needs it; it makes no transaction.
+List<NavigatorObserver> get routerObservers => [
+  if (kIsWeb) FespalierSentry.navigatorObserver(),
+];
+```
+
+Next to OpenTelemetry (`otel_zone`), install both in the one slot. Do **not** also use `OtelZone.runGuarded`:
+its zone sends an uncaught async error to Talker only, and Sentry would never see it (it is also blank on the
+web); start the SDK with `observability.start()` in `startup()` instead:
+
+```dart
+Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
+  (options) => FespalierSentry.configure(options, dsn: const String.fromEnvironment('SENTRY_DSN')),
+  appRunner: body, // not observability.runGuarded: Sentry captures the crashes
+);
+
+Future<void> startup() async {
+  FespalierTelemetry.install(
+    FespalierTelemetry.combine([
+      FespalierSentry(),
+      FespalierOtel(isReady: () => observability.isReady), // emits once start() below is done
+    ]),
+  );
+  await observability.start(serviceVersion: '1.4.0', resourceAttributes: {...FespalierOtel.resourceAttributes});
+}
+```
+
+The order rules:
+
+1. **Sentry is the outermost zone.** A zone around `SentryFlutter.init` on the web makes Sentry skip its own
+   `runZonedGuarded`, and uncaught errors go to that zone instead. Nothing may call
+   `WidgetsFlutterBinding.ensureInitialized()` before it.
+2. **Install the sink before the router exists**, in `startup()` or in `appRunner`.
+3. With `fespalier_auth`'s `restoreAuth`, install first, so the restore is reported.
+4. A failure while the app starts reaches Sentry through `FlutterError.reportError`, with no extra code.
+
+`FespalierSentry`'s options: `breadcrumbs: false` drops every breadcrumb but keeps the events;
+`routeTag: false` stops naming the scope after the screen (`fespalier.route` and the transaction name);
+`capture:` decides which failures are events (`FespalierSentry.unexpected` by default: all but a
+`FieldErrors` and an `auth` step); `repeatWindow:` is the 30 seconds after which the same failure is an
+event again (`Duration.zero`: every one); `recordLocations: true` adds a guard's redirect target and, with
+`tracing`, the committed path.
+
+#### One transaction per screen
+
+Performance monitoring is opt-in, and it is for a team that has only Sentry. Turn it on in both places, so
+that the SDK samples and the sink makes the transactions:
+
+```dart
+FespalierSentry.configure(options, dsn: dsn, tracing: true); // tracesSampleRate 1.0 in debug, 0.1 in release
+FespalierTelemetry.install(FespalierSentry(tracing: true));
+```
+
+Each navigation is then a `ui.load` transaction named by the route pattern, started as `navigate` (so the HTTP
+calls made during it have a parent) and renamed when the page is on screen; guards, redirects, data loads,
+deferred loads and actions are its child spans; the first frame is the transaction's *time to initial
+display* (`ui.load.initial_display`) and the arrival of the screen's last data load its *time to full
+display* (`ui.load.full_display`), the two spans and measurements that Sentry's Screen Loads view reads. A
+transaction ends when its data arrives or when the next navigation starts, whichever is first (the old
+screen's time to full display is then `deadline_exceeded`, with no measurement): fespalier starts no timer
+for it. `fullDisplay: false` ends it at the first frame.
+
+Sentry's own `SentryNavigatorObserver` also makes one `ui.load` per route it sees pushed: run both and every
+screen has **two transactions**. Use one or the other. With `FespalierSentry(tracing: true)` add
+`FespalierSentry.navigatorObserver()`, a `SentryNavigatorObserver(enableAutoTransactions: false)`, never a
+plain `SentryNavigatorObserver()`; with `transactions: false` a plain observer makes the transactions and
+the sink adds its data spans, time to full display, events and breadcrumbs to them (no guard, redirect or
+deferred span: they run before the observer's transaction exists).
+
+The first screen on Android and iOS has a transaction already: with tracing on and Sentry's defaults, its own
+app start is the first screen's `ui.load` (from the process start to the first frame, with the native spans).
+The sink opens none for that screen, and tells it when the screen's data is in
+(`SentryFlutter.currentDisplay()?.reportFullyDisplayed()`); that screen's guard and data spans are not
+recorded. With `enableStandaloneAppStartTracing: true` (Sentry 9.26.0, experimental) app start is a trace of
+its own, and the first screen is an ordinary one with all its spans: **recommended** with `tracing: true`.
+On the web and on the desktop the first screen is an ordinary one.
+
+An HTTP span made inside `data()` is a child of the screen's transaction, beside the data span, and not
+of the data span: Sentry's HTTP integrations parent to the scope's span. (`fespalier_otel` next to it
+parents them to the data span.)
+
+#### Sentry defaults and privacy
+
+`FespalierSentry.configure(options, dsn:, ...)` is called first in `SentryFlutter.init`'s configuration; a
+callback the app set before it is kept and runs before its own:
+
+| Option                                    | Set to                                                                                                                                                                                                  | Sentry's default  | Why                                                                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `dsn`                                     | `dsn` (`''` sends nothing)                                                                                                                                                                              | none              | `const String.fromEnvironment('SENTRY_DSN')`: a build without the define is silent                                             |
+| `sendDefaultPii`                          | `false`                                                                                                                                                                                                 | `false`           | explicit                                                                                                                       |
+| `attachScreenshot`, `attachViewHierarchy` | `false`                                                                                                                                                                                                 | `false`           | a screenshot or a widget tree can show user data                                                                               |
+| `enableAutoSessionTracking`               | `true`                                                                                                                                                                                                  | `true`            | release health                                                                                                                 |
+| `tracesSampleRate`                        | `tracesSampleRate:`; with `tracing: true` and none, 1.0 in debug and profile and 0.1 in release; else untouched                                                                                         | none (no tracing) | tracing is the opt-in; 10 % in release caps the quota                                                                          |
+| `enableTimeToFullDisplayTracing`          | `true` with `tracing: true`                                                                                                                                                                             | `false`           | time to full display of Sentry's app start                                                                                     |
+| `tracePropagationTargets`                 | `propagateTraceTo:` (empty: no trace header leaves the app)                                                                                                                                             | `['.*']`          | `baggage` names the release, the environment, the public key and the screen: send it to your API only                          |
+| `beforeBreadcrumb`                        | the app's, then the query and fragment taken off HTTP breadcrumbs (`recordQueries: true` keeps them), then `SentryNavigatorObserver`'s own breadcrumbs dropped (`observerBreadcrumbs: true` keeps them) | none              | `sentry_dio` and `SentryHttpClient` breadcrumbs carry `http.query`; this sink's page breadcrumbs say the same with the pattern |
+| `beforeSend`                              | the app's, then the query and fragment taken off the event's request                                                                                                                                    | none              | a request carries `queryString`                                                                                                |
+| `beforeSendTransaction`                   | the app's, then the query taken off span data (`recordQueries: true` keeps it), and a superseded navigation dropped                                                                                     | none              | HTTP spans carry `http.query`; a superseded navigation never showed a screen                                                   |
+
+Not touched: `environment`, `release`, `dist` (Sentry derives `name@version+build`), `captureFailedRequests`
+and session replay (off by default). Two lines are printed in a debug build, once: with `tracing: true` on
+an SDK whose `traceLifecycle` is `stream` (this version makes no spans for it; the events and breadcrumbs are
+still sent), and with `tracing: true` on an SDK that samples nothing (no transaction is sent). A
+`tracesSampleRate` outside 0 to 1 throws an `ArgumentError`. **What it costs:** not installed, nothing: no
+code of it runs and `app.g.dart` is the same bytes. Installed, every call is synchronous and returns at once,
+a sync guard or `data()` stays sync, it starts no timer and no listener (the SDK's own timers belong to the
+SDK, and `tracing: true` never asks for one), and every SDK call is inside a `try`, so a failing SDK costs an
+event, never a feature.
+
+#### Testing with Sentry
+
+`package:fespalier_sentry/testing.dart` has `RecordingSentry`: a real Sentry `Hub` over `SentryFlutterOptions`
+whose transport keeps what it would send, so a test reads the naming, the tags, the fingerprint and the
+envelope the SDK built, with no `SentryFlutter.init`, no native SDK, no timer and no network:
+
+```dart
+testWidgets('a refused refund is an event on its route and its file', (tester) async {
+  final sentry = RecordingSentry();
+  FespalierTelemetry.install(FespalierSentry(hub: sentry.hub));
+  final router = AppRoutes.router(initialLocation: '/orders/1');
+  await pumpRouter(tester, router);
+  await tester.tap(find.text('Refuse'));
+  await tester.pumpAndSettle();
+  await tester.pump(); // the SDK hands the event to its transport a few microtasks later
+  expect(await sentry.lines(), [
+    r'event StateError operation=action route=/orders/:id file=(tabs)/orders/$id/action.dart action=action',
+  ]);
+  expect(sentry.breadcrumbs, ['navigation enter /orders/:id']);
+});
+```
+
+`lines()` is one line per transaction, span and event without timestamps or ids (`transaction ui.load
+/orders/:id status=ok ttid ttfd`, then one indented `span fespalier.data ...` line for each of its spans, and
+`event StateError operation=data ...`); `sent()`
+is the JSON the SDK built, for the tags, the fingerprint and the contexts; `breadcrumbs`, `tags` and
+`transactionName` read the scope. `RecordingSentry(configure: (options) => ...)` runs after the test defaults
+(a made-up DSN, `tracesSampleRate` 1.0): run `FespalierSentry.configure` in it to test the defaults. A test
+of `tracing: true` navigates after the first screen, because on Android and iOS Sentry's app start owns
+that one (pass `platform: TargetPlatform.linux` to `FespalierSentry`, a `@visibleForTesting` parameter, to
+avoid it). `examples/telemetry/test/sentry_test.dart` does this next to the OpenTelemetry SDK's in-memory
+exporter.
+
+### Crashlytics
+
+Since 0.9.0 there is no `fespalier_crashlytics` package, on purpose. Crashlytics has no spans: its
+integration is three calls (`recordError`, `log`, `setCustomKey`), and the policy (skip a `FieldErrors`; tag the
+route and the file) is a few lines in a `FespalierTelemetry` subclass of your own whose `end` records a
+non-fatal error, whose `page` logs the page change and whose navigation end sets the route as a custom key.
+It uses `if` chains and not a `switch` over `TelemetryOp`, so an operation added later never breaks the app's
+build, and `FespalierTelemetry.combine([FespalierSentry(), yourSink])` sends to both.
+
 ### Several sinks: combine and add
 
 Since 0.9.0. `install` holds one sink, so OpenTelemetry for the traces, Sentry for the crashes and an
@@ -5405,6 +5673,13 @@ removes everything. A second `install` that was meant to add is the usual mistak
 - **Nesting.** A combined sink in the list is flattened, `combine([])` reports nothing and
   `combine([sink])` is `sink`. For [`within`](#spans-around-data-and-actions) the first sink is the
   outermost.
+- **Trace links.** A sink that makes OpenTelemetry spans can say which trace an operation is in: it
+  overrides `traceOf(token)` to return a `TelemetryTrace(traceId, spanId)` (32 and 16 lowercase hex
+  digits), and `combine` tells every other sink with `linkTrace(token, trace)`: with that sink's own token,
+  once per operation, right after every sink started it and before its `within` and `end`. `FespalierOtel`
+  answers `traceOf` with the span it made, and [`fespalier_sentry`](#sentry-fespalier_sentry) keeps what it
+  is told and tags its events with `otel.trace_id` and `otel.span_id` (since 0.9.0). The order of the list
+  does not matter, and with no sink that answers nothing is called.
 
 ### Spans around data() and actions
 
@@ -6557,7 +6832,10 @@ query parameter, enum segments, query parameters and catch-alls (`shop/$category
 `examples/telemetry` (since 0.8.1) is the route lifecycle and OpenTelemetry: three tabs, an order page with a
 `data.dart`, an `action.dart` and an `observe.dart`, a guarded and deferred settings page, `telemetry: true`,
 and a `main.dart` that wires `otel_zone` (on go_router 17, which `otel_zone` requires). Its tests read the
-hooks' log and the spans from an in-memory exporter.
+hooks' log and the spans from an in-memory exporter. Since 0.9.0 that `main.dart` also starts Sentry
+(`SENTRY_DSN` is empty, so nothing is sent), an order page has a `Refuse` button whose action throws, and
+`test/sentry_test.dart` shows the event with its route, its file and the OpenTelemetry trace of the same
+call.
 
 `examples/features` also has `orders/$id/refund/confirm`, a route that is a sibling of the `refund`
 page instead of a child of it (`nest = false`; `refund/receipt` next to it nests), with a guard on
@@ -6634,6 +6912,7 @@ packages/fespalier_auth/   signed-in routes: session provider, guards, authentic
 packages/fespalier_sign_keypair/   DPoP proofs for fespalier_auth, signed by a device key (Secure Enclave, AndroidKeyStore)
 packages/fespalier_adaptive/   nav.dart menus as a bar, a rail or a drawer by window width
 packages/fespalier_image/   responsive CDN images (ResponsiveImage, the URL builders), with FakeImages for tests
+packages/fespalier_sentry/   Sentry: errors tagged with the route and the file, page breadcrumbs, optional screen-load transactions
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed

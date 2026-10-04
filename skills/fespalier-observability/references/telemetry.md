@@ -114,6 +114,14 @@ everything and `install(null)` removes everything.
   it is called again next time. A sink whose `start` returned null is still told the end, with null.
 - `combine` flattens a combined sink in the list, `combine([])` reports nothing and `combine([sink])` is
   `sink`. Sinks are called in list order; for `within` the **first is outermost**.
+- **Trace links** (since 0.9.0). A sink that makes OpenTelemetry spans overrides `TelemetryTrace? traceOf(Object?
+token)` to say which trace an operation is in (`FespalierOtel` does: the trace and span id of its span, 32
+  and 16 lowercase hex digits); `combine` asks once per operation, right after every sink started it, and
+  tells each **other** sink `linkTrace(token, trace)` with that sink's own token, before its `within` and
+  `end`. `fespalier_sentry` keeps it and tags its events with `otel.trace_id` and `otel.span_id`
+  ([sentry.md](sentry.md)). The order of the list does not matter; a sink that throws from either is
+  isolated like from any call. A sink of your own that has a member named `traceOf` or `linkTrace` with
+  another signature must rename it.
 
 ## `within`: the data and action span is current (since 0.9.0)
 

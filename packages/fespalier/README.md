@@ -61,3 +61,8 @@ generated code nor a release build that does not use it.
 Since 0.9.0 `package:fespalier_adaptive` draws the `nav.dart` menu as a [navigation bar, a rail or a drawer](https://github.com/fespalier/fespalier#a-bar-a-rail-or-a-drawer-fespalier_adaptive)
 by window width, around a tab layout or a plain one, with no third-party dependency. It changes neither the generated
 code nor a release build that does not use it.
+
+Since 0.9.0 `package:fespalier_sentry` is the telemetry sink for [Sentry](https://github.com/fespalier/fespalier#sentry-fespalier_sentry),
+errors first: every error and crash tagged with the route pattern, the app file and the action, a breadcrumb per
+page change, and, next to `fespalier_otel`, the OpenTelemetry trace each event belongs to; screen-load transactions
+are opt-in. It changes neither the generated code nor a release build that does not use it.

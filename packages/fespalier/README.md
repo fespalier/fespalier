@@ -61,3 +61,8 @@ generated code nor a release build that does not use it.
 Since 0.9.0 `package:fespalier_adaptive` draws the `nav.dart` menu as a [navigation bar, a rail or a drawer](https://github.com/fespalier/fespalier#a-bar-a-rail-or-a-drawer-fespalier_adaptive)
 by window width, around a tab layout or a plain one, with no third-party dependency. It changes neither the generated
 code nor a release build that does not use it.
+
+Since 0.9.0 `package:fespalier_dio` puts [Dio and `package:http`](https://github.com/fespalier/fespalier#http-clients-fespalier_dio)
+under a data load and a write: a request is cancelled with the page that made it, a server's validation
+error is the `FieldErrors` of an `action.dart` form, and a write is never sent twice by a retrier. It changes
+neither the generated code nor a release build that does not use it.

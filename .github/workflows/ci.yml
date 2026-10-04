@@ -78,6 +78,7 @@ jobs:
           - packages/fespalier_auth
           - packages/fespalier_sign_keypair
           - packages/fespalier_adaptive
+          - packages/fespalier_dio
           - examples/shop
           - examples/features
           - examples/tabs

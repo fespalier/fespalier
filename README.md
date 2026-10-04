@@ -339,6 +339,7 @@ fespalier:
   #     with:
   #       build_runner: dart run build_runner watch -d
   #   codegen: dart run build_runner build -d
+  # adapters: [my_tools]         # no default: packages that plug into the generated main() (since 0.9.0)
 ```
 
 `format: true` runs `dart format` on the generated file (see [`fsp gen --format`](#the-generator)).
@@ -380,11 +381,16 @@ bool is an error.
 before, next to and after `flutter run`. Only those commands check it; `fsp gen` never reports a mistake in it.
 
 `main` (since 0.8.1) is `auto`, `generated` or `manual`: whether `fsp` writes [`lib/app.main.g.dart`](#main-appdart-startupdart-and-splashdart),
-with `AppMain`. `auto` writes it when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart`,
-`generated` always, `manual` never (and then those three files are not read). Any other value is an error that lists
+with `AppMain`. `auto` writes it when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart`
+(or, since 0.9.0, when `adapters:` lists a package), `generated` always, `manual` never (and then those three
+files are not read). Any other value is an error that lists
 the three: ``unknown variant `always`, expected one of `auto`, `generated`, `manual` ``. The file sits beside
 `output`, with `.main.g.dart` in place of `.g.dart` (`lib/router/routes.g.dart` makes `lib/router/routes.main.g.dart`);
 there is no key for the path, and `output_manifest` cannot be it.
+
+`adapters` (since 0.9.0) is a list of Dart package names that plug into the generated `main()`; see
+[Adapters in the generated `main()`](#adapters-in-the-generated-main). The key makes `main: auto` write
+`lib/app.main.g.dart`, and `main: manual` with it is an error.
 
 `telemetry` (since 0.8.1) is `true` or `false`: whether the generated file tells fespalier where each guard,
 data provider, action and deferred page is, and follows the router's navigations (see
@@ -1986,6 +1992,21 @@ A `transition()` that needs to tell a shell from a route (to wrap a route's page
 its shell shouldn't get) can take `bool shell` (or `isShell`): `true` for a layout's shell, `false`
 for a route's page. It is the only extra parameter besides `key`, `child` and `state`.
 
+**Page names** (since 0.9.0). Each `pageBuilder:` the generated file writes (a route with a `transition.dart`
+or a `present.dart`, a [`remount`](#remounting-a-page-remount) route, a layout's shell) is wrapped in
+`namedPage('/products/:id', () => ...)`, and the pages `Transitions.*`, `layoutPage` and `remountPage` build
+while it runs are named by the route's pattern (`RouteSettings.name`). So a `NavigatorObserver` (Sentry's,
+Firebase Analytics', PostHog's) sees `/products/:id` instead of `null` (a `remount` page used to be `:id`).
+A layout's shell is named by its section's pattern: `/` for a root layout or a `(tabs)/` group, `/shop`
+for `shop/layout.dart`. go_router forwards a shell navigator's pushes to the root navigator's observers, so
+an observer given to `AppRoutes.router(observers: ...)` sees the pages inside a shell too. A route with no
+`pageBuilder:` (a bare `builder:`) is go_router's own page, named `state.name ?? state.path`, and unchanged:
+a root `transition.dart`, which `fsp init` writes, names every page. A `Page` of your own in a
+`transition.dart` reads the name from `Transitions.pageName` (null outside the generated page builders):
+`MaterialPage(key: key, name: Transitions.pageName, child: child)`. Keys, restoration ids, transitions and
+heroes are the same. `namedPage` runs its builder once, synchronously, and brings the previous name back
+when it returns or throws.
+
 **Dialogs and sheets.** `Transitions.dialog`, `Transitions.sheet` and
 `Transitions.fullscreenDialog` make a route open over the previous page instead of
 replacing it. The page's widget is what shows up: for `dialog` it is the dialog itself
@@ -2152,8 +2173,9 @@ Page<void> present(LocalKey key, Widget child) => SheetPage(key: key, child: chi
 ```
 
 It is bound like `transition.dart` (`key`, `child`, `state`), and what it returns is used
-**verbatim**: fespalier adds no scrim, handle or shape, and ships no sheet widget. Unlike
-`transition.dart`:
+**verbatim**: fespalier adds no scrim, handle or shape, and ships no sheet widget. It does not name the
+page either: pass `name: Transitions.pageName` (since 0.9.0, the route's pattern) for an observer to see it.
+Unlike `transition.dart`:
 
 - it applies to **its own folder only**: a folder below keeps the nearest `transition.dart` for
   its own page;
@@ -4009,8 +4031,9 @@ lib/app/
 ```
 
 All three are optional. With none of them, `main: auto` (the default) writes nothing and your own
-`main()` keeps working; any one of them makes `fsp` write `lib/app.main.g.dart`. `app.g.dart` is
-the same bytes whether or not they exist.
+`main()` keeps working; any one of them makes `fsp` write `lib/app.main.g.dart`, and so does an
+[`adapters:`](#adapters-in-the-generated-main) list (since 0.9.0). `app.g.dart` is the same bytes whether
+or not they exist.
 
 **`app.dart`** is a view file: one public widget class (of any kind: a `ConsumerWidget` to read a
 theme-mode provider is the point) or a function `Widget app({required GoRouter router})`. It
@@ -4161,6 +4184,105 @@ parameter says "the app's widget gets the router: add `required this.router` (a 
 file is not the app around the router, move it out of the app folder's root or set `main: manual`".
 `examples/minimal`, `shop` and `features` use the generated `main()` (`features` has all three
 files and a `zone()`), and `examples/tabs` keeps a `main()` of its own.
+
+### Adapters in the generated `main()`
+
+Since 0.9.0 a package can plug into the generated `main()` (the [section above](#main-appdart-startupdart-and-splashdart))
+with one line in `pubspec.yaml`, instead of code you write in `startup.dart`:
+
+```yaml
+dependencies:
+  my_tools: ^1.0.0 # a package that ships lib/fespalier_adapter.dart
+  my_reporter: ^1.0.0
+fespalier:
+  adapters: [my_tools, my_reporter] # Dart package names, in order
+```
+
+**The convention.** `fsp` has no table of packages and reads no manifest: for each name `n` it imports
+`package:n/fespalier_adapter.dart` and calls its top-level `adapter`, a `FespalierAdapter` from
+`package:fespalier/startup.dart`. The output depends on the pubspec alone, never on `pub get` or the pub
+cache, so `fsp check` gives the same bytes before and after it, and a package of your own can be an adapter:
+
+```dart
+// package:my_tools/fespalier_adapter.dart
+import 'package:fespalier/startup.dart';
+
+const adapter = MyToolsAdapter();
+
+class MyToolsAdapter extends FespalierAdapter {
+  const MyToolsAdapter();
+
+  @override
+  List<ProviderObserver> providerObservers() => [MyObserver()];
+}
+```
+
+The adapters on the [roadmap](ROADMAP.md) (error reporting, analytics, notification and shortcut launches, ...)
+are packages of this kind. `FespalierAdapter` has six members, each with a default that adds nothing, so an
+adapter overrides what it needs:
+
+| Member                | When it runs                                                                           | What it is for                                                                                                 |
+| --------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `zone(body)`          | Around **all** of `main()`, outside startup.dart's `zone()`; before the binding exists | An SDK that wraps the app (`SentryFlutter.init(..., appRunner: body)`). Call `body` once                       |
+| `beforeRun()`         | In `main()` after `WidgetsFlutterBinding.ensureInitialized()`, before `runApp`         | Installing a telemetry sink (`FespalierTelemetry.add`), opening a store. Return `null` for nothing to wait for |
+| `overrides()`         | Once, after `startup()` succeeded, **before** `startup()`'s own overrides              | `dataCacheStorage`, `reconnectSignal`, a flag source                                                           |
+| `providerObservers()` | With `startup()`'s `providerObservers`, the adapters' first                            | A `ProviderObserver`                                                                                           |
+| `routerObservers()`   | When the router is built, before startup.dart's `routerObservers`                      | A `NavigatorObserver` (a new one on each call: an observer belongs to one navigator)                           |
+| `wrap(root)`          | Around the root widget, outside the `ProviderScope` and the splash too                 | `SentryWidget`, `PostHogWidget`                                                                                |
+
+The first package in the list is the outermost: its zone and its wrapper go around the others'. Each name
+must be under `dependencies:` in the pubspec; a name that is
+not a package name, is listed twice, is `fespalier` itself, or is not a dependency is an error, and so is
+`main: manual` with `adapters:` (the generated `main()` is what calls them). `adapters:` makes `main: auto`
+write `lib/app.main.g.dart` even with no `app.dart`, `startup.dart` or `splash.dart`. There are no
+per-adapter options in the pubspec: what an adapter needs at deploy time comes from `--dart-define`, and
+anything custom stays in `startup.dart`, which is yours.
+
+With `adapters: [my_tools, my_reporter]` and a `startup.dart` with a `zone()` and a
+`routerObservers`, the lines of `lib/app.main.g.dart` that are new (the rest is what the root files
+alone make):
+
+```dart
+import 'package:my_tools/fespalier_adapter.dart' as _a0;
+import 'package:my_reporter/fespalier_adapter.dart' as _a1;
+
+  static Future<void> run() => _a0.adapter.zone(() => _a1.adapter.zone(() => _i1.zone(_main)));
+
+    if (_a0.adapter.beforeRun() case final ready?) await ready;
+    if (_a1.adapter.beforeRun() case final ready?) await ready;
+
+  static Widget root({GoRouter Function() router = _router}) => _a0.adapter.wrap(_a1.adapter.wrap(StartupGate(
+    extraOverrides: _extraOverrides,
+    // ... overrides:, observers:, router:, app: as before
+  )));
+
+  static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers(), ..._a1.adapter.routerObservers(), ..._i1.routerObservers];
+
+GoRouter _router() => AppRoutes.router(observers: AppMain.routerObservers());
+List<Override> _extraOverrides() => [..._a0.adapter.overrides(), ..._a1.adapter.overrides()];
+```
+
+Without `adapters:` none of these lines is written, and the file is what it was.
+
+**What stays true.** An adapter follows the rules of fespalier itself: no timer, sync stays sync (a
+`beforeRun()` that returns `null` is not awaited, so no `Future` and no microtask; a `Future` is awaited and
+delays the first frame, with the platform's native splash still showing, so keep it to a local read, never
+the network), and nothing touches a platform plugin until it is used, so `AppMain.root()` boots in a widget
+test. `overrides()` goes before `startup()`'s: overriding a provider `startup()` also overrides is
+Riverpod's "Tried to override a provider twice" in debug.
+
+**Two things to check.**
+
+- **`lib/main.dart` has to call `AppMain.run()`.** Adapters are wired by the generated `main()`: an app
+  whose own `main()` still runs `runApp` by hand ignores them, without a message (`fsp` does not read
+  `lib/main.dart`). The line is `Future<void> main() => AppMain.run();`.
+- **An `app.dart` that builds the router** (`GoRouter router()`) has to pass the adapters' observers on:
+  `AppRoutes.router(observers: AppMain.routerObservers())`. Without that `fsp` warns, on app.dart at the
+  function: ``app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there``.
+
+**In tests.** `pumpRouter(tester, router, app: AppMain.app)` (see [Testing](#testing)) never sees the
+adapters, and neither do the [`fsp test`](#route-smoke-tests-fsp-test) smoke tests. `AppMain.root()` is the
+app as it runs, adapters included.
 
 ### Scroll restoration
 

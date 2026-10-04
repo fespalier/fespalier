@@ -11,15 +11,14 @@ it ships.
 packages `fespalier_auth` (sessions, guards, OpenID Connect and Keycloak, `dio`),
 `fespalier_sign_keypair` (DPoP, device-bound tokens) and `fespalier_image` (images at the size
 their layout needs, from an image CDN, with `RouteLink(onPreload:)` to warm a page's image) ship in
-0.9.0.
+0.9.0, and so do the generated `main()`'s adapters (`fespalier: adapters:`, a `FespalierAdapter` per
+package) and pages named by their route pattern, so vendor navigator observers see screens.
 
 ## Next
 
-- **Core seams the adapters need.** `FespalierTelemetry.combine` (several sinks at once), the
-  route pattern as each page's `name` (so vendor navigator observers see screens), adapter wiring
-  in the generated `main()` from one pubspec key, `traceData` taking a closure (HTTP spans under
-  the data span), `AppRoutes.urlOf`, a DevTools panel adapters can post to, and `test: a11y: true`
-  in `fsp test`.
+- **Core seams the adapters need.** `FespalierTelemetry.combine` (several sinks at once),
+  `traceData` taking a closure (HTTP spans under the data span), `AppRoutes.urlOf`, a DevTools
+  panel adapters can post to, and `test: a11y: true` in `fsp test`.
 - **Adapters**, each a small package:
   - `fespalier_launch`: notification, shortcut and home-widget taps open typed routes, the first
     screen on a cold start.

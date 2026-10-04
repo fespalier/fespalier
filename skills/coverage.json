@@ -132,7 +132,11 @@
         "cli/src/entry.rs",
         "cli/templates/main.g.dart.jinja",
         "cli/templates/init/app.dart.jinja",
-        "command:telemetry"
+        "command:telemetry",
+        "config:adapters",
+        "README.md#Adapters in the generated `main()`",
+        "packages/fespalier/lib/src/adapter.dart",
+        "cli/src/adapters.rs"
       ]
     },
     "fespalier-routing": {

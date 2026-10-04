@@ -339,6 +339,57 @@ jobs:
               exit 1
             fi
           done
+      # `fespalier: adapters:` (since 0.9.0): an app that lists a package gets a generated main() that
+      # imports `package:<name>/fespalier_adapter.dart` and calls the six members of its `adapter`. A
+      # stand-in package overrides every one of them, so the generated file has to compile against the
+      # `FespalierAdapter` it extends. It goes after the release-build checks above, which have
+      # their own meaning, and reuses the fresh app.
+      - name: An app with adapters compiles
+        env:
+          FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
+        run: |
+          cd "$RUNNER_TEMP"
+          flutter create --template=package --project-name demo_adapter demo_adapter
+          (cd demo_adapter && flutter pub add fespalier --path "$GITHUB_WORKSPACE/packages/fespalier")
+          cat > demo_adapter/lib/fespalier_adapter.dart <<'DART'
+          import 'package:fespalier/startup.dart';
+          import 'package:flutter/widgets.dart';
+
+          const adapter = DemoAdapter();
+
+          class DemoAdapter extends FespalierAdapter {
+            const DemoAdapter();
+
+            @override
+            Future<void> zone(Future<void> Function() body) => body();
+
+            @override
+            Future<void>? beforeRun() => null;
+
+            @override
+            List<Override> overrides() => const [];
+
+            @override
+            List<ProviderObserver> providerObservers() => const [];
+
+            @override
+            List<NavigatorObserver> routerObservers() => const [];
+
+            @override
+            Widget wrap(Widget root) => root;
+          }
+          DART
+          cd fresh_app
+          flutter pub add demo_adapter --path ../demo_adapter
+          if grep -q '^fespalier:' pubspec.yaml; then
+            sed -i '/^fespalier:/a\  adapters: [demo_adapter]' pubspec.yaml
+          else
+            printf 'fespalier:\n  adapters: [demo_adapter]\n' >> pubspec.yaml
+          fi
+          "$FSP_BIN" gen
+          grep -q "package:demo_adapter/fespalier_adapter.dart' as _a0" lib/app.main.g.dart
+          grep -q 'AppMain.routerObservers()' lib/app.main.g.dart
+          flutter analyze
       - name: dart run fespalier runs the given fsp
         working-directory: examples/shop
         run: |

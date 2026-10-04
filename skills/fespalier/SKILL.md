@@ -182,7 +182,7 @@ and the reserved names.
 | Reconnects, `refetchOnReconnect`, offline banners, connectivity versus reachability (`fespalier_connectivity`, since 0.9.0)  | `fespalier-data`                                |
 | `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.1)                     | `fespalier-observability`                       |
 | Network images, an image CDN, signing image URLs, image heroes (since 0.9.0)                                                 | `fespalier-images`                              |
-| `app.dart`, `startup.dart`, `splash.dart`, `main: manual`, `AppMain` (the generated `main()`)                                | this skill: `references/app-main.md`            |
+| `app.dart`, `startup.dart`, `splash.dart`, `main: manual`, `AppMain` (the generated `main()`), `adapters:` (since 0.9.0)     | this skill: `references/app-main.md`            |
 | Widget tests: `pumpRouter`, `currentLocation`, deep links, data states                                                       | `fespalier-testing`                             |
 | An `fsp` error, a stale `app.g.dart`, a route that does not show                                                             | `fespalier-troubleshooting`                     |
 | Looking at a running app in Flutter DevTools (the `fespalier` tab, since 0.7.0)                                              | `fespalier-troubleshooting` (its DevTools page) |

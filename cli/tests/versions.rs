@@ -9,7 +9,9 @@
 //! `{ "type": "generic", "path": ... }`. The release PR bumps every annotated line together. This
 //! file checks that nothing was forgotten in either direction, that the readers the release
 //! workflows use (`scripts/read-version.sh`) still find each version behind the trailing
-//! annotation, and what `release_checksums.dart` may pin in each state of a release.
+//! annotation, that nothing release-please rewrites is anyone else's version (a third-party
+//! range inside an annotated region would be replaced by ours), and what `release_checksums.dart`
+//! may pin in each state of a release.
 //!
 //! When this fails after a version bump, update the places it names.
 
@@ -88,9 +90,30 @@ fn looks_like_a_version(word: &str) -> bool {
             .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }
 
+/// The first `major.minor.patch` on `line` and where it starts: the one release-please's
+/// `Generic` updater replaces.
+fn first_version(line: &str) -> Option<(usize, &str)> {
+    let bytes = line.as_bytes();
+    let is_part = |b: u8| b.is_ascii_digit() || b == b'.';
+    let mut at = 0;
+    while at < bytes.len() {
+        if !is_part(bytes[at]) {
+            at += 1;
+            continue;
+        }
+        let end = (at..bytes.len())
+            .find(|&i| !is_part(bytes[i]))
+            .unwrap_or(bytes.len());
+        if looks_like_a_version(&line[at..end]) {
+            return Some((at, &line[at..end]));
+        }
+        at = end;
+    }
+    None
+}
+
 fn has_a_version(line: &str) -> bool {
-    line.split(|c: char| !(c.is_ascii_digit() || c == '.'))
-        .any(looks_like_a_version)
+    first_version(line).is_some()
 }
 
 /// The 1-based lines that release-please's `Generic` updater rewrites: a line carrying the
@@ -119,6 +142,49 @@ fn annotated_lines(text: &str) -> Vec<usize> {
 fn annotated_lines_follow_the_generic_updaters_rules() {
     let text = "a 1.0.0\nb 1.0.0 # x-release-please-version\n<!-- x-release-please-start-version -->\n```\nref: v1.0.0\n```\n<!-- x-release-please-end -->\nc 1.0.0\n";
     assert_eq!(annotated_lines(text), vec![2, 4, 5, 6, 7]);
+}
+
+/// What may stand right before the version release-please replaces on an annotated line: fespalier's
+/// own `ref:` or tag, or the assignment of a `version`.
+const OWN_VERSION_PREFIXES: [&str; 6] = [
+    "ref: v",
+    "--tag v",
+    "FSP_VERSION=v",
+    "version: ",
+    "version = \"",
+    "fespalierVersion = '",
+];
+
+/// The annotated lines whose first version is not fespalier's own, as `(line, text)`. The updater
+/// replaces the first `major.minor.patch` on every line it reaches, whatever that number belongs
+/// to, so a dependency's range on such a line is overwritten by the release's version. The shape
+/// is what tells them apart, never the value: once overwritten, the range holds the release's own
+/// number.
+fn foreign_versions(text: &str) -> Vec<(usize, String)> {
+    let annotated = annotated_lines(text);
+    text.lines()
+        .enumerate()
+        .filter(|(i, _)| annotated.contains(&(i + 1)))
+        .filter_map(|(i, line)| {
+            let (at, _) = first_version(line)?;
+            let before = &line[..at];
+            let own = OWN_VERSION_PREFIXES.iter().any(|p| before.ends_with(p));
+            (!own).then(|| (i + 1, line.trim().to_string()))
+        })
+        .collect()
+}
+
+#[test]
+fn a_third_party_range_in_an_annotated_region_is_found() {
+    // Line 6 is `sentry_flutter` as written, 7 is what release-please made of it in 0.9.0 (the
+    // release's own number, so no comparison of values sees it) and 12 is a range on a line with
+    // the inline annotation. The same range outside any annotated region (1 and 10) is left alone.
+    let text = "needs 9.26.0\n<!-- x-release-please-start-version -->\n```yaml\n  fespalier:\n      ref: v1.0.0\n  sentry_flutter: \">=9.26.0 <10.0.0\"\n  sentry_flutter: \">=1.0.0 <10.0.0\"\n```\n<!-- x-release-please-end -->\nsentry_flutter: \">=9.26.0 <10.0.0\"\nversion: 1.0.0 # x-release-please-version\nother: \">=2.0.0 <3.0.0\" # x-release-please-version\n";
+    let lines: Vec<usize> = foreign_versions(text)
+        .iter()
+        .map(|(line, _)| *line)
+        .collect();
+    assert_eq!(lines, vec![6, 7, 12]);
 }
 
 /// Every version that follows `marker` (`ref: v`, `--tag v`, ...) in `text`, as `(line, version)`.
@@ -498,6 +564,37 @@ fn release_please_config_lists_exactly_the_annotated_files() {
     assert_eq!(
         found, listed,
         "files that carry an annotation (left) vs release-please-config.json extra-files (right)"
+    );
+}
+
+#[test]
+fn release_please_rewrites_only_fespaliers_versions() {
+    // The `Generic` updater replaces the first `major.minor.patch` on each line from a start
+    // marker to the end marker and on each line with the inline annotation, with no way to tell
+    // whose it is. A third-party range there is overwritten at the next release: 0.9.0 turned
+    // the READMEs' `sentry_flutter: ">=9.26.0 <10.0.0"` into `">=0.9.0 <10.0.0"`, and 0.9.1 into
+    // `">=0.9.1 <10.0.0"`. The tests above never saw it: they read only the versions behind
+    // `ref: v`, `--tag v` and `FSP_VERSION=v`, and a range already holding the release's number
+    // equals it. So every line the updater reaches must carry fespalier's own version.
+    let config: serde_json::Value =
+        serde_json::from_str(&read("release-please-config.json")).expect("config is JSON");
+    let mut rewritten = vec![];
+    for entry in config["packages"]["."]["extra-files"]
+        .as_array()
+        .expect("extra-files")
+    {
+        let path = entry["path"].as_str().expect("path");
+        for (line, text) in foreign_versions(&read(path)) {
+            rewritten.push(format!("{path}:{line}: {text}"));
+        }
+    }
+    assert!(
+        rewritten.is_empty(),
+        "release-please would overwrite a version that is not fespalier's:\n{}\nKeep a \
+         dependency's range outside a start/end block and off a line with the annotation (in \
+         prose, or after the block's end marker); a new shape of fespalier's own goes in \
+         OWN_VERSION_PREFIXES",
+        rewritten.join("\n")
     );
 }
 

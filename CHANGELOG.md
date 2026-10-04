@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.9.0](https://github.com/fespalier/fespalier/compare/v0.8.1...v0.9.0) (2026-10-04)
+
+
+### Features
+
+* adapters in the generated main() and pages named by their route pattern ([#83](https://github.com/fespalier/fespalier/issues/83)) ([81c169a](https://github.com/fespalier/fespalier/commit/81c169af0c26afcd33f51ed9d385d38c8ed99848))
+* fespalier_adaptive, nav.dart menus as a bar, rail or drawer by width ([#73](https://github.com/fespalier/fespalier/issues/73)) ([d69a567](https://github.com/fespalier/fespalier/commit/d69a567add34d5ca973a4165cd01e3403675e7ba))
+* fespalier_auth and fespalier_sign_keypair, sign-in and DPoP-bound requests ([#71](https://github.com/fespalier/fespalier/issues/71)) ([14d86a1](https://github.com/fespalier/fespalier/commit/14d86a19c1cab5bd20dac9d4ffedec775a0eb8ed))
+* fespalier_dio, requests cancelled with their page, server field errors and no retried writes ([#78](https://github.com/fespalier/fespalier/issues/78)) ([db979ca](https://github.com/fespalier/fespalier/commit/db979cad371fb31e0bb5493c8226ce516e66cdd4))
+* fespalier_flags, fespalier_storage and fespalier_connectivity, flag-gated routes, bounded offline caches and refetch on reconnect ([#77](https://github.com/fespalier/fespalier/issues/77)) ([d5d8f52](https://github.com/fespalier/fespalier/commit/d5d8f52cdb6218de55ee7c4e766d9e63a5d5591e))
+* fespalier_image, images at the size their layout needs from imgproxy, EmgR, Cloudinary, imgix or Thumbor ([#80](https://github.com/fespalier/fespalier/issues/80)) ([d454a7f](https://github.com/fespalier/fespalier/commit/d454a7f0e743807b840b2e789cd80b4d0a89e4e2))
+* fespalier_sentry, errors and crashes tagged with their route, file and action, linked to their OpenTelemetry trace ([#81](https://github.com/fespalier/fespalier/issues/81)) ([987c8b7](https://github.com/fespalier/fespalier/commit/987c8b75529f6437fc7d181bd2277e291c3399b6))
+* FespalierTelemetry.combine, a within() hook so HTTP spans nest under data spans, and navigation.source ([#72](https://github.com/fespalier/fespalier/issues/72)) ([88e8a2a](https://github.com/fespalier/fespalier/commit/88e8a2af2c8f6acd30fccb52ad086f43c7e229b7))
+* fsp dev, fsp build and fsp run, with tasks in pubspec.yaml and a terminal UI ([#69](https://github.com/fespalier/fespalier/issues/69)) ([2e353b7](https://github.com/fespalier/fespalier/commit/2e353b7d194823c2c57cdcb38ada6cd91dcc7ff3))
+
+
+### Bug Fixes
+
+* fespalier builds and passes its tests on the Flutter 3.32 floor, and CI now runs it there ([#75](https://github.com/fespalier/fespalier/issues/75)) ([a01c214](https://github.com/fespalier/fespalier/commit/a01c214cb0a334dfa09fc71e6871ffe0c0f5864b))
+* RouteLink compiles on Flutter 3.32, the package's declared floor ([#74](https://github.com/fespalier/fespalier/issues/74)) ([37ff8f6](https://github.com/fespalier/fespalier/commit/37ff8f6953d173d2af75d7be2483da674850c70d))
+
+
+### Documentation
+
+* fill the roadmap ([#68](https://github.com/fespalier/fespalier/issues/68)) ([0780ef8](https://github.com/fespalier/fespalier/commit/0780ef88998becbbb4d53f6e95bd551330f02f45))
+* the roadmap lists what 0.9.0 ships, and one troubleshooting row per area ([#82](https://github.com/fespalier/fespalier/issues/82)) ([eac58f5](https://github.com/fespalier/fespalier/commit/eac58f5be8e581872e4d2dd46e6ec4b944f23301))
+
+
+### Tests
+
+* no more "Text file busy" when a test writes a stand-in executable while another spawns ([#79](https://github.com/fespalier/fespalier/issues/79)) ([3ecfafe](https://github.com/fespalier/fespalier/commit/3ecfafe991ae53416b65c23cf61e0fa9f1682327))
+
 ## [0.8.1](https://github.com/fespalier/fespalier/compare/v0.8.0...v0.8.1) (2026-10-03)
 
 

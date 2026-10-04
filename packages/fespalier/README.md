@@ -81,3 +81,8 @@ Since 0.9.0 `package:fespalier_dio` puts [Dio and `package:http`](https://github
 under a data load and a write: a request is cancelled with the page that made it, a server's validation
 error is the `FieldErrors` of an `action.dart` form, and a write is never sent twice by a retrier. It changes
 neither the generated code nor a release build that does not use it.
+
+Since 0.9.0 `package:fespalier_sentry` is the telemetry sink for [Sentry](https://github.com/fespalier/fespalier#sentry-fespalier_sentry),
+errors first: every error and crash tagged with the route pattern, the app file and the action, a breadcrumb per
+page change, and, next to `fespalier_otel`, the OpenTelemetry trace each event belongs to; screen-load transactions
+are opt-in. It changes neither the generated code nor a release build that does not use it.

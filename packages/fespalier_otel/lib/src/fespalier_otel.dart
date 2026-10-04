@@ -206,6 +206,24 @@ final class FespalierOtel extends FespalierTelemetry {
     }
   }
 
+  /// The trace and span id of the span this adapter made for [token], so that another sink of a
+  /// `FespalierTelemetry.combine` (`fespalier_sentry`) can link its own records to the trace
+  /// (since 0.9.0). Null for a token that is not a span of ours, or when the SDK cannot say.
+  @override
+  TelemetryTrace? traceOf(Object? token) {
+    if (token is! _Running) return null;
+    try {
+      final context = token.span.spanContext;
+      if (!context.isValid) return null;
+      return TelemetryTrace(
+        context.traceId.hexString,
+        context.spanId.hexString,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void end(Object? token, TelemetryEnd end) {
     if (token is! _Running) return;

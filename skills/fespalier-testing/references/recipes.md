@@ -397,6 +397,34 @@ expect(fakes.requested, hasLength(3)); // one URL per row, at the row's bucket
 `cdn.resolve(source, logicalWidth: ..., devicePixelRatio: ...)` answers the size rule without a widget. A compiling
 sample, and the rest (precache, heroes), is in [`fespalier-images`](../../fespalier-images/references/integration.md).
 
+## Sentry events (since 0.9.0)
+
+With `package:fespalier_sentry`, `RecordingSentry` (`package:fespalier_sentry/testing.dart`) is a real Sentry `Hub` whose
+transport keeps what it would send: no `SentryFlutter.init`, no native SDK, no network, no timer. Give its hub to the sink
+and read what the SDK built after a `pump` (the SDK hands an event to its transport a few microtasks later):
+
+```dart
+final sentry = RecordingSentry();
+FespalierTelemetry.install(FespalierSentry(hub: sentry.hub));
+await pumpRouter(tester, AppRoutes.router(initialLocation: '/orders/1'));
+await tester.tap(find.text('Refuse'));
+await tester.pumpAndSettle();
+await tester.pump();
+expect(await sentry.lines(), [
+  r'event StateError operation=action route=/orders/:id file=orders/$id/action.dart action=refuse',
+]);
+expect(sentry.breadcrumbs, ['navigation enter /orders/:id']);
+```
+
+`sent()` is the JSON (tags, fingerprint, contexts, measurements); `tags`, `transactionName` and `rawBreadcrumbs` read the scope.
+By default the sink sends no transaction, so a test of `tracing: true` navigates after the first screen (on Android and
+iOS, which is what `defaultTargetPlatform` says in a test, Sentry's app start owns the first one; pass
+`platform: TargetPlatform.linux` to `FespalierSentry`). A container-only test (an action, `data()`) is a plain `test()`:
+a `ProviderContainer` read inside `testWidgets` leaves a Riverpod timer pending, and a real `Future.delayed(Duration.zero)`
+stands in for `pump`. A plain `SentryNavigatorObserver` starts a timer: bind a transaction to the hub's scope by hand
+instead. `debugPrint` is a foundation debug variable: put it back before the test body ends, not in `tearDown`.
+[`fespalier-observability`](../../fespalier-observability/references/sentry.md) has the rest.
+
 ## DPoP proofs (since 0.9.0)
 
 With `package:fespalier_sign_keypair`, a test needs no secure element: `DpopProof(signer: FakeDpopSigner())` is a proof

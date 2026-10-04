@@ -9,8 +9,10 @@ it ships.
 
 `fsp dev`, `fsp build` and `fsp run` (tasks in `pubspec.yaml`, a terminal UI), and the Flutter
 packages `fespalier_auth` (sessions, guards, OpenID Connect and Keycloak, `dio`),
-`fespalier_sign_keypair` (DPoP, device-bound tokens) and `fespalier_image` (images at the size
-their layout needs, from an image CDN, with `RouteLink(onPreload:)` to warm a page's image) ship in
+`fespalier_sign_keypair` (DPoP, device-bound tokens), `fespalier_image` (images at the size
+their layout needs, from an image CDN, with `RouteLink(onPreload:)` to warm a page's image) and
+`fespalier_sentry` (errors first: every error and crash tagged with the route and the file, page
+breadcrumbs, the OpenTelemetry trace id on each event; screen-load transactions on request) ship in
 0.9.0, and so do the generated `main()`'s adapters (`fespalier: adapters:`, a `FespalierAdapter` per
 package) and pages named by their route pattern, so vendor navigator observers see screens.
 
@@ -22,8 +24,10 @@ package) and pages named by their route pattern, so vendor navigator observers s
 - **Adapters**, each a small package:
   - `fespalier_launch`: notification, shortcut and home-widget taps open typed routes, the first
     screen on a cold start.
-  - `fespalier_sentry` and `fespalier_crashlytics`: errors and performance from the telemetry sink,
-    named by route pattern and tagged with the file that threw.
+  - `fespalier_crashlytics`: errors from the telemetry sink, named by route pattern and tagged with
+    the file that threw (three calls in a sink of your own until then).
+  - `fespalier_sentry`, the rest: Sentry's span streaming (`traceLifecycle: stream`, for which
+    `tracing: true` makes no spans yet) and HTTP spans under the data span in Sentry's own tracing.
   - `fespalier_flags`: feature flags that guards watch, so menus hide flagged routes.
   - `fespalier_dio` (and an `http` variant): cancellation when a page goes away, server validation
     errors on form fields, no retried writes, trace headers.

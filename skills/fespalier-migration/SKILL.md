@@ -32,7 +32,7 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 ## 0.8 to 0.9: what to check
 
-Bump to `v0.9.0`, regenerate (`lib/app.g.dart` changes in every app, by its page names: item 9), and look at these:
+Bump to `v0.9.0`, regenerate (`lib/app.g.dart` changes in every app, by its page names: item 10), and look at these:
 
 1. **A `FespalierTelemetry` sink that switches exhaustively over `TelemetryOp` stops compiling** (`The type 'TelemetryOp' isn't exhaustively matched by the switch cases since it doesn't match the pattern 'TelemetryOp.auth'`, and `'TelemetryOp.image'`). Add a `TelemetryOp.auth` case (it is what `package:fespalier_auth` reports, with
    `TelemetryStart.authStep`, `authBackend`, `authTrigger` and `authDpop`) and a `TelemetryOp.image` case (what `package:fespalier_image` reports, with
@@ -78,18 +78,25 @@ Bump to `v0.9.0`, regenerate (`lib/app.g.dart` changes in every app, by its page
    `ref.abortable(client)`, `withFieldErrors()` and `WriteGuard` for Dio and `package:http`. A repository dependency
    with the same `url` and `ref` as `fespalier`; an app that does not add it is unchanged (no generated code, file kind,
    key or command).
-9. **An app that opts in to nothing regenerates with page-name changes only (since 0.9.0).** Each `pageBuilder:`
-   fespalier writes (a route with a `transition.dart` or `present.dart`, a `remount` route, a layout's
-   shell) is wrapped in `namedPage('<pattern>', () => ...)`: two lines per page builder, the first
-   gaining `namedPage('/products/:id', () =>` and the last a `)`. The pages `Transitions.*`,
-   `layoutPage` and `remountPage` build are then named by their route pattern (`RouteSettings.name`),
-   so a `NavigatorObserver` (Sentry's, Firebase Analytics', PostHog's) sees `/products/:id` where it
-   saw `null` (a `remount` page saw `:id`). Keys, restoration ids, transitions and the release build
-   are otherwise the same. A route with neither (a bare `builder:`) is go_router's own page and
-   unchanged. With `telemetry: true` each `data.dart` provider also becomes
-   `traceDataCall(..., () => data(...), telemetry: ...)` (item 4). A `transition.dart` that builds a
-   `Page` of its own can pass `name: Transitions.pageName`.
-10. **New, opt-in, in [`fespalier`](../fespalier/SKILL.md) (its app-main page):** the `fespalier: adapters:`
+9. **New, opt-in:** `package:fespalier_sentry` ([`fespalier-observability`](../fespalier-observability/SKILL.md)):
+   Sentry, errors first (events tagged with the route pattern, the app file and the action, one breadcrumb per page
+   change, the OpenTelemetry trace id on each event next to `fespalier_otel`; screen-load transactions only with
+   `tracing: true`). The same `url` and `ref` as `fespalier`, and `sentry_flutter` 9.26.0 or newer. No generated code,
+   file kind, key or command changes. `FespalierTelemetry` gains `traceOf` and `linkTrace` (instance members with
+   defaults) and `TelemetryTrace`, which `combine` uses to tell a sink which trace an operation is in (`FespalierOtel`
+   answers it): a sink that already had a member named `traceOf` or `linkTrace` with another signature must rename it.
+10. **An app that opts in to nothing regenerates with page-name changes only (since 0.9.0).** Each `pageBuilder:`
+    fespalier writes (a route with a `transition.dart` or `present.dart`, a `remount` route, a layout's
+    shell) is wrapped in `namedPage('<pattern>', () => ...)`: two lines per page builder, the first
+    gaining `namedPage('/products/:id', () =>` and the last a `)`. The pages `Transitions.*`,
+    `layoutPage` and `remountPage` build are then named by their route pattern (`RouteSettings.name`),
+    so a `NavigatorObserver` (Sentry's, Firebase Analytics', PostHog's) sees `/products/:id` where it
+    saw `null` (a `remount` page saw `:id`). Keys, restoration ids, transitions and the release build
+    are otherwise the same. A route with neither (a bare `builder:`) is go_router's own page and
+    unchanged. With `telemetry: true` each `data.dart` provider also becomes
+    `traceDataCall(..., () => data(...), telemetry: ...)` (item 4). A `transition.dart` that builds a
+    `Page` of its own can pass `name: Transitions.pageName`.
+11. **New, opt-in, in [`fespalier`](../fespalier/SKILL.md) (its app-main page):** the `fespalier: adapters:`
     key in `pubspec.yaml` (a list of package names), and `FespalierAdapter` in `package:fespalier/startup.dart`. Each listed
     package ships `lib/fespalier_adapter.dart` with a top-level `adapter`, and the generated `main()` calls its
     `zone`, `beforeRun`, `overrides`, `providerObservers`, `routerObservers` and `wrap`; the key makes `main: auto`

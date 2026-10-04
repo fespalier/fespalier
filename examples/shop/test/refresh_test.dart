@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shop/api.dart';
 import 'package:shop/app.g.dart';
 import 'package:shop/app/products/loading.dart';
+import 'images.dart';
 
 class CountingApi extends FakeApi {
   var productCalls = 0;
@@ -24,7 +25,7 @@ void main() {
     final container = await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/products/2'),
-      overrides: [apiProvider.overrideWithValue(api)],
+      overrides: [apiProvider.overrideWithValue(api), fakeImages()],
       settle: false,
     );
     expect(find.byType(ProductsLoading), findsOneWidget);
@@ -60,7 +61,7 @@ void main() {
       await pumpRouter(
         tester,
         AppRoutes.router(initialLocation: '/products/13'),
-        overrides: [apiProvider.overrideWithValue(api)],
+        overrides: [apiProvider.overrideWithValue(api), fakeImages()],
         retry: null,
         settle: false,
       );
@@ -83,7 +84,7 @@ void main() {
       await pumpRouter(
         tester,
         AppRoutes.router(initialLocation: '/products/13'),
-        overrides: [apiProvider.overrideWithValue(api)],
+        overrides: [apiProvider.overrideWithValue(api), fakeImages()],
         settle: false,
       );
       await tester.pump(const Duration(milliseconds: 600));

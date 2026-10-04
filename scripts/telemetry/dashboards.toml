@@ -135,6 +135,7 @@ data = "Content load (data.dart)"
 action = "Action (action.dart)"
 deferred = "Code download (deferred page)"
 auth = "Session (sign-in, refresh, sign-out)"
+image = "Image load"
 
 [labels.navigation_kind]
 initial = "App start"

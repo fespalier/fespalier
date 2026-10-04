@@ -118,7 +118,7 @@ class Conventions(unittest.TestCase):
     def test_the_conventions_are_read_from_the_dart_file(self):
         c = self.conventions
         self.assertEqual(
-            ["navigate", "guard", "redirect", "data", "action", "deferred", "auth"],
+            ["navigate", "guard", "redirect", "data", "action", "deferred", "auth", "image"],
             c.attrs["fespalier.operation"],
         )
         # fespalier_auth's attributes (since 0.9.0): the prefixed constants are values of their own
@@ -131,6 +131,13 @@ class Conventions(unittest.TestCase):
         self.assertEqual(["expired", "unauthorized", "forced"], c.attrs["fespalier.auth.trigger"])
         self.assertEqual(["true", "false"], c.attrs["fespalier.auth.dpop"])
         self.assertEqual([], c.attrs["fespalier.auth.backend"])
+        # fespalier_image's attributes (since 0.9.0): its result shares the generic values, its
+        # preload is a boolean, and the width and status are free-form like the navigation depth.
+        self.assertEqual(["ok", "error"], c.attrs["fespalier.image.result"])
+        self.assertEqual(["true", "false"], c.attrs["fespalier.image.preload"])
+        self.assertEqual([], c.attrs["fespalier.image.cdn"])
+        self.assertEqual([], c.attrs["fespalier.image.width"])
+        self.assertEqual([], c.attrs["fespalier.image.status"])
         self.assertEqual(["ok", "error"], c.attrs["fespalier.action.result"])
         self.assertEqual(["ok", "error"], c.attrs["fespalier.deferred.result"])
         self.assertEqual(["true", "false"], c.attrs["fespalier.async"])

@@ -330,7 +330,7 @@
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT histogram(_timestamp) AS t, CASE fespalier_operation WHEN 'navigate' THEN 'Screen open' WHEN 'guard' THEN 'Check (guard.dart)' WHEN 'redirect' THEN 'Redirect (redirect.dart)' WHEN 'data' THEN 'Content load (data.dart)' WHEN 'action' THEN 'Action (action.dart)' WHEN 'deferred' THEN 'Code download (deferred page)' WHEN 'auth' THEN 'Session (sign-in, refresh, sign-out)' ELSE fespalier_operation END AS operation, COUNT(*) AS failed FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY t, operation ORDER BY t",
+              "query": "SELECT histogram(_timestamp) AS t, CASE fespalier_operation WHEN 'navigate' THEN 'Screen open' WHEN 'guard' THEN 'Check (guard.dart)' WHEN 'redirect' THEN 'Redirect (redirect.dart)' WHEN 'data' THEN 'Content load (data.dart)' WHEN 'action' THEN 'Action (action.dart)' WHEN 'deferred' THEN 'Code download (deferred page)' WHEN 'auth' THEN 'Session (sign-in, refresh, sign-out)' WHEN 'image' THEN 'Image load' ELSE fespalier_operation END AS operation, COUNT(*) AS failed FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY t, operation ORDER BY t",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {
@@ -425,6 +425,11 @@
                 "type": "value",
                 "value": "auth",
                 "text": "Session (sign-in, refresh, sign-out)"
+              },
+              {
+                "type": "value",
+                "value": "image",
+                "text": "Image load"
               }
             ]
           },
@@ -594,6 +599,11 @@
                 "type": "value",
                 "value": "auth",
                 "text": "Session (sign-in, refresh, sign-out)"
+              },
+              {
+                "type": "value",
+                "value": "image",
+                "text": "Image load"
               }
             ]
           },

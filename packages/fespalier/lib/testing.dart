@@ -146,7 +146,8 @@ String currentLocation(WidgetTester tester) {
 /// #n start OP WHAT [keyed] [parent=#m]
 /// #n start navigate LOCATION [source=S]
 /// #n start auth STEP backend=NAME [trigger=T] [dpop]
-/// #n end OP OUTCOME [async] [-> LOCATION] [error=TEXT]
+/// #n start image CDN w=WIDTH [preload]
+/// #n end OP OUTCOME [async] [-> LOCATION] [status=N] [error=TEXT]
 /// #n end navigate OUTCOME [route=P] [kind=K] [from=P] [redirected] [depth=N] [at=LOCATION]
 /// #n page enter|focus|leave PATTERN
 /// #n within enter|exit
@@ -157,7 +158,10 @@ String currentLocation(WidgetTester tester) {
 /// (since 0.9.0) names the step (`restore`, `sign_in`, `refresh`, `sign_out`), the backend, what
 /// asked for a refresh, and `dpop` when the backend binds its tokens. A navigate line has
 /// ` source=S` (since 0.9.0) when [navigateFrom] marked it: `notification`, `shortcut`, `widget`
-/// or `link`; the lines of a navigation nobody marked do not change.
+/// or `link`; the lines of a navigation nobody marked do not change. An image line (since 0.9.0)
+/// names the URL builder and the width asked for, and says `preload` when a precache started it;
+/// a failed image's end line has `status=N` when the error carried an HTTP status. It never has
+/// the URL.
 ///
 /// With [recordWithin] (since 0.9.0) the recorder also writes `within enter` and `within exit`
 /// around what runs inside a `data()` or an action ([FespalierTelemetry.within]), so a test can
@@ -190,6 +194,9 @@ final class RecordingTelemetry extends FespalierTelemetry {
         '${start.authStep} backend=${start.authBackend}'
             '${start.authTrigger == null ? '' : ' trigger=${start.authTrigger}'}'
             '${start.authDpop ? ' dpop' : ''}',
+      TelemetryOp.image =>
+        '${start.imageCdn} w=${start.imageWidth}'
+            '${start.imagePreload ? ' preload' : ''}',
       _ => '${start.site?.file}${start.keyed ? ' keyed' : ''}',
     };
     final parent = start.parent == null ? '' : ' parent=#${start.parent}';
@@ -213,6 +220,7 @@ final class RecordingTelemetry extends FespalierTelemetry {
         if (end.depth > 0) 'depth=${end.depth}',
         if (end.location != null) 'at=${end.location}',
       ],
+      if (end.imageStatus != null) 'status=${end.imageStatus}',
       if (end.error != null) 'error=${end.error}',
     ];
     log.add(parts.join(' '));

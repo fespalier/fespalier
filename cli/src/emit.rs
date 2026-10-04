@@ -1425,8 +1425,13 @@ fn deferred_view(library: &str, page: &str, loading: &str, error: &str) -> Strin
 /// tree exactly when the page is built (a loading, error or not-found view does not carry it).
 /// `Semantics` has no `const` constructor, so the wrapper is never `const`; a `const` page call
 /// keeps its own `const`, so the page is still built once.
+///
+/// `container: true` gives the identifier a node of its own to sit on, and `explicitChildNodes:
+/// true` keeps that node empty. Without it the node merges every descendant that has no node of
+/// its own into one label, and a screen reader reads the plain `Text` outside a scroll view (a
+/// status line, a sheet's footer, a title and its line) as a single block.
 pub(crate) fn with_semantics(id: &str, page: String) -> String {
-    format!("Semantics(identifier: {id}, container: true, child: {page})")
+    format!("Semantics(identifier: {id}, container: true, explicitChildNodes: true, child: {page})")
 }
 
 /// The `GoRoute` for a folder's page.dart. Its subfolders' routes nest below it,

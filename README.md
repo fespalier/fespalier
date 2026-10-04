@@ -5007,7 +5007,7 @@ writes a smoke flow for each route that opens the route's URL and waits for that
 **`semantics_ids: true`** in the `fespalier:` section of `pubspec.yaml` wraps each page's own widget in
 
 ```dart
-Semantics(identifier: 'route:/products/:id', container: true, child: ProductPage(id: v.id))
+Semantics(identifier: 'route:/products/:id', container: true, explicitChildNodes: true, child: ProductPage(id: v.id))
 ```
 
 The identifier is `route:` and the pattern `fsp routes` prints (`route:/`, `route:/products/:id`,
@@ -5022,9 +5022,14 @@ rename a class. It is in the widget tree **if and only if the route's own page i
   out of the semantics tree: `/products/1` has `route:/products/:id` and not `route:/products`.
 - Only a `page.dart` gets one: not a layout, a shell, a redirect or a not-found view.
 - `Semantics` has no `const` constructor, so the wrapper is never `const`; a page that was `const`
-  keeps its own `const` inside it, and the generated code passes the `const` lints. The `container: true`
-  node adds a node boundary and no label or action, so a screen reader has nothing to read from it. With the key off (the default), the
-  generated file is exactly what it was without the feature.
+  keeps its own `const` inside it, and the generated code passes the `const` lints.
+- The identifier's node is empty: `container: true` gives it a node of its own, and
+  `explicitChildNodes: true` (since 0.9.1) keeps every descendant out of it, so the node has no label and no
+  action and a screen reader reads each of the page's `Text` widgets as its own node. Without it the node
+  took in every descendant that had no node of its own, and TalkBack and VoiceOver read all the text
+  outside a scroll view (a status line, a sheet's footer, a title and its line) as one block. A page that
+  wants one announcement groups its own text with `MergeSemantics`.
+- With the key off (the default), the generated file is exactly what it was without the feature.
 
 On the web Flutter builds no semantics tree until a screen reader asks for one, so a driver that reads
 the page from outside finds nothing. With `semantics_ids: true` the generated `AppRoutes.mount()`

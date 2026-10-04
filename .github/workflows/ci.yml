@@ -84,6 +84,7 @@ jobs:
           - packages/fespalier_sign_keypair
           - packages/fespalier_adaptive
           - packages/fespalier_image
+          - packages/fespalier_sentry
           - examples/shop
           - examples/features
           - examples/tabs
@@ -149,6 +150,7 @@ jobs:
           - packages/fespalier_auth
           - packages/fespalier_adaptive
           - packages/fespalier_image
+          - packages/fespalier_sentry
           - examples/minimal
     defaults:
       run:

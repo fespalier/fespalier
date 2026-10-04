@@ -1,3 +1,4 @@
+mod build_runner;
 mod config;
 mod daemon;
 mod dart;
@@ -328,6 +329,10 @@ fn gen_core(
     };
     let mut everything = run.diags.clone();
     everything.0.extend(lints.0.iter().cloned());
+    // A file on disk beside the output, not something the tree says: shown whatever the tree has.
+    everything
+        .0
+        .extend(build_runner::check(project, cfg, &outputs(cfg, writes_main)).0);
     show(&app_dir, &everything);
     if run.diags.has_errors() {
         let mut outputs = outputs(cfg, writes_main);
@@ -462,6 +467,8 @@ fn watch(project: &Path) -> Result<()> {
 mod action_tests;
 #[cfg(test)]
 mod bench;
+#[cfg(test)]
+mod build_runner_tests;
 #[cfg(test)]
 mod case_tests;
 #[cfg(test)]

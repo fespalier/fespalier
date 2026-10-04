@@ -393,15 +393,56 @@ config key). The generated `AppRoutes.router()` passes it as
   saved data that no longer reads (the type was removed, or `fromJson` throws)
   comes back as `null`, so a page falls back to what the URL says. Pass
   `strict: true` to throw instead, in a test that checks you registered every
-  type.
-- The type is looked up by its **exact runtime type**: register each subclass of
-  a sealed class.
+  type. Since 0.9.0 a **debug** build also says so, once per type (below); a
+  release build prints nothing.
+- `ExtraCodec({...})` looks the type up by its **exact runtime type**: register
+  each subclass of a sealed class. **That never matches a freezed class** (below).
 - The name is `Type.toString()`, which a **release build for the web minifies**
   (stable within a build, different in the next). To keep saved data readable
   across deployments, name the types: `ExtraCodec({...}, names: {Note: 'note'})`.
   Two types with one name are an `ArgumentError`.
 - Write your own `Codec<Object?, Object?>` if you prefer
   (`const extraCodec = MyCodec();`).
+
+### A freezed `extra` restores as `null`: `ExtraCodec.of` (since 0.9.0)
+
+With freezed's usual syntax, `const factory Note(...) = _Note;`, an object you
+build with `Note(...)` is a **private `_Note`**, and its `runtimeType` is not
+`Note`. `ExtraCodec({Note: ...})` finds nothing for it, saves
+it as `null` without a word, and the page gets `null` after a web reload or a
+restore. built*value's `*$Note` does the same. freezed 4's primary-constructor
+form (`@freezed class Person({...}) with _$Person;`) and dart_mappable classes
+are their own runtime type and work with the exact lookup. **On 0.8.1 and earlier**
+there is no fix but a codec of your own.
+
+```dart
+// extra_codec.dart, with `ExtraCodec.of` (a fragment: `ci/codegen-interop/` builds it with real freezed)
+import 'package:fespalier/fespalier.dart';
+import 'package:my_app/models/note.dart';
+
+final extraCodec = ExtraCodec.of([
+  ExtraType<Note>(toJson: (n) => n.toJson(), fromJson: Note.fromJson),
+]);
+```
+
+- **`ExtraCodec.of` matches with `is`**, the first `ExtraType<T>` in the order
+  written, so a freezed class, a sealed family (one `ExtraType<Shape>` whose
+  `fromJson` picks the case) or any class with private subclasses needs one entry.
+  **Put the most specific type first**: with `Shape` before `Circle` a `Circle` is
+  saved as a `Shape`.
+- `toJson`'s parameter is a `T`, so a closure needs no annotation; `fromJson` takes a
+  constructor tear-off or an annotated closure (`(Map<String, dynamic> j) => ...`).
+  `name:` is the saved name (default `T.toString()`, minified on the web release:
+  name it); two entries with one name are an `ArgumentError`
+  (``two types are saved as `X`: give one of them another name with `name:` ``).
+  `strict: true` works as before.
+- **The debug line.** In a debug build, an object no entry takes is still saved as
+  `null`, and `debugPrint` says what to register, once per runtime type (never in
+  a release build, no timer): ``fespalier: a _Note isn't registered in the ExtraCodec; it is a private class, such as freezed makes for `const factory Note(...) = _Note`; register its public type with `ExtraCodec.of([ExtraType<Note>(...)])` (until then this extra is saved as null, so a reload gives the page null)``.
+  A public type gets ``register it with `ExtraCodec.of([ExtraType<Foo>(toJson: ..., fromJson: ...)])`, or as `Foo` in `ExtraCodec({...})` ``.
+  `strict: true` throws an `ArgumentError` whose message is the same text without the parenthesis.
+- A restart of the app in a widget test (`tester.restartAndRestore()`) checks all of
+  it; `ci/codegen-interop/` in the fespalier repository does it with real freezed.
 - **`AppRoutes.mount()` does not take it.** A router you build yourself passes
   `extraCodec: extraCodec` (imported from that file) to `GoRouter`, and a router
   restores only what it is given a `restorationScopeId` for.

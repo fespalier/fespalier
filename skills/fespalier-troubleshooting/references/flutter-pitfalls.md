@@ -48,6 +48,59 @@ error points **inside `app.g.dart`** after you changed a constructor.
 If `fsp gen` itself **fails**, the old `app.g.dart` is kept (`N error(s); lib/app.g.dart left
 unchanged`): fix the error first, never edit the file.
 
+## `lib/app.g.dart` vanishes after `build_runner` **(reproduced)**
+
+Symptoms: after `dart run build_runner build` (or `watch`, or `fsp dev` with a `build_runner` task, or `fsp run codegen`)
+`flutter analyze` says `Target of URI doesn't exist: 'package:my_app/app.g.dart'`, though `fsp gen` wrote the file a
+moment ago. Nothing was logged, and `-d` makes no difference.
+
+Cause: the builders that write `.g.dart` files (json_serializable, riverpod_generator, ...) claim an `X.g.dart` for
+**every** `X.dart` in the package (source_gen's combining builder), and build_runner deletes a file at an output path
+it did not write (always, since 2.7.0, which ignores `-d`). With a **`lib/app.dart`** in the app, `lib/app.g.dart`,
+fespalier's default output, is one of them. `lib/app.dart` is a common name, so this is common. The first `fsp gen`
+afterwards writes the file again, and the next build deletes it again; `fsp watch` does not notice (it ignores its
+own output).
+
+- **Since 0.9.0** `fsp gen`, `check`, `watch` and `dev` warn when the output is `X.g.dart`, `X.dart` is beside it and
+  `build_runner` is a dependency (the text: `references/diagnostics-config-and-meta.md`).
+- **The fix is either of two:** `output: lib/routes.g.dart` in the `fespalier:` section of pubspec.yaml (then
+  `fsp gen`; the generated `main()` moves with it to `lib/routes.main.g.dart`, and the files for the old name are
+  yours to delete), or renaming `lib/app.dart`. Any `.g.dart` with no `.dart` beside it, or a name that is not a
+  `.g.dart` at all, is safe.
+- **On 0.8.1 and earlier** nothing warns: look for a `lib/app.dart` (and `lib/app.main.dart`, `lib/app.routes.dart` for
+  the other outputs) when the file goes missing.
+- **A third way**, when `lib/app.dart` must stay and the output must not move: keep `lib/app.dart` out of the
+  combining builder in `build.yaml` (checked with build_runner 2.16.1 and json_serializable 6.14.1), so nothing claims
+  `lib/app.g.dart`. `lib/app.dart` can then have no generated parts of its own, and `fsp` does not warn when it reads
+  exactly this (that builder, `exclude:`, the file spelled as in the warning, no glob):
+
+  ```yaml
+  # build.yaml
+  targets:
+    $default:
+      builders:
+        source_gen:combining_builder:
+          generate_for:
+            exclude:
+              - lib/app.dart
+  ```
+
+- `generate_for` of the _other_ builders (json_serializable and the like) does not help: it is the combining
+  builder that owns every `.g.dart`. (It can still keep a builder off `lib/app.g.dart` and `lib/app/**`, a large file
+  that changes on every route edit.)
+
+## A freezed `extra` is `null` after a reload **(reproduced)**
+
+Symptoms: a page that asks for `Note? extra` shows its fallback after a web reload or `restartAndRestore`, though
+`extra_codec.dart` has `Note: (toJson: ..., fromJson: ...)`; the debug console says
+`fespalier: a _Note isn't registered in the ExtraCodec; ...` (0.9.0; before that nothing says anything).
+
+Cause: freezed's `const factory Note(...) = _Note;` makes `Note(...)` a private `_Note`, and `ExtraCodec({...})`
+finds a type by its **exact** runtime type, so it saves `null`. Use `ExtraCodec.of([ExtraType<Note>(...)])` (0.9.0),
+which matches with `is`; see `fespalier-routing`, `references/typed-routes-and-extra.md`. freezed 4's
+primary-constructor form and dart*mappable classes are their own runtime type and were never affected; built_value's
+`*$Note` is not so lucky.
+
 ## A page shows defaults, or a value arrives as `null`
 
 Parameters are bound **by name** to the segments of the **path as `fsp` sees it**.

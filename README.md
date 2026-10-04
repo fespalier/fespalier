@@ -289,7 +289,7 @@ follows `format:` in the pubspec, so the result is what you would commit:
 ```yaml
 fespalier:
   app_dir: lib/app
-  output: lib/app.g.dart
+  output: lib/app.g.dart # a .g.dart: build_runner can delete it beside a lib/app.dart (since 0.9.0 fsp warns)
   format: false
   case_sensitive: true
   remount: never # `on_segments` | `on_location`
@@ -363,6 +363,8 @@ cost: that URL is all the browser keeps, so a reload or a deep link of it builds
 _own_ stack, not the stack it was pushed onto. In fespalier every route is a typed path, so the URL
 is always a valid page. Without the key, `push` leaves the address bar on the page below; use
 [`go` or `replace`](#the-url-as-state-of-and-copywith) for state that belongs in the URL.
+`output` is a `.g.dart` file by default, which `build_runner` can delete when a `lib/app.dart` is beside it (since 0.9.0:
+`fsp` warns, and `output: lib/routes.g.dart` is the way out; see [The generator](#the-generator)).
 `meta: required` makes a route without a [`meta.dart`](#route-manifest-and-metadart) an error,
 `meta_unique` makes a duplicate value in it one, and
 `output_manifest` writes the route manifest to a library of its own (same section).
@@ -475,6 +477,13 @@ fespalier:
 | `after`      | A command or a list, run when `run` exits 0.                                                                                                                                                                 |
 | `env`        | Variables for these commands (not for the app: use `--dart-define` for that).                                                                                                                                |
 | `hot_reload` | `dev` only. `false` turns the automatic reload and restart off; `r` and `R` still work.                                                                                                                      |
+
+`build_runner` needs no `-d` here: since build_runner 2.7.0 it ignores the flag and deletes conflicting outputs on its
+own. That is also why it can delete `lib/app.g.dart`, in `before`, in `with` and in `fsp run codegen` alike, when a
+`lib/app.dart` exists and a builder writes `.g.dart` files (json_serializable, riverpod_generator, ...): they claim an
+`X.g.dart` for every `X.dart`, `fsp`'s file included, and nothing is logged. Since 0.9.0 `fsp dev` warns about it (as
+`fsp gen` does, see [The generator](#the-generator)); set `output: lib/routes.g.dart` in the `fespalier:` section, or
+rename `lib/app.dart`, before you add these tasks.
 
 A command written as a string runs in the shell (`sh` on macOS and Linux, `cmd` on Windows). Written as a list
 (`[flutter, test]`) it runs with no shell, the same everywhere. `fsp` at the start of a command is the `fsp`
@@ -2135,21 +2144,43 @@ final extraCodec = ExtraCodec({
 `ExtraCodec` takes each type and how it becomes JSON and back (annotate the parameter of
 `toJson`; a constructor tear-off does for `fromJson`), and saves an object under its type's
 name. `null`, strings, numbers, booleans and plain JSON lists and maps need no entry. It
-never breaks navigation: an object whose type isn't registered is saved as `null`, and saved
-data that no longer reads (the type was removed, or `fromJson` throws) comes back as `null`,
+never breaks navigation: an object whose type isn't registered is saved as `null` (a debug build says so, below),
+and saved data that no longer reads (the type was removed, or `fromJson` throws) comes back as `null`,
 so a page falls back to what the URL says. Pass `strict: true` to throw instead, in a test that
 checks you registered every type.
 
-- The type is looked up by its exact runtime type: register each subclass of a sealed class.
+- `ExtraCodec({...})` looks the type up by its exact runtime type: register each subclass of a sealed class.
+  **That never matches a class freezed makes** from `const factory Note(...) = _Note`: the object is a private
+  `_Note`, not a `Note`, so a `Note` entry finds nothing and the extra is saved as `null`. Use `ExtraCodec.of` for
+  those (since 0.9.0).
 - The name is `Type.toString()`, which a release build for the web minifies (stable within a
   build, different in the next). To keep saved data readable across deployments, name the types:
-  `ExtraCodec({...}, names: {Note: 'note'})`.
+  `ExtraCodec({...}, names: {Note: 'note'})`, or `ExtraType<Note>(..., name: 'note')`.
 - Write your own `Codec<Object?, Object?>` instead if you like (`const extraCodec = MyCodec();`).
 - `AppRoutes.mount()` doesn't take it: a router you build yourself passes
   `extraCodec: extraCodec` (imported from that file) to `GoRouter`. A router restores only what
   it is given a `restorationScopeId` for (see [State restoration](#state-restoration)).
 - `extra_codec.dart` in a subfolder is a warning, and a file without an `extraCodec` is an
   error.
+
+**`ExtraCodec.of`** (since 0.9.0) takes a list of `ExtraType<T>` and matches an object with `is T`, **the first one in
+the order written**, so a freezed class, a sealed family or a class with private subclasses needs one entry, and the
+most specific type goes first:
+
+```dart
+// lib/app/extra_codec.dart
+final extraCodec = ExtraCodec.of([
+  ExtraType<Note>(toJson: (n) => n.toJson(), fromJson: Note.fromJson), // a freezed `_Note` is a Note
+  ExtraType<Shape>(toJson: (s) => s.toJson(), fromJson: Shape.fromJson, name: 'shape'),
+]);
+```
+
+`toJson`'s parameter is a `T`, so a closure needs no annotation; `name:` is the name in the saved data (default
+`T.toString()`, minified on the web, as above). With `Shape` before `Circle`, a `Circle` is saved as a `Shape`.
+Nothing else differs: the same `strict`, the same `null` for what it can't save or read, and two entries with one name
+are an error. In a debug build, an object that no entry takes prints one line, once per type, that says what to
+register (a private type such as `_Note` gets the freezed hint), and is still saved as `null`; a release build prints
+nothing and behaves as before.
 
 `examples/tabs` does this for a `ProfileDraft` passed to its edit page, and its restoration test
 restarts the app and checks the draft is still there (and, for contrast, what a router without the
@@ -3900,6 +3931,34 @@ and `analysis_options.yaml` (`formatter: page_width`), like `dart format lib/`, 
 `fsp gen` compares the formatted text with the file on disk, so a formatted file that is up
 to date stays "unchanged". `fsp watch`, `fsp new` and `fsp init` follow `format:` in the
 pubspec. `fsp check` writes and compares nothing, so it never runs `dart`.
+
+**build_runner.** `build_runner` can delete the generated file (since 0.9.0: `fsp` warns about it). The builders that
+write `.g.dart` files (json_serializable, riverpod_generator, ...) claim an `X.g.dart` for every `X.dart` in the
+package, so with a `lib/app.dart` beside `lib/app.g.dart` a `dart run build_runner build` deletes the file `fsp`
+wrote, and logs nothing; `lib/app.dart` is a common name in a Flutter app. `fsp gen`, `check`, `watch` and `dev` warn
+when the output is `X.g.dart`, an `X.dart` exists beside it and `build_runner` is under `dependencies` or
+`dev_dependencies`. It is a warning on that `.dart` file, and the commands still succeed:
+
+```text
+warning: lib/app.dart: `build_runner` can delete `lib/app.g.dart`: `lib/app.dart` exists, so the builders that write `.g.dart` files (json_serializable, riverpod_generator, ...) claim that path as an output of theirs, and `dart run build_runner build` removes the file `fsp` wrote; set `fespalier: output:` in pubspec.yaml to another file (for example `lib/routes.g.dart`), or rename `lib/app.dart`
+```
+
+Either way out works: `output: lib/routes.g.dart` (any `.g.dart` with no `.dart` beside it, or a name that doesn't end
+in `.g.dart`) or renaming `lib/app.dart`. A third keeps `lib/app.dart` out of the builder that claims every `.g.dart`,
+in `build.yaml` (checked with build_runner 2.16.1); `fsp` doesn't warn when it reads exactly that:
+
+```yaml
+targets:
+  $default:
+    builders:
+      source_gen:combining_builder:
+        generate_for:
+          exclude:
+            - lib/app.dart
+```
+
+`lib/app.dart` then can't have generated parts of its own. The same check covers `output_manifest` and the generated
+`lib/app.main.g.dart`. Without `build_runner`, or without an `X.dart` beside the output, nothing is said.
 
 What the commands print:
 

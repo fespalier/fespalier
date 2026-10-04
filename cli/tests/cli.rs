@@ -942,6 +942,79 @@ fn watch_rechecks_string_paths_outside_the_app_folder() {
     );
 }
 
+const RUNNER_CLASH: &str = "`build_runner` can delete `lib/app.g.dart`: `lib/app.dart` exists, so the builders that write `.g.dart` files (json_serializable, riverpod_generator, ...) claim that path as an output of theirs, and `dart run build_runner build` removes the file `fsp` wrote; set `fespalier: output:` in pubspec.yaml to another file (for example `lib/routes.g.dart`), or rename `lib/app.dart`";
+
+/// A project that has `build_runner` and a `lib/app.dart`: the default output is a file
+/// `build_runner`'s `.g.dart` builders claim for it, and delete. `gen`, `check` and `watch` warn
+/// (and still succeed), in the file the user can rename; another `output:` is the way out.
+#[test]
+fn gen_check_and_watch_warn_that_build_runner_can_delete_the_output() {
+    let dir = project();
+    let root = dir.path();
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\ndev_dependencies:\n  build_runner: ^2.4.0\n",
+    )
+    .unwrap();
+
+    // No `lib/app.dart`, no warning.
+    let (ok, err) = fsp(root, &["check"]);
+    assert_eq!((ok, err.as_str()), (true, "✓ 1 route, no errors\n"));
+
+    fs::write(root.join("lib/app.dart"), "// the app\n").unwrap();
+    for cmd in ["check", "gen"] {
+        let (ok, err) = fsp(root, &[cmd]);
+        assert!(ok, "{err}");
+        assert!(err.starts_with("warning: lib/app.dart: "), "{err}");
+        assert!(err.contains(RUNNER_CLASH), "{err}");
+    }
+    assert!(root.join("lib/app.g.dart").exists());
+
+    // For an editor: the file it is about, as a warning with no place in it.
+    let (ok, out, err) = fsp_full(root, &["check", "--json"], &[]);
+    assert!(ok, "{err}");
+    let lines: Vec<serde_json::Value> = out
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 1, "{out}");
+    assert_eq!(lines[0]["file"], "lib/app.dart");
+    assert_eq!(lines[0]["severity"], "warning");
+    assert!(lines[0]["line"].is_null());
+    assert_eq!(lines[0]["message"], RUNNER_CLASH);
+
+    // `watch` says it once, with the first pass, and not again for a change that leaves it.
+    let w = Watch::start(root);
+    w.wait_for("✓ 1 route, lib/app.g.dart unchanged");
+    w.settle();
+    assert_eq!(w.text().matches(RUNNER_CLASH).count(), 1, "{}", w.text());
+    fs::create_dir_all(root.join("lib/app/about")).unwrap();
+    fs::write(root.join("lib/app/about/page.dart"), page("AboutPage")).unwrap();
+    w.wait_for("✓ 2 routes → lib/app.g.dart");
+    w.settle();
+    assert_eq!(w.text().matches(RUNNER_CLASH).count(), 1, "{}", w.text());
+    drop(w);
+
+    // The way out the warning names: the output in another file.
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\ndev_dependencies:\n  build_runner: ^2.4.0\nfespalier:\n  output: lib/routes.g.dart\n",
+    )
+    .unwrap();
+    let (ok, err) = fsp(root, &["check"]);
+    assert_eq!((ok, err.as_str()), (true, "✓ 2 routes, no errors\n"));
+
+    // ... or the file renamed.
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\ndev_dependencies:\n  build_runner: ^2.4.0\n",
+    )
+    .unwrap();
+    fs::rename(root.join("lib/app.dart"), root.join("lib/root.dart")).unwrap();
+    let (ok, err) = fsp(root, &["check"]);
+    assert_eq!((ok, err.as_str()), (true, "✓ 2 routes, no errors\n"));
+}
+
 /// A stand-in for `dart` whose `format` prepends a marker line to stdin.
 #[cfg(unix)]
 fn fake_dart(dir: &Path) -> std::path::PathBuf {

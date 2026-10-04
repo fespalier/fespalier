@@ -264,6 +264,10 @@ pub struct Config {
     pub tasks: Option<Value>,
     /// `main:`: whether the generated `main()` is written (see [`MainMode`]).
     pub main: MainMode,
+    /// `build_runner` is listed under `dependencies` or `dev_dependencies`: what makes a
+    /// generated `X.g.dart` next to an `X.dart` a file it deletes (see `build_runner.rs`, since
+    /// 0.9.0). Read from the pubspec, never from `fespalier:`.
+    pub build_runner: bool,
 }
 
 impl Default for Config {
@@ -293,6 +297,7 @@ impl Default for Config {
             test: None,
             tasks: None,
             main: MainMode::Auto,
+            build_runner: false,
         }
     }
 }
@@ -310,6 +315,7 @@ pub struct Pubspec {
 struct RawPubspec {
     name: Option<String>,
     dependencies: Option<Value>,
+    dev_dependencies: Option<Value>,
     fespalier: Option<RawConfig>,
 }
 
@@ -1149,8 +1155,10 @@ impl Pubspec {
                 }
             }
         }
-        let has_dependency =
-            matches!(&raw.dependencies, Some(Value::Mapping(m)) if m.contains_key("fespalier"));
+        let lists = |name: &str, section: &Option<Value>| matches!(section, Some(Value::Mapping(m)) if m.contains_key(name));
+        let has_dependency = lists("fespalier", &raw.dependencies);
+        config.build_runner = lists("build_runner", &raw.dependencies)
+            || lists("build_runner", &raw.dev_dependencies);
         Ok(Pubspec {
             name: raw.name,
             has_dependency,

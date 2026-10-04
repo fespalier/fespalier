@@ -6072,7 +6072,7 @@ Screen-load transactions, spans for guards, data loads and actions, and time to 
 there already. fespalier has no Sentry dependency: `SentryFlutter.init` still starts the SDK, which owns
 the crash capture, the sessions, the native integrations and the transport, and this package only tells it
 what the router knows. Add it next to fespalier, with the same `url` and the same `ref` (as for
-`fespalier_otel`), and `sentry_flutter` 9.26.0 or newer, which the app needs for `SentryFlutter.init`:
+`fespalier_otel`):
 
 <!-- x-release-please-start-version -->
 
@@ -6088,10 +6088,12 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_sentry
       ref: v0.9.1
-  sentry_flutter: ">=0.9.1 <10.0.0"
 ```
 
 <!-- x-release-please-end -->
+
+The app also depends on `sentry_flutter` for `SentryFlutter.init`, in the range this package accepts:
+`>=9.26.0 <10.0.0`.
 
 An error, from the call that failed to sentry.io (every arrow into the sink is a plain synchronous call; every
 SDK call that returns a `Future` is fired and forgotten):
@@ -7691,7 +7693,9 @@ bumps a version by hand, edits `.release-please-manifest.json`, or runs a workfl
    `packages/fespalier/pubspec.yaml`, the `ref:` that `fsp init` prints, both READMEs'
    install snippets and `.release-please-manifest.json` (every spelled-out version carries a
    release-please annotation and is listed in `release-please-config.json`; the trailing comment
-   is why every reader of those files must tolerate one, see `scripts/read-version.sh`), and it
+   is why every reader of those files must tolerate one, see `scripts/read-version.sh`; nothing
+   else sits on an annotated line or inside a start/end block, because the updater replaces the
+   first version on each of them, so a dependency's range there would be overwritten), and it
    writes the root `CHANGELOG.md` above the hand-written history. The `release-please` workflow
    refreshes `cli/Cargo.lock` on the branch, because the build is `--locked`.
 3. **Pins, on the PR.** The `Release pins` workflow builds `fsp` for the five targets on the PR

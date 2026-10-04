@@ -201,6 +201,11 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   `Transitions.pageName`.
 - Every place that spells out the release version is annotated for release-please and checked by
   `cli/tests/versions.rs`; if that test fails after your change, you moved or removed an annotation.
+  The annotation is for fespalier's own version only: release-please's updater replaces the first
+  `x.y.z` on every line from a `start-version` marker to its end marker and on every line carrying
+  the inline one, whoever's it is. A dependency's range (`sentry_flutter: ">=9.26.0 <10.0.0"`) inside
+  a block was rewritten to the release's number in 0.9.0 and 0.9.1, so write such a range in prose or
+  after the block's end marker, never in the snippet the block wraps.
 - **No CDN secret in an app.** `fespalier_image` has no parameter for a key or a salt and ships no HMAC code; its
   `signer:` is a callback. Keep it that way: `crypto` is a dev dependency for the signing tests only, and
   `signing_test.dart` greps `lib/` for signature code. A key in a build (a constant, a `--dart-define`) is public.

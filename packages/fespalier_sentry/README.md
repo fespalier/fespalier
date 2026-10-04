@@ -19,8 +19,7 @@ The main README documents all of it: [Sentry](https://github.com/fespalier/fespa
 ## Install
 
 Add it next to fespalier, with the same `url` and the same `ref`: pub resolves the two to one package only if
-they are the same repository dependency. It needs `sentry_flutter` 9.26.0 or newer, which your app depends on
-for `SentryFlutter.init`.
+they are the same repository dependency.
 
 <!-- x-release-please-start-version -->
 
@@ -36,10 +35,12 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_sentry
       ref: v0.9.1
-  sentry_flutter: ">=0.9.1 <10.0.0"
 ```
 
 <!-- x-release-please-end -->
+
+Your app also depends on `sentry_flutter` for `SentryFlutter.init`, in the range this package accepts:
+`>=9.26.0 <10.0.0`.
 
 Turn telemetry on in `pubspec.yaml` and regenerate:
 

@@ -7,11 +7,60 @@
 )]
 
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+#[cfg(unix)]
+use std::process::ExitStatus;
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::{PoisonError, RwLock};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
+
+// --- Writing stand-in executables, starting processes ------------------------------------------
+//
+// Some tests write a stand-in executable (a shell script for `docker`, `flutter` or `dart`) and
+// run it through `fsp`, while other test threads start processes. `Command::spawn` forks, and
+// until the child execs it holds a copy of every file the test process has open (close-on-exec
+// only acts at the exec). A child forked by another thread between our `open` and `close` of the
+// script keeps it open for writing, so running the script fails with ETXTBSY, "Text file busy"
+// (rust-lang/rust#114554). One lock rules that out: a script is written holding its write side
+// (`write_executable`), and a process is started holding its read side until the child has
+// exec'd (`spawn_locked`, `output_locked`, `status_locked`), so no fork overlaps a write. Every
+// `Command` in this file goes through them, and every stand-in executable is written by the one.
+
+/// Write side: an executable is being written. Read side: a process is being started.
+static EXEC_RACE: RwLock<()> = RwLock::new(());
+
+/// Writes `contents` to `path` and makes it executable, while no process is being started.
+#[cfg(unix)]
+fn write_executable(path: &Path, contents: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let _writing = EXEC_RACE.write().unwrap_or_else(PoisonError::into_inner);
+    fs::write(path, contents).unwrap();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// `command.spawn()`. The read lock is held until the child has exec'd (which is when `spawn`
+/// returns), so it holds no file of ours open, and is released before anyone waits for it.
+fn spawn_locked(command: &mut Command) -> io::Result<Child> {
+    let _starting = EXEC_RACE.read().unwrap_or_else(PoisonError::into_inner);
+    command.spawn()
+}
+
+/// `command.output()`: stdin is empty, stdout and stderr are captured. Only the start is locked.
+fn output_locked(command: &mut Command) -> io::Result<Output> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    spawn_locked(command)?.wait_with_output()
+}
+
+/// `command.status()`: the child's streams are inherited. Only the start is locked.
+#[cfg(unix)]
+fn status_locked(command: &mut Command) -> io::Result<ExitStatus> {
+    spawn_locked(command)?.wait()
+}
 
 fn page(class: &str) -> String {
     format!("class {class} extends StatelessWidget {{ const {class}({{super.key}}); }}")
@@ -26,11 +75,12 @@ fn project() -> tempfile::TempDir {
 }
 
 fn fsp(dir: &Path, args: &[&str]) -> (bool, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_fsp"))
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .unwrap();
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(args)
+            .current_dir(dir),
+    )
+    .unwrap();
     assert!(
         out.stdout.is_empty(),
         "stdout: {}",
@@ -210,14 +260,15 @@ impl Watch {
     fn start_with(dir: &Path, env: &[(&str, &str)]) -> Watch {
         let log = dir.join("watch.log");
         let file = fs::File::create(&log).unwrap();
-        let child = Command::new(env!("CARGO_BIN_EXE_fsp"))
-            .arg("watch")
-            .envs(env.iter().copied())
-            .current_dir(dir)
-            .stdout(Stdio::null())
-            .stderr(file)
-            .spawn()
-            .unwrap();
+        let child = spawn_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .arg("watch")
+                .envs(env.iter().copied())
+                .current_dir(dir)
+                .stdout(Stdio::null())
+                .stderr(file),
+        )
+        .unwrap();
         let w = Watch { child, log };
         w.wait_for("watching lib/app/");
         w
@@ -404,7 +455,6 @@ fn watch_follows_an_enum_declared_outside_the_app_folder() {
 #[cfg(unix)]
 #[test]
 fn watch_formats_only_code_it_has_not_formatted_before() {
-    use std::os::unix::fs::PermissionsExt;
     let dir = project();
     let root = dir.path();
     fs::write(
@@ -413,8 +463,10 @@ fn watch_formats_only_code_it_has_not_formatted_before() {
     )
     .unwrap();
     let dart = root.join("counting-dart");
-    fs::write(&dart, "#!/bin/sh\n[ \"$1\" = format ] || exit 2\necho x >> \"$FAKE_DART_LOG\"\necho '// formatted'\ncat\n").unwrap();
-    fs::set_permissions(&dart, fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(
+        &dart,
+        "#!/bin/sh\n[ \"$1\" = format ] || exit 2\necho x >> \"$FAKE_DART_LOG\"\necho '// formatted'\ncat\n",
+    );
     let calls = root.join("dart-calls.log");
     let count = || fs::read_to_string(&calls).map_or(0, |s| s.lines().count());
     let env = [
@@ -460,12 +512,13 @@ fn watch_formats_only_code_it_has_not_formatted_before() {
 
 /// Like `fsp`, but returns stdout too, and takes extra environment.
 fn fsp_full(dir: &Path, args: &[&str], env: &[(&str, &str)]) -> (bool, String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_fsp"))
-        .args(args)
-        .envs(env.iter().copied())
-        .current_dir(dir)
-        .output()
-        .unwrap();
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(args)
+            .envs(env.iter().copied())
+            .current_dir(dir),
+    )
+    .unwrap();
     (
         out.status.success(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -945,14 +998,11 @@ fn watch_rechecks_string_paths_outside_the_app_folder() {
 /// A stand-in for `dart` whose `format` prepends a marker line to stdin.
 #[cfg(unix)]
 fn fake_dart(dir: &Path) -> std::path::PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let path = dir.join("fake-dart");
-    fs::write(
+    write_executable(
         &path,
         "#!/bin/sh\n[ \"$1\" = format ] || exit 2\necho '// formatted'\ncat\n",
-    )
-    .unwrap();
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    );
     path
 }
 
@@ -1770,11 +1820,10 @@ fn test_reports_config_and_file_errors_with_a_failing_exit() {
 /// code of the report run.
 #[cfg(unix)]
 fn fake_docker(dir: &Path) -> std::path::PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let bin = dir.join("bin");
     fs::create_dir_all(&bin).unwrap();
     let path = bin.join("docker");
-    fs::write(
+    write_executable(
         &path,
         r#"#!/bin/sh
 echo "$PWD|$*|bind=$FSP_OTLP_BIND|cors=$FSP_OTLP_CORS_ORIGIN" >> "$FAKE_LOG"
@@ -1789,9 +1838,7 @@ case "$*" in
 esac
 exit 9
 "#,
-    )
-    .unwrap();
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    );
     bin
 }
 
@@ -1912,12 +1959,13 @@ fn telemetry_flags_that_exclude_each_other_are_clap_errors() {
 #[test]
 fn telemetry_without_a_home_folder_asks_for_one() {
     let dir = tempfile::tempdir().unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_fsp"))
-        .arg("telemetry")
-        .env_clear()
-        .current_dir(dir.path())
-        .output()
-        .unwrap();
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .arg("telemetry")
+            .env_clear()
+            .current_dir(dir.path()),
+    )
+    .unwrap();
     assert!(!out.status.success());
     assert_eq!(
         String::from_utf8_lossy(&out.stderr),
@@ -2275,11 +2323,10 @@ fn telemetry_stop_and_reset_run_down_with_the_grafana_profile() {
 /// and answered, `app.stop` is logged and ends it. With `$FAKE_RUN_EXIT` set it exits at once.
 #[cfg(unix)]
 fn fake_flutter(root: &Path) -> std::path::PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let bin = root.join("bin");
     fs::create_dir_all(&bin).unwrap();
     let path = bin.join("flutter");
-    fs::write(
+    write_executable(
         &path,
         r#"#!/bin/sh
 echo "$*" >> "$FAKE_LOG"
@@ -2313,9 +2360,7 @@ while IFS= read -r line; do
   esac
 done
 "#,
-    )
-    .unwrap();
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    );
     bin
 }
 
@@ -2363,20 +2408,21 @@ impl Dev {
     fn start_with(root: &Path, args: &[&str], env: &[(&str, &str)], keep_stdin: bool) -> Dev {
         let err = root.join("dev.err");
         let log = root.join("flutter.log");
-        let mut child = Command::new(env!("CARGO_BIN_EXE_fsp"))
-            .arg("dev")
-            .arg("--no-tui")
-            .args(args)
-            .env("PATH", path_with(&root.join("bin")))
-            .env("FAKE_LOG", &log)
-            .envs(env.iter().copied())
-            .env_remove("NO_COLOR")
-            .current_dir(root)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(fs::File::create(&err).unwrap())
-            .spawn()
-            .unwrap();
+        let mut child = spawn_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .arg("dev")
+                .arg("--no-tui")
+                .args(args)
+                .env("PATH", path_with(&root.join("bin")))
+                .env("FAKE_LOG", &log)
+                .envs(env.iter().copied())
+                .env_remove("NO_COLOR")
+                .current_dir(root)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(fs::File::create(&err).unwrap()),
+        )
+        .unwrap();
         let stdin = child.stdin.take();
         Dev {
             child,
@@ -2432,11 +2478,12 @@ impl Dev {
     }
 
     fn signal(&self, name: &str) {
-        let status = Command::new("kill")
-            .arg(format!("-{name}"))
-            .arg(self.child.id().to_string())
-            .status()
-            .unwrap();
+        let status = status_locked(
+            Command::new("kill")
+                .arg(format!("-{name}"))
+                .arg(self.child.id().to_string()),
+        )
+        .unwrap();
         assert!(status.success());
     }
 
@@ -2463,9 +2510,7 @@ impl Drop for Dev {
     fn drop(&mut self) {
         if self.child.try_wait().ok().flatten().is_none() {
             // Let it stop what it started; a test that failed must not leave processes behind.
-            let _ = Command::new("kill")
-                .arg(self.child.id().to_string())
-                .status();
+            let _ = status_locked(Command::new("kill").arg(self.child.id().to_string()));
             let end = Instant::now() + Duration::from_secs(15);
             while self.child.try_wait().ok().flatten().is_none() && Instant::now() < end {
                 sleep(Duration::from_millis(20));
@@ -2646,10 +2691,7 @@ fn a_with_command_and_what_it_started_stop_with_dev() {
         .trim()
         .to_string();
     let alive = |pid: &str| {
-        Command::new("kill")
-            .args(["-0", pid])
-            .stderr(Stdio::null())
-            .status()
+        status_locked(Command::new("kill").args(["-0", pid]).stderr(Stdio::null()))
             .unwrap()
             .success()
     };
@@ -2794,15 +2836,15 @@ fn an_initial_generation_error_with_an_output_warns_and_goes_on() {
 /// Runs `fsp` with the stand-in flutter first on PATH; returns the exit code, stdout and stderr.
 #[cfg(unix)]
 fn fsp_task(root: &Path, args: &[&str], env: &[(&str, &str)]) -> (Option<i32>, String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_fsp"))
-        .args(args)
-        .env("PATH", path_with(&root.join("bin")))
-        .env("FAKE_LOG", root.join("flutter.log"))
-        .envs(env.iter().copied())
-        .current_dir(root)
-        .stdin(Stdio::null())
-        .output()
-        .unwrap();
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(args)
+            .env("PATH", path_with(&root.join("bin")))
+            .env("FAKE_LOG", root.join("flutter.log"))
+            .envs(env.iter().copied())
+            .current_dir(root),
+    )
+    .unwrap();
     (
         out.status.code(),
         String::from_utf8_lossy(&out.stdout).into_owned(),

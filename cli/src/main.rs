@@ -1,3 +1,4 @@
+mod adapters;
 mod config;
 mod daemon;
 mod dart;
@@ -439,7 +440,7 @@ fn analyze_tree(
     );
     manifest::check(&app, cfg, diags);
     let code = emit::emit(&app, cfg, diags);
-    let main = entry::emit(tree, &app, cfg, &entry::MainHooks::default(), diags);
+    let main = entry::emit(tree, &app, cfg, &adapters::hooks(&cfg.adapters), diags);
     (code, main, app)
 }
 
@@ -512,6 +513,8 @@ mod navigator_tests;
 mod nest_tests;
 #[cfg(test)]
 mod observe_tests;
+#[cfg(test)]
+mod page_name_tests;
 #[cfg(test)]
 mod paths_tests;
 #[cfg(test)]

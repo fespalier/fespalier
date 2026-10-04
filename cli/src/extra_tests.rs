@@ -192,7 +192,9 @@ fn a_layout_on_the_root_navigator_or_with_a_shell_transition_still_gets_it() {
     has(
         &c,
         &[
-            &format!("pageBuilder: (context, state, child) => {tr}.transition("),
+            &format!(
+                "pageBuilder: (context, state, child) => namedPage('/shop', () => {tr}.transition("
+            ),
             &format!("{l}.ShopLayout(child: child, extra: extraOrNull(state))"),
         ],
     );

@@ -257,36 +257,36 @@ abstract final class AppRoutes {
     if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return [
       ShellRoute(
-        pageBuilder: (context, state, child) => _i1.transition(
+        pageBuilder: (context, state, child) => namedPage('/', () => _i1.transition(
           const ValueKey<String>('layout:/'),
           buildWithParams(
               () => _layout0(state),
               (v) => _i2.RootLayout(child: child, banner: v.banner),
               () => notFound(state.uri),
             ),
-        ),
+        )),
         routes: [
           GoRoute(
             path: joinLocation(at, '/'),
             caseSensitive: false,
-            pageBuilder: (context, state) => _i1.transition(
+            pageBuilder: (context, state) => namedPage('/', () => _i1.transition(
               state.pageKey,
               RouteScrollMemory(
                 state: state,
                 child: const _i0.HomePage(),
               ),
-            ),
+            )),
             routes: [
               ShellRoute(
-                pageBuilder: (context, state, child) => _i5.transition(
+                pageBuilder: (context, state, child) => namedPage('/', () => _i5.transition(
                   const ValueKey<String>('layout:(account)/'),
                   _i6.AccountLayout(child: child),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: 'nickname',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i5.transition(
+                    pageBuilder: (context, state) => namedPage('/nickname', () => _i5.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -300,29 +300,29 @@ abstract final class AppRoutes {
                           optimistic: (ref) => ref.watch(_optimistic3),
                         ),
                       ),
-                    ),
+                    )),
                   ),
                   GoRoute(
                     path: 'profile',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i5.transition(
+                    pageBuilder: (context, state) => namedPage('/profile', () => _i5.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: const _i10.ProfilePage(),
                       ),
-                    ),
+                    )),
                   ),
                   GoRoute(
                     path: 'settings',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i5.transition(
+                    pageBuilder: (context, state) => namedPage('/settings', () => _i5.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: const _i11.SettingsPage(),
                       ),
-                    ),
+                    )),
                   ),
                 ],
                 restorationScopeId: 'layout:(account)/',
@@ -334,19 +334,19 @@ abstract final class AppRoutes {
                   () => traceGuard(state, 'g6@7', refGuard(context, 'g6@7', (ref) => _i12.guard(ref, uri: state.uri))),
                   () => traceGuard(state, 'g7@7', _i14.guard(ProviderScope.containerOf(context, listen: false))),
                 ]),
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/admin', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: const _i13.AdminPage(),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'inbox',
                 caseSensitive: false,
                 redirect: (context, state) => traceGuard(state, 'g6@8', refGuard(context, 'g6@8', (ref) => _i12.guard(ref, uri: state.uri))),
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/inbox', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -356,23 +356,23 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'free',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/free', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: _i18.page(),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'pro',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/pro', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -382,12 +382,12 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'catalog',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/catalog', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -400,12 +400,12 @@ abstract final class AppRoutes {
                       keepPrevious: true,
                     ),
                   ),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: ':productId',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/catalog/:productId', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -422,12 +422,12 @@ abstract final class AppRoutes {
                           () => notFound(state.uri),
                         ),
                       ),
-                    ),
+                    )),
                     routes: [
                       GoRoute(
                         path: 'reviews',
                         caseSensitive: false,
-                        pageBuilder: (context, state) => _i1.transition(
+                        pageBuilder: (context, state) => namedPage('/catalog/:productId/reviews', () => _i1.transition(
                           state.pageKey,
                           RouteScrollMemory(
                             state: state,
@@ -444,7 +444,7 @@ abstract final class AppRoutes {
                               () => notFound(state.uri),
                             ),
                           ),
-                        ),
+                        )),
                       ),
                     ],
                   ),
@@ -453,7 +453,7 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'counter',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/counter', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -466,34 +466,34 @@ abstract final class AppRoutes {
                       keepPrevious: true,
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'docs',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/docs', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: const _i34.DocsIndexPage(),
                   ),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: 'new',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/docs/new', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: const _i36.NewDocPage(),
                       ),
-                    ),
+                    )),
                   ),
                   GoRoute(
                     path: ':rest(.+)',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/docs/*rest', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -503,24 +503,24 @@ abstract final class AppRoutes {
                           () => notFound(state.uri),
                         ),
                       ),
-                    ),
+                    )),
                   ),
                 ],
               ),
               GoRoute(
                 path: 'feed',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/feed', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: const _i37.FeedPage(),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'files',
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/files/*path?', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -530,45 +530,45 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: ':_l0(guide|f%C3%BChrer|%D1%80%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE)',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/guide', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: const _i39.GuidePage(),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: ':_l0(help|aide|hilfe)',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/help', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: const _i40.HelpPage(),
                   ),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: ':_l1(contact|kontakt)',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/help/contact', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: const _i44.ContactPage(),
                       ),
-                    ),
+                    )),
                   ),
                   GoRoute(
                     path: ':topic',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/help/:topic', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -578,12 +578,12 @@ abstract final class AppRoutes {
                           () => _i41.HelpNotFound(uri: state.uri),
                         ),
                       ),
-                    ),
+                    )),
                     routes: [
                       GoRoute(
                         path: ':_l2(examples|exemples|beispiele)',
                         caseSensitive: false,
-                        pageBuilder: (context, state) => _i1.transition(
+                        pageBuilder: (context, state) => namedPage('/help/:topic/examples', () => _i1.transition(
                           state.pageKey,
                           RouteScrollMemory(
                             state: state,
@@ -593,7 +593,7 @@ abstract final class AppRoutes {
                               () => _i41.HelpNotFound(uri: state.uri),
                             ),
                           ),
-                        ),
+                        )),
                       ),
                     ],
                   ),
@@ -603,18 +603,18 @@ abstract final class AppRoutes {
                 path: 'labs',
                 caseSensitive: false,
                 redirect: (context, state) => traceGuard(state, 'g31@31', refGuard(context, 'g31@31', (ref) => _i46.guard(ref))),
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/labs', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: const _i45.LabsPage(),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'login',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/login', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -624,7 +624,7 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'old-search',
@@ -637,66 +637,66 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'photos',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/photos', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: const _i63.PhotosPage(),
                   ),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: 'share',
                     parentNavigatorKey: rootNavigatorKey,
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i67.present(
+                    pageBuilder: (context, state) => namedPage('/photos/share', () => _i67.present(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: const _i66.ShareSheet(),
                       ),
-                    ),
+                    )),
                     routes: [
                       GoRoute(
                         path: 'terms',
                         parentNavigatorKey: rootNavigatorKey,
                         caseSensitive: false,
-                        pageBuilder: (context, state) => _i1.transition(
+                        pageBuilder: (context, state) => namedPage('/photos/share/terms', () => _i1.transition(
                           state.pageKey,
                           RouteScrollMemory(
                             state: state,
                             child: const _i68.TermsPage(),
                           ),
-                        ),
+                        )),
                       ),
                     ],
                   ),
                   GoRoute(
                     path: 'sort',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i70.transition(
+                    pageBuilder: (context, state) => namedPage('/photos/sort', () => _i70.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: const _i69.SortPage(),
                       ),
-                    ),
+                    )),
                   ),
                   GoRoute(
                     path: 'upload',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i72.transition(
+                    pageBuilder: (context, state) => namedPage('/photos/upload', () => _i72.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: const _i71.UploadPage(),
                       ),
-                    ),
+                    )),
                   ),
                   GoRoute(
                     path: ':id',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i65.transition(
+                    pageBuilder: (context, state) => namedPage('/photos/:id', () => _i65.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -706,12 +706,12 @@ abstract final class AppRoutes {
                           () => notFound(state.uri),
                         ),
                       ),
-                    ),
+                    )),
                   ),
                 ],
               ),
               ShellRoute(
-                pageBuilder: (context, state, child) => _i1.transition(
+                pageBuilder: (context, state, child) => namedPage('/reports', () => _i1.transition(
                   const ValueKey<String>('layout:reports/'),
                   buildWithParams(
                       () => _layout56(state),
@@ -725,12 +725,12 @@ abstract final class AppRoutes {
                       ),
                       () => notFound(state.uri),
                     ),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: 'reports/monthly',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/reports/monthly', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -743,12 +743,12 @@ abstract final class AppRoutes {
                           () => notFound(state.uri),
                         ),
                       ),
-                    ),
+                    )),
                   ),
                   GoRoute(
                     path: 'reports/yearly',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/reports/yearly', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -758,7 +758,7 @@ abstract final class AppRoutes {
                           () => notFound(state.uri),
                         ),
                       ),
-                    ),
+                    )),
                   ),
                 ],
                 restorationScopeId: 'layout:reports/',
@@ -766,7 +766,7 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'search',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/search', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -783,12 +783,12 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'ticks',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i108.transition(
+                pageBuilder: (context, state) => namedPage('/ticks', () => _i108.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -801,24 +801,24 @@ abstract final class AppRoutes {
                       keepPrevious: true,
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'vault',
                 caseSensitive: false,
                 redirect: (context, state) => traceGuard(state, 'g72@72', refGuard(context, 'g72@72', (ref) => _i110.guard(ref, uri: state.uri))),
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/vault', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: const _i109.VaultPage(),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: ':slug',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/:slug', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -828,19 +828,19 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               ShellRoute(
-                pageBuilder: (context, state, child) => _i1.transition(
+                pageBuilder: (context, state, child) => namedPage('/notes', () => _i1.transition(
                   const ValueKey<String>('layout:notes/'),
                   _i49.NotesLayout(child: child, extra: extraOrNull(state)),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: 'notes/:id',
                     caseSensitive: false,
                     redirect: (context, state) => traceGuard(state, 'g34@34', _i51.guard(ProviderScope.containerOf(context, listen: false), extra: extraOrNull(state))),
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/notes/:id', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -850,7 +850,7 @@ abstract final class AppRoutes {
                           () => notFound(state.uri),
                         ),
                       ),
-                    ),
+                    )),
                   ),
                 ],
                 restorationScopeId: 'layout:notes/',
@@ -866,7 +866,7 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'orders/:id',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/orders/:id', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -876,7 +876,7 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: 'refund',
@@ -885,7 +885,7 @@ abstract final class AppRoutes {
                       () => _params40(state),
                       (v) => _i59.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
                     )),
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/orders/:id/refund', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -902,12 +902,12 @@ abstract final class AppRoutes {
                           () => notFound(state.uri),
                         ),
                       ),
-                    ),
+                    )),
                     routes: [
                       GoRoute(
                         path: 'receipt',
                         caseSensitive: false,
-                        pageBuilder: (context, state) => _i1.transition(
+                        pageBuilder: (context, state) => namedPage('/orders/:id/refund/receipt', () => _i1.transition(
                           state.pageKey,
                           RouteScrollMemory(
                             state: state,
@@ -917,7 +917,7 @@ abstract final class AppRoutes {
                               () => notFound(state.uri),
                             ),
                           ),
-                        ),
+                        )),
                       ),
                     ],
                   ),
@@ -928,7 +928,7 @@ abstract final class AppRoutes {
                       () => _guard40(state),
                       (v) => _i59.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
                     )),
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/orders/:id/refund/confirm', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -938,14 +938,14 @@ abstract final class AppRoutes {
                           () => notFound(state.uri),
                         ),
                       ),
-                    ),
+                    )),
                   ),
                 ],
               ),
               GoRoute(
                 path: 'remount/location/:id',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/remount/location/:id', () => _i1.transition(
                   remountKey(state, Remount.onLocation),
                   RouteScrollMemory(
                     state: state,
@@ -955,12 +955,12 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'remount/never/:id',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/remount/never/:id', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -970,12 +970,12 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'remount/segments/:id',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/remount/segments/:id', () => _i1.transition(
                   remountKey(state, Remount.onSegments, const ['id']),
                   RouteScrollMemory(
                     state: state,
@@ -985,12 +985,12 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: ':_l0(shop|boutique|laden)/:category',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/shop/:category', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -1007,17 +1007,17 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               ShellRoute(
-                pageBuilder: (context, state, child) => _i1.transition(
+                pageBuilder: (context, state, child) => namedPage('/shops/:shop', () => _i1.transition(
                   const ValueKey<String>('layout:shops/\$shop/'),
                   buildWithParams(
                       () => _layout63(state),
                       (v) => _i86.ShopLayout(shop: v.shop, child: child),
                       () => notFound(state.uri),
                     ),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: 'shops/:shop',
@@ -1026,7 +1026,7 @@ abstract final class AppRoutes {
                       () => _params63(state),
                       (v) => _i87.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
                     )),
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/shops/:shop', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -1036,12 +1036,12 @@ abstract final class AppRoutes {
                           () => notFound(state.uri),
                         ),
                       ),
-                    ),
+                    )),
                     routes: [
                       GoRoute(
                         path: 'items/:id',
                         caseSensitive: false,
-                        pageBuilder: (context, state) => _i1.transition(
+                        pageBuilder: (context, state) => namedPage('/shops/:shop/items/:id', () => _i1.transition(
                           state.pageKey,
                           RouteScrollMemory(
                             state: state,
@@ -1058,7 +1058,7 @@ abstract final class AppRoutes {
                               () => notFound(state.uri),
                             ),
                           ),
-                        ),
+                        )),
                       ),
                     ],
                   ),
@@ -1066,7 +1066,7 @@ abstract final class AppRoutes {
                 restorationScopeId: 'layout:shops/\$shop/',
               ),
               ShellRoute(
-                pageBuilder: (context, state, child) => _i1.transition(
+                pageBuilder: (context, state, child) => namedPage('/teams/:teamId', () => _i1.transition(
                   const ValueKey<String>('layout:teams/\$teamId/'),
                   buildWithParams(
                       () => _layout67(state),
@@ -1082,12 +1082,12 @@ abstract final class AppRoutes {
                       ),
                       () => _i97.TeamNotFound(uri: state.uri),
                     ),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: 'teams/:teamId/members',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/teams/:teamId/members', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -1101,12 +1101,12 @@ abstract final class AppRoutes {
                           () => _i100.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                         ),
                       ),
-                    ),
+                    )),
                     routes: [
                       GoRoute(
                         path: ':member',
                         caseSensitive: false,
-                        pageBuilder: (context, state) => _i1.transition(
+                        pageBuilder: (context, state) => namedPage('/teams/:teamId/members/:member', () => _i1.transition(
                           state.pageKey,
                           RouteScrollMemory(
                             state: state,
@@ -1128,14 +1128,14 @@ abstract final class AppRoutes {
                               () => _i100.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                             ),
                           ),
-                        ),
+                        )),
                       ),
                     ],
                   ),
                   GoRoute(
                     path: 'teams/:teamId/settings',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => _i1.transition(
+                    pageBuilder: (context, state) => namedPage('/teams/:teamId/settings', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
@@ -1149,7 +1149,7 @@ abstract final class AppRoutes {
                           () => _i97.TeamNotFound(uri: state.uri),
                         ),
                       ),
-                    ),
+                    )),
                   ),
                 ],
                 restorationScopeId: 'layout:teams/\$teamId/',
@@ -1157,7 +1157,7 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'browse/:categories(.+)',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/browse/*categories', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -1174,12 +1174,12 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'compare/:ids(.+)',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/compare/*ids', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -1196,11 +1196,11 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'files/:path(.+)',
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/files/*path?', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -1210,12 +1210,12 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
               GoRoute(
                 path: 'wiki/:article(.+)',
                 caseSensitive: false,
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/wiki/*article', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
@@ -1232,7 +1232,7 @@ abstract final class AppRoutes {
                       () => notFound(state.uri),
                     ),
                   ),
-                ),
+                )),
               ),
             ],
           ),

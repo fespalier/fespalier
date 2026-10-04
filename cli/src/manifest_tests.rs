@@ -536,14 +536,14 @@ fn layouts_get_stable_restoration_ids_from_their_folders() {
         &c,
         &[
             // The shell's page, and its Navigator, from the layout's folder.
-            "pageBuilder: (context, state, navigationShell) => layoutPage(\n          context,\n          state,\n          'layout:/',",
+            "pageBuilder: (context, state, navigationShell) => namedPage('/', () => layoutPage(\n          context,\n          state,\n          'layout:/',",
             "restorationScopeId: 'layout:/',\n      ),",
             // One id per tab, from the folder (`.` is the layout's own page).
             "restorationScopeId: 'tab:/search',",
             "restorationScopeId: 'tab:/.',",
             "restorationScopeId: 'tab:/(more)',",
             // A plain layout too.
-            "ShellRoute(\n                pageBuilder: (context, state, child) => layoutPage(\n                  context,\n                  state,\n                  'layout:(more)/shop/',",
+            "ShellRoute(\n                pageBuilder: (context, state, child) => namedPage('/shop', () => layoutPage(\n                  context,\n                  state,\n                  'layout:(more)/shop/',",
             "restorationScopeId: 'layout:(more)/shop/',",
         ],
     );
@@ -612,7 +612,7 @@ fn a_catch_all_is_listed_as_the_last_segment_and_marked() {
         &c,
         &[
             "path: 'docs/:rest(.+)',",
-            "pageBuilder: (context, state, child) => layoutPage(",
+            "pageBuilder: (context, state, child) => namedPage('/', () => layoutPage(",
         ],
     );
 }

@@ -87,12 +87,12 @@ abstract final class AppRoutes {
     if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return [
       StatefulShellRoute.indexedStack(
-        pageBuilder: (context, state, navigationShell) => layoutPage(
+        pageBuilder: (context, state, navigationShell) => namedPage('/', () => layoutPage(
           context,
           state,
           'layout:(tabs)/',
           _i2.TabsLayout(navigationShell: navigationShell),
-        ),
+        )),
         branches: [
           StatefulShellBranch(
             routes: [

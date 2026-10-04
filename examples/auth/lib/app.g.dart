@@ -82,10 +82,10 @@ abstract final class AppRoutes {
     return [
       GoRoute(
         path: joinLocation(at, '/'),
-        pageBuilder: (context, state) => _i1.transition(
+        pageBuilder: (context, state) => namedPage('/', () => _i1.transition(
           state.pageKey,
           const _i0.HomePage(),
-        ),
+        )),
         routes: [
           GoRoute(
             path: 'admin',
@@ -93,15 +93,15 @@ abstract final class AppRoutes {
               () => traceGuard(state, 'g1@2', refGuard(context, 'g1@2', (ref) => _i3.guard(ref, uri: state.uri))),
               () => traceGuard(state, 'g2@2', refGuard(context, 'g2@2', (ref) => _i5.guard(ref, uri: state.uri))),
             ]),
-            pageBuilder: (context, state) => _i1.transition(
+            pageBuilder: (context, state) => namedPage('/admin', () => _i1.transition(
               state.pageKey,
               const _i4.AdminPage(),
-            ),
+            )),
           ),
           GoRoute(
             path: 'orders',
             redirect: (context, state) => traceGuard(state, 'g1@3', refGuard(context, 'g1@3', (ref) => _i3.guard(ref, uri: state.uri))),
-            pageBuilder: (context, state) => _i1.transition(
+            pageBuilder: (context, state) => namedPage('/orders', () => _i1.transition(
               state.pageKey,
               DataView(
                 watch: (ref) => watchData(ref, 'd3', _data3),
@@ -111,11 +111,11 @@ abstract final class AppRoutes {
                 error: (e, st, retry) => DefaultError(error: e, retry: retry),
                 keepPrevious: true,
               ),
-            ),
+            )),
             routes: [
               GoRoute(
                 path: ':id',
-                pageBuilder: (context, state) => _i1.transition(
+                pageBuilder: (context, state) => namedPage('/orders/:id', () => _i1.transition(
                   state.pageKey,
                   buildWithParams(
                     () => _params4(state),
@@ -129,16 +129,16 @@ abstract final class AppRoutes {
                     ),
                     () => notFound(state.uri),
                   ),
-                ),
+                )),
               ),
             ],
           ),
           GoRoute(
             path: 'forbidden',
-            pageBuilder: (context, state) => _i1.transition(
+            pageBuilder: (context, state) => namedPage('/forbidden', () => _i1.transition(
               state.pageKey,
               const _i10.ForbiddenPage(),
-            ),
+            )),
           ),
           GoRoute(
             path: 'sign-in',
@@ -146,14 +146,14 @@ abstract final class AppRoutes {
               () => _params6(state),
               (v) => refGuard(context, 'g6@6', (ref) => _i13.guard(ref, from: v.from)),
             )),
-            pageBuilder: (context, state) => _i1.transition(
+            pageBuilder: (context, state) => namedPage('/sign-in', () => _i1.transition(
               state.pageKey,
               buildWithParams(
                 () => _params6(state),
                 (v) => _i12.SignInPage(from: v.from),
                 () => notFound(state.uri),
               ),
-            ),
+            )),
           ),
         ],
       ),

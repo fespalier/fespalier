@@ -94,19 +94,19 @@ abstract final class AppRoutes {
     return [
       StatefulShellRoute(
         navigatorContainerBuilder: _i1.container,
-        pageBuilder: (context, state, navigationShell) => _i0.transition(
+        pageBuilder: (context, state, navigationShell) => namedPage('/', () => _i0.transition(
           const ValueKey<String>('layout:(tabs)/'),
           _i1.TabsLayout(navigationShell: navigationShell),
-        ),
+        )),
         branches: [
           StatefulShellBranch(
             routes: [
               GoRoute(
                 path: joinLocation(at, '/'),
-                pageBuilder: (context, state) => _i0.transition(
+                pageBuilder: (context, state) => namedPage('/', () => _i0.transition(
                   state.pageKey,
                   const _i2.HomePage(),
-                ),
+                )),
               ),
             ],
             restorationScopeId: 'tab:(tabs)/(home)',
@@ -117,10 +117,10 @@ abstract final class AppRoutes {
             routes: [
               GoRoute(
                 path: joinLocation(at, '/:_l0(search|recherche)'),
-                pageBuilder: (context, state) => _i0.transition(
+                pageBuilder: (context, state) => namedPage('/search', () => _i0.transition(
                   state.pageKey,
                   const _i14.SearchPage(),
-                ),
+                )),
               ),
             ],
             restorationScopeId: 'tab:(tabs)/search',
@@ -129,25 +129,25 @@ abstract final class AppRoutes {
             routes: [
               GoRoute(
                 path: joinLocation(at, '/profile'),
-                pageBuilder: (context, state) => _i0.transition(
+                pageBuilder: (context, state) => namedPage('/profile', () => _i0.transition(
                   state.pageKey,
                   const _i10.ProfilePage(),
-                ),
+                )),
                 routes: [
                   GoRoute(
                     path: 'edit',
                     parentNavigatorKey: rootNavigatorKey,
-                    pageBuilder: (context, state) => _i0.transition(
+                    pageBuilder: (context, state) => namedPage('/profile/edit', () => _i0.transition(
                       state.pageKey,
                       _i12.EditProfilePage(extra: extraOf(state)),
-                    ),
+                    )),
                   ),
                   GoRoute(
                     path: 'security',
-                    pageBuilder: (context, state) => _i0.transition(
+                    pageBuilder: (context, state) => namedPage('/profile/security', () => _i0.transition(
                       state.pageKey,
                       const _i13.SecurityPage(),
-                    ),
+                    )),
                   ),
                 ],
               ),
@@ -158,20 +158,20 @@ abstract final class AppRoutes {
             initialLocation: joinLocation(at, '/library/authors'),
             routes: [
               StatefulShellRoute.indexedStack(
-                pageBuilder: (context, state, navigationShell) => _i0.transition(
+                pageBuilder: (context, state, navigationShell) => namedPage('/library', () => _i0.transition(
                   const ValueKey<String>('layout:(tabs)/library/'),
                   _i4.LibraryLayout(navigationShell: navigationShell),
-                ),
+                )),
                 branches: [
                   StatefulShellBranch(
                     preload: true,
                     routes: [
                       GoRoute(
                         path: joinLocation(at, '/library/books'),
-                        pageBuilder: (context, state) => _i0.transition(
+                        pageBuilder: (context, state) => namedPage('/library/books', () => _i0.transition(
                           state.pageKey,
                           const _i8.BooksPage(),
-                        ),
+                        )),
                       ),
                     ],
                     restorationScopeId: 'tab:(tabs)/library/books',
@@ -180,10 +180,10 @@ abstract final class AppRoutes {
                     routes: [
                       GoRoute(
                         path: joinLocation(at, '/library/authors'),
-                        pageBuilder: (context, state) => _i0.transition(
+                        pageBuilder: (context, state) => namedPage('/library/authors', () => _i0.transition(
                           state.pageKey,
                           const _i6.AuthorsPage(),
-                        ),
+                        )),
                       ),
                     ],
                     restorationScopeId: 'tab:(tabs)/library/authors',
@@ -199,10 +199,10 @@ abstract final class AppRoutes {
       ),
       GoRoute(
         path: joinLocation(at, '/settings'),
-        pageBuilder: (context, state) => _i0.transition(
+        pageBuilder: (context, state) => namedPage('/settings', () => _i0.transition(
           state.pageKey,
           const _i16.SettingsPage(),
-        ),
+        )),
       ),
     ];
   }

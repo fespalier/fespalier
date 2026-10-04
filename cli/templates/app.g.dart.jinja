@@ -105,7 +105,7 @@ StatefulShellRoute.indexedStack(
 {% if r.root %}
   parentNavigatorKey: rootNavigatorKey,
 {% endif %}
-  pageBuilder: (context, state, navigationShell) => {{ layout_page(r.layout) | indent(2) }},
+  pageBuilder: (context, state, navigationShell) => namedPage({{ r.layout.page_name }}, () => {{ layout_page(r.layout) | indent(2) }}),
   branches: [
 {% for b in r.branches %}
     StatefulShellBranch(
@@ -131,7 +131,7 @@ ShellRoute(
 {% if r.root %}
   parentNavigatorKey: rootNavigatorKey,
 {% endif %}
-  pageBuilder: (context, state, child) => {{ layout_page(r.layout) | indent(2) }},
+  pageBuilder: (context, state, child) => namedPage({{ r.layout.page_name }}, () => {{ layout_page(r.layout) | indent(2) }}),
   routes: [
 {% for c in r.routes %}
     {{ route(c) | indent(4) }},
@@ -163,14 +163,14 @@ GoRoute(
 {% set page = scroll_memory(page) %}
 {% endif %}
 {% if r.transition %}
-  pageBuilder: (context, state) => {{ with_transition(r.transition, page) | indent(2) }},
+  pageBuilder: (context, state) => namedPage({{ r.page_name }}, () => {{ with_transition(r.transition, page) | indent(2) }}),
 {% elif r.remount %}
-  pageBuilder: (context, state) => remountPage(
+  pageBuilder: (context, state) => namedPage({{ r.page_name }}, () => remountPage(
     context,
     state,
     remountKey(state, {{ r.remount }}),
     {{ page | indent(4) }},
-  ),
+  )),
 {% else %}
   builder: (context, state) => {{ page | indent(2) }},
 {% endif %}

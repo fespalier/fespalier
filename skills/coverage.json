@@ -225,7 +225,15 @@
         "packages/fespalier/lib/persist.dart",
         "packages/fespalier/lib/src/action_form.dart",
         "packages/fespalier/lib/src/optimistic.dart",
-        "cli/src/forms.rs"
+        "cli/src/forms.rs",
+        "README.md#HTTP clients: fespalier_dio",
+        "README.md#Cancelling a load whose page is gone",
+        "README.md#Server validation errors on forms",
+        "README.md#Writes are never retried, over HTTP too",
+        "packages/fespalier_dio/README.md",
+        "packages/fespalier_dio/lib/fespalier_dio.dart",
+        "packages/fespalier_dio/lib/http.dart",
+        "packages/fespalier_dio/lib/problem.dart"
       ]
     },
     "fespalier-layouts": {

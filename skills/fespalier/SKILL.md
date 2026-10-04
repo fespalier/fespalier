@@ -174,7 +174,7 @@ and the reserved names.
 | The work                                                                                                                     | Load                                            |
 | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | Folders, segments, catch-alls, enums, typed routes, `RouteLink`, `route.dart`, `extra`, `present.dart`                       | `fespalier-routing`                             |
-| `data.dart`, loading and error views, retries, prefetch, sections, `dataAt`                                                  | `fespalier-data`                                |
+| `data.dart`, loading and error views, retries, prefetch, sections, `dataAt`, `fespalier_dio` (since 0.9.0)                   | `fespalier-data`                                |
 | `layout.dart`, tabs, `container`, shell transitions, restoration, `fespalier_adaptive` (since 0.9.0)                         | `fespalier-layouts`                             |
 | `guard.dart`, `redirect.dart`, `returnTo`, sign-in flows, `fespalier_auth` and `fespalier_sign_keypair` (DPoP) (since 0.9.0) | `fespalier-guards`                              |
 | `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.1)                     | `fespalier-observability`                       |

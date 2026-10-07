@@ -97,9 +97,11 @@ abstract final class LwwMerge {
     return out;
   }
 
-  /// A server row arriving over a local one: a dirty field keeps the local edit unless the
-  /// server's stamp is newer or equal (the server has it, or something later); clean fields take
-  /// the server's. A read never overwrites an unpushed edit.
+  /// A server row arriving over a local one: per field, the greater stamp wins, dirty or not, so
+  /// the result does not depend on the order server versions arrive in (an older read after a newer
+  /// one changes nothing). A dirty field keeps the local edit while its stamp is greater; at an equal
+  /// stamp the server has it, and the field is clean. A read never overwrites an unpushed edit.
+  /// Fields only the server has are taken, and fields only this device has stay.
   static OwnedRow adopt(OwnedRow local, OwnedRow server) {
     final out = OwnedRow(collection: local.collection, id: local.id);
     for (final field in {...local.fields.keys, ...server.fields.keys}) {
@@ -108,9 +110,7 @@ abstract final class LwwMerge {
       final keepLocal =
           local.fields.containsKey(field) &&
           (!server.fields.containsKey(field) ||
-              (local.dirty.contains(field) &&
-                  a != null &&
-                  (b == null || a.compareTo(b) > 0)));
+              (a != null && (b == null || a.compareTo(b) > 0)));
       if (keepLocal) {
         out.fields[field] = local.fields[field];
         if (a != null) out.stamps[field] = a;

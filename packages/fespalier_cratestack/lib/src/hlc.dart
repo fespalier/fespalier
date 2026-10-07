@@ -24,10 +24,11 @@ final class Hlc implements Comparable<Hlc> {
     final now = clock.now().millisecondsSinceEpoch;
     final mine = last?.millis ?? 0;
     final millis = math.max(now, math.max(mine, remote.millis));
+    final mineCounter = last?.counter ?? 0;
     if (millis == mine && millis == remote.millis) {
-      return Hlc(millis, math.max(last!.counter, remote.counter) + 1, node);
+      return Hlc(millis, math.max(mineCounter, remote.counter) + 1, node);
     }
-    if (millis == mine) return Hlc(millis, last!.counter + 1, node);
+    if (millis == mine) return Hlc(millis, mineCounter + 1, node);
     if (millis == remote.millis) return Hlc(millis, remote.counter + 1, node);
     return Hlc(millis, 0, node);
   }

@@ -5,6 +5,8 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_cratestack/dio.dart';
+import 'package:fespalier_cratestack/fespalier_cratestack.dart'
+    show CrateStackOffline;
 import 'package:flutter_test/flutter_test.dart';
 
 /// An adapter that never answers until [release] is called or the request is cancelled.
@@ -46,6 +48,29 @@ final class HangingAdapter implements HttpClientAdapter {
       },
     );
   }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// An adapter that answers every request with a web page, like a captive portal.
+final class PageAdapter implements HttpClientAdapter {
+  PageAdapter(this.contentType, this.body);
+  final String contentType;
+  final String body;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? requestStream,
+    Future<void>? cancelFuture,
+  ) async => ResponseBody.fromString(
+    body,
+    200,
+    headers: {
+      Headers.contentTypeHeader: [contentType],
+    },
+  );
 
   @override
   void close({bool force = false}) {}
@@ -171,5 +196,50 @@ void main() {
     container.dispose();
     final request = ref.cancellable(() => dio.get<Object?>('/gone'));
     await expectLater(request, cancelled());
+  });
+
+  group('CrateStackPortalInterceptor', () {
+    Future<Object?> call(Dio dio) => dio
+        .get<Object?>('/x')
+        .then<Object?>((r) => r, onError: (Object e) => e);
+
+    test(
+      'a web page with a 200 becomes an error that reads as offline',
+      () async {
+        final dio = Dio()
+          ..httpClientAdapter = PageAdapter(
+            'text/html; charset=utf-8',
+            '<html>sign in</html>',
+          )
+          ..interceptors.add(const CrateStackPortalInterceptor());
+        final out = await call(dio);
+        expect(out, isA<DioException>());
+        expect(
+          DioFailures.read(out! as DioException),
+          isA<CrateStackOffline>(),
+        );
+      },
+    );
+
+    test(
+      'without it the page is a success that Dio hands to the client',
+      () async {
+        final dio = Dio()
+          ..httpClientAdapter = PageAdapter(
+            'text/html',
+            '<html>sign in</html>',
+          );
+        expect(await call(dio), isA<Response<Object?>>());
+      },
+    );
+
+    test('a JSON answer passes through untouched', () async {
+      final dio = Dio()
+        ..httpClientAdapter = PageAdapter('application/json', '{"a":1}')
+        ..interceptors.add(const CrateStackPortalInterceptor());
+      final out = await call(dio);
+      expect(out, isA<Response<Object?>>());
+      expect((out! as Response<Object?>).data, {'a': 1});
+    });
   });
 }

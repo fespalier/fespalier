@@ -44,6 +44,7 @@ only the HTTP status to go on.
 // lib/app/startup.dart
 Future<List<Override>> startup() async {
   final dir = await getApplicationSupportDirectory();
+  final store = await HiveLocalStore.open(directory: dir.path);
   return [
     // the generated client, on a Dio you configure (section 3)
     shopAdapterProvider.overrideWith((ref) => CratestackDioAdapter(dio: ref.watch(dio))),
@@ -54,7 +55,10 @@ Future<List<Override>> startup() async {
 
     // whose data it is, and where queued work lives
     crateStackScope.overrideWith((ref) => ref.watch(authUserId)),
-    localStore.overrideWithValue(await HiveLocalStore.open(directory: dir.path)),
+    localStore.overrideWithValue(store),
+    // optional: keep saved reads in the storage your dataCache already uses, with its key list in
+    // the durable store, so a sign-out can wipe them and nothing evicts the list
+    readCache.overrideWithValue(ReadCache.storage(await PrefsDataStorage.open(), index: store)),
 
     // the triggers
     reconnectSignal.overrideWith(ConnectivitySignal.new), // fespalier_connectivity
@@ -100,7 +104,10 @@ calls `ref.read(crateStackAccount).clear()` before the session ends.
 ```dart
 final dio = Provider<Dio>((ref) {
   final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'))
-    ..interceptors.add(const CrateStackCancelInterceptor());
+    ..interceptors.addAll(const [
+      CrateStackCancelInterceptor(),
+      CrateStackPortalInterceptor(),
+    ]);
   WriteGuard.install(dio); // last: it goes first (fespalier_dio)
   ref.onDispose(dio.close);
   return dio;
@@ -108,6 +115,9 @@ final dio = Provider<Dio>((ref) {
 ```
 
 `CrateStackCancelInterceptor` is what makes a page that went away stop its requests (section 4).
+`CrateStackPortalInterceptor` rejects a `text/html` response as an error that `DioFailures.read` reads as
+offline: Dio does not throw on a `200`, so without it a captive portal's page reaches the generated client,
+which cannot decode it, and no reader knows what it threw.
 `WriteGuard` (from `fespalier_dio`, see "HTTP clients" in the [main README](../README.md)) keeps a retrier from
 sending a write twice. The generated RPC reads are POSTs, so `WriteGuard` counts them as writes and a Dio retry
 policy never repeats them. That is what you want: see section 6.
@@ -200,6 +210,9 @@ Things to know:
   combine `serve` with `dataCache`: `serve` keeps its own copy, per account.
 - **`ref.cancellable` stops the request with the provider.** The generated options carry no cancel token, so the
   token travels in a zone value that `CrateStackCancelInterceptor` picks up. Call it before the first `await`.
+  The body must be only the client call: `ref.watch` and `ref.read` other providers *before* it, as the example
+  does. A provider that is built inside the body runs in the same zone, and its own requests would take this
+  provider's token and be cancelled with it.
 - **The default `invalidates` of an action reloads `data` after any outcome**, `Queued` included. That is
   harmless: the read stays as the server says, and the "cancelling" overlay comes from `pendingIntents`.
 
@@ -234,6 +247,14 @@ Future<IntentOutcome<Order>> cancel(Ref ref, {required CancelInput input}) => re
 `submit` saves the call, sends it once, and returns either `Accepted` (the server said yes, with its answer) or
 `Queued` (no answer; the next sync sends it again). A refusal on the spot is thrown, and nothing is kept.
 
+- **A subject is ordered.** If an earlier intent for the same `subject` is undecided, the new one is saved and
+  `Queued` without being sent: the next sync sends both, oldest first.
+- **An error no reader knows** may have landed, like a lost answer, so the intent is kept under its key and the
+  result is `Queued`, as a drain treats it. Add a reader to `crateStackErrors` to turn it into a decision.
+- **The call must be JSON-native** (maps, lists, strings, numbers, booleans, `null`): it is stored as JSON. A
+  `DateTime` in it throws before anything is saved, and bytes would silently become a list, which CBOR then sends as
+  an array, not as bytes. Convert them in `toWire()`, as text.
+
 **What the server's idempotency layer guarantees**
 (from [cratestack.dev/guides/idempotency](https://cratestack.dev/guides/idempotency)):
 
@@ -248,6 +269,14 @@ Future<IntentOutcome<Order>> cancel(Ref ref, {required CancelInput input}) => re
 - A TTL bounds the reservation. An intent never expires on the device, so the server's TTL is the only bound on
   "never".
 
+**The server must namespace keys by a verified principal.** The key is stored per namespace: the verified
+principal first, then (without one) a hash of the `Authorization` header, then the peer address. With the
+`Authorization` fallback a token refresh between two attempts changes the namespace, so the replay of a call whose
+answer was lost is a new request and runs the call a second time. `fespalier_auth` refreshes lazily and a `401`
+keeps the same key, so this does happen. Configure the server's idempotency layer to use the verified principal
+(CrateStack documents it as the first choice since 0.14.0), and do not queue a call whose double run matters
+against a server that cannot.
+
 The package builds the key as `<intent id>#<attempt>`, and sends the stored bytes every time. The answers it
 recognises, row by row:
 
@@ -255,11 +284,11 @@ recognises, row by row:
 | --- | --- | --- |
 | success | | deleted, `touches` bumped |
 | no answer (network, timeout, gateway or captive-portal page) | `CrateStackOffline` | `pending`, same key |
-| `409` + `Retry-After` | `CrateStackInFlight` | `pending`, same key |
+| `409` + `Retry-After`, or `409` `TRANSACTION_ABORTED` (the server did not store it) | `CrateStackInFlight` | `pending`, same key |
 | `401` | `CrateStackUnauthenticated` | `pending`, same key |
 | `5xx`, an envelope that cannot be read | `CrateStackUnavailable` | `pending`, **next key**, `failures + 1` |
 | `422` `idempotency_key_conflict` | refused | `failed` |
-| `409` without `Retry-After` | `CrateStackConflict` | `conflict` (the person resolves it) |
+| `409` without `Retry-After` and not `TRANSACTION_ABORTED` | `CrateStackConflict` | `conflict` (the person resolves it) |
 | any other `4xx` | `CrateStackRefused` | `failed`, the wire code only |
 
 **Validation errors become form errors.** `withCrateStackFieldErrors(ref)` turns a `422` `VALIDATION_ERROR` into

@@ -51,7 +51,10 @@ sealed class CrateStackCall {
 
 /// `POST /rpc/{opId}` (CrateStack's RPC transport, the recommended one).
 final class RpcCall extends CrateStackCall {
-  /// An RPC call of [opId] with the wire [input]; it must be JSON-encodable to be queued.
+  /// An RPC call of [opId] with the wire [input] (`args.toWire()`). To be queued it must be
+  /// JSON-native: maps, lists, strings, numbers, booleans and null. A `DateTime` throws when it is
+  /// saved, and bytes would silently become a list (which CBOR then sends as an array, not as bytes):
+  /// convert them in `toWire()`, as text.
   const RpcCall(this.opId, this.input);
 
   /// The operation id as the generated client names it, e.g. `cancelOrder` or `model.Order.update`.

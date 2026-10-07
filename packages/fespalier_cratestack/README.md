@@ -46,7 +46,7 @@ Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `clock`, `dio` (`^5.7.0`
 | Library | For | What is in it |
 | --- | --- | --- |
 | `package:fespalier_cratestack/fespalier_cratestack.dart` | everything that is not Dio or Hive | the transport seam, errors, `Served` and `ref.serve`, `LocalStore`, `ReadCache`, intents, owned rows and the merge, `SyncEngine`, `autoSync` |
-| `package:fespalier_cratestack/dio.dart` | Dio | `ref.cancellable`, `CrateStackCancelInterceptor`, `DioFailures` |
+| `package:fespalier_cratestack/dio.dart` | Dio | `ref.cancellable`, `CrateStackCancelInterceptor`, `CrateStackPortalInterceptor`, `DioFailures` |
 | `package:fespalier_cratestack/hive.dart` | a durable store | `HiveLocalStore`, a hive_ce box that never evicts |
 | `package:fespalier_cratestack/testing.dart` | tests | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides` |
 
@@ -77,7 +77,8 @@ CrateStackFailure? readShopError(Object e) => e is CratestackRpcException
   crateStackTransport.overrideWith((ref) => GeneratedTransport(ref.watch(shopAdapterProvider))),
   crateStackErrors.overrideWithValue(const CrateStackErrors([readShopError, DioFailures.read])),
   crateStackScope.overrideWith((ref) => ref.watch(authUserId)),      // whose data this is
-  localStore.overrideWithValue(await HiveLocalStore.open(directory: supportDir)),
+  localStore.overrideWithValue(store),                               // await HiveLocalStore.open(directory: supportDir)
+  readCache.overrideWithValue(ReadCache.storage(dataStorage, index: store)), // optional: reads on your dataCache storage
   reconnectSignal.overrideWith(ConnectivitySignal.new),             // fespalier_connectivity
   syncTicker.overrideWith(ForegroundTicker.new),                    // your own timer, see below
 ]
@@ -94,7 +95,10 @@ FutureOr<Served<List<Order>>> data(Ref ref) => ref.serve(
   key: 'orders',
   codec: _codec,
   empty: () => const [],
-  fetch: () => ref.cancellable(() => ref.watch(shopClientProvider).models.order.list()),
+  fetch: () {
+    final client = ref.watch(shopClientProvider); // watch before, never inside cancellable
+    return ref.cancellable(() => client.models.order.list());
+  },
 );
 ```
 
@@ -120,9 +124,9 @@ Future<IntentOutcome<Order>> cancel(Ref ref, {required CancelInput input}) => re
     .withCrateStackFieldErrors(ref);
 ```
 
-The call is saved, then sent once with the key `<id>#<attempt>`; `Accepted` only when the server said yes, `Queued`
+The call (JSON-native: a `DateTime` throws, bytes would become a list) is saved, then sent once with the key `<id>#<attempt>`; `Accepted` only when the server said yes, `Queued`
 when there was no answer (the next sync sends the same bytes under the same key). A refusal on the spot is thrown
-and nothing is kept. In a drain a refusal is kept `failed` with its wire code only, a conflict is kept `conflict`,
+and nothing is kept; behind an undecided intent of the same `subject` it is saved and `Queued` without being sent. The server must key its idempotency store by a verified principal, or a token refresh between attempts makes a replay a second run. In a drain a refusal is kept `failed` with its wire code only, a conflict is kept `conflict`,
 a stored failure (`5xx`) moves to the next key. An intent never expires on the device, and a sign-out removes it.
 The full table is in [the docs](../../docs/cratestack.md#5-actions).
 
@@ -162,7 +166,7 @@ Each exists for a reason: a device that never backgrounds and never loses signal
 final transport = FakeCrateStackTransport()..on('cancelOrder', (input) => {'id': 42});
 final container = ProviderContainer(overrides: crateStackTestOverrides(transport: transport));
 transport.loseAnswer('cancelOrder'); // the server runs it, the client hears nothing
-// submit -> Queued; drain -> Accepted; transport.runs('cancelOrder') is 1
+// submit -> Queued; drain() -> a DrainReport with accepted == 1; transport.runs('cancelOrder') is 1
 ```
 
 The fake transport keeps an idempotency store, so a replay under the same key does not run twice. Everything is a

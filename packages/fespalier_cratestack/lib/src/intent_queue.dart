@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:clock/clock.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:fespalier/fespalier.dart' show FutureProvider, Provider;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 import 'errors.dart';
 import 'ids.dart';
@@ -22,6 +22,10 @@ const idempotencyKeyConflict = 'idempotency_key_conflict';
 /// An intent is saved before it is sent, and sent from the saved text every time, so every attempt
 /// is byte-identical. It is never retried here: no timer, no backoff. The next [drain] (the sync's
 /// triggers) sends it again, under the same key unless the server answered with a stored failure.
+///
+/// Every operation captures the account it started for. If the account changed (or its data was
+/// wiped) while a call was in the air, the answer is applied to that account's store only, never
+/// to the new one, and never brings a wiped intent back.
 final class IntentQueue {
   /// A queue over [store] for the account [scope] answers, sending through [transport] and reading
   /// errors with [errors]; [bump] is told the revision tags an accepted intent touches.
@@ -46,8 +50,9 @@ final class IntentQueue {
   final Set<String> _inFlight = {};
   String? _seqScope;
   int _seq = 0;
+  Future<void> _tail = Future<void>.value();
 
-  String _prefix() {
+  String _requireScope() {
     final scope = _scope();
     if (scope == null) {
       throw StateError(
@@ -56,27 +61,46 @@ final class IntentQueue {
         'that must work signed out (a sign-in) out of the queue.',
       );
     }
-    return '${scopePrefix(scope)}intent/';
+    return scope;
+  }
+
+  String _prefixOf(String scope) => '${scopePrefix(scope)}intent/';
+
+  /// Runs [body] after every earlier [_exclusive] body finished: the numbering and the check for
+  /// an earlier intent of the same subject must not interleave.
+  Future<T> _exclusive<T>(Future<T> Function() body) {
+    final run = _tail.then((_) => body());
+    _tail = run.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return run;
   }
 
   Future<int> _nextSeq(String scope) async {
+    final key = '${scopePrefix(scope)}seq';
     if (_seqScope != scope) {
-      final saved = await _store.read('${scopePrefix(scope)}seq');
+      final saved = await _store.read(key);
       _seq = saved == null ? 0 : int.parse(saved);
       _seqScope = scope;
     }
     final next = ++_seq;
-    await _store.write('${scopePrefix(scope)}seq', '$next');
+    await _store.write(key, '$next');
     return next;
   }
 
-  Future<void> _save(Intent intent) async {
-    await _store.write('${_prefix()}${intent.id}', jsonEncode(intent.toJson()));
+  /// Saves [intent] under [prefix]. Unless [create], only if it is still there: an intent that was
+  /// wiped while its call was in the air stays wiped.
+  Future<void> _write(
+    String prefix,
+    Intent intent, {
+    bool create = false,
+  }) async {
+    final key = '$prefix${intent.id}';
+    if (!create && await _store.read(key) == null) return;
+    await _store.write(key, jsonEncode(intent.toJson()));
     _bump({intentsTag});
   }
 
-  Future<void> _delete(Intent intent) async {
-    await _store.delete('${_prefix()}${intent.id}');
+  Future<void> _remove(String prefix, Intent intent) async {
+    await _store.delete('$prefix${intent.id}');
     _bump({intentsTag});
   }
 
@@ -85,32 +109,50 @@ final class IntentQueue {
   /// Accepted: deleted, the revisions in [touches] bumped, [Accepted]. No answer (offline, in
   /// flight, `401`, a stored `5xx`): [Queued]. A refusal on the spot is thrown as the
   /// `CrateStackFailure` (or `FieldErrors` through `withCrateStackFieldErrors`) and nothing is
-  /// kept: the person is on the screen that asked. An error the readers do not know is rethrown
-  /// as it was, and nothing is kept either.
+  /// kept: the person is on the screen that asked.
   ///
-  /// [subject] orders it behind an undecided earlier intent for the same subject. [decode] turns
-  /// the server's output into the value of [Accepted].
+  /// An error the readers do not know may have landed, like a lost answer: the intent is kept
+  /// under its key and the result is [Queued], as a drain would treat it. Add a reader to
+  /// `crateStackErrors` to make it a decision.
+  ///
+  /// [subject] orders it behind an undecided earlier intent for the same subject: it is then
+  /// saved and [Queued] without being sent, and the next sync sends both in order. [call] must be
+  /// JSON-native (maps, lists, strings, numbers, booleans, null): a `DateTime` throws before
+  /// anything is saved, and bytes would silently become a list. [decode] turns the server's
+  /// output into the value of [Accepted].
   Future<IntentOutcome<T>> submit<T>(
     CrateStackCall call, {
     String? subject,
     Set<String> touches = const {},
     required T Function(Object? output) decode,
   }) async {
-    _prefix(); // a StateError, before anything is saved, when nobody is signed in
-    final scope = _scope()!;
-    // Encode once, then work from what was decoded: the first attempt is the same bytes as the rest.
-    final draft = Intent(
-      id: randomHex(16),
-      seq: await _nextSeq(scope),
-      call: call,
-      createdAt: clock.now(),
-      subject: subject,
-      touches: touches,
-      status: IntentStatus.sent,
-    );
-    final intent = Intent.fromJson(jsonDecode(jsonEncode(draft.toJson())));
-    await _save(intent);
-    _inFlight.add(intent.id);
+    final scope =
+        _requireScope(); // a StateError, before anything is saved, when nobody is signed in
+    final prefix = _prefixOf(scope);
+    final (intent, blocked) = await _exclusive(() async {
+      final seq = await _nextSeq(scope);
+      final earlier =
+          subject != null &&
+          (await _listIn(
+            prefix,
+          )).any((i) => i.subject == subject && i.undecided);
+      // Encode once, then work from what was decoded: the first attempt is the same bytes as the rest.
+      final draft = Intent(
+        id: randomHex(16),
+        seq: seq,
+        call: call,
+        createdAt: clock.now(),
+        subject: subject,
+        touches: touches,
+        status: earlier ? IntentStatus.pending : IntentStatus.sent,
+      );
+      final saved = Intent.fromJson(jsonDecode(jsonEncode(draft.toJson())));
+      await _write(prefix, saved, create: true);
+      if (!earlier) _inFlight.add(saved.id);
+      return (saved, earlier);
+    });
+    if (blocked) return Queued<T>(intent);
+
     final Object? output;
     try {
       output = await _transport().send(
@@ -121,8 +163,15 @@ final class IntentQueue {
       _inFlight.remove(intent.id);
       final failure = _errors().classify(error);
       if (failure == null) {
-        await _delete(intent);
-        rethrow;
+        if (kDebugMode) {
+          debugPrint(
+            'fespalier_cratestack: a submit failed with an error no reader knows, '
+            'kept under its key: ${error.runtimeType}',
+          );
+        }
+        final kept = intent.copyWith(status: IntentStatus.pending);
+        await _write(prefix, kept);
+        return Queued<T>(kept);
       }
       switch (failure) {
         case CrateStackOffline() ||
@@ -130,7 +179,7 @@ final class IntentQueue {
             CrateStackUnauthenticated() ||
             CrateStackCancelled():
           final kept = intent.copyWith(status: IntentStatus.pending);
-          await _save(kept);
+          await _write(prefix, kept);
           return Queued<T>(kept);
         case CrateStackUnavailable():
           final kept = intent.copyWith(
@@ -138,26 +187,26 @@ final class IntentQueue {
             attempt: intent.attempt + 1,
             failures: intent.failures + 1,
           );
-          await _save(kept);
+          await _write(prefix, kept);
           return Queued<T>(kept);
         case CrateStackRefused() ||
             CrateStackConflict() ||
             CrateStackNoLocalData():
-          await _delete(intent);
+          await _remove(prefix, intent);
           Error.throwWithStackTrace(failure, stackTrace);
       }
     }
     _inFlight.remove(intent.id);
-    await _delete(intent);
-    if (touches.isNotEmpty) _bump(touches);
+    await _remove(prefix, intent);
+    if (touches.isNotEmpty && _scope() == scope) _bump(touches);
     return Accepted<T>(decode(output));
   }
 
   /// Sends every pending intent, oldest first, one at a time, skipping a subject with an undecided
-  /// earlier one; stops at the first [CrateStackOffline]. The answers:
+  /// earlier one; stops at the first [CrateStackOffline], and when the account changes. The answers:
   ///
   /// - success: deleted, its `touches` bumped;
-  /// - no answer, `409` with `Retry-After`, `401`: `pending`, the same key;
+  /// - no answer, `409` with `Retry-After` (or `TRANSACTION_ABORTED`), `401`: `pending`, the same key;
   /// - `5xx` or an unreadable envelope: `pending`, the next key (`attempt + 1`);
   /// - `422 idempotency_key_conflict` (a bug: the stored body changed): `failed`;
   /// - `409` without `Retry-After`: `conflict`;
@@ -166,8 +215,10 @@ final class IntentQueue {
   /// It never throws for a call's failure; an error the readers do not know keeps the intent
   /// pending under its key, as a lost answer would.
   Future<DrainReport> drain() async {
-    if (_scope() == null) return const DrainReport();
-    final all = await list();
+    final scope = _scope();
+    if (scope == null) return const DrainReport();
+    final prefix = _prefixOf(scope);
+    final all = await _listIn(prefix);
     final blocked = <String>{
       for (final intent in all)
         if (_inFlight.contains(intent.id) && intent.subject != null)
@@ -181,6 +232,8 @@ final class IntentQueue {
     var offline = false;
     var reached = false;
     for (final saved in all) {
+      // A's intent is never sent under B's session.
+      if (_scope() != scope) break;
       if (!saved.undecided || _inFlight.contains(saved.id)) continue;
       final subject = saved.subject;
       if (subject != null && blocked.contains(subject)) continue;
@@ -189,14 +242,14 @@ final class IntentQueue {
         final sending = saved.status == IntentStatus.sent
             ? saved
             : saved.copyWith(status: IntentStatus.sent);
-        if (sending != saved) await _save(sending);
+        if (sending != saved) await _write(prefix, sending);
         try {
           await _transport().send(
             sending.call,
             idempotencyKey: sending.idempotencyKey,
           );
           reached = true;
-          await _delete(sending);
+          await _remove(prefix, sending);
           touched.addAll(sending.touches);
           accepted++;
         } on Object catch (error) {
@@ -209,23 +262,33 @@ final class IntentQueue {
                   'kept under its key: ${error.runtimeType}',
                 );
               }
-              await _save(sending.copyWith(status: IntentStatus.pending));
+              await _write(
+                prefix,
+                sending.copyWith(status: IntentStatus.pending),
+              );
               retained++;
               if (subject != null) blocked.add(subject);
             case CrateStackOffline():
-              await _save(sending.copyWith(status: IntentStatus.pending));
+              await _write(
+                prefix,
+                sending.copyWith(status: IntentStatus.pending),
+              );
               offline = true;
             case CrateStackInFlight() ||
                 CrateStackUnauthenticated() ||
                 CrateStackCancelled() ||
                 CrateStackNoLocalData():
               reached = reached || failure is! CrateStackCancelled;
-              await _save(sending.copyWith(status: IntentStatus.pending));
+              await _write(
+                prefix,
+                sending.copyWith(status: IntentStatus.pending),
+              );
               retained++;
               if (subject != null) blocked.add(subject);
             case CrateStackUnavailable():
               reached = true;
-              await _save(
+              await _write(
+                prefix,
                 sending.copyWith(
                   status: IntentStatus.pending,
                   attempt: sending.attempt + 1,
@@ -236,13 +299,15 @@ final class IntentQueue {
               if (subject != null) blocked.add(subject);
             case CrateStackConflict(:final code):
               reached = true;
-              await _save(
+              await _write(
+                prefix,
                 sending.copyWith(status: IntentStatus.conflict, reason: code),
               );
               conflicts++;
             case CrateStackRefused(:final code, :final message):
               reached = true;
-              await _save(
+              await _write(
+                prefix,
                 sending.copyWith(
                   status: IntentStatus.failed,
                   // Only the wire code is kept; the one bug the server names in its message
@@ -260,7 +325,7 @@ final class IntentQueue {
       }
       if (offline) break;
     }
-    if (touched.isNotEmpty) _bump(touched);
+    if (touched.isNotEmpty && _scope() == scope) _bump(touched);
     return DrainReport(
       accepted: accepted,
       failed: failed,
@@ -271,53 +336,58 @@ final class IntentQueue {
     );
   }
 
+  Future<List<Intent>> _listIn(String prefix) async {
+    final keys = await _store.keys(prefix);
+    final intents = <Intent>[];
+    for (final key in keys) {
+      final text = await _store.read(key);
+      if (text == null) continue;
+      try {
+        intents.add(Intent.fromJson(jsonDecode(text)));
+      } on Object {
+        // Not an intent this version can read: left where it is, never sent.
+      }
+    }
+    return intents..sort((a, b) => a.seq.compareTo(b.seq));
+  }
+
   /// Every intent of this account, oldest first. Empty while nobody is signed in.
   FutureOr<List<Intent>> list() {
-    if (_scope() == null) return const [];
-    final prefix = _prefix();
-    Future<List<Intent>> read() async {
-      final keys = await _store.keys(prefix);
-      final intents = <Intent>[];
-      for (final key in keys) {
-        final text = await _store.read(key);
-        if (text == null) continue;
-        try {
-          intents.add(Intent.fromJson(jsonDecode(text)));
-        } on Object {
-          // Not an intent this version can read: left where it is, never sent.
-        }
-      }
-      return intents..sort((a, b) => a.seq.compareTo(b.seq));
-    }
-
-    return read();
+    final scope = _scope();
+    if (scope == null) return const [];
+    return _listIn(_prefixOf(scope));
   }
 
   /// Deletes the intent [id]: the person gave up on a `failed` or `conflict` one.
   FutureOr<void> discard(String id) async {
-    await _store.delete('${_prefix()}$id');
+    await _store.delete('${_prefixOf(_requireScope())}$id');
     _bump({intentsTag});
   }
 
   /// A sign-out: every intent of this account goes. Sending A's intent under B's session is worse
   /// than losing it. (`crateStackAccount.clear` does this and more.)
   FutureOr<void> clear() async {
-    if (_scope() == null) return;
-    await _store.clear(_prefix());
+    final scope = _scope();
+    if (scope == null) return;
+    await _store.clear(_prefixOf(scope));
     _bump({intentsTag});
   }
 }
 
 /// The queue of the current account on the [localStore], sending through [crateStackTransport].
-final intentQueue = Provider<IntentQueue>(
-  (ref) => IntentQueue(
+/// A new account gets a new queue: one that was in the middle of a call for the old one finishes
+/// it for the old one.
+final intentQueue = Provider<IntentQueue>((ref) {
+  final scope = ref.watch(crateStackScope);
+  final errors = ref.watch(crateStackErrors);
+  return IntentQueue(
     store: ref.watch(localStore),
-    scope: () => ref.read(crateStackScope),
+    scope: () => ref.mounted ? scope : null,
     transport: () => ref.read(crateStackTransport),
-    errors: () => ref.read(crateStackErrors),
+    errors: () => errors,
     bump: ref.watch(crateStackBump),
-  ),
-);
+  );
+});
 
 /// The undecided intents (pending or being sent), for "3 changes waiting" and a row's
 /// "cancelling...": read again on each change to the queue. Pass a subject for one thing's, null

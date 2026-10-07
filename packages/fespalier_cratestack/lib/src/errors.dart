@@ -1,5 +1,8 @@
 import 'package:fespalier/fespalier.dart' show Provider;
 
+/// The wire code of a `409` the server did not store, so the same call (and key) can be tried again.
+const transactionAborted = 'TRANSACTION_ABORTED';
+
 /// Why a CrateStack call did not succeed, classified by what it means for a retry and a cache.
 sealed class CrateStackFailure implements Exception {
   /// A failure.
@@ -8,8 +11,8 @@ sealed class CrateStackFailure implements Exception {
   /// The failure of an answer that has CrateStack's error envelope (`code`, `message`, `details`)
   /// and an HTTP [status]: the status and code table.
   ///
-  /// `401` is [CrateStackUnauthenticated]; `409` is [CrateStackInFlight] with [retryAfter] and a
-  /// [CrateStackConflict] without; any other `4xx` is [CrateStackRefused]; anything else (`5xx`,
+  /// `401` is [CrateStackUnauthenticated]; `409` is [CrateStackInFlight] with [retryAfter] or the code
+  /// `TRANSACTION_ABORTED` and a [CrateStackConflict] without; any other `4xx` is [CrateStackRefused]; anything else (`5xx`,
   /// a status that is no error) is [CrateStackUnavailable].
   factory CrateStackFailure.fromEnvelope({
     required int status,
@@ -20,7 +23,9 @@ sealed class CrateStackFailure implements Exception {
   }) {
     if (status == 401) return const CrateStackUnauthenticated();
     if (status == 409) {
-      return retryAfter
+      // TRANSACTION_ABORTED is not stored by the server's idempotency layer: its reservation is
+      // released so the same call can be tried again, which is "same key, try later".
+      return retryAfter || code == transactionAborted
           ? const CrateStackInFlight()
           : CrateStackConflict(code: code, message: message);
     }
@@ -148,7 +153,8 @@ final class CrateStackUnavailable extends CrateStackFailure {
   String toString() => 'CrateStackUnavailable($status)';
 }
 
-/// `409` with `Retry-After`: the same idempotency key is being answered now. Same key, try later.
+/// `409` with `Retry-After` (the same idempotency key is being answered now) or with the code
+/// `TRANSACTION_ABORTED` (the server released the key). Same key, try later.
 final class CrateStackInFlight extends CrateStackFailure {
   /// An in-flight failure.
   const CrateStackInFlight();

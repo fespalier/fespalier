@@ -49,56 +49,93 @@ final class _OnLocal implements _Raw {
       store.clear('${scopePrefix(scope)}read/');
 }
 
-/// A Riverpod `Storage` keeps no list of its keys, so the keys of a scope are listed under one
-/// entry of their own, which is what lets a sign-out wipe them.
+/// A Riverpod `Storage` keeps no list of its keys, so the keys of a scope are listed in an index
+/// entry of their own, which is what lets a sign-out wipe them. The index is written before the value
+/// and rewritten on every write (so a budgeted storage, which evicts what was written longest ago,
+/// finds it fresh), and the writes are serialised, so two in flight cannot lose a key. Where the app
+/// has a [LocalStore] the index lives there instead, and is never evicted.
 final class _OnStorage implements _Raw {
-  const _OnStorage(this.storage);
+  _OnStorage(this.storage, this.index);
   final Storage<String, String> storage;
+  final LocalStore? index;
+  Future<void>? _busy;
 
   static const _options = StorageOptions(
     cacheTime: StorageCacheTime.unsafe_forever,
   );
 
-  String _index(String scope) => '${scopePrefix(scope)}read-index';
+  String _indexKey(String scope) => '${scopePrefix(scope)}read-index';
+
+  FutureOr<String?> _readIndex(String scope) {
+    final store = index;
+    final key = _indexKey(scope);
+    return store != null
+        ? store.read(key)
+        : andThen(storage.read(key), (saved) => saved?.data);
+  }
+
+  FutureOr<void> _writeIndex(String scope, Set<String> keys) {
+    final store = index;
+    final key = _indexKey(scope);
+    final text = jsonEncode(keys.toList());
+    return store != null
+        ? store.write(key, text)
+        : storage.write(key, text, _options);
+  }
+
+  FutureOr<void> _serial(FutureOr<void> Function() op) {
+    final busy = _busy;
+    final FutureOr<void> result = busy == null ? op() : busy.then((_) => op());
+    if (result is Future<void>) {
+      late final Future<void> tracked;
+      void done() {
+        if (identical(_busy, tracked)) _busy = null;
+      }
+
+      tracked = result.then<void>(
+        (_) => done(),
+        onError: (Object _, StackTrace _) => done(),
+      );
+      _busy = tracked;
+    }
+    return result;
+  }
 
   @override
   FutureOr<String?> read(String key) =>
       andThen(storage.read(key), (saved) => saved?.data);
 
   @override
-  FutureOr<void> write(String scope, String key, String value) {
-    final index = _index(scope);
-    return andThen<String?, void>(read(index), (saved) {
+  FutureOr<void> write(String scope, String key, String value) => _serial(
+    () => andThen<String?, void>(_readIndex(scope), (saved) {
       final keys = <String>{
         if (saved != null)
           ...(jsonDecode(saved) as List<Object?>).cast<String>(),
+        key,
       };
-      final written = storage.write(key, value, _options);
-      if (keys.add(key)) {
-        return andThen<void, void>(
-          written,
-          (_) => storage.write(index, jsonEncode(keys.toList()), _options),
-        );
-      }
-      return written;
-    });
-  }
+      return andThen<void, void>(
+        _writeIndex(scope, keys),
+        (_) => storage.write(key, value, _options),
+      );
+    }),
+  );
 
   @override
   FutureOr<void> delete(String key) => storage.delete(key);
 
   @override
-  FutureOr<void> clear(String scope) {
-    final index = _index(scope);
-    return andThen<String?, void>(read(index), (saved) {
+  FutureOr<void> clear(String scope) => _serial(
+    () => andThen<String?, void>(_readIndex(scope), (saved) {
       if (saved == null) return null;
       final keys = (jsonDecode(saved) as List<Object?>).cast<String>();
       return andThen<List<void>, void>(
         allOf<void>([for (final key in keys) storage.delete(key)]),
-        (_) => storage.delete(index),
+        (_) => index != null
+            ? index!.delete(_indexKey(scope))
+            : storage.delete(_indexKey(scope)),
       );
-    });
-  }
+    }),
+  );
 }
 
 /// The read cache: served answers by key, with their `fetchedAt` and scope.
@@ -109,8 +146,12 @@ final class _OnStorage implements _Raw {
 /// `ServedCodec.version`, is dropped and counts as nothing saved.
 final class ReadCache {
   /// A cache on [storage]: the one the app already opens in `startup()` for `dataCacheStorage`.
-  ReadCache.storage(Storage<String, String> storage)
-    : _raw = _OnStorage(storage);
+  ///
+  /// A sign-out wipes an account's answers through a list of their keys. Pass [index], the app's
+  /// durable `LocalStore`, to keep that list where nothing evicts it; without it the list is an
+  /// entry of [storage] itself, rewritten on every write.
+  ReadCache.storage(Storage<String, String> storage, {LocalStore? index})
+    : _raw = _OnStorage(storage, index);
 
   /// A cache on [store], under the scope's prefix, so a sign-out's `clear` takes it too.
   ReadCache.local(LocalStore store) : _raw = _OnLocal(store);

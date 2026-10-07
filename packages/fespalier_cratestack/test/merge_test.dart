@@ -249,4 +249,38 @@ void main() {
       expect(() => a.get('notes', 'n1'), throwsStateError);
     });
   });
+
+  group('adopt does not depend on the order versions arrive in', () {
+    test(
+      'an older read after a newer one changes nothing, for clean fields',
+      () {
+        final older = row({'x': ('old', 1)}, node: 'n');
+        final newer = row({'x': ('new', 2)}, node: 'n');
+        final empty = OwnedRow(collection: 'notes', id: 'r1');
+        final forward = LwwMerge.adopt(LwwMerge.adopt(empty, older), newer);
+        final backward = LwwMerge.adopt(LwwMerge.adopt(empty, newer), older);
+        expect(forward.fields['x'], 'new');
+        expect(backward.fields['x'], 'new');
+        expect(shape(forward), shape(backward));
+      },
+    );
+
+    test('over seeded random versions, any order gives the same row', () {
+      final random = Random(11);
+      for (var i = 0; i < 200; i++) {
+        final versions = [
+          for (var n = 0; n < 4; n++) randomRow(random, 'srv$n'),
+        ];
+        final empty = OwnedRow(collection: 'notes', id: 'r1');
+        OwnedRow fold(Iterable<OwnedRow> order) =>
+            order.fold(empty, LwwMerge.adopt);
+        final shuffled = [...versions]..shuffle(random);
+        expect(
+          shape(fold(shuffled)),
+          shape(fold(versions)),
+          reason: 'round $i',
+        );
+      }
+    });
+  });
 }

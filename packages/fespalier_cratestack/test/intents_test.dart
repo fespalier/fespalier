@@ -246,12 +246,17 @@ void main() {
     });
 
     test(
-      'an error no reader knows is rethrown as it was, and nothing is kept',
+      'an error no reader knows may have landed: kept under its key, Queued (as a drain treats it)',
       () async {
         final r = rig();
-        final boom = StateError('boom');
-        r.transport.fail('cancelOrder', boom);
-        await expectLater(submitCancel(r.queue), throwsA(same(boom)));
+        r.transport.fail('cancelOrder', StateError('boom'), times: 1);
+        final out = await submitCancel(r.queue);
+        final kept = (out as Queued<Object?>).intent;
+        expect(kept.status, IntentStatus.pending);
+        expect(kept.attempt, 0);
+        expect(await r.queue.list(), hasLength(1));
+        await r.queue.drain();
+        expect(keyOf(r.transport, 1), keyOf(r.transport, 0));
         expect(await r.queue.list(), isEmpty);
       },
     );

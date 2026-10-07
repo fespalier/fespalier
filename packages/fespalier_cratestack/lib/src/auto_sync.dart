@@ -115,7 +115,8 @@ class AutoSync extends Notifier<SyncStatus> {
   void _finish(SyncReport? report) {
     _running--;
     if (!ref.mounted) return;
-    if (report != null) _last = report;
+    // A sync that was skipped (too recent) did nothing: the banner keeps the last real result.
+    if (report != null && !report.skipped) _last = report;
     state = SyncStatus(isSyncing: _running > 0, last: _last);
   }
 }

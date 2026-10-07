@@ -78,4 +78,17 @@ void main() {
     expect(at(1).compareTo(at(1)), 0);
     expect(at(2) > at(1), isTrue);
   });
+
+  test(
+    'receive does not fail when the clock and the stamp are both at the epoch',
+    () {
+      withClock(Clock.fixed(DateTime.fromMillisecondsSinceEpoch(0)), () {
+        expect(Hlc.receive(null, at(0, node: 'b'), 'a'), at(0, counter: 1));
+        expect(
+          Hlc.receive(null, at(0, counter: 4, node: 'b'), 'a'),
+          at(0, counter: 5),
+        );
+      });
+    },
+  );
 }

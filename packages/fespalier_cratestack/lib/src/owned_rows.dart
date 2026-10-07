@@ -48,8 +48,8 @@ final class OwnedRows {
     return scopePrefix(scope);
   }
 
-  String _rowKey(String collection, String id) =>
-      '${_prefix()}row/$collection/$id';
+  String _rowKey(String prefix, String collection, String id) =>
+      '${prefix}row/$collection/$id';
 
   /// The node id of this device: random, made once per store and kept in it.
   FutureOr<String> node() {
@@ -67,15 +67,18 @@ final class OwnedRows {
     return result;
   }
 
-  FutureOr<Hlc?> _last() => andThen<String?, Hlc?>(
-    _store.read('${_prefix()}hlc'),
+  FutureOr<Hlc?> _last(String prefix) => andThen<String?, Hlc?>(
+    _store.read('${prefix}hlc'),
     (text) => text == null ? null : Hlc.parse(text),
   );
 
   /// The row [id] of [collection], or null.
   FutureOr<OwnedRow?> get(String collection, String id) =>
+      _get(_prefix(), collection, id);
+
+  FutureOr<OwnedRow?> _get(String prefix, String collection, String id) =>
       andThen<String?, OwnedRow?>(
-        _store.read(_rowKey(collection, id)),
+        _store.read(_rowKey(prefix, collection, id)),
         (text) => text == null ? null : OwnedRow.fromJson(jsonDecode(text)),
       );
 
@@ -123,33 +126,36 @@ final class OwnedRows {
     String id,
     Map<String, Object?> changes,
   ) {
-    final rowKey = _rowKey(collection, id);
-    final hlcKey = '${_prefix()}hlc';
+    // The account is read once: an edit that finishes after a sign-out is the old account's.
+    final prefix = _prefix();
+    final rowKey = _rowKey(prefix, collection, id);
+    final hlcKey = '${prefix}hlc';
     return andThen<String, OwnedRow>(
       node(),
       (node) => andThen<Hlc?, OwnedRow>(
-        _last(),
-        (last) => andThen<OwnedRow?, OwnedRow>(get(collection, id), (saved) {
-          final row = saved ?? OwnedRow(collection: collection, id: id);
-          if (changes.isEmpty) return row;
-          var stamp = last;
-          for (final change in changes.entries) {
-            stamp = Hlc.next(stamp, node);
-            row.fields[change.key] = change.value;
-            row.stamps[change.key] = stamp;
-            row.dirty.add(change.key);
-          }
-          return andThen<void, OwnedRow>(
-            _store.writeAll({
-              rowKey: jsonEncode(row.toJson()),
-              hlcKey: stamp!.pack(),
+        _last(prefix),
+        (last) =>
+            andThen<OwnedRow?, OwnedRow>(_get(prefix, collection, id), (saved) {
+              final row = saved ?? OwnedRow(collection: collection, id: id);
+              if (changes.isEmpty) return row;
+              var stamp = last;
+              for (final change in changes.entries) {
+                stamp = Hlc.next(stamp, node);
+                row.fields[change.key] = change.value;
+                row.stamps[change.key] = stamp;
+                row.dirty.add(change.key);
+              }
+              return andThen<void, OwnedRow>(
+                _store.writeAll({
+                  rowKey: jsonEncode(row.toJson()),
+                  hlcKey: stamp!.pack(),
+                }),
+                (_) {
+                  _bump({collection});
+                  return row;
+                },
+              );
             }),
-            (_) {
-              _bump({collection});
-              return row;
-            },
-          );
-        }),
       ),
     );
   }
@@ -168,13 +174,17 @@ final class OwnedRows {
   /// caller knows when a whole sync is done.
   FutureOr<int> adopt(List<OwnedRow> server) {
     if (server.isEmpty) return 0;
-    final hlcKey = '${_prefix()}hlc';
+    // The account is read once: rows that arrive after a sign-out are the old account's.
+    final prefix = _prefix();
+    final hlcKey = '${prefix}hlc';
     return andThen<String, int>(
       node(),
       (node) => andThen<Hlc?, int>(
-        _last(),
+        _last(prefix),
         (last) => andThen<List<OwnedRow?>, int>(
-          allOf<OwnedRow?>([for (final r in server) get(r.collection, r.id)]),
+          allOf<OwnedRow?>([
+            for (final r in server) _get(prefix, r.collection, r.id),
+          ]),
           (locals) {
             final writes = <String, String>{};
             var clockNow = last;
@@ -187,9 +197,8 @@ final class OwnedRows {
                       remote,
                     )
                   : LwwMerge.adopt(local, remote);
-              writes[_rowKey(remote.collection, remote.id)] = jsonEncode(
-                merged.toJson(),
-              );
+              writes[_rowKey(prefix, remote.collection, remote.id)] =
+                  jsonEncode(merged.toJson());
               for (final stamp in remote.stamps.values) {
                 clockNow = Hlc.receive(clockNow, stamp, node);
               }
@@ -208,7 +217,7 @@ final class OwnedRows {
   /// Forgets the local row: the server's version, if it has one, comes back with the next pull of
   /// a cursor that is reset.
   FutureOr<void> discard(String collection, String id) =>
-      _store.delete(_rowKey(collection, id));
+      _store.delete(_rowKey(_prefix(), collection, id));
 
   /// The cursor of the last page of [collection] that was pulled, or null.
   FutureOr<String?> cursor(String collection) =>
@@ -221,11 +230,12 @@ final class OwnedRows {
   }
 }
 
-/// The owned rows of the current account on the [localStore].
-final ownedRows = Provider<OwnedRows>(
-  (ref) => OwnedRows(
+/// The owned rows of the current account on the [localStore]. A new account gets a new instance.
+final ownedRows = Provider<OwnedRows>((ref) {
+  final scope = ref.watch(crateStackScope);
+  return OwnedRows(
     store: ref.watch(localStore),
-    scope: () => ref.read(crateStackScope),
+    scope: () => ref.mounted ? scope : null,
     bump: ref.watch(crateStackBump),
-  ),
-);
+  );
+});

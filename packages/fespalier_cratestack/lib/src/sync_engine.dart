@@ -9,6 +9,7 @@ import 'intent.dart';
 import 'intent_queue.dart';
 import 'owned_rows.dart';
 import 'revision.dart';
+import 'scope.dart';
 import 'row_sync.dart';
 
 /// Why a sync ran (reported, and used for the minimum interval).
@@ -117,12 +118,14 @@ final class SyncEngine implements SyncRunner {
     required BumpTags bump,
     this.minInterval = const Duration(seconds: 10),
     CrateStackErrors errors = const CrateStackErrors([]),
+    String? Function()? scope,
   }) : _rows = rows,
        _rowSync = rowSync,
        _intents = intents,
        _collections = collections,
        _bump = bump,
-       _errors = errors;
+       _errors = errors,
+       _scope = scope;
 
   final OwnedRows _rows;
   final RowSync? _rowSync;
@@ -131,12 +134,16 @@ final class SyncEngine implements SyncRunner {
   final BumpTags _bump;
   final CrateStackErrors _errors;
 
+  /// The account a run belongs to; a run whose account changed stops without touching the new one.
+  final String? Function()? _scope;
+
   /// A sync caused by a signal (resume, reconnect, tick) within this long of the last one that
   /// reached the server does nothing. `start` and `manual` always run.
   final Duration minInterval;
 
   Future<SyncReport>? _running;
   DateTime? _lastReached;
+  SyncReport? _lastReport;
 
   /// Single-flight: a call while one runs joins it (the same `Future`). Never throws: the report
   /// says what failed.
@@ -152,14 +159,49 @@ final class SyncEngine implements SyncRunner {
     if (bySignal &&
         last != null &&
         clock.now().difference(last) < minInterval) {
-      return Future.value(SyncReport.skipped(reason));
+      return _unlessRecent(reason);
     }
-    final run = _run(reason);
+    return _start(_run(reason));
+  }
+
+  Future<SyncReport> _start(Future<SyncReport> run) {
     _running = run;
-    run.then<void>((_) {
+    void done(Object? _, [StackTrace? _]) {
       if (identical(_running, run)) _running = null;
-    });
+    }
+
+    run.then<void>(done, onError: done);
     return run;
+  }
+
+  /// A signal inside the minimum interval: it runs anyway when the last sync found no network, or
+  /// when there is work that the last one did not leave behind (an intent queued, a row edited).
+  Future<SyncReport> _unlessRecent(SyncReason reason) {
+    return _start(() async {
+      if (await _hasNewWork()) return _run(reason);
+      return SyncReport.skipped(reason);
+    }());
+  }
+
+  Future<bool> _hasNewWork() async {
+    final last = _lastReport;
+    if (last == null ||
+        last.failure is CrateStackOffline ||
+        last.intents.offline) {
+      return true;
+    }
+    try {
+      final undecided = (await _intents.list())
+          .where((i) => i.undecided)
+          .length;
+      if (undecided > last.intents.retained) return true;
+      if (_rowSync != null && _collections.isNotEmpty) {
+        return (await _rows.dirty(_collections)).isNotEmpty;
+      }
+    } on Object {
+      return true;
+    }
+    return false;
   }
 
   CrateStackFailure _failureOf(Object error) {
@@ -174,6 +216,12 @@ final class SyncEngine implements SyncRunner {
   }
 
   Future<SyncReport> _run(SyncReason reason) async {
+    final scope = _scope?.call();
+    // Thrown between steps when the account changed: what came back is the old account's.
+    void ensureSameAccount() {
+      if (_scope != null && _scope() != scope) throw const _AccountChanged();
+    }
+
     final changed = <String>{};
     final rolledBack = <RolledBack>[];
     var pushed = 0;
@@ -188,21 +236,35 @@ final class SyncEngine implements SyncRunner {
         if (dirty.isNotEmpty) {
           final result = await rowSync.push(dirty);
           reached = true;
-          pushed = await _apply(result, rolledBack, changed);
+          ensureSameAccount();
+          pushed = await _apply(result, rolledBack, changed, ensureSameAccount);
         }
+      } on _AccountChanged {
+        return SyncReport(reason: reason, rolledBack: rolledBack);
       } on Object catch (error) {
         failure = _failureOf(error);
         offline = failure is CrateStackOffline;
+        // A refusal or a server failure is an answer: the server was reached.
+        reached = reached || !offline;
       }
       if (!offline) {
         try {
           for (final collection in _collections) {
-            pulled += await _pull(rowSync, collection, changed);
+            pulled += await _pull(
+              rowSync,
+              collection,
+              changed,
+              ensureSameAccount,
+            );
             reached = true;
           }
+        } on _AccountChanged {
+          return SyncReport(reason: reason, rolledBack: rolledBack);
         } on Object catch (error) {
-          failure ??= _failureOf(error);
-          offline = failure is CrateStackOffline;
+          final f = _failureOf(error);
+          failure ??= f;
+          offline = f is CrateStackOffline;
+          reached = reached || !offline;
         }
       }
     }
@@ -216,7 +278,7 @@ final class SyncEngine implements SyncRunner {
     if (intents.offline) failure ??= const CrateStackOffline();
     if (changed.isNotEmpty) _bump(changed);
     if (reached) _lastReached = clock.now();
-    return SyncReport(
+    final report = SyncReport(
       reason: reason,
       reachedServer: reached,
       pushed: pushed,
@@ -225,22 +287,28 @@ final class SyncEngine implements SyncRunner {
       intents: intents,
       failure: failure,
     );
+    _lastReport = report;
+    return report;
   }
 
   Future<int> _apply(
     PushResult result,
     List<RolledBack> rolledBack,
     Set<String> changed,
+    void Function() ensureSameAccount,
   ) async {
     await _rows.adopt(result.accepted);
+    ensureSameAccount();
     for (final row in result.accepted) {
       changed.add(row.collection);
     }
     for (final rejection in result.rejected) {
       // Back to the server's version, or gone: the local edit is undone, and said to be.
       await _rows.discard(rejection.collection, rejection.id);
+      ensureSameAccount();
       final server = rejection.server;
       if (server != null) await _rows.adopt([server]);
+      ensureSameAccount();
       changed.add(rejection.collection);
       rolledBack.add(
         RolledBack(
@@ -257,17 +325,23 @@ final class SyncEngine implements SyncRunner {
     RowSync rowSync,
     String collection,
     Set<String> changed,
+    void Function() ensureSameAccount,
   ) async {
     var cursor = await _rows.cursor(collection);
     var count = 0;
     while (true) {
       final page = await rowSync.pull(collection, cursor);
+      ensureSameAccount();
       if (page.rows.isNotEmpty) {
         count += await _rows.adopt(page.rows);
+        ensureSameAccount();
         changed.add(collection);
       }
       final next = page.nextCursor;
-      if (next != null) await _rows.setCursor(collection, next);
+      if (next != null) {
+        await _rows.setCursor(collection, next);
+        ensureSameAccount();
+      }
       // A server that says "more" and gives the same cursor would otherwise be asked forever.
       if (!page.hasMore || next == null || next == cursor) return count;
       cursor = next;
@@ -284,6 +358,7 @@ final class SyncEngine implements SyncRunner {
     if (rowSync == null || _collections.isEmpty) return const PushResult();
     final dirty = await _rows.dirty(_collections);
     if (dirty.isEmpty) return const PushResult();
+    final scope = _scope?.call();
     final PushResult result;
     try {
       result = await rowSync.push(dirty);
@@ -292,25 +367,42 @@ final class SyncEngine implements SyncRunner {
       if (failure == null) rethrow;
       Error.throwWithStackTrace(failure, stackTrace);
     }
+    void ensure() {
+      if (_scope != null && _scope() != scope) throw const _AccountChanged();
+    }
+
     final changed = <String>{};
-    await _apply(result, [], changed);
+    try {
+      ensure();
+      await _apply(result, [], changed, ensure);
+    } on _AccountChanged {
+      return result;
+    }
     _lastReached = clock.now();
     if (changed.isNotEmpty) _bump(changed);
     return result;
   }
 }
 
-/// The engine of the current account: owned rows, the app's [rowSync] and the intent queue.
-final syncEngine = Provider<SyncEngine>(
-  (ref) => SyncEngine(
+/// What stops a run whose account changed.
+final class _AccountChanged implements Exception {
+  const _AccountChanged();
+}
+
+/// The engine of the current account: owned rows, the app's [rowSync] and the intent queue. A new
+/// account gets a new engine, and a run of the old one stops without touching the new account.
+final syncEngine = Provider<SyncEngine>((ref) {
+  final scope = ref.watch(crateStackScope);
+  return SyncEngine(
     rows: ref.watch(ownedRows),
     rowSync: ref.watch(rowSync),
     intents: ref.watch(intentQueue),
     collections: ref.watch(syncCollections),
     bump: ref.watch(crateStackBump),
     errors: ref.watch(crateStackErrors),
-  ),
-);
+    scope: () => ref.mounted ? scope : null,
+  );
+});
 
 /// What `autoSync` runs: the [syncEngine]. Override it with an app's own [SyncRunner] when
 /// something else syncs (a Rust core), and keep `autoSync`, the triggers and `Served`.

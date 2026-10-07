@@ -52,7 +52,8 @@ The rules that keep it honest:
   another: the scope is part of every key.
 - **A gateway or a captive portal counts as offline.** An HTML page where a JSON answer was expected, or a
   `502`, `503`, `504`, `511` with no CrateStack envelope, means nobody that knows your API answered. A bare
-  `500` does not: the server did answer.
+  `500` does not: the server did answer. With Dio, add `CrateStackPortalInterceptor`: Dio does not throw on an HTML
+  `200`, so without it the page reaches the client as a decoding error that no reader knows.
 
 The `Freshness` rules of `data.dart` (`staleTime`, `refetchOnResume`, `refetchOnReconnect`) still say *when* a
 read runs again; `serve` says where its answer comes from.
@@ -79,13 +80,18 @@ What an intent is:
   Every attempt is byte-identical, which is what a server's idempotency check compares.
 - **A key, `<id>#<attempt>`.** The `id` is 128 random bits. The same key is used until the server answers with a
   stored failure (`5xx`); then the next attempt gets the next number, because a stored failure may be replayed
-  under the old one.
+  under the old one. A replay is only safe if the server keys its idempotency store by a verified principal:
+  keyed by a hash of the `Authorization` header, a token refresh between attempts makes the replay a new request
+  (see [CrateStack with fespalier](cratestack.md#5-actions)).
 - **Never expiring.** An intent stays on the device until the server decides or the person discards it. The
   server's idempotency window is the only bound on "never".
 - **Wiped at sign-out.** Sending one account's intent under another's session is worse than losing it.
   `crateStackAccount.clear()` removes the intents, rows and cached reads of the account.
 - **Ordered per subject.** An intent waits behind an undecided earlier one with the same `subject`
-  (`order:42`), so "pay" never overtakes "edit address" for the same order. Intents for other subjects do not wait.
+  (`order:42`), so "pay" never overtakes "edit address" for the same order. That holds for a `submit` too: behind an
+  undecided intent it is saved and `Queued`, not sent. Intents for other subjects do not wait.
+- **JSON-native.** The call is stored as JSON: maps, lists, strings, numbers, booleans, `null`. Bytes would silently
+  become a list, so send them as text.
 
 The answer table is in [CrateStack with fespalier](cratestack.md#5-actions). In short: no answer, in flight and
 `401` keep the key; a stored failure takes the next; a refusal is kept `failed` with its wire code (never the
@@ -107,7 +113,9 @@ await rows.remove('notes', 'n1'); // a tombstone, a field like any other
 // A page reads them locally: synchronous with a synchronous store, so on the first frame.
 FutureOr<List<OwnedRow>> data(Ref ref) {
   ref.watch(crateStackRevision('notes')); // an edit or a sync rebuilds the read
-  return ref.read(ownedRows).list('notes');
+  // The rows are the signed-in account's: a read while signed out is empty, not an error.
+  if (ref.watch(crateStackScope) == null) return const [];
+  return ref.watch(ownedRows).list('notes');
 }
 ```
 
@@ -144,8 +152,9 @@ runs even when the push failed, and stops at the first sign of no network.
 
 - **Single flight.** A sync that starts while another runs joins it and gets the same result.
 - **A minimum interval.** A sync started by a signal (resume, reconnect, the app's tick) within `minInterval`
-  (10 seconds by default) of the last one that reached the server does nothing. A manual sync, and the first one at
-  start, always run.
+  (10 seconds by default) of the last one that reached the server does nothing, unless the last one found no
+  network or work has been queued since (an intent, an edited row). A manual sync, and the first one at start,
+  always run.
 - **It never throws.** The report says what failed (`failure`), what was pushed, what was pulled, and what the drain did.
 
 ## Triggers

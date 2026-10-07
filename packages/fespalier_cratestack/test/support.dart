@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// A container wired with [crateStackTestOverrides] (and [extra]), disposed after the test.
 ProviderContainer containerFor({
-  FakeCrateStackTransport? transport,
+  CrateStackTransport? transport,
   LocalStore? store,
   String? scope = 'u1',
   SyncTriggers triggers = const SyncTriggers(),
@@ -53,3 +53,32 @@ Future<IntentOutcome<Object?>> submitCancel(
 
 /// The instant the tests start from.
 final epoch = DateTime.utc(2026, 3, 1, 10);
+
+/// A [LocalStore] over [inner] whose every answer is a `Future`, like a store on a plugin: a read of
+/// it is never synchronous, so an operation on it has awaits in the middle.
+final class AsyncStore implements LocalStore {
+  /// Wraps [inner].
+  AsyncStore(this.inner);
+
+  /// The store behind it, which a test reads directly.
+  final InMemoryLocalStore inner;
+
+  @override
+  Future<String?> read(String key) async => inner.read(key);
+
+  @override
+  Future<void> write(String key, String value) async => inner.write(key, value);
+
+  @override
+  Future<void> writeAll(Map<String, String> entries) async =>
+      inner.writeAll(entries);
+
+  @override
+  Future<void> delete(String key) async => inner.delete(key);
+
+  @override
+  Future<Iterable<String>> keys(String prefix) async => inner.keys(prefix);
+
+  @override
+  Future<void> clear(String prefix) async => inner.clear(prefix);
+}

@@ -164,7 +164,9 @@ extension CrateStackServeRef on Ref {
         return hit ?? nothingStored();
       }
       final at = clock.now();
-      if (scope != null) {
+      // Not for an account that signed out (or a read that was rebuilt) while the call was in
+      // the air: its sign-out wipe must stay done.
+      if (scope != null && mounted && read(crateStackScope) == scope) {
         try {
           await cache.write(scope, key, codec.version, codec.toJson(value), at);
         } on Object catch (error) {

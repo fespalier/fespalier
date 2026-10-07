@@ -14,6 +14,10 @@ extension CrateStackCancelRef on Ref {
   /// is cancelled when the provider is disposed or rebuilt.
   ///
   /// The generated options carry no cancel token, which is why the token travels in a zone value.
+  /// The body must be only the client call: read or watch other providers **before** `cancellable`,
+  /// not inside it. A provider built inside the body runs in the same zone, so its own requests
+  /// would take this provider's token and be cancelled with it.
+  ///
   /// Call it before the first `await` of the provider. Returns [body]'s very `Future`, and starts
   /// no timer.
   Future<T> cancellable<T>(Future<T> Function() body) {

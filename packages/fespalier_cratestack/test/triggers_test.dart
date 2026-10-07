@@ -233,6 +233,33 @@ void main() {
     await pumpRealEngine(tester, server);
     await end(tester);
   });
+
+  testWidgets('a skipped sync does not replace the last real report', (
+    tester,
+  ) async {
+    final runner = CountingRunner();
+    const real = SyncReport(
+      reason: SyncReason.start,
+      reachedServer: true,
+      pushed: 3,
+    );
+    runner.onSync = (reason) => Future.value(
+      reason == SyncReason.start ? real : SyncReport.skipped(reason),
+    );
+    final container = await pumpRoot(
+      tester,
+      runner,
+      extra: [syncTicker.overrideWith(ManualSyncTicker.new)],
+    );
+    await tester.pump();
+    expect(container.read(autoSync).last, same(real));
+    (container.read(syncTicker.notifier) as ManualSyncTicker).tick();
+    await tester.pump();
+    await tester.pump();
+    expect(runner.reasons, [SyncReason.start, SyncReason.tick]);
+    expect(container.read(autoSync).last, same(real));
+    await end(tester);
+  });
 }
 
 Future<void> pumpRealEngine(WidgetTester tester, FakeRowServer server) async {

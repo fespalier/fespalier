@@ -7,7 +7,10 @@
 /// ```dart
 /// final dio = Provider<Dio>((ref) {
 ///   final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'))
-///     ..interceptors.add(const CrateStackCancelInterceptor());
+///     ..interceptors.addAll(const [
+///       CrateStackCancelInterceptor(),
+///       CrateStackPortalInterceptor(),
+///     ]);
 ///   WriteGuard.install(dio); // last: it goes first
 ///   ref.onDispose(dio.close);
 ///   return dio;
@@ -18,3 +21,4 @@ library;
 export 'src/dio/cancel.dart'
     show CrateStackCancelInterceptor, CrateStackCancelRef;
 export 'src/dio/failures.dart' show DioFailures;
+export 'src/dio/portal.dart' show CrateStackPortalInterceptor;

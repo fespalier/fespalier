@@ -15,6 +15,12 @@ const draftIndexKey = 'fespalier_forms.drafts';
 /// The version of the entry's JSON, the `v` in `{"v":1,"fields":{...}}`.
 const draftEntryVersion = 1;
 
+/// How many times every draft was cleared. A form remembers the number it started under and writes
+/// nothing once it is another: a page that goes after `clearFormDrafts` (a sign-out) must not put
+/// what it held back on the disk.
+int get draftClearGeneration => _generation;
+int _generation = 0;
+
 /// A key part as the URL spells it, so a key is the same across starts (the rule `dataCache`
 /// follows for a family key).
 Object? _part(Object? part) {
@@ -77,7 +83,11 @@ FutureOr<void> _serial(
     _track(storage, result);
     return result;
   }
-  final next = before.then<void>((_) => body());
+  // What came before failed or not, this still runs: a failed index write must not drop a clear.
+  final next = before.then<void>(
+    (_) => body(),
+    onError: (Object _, StackTrace _) => body(),
+  );
   _track(storage, next);
   return next;
 }
@@ -114,21 +124,21 @@ FutureOr<void> _writeIndex(
     ? storage.delete(draftIndexKey)
     : storage.write(draftIndexKey, jsonEncode(keys), _forever);
 
+/// Lists or unlists [key]; always inside a [_serial] of its caller.
 FutureOr<void> _index(
   Storage<String, String> storage,
   String key, {
   required bool add,
-}) => _serial(
-  storage,
-  () => _then<List<String>, void>(_readIndex(storage), (keys) {
-    if (keys.contains(key) == add) return null;
-    return _writeIndex(storage, [
-      for (final k in keys)
-        if (k != key) k,
-      if (add) key,
-    ]);
-  }),
-);
+}) => _then<List<String>, void>(_readIndex(storage), (keys) {
+  // Listing a key again rewrites the index, so it is never older than the draft it lists (a
+  // storage that evicts the entry written longest ago drops a draft before its index).
+  if (!add && !keys.contains(key)) return null;
+  return _writeIndex(storage, [
+    for (final k in keys)
+      if (k != key) k,
+    if (add) key,
+  ]);
+});
 
 /// The saved fields of the draft under [key], or null when there is none, it is older than its
 /// `maxAge`, or it was saved for another [shape] or entry version (those are deleted).
@@ -174,18 +184,23 @@ FutureOr<void> saveDraft(
   String key,
   String shape,
   Duration maxAge,
-  Map<String, Object?> fields,
-) => _guard<void>(
+  Map<String, Object?> fields, {
+  int? generation,
+}) => _guard<void>(
   'could not be saved',
   null,
-  () => _then<void, void>(
-    storage.write(
-      key,
-      jsonEncode({'v': draftEntryVersion, 'fields': fields}),
-      StorageOptions(cacheTime: StorageCacheTime(maxAge), destroyKey: shape),
-    ),
-    (_) => _index(storage, key, add: true),
-  ),
+  () => _serial(storage, () {
+    // Queued before a clear, run after it: what a signed-out account typed is not kept.
+    if (generation != null && generation != _generation) return null;
+    return _then<void, void>(
+      storage.write(
+        key,
+        jsonEncode({'v': draftEntryVersion, 'fields': fields}),
+        StorageOptions(cacheTime: StorageCacheTime(maxAge), destroyKey: shape),
+      ),
+      (_) => _index(storage, key, add: true),
+    );
+  }),
 );
 
 /// Deletes the draft under [key] and takes it off the index.
@@ -193,14 +208,22 @@ FutureOr<void> removeDraft(Storage<String, String> storage, String key) =>
     _guard<void>(
       'could not be deleted',
       null,
-      () => _then<void, void>(
-        storage.delete(key),
-        (_) => _index(storage, key, add: false),
+      () => _serial(
+        storage,
+        () => _then<void, void>(
+          storage.delete(key),
+          (_) => _index(storage, key, add: false),
+        ),
       ),
     );
 
 /// Deletes every draft the index lists, then the index.
-FutureOr<void> clearDrafts(Storage<String, String> storage) => _guard<void>(
+FutureOr<void> clearDrafts(Storage<String, String> storage) {
+  _generation++;
+  return _clear(storage);
+}
+
+FutureOr<void> _clear(Storage<String, String> storage) => _guard<void>(
   'could not be cleared',
   null,
   () => _serial(

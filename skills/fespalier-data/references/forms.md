@@ -285,8 +285,8 @@ what must not reach the disk in `FormDraft(exclude: {'password'})` (`maxAge` is 
 - **Written** when the form is disposed with changes and when the app is `hidden`, `paused` or
   `detached` (an `AppLifecycleListener` the hook owns and disposes); never per keystroke, no timer.
   **Restored** when the form starts: before the first build for a storage whose `read` is sync,
-  when it answers otherwise, and then only into fields the user has not touched and not while the
-  action runs. **Deleted** by a successful submit, `reset()` and `clearFormDrafts`, and when it is
+  when it answers otherwise, and then only into fields the user has not touched (skipped, not retried,
+  while the action runs). **Deleted** by a successful submit, `reset()` and `clearFormDrafts`, and when it is
   expired or was written for another `shape` (the generated `nickname:String,age:int?,...`: change
   a field and the old drafts go).
 - A draft is read once at start; storage failures are printed in debug and never reach the page; a

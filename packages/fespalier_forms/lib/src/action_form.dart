@@ -343,12 +343,17 @@ final class ActionFormFields<I> {
 
 /// Where one form's draft is kept and what is known of it.
 final class _Drafts {
-  _Drafts(this.storage, this.key, this.shape, this.config);
+  _Drafts(this.storage, this.key, this.shape, this.config)
+    : generation = draftClearGeneration;
 
   final FutureOr<Storage<String, String>?> storage;
   final String key;
   final String shape;
   final FormDraft config;
+
+  /// The number of clears of every draft when the form started: after another one it writes
+  /// nothing (`clearFormDrafts` at sign-out is final for the page that is still open).
+  final int generation;
 
   /// What was last written, to write nothing twice.
   String? lastSaved;
@@ -534,11 +539,14 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
       if (drafts.stored) _clearDraft();
       return;
     }
+    if (drafts.generation != draftClearGeneration) return;
     final text = jsonEncode(fields);
     if (text == drafts.lastSaved) return;
+    // What is known of the storage changes now, whenever the storage answers.
+    drafts
+      ..lastSaved = text
+      ..stored = true;
     drafts.use((storage, {required deferred}) {
-      drafts.lastSaved = text;
-      drafts.stored = true;
       _let(
         saveDraft(
           storage,
@@ -546,6 +554,7 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
           drafts.shape,
           drafts.config.maxAge,
           fields,
+          generation: drafts.generation,
         ),
       );
     });
@@ -562,9 +571,33 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
   }
 
   /// Puts what a draft kept into the fields the user has not touched. Silent when the storage
-  /// answers at once (the page is building); the page is told when it answers later.
+  /// answers at once (the page is building); the page is told when it answers later. A draft that
+  /// arrives while the action runs is skipped, not kept for later.
   void _restoreDraft() {
     final drafts = _drafts!;
+    assert(() {
+      final names = {for (final f in _all) f.name};
+      final unknown = drafts.config.exclude.difference(names);
+      if (unknown.isNotEmpty) {
+        throw FlutterError(
+          'FormDraft(exclude: $unknown) names no field of the form (its fields are '
+          '${names.join(', ')}): a field that is misspelled here is written to the draft.',
+        );
+      }
+      for (final name in names) {
+        if (RegExp(
+              'password|passcode|secret|cvv|^pin|^otp',
+              caseSensitive: false,
+            ).hasMatch(name) &&
+            !drafts.config.exclude.contains(name)) {
+          debugPrint(
+            'fespalier_forms: the field `$name` is kept in the draft; add it to '
+            'FormDraft(exclude:) if it must not reach the disk.',
+          );
+        }
+      }
+      return true;
+    }());
     drafts.use((storage, {required deferred}) {
       void apply(Map<String, Object?>? saved, {required bool deferred}) {
         if (saved == null || _disposed || isPending) return;
@@ -583,6 +616,7 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
         drafts
           ..stored = true
           ..lastSaved = jsonEncode(_draftFields());
+        _checked = null; // validate() said it of the values from before
         if (deferred) notifyListeners();
       }
 
@@ -701,9 +735,15 @@ ActionForm<I, T, F> useActionForm<I, T, F extends Record>(
   String shape = '',
   FormDraft? draft,
 }) {
-  final drafts = draft == null
+  assert(
+    draft == null || id.isNotEmpty,
+    'a form with a draft needs an `id` (the generated useForm passes the action file and name): '
+    'without one every such form shares one draft',
+  );
+  // Built once, when the form starts: the key, the storage and the scope are not read again.
+  final _Drafts Function()? drafts = draft == null
       ? null
-      : _Drafts(
+      : () => _Drafts(
           ref.read(formDraftStorage),
           draftKey(id, key, ref.read(formDraftScope)),
           shape,
@@ -754,7 +794,7 @@ final class _ActionFormHook<I, T, F extends Record>
   final ActionFormValidation validation;
   final bool resetOnSuccess;
   final ActionFormMessages messages;
-  final _Drafts? drafts;
+  final _Drafts Function()? drafts;
 
   @override
   _ActionFormState<I, T, F> createState() => _ActionFormState<I, T, F>();
@@ -783,8 +823,8 @@ final class _ActionFormState<I, T, F extends Record>
     _form
       .._state = hook.state
       ..addListener(_changed);
-    if (hook.drafts != null) {
-      _form._drafts = hook.drafts;
+    if (hook.drafts case final make?) {
+      _form._drafts = make();
       _form._restoreDraft();
       // A draft is also kept when the app goes to the background: it may never come back.
       _lifecycle = AppLifecycleListener(

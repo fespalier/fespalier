@@ -35,8 +35,17 @@ Fields form() => (
   password: '',
 );
 
-String action(Ref ref, {required int id, required Fields input}) =>
-    input.nickname;
+/// Held while a test wants the write to be in flight.
+Completer<void>? actionGate;
+
+FutureOr<String> action(Ref ref, {required int id, required Fields input}) =>
+    actionGate == null
+    ? input.nickname
+    : actionGate!.future.then((_) => input.nickname);
+
+FieldErrors? validate(Fields input) => input.nickname == 'bad'
+    ? const FieldErrors({'nickname': 'Not that'})
+    : null;
 
 const actionId = '(account)/nickname/action.dart#action';
 const shape =
@@ -44,6 +53,7 @@ const shape =
 
 final _action1 = actionFamily(
   (Ref ref, int id, Fields input) => action(ref, id: id, input: input),
+  validate: validate,
   invalidates: (int id) => const <ProviderListenable<AsyncValue<Object?>>>[],
   site: 'a1_0',
 );
@@ -68,6 +78,7 @@ abstract final class NicknameRoute {
         WidgetRef ref, {
         required int id,
         String formShape = shape,
+        String formId = actionId,
         FormDraft? draft,
       }) => useActionForm(
         ref,
@@ -94,6 +105,7 @@ abstract final class NicknameRoute {
           ),
           password: f.text('password', (v) => v.password, FieldCodec.text),
         ),
+        validate: validate,
         input: (f) => (
           nickname: f.nickname.value,
           age: f.age.value,
@@ -102,7 +114,7 @@ abstract final class NicknameRoute {
           since: f.since.value,
           password: f.password.value,
         ),
-        id: actionId,
+        id: formId,
         key: [id],
         shape: formShape,
         draft: draft,
@@ -112,11 +124,18 @@ abstract final class NicknameRoute {
 NicknameForm? lastForm;
 
 class NicknamePage extends HookConsumerWidget {
-  const NicknamePage({super.key, this.id = 1, this.draft, this.formShape});
+  const NicknamePage({
+    super.key,
+    this.id = 1,
+    this.draft,
+    this.formShape,
+    this.formId = actionId,
+  });
 
   final int id;
   final FormDraft? draft;
   final String? formShape;
+  final String formId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -125,6 +144,7 @@ class NicknamePage extends HookConsumerWidget {
       id: id,
       draft: draft,
       formShape: formShape ?? shape,
+      formId: formId,
     );
     lastForm = form;
     final f = form.fields;
@@ -186,6 +206,62 @@ final class SpyStorage extends Storage<String, String> {
   void deleteOutOfDate() {}
 }
 
+/// A storage whose writes finish when a test says so, as a disk's do.
+final class LateWriteStorage extends Storage<String, String> {
+  final MemoryDataStorage inner = MemoryDataStorage();
+  Completer<void>? writeGate;
+
+  @override
+  PersistedData<String>? read(String key) => inner.read(key);
+
+  @override
+  FutureOr<void> write(String key, String value, StorageOptions options) {
+    final gate = writeGate;
+    if (gate == null) {
+      inner.write(key, value, options);
+      return null;
+    }
+    return gate.future.then((_) => inner.write(key, value, options));
+  }
+
+  @override
+  void delete(String key) => inner.delete(key);
+
+  @override
+  void deleteOutOfDate() {}
+}
+
+/// `clearFormDraftsOf`, from the container of the page.
+Future<void> clearAll(ProviderContainer container) =>
+    container.read(Provider<Future<void>>((ref) => clearFormDraftsOf(ref)));
+
+/// A storage whose reads answer when a test says so, holding a draft of [fields] for the form
+/// with the family key 1.
+Future<SpyStorage> slowStorage(Map<String, Object?> fields) async {
+  final seed = MemoryDataStorage();
+  final container = ProviderContainer(
+    overrides: [formDraftStorage.overrideWithValue(seed)],
+  );
+  await seedFormDraft(
+    container,
+    id: actionId,
+    key: [1],
+    shape: shape,
+    fields: fields,
+  );
+  container.dispose();
+  const key = 'fespalier_forms.draft:$actionId:[1]';
+  return SpyStorage(readGate: Completer<void>())
+    ..inner.write(
+      key,
+      seed.read(key)!.data,
+      StorageOptions(
+        cacheTime: const StorageCacheTime(Duration(days: 7)),
+        destroyKey: shape,
+      ),
+    );
+}
+
 /// The container of the app under test, for the helpers that take one.
 ProviderContainer containerOf(WidgetTester tester) =>
     ProviderScope.containerOf(tester.element(find.byType(NicknamePage)));
@@ -198,6 +274,7 @@ Widget app(
   int id = 1,
   FormDraft? draft = const FormDraft(exclude: {'password'}),
   String? formShape,
+  String formId = actionId,
 }) => ProviderScope(
   overrides: [
     formDraftStorage.overrideWithValue(storage),
@@ -209,7 +286,12 @@ Widget app(
       child: ValueListenableBuilder<bool>(
         valueListenable: shown,
         builder: (context, on, _) => on
-            ? NicknamePage(id: id, draft: draft, formShape: formShape)
+            ? NicknamePage(
+                id: id,
+                draft: draft,
+                formShape: formShape,
+                formId: formId,
+              )
             : const SizedBox(),
       ),
     ),
@@ -615,6 +697,174 @@ void main() {
     await tester.pump();
     await leave(tester);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a page that goes after clearFormDrafts keeps nothing', (
+    tester,
+  ) async {
+    final storage = MemoryDataStorage();
+    await tester.pumpWidget(app(storage));
+    await tester.enterText(find.byKey(const Key('nickname')), 'bob');
+    await tester.pump();
+    final container = containerOf(tester);
+    await clearAll(container);
+    await leave(tester);
+    expect(
+      await readFormDraft(container, id: actionId, key: [1], shape: shape),
+      isNull,
+    );
+    expect(storage.read('fespalier_forms.drafts'), isNull);
+  });
+
+  testWidgets('a save in flight does not outlive a clear that came after it', (
+    tester,
+  ) async {
+    final storage = LateWriteStorage()..writeGate = Completer<void>();
+    await tester.pumpWidget(app(storage));
+    await tester.enterText(find.byKey(const Key('nickname')), 'bob');
+    await tester.pump();
+    final container = containerOf(tester);
+    background(tester); // the entry is being written, the gate is shut
+    final cleared = clearAll(container);
+    storage.writeGate!.complete();
+    await cleared;
+    await tester.pump();
+    expect(storage.inner.read('fespalier_forms.draft:$actionId:[1]'), isNull);
+    expect(storage.inner.read('fespalier_forms.drafts'), isNull);
+  });
+
+  testWidgets('a failed write does not stop the clear queued behind it', (
+    tester,
+  ) async {
+    final storage = LateWriteStorage();
+    await tester.pumpWidget(app(storage));
+    final container = containerOf(tester);
+    await seedFormDraft(
+      container,
+      id: actionId,
+      key: [2],
+      shape: shape,
+      fields: {'nickname': 'old'},
+    );
+    storage.writeGate = Completer<void>();
+    await tester.enterText(find.byKey(const Key('nickname')), 'bob');
+    await tester.pump();
+    background(tester);
+    final cleared = clearAll(container);
+    storage.writeGate!.completeError(StateError('disk full'));
+    await cleared;
+    expect(storage.inner.read('fespalier_forms.draft:$actionId:[2]'), isNull);
+    expect(storage.inner.read('fespalier_forms.drafts'), isNull);
+  });
+
+  testWidgets('every save rewrites the index, so it is never the older', (
+    tester,
+  ) async {
+    final storage = SpyStorage();
+    await tester.pumpWidget(app(storage));
+    await tester.enterText(find.byKey(const Key('nickname')), 'bob');
+    await tester.pump();
+    background(tester);
+    await tester.enterText(find.byKey(const Key('nickname')), 'bobby');
+    await tester.pump();
+    background(tester);
+    expect(
+      storage.written.where((k) => k == 'fespalier_forms.drafts'),
+      hasLength(2),
+    );
+  });
+
+  testWidgets('an async restore asks validate() again', (tester) async {
+    final slow = await slowStorage({'nickname': 'bad'});
+    await tester.pumpWidget(app(slow));
+    expect(lastForm!.isValid, isTrue);
+    slow.readGate!.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(lastForm!.isValid, isFalse);
+  });
+
+  testWidgets('a draft that arrives while the action runs is skipped', (
+    tester,
+  ) async {
+    final slow = await slowStorage({'age': '41'});
+    actionGate = Completer<void>();
+    addTearDown(() => actionGate = null);
+    await tester.pumpWidget(app(slow));
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    expect(lastForm!.isPending, isTrue);
+    slow.readGate!.complete();
+    await tester.pump();
+    expect(textOf(tester, 'age'), '', reason: 'skipped while pending');
+    actionGate!.complete();
+    await tester.pump();
+    await tester.pump();
+  });
+
+  testWidgets('a success that comes after the page is gone deletes the draft', (
+    tester,
+  ) async {
+    final storage = MemoryDataStorage();
+    actionGate = Completer<void>();
+    addTearDown(() => actionGate = null);
+    await tester.pumpWidget(app(storage));
+    final container = containerOf(tester);
+    await tester.enterText(find.byKey(const Key('nickname')), 'bob');
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await leave(tester); // the dirty form is written as it goes
+    expect(
+      await readFormDraft(container, id: actionId, key: [1], shape: shape),
+      isNotNull,
+    );
+    actionGate!.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(
+      await readFormDraft(container, id: actionId, key: [1], shape: shape),
+      isNull,
+    );
+  });
+
+  testWidgets('a page that goes while its draft is still being read is safe', (
+    tester,
+  ) async {
+    final slow = await slowStorage({'nickname': 'bob'});
+    await tester.pumpWidget(app(slow));
+    await leave(tester);
+    slow.readGate!.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(
+      slow.inner.read('fespalier_forms.draft:$actionId:[1]'),
+      isNotNull,
+      reason: 'left for the next visit',
+    );
+  });
+
+  testWidgets('exclude names a field the form has', (tester) async {
+    await tester.pumpWidget(
+      app(MemoryDataStorage(), draft: const FormDraft(exclude: {'pasword'})),
+    );
+    expect(tester.takeException(), isA<FlutterError>());
+  });
+
+  testWidgets('a draft needs an id', (tester) async {
+    await tester.pumpWidget(app(MemoryDataStorage(), formId: ''));
+    expect(tester.takeException(), isA<AssertionError>());
+  });
+
+  testWidgets('a password-like field that is not excluded is warned about', (
+    tester,
+  ) async {
+    final printed = <String?>[];
+    final before = debugPrint;
+    debugPrint = (message, {wrapWidth}) => printed.add(message);
+    await tester.pumpWidget(app(MemoryDataStorage(), draft: const FormDraft()));
+    debugPrint = before;
+    expect(printed.where((m) => m!.contains('`password`')), hasLength(1));
   });
 
   test(

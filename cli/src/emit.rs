@@ -2075,7 +2075,14 @@ fn devtools_providers(app: &App) -> Vec<DevToolsProviderCx> {
 }
 
 /// The `useForm` hook of an action: a typed field for each field of its input record.
-fn form_cx(r: &Route, a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx {
+fn form_cx(
+    r: &Route,
+    a: &Action,
+    f: &resolve::Form,
+    hook: &str,
+    keys: &[String],
+    key_names: &[String],
+) -> FormCx {
     let input_ty = &a.input.ty;
     let mut params: Vec<String> = keys.to_vec();
     if let Some(d) = &f.data {
@@ -2142,8 +2149,8 @@ fn form_cx(r: &Route, a: &Action, f: &resolve::Form, hook: &str, keys: &[String]
         "id: {}",
         dart_str(&format!("{}#{}", rel(r, Kind::Action), a.name))
     ));
-    if !a.keys.is_empty() {
-        args.push(format!("key: [{}]", a.keys.join(", ")));
+    if !key_names.is_empty() {
+        args.push(format!("key: [{}]", key_names.join(", ")));
     }
     let shape: Vec<String> = f
         .fields
@@ -2351,6 +2358,14 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
             params.push(format!("required {input}"));
             let hook_keys = keyed_params(app, r, &d);
             let hook_keys_list = keyed_param_list(app, r, &d);
+            // The names of those hook parameters, for the draft's key: the same list, never more.
+            let typed = data_params(app, r);
+            let hook_key_names: Vec<String> = d
+                .keys
+                .iter()
+                .filter(|k| typed.iter().any(|(n, _)| n == *k))
+                .cloned()
+                .collect();
             // The key a target data.dart is called with, from the action's own keys.
             let key_of = |td: &Data| match (td.keys.as_slice(), td.record) {
                 ([], _) => String::new(),
@@ -2411,7 +2426,7 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
                 call: format!("_i{}.{}({})", a.import, a.name, call_args.join(", ")),
                 validate: a.validate.as_ref().map(|v| format!("_i{}.{v}", a.import)),
                 optimistic,
-                form: a.form.as_ref().map(|f| form_cx(r, a, f, &names.form_hook, &hook_keys_list)),
+                form: a.form.as_ref().map(|f| form_cx(r, a, f, &names.form_hook, &hook_keys_list, &hook_key_names)),
                 key_param: key_ty,
                 invalidates: if invalidates.is_empty() {
                     format!("const <{list}>[]")

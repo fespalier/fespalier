@@ -53,7 +53,8 @@ FutureOr<void> seedFormDraft(
 }
 
 /// The fields of the draft a form kept, as [seedFormDraft] writes them, or null when there is
-/// none (or it is expired, or [shape] is not the one it was written for).
+/// none (or it is expired, or [shape] is not the one it was written for). Reading is what a form
+/// does too: an expired draft, or one written for another shape, is deleted as it is read.
 FutureOr<Map<String, Object?>?> readFormDraft(
   ProviderContainer container, {
   required String id,

@@ -2,7 +2,11 @@
 
 The names `fespalier_otel` emits, as a contract: [Observability](observability.md#telemetry) explains how to turn telemetry on, and [`fsp telemetry`](telemetry-dashboards.md) builds dashboards on these names.
 
+<!-- markdownlint-disable MD024 -->
+
 ## Telemetry conventions
+
+<!-- markdownlint-restore -->
 
 This section is **contract version 1**: dashboards and alerts are built on it.
 

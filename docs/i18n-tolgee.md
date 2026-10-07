@@ -184,7 +184,7 @@ bundled text. A first launch offline shows bundled text, with no error and no pe
 Edit a translation in the running app and see it at once. It is compiled in only when both hold: a debug build, and
 `--dart-define=fespalier_tolgee.in_context=true` (`kTolgeeInContext` in `package:fespalier_tolgee/in_context.dart`).
 
-```
+```sh
 flutter run --dart-define-from-file=tolgee.local.json
 ```
 

@@ -166,28 +166,31 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 
 ## Documentation
 
-**Basics**
+<!-- markdownlint-disable MD033 -->
+<!-- The <a name> anchors keep every old README heading link working (docs/README.md, "Old README sections"). -->
+
+### Basics
 
 - [Installation and setup](docs/getting-started.md)
 - [Configuration](docs/configuration.md)
 - <a name="file-kinds"></a><a name="function-views"></a><a name="file-names"></a><a name="how-parameters-are-filled"></a>[File kinds](docs/file-kinds.md)
 - [Migration](docs/migration.md)
 
-**Routing**
+### Routing
 
 - <a name="segment-types"></a><a name="enum-segments"></a><a name="catch-all-segments"></a><a name="typed-catch-alls"></a><a name="case-and-trailing-slashes"></a><a name="localized-paths"></a><a name="non-ascii-spellings"></a><a name="group-folders"></a><a name="a-sibling-with-a-compound-path"></a><a name="not-found-views"></a><a name="query-parameters"></a><a name="route-manifest-and-metadart"></a>[Routing](docs/routing.md)
 - <a name="the-root-navigator-navigatordart"></a><a name="presentdart-a-page-of-your-own"></a><a name="the-url-as-state-of-and-copywith"></a><a name="remounting-a-page-remount"></a><a name="typed-extra"></a><a name="restoring-extra-on-the-web"></a><a name="links-routelink"></a><a name="preloading-the-data-behind-a-link"></a><a name="deferred-routes-a-pages-code-on-demand"></a>[Navigation](docs/navigation.md)
 - <a name="tab-layouts"></a><a name="menus-and-breadcrumbs-navdart"></a><a name="a-bar-a-rail-or-a-drawer-fespalier_adaptive"></a><a name="transitions"></a><a name="shared-elements-heroes"></a><a name="state-restoration"></a><a name="scroll-restoration"></a>[Layouts](docs/layouts.md)
 - <a name="guards"></a><a name="redirectdart"></a><a name="sending-people-back"></a><a name="feature-flags-fespalier_flags"></a><a name="where-flag-values-come-from"></a><a name="testing-flagged-routes"></a>[Guards](docs/guards.md)
 
-**Data and writes**
+### Data and writes
 
 - <a name="datadart-a-function-a-selector-or-a-provider"></a><a name="retries-and-reloads"></a><a name="freshness-staletime-resume-and-reconnect"></a><a name="reconnects-fespalier_connectivity"></a><a name="a-cache-that-survives-a-restart-datacache"></a><a name="a-cache-on-disk-fespalier_storage"></a><a name="typed-helpers-on-the-route"></a><a name="from-a-location-to-its-data"></a><a name="section-data"></a>[Data](docs/data.md)
 - <a name="actiondart-typed-writes"></a><a name="optimistic-updates-optimistic"></a>[Actions](docs/actions.md)
 - <a name="forms-form-and-validate"></a>[Forms](docs/forms.md)
 - <a name="http-clients-fespalier_dio"></a><a name="cancelling-a-load-whose-page-is-gone"></a><a name="server-validation-errors-on-forms"></a><a name="writes-are-never-retried-over-http-too"></a>[HTTP clients](docs/http.md)
 
-**App**
+### App
 
 - <a name="main-appdart-startupdart-and-splashdart"></a>[`main()`, app.dart, startup.dart and splash.dart](docs/app-startup.md)
 - <a name="adapters-in-the-generated-main"></a>[Adapters](docs/adapters.md)
@@ -197,24 +200,26 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 - [Offline-first](docs/offline-first.md)
 - [CrateStack](docs/cratestack.md)
 
-**Observability**
+### Observability
 
 - <a name="route-lifecycle-observedart"></a><a name="telemetry"></a><a name="turning-it-on"></a><a name="opentelemetry-with-otel_zone"></a><a name="sentry-fespalier_sentry"></a><a name="what-sentry-gets-from-fespalier"></a><a name="wiring-sentry"></a><a name="one-transaction-per-screen"></a><a name="sentry-defaults-and-privacy"></a><a name="testing-with-sentry"></a><a name="crashlytics"></a><a name="several-sinks-combine-and-add"></a><a name="spans-around-data-and-actions"></a><a name="where-a-navigation-came-from-navigatefrom"></a><a name="testing-telemetry"></a><a name="what-it-costs"></a>[Observability](docs/observability.md)
 - <a name="telemetry-conventions"></a>[Telemetry conventions](docs/telemetry-conventions.md)
 - <a name="dashboards-on-your-computer-fsp-telemetry"></a><a name="the-app-side"></a><a name="the-dashboards"></a><a name="reading-the-colours"></a><a name="the-flags"></a><a name="a-summary-in-the-terminal---report"></a><a name="the-web-and-otel_zone"></a><a name="openobserve-and-grafana-show-the-same-numbers"></a><a name="your-own-copy"></a>[Dashboards on your computer](docs/telemetry-dashboards.md)
 - <a name="devtools-extension"></a>[DevTools extension](docs/devtools.md)
 
-**Tooling**
+### Tooling
 
 - <a name="running-your-app-fsp-dev"></a><a name="tasks-commands-around-flutter-run"></a><a name="fsp-build-and-fsp-run"></a><a name="plain-output-ci-and-windows"></a><a name="the-generator"></a><a name="deep-links-and-a-sitemap-fsp-links"></a><a name="checking-string-paths"></a><a name="web-chunk-sizes-fsp-size"></a><a name="performance"></a>[CLI reference](docs/cli.md)
 - <a name="testing"></a>[Testing](docs/testing.md)
 - <a name="maestro-flows-fsp-maestro"></a><a name="route-smoke-tests-fsp-test"></a>[Route tests](docs/route-tests.md)
 - <a name="run-the-examples"></a>[Run the examples](docs/examples.md)
 
-**Help**
+### Help
 
 - <a name="status"></a>[Troubleshooting](docs/troubleshooting.md)
 - <a name="design-notes"></a>[FAQ](docs/faq.md)
+
+<!-- markdownlint-restore -->
 
 Following a link to an old README section? [docs/README.md](docs/README.md) maps every one.
 
@@ -231,8 +236,12 @@ How to run them: [Run the examples](docs/examples.md).
 
 ## Contributing
 
+<!-- markdownlint-disable MD033 -->
+
 [AGENTS.md](AGENTS.md) is the contributor and agent guide. See also <a name="development"></a>[Development](docs/development.md),
 <a name="releasing"></a>[Releasing](docs/releasing.md) and [skills/README.md](skills/README.md).
+
+<!-- markdownlint-restore -->
 
 ## License
 

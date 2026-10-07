@@ -75,6 +75,8 @@
         "docs/cli.md#`fsp build` and `fsp run`",
         "docs/cli.md#Plain output, CI and Windows",
         "docs/cli.md#Deep links and a sitemap (`fsp links`)",
+        "docs/cli.md#Flavours",
+        "docs/cli.md#Host-less schemes and path patterns",
         "docs/route-tests.md#Maestro flows (`fsp maestro`)",
         "docs/cli.md#Web chunk sizes (`fsp size`)",
         "README.md",

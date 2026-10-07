@@ -252,9 +252,12 @@ fespalier:
   links:
     domains: [shop.example.com] # required; the first one is the sitemap's
     scheme: myshop # optional custom scheme: myshop://shop.example.com/products/2
+    scheme_host: true # since 0.11.0; `false`: myshop:///products/2, any host (see below)
+    paths: [/, /products/*] # since 0.11.0; default: every linkable route (see below)
     android_package: com.example.shop # with android_sha256: the Android files
     android_sha256: ["AB:CD:...:EF"] # the signing certificates' fingerprints, 32 hex pairs each
     ios_app_id: ABCDE12345.com.example.shop # Team ID, a dot, the bundle id: the iOS files
+    # flavors: ...                    # since 0.11.0: instead of the three keys above (see Flavours)
     out: links # default: where the files go, relative to the project
 ```
 
@@ -273,6 +276,48 @@ links/
 - The Android files are written when `android_package` is set (it needs `android_sha256`, and the reverse), the iOS ones when `ios_app_id` is, and the sitemap always.
 - A missing key, or a fingerprint or package that isn't one, is an error that names the key. Only `fsp links` checks them: a mistake there never stops `fsp gen`.
 - A file the config no longer asks for is removed by `fsp links` and reported by `--check`.
+
+### Flavours
+
+Since 0.11.0. An app built in flavours (`prod` and `debug`, each with its own application id, signing certificate and bundle id) lists them instead of the flat keys:
+
+```yaml
+fespalier:
+  links:
+    domains: [shop.example.com]
+    scheme: myshop
+    flavors:
+      prod:
+        android_package: com.example.shop
+        android_sha256: ["AB:CD:...:EF"]
+        ios_app_id: ABCDE12345.com.example.shop
+      debug:
+        android_package: com.example.shop.debug
+        android_sha256: ["12:34:...:56"]
+        ios_app_id: ABCDE12345.com.example.shop.debug
+```
+
+- **Each flavour is an app.** Name it as Gradle and Xcode do: lower-case letters, digits and `_`, starting with a letter. It sets `android_package` (with `android_sha256`), `ios_app_id` or both. Two flavours can't share a package or an app id.
+- **`assetlinks.json`** has one statement per package, in the order the pubspec lists them. **The association file** has one `details` entry whose `appIDs` holds every app id, with the same `components`.
+- **The flat keys still work**, as one app with no name: a config with no `flavors:` writes exactly what it wrote before. Setting both is an error.
+- **Domains and the scheme are shared.** A flavour with its own `domains:` is an `invalid pubspec.yaml` error.
+- **`info-url-types.xml`** uses the bundle id of the first iOS app.
+
+### Host-less schemes and path patterns
+
+Since 0.11.0.
+
+**`scheme_host: false`** writes the scheme's intent filter with the scheme alone (`<data android:scheme="myshop" />`: no host and no path, since Android ignores path attributes without a host), and makes the default `link:` of [`fsp maestro`](route-tests.md#maestro-flows-fsp-maestro) `myshop://`, so a flow opens `myshop:///orders/42`. The default, `true`, is the `myshop://shop.example.com/orders/42` of before. Prefer the host-less form: the router matches the path only, so `myshop:///orders/42` is `/orders/42` however the embedding hands the link over, while `myshop://orders/42` would be read as host `orders` and reach `/42`. It needs `scheme`.
+
+**`paths:`** lists what the platforms open instead of every linkable route (the sitemap still comes from the routes). Each entry starts with `/`: `/about` is that path, `/orders/*` is everything below `/orders/`, and `*` is only ever the whole last segment (`/*` is everything).
+
+| Entry       | Android                 | iOS (`components`) |
+| ----------- | ----------------------- | ------------------ |
+| `/`         | `android:path="/"`      | `/`                |
+| `/about`    | `android:path="/about"` | `/about`           |
+| `/orders/*` | `pathPrefix="/orders/"` | `/orders/*`        |
+
+`fsp links` warns, without failing (`--check` doesn't either), where `paths:` and the routes disagree: a linkable route no entry covers (``add `/orders/*`, or `const linkable = false;` in its route.dart``), and an entry no linkable route matches. An empty list is an error: leave `paths:` out to list every route.
 
 **What is listed.** Each route's path, in each spelling of its [localized paths](routing.md#localized-paths), and every route in a folder that doesn't say [`const linkable = false;`](configuration.md#per-folder-settings-routedart) (a `route.dart` constant, inherited down the tree). Redirects are opened by the app, so they are in the Android and iOS lists; a sitemap leaves them out.
 

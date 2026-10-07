@@ -270,6 +270,24 @@ fn the_link_of_an_app_defaults_from_links() {
 }
 
 #[test]
+fn a_hostless_scheme_gives_a_link_without_the_host() {
+    let m = parsed(
+        &[
+            "links:",
+            "  domains: [shop.example.com]",
+            "  scheme: myshop",
+            "  scheme_host: false",
+            "  ios_app_id: ABCDE12345.com.example.shop",
+        ],
+        &[APP],
+    )
+    .unwrap();
+    // A route's path goes after it: `myshop:///orders/42`.
+    assert_eq!(m.link, "myshop://");
+    assert!(!m.https_app_link);
+}
+
+#[test]
 fn an_app_needs_a_link_or_links() {
     assert_eq!(
         error_of(&[APP]),

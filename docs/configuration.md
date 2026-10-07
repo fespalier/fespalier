@@ -28,9 +28,12 @@ fespalier:
   # links:                        # no default: what `fsp links` writes (see below)
   #   domains: [shop.example.com]
   #   scheme: myshop
+  #   scheme_host: true           # since 0.11.0; `false`: myshop:///path, no host
+  #   paths: [/, /orders/*]       # since 0.11.0; default: every linkable route
   #   android_package: com.example.shop
   #   android_sha256: ["AB:CD:..."]
   #   ios_app_id: TEAMID.com.example.shop
+  #   flavors: {prod: {android_package: ..., android_sha256: [...], ios_app_id: ...}}   # since 0.11.0, instead of the three above
   #   out: links                  # default
   semantics_ids: false # `true` (since 0.7.0): every page wears `Semantics(identifier: 'route:/...')`, for Maestro
   scroll_restoration: false # `true` (since 0.8.1): the browser's back and forward bring a page's scroll offsets back
@@ -144,6 +147,8 @@ address bar (and in the browser's history) as `go` does, and back pops it.
 ### links
 
 `links:` is what [`fsp links`](cli.md#deep-links-and-a-sitemap-fsp-links) reads; only that command checks its values.
+Since 0.11.0 it also takes `flavors:` (one app per build flavour, [Flavours](cli.md#flavours)), `scheme_host`
+and `paths:` ([Host-less schemes and path patterns](cli.md#host-less-schemes-and-path-patterns)).
 
 ### lints
 

@@ -315,7 +315,7 @@ fn a_full_config_is_normalized() {
     ])
     .unwrap();
     assert_eq!(l.domains, ["shop.example.com", "*.example.org"]);
-    let a = l.android.unwrap();
+    let a = l.apps_android.into_iter().next().unwrap();
     assert_eq!(
         (a.package.as_str(), a.sha256),
         ("com.example.shop", vec![FINGERPRINT.to_string()])
@@ -624,4 +624,302 @@ fn an_app_with_nothing_linkable_is_an_error() {
     let app = app_of(dir.path());
     let e = links::files(&app, &full()).unwrap_err();
     assert!(e.to_string().starts_with("no route can be linked"), "{e}");
+}
+
+// --- flavours, host-less schemes and path patterns (since 0.11.0) --------------------
+
+const OTHER_FINGERPRINT: &str = "AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89";
+
+fn flavored() -> Links {
+    let sha = format!("android_sha256: [\"{FINGERPRINT}\"]");
+    let other = format!("android_sha256: [\"{OTHER_FINGERPRINT}\"]");
+    links_cfg(&[
+        "domains: [shop.example.com]",
+        "scheme: myshop",
+        "flavors:",
+        "  prod:",
+        "    android_package: com.example.shop",
+        &format!("    {sha}"),
+        "    ios_app_id: ABCDE12345.com.example.shop",
+        "  debug:",
+        "    android_package: com.example.shop.debug",
+        &format!("    {other}"),
+        "    ios_app_id: ABCDE12345.com.example.shop.debug",
+    ])
+    .unwrap()
+}
+
+#[test]
+fn flat_keys_and_one_flavour_give_the_same_files() {
+    let flat = links_cfg(&[
+        "domains: [shop.example.com]",
+        "android_package: com.example.shop",
+        &format!("android_sha256: [\"{FINGERPRINT}\"]"),
+        "ios_app_id: ABCDE12345.com.example.shop",
+    ])
+    .unwrap();
+    let one = links_cfg(&[
+        "domains: [shop.example.com]",
+        "flavors:",
+        "  prod:",
+        "    android_package: com.example.shop",
+        &format!("    android_sha256: [\"{FINGERPRINT}\"]"),
+        "    ios_app_id: ABCDE12345.com.example.shop",
+    ])
+    .unwrap();
+    assert_eq!(written(&flat), written(&one));
+    assert_eq!(flat.apps_android[0].flavor, None);
+    assert_eq!(one.apps_android[0].flavor.as_deref(), Some("prod"));
+}
+
+#[test]
+fn two_flavours_give_two_statements_and_two_app_ids() {
+    let files = written(&flavored());
+    let by = |name: &str| {
+        files
+            .iter()
+            .find(|(p, _)| p.ends_with(name))
+            .unwrap()
+            .1
+            .clone()
+    };
+    let assets: serde_json::Value = serde_json::from_str(&by("assetlinks.json")).unwrap();
+    let packages: Vec<_> = assets
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["target"]["package_name"].as_str().unwrap())
+        .collect();
+    assert_eq!(packages, ["com.example.shop", "com.example.shop.debug"]);
+    assert_eq!(
+        assets[1]["target"]["sha256_cert_fingerprints"][0],
+        OTHER_FINGERPRINT
+    );
+    let aasa: serde_json::Value = serde_json::from_str(&by("apple-app-site-association")).unwrap();
+    assert_eq!(aasa["applinks"]["details"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        aasa["applinks"]["details"][0]["appIDs"],
+        serde_json::json!([
+            "ABCDE12345.com.example.shop",
+            "ABCDE12345.com.example.shop.debug"
+        ])
+    );
+    // The bundle id of the first app names the URL type.
+    assert!(by("info-url-types.xml").contains("<string>com.example.shop</string>"));
+}
+
+#[test]
+fn a_hostless_scheme_filter_has_no_host_and_no_path() {
+    let cfg = |host: &str| {
+        links_cfg(&[
+            "domains: [shop.example.com]",
+            "scheme: myshop",
+            host,
+            "android_package: com.example.shop",
+            &format!("android_sha256: [\"{FINGERPRINT}\"]"),
+        ])
+        .unwrap()
+    };
+    let files = written(&cfg("scheme_host: false"));
+    let xml = &files[0].1;
+    let filter = xml.split("<intent-filter>").nth(1).unwrap();
+    let filter = filter.split("</intent-filter>").next().unwrap();
+    assert_eq!(
+        filter,
+        "\n    <action android:name=\"android.intent.action.VIEW\" />\n    <category android:name=\"android.intent.category.DEFAULT\" />\n    <category android:name=\"android.intent.category.BROWSABLE\" />\n    <data android:scheme=\"myshop\" />\n"
+    );
+    // The https filter keeps its host and paths.
+    assert!(xml.contains("<data android:host=\"shop.example.com\" />"));
+    // `scheme_host: true` is the default, and what was written before.
+    assert_eq!(
+        written(&cfg("scheme_host: true")),
+        written(&cfg("out: links"))
+    );
+    let with_host = &written(&cfg("scheme_host: true"))[0].1;
+    let scheme_filter = with_host.split("<intent-filter>").nth(1).unwrap();
+    assert!(scheme_filter.contains("<data android:host=\"shop.example.com\" />"));
+}
+
+#[test]
+fn paths_replace_the_routes_on_android_and_in_the_association_file() {
+    let l = links_cfg(&[
+        "domains: [shop.example.com]",
+        "android_package: com.example.shop",
+        &format!("android_sha256: [\"{FINGERPRINT}\"]"),
+        "ios_app_id: ABCDE12345.com.example.shop",
+        "paths: [/, /about, /orders/*, /*, /führer]",
+    ])
+    .unwrap();
+    let files = written(&l);
+    let xml = &files[0].1;
+    for want in [
+        "<data android:path=\"/\" />",
+        "<data android:path=\"/about\" />",
+        "<data android:pathPrefix=\"/orders/\" />",
+        "<data android:pathPrefix=\"/\" />",
+        "<data android:path=\"/führer\" />",
+    ] {
+        assert!(xml.contains(want), "{want}");
+    }
+    assert!(!xml.contains("pathPattern"), "no route-derived entries");
+    let aasa = files
+        .iter()
+        .find(|(p, _)| p.ends_with("association"))
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&aasa.1).unwrap();
+    let got: Vec<&str> = json["applinks"]["details"][0]["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["/"].as_str().unwrap())
+        .collect();
+    assert_eq!(got, ["/", "/about", "/orders/*", "/*", "/f%C3%BChrer"]);
+    // The sitemap still comes from the routes.
+    let sitemap = files
+        .iter()
+        .find(|(p, _)| p.ends_with("sitemap.xml"))
+        .unwrap();
+    assert!(sitemap.1.contains("/docs/new"));
+}
+
+#[test]
+fn paths_and_routes_that_disagree_are_warned_about() {
+    let dir = project(&[
+        ("page.dart", &page("Home")),
+        ("about/page.dart", &page("About")),
+        ("orders/$id/page.dart", &page("Order")),
+        ("secret/page.dart", &page("Secret")),
+    ]);
+    let app = app_of(dir.path());
+    let l = links_cfg(&[
+        "domains: [shop.example.com]",
+        "ios_app_id: ABCDE12345.com.example.shop",
+        "paths: [/, /about, /orders/*, /nothing, /orders/42, /nothing/*]",
+    ])
+    .unwrap();
+    assert_eq!(
+        links::warnings(&app, &l),
+        [
+            "`/secret` is linkable, and no `fespalier.links.paths` entry covers it: add `/secret/*`, or `const linkable = false;` in its route.dart",
+            "`fespalier.links.paths`: `/nothing` matches no linkable route",
+            "`fespalier.links.paths`: `/nothing/*` matches no linkable route",
+        ]
+    );
+    let none = links_cfg(&["domains: [shop.example.com]"]).unwrap();
+    assert!(links::warnings(&app, &none).is_empty());
+}
+
+#[test]
+fn flavour_and_path_mistakes_name_the_key() {
+    let d = "domains: [shop.example.com]";
+    let sha = format!("android_sha256: [\"{FINGERPRINT}\"]");
+    let flat_and_flavors = error_of(&[
+        d,
+        "ios_app_id: ABCDE12345.com.example.shop",
+        "flavors:",
+        "  prod:",
+        "    ios_app_id: ABCDE12345.com.example.shop",
+    ]);
+    assert_eq!(
+        flat_and_flavors,
+        "`fespalier.links` takes `android_package`, `android_sha256` and `ios_app_id` for one app, or `flavors:` for several, not both"
+    );
+    for bad in ["Prod", "1x", "pro-d", "x y"] {
+        assert_eq!(
+            error_of(&[
+                d,
+                "flavors:",
+                &format!("  '{bad}':"),
+                "    ios_app_id: ABCDE12345.com.example.shop"
+            ]),
+            format!(
+                "`fespalier.links.flavors`: `{bad}` is not a flavour name; use lower-case letters, digits and `_`, starting with a letter (the name Gradle and Xcode give it, like `prod`)"
+            )
+        );
+    }
+    assert_eq!(
+        error_of(&[d, "flavors:", "  prod: {}"]),
+        "`fespalier.links.flavors.prod` sets neither `android_package` nor `ios_app_id`"
+    );
+    let dup_android = error_of(&[
+        d,
+        "flavors:",
+        "  a:",
+        "    android_package: com.example.shop",
+        &format!("    {sha}"),
+        "  b:",
+        "    android_package: com.example.shop",
+        &format!("    {sha}"),
+    ]);
+    assert_eq!(
+        dup_android,
+        "`fespalier.links.flavors`: `com.example.shop` is the `android_package` of both `a` and `b`"
+    );
+    let dup_ios = error_of(&[
+        d,
+        "flavors:",
+        "  a:",
+        "    ios_app_id: ABCDE12345.com.example.shop",
+        "  b:",
+        "    ios_app_id: ABCDE12345.com.example.shop",
+    ]);
+    assert_eq!(
+        dup_ios,
+        "`fespalier.links.flavors`: `ABCDE12345.com.example.shop` is the `ios_app_id` of both `a` and `b`"
+    );
+    // The per-app checks name the flavour.
+    assert!(
+        error_of(&[
+            d,
+            "flavors:",
+            "  prod:",
+            "    android_package: com.example.shop"
+        ])
+        .starts_with("`fespalier.links.flavors.prod.android_package` needs `android_sha256`")
+    );
+    assert!(
+        error_of(&[d, "flavors:", "  prod:", "    ios_app_id: nope"])
+            .starts_with("`fespalier.links.flavors.prod.ios_app_id` must be the Team ID")
+    );
+    // A flavour can't set what is shared.
+    assert!(
+        Pubspec::parse(
+            "name: demo\nfespalier:\n  links:\n    flavors:\n      prod:\n        domains: [a.example.com]\n"
+        )
+        .is_err()
+    );
+    assert_eq!(
+        error_of(&[
+            d,
+            "scheme_host: false",
+            "ios_app_id: ABCDE12345.com.example.shop"
+        ]),
+        "`fespalier.links.scheme_host` needs `scheme`"
+    );
+    assert_eq!(
+        error_of(&[d, "paths: []"]),
+        "`fespalier.links.paths` is empty: leave it out to list every linkable route"
+    );
+    for bad in [
+        "about", "/a//b", "/a/", "/a*", "/*/a", "/a/*/b", "/a?b", "/a b", "",
+    ] {
+        assert_eq!(
+            error_of(&[d, &format!("paths: ['{bad}']")]),
+            format!(
+                "`fespalier.links.paths`: `{bad}` is not a path pattern; write `/about` (that path) or `/orders/*` (everything below `/orders/`), starting with `/`, with `*` only as the whole last segment"
+            ),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn flavours_keep_the_order_the_pubspec_writes() {
+    let l = flavored();
+    let names: Vec<_> = l
+        .apps_ios
+        .iter()
+        .map(|a| a.flavor.clone().unwrap())
+        .collect();
+    assert_eq!(names, ["prod", "debug"]);
 }

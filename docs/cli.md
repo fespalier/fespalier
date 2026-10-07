@@ -262,7 +262,7 @@ fespalier:
     android_manifest: android/app/src/main/AndroidManifest.xml # since 0.11.0; opt in: `fsp links` edits it (see below)
     ios_entitlements: ios/Runner/Runner.entitlements # since 0.11.0; opt in: `fsp links` edits its applinks: entries
     # flavors: ...                    # since 0.11.0: instead of the keys for one app above (see Flavours)
-    out: links # default: where the files go, relative to the project
+    out: links # default: where the files go, relative to the project; `false` (since 0.12.0): no sitemap, no .well-known (see below)
 ```
 
 It then writes below `out` (`links/` unless you say otherwise; commit it, like `app.g.dart`):
@@ -278,6 +278,8 @@ links/
 ```
 
 - The Android files are written when `android_package` is set (it needs `android_sha256`, and the reverse), the iOS ones when `ios_app_id` is, and the sitemap always.
+- **`out: false`** (since 0.12.0) writes nothing below `out`: no sitemap, no `.well-known` files, no copies of the snippets. `fsp links` then manages only the [platform files](#editing-androidmanifestxml-and-the-entitlements) you opted into (`android_manifest`, `ios_entitlements`), and `fsp links --check` compares only those, ignoring whatever is left in the old folder (`fsp links` doesn't remove it). `true` is an error. Use it when the app serves its own `/.well-known` files and sitemap.
+- **`android_sha256` is optional with `out: false`** (since 0.12.0): the fingerprints only go into `assetlinks.json`, which isn't written then, so `android_package` can stand alone (the manifest's filters don't need them). Any you list are still checked. While `fsp links` writes `assetlinks.json`, `android_package` without `android_sha256` is the error ``needs `android_sha256` while `fsp links` writes assetlinks.json``.
 - A missing key, or a fingerprint or package that isn't one, is an error that names the key. Only `fsp links` checks them: a mistake there never stops `fsp gen`.
 - A file the config no longer asks for is removed by `fsp links` and reported by `--check`.
 

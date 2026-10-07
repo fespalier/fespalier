@@ -780,7 +780,10 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
             format!("{out}/{}", f.path)
         }
     };
-    let outputs = files(&app, &links)?;
+    let mut outputs = files(&app, &links)?;
+    if !links.write_out {
+        outputs.clear();
+    }
     let (platform, platform_warnings) = platform_files::plan(
         project,
         &links,
@@ -846,16 +849,27 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
     stale.extend(platform_stale);
     if check {
         if stale.is_empty() {
-            eprintln!(
-                "✓ links: {count} files in {folder} are up to date{}",
-                and_platform(String::new())
-            );
+            if links.write_out {
+                eprintln!(
+                    "✓ links: {count} files in {folder} are up to date{}",
+                    and_platform(String::new())
+                );
+            } else {
+                eprintln!("✓ links: {platform_count} platform files are up to date");
+            }
             return Ok(());
         }
         for s in &stale {
             eprintln!("{s}");
         }
         bail!("{} file(s) out of date; run `fsp links`", stale.len());
+    }
+    if !links.write_out {
+        eprintln!(
+            "✓ links: {platform_count} platform files ({created} written, {edited} edited, {} unchanged)",
+            platform_count - edited - created
+        );
+        return Ok(());
     }
     eprintln!(
         "✓ links: {count} files in {folder} ({written} written, {} unchanged){}",

@@ -1169,6 +1169,59 @@ fn flavours_keep_the_order_the_pubspec_writes() {
     assert_eq!(names, ["prod", "debug"]);
 }
 
+#[test]
+fn out_false_writes_no_folder_and_frees_the_package_from_its_fingerprints() {
+    let d = "domains: [shop.example.com]";
+    // The default is unchanged.
+    let l = links_cfg(&[d]).unwrap();
+    assert!(l.write_out);
+    assert_eq!(l.out, "links");
+
+    let l = links_cfg(&[d, "out: false", "android_package: com.example.shop"]).unwrap();
+    assert!(!l.write_out);
+    assert_eq!(l.apps_android[0].package, "com.example.shop");
+    assert!(l.apps_android[0].sha256.is_empty());
+
+    // Fingerprints stay allowed (and checked) with `out: false`.
+    let bad = error_of(&[
+        d,
+        "out: false",
+        "android_package: com.example.shop",
+        "android_sha256: [nope]",
+    ]);
+    assert!(bad.contains("is not a SHA-256 fingerprint"), "{bad}");
+    let bad = error_of(&[d, "out: false", "android_package: shop"]);
+    assert!(bad.contains("must be an Android application id"), "{bad}");
+
+    // Without the switch the fingerprints are required, and the message says why.
+    let e = error_of(&[d, "android_package: com.example.shop"]);
+    assert!(
+        e.starts_with(
+            "`fespalier.links.android_package` needs `android_sha256` while `fsp links` writes assetlinks.json"
+        ),
+        "{e}"
+    );
+    assert!(e.contains("links: out: false"), "{e}");
+    let e = error_of(&[d, "out: deeplinks", "android_package: com.example.shop"]);
+    assert!(e.contains("needs `android_sha256`"), "{e}");
+
+    // A flavour needs none either; `true` is refused.
+    assert!(
+        links_cfg(&[
+            d,
+            "out: false",
+            "flavors:",
+            "  prod: { android_package: com.example.shop }",
+        ])
+        .is_ok()
+    );
+    let e = error_of(&[d, "out: true"]);
+    assert!(
+        e.contains("`fespalier.links.out` is a folder, or `false`"),
+        "{e}"
+    );
+}
+
 fn rest_page(name: &str) -> String {
     format!(
         "class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, required this.path}}); final List<String> path; }}"

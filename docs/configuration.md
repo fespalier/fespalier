@@ -36,7 +36,7 @@ fespalier:
   #   android_manifest: android/app/src/main/AndroidManifest.xml   # since 0.11.0; `fsp links` edits it
   #   ios_entitlements: ios/Runner/Runner.entitlements            # since 0.11.0; `fsp links` edits it
   #   flavors: {prod: {android_package: ..., android_sha256: [...], ios_app_id: ..., ios_entitlements: ...}}   # since 0.11.0, instead of the keys for one app above
-  #   out: links                  # default
+  #   out: links                  # default; `false` (since 0.12.0): no sitemap and no .well-known, only the platform files (then android_sha256 is optional)
   semantics_ids: false # `true` (since 0.7.0): every page wears `Semantics(identifier: 'route:/...')`, for Maestro
   scroll_restoration: false # `true` (since 0.8.1): the browser's back and forward bring a page's scroll offsets back
   main: auto # `generated` | `manual` (since 0.8.1): whether `fsp` writes the main() in lib/app.main.g.dart

@@ -110,7 +110,7 @@ fespalier:
     # flavors:                             # since 0.11.0, instead of the keys for one app (android_manifest stays top-level)
     #   prod:  {android_package: ..., android_sha256: [...], ios_app_id: ..., ios_entitlements: ios/Runner/RunnerProd.entitlements}
     #   debug: {android_package: ..., android_sha256: [...], ios_app_id: ..., ios_entitlements: ios/Runner/RunnerDebug.entitlements}
-    out: links                             # default; relative to the project, no `..`
+    out: links                             # default; relative to the project, no `..`; `false` (since 0.12.0): no sitemap or .well-known, platform files only, android_sha256 optional
 ```
 
 It writes, below `out` (commit it, like `app.g.dart`): `android/intent-filters.xml` (one

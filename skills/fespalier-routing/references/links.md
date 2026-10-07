@@ -235,6 +235,9 @@ Not `RouteLink`: a link the **platform** opens. `docs/navigation.md` has the pag
 
 1. `links:` (`domains`, `scheme`, `android_package` + `android_sha256`, `ios_app_id`, and `android_manifest:` /
    `ios_entitlements:` to let `fsp links` edit the platform files), then `fsp links`, and `fsp links --check` in CI.
+   `out: false` (since 0.12.0) writes no sitemap and no `.well-known` files: `fsp links` and `--check` then handle only the
+   platform files, and `android_sha256` is optional (it only feeds `assetlinks.json`); an old `links/` folder is left alone.
+   `out: true` is an error.
 2. Serve `web/.well-known/assetlinks.json` and `apple-app-site-association` at `https://<domain>/.well-known/`, as JSON,
    with no redirect.
 3. On a device: `adb shell am start -a android.intent.action.VIEW -d "https://shop.example.com/orders/42" com.example.shop`

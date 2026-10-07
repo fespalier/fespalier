@@ -139,9 +139,9 @@ after the first frame that shows the router (an adapter may change a provider th
 `AppRoutes.attach(router)` without a container (what `AppRoutes.router()` does) only follows the router for
 DevTools, observe.dart and telemetry. Each adapter is attached once per router, in the pubspec's order, and
 one that throws is reported with `FlutterError.reportError` while the others still run. `pumpRouter` does not
-attach adapters, so a widget test of a page never runs them. The app's own `attach(router, container)` (and a
-`ready(container)` before the router) in startup.dart, since 0.12.0, run after the adapters':
-[`ready()` and `attach()`](app-startup.md).
+attach adapters, so a widget test of a page never runs them. The app's own `attach(router, container)` in
+startup.dart (since 0.12.0) runs right after the adapters' `attach`; its `ready(container)` runs earlier, before the
+router exists: [`ready()` and `attach()`](app-startup.md).
 
 **`launch` and `onEnter` (since 0.11.0).** `FespalierAdapters.launch()` asks every adapter once, in order, and the
 first non-null answer (an `InboundLaunch`) wins; it is `null` on the web and sync unless an adapter answers with a

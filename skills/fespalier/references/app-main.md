@@ -102,13 +102,18 @@ With a `ready()` the gate builds the `ProviderContainer` itself (same overrides,
 read once after it succeeded), the container, `ready()`, the router, `attach()` after the frame (the adapters' first, then
 the app's; an error in one is reported, "while running attach() in startup.dart", and does not stop the other).
 
+**Providers `ready()` reads must be `keepAlive`, or held**: the container is not mounted until `ready()` is done, and
+Riverpod disposes an unlistened auto-dispose provider (a `@riverpod` one) on the next timer tick, so one that `ready()` only
+reads or awaits is gone before the first route. Use `@Riverpod(keepAlive: true)`, or `container.listen(p, (_, _) {})` in `ready()`.
+
 `ready()` is sync-stays-sync like `startup()`: a sync one is done before the first frame, an async one shows `splash.dart`
 (or defers the first frame without one), a throw is reported ("while running ready() in startup.dart") and shown with
 `retry`, which **disposes the container, makes a fresh one and runs `ready()` again, without running `startup()`
 again**. So `ready()` can run more than once and must keep no state of its own between tries. No timer, microtask or listener
 of the gate's own. `pumpRouter` runs neither; `AppMain.root()` does. A `main: manual` app owns its container and calls
 its own `ready(container)` after creating it, and `attach(router, container)` in a post-frame callback beside
-`AppRoutes.attach(router, container)` (`docs/app-startup.md`).
+`AppRoutes.attach(router, container)` (which exists only when `app.g.dart` has it: adapters, observe.dart or telemetry; with
+`adapters:` see "With `main: manual`: `AppAdapters`" below) (`docs/app-startup.md`).
 
 ### The order, and what stays sync
 

@@ -37,7 +37,7 @@ bytes. New in `startup.dart` (since 0.12.0): `FutureOr<void> ready(ProviderConta
 `void attach(GoRouter router, ProviderContainer container)`, each optional. The gate makes the app's
 `ProviderContainer` itself when `ready()` exists, runs it before the router is built, and calls `attach()` after the
 first frame that shows the router, after the adapters' `attach`. The order is `zone()`, `startup()`, the container,
-`ready()`, the router, `attach()`. A `ready()` that throws goes to the splash's error and `retry`, which
+`ready()`, the router, `attach()`. `ready` and `attach` are reserved names in startup.dart: a helper of that name with another shape is now an `fsp` error (rename it or make it private). A `ready()` that throws goes to the splash's error and `retry`, which
 disposes the container, makes a fresh one and runs `ready()` again (not `startup()`). To move a `main: manual` app's
 `main()` over: its overrides to `startup()` (they are made before any container), the code between creating its
 `ProviderContainer` and `runApp` (an `await container.read(x.future)`, an eager read, a `container.listen`) to

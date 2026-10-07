@@ -557,7 +557,7 @@ fn read_startup(root: &Node, m: &Module, own_router: bool, diags: &mut Diags) ->
             && !f.params[0].named
             && matches!(
                 bare(&f.params[0].ty).as_deref(),
-                None | Some("ProviderContainer")
+                None | Some("ProviderContainer" | "ProviderContainer?")
             )
             && matches!(
                 bare(&f.ret).as_deref(),
@@ -581,7 +581,18 @@ fn read_startup(root: &Node, m: &Module, own_router: bool, diags: &mut Diags) ->
                 None | Some("ProviderContainer")
             )
             && matches!(bare(&f.ret).as_deref(), None | Some("void"));
-        if shape_ok {
+        let is_async = root
+            .files
+            .get(&Kind::Startup)
+            .and_then(|src| src.get(f.extent.clone()))
+            .is_some_and(|text| {
+                let head = text.find(['{', '=']).map_or(text, |i| &text[..i]);
+                head.trim_end().ends_with("async")
+            });
+        if shape_ok && is_async {
+            let msg = "attach() cannot be `async`: nothing awaits it, so an error would escape the gate's reporting; make it a plain `void attach(...)` and start async work with `.then(..., onError: ...)`";
+            diags.error(&file, Some(&f.span), msg);
+        } else if shape_ok {
             out.attach = true;
         } else {
             let msg = "attach() is called once with the router and the app's container, after the first frame: declare it `void attach(GoRouter router, ProviderContainer container)`";

@@ -189,9 +189,21 @@ class _StartupGateState extends State<StartupGate> {
   void _runReady({required bool direct, required bool first}) {
     final run = _run;
     final FutureOr<void> result;
+    final ProviderContainer container;
     try {
-      final container = _newContainer();
-      _container = container;
+      container = _newContainer();
+    } catch (error, stackTrace) {
+      _failed(
+        error,
+        stackTrace,
+        direct: direct,
+        inReady: true,
+        what: 'making the container',
+      );
+      return;
+    }
+    _container = container;
+    try {
       result = widget.ready!(container);
     } catch (error, stackTrace) {
       _failed(error, stackTrace, direct: direct, inReady: true);
@@ -257,6 +269,7 @@ class _StartupGateState extends State<StartupGate> {
     StackTrace stackTrace, {
     required bool direct,
     bool inReady = false,
+    String? what,
   }) {
     if (!inReady) _startupDone = false;
     _disposeContainer();
@@ -266,7 +279,9 @@ class _StartupGateState extends State<StartupGate> {
         stack: stackTrace,
         library: 'fespalier',
         context: ErrorDescription(
-          inReady
+          what != null
+              ? 'while $what for ready() in startup.dart'
+              : inReady
               ? 'while running ready() in startup.dart'
               : 'while running startup() in startup.dart',
         ),

@@ -1473,3 +1473,23 @@ fn adapters_with_each_root_file_combination() {
         ],
     );
 }
+
+#[test]
+fn an_async_attach_is_an_error_and_a_nullable_container_is_fine() {
+    for bad in [
+        "void attach(GoRouter router, ProviderContainer container) async {}",
+        "void attach(GoRouter router, ProviderContainer container) async => null;",
+    ] {
+        let d = errors(&[("page.dart", HOME), ("startup.dart", bad)]);
+        assert_eq!(d.len(), 1, "{bad}: {d:?}");
+        assert!(d[0].contains("attach() cannot be `async`"), "{bad}: {d:?}");
+    }
+    let main = main_of(&[
+        ("page.dart", HOME),
+        (
+            "startup.dart",
+            "void ready([ProviderContainer? container]) {}",
+        ),
+    ]);
+    has(&main, &["ready: _i0.ready,"]);
+}

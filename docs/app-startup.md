@@ -98,6 +98,8 @@ Future<List<Override>> startup() async => [prefsProvider.overrideWithValue(await
 
 /// The container the app runs in: the overrides, observers and retry above are already on it.
 Future<void> ready(ProviderContainer container) async {
+  // keepAlive providers (or held with container.listen): an auto-dispose one nobody listens to is gone
+  // before the first route, see below.
   await container.read(databaseProvider.future); // the first route renders with the store open
   container.read(analyticsProvider); // eager
   container.listen(sessionProvider, (_, next) => syncPushToken(next));
@@ -120,9 +122,11 @@ The order is **`zone()` → `startup()` → the container → `ready()` → the 
 
 `ready()` follows the rules of `startup()`. **Sync stays sync**: one that returns no `Future` is done before the first frame. An async one shows `splash.dart` meanwhile, or, without one, defers the first frame like an async `startup()` (still no timer, and the gate follows the `Future` with `then`). One that throws is reported ("while running ready() in startup.dart") and shown with `retry`; `retry` **disposes the failed container, makes a fresh one with the same overrides and runs `ready()` again**. It does not run `startup()` again: that had succeeded, and its overrides are kept. A failing `startup()` is retried whole, `ready()` after it. So `ready()` may be tried more than once, on a new container each time, and should not keep state of its own between tries.
 
+**Providers `ready()` reads must not be auto-dispose, or must be held.** The container is not mounted until `ready()` is done, and Riverpod disposes an auto-dispose provider that nothing listens to on the next timer tick. A `@riverpod` provider (auto-dispose by default) that `ready()` only reads or awaits is therefore gone before the first route, and the route builds it again. Make it `@Riverpod(keepAlive: true)`, or hold it for the app's life with `container.listen(provider, (_, _) {})` in `ready()` (the listener lives as long as the container).
+
 The gate disposes its container with the app. `ready()` and `attach()` name `ProviderContainer` and `GoRouter`, which `package:fespalier/fespalier.dart` exports. Declare them as shown: a different parameter list or return type is an error with the signature in its message. `pumpRouter` and a test that pumps a page do not run them; `AppMain.root()` does.
 
-**With `main: manual`** the files are not read, so you own the container and call both yourself, in the same order. `ready` goes after the container exists and before `runApp`, `attach` after the router and the container exist (next to `AppRoutes.attach`, which runs the adapters', so the order is the same as the generated one's):
+**With `main: manual`** the files are not read, so you own the container and call both yourself, in the same order. `ready` goes after the container exists and before `runApp`, `attach` after the router and the container exist (next to `AppRoutes.attach`, which runs the adapters', so the order is the same as the generated one's). `AppRoutes.attach` exists only when your `app.g.dart` has it (adapters, observe.dart or telemetry); drop that line otherwise. With `adapters:` the rest of the adapters' calls (`zone`, `wrap`, `overrides`, `launch`) are in [With `main: manual`](adapters.md#with-main-manual-appadapters):
 
 ```dart
 // lib/main.dart, with `fespalier: {main: manual}`
@@ -139,7 +143,7 @@ Future<void> main() async {
     ),
   );
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    AppRoutes.attach(router, container); // the adapters', once
+    AppRoutes.attach(router, container); // the adapters', once; only when app.g.dart has it
     attach(router, container); // the app's
   });
 }

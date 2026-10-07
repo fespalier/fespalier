@@ -455,18 +455,26 @@ pub struct Links {
     pub out: String,
 }
 
-/// A flavour name as Gradle and Xcode take it: lower-case letters, digits and `_`.
+/// A flavour name as Gradle takes it (`prod`, `devStaging`): letters, digits and `_`, starting
+/// with a lower-case letter.
 fn is_flavor_name(s: &str) -> bool {
     s.chars().next().is_some_and(|c| c.is_ascii_lowercase())
-        && s.chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Why a `paths:` entry is refused.
+enum PathError {
+    /// Not a path pattern at all.
+    Shape,
+    /// A `:id` or `$id` segment, which a platform would read as those characters.
+    Dynamic(String),
 }
 
 /// One `paths:` entry: `/about`, `/orders/*`, `/`.
-fn link_path(raw: &str) -> Option<LinkPath> {
-    let rest = raw.strip_prefix('/')?;
+fn link_path(raw: &str) -> Result<LinkPath, PathError> {
+    let rest = raw.strip_prefix('/').ok_or(PathError::Shape)?;
     if rest.is_empty() {
-        return Some(LinkPath::Exact(vec![]));
+        return Ok(LinkPath::Exact(vec![]));
     }
     let mut segs: Vec<String> = vec![];
     let parts: Vec<&str> = rest.split('/').collect();
@@ -476,15 +484,19 @@ fn link_path(raw: &str) -> Option<LinkPath> {
             prefix = true;
             continue;
         }
+        if part.starts_with([':', '$']) {
+            return Err(PathError::Dynamic((*part).to_string()));
+        }
         if part.is_empty()
+            || matches!(*part, "." | "..")
             || part.contains(['*', '?', '#', '\\', '%'])
             || part.chars().any(char::is_whitespace)
         {
-            return None;
+            return Err(PathError::Shape);
         }
         segs.push((*part).to_string());
     }
-    Some(if prefix {
+    Ok(if prefix {
         LinkPath::Prefix(segs)
     } else {
         LinkPath::Exact(segs)
@@ -578,7 +590,10 @@ impl LinksConfig {
             );
         }
 
-        let flavors = self.flavors.as_ref().filter(|f| !f.0.is_empty());
+        if self.flavors.as_ref().is_some_and(|f| f.0.is_empty()) {
+            bail!("`fespalier.links.flavors` is empty: list a flavour, or leave it out");
+        }
+        let flavors = self.flavors.as_ref();
         let (mut apps_android, mut apps_ios) = (vec![], vec![]);
         match flavors {
             None => {
@@ -603,11 +618,14 @@ impl LinksConfig {
                         "`fespalier.links` takes `android_package`, `android_sha256` and `ios_app_id` for one app, or `flavors:` for several, not both"
                     );
                 }
-                for (name, f) in list {
+                for (i, (name, f)) in list.iter().enumerate() {
                     if !is_flavor_name(name) {
                         bail!(
-                            "`fespalier.links.flavors`: `{name}` is not a flavour name; use lower-case letters, digits and `_`, starting with a letter (the name Gradle and Xcode give it, like `prod`)"
+                            "`fespalier.links.flavors`: `{name}` is not a flavour name; use letters, digits and `_`, starting with a lower-case letter (the name Gradle gives it, like `prod` or `devStaging`)"
                         );
+                    }
+                    if list[..i].iter().any(|(n, _)| n == name) {
+                        bail!("`fespalier.links.flavors`: `{name}` is listed twice");
                     }
                     if f.android_package.is_none()
                         && f.android_sha256.is_none()
@@ -669,10 +687,14 @@ impl LinksConfig {
             Some(raw) => {
                 let mut out: Vec<LinkPath> = vec![];
                 for entry in raw {
-                    let Some(p) = link_path(entry) else {
-                        bail!(
-                            "`fespalier.links.paths`: `{entry}` is not a path pattern; write `/about` (that path) or `/orders/*` (everything below `/orders/`), starting with `/`, with `*` only as the whole last segment"
-                        );
+                    let p = match link_path(entry) {
+                        Ok(p) => p,
+                        Err(PathError::Dynamic(seg)) => bail!(
+                            "`fespalier.links.paths`: `{entry}` has the segment `{seg}`; `paths:` takes no `:name` or `$name` segment, so write `*` for everything below a path (`/orders/*`)"
+                        ),
+                        Err(PathError::Shape) => bail!(
+                            "`fespalier.links.paths`: `{entry}` is not a path pattern; write `/about` (that path) or `/orders/*` (everything below `/orders/`), starting with `/`, with `*` only as the whole last segment and no empty, `.` or `..` segment, no `?`, `#`, `%`, `\\` and no whitespace"
+                        ),
                     };
                     if !out.contains(&p) {
                         out.push(p);
@@ -792,7 +814,7 @@ fn is_link_prefix(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
     let body = rest.strip_suffix('#').unwrap_or(rest);
     scheme_ok
-        && !rest.is_empty()
+        && (!rest.is_empty() || !matches!(scheme, "http" | "https"))
         && !s.contains(char::is_whitespace)
         && !s.contains('?')
         && !body.contains('#')
@@ -838,7 +860,12 @@ impl MaestroConfig {
                         "`fespalier.maestro.link` must be a URL like `myshop://shop.example.com` or `http://localhost:8080/#`, with no query, or a Maestro variable like `${{LINK}}`, got `{raw}`"
                     );
                 }
-                raw.strip_suffix('/').unwrap_or(raw).to_string()
+                // `myshop://` stands alone: its slashes are the scheme's.
+                if raw.ends_with("://") {
+                    raw.clone()
+                } else {
+                    raw.strip_suffix('/').unwrap_or(raw).to_string()
+                }
             }
             None => match (&target, links) {
                 (Target::Web(url), _) => url.strip_suffix('/').unwrap_or(url).to_string(),

@@ -800,13 +800,92 @@ fn paths_and_routes_that_disagree_are_warned_about() {
     assert_eq!(
         links::warnings(&app, &l),
         [
-            "`/secret` is linkable, and no `fespalier.links.paths` entry covers it: add `/secret/*`, or `const linkable = false;` in its route.dart",
+            "`/secret` is linkable, and no `fespalier.links.paths` entry covers it: add `/secret`, or `const linkable = false;` in its route.dart",
             "`fespalier.links.paths`: `/nothing` matches no linkable route",
             "`fespalier.links.paths`: `/nothing/*` matches no linkable route",
         ]
     );
     let none = links_cfg(&["domains: [shop.example.com]"]).unwrap();
     assert!(links::warnings(&app, &none).is_empty());
+}
+
+#[test]
+fn the_advice_fits_the_shape_of_the_route() {
+    let dir = project(&[
+        ("page.dart", &page("Home")),
+        ("orders/$id/page.dart", &dynamic_page("Order", "id")),
+        ("docs/$$path/page.dart", &rest_page("Doc")),
+        ("files/$$$path/page.dart", &rest_page("File")),
+    ]);
+    let app = app_of(dir.path());
+    let l = links_cfg(&[
+        "domains: [shop.example.com]",
+        "ios_app_id: ABCDE12345.com.example.shop",
+        "paths: [/nothing]",
+    ])
+    .unwrap();
+    let w = links::warnings(&app, &l);
+    for want in [
+        "`/` is linkable, and no `fespalier.links.paths` entry covers it: add `/`, or",
+        "`/orders/:id` is linkable, and no `fespalier.links.paths` entry covers it: add `/orders/*`, or",
+        "add `/files` and `/files/*`, or",
+    ] {
+        assert!(w.iter().any(|m| m.contains(want)), "{want}: {w:?}");
+    }
+}
+
+#[test]
+fn a_root_prefix_covers_and_meets_every_route() {
+    let dir = project(&[("page.dart", &page("Home"))]);
+    let app = app_of(dir.path());
+    let l = links_cfg(&[
+        "domains: [shop.example.com]",
+        "ios_app_id: ABCDE12345.com.example.shop",
+        "paths: [/*]",
+    ])
+    .unwrap();
+    assert!(links::warnings(&app, &l).is_empty());
+    // `/files/*` does not open `/files`, which `$$$path` answers.
+    let dir = project(&[("files/$$$path/page.dart", &rest_page("File"))]);
+    let app = app_of(dir.path());
+    let l = links_cfg(&[
+        "domains: [shop.example.com]",
+        "ios_app_id: ABCDE12345.com.example.shop",
+        "paths: [/files/*]",
+    ])
+    .unwrap();
+    let w = links::warnings(&app, &l);
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].contains("add `/files` and `/files/*`"), "{w:?}");
+}
+
+#[test]
+fn a_listed_path_keeps_a_case_insensitive_route_insensitive() {
+    let dir = project(&[
+        ("page.dart", &page("Home")),
+        ("about/route.dart", "const caseSensitive = false;"),
+        ("about/page.dart", &page("About")),
+    ]);
+    let app = app_of(dir.path());
+    let l = links_cfg(&[
+        "domains: [shop.example.com]",
+        "ios_app_id: ABCDE12345.com.example.shop",
+        "paths: [/, /about]",
+    ])
+    .unwrap();
+    let files = links::files(&app, &l).unwrap();
+    let aasa = files
+        .iter()
+        .find(|f| f.path.ends_with("association"))
+        .and_then(|f| f.text.clone())
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_str(&aasa).unwrap();
+    let c = &json["applinks"]["details"][0]["components"];
+    assert_eq!(c[0], serde_json::json!({"/": "/"}));
+    assert_eq!(
+        c[1],
+        serde_json::json!({"/": "/about", "caseSensitive": false})
+    );
 }
 
 #[test]
@@ -833,10 +912,35 @@ fn flavour_and_path_mistakes_name_the_key() {
                 "    ios_app_id: ABCDE12345.com.example.shop"
             ]),
             format!(
-                "`fespalier.links.flavors`: `{bad}` is not a flavour name; use lower-case letters, digits and `_`, starting with a letter (the name Gradle and Xcode give it, like `prod`)"
+                "`fespalier.links.flavors`: `{bad}` is not a flavour name; use letters, digits and `_`, starting with a lower-case letter (the name Gradle gives it, like `prod` or `devStaging`)"
             )
         );
     }
+    assert!(
+        links_cfg(&[
+            d,
+            "flavors:",
+            "  devStaging:",
+            "    ios_app_id: ABCDE12345.com.example.shop"
+        ])
+        .is_ok()
+    );
+    assert_eq!(
+        error_of(&[d, "flavors: {}"]),
+        "`fespalier.links.flavors` is empty: list a flavour, or leave it out"
+    );
+    // A repeated name is read as two entries by the map, and refused.
+    assert_eq!(
+        error_of(&[
+            d,
+            "flavors:",
+            "  a:",
+            "    ios_app_id: ABCDE12345.com.example.shop",
+            "  a:",
+            "    ios_app_id: ABCDE12345.com.example.other",
+        ]),
+        "`fespalier.links.flavors`: `a` is listed twice"
+    );
     assert_eq!(
         error_of(&[d, "flavors:", "  prod: {}"]),
         "`fespalier.links.flavors.prod` sets neither `android_package` nor `ios_app_id`"
@@ -901,12 +1005,26 @@ fn flavour_and_path_mistakes_name_the_key() {
         "`fespalier.links.paths` is empty: leave it out to list every linkable route"
     );
     for bad in [
-        "about", "/a//b", "/a/", "/a*", "/*/a", "/a/*/b", "/a?b", "/a b", "",
+        "about", "/a//b", "/a/", "/a*", "/*/a", "/a/*/b", "/a?b", "/a b", "", "/a/.", "/..",
+        "/a%20b", "/a#b", "/a\\\\b",
     ] {
         assert_eq!(
             error_of(&[d, &format!("paths: ['{bad}']")]),
             format!(
-                "`fespalier.links.paths`: `{bad}` is not a path pattern; write `/about` (that path) or `/orders/*` (everything below `/orders/`), starting with `/`, with `*` only as the whole last segment"
+                "`fespalier.links.paths`: `{bad}` is not a path pattern; write `/about` (that path) or `/orders/*` (everything below `/orders/`), starting with `/`, with `*` only as the whole last segment and no empty, `.` or `..` segment, no `?`, `#`, `%`, `\\` and no whitespace"
+            ),
+            "{bad}"
+        );
+    }
+    for (bad, seg) in [
+        ("/orders/:id", ":id"),
+        ("/orders/$id", "$id"),
+        ("/$$rest/*", "$$rest"),
+    ] {
+        assert_eq!(
+            error_of(&[d, &format!("paths: ['{bad}']")]),
+            format!(
+                "`fespalier.links.paths`: `{bad}` has the segment `{seg}`; `paths:` takes no `:name` or `$name` segment, so write `*` for everything below a path (`/orders/*`)"
             ),
             "{bad}"
         );
@@ -922,4 +1040,10 @@ fn flavours_keep_the_order_the_pubspec_writes() {
         .map(|a| a.flavor.clone().unwrap())
         .collect();
     assert_eq!(names, ["prod", "debug"]);
+}
+
+fn rest_page(name: &str) -> String {
+    format!(
+        "class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, required this.path}}); final List<String> path; }}"
+    )
 }

@@ -123,7 +123,7 @@ and, with `scheme`, `ios/info-url-types.xml` (iOS, when `ios_app_id` is set); an
   `applinks:` lines to `Runner.entitlements`, and copy `web/` into the Flutter project's
   `web/` (or serve it from the domain). Android verifies only an `assetlinks.json` served
   over HTTPS at `/.well-known/assetlinks.json` with no redirect.
-- **Flavours (since 0.11.0).** `flavors:` maps a name (lower-case letters, digits, `_`) to
+- **Flavours (since 0.11.0).** `flavors:` maps a name (letters, digits, `_`, starting lower-case: `prod`, `devStaging`) to
   `android_package` (with `android_sha256`) and/or `ios_app_id`, instead of the flat keys (both
   is an error; the flat keys stay valid as one unnamed app and give the output they always did).
   `assetlinks.json` has one statement per package, the association file one `details` entry with
@@ -135,8 +135,12 @@ and, with `scheme`, `ios/info-url-types.xml` (iOS, when `ios_app_id` is set); an
   reaches `/42`.
 - **`paths:` (since 0.11.0)** replaces the route-derived Android `<data>` paths and AASA
   components: `/x` is `android:path="/x"` and `/x`, `/x/*` is `pathPrefix="/x/"` and `/x/*`, `*`
-  only as the whole last segment. The sitemap still comes from the routes. A linkable route no
-  entry covers, and an entry no route matches, are warnings (never a `--check` failure).
+  only as the whole last segment, never `:id` or `$id`. A case-insensitive route an entry
+  meets gives it `caseSensitive: false` in the association file. The sitemap still comes from
+  the routes, and `fsp maestro` still writes a flow for every route, so one `paths:` leaves out
+  can't open with a hosted link. A linkable route no entry covers (the warning suggests `/x`
+  for a static route, `/x/*` below a dynamic segment, both for `$$$x`), and an entry no route
+  matches, are warnings (never a `--check` failure).
 - **What is listed.** Every route in a folder not marked `const linkable = false;` (a
   `route.dart`, nearest wins, inherited like `caseSensitive`; see
   [`route-dart.md`](../../fespalier-routing/references/route-dart.md)), one entry per

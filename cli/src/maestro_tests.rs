@@ -187,7 +187,7 @@ fn a_url_is_checked() {
 fn a_link_is_checked() {
     for bad in [
         "shop.example.com",
-        "myshop://",
+        "http://",
         "myshop://a b",
         "myshop://shop?x=1",
         "myshop://shop/#/x",
@@ -212,6 +212,9 @@ fn a_link_loses_one_trailing_slash_and_keeps_a_hash() {
         link("myshop://shop.example.com"),
         "myshop://shop.example.com"
     );
+    // A custom scheme may stand alone: `myshop:///orders/42` is `myshop://` and a path.
+    assert_eq!(link("myshop://"), "myshop://");
+    assert_eq!(link("myshop:///"), "myshop://");
 }
 
 #[test]

@@ -277,6 +277,32 @@ links/
 - A missing key, or a fingerprint or package that isn't one, is an error that names the key. Only `fsp links` checks them: a mistake there never stops `fsp gen`.
 - A file the config no longer asks for is removed by `fsp links` and reported by `--check`.
 
+**What is listed.** Each route's path, in each spelling of its [localized paths](routing.md#localized-paths), and every route in a folder that doesn't say [`const linkable = false;`](configuration.md#per-folder-settings-routedart) (a `route.dart` constant, inherited down the tree). Redirects are opened by the app, so they are in the Android and iOS lists; a sitemap leaves them out.
+
+| Route                         | Android                                    | iOS (`components`)      | Sitemap                  |
+| ----------------------------- | ------------------------------------------ | ----------------------- | ------------------------ |
+| `/about` (static)             | `android:path="/about"`                    | `/about`                | listed                   |
+| `/products/:id`               | `pathPattern="/products/..*"`              | `/products/?*`          | left out                 |
+| `/docs/*rest`                 | `pathPrefix="/docs/"`                      | `/docs/?*`              | left out                 |
+| `/files/*path?`               | `path="/files"` and `pathPrefix="/files/"` | `/files` and `/files/*` | left out                 |
+| `help/` with `{'fr': 'aide'}` | one entry per spelling                     | one entry per spelling  | one `<url>` per spelling |
+
+- **A `$dynamic` segment is a wildcard.** Android's `pathPattern` can't say "one segment", so `/products/..*` also lets `/products/2/extra` through; the app's router has the last word and shows its not-found view. iOS's `?*` is the same. `linkable = false` removes a route's own entries; it can't carve a hole out of the wildcard a dynamic sibling makes (a `$slug` at the root lets every one-segment path in).
+- **Localized spellings.** Android gets the characters as written, which it compares with the decoded path (`/führer`); iOS and the sitemap get the percent-encoded form (`/f%C3%BChrer`). The sitemap gives each spelling its own `<url>` with `xhtml:link` `hreflang` alternates for every locale (the canonical path is `x-default`).
+- **iOS case.** A [case-insensitive](routing.md#case-and-trailing-slashes) route gets `"caseSensitive": false` in its component (with `paths:`, an entry such a route meets). Android always matches by case.
+- **The sitemap lists static routes only.** Dynamic routes and catch-alls have no URL to write down without data fespalier doesn't have. Guards aren't looked at: a route behind a guard is listed, so mark it `linkable = false` if a crawler shouldn't see it.
+- **Mounting.** The paths are the routes' own: an app that mounts its routes under a prefix (`AppRoutes.mount(at: '/shop')`) has to put the prefix in front itself.
+
+**Using the files.** `fsp links` never edits `AndroidManifest.xml`, `Runner.entitlements` or `Info.plist`. Copy the output in yourself:
+
+1. Paste `android/intent-filters.xml` into the `<activity>` of `android/app/src/main/AndroidManifest.xml` that has the `MAIN`/`LAUNCHER` filter (replace what you pasted last time).
+2. Add the `applinks:` lines of `ios/associated-domains.entitlements` to `ios/Runner/Runner.entitlements`, and the entry of `ios/info-url-types.xml` to `Info.plist`. With [flavours](#flavours), do it in each flavour's own `.entitlements` and `Info.plist`.
+3. Copy `links/web/` into your Flutter project's `web/` folder (`flutter build web` ships `.well-known/` as it ships the rest), or serve it from wherever the domain's server keeps its files.
+
+Android only verifies a domain when `assetlinks.json` is served over HTTPS at `/.well-known/assetlinks.json` with no redirect.
+
+**Staying current.** The output is a function of the tree and the pubspec (a fixed order, no dates). `fsp links --check` writes nothing and exits non-zero when a file is missing, out of date or no longer wanted, and names it; run it in CI next to `fsp check`.
+
 ### Flavours
 
 Since 0.11.0. An app built in flavours (`prod` and `debug`, each with its own application id, signing certificate and bundle id) lists them instead of the flat keys:
@@ -297,7 +323,7 @@ fespalier:
         ios_app_id: ABCDE12345.com.example.shop.debug
 ```
 
-- **Each flavour is an app.** Name it as Gradle and Xcode do: lower-case letters, digits and `_`, starting with a letter. It sets `android_package` (with `android_sha256`), `ios_app_id` or both. Two flavours can't share a package or an app id.
+- **Each flavour is an app.** Name it as Gradle does (`prod`, `devStaging`): letters, digits and `_`, starting with a lower-case letter. An empty `flavors:` or a name listed twice is an error. It sets `android_package` (with `android_sha256`), `ios_app_id` or both. Two flavours can't share a package or an app id.
 - **`assetlinks.json`** has one statement per package, in the order the pubspec lists them. **The association file** has one `details` entry whose `appIDs` holds every app id, with the same `components`.
 - **The flat keys still work**, as one app with no name: a config with no `flavors:` writes exactly what it wrote before. Setting both is an error.
 - **Domains and the scheme are shared.** A flavour with its own `domains:` is an `invalid pubspec.yaml` error.
@@ -309,7 +335,7 @@ Since 0.11.0.
 
 **`scheme_host: false`** writes the scheme's intent filter with the scheme alone (`<data android:scheme="myshop" />`: no host and no path, since Android ignores path attributes without a host), and makes the default `link:` of [`fsp maestro`](route-tests.md#maestro-flows-fsp-maestro) `myshop://`, so a flow opens `myshop:///orders/42`. The default, `true`, is the `myshop://shop.example.com/orders/42` of before. Prefer the host-less form: the router matches the path only, so `myshop:///orders/42` is `/orders/42` however the embedding hands the link over, while `myshop://orders/42` would be read as host `orders` and reach `/42`. It needs `scheme`.
 
-**`paths:`** lists what the platforms open instead of every linkable route (the sitemap still comes from the routes). Each entry starts with `/`: `/about` is that path, `/orders/*` is everything below `/orders/`, and `*` is only ever the whole last segment (`/*` is everything).
+**`paths:`** lists what the platforms open instead of every linkable route (the sitemap still comes from the routes). Each entry starts with `/`: `/about` is that path, `/orders/*` is everything below `/orders/` (not `/orders` itself), and `*` is only ever the whole last segment (`/*` is everything). An entry is literal: `/orders/:id` and `/orders/$id` are errors (write `/orders/*`), and so are an empty, `.` or `..` segment and any of `?`, `#`, `%`, `\` and whitespace. A component is case-sensitive, except that an entry a [case-insensitive](routing.md#case-and-trailing-slashes) route meets gets `"caseSensitive": false`; Android always matches by case.
 
 | Entry       | Android                 | iOS (`components`) |
 | ----------- | ----------------------- | ------------------ |
@@ -317,33 +343,9 @@ Since 0.11.0.
 | `/about`    | `android:path="/about"` | `/about`           |
 | `/orders/*` | `pathPrefix="/orders/"` | `/orders/*`        |
 
-`fsp links` warns, without failing (`--check` doesn't either), where `paths:` and the routes disagree: a linkable route no entry covers (``add `/orders/*`, or `const linkable = false;` in its route.dart``), and an entry no linkable route matches. An empty list is an error: leave `paths:` out to list every route.
+`fsp links` warns, without failing (`--check` doesn't either), where `paths:` and the routes disagree: a linkable route no entry covers (``add `/orders/*`, or `const linkable = false;` in its route.dart``: the entry it suggests is the exact path for a static route, `/orders/*` below a dynamic segment, and both `/files` and `/files/*` for an optional catch-all), and an entry no linkable route matches. An empty list is an error: leave `paths:` out to list every route.
 
-**What is listed.** Each route's path, in each spelling of its [localized paths](routing.md#localized-paths), and every route in a folder that doesn't say [`const linkable = false;`](configuration.md#per-folder-settings-routedart) (a `route.dart` constant, inherited down the tree). Redirects are opened by the app, so they are in the Android and iOS lists; a sitemap leaves them out.
-
-| Route                         | Android                                    | iOS (`components`)      | Sitemap                  |
-| ----------------------------- | ------------------------------------------ | ----------------------- | ------------------------ |
-| `/about` (static)             | `android:path="/about"`                    | `/about`                | listed                   |
-| `/products/:id`               | `pathPattern="/products/..*"`              | `/products/?*`          | left out                 |
-| `/docs/*rest`                 | `pathPrefix="/docs/"`                      | `/docs/?*`              | left out                 |
-| `/files/*path?`               | `path="/files"` and `pathPrefix="/files/"` | `/files` and `/files/*` | left out                 |
-| `help/` with `{'fr': 'aide'}` | one entry per spelling                     | one entry per spelling  | one `<url>` per spelling |
-
-- **A `$dynamic` segment is a wildcard.** Android's `pathPattern` can't say "one segment", so `/products/..*` also lets `/products/2/extra` through; the app's router has the last word and shows its not-found view. iOS's `?*` is the same. `linkable = false` removes a route's own entries; it can't carve a hole out of the wildcard a dynamic sibling makes (a `$slug` at the root lets every one-segment path in).
-- **Localized spellings.** Android gets the characters as written, which it compares with the decoded path (`/führer`); iOS and the sitemap get the percent-encoded form (`/f%C3%BChrer`). The sitemap gives each spelling its own `<url>` with `xhtml:link` `hreflang` alternates for every locale (the canonical path is `x-default`).
-- **iOS case.** A [case-insensitive](routing.md#case-and-trailing-slashes) route gets `"caseSensitive": false` in its component. Android always matches by case.
-- **The sitemap lists static routes only.** Dynamic routes and catch-alls have no URL to write down without data fespalier doesn't have. Guards aren't looked at: a route behind a guard is listed, so mark it `linkable = false` if a crawler shouldn't see it.
-- **Mounting.** The paths are the routes' own: an app that mounts its routes under a prefix (`AppRoutes.mount(at: '/shop')`) has to put the prefix in front itself.
-
-**Using the files.** `fsp links` never edits `AndroidManifest.xml`, `Runner.entitlements` or `Info.plist`. Copy the output in yourself:
-
-1. Paste `android/intent-filters.xml` into the `<activity>` of `android/app/src/main/AndroidManifest.xml` that has the `MAIN`/`LAUNCHER` filter (replace what you pasted last time).
-2. Add the `applinks:` lines of `ios/associated-domains.entitlements` to `ios/Runner/Runner.entitlements`, and the entry of `ios/info-url-types.xml` to `Info.plist`.
-3. Copy `links/web/` into your Flutter project's `web/` folder (`flutter build web` ships `.well-known/` as it ships the rest), or serve it from wherever the domain's server keeps its files.
-
-Android only verifies a domain when `assetlinks.json` is served over HTTPS at `/.well-known/assetlinks.json` with no redirect.
-
-**Staying current.** The output is a function of the tree and the pubspec (a fixed order, no dates). `fsp links --check` writes nothing and exits non-zero when a file is missing, out of date or no longer wanted, and names it; run it in CI next to `fsp check`.
+**Maestro and `paths:`.** `fsp maestro` writes a flow for every route, whatever `paths:` lists. With the default `https://` or `scheme://<domain>` link, a flow for a route that `paths:` leaves out can't open on a device (a host-less scheme filter has no paths, so it can). Give those routes no flow with `const linkable = false;`, or ignore them.
 
 ## Checking string paths
 

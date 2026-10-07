@@ -9,12 +9,13 @@
 //! - **iOS**: `apple-app-site-association` (`components`, every app id in `appIDs`), the
 //!   `applinks:` entitlement entries and, for a custom scheme, the `CFBundleURLTypes` entry.
 //!
+//! - **Web**: `sitemap.xml` with every static route as an absolute URL on the first domain, and
+//!   `hreflang` alternates from the locale spellings of a [localized](crate::locale) path.
+//!
 //! Since 0.11.0 the apps are the flat keys' one app or the `flavors:` of the pubspec, a scheme
 //! can be written without a host (`scheme_host: false`: `myshop:///orders/2`, which the router
 //! matches on its path alone) and `paths:` lists what the platforms open instead of every
 //! linkable route ([`warnings`] tells where the two disagree).
-//! - **Web**: `sitemap.xml` with every static route as an absolute URL on the first domain, and
-//!   `hreflang` alternates from the locale spellings of a [localized](crate::locale) path.
 //!
 //! Everything is a function of the tree and the pubspec: stable order, no dates, so `--check`
 //! can compare the files on disk byte for byte.
@@ -387,7 +388,15 @@ fn aasa(links: &[Link], cfg: &Links, apps: &[IosApp]) -> String {
     let mut components = vec![];
     if let Some(paths) = &cfg.paths {
         for p in paths {
-            components.push(json!({"/": aasa_listed(p)}));
+            // A case-insensitive route an entry meets must keep opening on any case.
+            let insensitive = links
+                .iter()
+                .any(|l| !l.case_sensitive && l.spellings.iter().any(|sp| entry_meets(p, sp)));
+            components.push(if insensitive {
+                json!({"/": aasa_listed(p), "caseSensitive": false})
+            } else {
+                json!({"/": aasa_listed(p)})
+            });
         }
     }
     for l in links.iter().filter(|_| cfg.paths.is_none()) {
@@ -521,6 +530,9 @@ fn piece_fits(piece: &Piece, seg: &str) -> bool {
 
 /// Whether some URL is both in the `paths:` entry and a path of the route.
 fn entry_meets(entry: &LinkPath, route: &[Piece]) -> bool {
+    if matches!(entry, LinkPath::Prefix(segs) if segs.is_empty()) {
+        return true;
+    }
     let (segs, prefix) = match entry {
         LinkPath::Exact(segs) => (segs, false),
         LinkPath::Prefix(segs) => (segs, true),
@@ -559,13 +571,40 @@ fn entry_covers(entry: &LinkPath, route: &[Piece]) -> bool {
                     .zip(segs)
                     .all(|(p, s)| matches!(p, Piece::Lit(l) if l == s))
         }
+        // `/*` opens everything. `/x/*` needs a segment after `/x`, which an optional rest
+        // right there may not have.
         LinkPath::Prefix(segs) => {
-            route.len() > segs.len()
-                && route
-                    .iter()
-                    .zip(segs)
-                    .all(|(p, s)| matches!(p, Piece::Lit(l) if l == s))
+            segs.is_empty()
+                || (route.len() > segs.len()
+                    && !matches!(route[segs.len()], Piece::Rest { optional: true })
+                    && route
+                        .iter()
+                        .zip(segs)
+                        .all(|(p, s)| matches!(p, Piece::Lit(l) if l == s)))
         }
+    }
+}
+
+/// The entry to suggest for a route no entry covers: the exact path of a static route, else
+/// everything below its literal prefix (and the prefix itself for an optional catch-all).
+fn suggestion(route: &[Piece]) -> String {
+    let lits: Vec<&str> = route
+        .iter()
+        .map_while(|p| match p {
+            Piece::Lit(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    let base: String = lits.iter().map(|s| format!("/{s}")).collect();
+    let exact = if base.is_empty() { "/" } else { &base };
+    if lits.len() == route.len() {
+        format!("`{exact}`")
+    } else if lits.len() + 1 == route.len()
+        && matches!(route[lits.len()], Piece::Rest { optional: true })
+    {
+        format!("`{exact}` and `{base}/*`")
+    } else {
+        format!("`{base}/*`")
     }
 }
 
@@ -585,16 +624,10 @@ pub fn warnings(app: &App, cfg: &Links) -> Vec<String> {
         if covered {
             continue;
         }
-        let prefix: String = l.spellings[0]
-            .iter()
-            .map_while(|p| match p {
-                Piece::Lit(s) => Some(format!("/{s}")),
-                _ => None,
-            })
-            .collect();
         out.push(format!(
-            "`{}` is linkable, and no `fespalier.links.paths` entry covers it: add `{prefix}/*`, or `const linkable = false;` in its route.dart",
-            l.pattern
+            "`{}` is linkable, and no `fespalier.links.paths` entry covers it: add {}, or `const linkable = false;` in its route.dart",
+            l.pattern,
+            suggestion(&l.spellings[0])
         ));
     }
     for p in paths {

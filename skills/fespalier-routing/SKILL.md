@@ -111,7 +111,11 @@ An adapter's `launch()` answers an `InboundLaunch(location, source: NavigationSo
 that location over the platform's initial route and marks the first navigation with the source. With `links: true`
 (telemetry or adapters) a platform deep link, at cold start or while running, is marked `NavigationSource.link`; an
 in-app `go` is not. A launch does not stop later links being marked. Android hands a cold-start link over as the initial route; iOS delivers it after the first frame, as a warm link. `make` receives the launch (null on the web). Never on the web. An adapter's `onEnter` sees it as
-`InboundNavigation.source`, and must not block `InboundNavigation.initial`. Details: `docs/navigation.md`, "Opening the app: launches and platform links".
+`InboundNavigation.source`, and must not block `InboundNavigation.initial`. The generated `AppRoutes.router(launch:)` calls `launchRouter` (`links: true` with telemetry or adapters); the generated
+main passes it `AppMain.launch`, the adapters' answer, and a `main: manual` app asks `AppAdapters.launch()` itself. With adapters
+`AppRoutes.router` also passes `onEnter: AppRoutes.onEnter`; without them there is none and go_router keeps its simplest code path,
+and **any `onEnter` makes go_router parse every navigation asynchronously and apply its redirect limit to all of them**.
+An app.dart `router()` must pass `launch: AppMain.launch` on (an `fsp` warning otherwise). Details: `docs/navigation.md`, "Opening the app: launches and platform links".
 
 ## Not-found views
 

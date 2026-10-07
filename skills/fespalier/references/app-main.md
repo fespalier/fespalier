@@ -189,7 +189,9 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
   `adapters:` was an error up to 0.10.0 and is fine since 0.11.0 (below).
 - **`launch` and `onEnter` (since 0.11.0).** `launch()` returns an `InboundLaunch` (or `null`) once, after `beforeRun()`,
   never on the web; the first adapter's answer wins. `onEnter(InboundNavigation)` returns `null`, `Allow(then:)` or `Block.then(...)`;
-  the first `Block` wins and the `then`s of the `Allow`s run in order. Never block `navigation.initial` (it is allowed, reported in every mode, and its `then` still runs). A `then` runs after the commit on go_router 17.2 and later; on 17.0 and 17.1, which Flutter 3.32 resolves, before it. `launchRouter` and the platform-link marks are in `fespalier-routing`.
+  the first `Block` wins and the `then`s of the `Allow`s run in order. Never block `navigation.initial` (it is allowed, reported in every mode, and its `then` still runs). A `then` runs after the commit on go_router 17.2 and later; on 17.0 and 17.1, which Flutter 3.32 resolves, before it. `launchRouter` and the platform-link marks are in `fespalier-routing`. The generated main asks
+  `AppAdapters.launch()` once and gives `AppRoutes.router(launch: AppMain.launch)` the answer; with `main: manual`, `final launch = await AppAdapters.launch();`
+  and `AppRoutes.router(launch: launch, ...)`. `AppRoutes.onEnter` exists only with adapters (go_router parses every navigation asynchronously, with its redirect limit, as soon as any `onEnter` is set).
 - **`extends`, never `implements`** `FespalierAdapter`: a member added later (`attach`, since 0.11.0) has a default
   for a subclass only.
 - **`attach` (since 0.11.0).** The generated main passes `AppRoutes.attach` to the `StartupGate`, which calls it
@@ -206,13 +208,13 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
 ### With `main: manual`: `AppAdapters` (since 0.11.0)
 
 `adapters:` with `main: manual` writes no `app.main.g.dart`, but `lib/app.g.dart` defines **`AppAdapters`**
-(`zone`, `beforeRun`, `overrides`, `providerObservers`, `routerObservers`, `wrap`, each forwarding to
+(`zone`, `beforeRun`, `launch`, `overrides`, `providerObservers`, `routerObservers`, `wrap`, each forwarding to
 `FespalierAdapters` from `package:fespalier/startup.dart`) and your own `main()` calls it, in the same order as
 the generated one, all inside `AppAdapters.zone(() async { ... })`:
 
-1. `WidgetsFlutterBinding.ensureInitialized()`, then `await AppAdapters.beforeRun()`.
+1. `WidgetsFlutterBinding.ensureInitialized()`, then `await AppAdapters.beforeRun()`, then `final launch = await AppAdapters.launch()`.
 2. A `ProviderContainer` with `AppAdapters.overrides()` and `AppAdapters.providerObservers()`.
-3. `AppRoutes.router(observers: [...AppAdapters.routerObservers()])`.
+3. `AppRoutes.router(launch: launch, observers: [...AppAdapters.routerObservers()])`.
 4. **`AppRoutes.attach(router, container)`**.
 5. `runApp(AppAdapters.wrap(UncontrolledProviderScope(...)))`.
 
@@ -228,8 +230,9 @@ Full example: `docs/adapters.md`, "With main: manual: AppAdapters".
   `kIsWeb ? body() : observability.runGuarded(body)`.
 - **Adapters do nothing unless `lib/main.dart` is `Future<void> main() => AppMain.run();` (or calls `AppAdapters`).** `fsp` does not
   read `lib/main.dart`: an app whose own `main()` still calls `runApp` by hand ignores them, without a message.
-- **An app.dart `router()` must pass `observers: AppMain.routerObservers()`** to `AppRoutes.router(...)`, or the
-  adapters' router observers are not added (a warning from `fsp`, quoted in `fespalier-troubleshooting`).
+- **An app.dart `router()` must pass `observers: AppMain.routerObservers()` and `launch: AppMain.launch`** to
+  `AppRoutes.router(...)`, or the adapters' router observers are not added and their launch is not used (a warning from `fsp` for each,
+  quoted in `fespalier-troubleshooting`).
 - **A `startup()` failure fails a widget test** until `tester.takeException()` takes it.
 - **A root file that is something else** (a helper that happens to be `lib/app/app.dart`): rename it
   into `_components/`, or set `main: manual`.

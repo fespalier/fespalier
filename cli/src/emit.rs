@@ -91,6 +91,9 @@ struct FileCx {
     adapters: Option<AdaptersCx>,
     /// What `AppRoutes.attach`'s doc comment says follows the router.
     attach_what: String,
+    /// `launchRouter(links: true)`: platform links are marked `NavigationSource.link`, for
+    /// telemetry and for the adapters' `onEnter` (since 0.11.0).
+    links: bool,
 }
 
 /// One `import` of the generated file.
@@ -678,6 +681,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         attach: has_observe || cfg.telemetry || !cfg.adapters.is_empty(),
         adapters: adapters::cx(&cfg.adapters),
         attach_what: attach_what(has_observe, cfg.telemetry, !cfg.adapters.is_empty()),
+        links: cfg.telemetry || !cfg.adapters.is_empty(),
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
         semantics_ids: cfg.semantics_ids,

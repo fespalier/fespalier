@@ -40,6 +40,9 @@ pub struct MainHooks {
     /// `StartupGate(attach: AppRoutes.attach)`: the router and the app's container go to the
     /// adapters' `attach` (since 0.11.0).
     pub attach: bool,
+    /// `AppMain` asks `AppAdapters.launch()` once, before the router, and gives it to
+    /// `AppRoutes.router(launch:)` (since 0.11.0).
+    pub launch: bool,
 }
 
 const ROOT_FILES: [Kind; 3] = [Kind::App, Kind::Startup, Kind::Splash];
@@ -108,17 +111,21 @@ pub fn emit(
     let own_router = app_file
         .as_ref()
         .is_some_and(|m| app_router_fn(root, m, diags));
-    // The adapters' router observers reach an app.dart router() only when it passes them on.
+    // The adapters' router observers and launch reach an app.dart router() only when it passes
+    // them on.
     if own_router
-        && !hooks.router_observers.is_empty()
         && let (Some(m), Some(src)) = (&app_file, root.files.get(&Kind::App))
         && let Some(f) = function(m, "router")
-        && src
-            .get(f.extent.clone())
-            .is_some_and(|text| !text.contains("routerObservers"))
+        && let Some(text) = src.get(f.extent.clone())
     {
-        let msg = "app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there";
-        diags.warn(&root.rel(Kind::App), Some(&f.span), msg);
+        if !hooks.router_observers.is_empty() && !text.contains("routerObservers") {
+            let msg = "app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there";
+            diags.warn(&root.rel(Kind::App), Some(&f.span), msg);
+        }
+        if hooks.launch && !text.contains("launch") {
+            let msg = "app.dart's router() builds the router itself, so the adapters' launch is not used: pass `launch: AppMain.launch` to `AppRoutes.router(...)` there";
+            diags.warn(&root.rel(Kind::App), Some(&f.span), msg);
+        }
     }
 
     // startup.dart: startup(), zone(), observers and retry.
@@ -177,14 +184,22 @@ pub fn emit(
 
     let has_app = app_widget.is_some();
     let hook_observers = !hooks.router_observers.is_empty();
-    let router_fn = match (own_router, startup.router_observers, hook_observers) {
-        (true, ..) => Some(format!(
+    let router_fn = if own_router {
+        Some(format!(
             "{}.router()",
             app_alias.as_deref().unwrap_or_default()
-        )),
-        (false, _, true) => Some("AppRoutes.router(observers: AppMain.routerObservers())".into()),
-        (false, true, false) => Some(format!("AppRoutes.router(observers: {sx}.routerObservers)")),
-        (false, false, false) => None,
+        ))
+    } else {
+        let mut args: Vec<String> = vec![];
+        if hooks.launch {
+            args.push("launch: AppMain.launch".into());
+        }
+        if hook_observers {
+            args.push("observers: AppMain.routerObservers()".into());
+        } else if startup.router_observers {
+            args.push(format!("observers: {sx}.routerObservers"));
+        }
+        (!args.is_empty()).then(|| format!("AppRoutes.router({})", args.join(", ")))
     };
     // The adapters' observers, then startup.dart's (which an app.dart router() has none of).
     let router_observers = hook_observers.then(|| {
@@ -213,7 +228,15 @@ pub fn emit(
         output_file: cfg.output.rsplit('/').next().unwrap_or(&cfg.output),
         deferred: app.routes.iter().any(crate::resolve::Route::defers_page),
         material: !has_app,
-        attach: hooks.attach,
+        // Wherever `AppRoutes.attach` exists (observe.dart, telemetry or adapters), the gate gives
+        // it the app's container.
+        attach: hooks.attach
+            || cfg.telemetry
+            || app
+                .routes
+                .iter()
+                .any(|r| r.page.is_some() && !r.observers.is_empty()),
+        launch: hooks.launch,
         imports: &imports,
         zone_note,
         run,
@@ -256,6 +279,8 @@ struct FileCx<'a> {
     material: bool,
     /// `StartupGate(attach: AppRoutes.attach)`.
     attach: bool,
+    /// `AppMain.launch`: the adapters' answer, asked before the router is built.
+    launch: bool,
     imports: &'a [ImportCx],
     /// How the doc comment of `run` says what runs inside the zones: startup.dart's `zone()` and
     /// the adapters', or nothing.

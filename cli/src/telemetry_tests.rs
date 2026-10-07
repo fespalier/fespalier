@@ -145,7 +145,7 @@ fn every_guard_data_provider_and_action_is_told_where_it_is() {
     has(
         &on,
         &[
-            "static void attach(GoRouter router) {",
+            "static void attach(GoRouter router, [ProviderContainer? container]) {",
             "if (kFespalierDevTools) devToolsAttach(router);",
             "telemetryAttach(router, base: () => _base);",
             "attach(router);",

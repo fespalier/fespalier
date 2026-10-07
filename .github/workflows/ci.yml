@@ -298,6 +298,8 @@ jobs:
           YAML
           sed -i "s|GITHUB_WORKSPACE|$GITHUB_WORKSPACE|" demo_adapter/pubspec.yaml
           cat > demo_adapter/lib/fespalier_adapter.dart <<'DART'
+          import 'dart:async';
+
           import 'package:fespalier/fespalier.dart';
           import 'package:fespalier/startup.dart';
           import 'package:flutter/widgets.dart';
@@ -327,6 +329,12 @@ jobs:
 
             @override
             void attach(GoRouter router, ProviderContainer container) {}
+
+            @override
+            FutureOr<InboundLaunch?> launch() => null;
+
+            @override
+            FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) => null;
           }
           DART
           flutter create --empty --project-name adapter_app --platforms web adapter_app
@@ -373,7 +381,9 @@ jobs:
               overrides: [...AppAdapters.overrides()],
               observers: [...AppAdapters.providerObservers()],
             );
+            final launch = await AppAdapters.launch();
             final router = AppRoutes.router(
+              launch: launch,
               observers: [...AppAdapters.routerObservers()],
             );
             AppRoutes.attach(router, container);

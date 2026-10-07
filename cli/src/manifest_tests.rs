@@ -514,7 +514,7 @@ fn the_router_takes_a_restoration_scope_id() {
         &c,
         &[
             "String? restorationScopeId,\n    GlobalKey<NavigatorState>? navigatorKey,\n  }) {",
-            "restorationScopeId: restorationScopeId,\n      navigatorKey: rootNavigatorKey,\n      routes: routes,",
+            "restorationScopeId: restorationScopeId,\n        navigatorKey: rootNavigatorKey,\n        routes: routes,",
         ],
     );
 }

@@ -222,8 +222,13 @@ abstract final class AppRoutes {
 
   /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
   /// is the root navigator's key, when the app has one to supply.
+  ///
+  /// [launch] (since 0.11.0) is where the app was opened from: it wins over
+  /// the platform's initial route and marks the first navigation with its source. It is not
+  /// used on the web, where the address bar is the launch.
   static GoRouter router({
     String initialLocation = '/',
+    InboundLaunch? launch,
     List<NavigatorObserver>? observers,
     String? restorationScopeId,
     GlobalKey<NavigatorState>? navigatorKey,
@@ -231,16 +236,20 @@ abstract final class AppRoutes {
     final routes = mount(navigatorKey: navigatorKey);
     // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
     GoRouter.optionURLReflectsImperativeAPIs = true;
-    final router = GoRouter(
-      initialLocation: initialLocation,
-      observers: observers,
-      restorationScopeId: restorationScopeId,
-      navigatorKey: rootNavigatorKey,
-      routes: routes,
-      errorBuilder: (context, state) => notFound(state.uri),
-    );
-    if (kFespalierDevTools) devToolsAttach(router);
-    return router;
+    return launchRouter(launch, (launch) {
+      final router = GoRouter(
+        initialLocation: launch?.location ?? initialLocation,
+        initialExtra: launch?.extra,
+        overridePlatformDefaultLocation: launch != null,
+        observers: observers,
+        restorationScopeId: restorationScopeId,
+        navigatorKey: rootNavigatorKey,
+        routes: routes,
+        errorBuilder: (context, state) => notFound(state.uri),
+      );
+      if (kFespalierDevTools) devToolsAttach(router);
+      return router;
+    });
   }
 
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that

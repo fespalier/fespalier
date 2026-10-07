@@ -339,8 +339,20 @@ An adapter's `onEnter` sees the same mark as `InboundNavigation.source`. Any `on
 navigation asynchronously and applies its redirect limit to each. `InboundNavigation.initial` is true when go_router has no
 route yet, and that navigation must not be blocked (fespalier allows it and reports it).
 
-The generated `AppRoutes.router(launch:)` and `AppRoutes.onEnter` that call these arrive with the generator's
-change in the same release; until then an app calls `launchRouter` itself.
+**Generated.** `AppRoutes.router(launch:)` calls `launchRouter` for you: `launch` is the `InboundLaunch` the app was
+opened with (null: none), the router starts at `launch.location` with `launch.extra` over the platform's initial route,
+and `links: true` is passed when the app has `telemetry: true` or `adapters:`. The generated main asks
+`AppAdapters.launch()` once, after `beforeRun()` and before the router exists, and passes the answer to
+`AppRoutes.router(launch: AppMain.launch)`; with `main: manual` your `main()` does the same
+(`final launch = await AppAdapters.launch();`, see [With `main: manual`](adapters.md#with-main-manual-appadapters)). An
+`app.dart` `router()` that builds the router itself passes `launch: AppMain.launch` on, or `fsp` warns (see
+[Adapters](adapters.md)). `launch:` is ignored on the web.
+
+With adapters, `AppRoutes.router` also passes `onEnter: AppRoutes.onEnter`, which forwards to the adapters' `onEnter`
+in the pubspec's order; an app that builds a `GoRouter` of its own passes `onEnter: AppRoutes.onEnter` itself.
+Without adapters there is no `AppRoutes.onEnter`, and go_router keeps its simplest code path. **Any `onEnter`, this one
+included, makes go_router parse every navigation asynchronously and apply its redirect limit to all of them**, so an app
+with adapters that has none with an `onEnter` to offer pays that for nothing: leave `adapters:` for the packages you use.
 
 ## Deferred routes: a page's code on demand
 

@@ -194,6 +194,10 @@ GoRoute(
 //   {{ row }}
 {% endfor %}
 
+{% if adapters %}
+import 'dart:async';
+
+{% endif %}
 import 'package:fespalier/fespalier.dart';
 {% if menu %}
 import 'package:fespalier/nav.dart';
@@ -228,6 +232,9 @@ abstract final class AppAdapters {
   /// Each adapter's beforeRun(), in order; null when none has anything to wait for.
   static Future<void>? beforeRun() => _all.beforeRun();
 
+  /// Where the app was opened from: the first adapter's answer (never asked on the web), since 0.11.0.
+  static FutureOr<InboundLaunch?> launch() => _all.launch();
+
   /// The ProviderScope's overrides, before startup()'s own.
   static List<Override> overrides() => _all.overrides();
 
@@ -261,8 +268,13 @@ abstract final class AppRoutes {
 
   /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
   /// is the root navigator's key, when the app has one to supply.
+  ///
+  /// [launch] (since 0.11.0) is where the app was opened from{{ " (`AppAdapters.launch()`)" if adapters }}: it wins over
+  /// the platform's initial route and marks the first navigation with its source. It is not
+  /// used on the web, where the address bar is the launch.
   static GoRouter router({
     String initialLocation = '/',
+    InboundLaunch? launch,
     List<NavigatorObserver>? observers,
     String? restorationScopeId,
     GlobalKey<NavigatorState>? navigatorKey,
@@ -270,22 +282,33 @@ abstract final class AppRoutes {
     final routes = mount(navigatorKey: navigatorKey);
     // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
     GoRouter.optionURLReflectsImperativeAPIs = {{ "true" if push_updates_url else "false" }};
-    final router = GoRouter(
-      initialLocation: initialLocation,
-      observers: observers,
-      restorationScopeId: restorationScopeId,
+    return launchRouter(launch, (launch) {
+      final router = GoRouter(
+        initialLocation: launch?.location ?? initialLocation,
+        initialExtra: launch?.extra,
+        overridePlatformDefaultLocation: launch != null,
+        observers: observers,
+        restorationScopeId: restorationScopeId,
 {% if extra_codec %}
-      // extra_codec.dart: what a page's `extra` is saved as, so it survives a reload on the web.
-      extraCodec: {{ extra_codec }},
+        // extra_codec.dart: what a page's `extra` is saved as, so it survives a reload on the web.
+        extraCodec: {{ extra_codec }},
 {% endif %}
-      navigatorKey: rootNavigatorKey,
-      routes: routes,
-      errorBuilder: (context, state) => notFound(state.uri),
-    );
+{% if adapters %}
+        onEnter: onEnter,
+{% endif %}
+        navigatorKey: rootNavigatorKey,
+        routes: routes,
+        errorBuilder: (context, state) => notFound(state.uri),
+      );
 {% if attach %}
-    attach(router);
-    return router;
+      attach(router);
+{% else %}
+      if (kFespalierDevTools) devToolsAttach(router);
+{% endif %}
+      return router;
+    }{{ ", links: true" if links }});
   }
+{% if attach %}
 
   /// Lets {{ attach_what }} follow [router]: [router] calls it, and an app that mounts the
   /// tree in a GoRouter of its own calls it once with that router.
@@ -296,7 +319,7 @@ abstract final class AppRoutes {
   /// the ProviderScope exists, and an app that builds its own router or main() calls
   /// `AppRoutes.attach(router, container)` itself.
 {% endif %}
-  static void attach(GoRouter router{{ ", [ProviderContainer? container]" if adapters }}) {
+  static void attach(GoRouter router, [ProviderContainer? container]) {
     if (kFespalierDevTools) devToolsAttach(router);
 {% if observe %}
     observeAttach(router, _observeAt);
@@ -308,10 +331,21 @@ abstract final class AppRoutes {
     if (container != null) AppAdapters._all.attach(router, container);
 {% endif %}
   }
-{% else %}
-    if (kFespalierDevTools) devToolsAttach(router);
-    return router;
-  }
+{% endif %}
+{% if adapters %}
+
+  /// go_router's `onEnter` (since 0.11.0): each adapter's `onEnter`, in the pubspec's order. A
+  /// platform link reaches them with `source: NavigationSource.link`. An app with a GoRouter of
+  /// its own passes `onEnter: AppRoutes.onEnter`.
+  ///
+  /// Any `onEnter` makes go_router parse every navigation asynchronously and apply its
+  /// redirect limit to all of them.
+  static FutureOr<OnEnterResult> onEnter(
+    BuildContext context,
+    GoRouterState current,
+    GoRouterState next,
+    GoRouter router,
+  ) => AppAdapters._all.onEnter(context, current, next, router);
 {% endif %}
 
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that

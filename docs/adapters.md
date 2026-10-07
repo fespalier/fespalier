@@ -75,6 +75,7 @@ abstract final class AppAdapters {
   static final _all = FespalierAdapters([_a0.adapter, _a1.adapter]);
   static Future<void> zone(Future<void> Function() body) => _all.zone(body);
   static Future<void>? beforeRun() => _all.beforeRun();
+  static FutureOr<InboundLaunch?> launch() => _all.launch();
   static List<Override> overrides() => _all.overrides();
   static List<ProviderObserver> providerObservers() => _all.providerObservers();
   static List<NavigatorObserver> routerObservers() => _all.routerObservers();
@@ -82,7 +83,14 @@ abstract final class AppAdapters {
 }
 
 // AppRoutes.attach(router, [container]) also runs each adapter's attach(router, container)
+// AppRoutes.onEnter(context, current, next, router) forwards to _all.onEnter (since 0.11.0), and
+// AppRoutes.router(launch:, ...) passes it to GoRouter(onEnter:)
 ```
+
+`AppRoutes.router` takes `launch:` (an `InboundLaunch`), with or without adapters, and `AppRoutes.onEnter` exists only
+with adapters: without them go_router keeps its simplest code path, and with them every navigation is parsed
+asynchronously and counts against go_router's redirect limit (any `onEnter` does that). See
+[Opening the app](navigation.md#opening-the-app-launches-and-platform-links).
 
 `FespalierAdapters` (in `package:fespalier/startup.dart`) holds the order, so it is Dart that is tested, not
 generated text. These are the lines of `lib/app.main.g.dart` that are new, for a `startup.dart` with a
@@ -92,6 +100,10 @@ generated text. These are the lines of `lib/app.main.g.dart` that are new, for a
   static Future<void> run() => AppAdapters.zone(() => _i1.zone(_main));
 
     if (AppAdapters.beforeRun() case final ready?) await ready;
+    final launch = AppAdapters.launch();
+    _launch = launch is Future<InboundLaunch?> ? await launch : launch;
+
+  static InboundLaunch? get launch => _launch;
 
   static Widget root({GoRouter Function() router = _router}) => AppAdapters.wrap(StartupGate(
     extraOverrides: _extraOverrides,
@@ -103,7 +115,7 @@ generated text. These are the lines of `lib/app.main.g.dart` that are new, for a
 
   static List<NavigatorObserver> routerObservers() => [...AppAdapters.routerObservers(), ..._i1.routerObservers];
 
-GoRouter _router() => AppRoutes.router(observers: AppMain.routerObservers());
+GoRouter _router() => AppRoutes.router(launch: AppMain.launch, observers: AppMain.routerObservers());
 List<Override> _extraOverrides() => [...AppAdapters.overrides()];
 ```
 
@@ -145,6 +157,8 @@ the initial navigation is refused: it is allowed, reported with `FlutterError.re
 - **An `app.dart` that builds the router** (`GoRouter router()`) has to pass the adapters' observers on:
   `AppRoutes.router(observers: AppMain.routerObservers())`. Without that `fsp` warns, on app.dart at the
   function: ``app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there``.
+  It warns the same way for the launch (since 0.11.0): ``app.dart's router() builds the router itself, so the adapters' launch is not used: pass `launch: AppMain.launch` to `AppRoutes.router(...)` there``.
+  `AppRoutes.router(launch: AppMain.launch, observers: AppMain.routerObservers())` says both.
 
 **In tests.** `pumpRouter(tester, router, app: AppMain.app)` (see [Testing](testing.md)) never sees the
 adapters, and neither do the [`fsp test`](route-tests.md#route-smoke-tests-fsp-test) smoke tests.
@@ -166,11 +180,15 @@ Future<void> main() => AppAdapters.zone(() async {
   WidgetsFlutterBinding.ensureInitialized();
   // your own setup: a telemetry sink goes here, before the router (FespalierTelemetry.add)
   if (AppAdapters.beforeRun() case final ready?) await ready;
+  final launch = await AppAdapters.launch(); // a notification cold start, a shortcut: null on the web
   final container = ProviderContainer(
     overrides: [...AppAdapters.overrides() /*, the app's own */],
     observers: [...AppAdapters.providerObservers()],
   );
-  final router = AppRoutes.router(observers: [...AppAdapters.routerObservers()]);
+  final router = AppRoutes.router(
+    launch: launch,
+    observers: [...AppAdapters.routerObservers()],
+  );
   AppRoutes.attach(router, container); // each adapter's attach(router, container), once
   runApp(AppAdapters.wrap(UncontrolledProviderScope(
     container: container,

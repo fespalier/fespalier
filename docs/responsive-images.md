@@ -22,11 +22,7 @@ template, or a srcset that the backend already signed. fespalier's core is uncha
 
 ## Installing `fespalier_image`
 
-Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if
-they are the same repository dependency; a mismatch fails with `Because every version of fespalier_image from
-path depends on fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and
-demo depends on fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier,
-fespalier_image from path is forbidden.`, the form it takes when the first is a path):
+Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
 <!-- x-release-please-start-version -->
 

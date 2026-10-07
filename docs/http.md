@@ -7,8 +7,7 @@ fespalier's promises: **a load whose page is gone stops**, **a server's validati
 field**, and **a write is never sent twice**. An app that does not depend on it is unchanged, and it starts no
 timer and no listener in one that does.
 
-Add it next to fespalier, with the same `url` and the same `ref`
-([Installing fespalier_auth](auth.md#installing-fespalier_auth) quotes what pub says when they differ):
+Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
 <!-- x-release-please-start-version -->
 
@@ -73,7 +72,7 @@ Future<Product> data(Ref ref, {required int id}) async {
 - **One token serves every request of the build**, and a request that a retrier or an authentication refresh sends
   again keeps it, because it sends the same options.
 - **What the request fails with.** Dio: a `DioException` of type `cancel` whose `error` is `fespalier_dio: the
-  provider that started this request was disposed`. `package:http`: `RequestAbortedException` ("Request aborted by
+provider that started this request was disposed`. `package:http`: `RequestAbortedException` ("Request aborted by
   `abortTrigger`"). It fails after its provider is gone: fespalier's data span has ended as `disposed`, so with
   [telemetry](observability.md#telemetry) it is not an error, and Riverpod ignores the old build's result.
 - **`ref.abortable(client)`** sends each request as its `Abortable` twin (`Request`, `MultipartRequest` or
@@ -170,7 +169,7 @@ final httpClient = Provider<http.Client>((ref) {
 
 - **A write** is any method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, unless it carries an `Idempotency-Key` header
   or `Options(extra: {WriteGuard.idempotent: true})` (a write you know is safe to repeat). `Options(extra:
-  {WriteGuard.write: true})` makes any request one. `WriteGuardClient.isWrite(request)` is the same rule, without the
+{WriteGuard.write: true})` makes any request one. `WriteGuardClient.isWrite(request)` is the same rule, without the
   `extra`.
 - **`WriteGuard` refuses a second send of a write** and hands the caller the error of the first, so a retrier that is
   not told about writes still cannot repeat one. It must be **first** in the interceptors: it records the error of
@@ -186,6 +185,7 @@ final httpClient = Provider<http.Client>((ref) {
 
   A retrier that sits **before** the guard sees the error first and sends the write again before the guard has
   recorded anything: the second send fails with a `DioException` whose `error` is `WriteNotRetried`.
+
 - **One exception: a send after a 401.** The server refused it before running it, and that is what an
   authentication refresh sends again (`fespalier_auth`'s `SessionInterceptor` marks it `authReplayKey`). It is
   allowed once per 401, for a response the client accepted as well (`validateStatus`).

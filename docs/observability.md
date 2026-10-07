@@ -119,11 +119,7 @@ first. To report to several sinks, [combine them](#several-sinks-combine-and-add
 ### OpenTelemetry with otel_zone
 
 `otel_zone` is not on pub.dev: depend on it by git, pinned to a commit. Add `fespalier_otel` next to
-fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if they are the
-same repository dependency; a mismatch fails with `Because every version of fespalier_otel from path
-depends on fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and
-demo depends on fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier,
-fespalier_otel from path is forbidden.`, the form it takes when the second is a path):
+fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
 <!-- x-release-please-start-version -->
 
@@ -144,10 +140,10 @@ dependencies:
 <!-- x-release-please-end -->
 
 ```yaml
-  otel_zone:
-    git:
-      url: https://github.com/vaam-apps/flutter-otel-zone
-      ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21 # a commit, not a tag
+otel_zone:
+  git:
+    url: https://github.com/vaam-apps/flutter-otel-zone
+    ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21 # a commit, not a tag
 ```
 
 `otel_zone` depends on `otel_go_router`, which declares `go_router: ^17.0.0`, so an app with it resolves
@@ -264,8 +260,8 @@ of your own overrides it the same way. The rules:
   `handleUncaughtError`): a `Future` that fails in another error zone never reaches Riverpod, and the
   page would stay on its loading view. fespalier refuses such a zone at run time: it runs `body` in the
   caller's zone instead and prints, once, `fespalier telemetry: <Sink>.within changed the error zone, so
-  data() and actions run outside it (use runZoned with zoneValues, not runZonedGuarded) (not shown
-  again)`.
+data() and actions run outside it (use runZoned with zoneValues, not runZonedGuarded) (not shown
+again)`.
 - Behind a `combine`, each sink's `within` runs the next one's, so every sink's scope wraps `data()`, and
   each sees what it returned.
 - Guards and deferred loads do not get `within`: a guard must stay cheap and a deferred load runs no app
@@ -317,7 +313,7 @@ a warm one `go` or `push`).
 - fespalier never sets it by itself: a platform deep link and the browser's back button look the same to
   it as any other navigation. The bridge that knows (a notification handler) calls `navigateFrom`.
 - A source that is not one of the four values is an `AssertionError` in debug: ``navigateFrom: `banner`
-  is not a NavigationSource value (notification, shortcut, widget or link)``.
+is not a NavigationSource value (notification, shortcut, widget or link)``.
 - `RecordingTelemetry` writes it as `source=notification` on the start line of the navigation, and only
   when it is set.
 
@@ -427,13 +423,13 @@ attributes only add):
 **On an `image` span** (since 0.9.0; `fespalier_image`; no new contract version, as a new operation and its
 attributes only add):
 
-| Key                       | Type   | Values and meaning                                                                                                                  |
-| ------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `fespalier.image.cdn`     | string | the URL builder's name: `imgproxy`, `emgr`, `cloudinary`, `imgix`, `thumbor`, `template`, `srcset`, `direct`, or a builder's own    |
-| `fespalier.image.width`   | int    | the width asked for, in physical pixels (a bucket)                                                                                  |
-| `fespalier.image.preload` | bool   | a precache started the load, not a widget                                                                                           |
-| `fespalier.image.result`  | string | `ok` or `error`                                                                                                                     |
-| `fespalier.image.status`  | int    | the HTTP status of a failed load, when the error carries one                                                                        |
+| Key                       | Type   | Values and meaning                                                                                                               |
+| ------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `fespalier.image.cdn`     | string | the URL builder's name: `imgproxy`, `emgr`, `cloudinary`, `imgix`, `thumbor`, `template`, `srcset`, `direct`, or a builder's own |
+| `fespalier.image.width`   | int    | the width asked for, in physical pixels (a bucket)                                                                               |
+| `fespalier.image.preload` | bool   | a precache started the load, not a widget                                                                                        |
+| `fespalier.image.result`  | string | `ok` or `error`                                                                                                                  |
+| `fespalier.image.status`  | int    | the HTTP status of a failed load, when the error carries one                                                                     |
 
 **Metrics.** fespalier emits none: `otel_zone` turns metrics off on purpose (a periodic reader is a timer
 that keeps the radio busy), and rates and latencies are on the wire as spans already. Derive metrics in the
@@ -513,13 +509,13 @@ leaves performance monitoring to the teams that want it.
 - **Every error and crash, with where it happened.** An error that a guard, a `data.dart`, an action or a
   deferred load threw is a Sentry event tagged with the route pattern (`/products/:id`, never the URL), the
   app file (`products/$id/data.dart`) and, for an action, its function name, grouped by that file and not
-  by the Riverpod frames on top of the stack. The screen is also the scope's *transaction* name, the field
+  by the Riverpod frames on top of the stack. The screen is also the scope's _transaction_ name, the field
   Sentry's issue list groups and searches by, so a crash that no fespalier operation reported says which
   screen it happened on too.
 - **One breadcrumb per page change**, from the pattern of the page that was left to the pattern of the page
   that is shown, so a report reads as the path the user took.
 - **Release health.** Sessions, crash-free users and crash-free sessions are the SDK's; a handled error
-  marks its session *errored*.
+  marks its session _errored_.
 - **A link to the OpenTelemetry trace.** Next to `fespalier_otel` (installed together with
   [`FespalierTelemetry.combine`](#several-sinks-combine-and-add)), each event carries `otel.trace_id` and
   `otel.span_id`: the trace of the span the failing call made, or, for a crash, of the navigation that
@@ -676,9 +672,9 @@ FespalierTelemetry.install(FespalierSentry(tracing: true));
 
 Each navigation is then a `ui.load` transaction named by the route pattern, started as `navigate` (so the HTTP
 calls made during it have a parent) and renamed when the page is on screen; guards, redirects, data loads,
-deferred loads and actions are its child spans; the first frame is the transaction's *time to initial
-display* (`ui.load.initial_display`) and the arrival of the screen's last data load its *time to full
-display* (`ui.load.full_display`), the two spans and measurements that Sentry's Screen Loads view reads. A
+deferred loads and actions are its child spans; the first frame is the transaction's _time to initial
+display_ (`ui.load.initial_display`) and the arrival of the screen's last data load its _time to full
+display_ (`ui.load.full_display`), the two spans and measurements that Sentry's Screen Loads view reads. A
 transaction ends when its data arrives or when the next navigation starts, whichever is first (the old
 screen's time to full display is then `deadline_exceeded`, with no measurement): fespalier starts no timer
 for it. `fullDisplay: false` ends it at the first frame.

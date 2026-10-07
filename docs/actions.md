@@ -52,6 +52,7 @@ final Refund done = await RefundRoute.submit(ref, id: 1, input: input);
   A helper can't be named like a member of the route (`go`, `refresh`, `watch`, `data`, …), a
   segment or query parameter of it, or another action's helper (a function called `submit` next to
   `action`): the generator says which.
+
 - **The provider** is a generated `Notifier` family, `XRoute.action(id)` (`XRoute.action` when
   there are no keys), whose state is `AsyncValue<T?>`: `AsyncData(null)` while idle, then
   `AsyncLoading`, then `AsyncError` or `AsyncData` of the result. It works without a widget:
@@ -62,7 +63,7 @@ final Refund done = await RefundRoute.submit(ref, id: 1, input: input);
   `isPending`, `hasError`, `fieldErrors` (the [`FieldErrors`](#forms-form-and-validate) the last
   run failed with, since 0.8.1, or null), `reset()`, and `call(input)`. `call` runs the action and completes with
   the result, or with `null` when it failed, because the error is in `state`: an `onPressed:
-  () => refund.call(input)` can't leave an unhandled error behind. `submit` is the other way: it
+() => refund.call(input)` can't leave an unhandled error behind. `submit` is the other way: it
   throws what the action threw, for code that wants to handle it (and the error is in `state` too).
   Neither navigates, and neither is for `build`'s own body: call them from an event handler.
   (`useAction` is a hook by name only: it needs a `WidgetRef`, not hooks, and works in any
@@ -188,7 +189,7 @@ TextButton(onPressed: form.isDirty ? form.reset : null, child: …),
 ```
 
 - **The input is a record with named fields**, written inline (`required ({int amount, String
-  note}) input`) or as a `typedef` declared in the same `action.dart`; the generator reads the
+note}) input`) or as a `typedef` declared in the same `action.dart`; the generator reads the
   field names and types from there and from nothing else. `form()` returns exactly the input's
   type (as written) and takes no `Ref`: it takes the data the form starts from, or nothing.
 - **`useForm`** is the generated member (`useApproveForm` for `approve`). It takes the action's
@@ -200,7 +201,7 @@ TextButton(onPressed: form.isDirty ? form.reset : null, child: …),
 - **Fields** are typed by the record's field types. `String`, `int`, `double`, `num` and their
   nullable forms are text fields with a `controller` that the form owns and disposes; an empty
   nullable one is `null`, an empty non-nullable number is `Required`, a bad number is `Enter a
-  whole number` or `Enter a number` (pass `messages: ActionFormMessages(...)` to translate them).
+whole number` or `Enter a number` (pass `messages: ActionFormMessages(...)` to translate them).
   Any other type (`bool`, an enum, a `DateTime`, a list) is a value field: bind it with `value` and
   `didChange(v)`, which ignores `null` for a non-nullable type so it fits `Checkbox.onChanged`.
 - **Submit.** `onSubmit` (or `submit()`) first reads the text fields, then asks `validate()`; if

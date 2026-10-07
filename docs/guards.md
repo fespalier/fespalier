@@ -31,6 +31,7 @@ GuardResult guard(Ref ref, {required Uri uri}) =>
 
   `ref.read` is for what must be the current value when you navigate and never changes the
   answer later. A guard that returns the same answer after a change does nothing.
+
 - **What it costs.** Return synchronously when you can. A guard that needs no `await` should
   not be `async`, and not return `Future.value(...)` either: it then answers synchronously, in
   the same frame as the navigation, and the first frame at boot (a cold deep link too) already
@@ -136,11 +137,7 @@ once** (never an `AsyncValue`, never a `Future`), so a guard that watches one st
 behind it follows the flag because [menus run guards](layouts.md#menus-and-breadcrumbs-navdart). An app that does not depend on
 it is unchanged. It adds no dependency beyond fespalier, no timer and no polling.
 
-Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if they are
-the same repository dependency; a mismatch fails with `Because every version of fespalier_flags from path depends on
-fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and demo depends on
-fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier, fespalier_flags from path
-is forbidden.`, the form it takes when the first is a path):
+Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
 <!-- x-release-please-start-version -->
 
@@ -184,17 +181,17 @@ the guard refuses the entry, and a refused entry is hidden (`NavRefused.hide`, t
 NavRefused.disable` greys it out instead).
 
 - **A new route behind a flag:** `lib/app/checkout-v2/guard.dart` is `flagGuard(ref, checkoutV2, orElse: const
-  CartRoute().location)`. A whole section: the guard goes in a `(group)` or in the section's folder, as any guard.
+CartRoute().location)`. A whole section: the guard goes in a `(group)` or in the section's folder, as any guard.
 - **The old URL goes to the new one while the flag is on:** `checkout/guard.dart` is `flagGuard(ref, checkoutV2,
-  whenOff: true, orElse: const CheckoutV2Route().location)`.
+whenOff: true, orElse: const CheckoutV2Route().location)`.
 - **The same URL, two pages:** no guard; the page switches: `ref.watch(flag(checkoutV2)) ? const CheckoutV2() : const
-  CheckoutV1()`.
+CheckoutV1()`.
 - **A flag and a sign-in:** a folder has one `guard.dart`, so compose with `??`. `flagGuard` returns a `String?`,
   synchronously: `flagGuard(ref, labs, orElse: '/') ?? (ref.watch(session) ? null :
-  LoginRoute(from: uri.toString()).location)` (with [`fespalier_auth`](auth.md): `?? requireSignedIn(ref,
-  uri, signIn: ...)`).
+LoginRoute(from: uri.toString()).location)` (with [`fespalier_auth`](auth.md): `?? requireSignedIn(ref,
+uri, signIn: ...)`).
 - **A flow that must not be pulled from under the user** (a checkout): `flagGuard(ref, checkoutV2, orElse: '/',
-  follow: false)` reads the flag once per navigation (`ref.read`): the page stays open when the flag turns off, the
+follow: false)` reads the flag once per navigation (`ref.read`): the page stays open when the flag turns off, the
   next navigation applies it, and a menu does not follow.
 
 **Live updates.** A source can send an event when values change (`FlagSource.changes`: `FlagsChanged({'labs'})` names

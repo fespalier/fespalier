@@ -87,12 +87,12 @@ binary are versioned together, and this is what keeps them in step.
 
 ### Environment variables
 
-| Variable | Used by | What it does |
-| --- | --- | --- |
-| `FSP_VERSION` | `install.sh`, `install.ps1` | A release tag to install (the default is the latest). In PowerShell it is `$env:FSP_VERSION`. |
-| `FSP_INSTALL_DIR` | `install.sh`, `install.ps1` | Where `fsp` is installed (`~/.local/bin`, or `%LOCALAPPDATA%\fespalier\bin` on Windows). |
-| `FSP_CACHE_DIR` | `dart run fespalier` | Where the launcher keeps the `fsp` it downloaded (`~/.cache/fespalier`, `~/Library/Caches/fespalier`, `%LOCALAPPDATA%\fespalier`). |
-| `FSP_BINARY` | `dart run fespalier` | The path of an `fsp` of your own to run, for example a build from source. |
+| Variable          | Used by                     | What it does                                                                                                                       |
+| ----------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `FSP_VERSION`     | `install.sh`, `install.ps1` | A release tag to install (the default is the latest). In PowerShell it is `$env:FSP_VERSION`.                                      |
+| `FSP_INSTALL_DIR` | `install.sh`, `install.ps1` | Where `fsp` is installed (`~/.local/bin`, or `%LOCALAPPDATA%\fespalier\bin` on Windows).                                           |
+| `FSP_CACHE_DIR`   | `dart run fespalier`        | Where the launcher keeps the `fsp` it downloaded (`~/.cache/fespalier`, `~/Library/Caches/fespalier`, `%LOCALAPPDATA%\fespalier`). |
+| `FSP_BINARY`      | `dart run fespalier`        | The path of an `fsp` of your own to run, for example a build from source.                                                          |
 
 ## Companion packages
 
@@ -232,6 +232,7 @@ go_router 18 checks for `MaterialApp` from
 `transition.dart` don't animate at all, and go_router's own error screen is unstyled.
 go_router 17 checks Flutter's `MaterialApp` and has no such problem. There are two ways
 around it:
+
 - Have a root `lib/app/transition.dart` that says how routes animate, e.g.
   `Page<void> transition(LocalKey key, Widget child) => Transitions.material(key, child);`
   (or `cupertino`). `fsp init` already adds this file. It works with either

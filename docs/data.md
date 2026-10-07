@@ -261,7 +261,7 @@ never fires by itself. `package:fespalier_connectivity` is that signal, from `co
 platform repairs below and a `hasNetwork` provider for an offline banner. fespalier's core depends on neither the plugin nor
 this package, the generated code is the same bytes, and an app that does not depend on it pays nothing for it.
 
-Add it next to fespalier, with the same `url` and the same `ref` (as for [`fespalier_flags`](guards.md#feature-flags-fespalier_flags)):
+Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
 <!-- x-release-please-start-version -->
 
@@ -476,8 +476,7 @@ value is saved when it loads, and at the next start it is **on the first frame**
 core depends on neither plugin, the generated code is the same bytes, and an app that does not depend on this package
 pays nothing for it.
 
-Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if they are
-the same repository dependency, as for [`fespalier_flags`](guards.md#feature-flags-fespalier_flags)):
+Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
 <!-- x-release-please-start-version -->
 
@@ -513,14 +512,14 @@ value to the first `build`. A `startup()` that prefers no extra frame can pass t
 returns `null` (and prints a debug line) when the store cannot open, and `dataCacheStorage` takes `null` as "save
 nothing": a cache never stops an app from starting.
 
-| What                 | `PrefsDataStorage`                                                                      | `HiveDataStorage`                                                                     |
-| -------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Backend              | `SharedPreferencesWithCache`; localStorage on the web                                   | a `hive_ce` `Box<String>`; IndexedDB on the web                                       |
-| Reads                | synchronous                                                                             | synchronous once the box is open                                                      |
-| Default budget       | 1,000,000 characters, 200 entries                                                       | 4,000,000 characters, 1,000 entries                                                   |
-| Plugins              | `shared_preferences` (most apps have it)                                                | none: `hive_ce` is pure Dart; `path_provider` for the cache directory                 |
-| Where on disk        | the platform's preferences, beside the app's own keys                                   | `getApplicationCacheDirectory()` (OS-purgeable, not backed up), none on the web       |
-| Pick it when         | a few small values; on the web localStorage is about 5 MB per origin, shared            | more or larger values; opening reads the whole box, so `maxSize` also bounds startup  |
+| What           | `PrefsDataStorage`                                                           | `HiveDataStorage`                                                                    |
+| -------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Backend        | `SharedPreferencesWithCache`; localStorage on the web                        | a `hive_ce` `Box<String>`; IndexedDB on the web                                      |
+| Reads          | synchronous                                                                  | synchronous once the box is open                                                     |
+| Default budget | 1,000,000 characters, 200 entries                                            | 4,000,000 characters, 1,000 entries                                                  |
+| Plugins        | `shared_preferences` (most apps have it)                                     | none: `hive_ce` is pure Dart; `path_provider` for the cache directory                |
+| Where on disk  | the platform's preferences, beside the app's own keys                        | `getApplicationCacheDirectory()` (OS-purgeable, not backed up), none on the web      |
+| Pick it when   | a few small values; on the web localStorage is about 5 MB per origin, shared | more or larger values; opening reads the whole box, so `maxSize` also bounds startup |
 
 **The budget.** `maxSize` is in `String.length` units (UTF-16 code units, what browsers count localStorage in), keys and
 headers included, and `maxEntries` is a count. Over either, the entries **written longest ago** go first, ties by key

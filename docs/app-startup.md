@@ -56,13 +56,13 @@ startup.dart if it has any. Without an `app.dart` (with `main: generated`) the a
 
 **`startup.dart`** exports, by name, any of:
 
-| Export                                | What it is                                                                                                                                                                  |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `startup()`                           | No parameters. Returns `void`, `Future<void>` or `FutureOr<void>`; or the providers to override: `List<Override>`, `Future<List<Override>>`, `FutureOr<List<Override>>`     |
-| `zone(Future<void> Function() body)`  | Wraps **all** of `main()`: the binding, `startup()` and `runApp` run inside `body`. Returns `Future<void>` or `FutureOr<void>`; call `body()` in it                         |
-| `providerObservers`                   | A list (a variable or a getter) of `ProviderObserver`s for the `ProviderScope`; read after `startup()`                                                                      |
-| `routerObservers`                     | A list of `NavigatorObserver`s for the router; read after `startup()`. Not with a `router()` in app.dart: pass them there                                                   |
-| `retry(int retryCount, Object error)` | `Duration?`: the `ProviderScope`'s retry policy                                                                                                                             |
+| Export                                | What it is                                                                                                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `startup()`                           | No parameters. Returns `void`, `Future<void>` or `FutureOr<void>`; or the providers to override: `List<Override>`, `Future<List<Override>>`, `FutureOr<List<Override>>` |
+| `zone(Future<void> Function() body)`  | Wraps **all** of `main()`: the binding, `startup()` and `runApp` run inside `body`. Returns `Future<void>` or `FutureOr<void>`; call `body()` in it                     |
+| `providerObservers`                   | A list (a variable or a getter) of `ProviderObserver`s for the `ProviderScope`; read after `startup()`                                                                  |
+| `routerObservers`                     | A list of `NavigatorObserver`s for the router; read after `startup()`. Not with a `router()` in app.dart: pass them there                                               |
+| `retry(int retryCount, Object error)` | `Duration?`: the `ProviderScope`'s retry policy                                                                                                                         |
 
 ```dart
 // lib/app/startup.dart
@@ -156,16 +156,16 @@ there gets a warning saying so): use it for an app that keeps its own `main()` o
 
 **From a 0.7 app.** Nothing changes until you opt in. To move the code of a hand-written `main()`:
 
-| Today, in `lib/main.dart`                                                 | 0.8.1                                                                                         |
-| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `MaterialApp.router(title:, theme:, builder:, routerConfig: _router)`     | the same widget in `lib/app/app.dart`, with `routerConfig: router`                            |
-| `final _router = AppRoutes.router(restorationScopeId: …, observers: …)`   | `GoRouter router() => AppRoutes.router(…)` in app.dart, or `routerObservers` in startup.dart  |
-| `await Firebase.initializeApp(…)`, `usePathUrlStrategy()` before `runApp` | `startup()`                                                                                   |
-| `ProviderScope(overrides: [x.overrideWithValue(v)])`                      | `startup()` returns `[x.overrideWithValue(v)]`                                                |
-| `ProviderScope(retry: …, observers: …)`                                   | `retry()` and `providerObservers` in startup.dart                                             |
-| `runZonedGuarded(…)`                                                      | `zone()` in startup.dart                                                                      |
-| `if (!kIsWeb) await AppRoutes.loadDeferred();`                            | generated: delete it                                                                          |
-| `void main() => runApp(…)`                                                | `Future<void> main() => AppMain.run();`                                                       |
+| Today, in `lib/main.dart`                                                 | 0.8.1                                                                                        |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `MaterialApp.router(title:, theme:, builder:, routerConfig: _router)`     | the same widget in `lib/app/app.dart`, with `routerConfig: router`                           |
+| `final _router = AppRoutes.router(restorationScopeId: …, observers: …)`   | `GoRouter router() => AppRoutes.router(…)` in app.dart, or `routerObservers` in startup.dart |
+| `await Firebase.initializeApp(…)`, `usePathUrlStrategy()` before `runApp` | `startup()`                                                                                  |
+| `ProviderScope(overrides: [x.overrideWithValue(v)])`                      | `startup()` returns `[x.overrideWithValue(v)]`                                               |
+| `ProviderScope(retry: …, observers: …)`                                   | `retry()` and `providerObservers` in startup.dart                                            |
+| `runZonedGuarded(…)`                                                      | `zone()` in startup.dart                                                                     |
+| `if (!kIsWeb) await AppRoutes.loadDeferred();`                            | generated: delete it                                                                         |
+| `void main() => runApp(…)`                                                | `Future<void> main() => AppMain.run();`                                                      |
 
 A bad root file is an error with the way out in its message: an `app.dart` without a `router`
 parameter says "the app's widget gets the router: add `required this.router` (a `GoRouter`) … If this

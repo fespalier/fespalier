@@ -119,11 +119,11 @@ again with the new `id`, but its `State` (a scroll position, a text field, a hoo
 lives on. Some apps want that, others want a fresh page, and it depends on the app, so it is a
 setting. `Remount` is an enum fespalier exports, with three values:
 
-| Value                     | The page starts again (a fresh state) when                    | It keeps its state when                         |
-| ------------------------- | ------------------------------------------------------------- | ----------------------------------------------- |
-| `never` (the default)     | never: what fespalier generated before 0.6.0                  | anything changes in the URL                     |
-| `onSegments`              | the value of a segment changes (`/products/1` to `/2`)        | only the query changes (`?page=2`)              |
-| `onLocation`              | anything changes in the location, the query included          | the location is the same                        |
+| Value                 | The page starts again (a fresh state) when             | It keeps its state when            |
+| --------------------- | ------------------------------------------------------ | ---------------------------------- |
+| `never` (the default) | never: what fespalier generated before 0.6.0           | anything changes in the URL        |
+| `onSegments`          | the value of a segment changes (`/products/1` to `/2`) | only the query changes (`?page=2`) |
+| `onLocation`          | anything changes in the location, the query included   | the location is the same           |
 
 `onSegments` is the one that fits [the URL as state](#the-url-as-state-of-and-copywith): the page
 keeps its state across `XRoute.of(context).copyWith(page: 2)`, and starts again on another product.
@@ -532,7 +532,7 @@ fespalier:
 
 The value is read from the source when the tree is generated, never imported or run, so it must be
 a `true` or `false` literal and declared once; anything else is an error with a code frame, and a
-pubspec value that isn't a bool is serde's own error: ``invalid pubspec.yaml: fespalier.deferred: invalid type: string "maybe", expected a boolean at line 3 column 13``. Like
+pubspec value that isn't a bool is serde's own error: `invalid pubspec.yaml: fespalier.deferred: invalid type: string "maybe", expected a boolean at line 3 column 13`. Like
 `caseSensitive` it is inherited by `(group)` folders and folders without a page, and needs no page
 beside it. `fsp routes` tags such a route `deferred`, `--json` has `"deferred":true` (only there for
 a deferred route), `--graph` marks it, and `AppManifest`'s `RouteInfo.deferred` says so at runtime.

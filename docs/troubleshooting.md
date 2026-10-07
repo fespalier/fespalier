@@ -13,19 +13,19 @@
 
 ## Known limitations
 
-The generator reads a syntax tree,
+**Types are compared by spelling, not resolved.** The generator reads a syntax tree,
 not the Dart analyzer, so `Product` and a `typedef` of it count as different types. The
 Dart compiler still catches real mismatches in the generated code. (An enum is the one type
 it does look up: it reads the declaration, and compares enums by it.)
 
 ## Symptoms
 
-| Symptom | Cause | Where |
-| --- | --- | --- |
-| `fsp check` passes, but `lib/app.g.dart` is stale | `fsp check` writes and compares nothing | [Failing CI on a stale file](getting-started.md#failing-ci-on-a-stale-file) |
-| `test/widget_test.dart` refers to `MyApp` and `flutter analyze` fails | `flutter create` wrote it for the `MyApp` that `fsp init` replaced | [fsp init](getting-started.md#fsp-init) |
-| Routes do not animate on go_router 18 | go_router 18 checks for `MaterialApp` from `package:material_ui` | [go_router 18 and Material](getting-started.md#go_router-18-and-material) |
-| "URIs can't use string interpolation" | an unescaped `$id` in an import | [Importing from a $segment folder](testing.md#importing-from-a-segment-folder) |
-| "A Timer is still pending" at the end of a test | fakes that use `Future.delayed` under go_router's whole matched stack | [pumpRouter and currentLocation](testing.md#pumprouter-and-currentlocation) |
-| a `FlutterError` that says a deferred page's code is not loaded | a widget test's `pump` never runs `loadLibrary()` | [Deferred routes in tests](testing.md#deferred-routes-in-tests) |
-| An error message from `fsp` | | the `fespalier-troubleshooting` agent skill, [skills/README.md](../skills/README.md) |
+| Symptom                                                               | Cause                                                                 | Where                                                                                |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `fsp check` passes, but `lib/app.g.dart` is stale                     | `fsp check` writes and compares nothing                               | [Failing CI on a stale file](getting-started.md#failing-ci-on-a-stale-file)          |
+| `test/widget_test.dart` refers to `MyApp` and `flutter analyze` fails | `flutter create` wrote it for the `MyApp` that `fsp init` replaced    | [fsp init](getting-started.md#fsp-init)                                              |
+| Routes do not animate on go_router 18                                 | go_router 18 checks for `MaterialApp` from `package:material_ui`      | [go_router 18 and Material](getting-started.md#go_router-18-and-material)            |
+| "URIs can't use string interpolation"                                 | an unescaped `$id` in an import                                       | [Importing from a $segment folder](testing.md#importing-from-a-segment-folder)       |
+| "A Timer is still pending" at the end of a test                       | fakes that use `Future.delayed` under go_router's whole matched stack | [pumpRouter and currentLocation](testing.md#pumprouter-and-currentlocation)          |
+| a `FlutterError` that says a deferred page's code is not loaded       | a widget test's `pump` never runs `loadLibrary()`                     | [Deferred routes in tests](testing.md#deferred-routes-in-tests)                      |
+| An error message from `fsp`                                           |                                                                       | the `fespalier-troubleshooting` agent skill, [skills/README.md](../skills/README.md) |

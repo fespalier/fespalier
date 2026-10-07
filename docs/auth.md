@@ -18,11 +18,7 @@ depend on it is unchanged, and it adds no timer and no listener to one that does
 
 ## Installing fespalier_auth
 
-Add it next to fespalier, with the same `url` and the same `ref` (pub resolves the two to one package only if
-they are the same repository dependency; a mismatch fails with `Because every version of fespalier_auth from
-path depends on fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and
-demo depends on fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier,
-fespalier_auth from path is forbidden.`, the form it takes when the first is a path):
+Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
 <!-- x-release-please-start-version -->
 
@@ -315,7 +311,7 @@ against it):
   (`OidcBackend(scopes: ['openid', 'profile', 'email', 'offline_access'])`).
 - **The issuer is Keycloak's configured hostname.** With `--hostname=http://10.0.2.2:8080` every token says
   `http://10.0.2.2:8080/realms/...`, so an app that reaches the same Keycloak as `localhost` gets `the ID token was
-  issued by ..., not ...`. On an Android emulator, use `adb reverse tcp:8080 tcp:8080` and `localhost`, or give
+issued by ..., not ...`. On an Android emulator, use `adb reverse tcp:8080 tcp:8080` and `localhost`, or give
   Keycloak the `10.0.2.2` hostname.
 - **A single-sign-on cookie signs the user in again silently** after a sign-out, unless the browser session is
   ephemeral (`preferEphemeral: true`) or the sign-in asks `BrowserSignIn(prompt: 'login')`.
@@ -384,7 +380,7 @@ flutter-sign-keypair **by git, pinned to a commit** (the repository is not on pu
   active and its `Date` header says the device clock is more than 5 seconds off, the difference is applied to every
   later `iat` and the request is sent once more. **Keycloak sends neither a nonce nor a `Date`**, so a wrong clock
   there is `invalid_request` / `DPoP proof is not active`: set the clock.
-- **The key.** An *ambient* key (it never prompts), made on first use under the key id `fespalier_dpop`. Sign-out
+- **The key.** An _ambient_ key (it never prompts), made on first use under the key id `fespalier_dpop`. Sign-out
   deletes it (`rotateKeyOnSignOut`), so the next sign-in makes a new one and an old refresh token, even a stolen one,
   is useless. `restoreAuth` signs the user out (`SignedOut(reason: SignOutReason.keyLost)`) when the key a stored
   session is bound to is gone: a restored backup, a wiped keychain.

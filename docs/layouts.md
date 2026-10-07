@@ -250,8 +250,7 @@ tablet and a permanent `NavigationDrawer` on a wide window, around a layout's bo
 second list of destinations that can drift from the routes, and guards hide or disable entries as they do in
 any menu. It is a package of its own: no `fsp` change, no `fespalier:` key, the same `app.g.dart`, no
 third-party dependency, and an app that does not depend on it is unchanged. Add it next to fespalier, with
-the same `url` and the same `ref` (pub resolves the two to one package only if they are the same repository
-dependency; [Installing fespalier_auth](auth.md#installing-fespalier_auth) quotes what it says when they differ):
+the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
 <!-- x-release-please-start-version -->
 
@@ -302,11 +301,11 @@ with its six `nav.dart` files and tests that resize the window.
 **Breakpoints.** The component follows the window's width in logical pixels
 (`MediaQuery.sizeOf(context).width`):
 
-| Width             | Component                                                  | `NavMode` |
-| ----------------- | ---------------------------------------------------------- | --------- |
-| under 600         | `NavigationBar` at the bottom                              | `bar`     |
-| 600 to 1199       | `NavigationRail` at the start, every label shown           | `rail`    |
-| 1200 and wider    | a permanent `NavigationDrawer`, with the nested entries    | `drawer`  |
+| Width          | Component                                               | `NavMode` |
+| -------------- | ------------------------------------------------------- | --------- |
+| under 600      | `NavigationBar` at the bottom                           | `bar`     |
+| 600 to 1199    | `NavigationRail` at the start, every label shown        | `rail`    |
+| 1200 and wider | a permanent `NavigationDrawer`, with the nested entries | `drawer`  |
 
 Those are `NavBreakpoints(rail: 600, drawer: 1200)`, Material 3's compact, medium and large window size
 classes (`WindowSizeClass.of(width)` names all five). Both are configurable, and `null` means never:
@@ -512,11 +511,11 @@ extension; `RouteHeroes(route).hero(...)` still reaches it). `route.heroTag(name
 typo-proof. Nothing is generated: `app.g.dart` doesn't change.
 
 `hero` builds a `RouteHero`, which is Flutter's `Hero` with one difference: it stays out of flights
-while its tab is not shown (`TickerMode` is off for it, as go_router's tab container and
+while its tab is not shown (`TickerMode` is off for it, as go*router's tab container and
 `examples/tabs`' set it on the tabs they hide). Two tabs can then show the same tag, and a route on
 the [root navigator](navigation.md#the-root-navigator-navigatordart) that opens over the tab bar flies from the
-tab that is shown. With a plain `Hero`, that is Flutter's _"There are multiple heroes that share the
-same tag within a subtree"_ assertion in debug.
+tab that is shown. With a plain `Hero`, that is Flutter's *"There are multiple heroes that share the
+same tag within a subtree"\_ assertion in debug.
 
 **The flight style** is declared in `transition.dart`: `Transitions.fade`, `slide`, `none`,
 `material`, `cupertino` and `fullscreenDialog` take `heroes:`, a `Heroes` with three options.
@@ -542,18 +541,18 @@ before 0.8.1. A layout's shell takes it too, so the scope covers every page insi
 
 What flies, and what doesn't:
 
-| Situation                                                                                                                                              | What happens                                                                                                                                                                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| List to detail in one navigator (the app, a `layout.dart`, a tab)                                                                                      | flies on push and on pop                                                                                                                                                                                     |
-| A route on the root navigator (`navigator.dart`, a `present.dart` that builds a `PageRoute`, a route outside the layout) over a page in a shell or tab | flies from the tab that is shown                                                                                                                                                                             |
-| A hero in a tab that is not shown                                                                                                                      | out of flights. A custom tab [`container`](#tab-layouts) must wrap the tabs it doesn't show in `TickerMode(enabled: false)`, as go_router's and `examples/tabs`' do                                          |
-| Switching tabs (`goBranch`)                                                                                                                            | nothing flies: no route is pushed, the `container` is the tab animation                                                                                                                                      |
-| `Transitions.dialog`, `sheet`, or a `present.dart` that builds a `PopupRoute`                                                                          | nothing flies: Flutter flies heroes between page routes only. Use `fullscreenDialog`, `material` or a `PageRoute`                                                                                            |
-| A [remounted](navigation.md#remounting-a-page-remount) page                                                                                                         | it is a new route: a tag made from the segments differs between the two pages, so nothing flies, while a tag that is the same on both pages flies                                                            |
-| A page with [`data.dart`](data.md#datadart-a-function-a-selector-or-a-provider) or a [deferred](navigation.md#deferred-routes-a-pages-code-on-demand) one                  | flies when the page is in the destination's first frame: [preload it](navigation.md#preloading-the-data-behind-a-link) (`RouteLink(preload: Preload.intent)`, `route.preload`), or `loading.dart` shows and nothing flies |
-| A back swipe or predictive back                                                                                                                        | flies only with `onBackGesture: true` on **both** pages (Flutter checks each side): set it in the root `transition.dart`                                                                                     |
-| A [`ResponsiveImage`](responsive-images.md#images-in-heroes) hero                                                                                                          | without `ResponsiveImage.flightShuttle` the shuttle measures itself at every size of the flight and asks for a URL; with it (`route.imageHero`, since 0.9.0) it shows what is loaded and asks for nothing    |
-| One tag twice on one page                                                                                                                              | Flutter's assertion: give the second one another name, or wrap it in `HeroMode(enabled: false)`                                                                                                              |
+| Situation                                                                                                                                                 | What happens                                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| List to detail in one navigator (the app, a `layout.dart`, a tab)                                                                                         | flies on push and on pop                                                                                                                                                                                                  |
+| A route on the root navigator (`navigator.dart`, a `present.dart` that builds a `PageRoute`, a route outside the layout) over a page in a shell or tab    | flies from the tab that is shown                                                                                                                                                                                          |
+| A hero in a tab that is not shown                                                                                                                         | out of flights. A custom tab [`container`](#tab-layouts) must wrap the tabs it doesn't show in `TickerMode(enabled: false)`, as go_router's and `examples/tabs`' do                                                       |
+| Switching tabs (`goBranch`)                                                                                                                               | nothing flies: no route is pushed, the `container` is the tab animation                                                                                                                                                   |
+| `Transitions.dialog`, `sheet`, or a `present.dart` that builds a `PopupRoute`                                                                             | nothing flies: Flutter flies heroes between page routes only. Use `fullscreenDialog`, `material` or a `PageRoute`                                                                                                         |
+| A [remounted](navigation.md#remounting-a-page-remount) page                                                                                               | it is a new route: a tag made from the segments differs between the two pages, so nothing flies, while a tag that is the same on both pages flies                                                                         |
+| A page with [`data.dart`](data.md#datadart-a-function-a-selector-or-a-provider) or a [deferred](navigation.md#deferred-routes-a-pages-code-on-demand) one | flies when the page is in the destination's first frame: [preload it](navigation.md#preloading-the-data-behind-a-link) (`RouteLink(preload: Preload.intent)`, `route.preload`), or `loading.dart` shows and nothing flies |
+| A back swipe or predictive back                                                                                                                           | flies only with `onBackGesture: true` on **both** pages (Flutter checks each side): set it in the root `transition.dart`                                                                                                  |
+| A [`ResponsiveImage`](responsive-images.md#images-in-heroes) hero                                                                                         | without `ResponsiveImage.flightShuttle` the shuttle measures itself at every size of the flight and asks for a URL; with it (`route.imageHero`, since 0.9.0) it shows what is loaded and asks for nothing                 |
+| One tag twice on one page                                                                                                                                 | Flutter's assertion: give the second one another name, or wrap it in `HeroMode(enabled: false)`                                                                                                                           |
 
 A hero name declared in a deferred `page.dart` would make the list page import that page and load
 it eagerly (and the [deferred](navigation.md#deferred-routes-a-pages-code-on-demand) type rule applies to enums),

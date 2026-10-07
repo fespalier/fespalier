@@ -258,14 +258,14 @@ fsp dev -- -d chrome     # anything after -- goes to flutter run
 
 ![fsp dev: a header with the app, the device and the DevTools link; a tab per process; the flutter log; a status line with the route count, the last generation and the last hot restart; the keys.](images/fsp-dev.svg)
 
-| Key            |                                                                     |
-| -------------- | ------------------------------------------------------------------- |
-| `r` / `R`      | hot reload / hot restart                                            |
-| `d` / `o`      | open DevTools / open the app in the browser (web)                   |
-| `t`            | start [`fsp telemetry`](telemetry-dashboards.md) |
-| `Tab`, `1`–`9` | switch between flutter, fsp and your own processes                  |
-| `/`            | filter the log; `Esc` clears                                        |
-| `?` / `q`      | help / quit                                                         |
+| Key            |                                                    |
+| -------------- | -------------------------------------------------- |
+| `r` / `R`      | hot reload / hot restart                           |
+| `d` / `o`      | open DevTools / open the app in the browser (web)  |
+| `t`            | start [`fsp telemetry`](telemetry-dashboards.md)   |
+| `Tab`, `1`–`9` | switch between flutter, fsp and your own processes |
+| `/`            | filter the log; `Esc` clears                       |
+| `?` / `q`      | help / quit                                        |
 
 The header shows the device, the web address or VM service, and the DevTools link. The status line shows the
 route count, the first routing error (clickable in terminals that support links), and how long the last hot
@@ -320,12 +320,12 @@ after `--`), `after`. `fsp run <task>` runs a task of your own; `fsp run` alone 
 what would run and runs nothing.
 
 ```yaml
-    check: # fsp run check
-      before: [fsp check, fsp test --check]
-      run: [flutter, test]
-    web: # fsp run web
-      run: fsp build web -- --release
-      after: fsp size --check
+check: # fsp run check
+  before: [fsp check, fsp test --check]
+  run: [flutter, test]
+web: # fsp run web
+  run: fsp build web -- --release
+  after: fsp size --check
 ```
 
 `fsp telemetry` starts its stack and returns, so it goes in `before` (`before: fsp telemetry`), not `with`.
@@ -348,12 +348,12 @@ and a `sitemap.xml`. Say where the app lives in `pubspec.yaml`:
 ```yaml
 fespalier:
   links:
-    domains: [shop.example.com]       # required; the first one is the sitemap's
-    scheme: myshop                    # optional custom scheme: myshop://shop.example.com/products/2
+    domains: [shop.example.com] # required; the first one is the sitemap's
+    scheme: myshop # optional custom scheme: myshop://shop.example.com/products/2
     android_package: com.example.shop # with android_sha256: the Android files
-    android_sha256: ["AB:CD:...:EF"]  # the signing certificates' fingerprints, 32 hex pairs each
-    ios_app_id: ABCDE12345.com.example.shop   # Team ID, a dot, the bundle id: the iOS files
-    out: links                        # default: where the files go, relative to the project
+    android_sha256: ["AB:CD:...:EF"] # the signing certificates' fingerprints, 32 hex pairs each
+    ios_app_id: ABCDE12345.com.example.shop # Team ID, a dot, the bundle id: the iOS files
+    out: links # default: where the files go, relative to the project
 ```
 
 `fsp links` then writes, below `out` (`links/` unless you say otherwise; commit it, like `app.g.dart`):
@@ -379,13 +379,13 @@ and every route in a folder that doesn't say [`const linkable = false;`](routing
 (a `route.dart`, inherited down the tree, the nearest one wins). Redirects are opened by the app,
 so they are in the Android and iOS lists; a sitemap leaves them out.
 
-| Route                              | Android                                    | iOS (`components`)             | Sitemap                   |
-| ---------------------------------- | ------------------------------------------ | ------------------------------ | ------------------------- |
-| `/about` (static)                  | `android:path="/about"`                    | `/about`                       | listed                    |
-| `/products/:id`                    | `pathPattern="/products/..*"`              | `/products/?*`                 | left out                  |
-| `/docs/*rest`                      | `pathPrefix="/docs/"`                      | `/docs/?*`                     | left out                  |
-| `/files/*path?`                    | `path="/files"` and `pathPrefix="/files/"` | `/files` and `/files/*`        | left out                  |
-| `help/` with `{'fr': 'aide'}`      | one entry per spelling                     | one entry per spelling         | one `<url>` per spelling  |
+| Route                         | Android                                    | iOS (`components`)      | Sitemap                  |
+| ----------------------------- | ------------------------------------------ | ----------------------- | ------------------------ |
+| `/about` (static)             | `android:path="/about"`                    | `/about`                | listed                   |
+| `/products/:id`               | `pathPattern="/products/..*"`              | `/products/?*`          | left out                 |
+| `/docs/*rest`                 | `pathPrefix="/docs/"`                      | `/docs/?*`              | left out                 |
+| `/files/*path?`               | `path="/files"` and `pathPrefix="/files/"` | `/files` and `/files/*` | left out                 |
+| `help/` with `{'fr': 'aide'}` | one entry per spelling                     | one entry per spelling  | one `<url>` per spelling |
 
 - **A `$dynamic` segment is a wildcard.** Android's `pathPattern` can't say "one segment", so
   `/products/..*` also lets `/products/2/extra` through; the app's router has the last word and shows
@@ -456,7 +456,7 @@ escapes decoded, and a trailing slash or `//` ignored. A `redirect.dart` is a ro
 `not_found.dart` is not. The query and the fragment are not looked at (`go_router` ignores
 parameters it doesn't know). Since 0.8.1 segment **types are checked** too, the way the route
 parses them: `/products/abc` reaches `products/$id`, and with `{required int id}` that route shows
-not-found, so it is reported (``` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found [unknown_path] ```).
+not-found, so it is reported (`` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found [unknown_path] ``).
 As in `AppRoutes.match`, the first route that fits the path decides: a later route that would take
 the text is never tried. `int`, `double`, `num`, `bool`, `DateTime` (its start only) and
 [enum](routing.md#enum-segments) segments are checked, and each part of a typed
@@ -493,7 +493,7 @@ fespalier:
 
 A warning never fails a command, so a false positive can't break a build. With `error`, `fsp check`
 exits 1 (``1 error(s) in string paths (`lints: unknown_path: error`)``), and so do `fsp gen` and
-`fsp watch` after they write the output (``...; lib/app.g.dart is up to date``): the generated file
+`fsp watch` after they write the output (`...; lib/app.g.dart is up to date`): the generated file
 doesn't depend on the lint, so a typo in some other file does not stop `watch` from regenerating.
 `fsp new` and `fsp init` report it as a warning at most. If the route tree itself has errors, the
 check doesn't run: a half-resolved tree would make every path look unknown.
@@ -574,15 +574,15 @@ whose web build you ship.
 
 ```yaml
 fespalier:
-  semantics_ids: true              # required by `fsp maestro`
+  semantics_ids: true # required by `fsp maestro`
   maestro:
-    app_id: com.example.shop       # Android and iOS: each flow's `appId:`   } exactly one
-    url: http://localhost:8080     # the web: each flow's `url:`             } of the two
-    link: myshop://shop.example.com   # what a route's path is appended to; default below
-    out: .maestro/routes           # default; a folder inside the project, no `..`
-    guard_flow: .maestro/sign-in.yaml   # optional: runs before the link of a guarded route
-    timeout: 20000                 # default; how long a flow waits for the page, 1000 to 600000 ms
-    samples:                       # the value of each dynamic folder, inherited by the routes below it
+    app_id: com.example.shop # Android and iOS: each flow's `appId:`   } exactly one
+    url: http://localhost:8080 # the web: each flow's `url:`             } of the two
+    link: myshop://shop.example.com # what a route's path is appended to; default below
+    out: .maestro/routes # default; a folder inside the project, no `..`
+    guard_flow: .maestro/sign-in.yaml # optional: runs before the link of a guarded route
+    timeout: 20000 # default; how long a flow waits for the page, 1000 to 600000 ms
+    samples: # the value of each dynamic folder, inherited by the routes below it
       products/$id: 2
       greet/$name: Ada
       docs/$$rest: [guides, intro] # a catch-all takes a list of parts (a lone value is one part)
@@ -768,10 +768,10 @@ the build you deploy.
 ```yaml
 fespalier:
   size:
-    build: build/web      # default; the `flutter build web` output, inside the project
-    main: 3 MB            # main.dart.js
-    route: 64 KB          # each deferred route's total (own + shared)
-    routes:               # per route, by pattern as `fsp routes` prints it; wins over `route`
+    build: build/web # default; the `flutter build web` output, inside the project
+    main: 3 MB # main.dart.js
+    route: 64 KB # each deferred route's total (own + shared)
+    routes: # per route, by pattern as `fsp routes` prints it; wins over `route`
       /checkout: 8 KB
 ```
 
@@ -887,12 +887,12 @@ Either way `dart format --set-exit-if-changed` is clean on it, in every style.
 ```yaml
 fespalier:
   test:
-    out: test/routes               # default; `test`, `integration_test` or a folder below one
-    setup: test/routes/setup.dart  # default: <out>/setup.dart, used when it exists
-    timeout: 30000                 # default; milliseconds of the fake clock a test waits for its page, 1000 to 600000
-    samples:                       # default: `maestro.samples`; same format
+    out: test/routes # default; `test`, `integration_test` or a folder below one
+    setup: test/routes/setup.dart # default: <out>/setup.dart, used when it exists
+    timeout: 30000 # default; milliseconds of the fake clock a test waits for its page, 1000 to 600000
+    samples: # default: `maestro.samples`; same format
       products/$id: 1
-    skip: [/admin]                 # patterns as `fsp routes` prints them
+    skip: [/admin] # patterns as `fsp routes` prints them
 ```
 
 **Samples** are the values of the dynamic folders, in the format of
@@ -971,29 +971,28 @@ Measured on synthetic apps (`cli/src/bench.rs`: sections of 25 routes with layou
 a `data.dart` on every fifth route, query parameters on every third page, dynamic segments;
 5,000 routes are 7,400 files and a 5.8 MB `app.g.dart`), a release build, 4 cores, warm file
 cache. Re-run them with `cd cli && cargo test --release bench -- --ignored --nocapture
---test-threads=1`. Milliseconds, before → after this change (run to run they vary by about
-15%; the 500-route cold run is within that):
+--test-threads=1`. Milliseconds (run to run they vary by about
+15%):
 
 | Routes | `gen` cold | `watch`: a save, output unchanged | `watch`: a save, output changed | `watch`: a file `fsp` doesn't read |
 | -----: | ---------: | --------------------------------: | ------------------------------: | ---------------------------------: |
-|    500 |    53 → 56 |                           31 → 28 |                         37 → 22 |                             36 → 7 |
-|  2,000 |  284 → 156 |                         121 → 113 |                       132 → 108 |                           107 → 28 |
-|  5,000 |  626 → 429 |                         405 → 263 |                       403 → 279 |                           424 → 77 |
+|    500 |         56 |                                28 |                              22 |                                  7 |
+|  2,000 |        156 |                               113 |                             108 |                                 28 |
+|  5,000 |        429 |                               263 |                             279 |                                 77 |
 
 With `format: true` (`dart format` of the generated file):
 
-| Routes |      `gen` cold | `watch`: a save, output unchanged | `watch`: a save, output changed | `watch`: a file `fsp` doesn't read |
-| -----: | --------------: | --------------------------------: | ------------------------------: | ---------------------------------: |
-|    500 | 1.27 s → 1.41 s |                    1.24 s → 29 ms |                 1.24 s → 1.27 s |                      1.25 s → 8 ms |
-|  2,000 | 4.96 s → 5.05 s |                   4.84 s → 104 ms |                 5.11 s → 4.93 s |                     4.83 s → 30 ms |
-|  5,000 | 13.4 s → 13.4 s |                   12.7 s → 274 ms |                 13.3 s → 14.1 s |                     12.9 s → 77 ms |
+| Routes | `gen` cold | `watch`: a save, output unchanged | `watch`: a save, output changed | `watch`: a file `fsp` doesn't read |
+| -----: | ---------: | --------------------------------: | ------------------------------: | ---------------------------------: |
+|    500 |     1.41 s |                             29 ms |                          1.27 s |                               8 ms |
+|  2,000 |     5.05 s |                            104 ms |                          4.93 s |                              30 ms |
+|  5,000 |     13.4 s |                            274 ms |                          14.1 s |                              77 ms |
 
 "Output unchanged" is a comment added to a page, which changes the file and not what is
 generated; "output changed" changes the type of a query parameter. Where the time goes at
 5,000 routes, cold: walking the folders and reading the files 82, parsing 208 (now spread
 over the cores), resolving 29, emitting 153 (the model 50, `minijinja` 105), writing 6.
-Emitting was 277 before: the check that a `/:slug` doesn't hide a page compared every page
-with every earlier one, 125 ms of it at 5,000 routes. And `dart format`, when it is on,
+And `dart format`, when it is on,
 dwarfs all of it: 1.4 s at 500 routes, 5.3 s at 2,000, 14 s at 5,000, because the formatter
 reads the whole file.
 
@@ -1008,8 +1007,9 @@ What `watch` does about it:
   declarations (`enums.rs`); their contents are compared on every run, so an enum renamed or
   deleted there is never served stale.
 - **`dart format` runs only on code it hasn't formatted before**, so a save that doesn't change
-  the generated code (a `build` method, most of the time) skips it: the 1.2 to 13 s above
-  become the 30 to 270 ms of a run without `format:`. Code that did change is formatted in full, because the
+  the generated code (a `build` method, most of the time) skips it: a save takes the 30 to 270 ms above, about
+  what a run without `format:` takes, not the 1.2 to 13 s that formatting the whole file costs. Code that did
+  change is formatted in full, because the
   formatter needs the whole file. If that hurts in a huge app, leave `format:` off in
   `watch` and format in CI.
 - Nothing is written when the output is byte-identical to the file on disk (it always was so).

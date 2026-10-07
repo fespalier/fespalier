@@ -48,7 +48,7 @@ An older link such as `github.com/fespalier/fespalier#telemetry`, or a message t
 - [navigation.md](navigation.md): The root navigator (`navigator.dart`) · `present.dart`: a page of your own · The URL as state: `of` and `copyWith` · Remounting a page: `remount` · Typed `extra` · Restoring `extra` on the web · Links: `RouteLink` · Preloading the data behind a link · Deferred routes: a page's code on demand
 - [data.md](data.md): `data.dart`: a function, a selector or a provider · Retries and reloads · Freshness: `staleTime`, resume and reconnect · Reconnects: fespalier_connectivity · A cache that survives a restart: `dataCache` · A cache on disk: fespalier_storage · Typed helpers on the route · From a location to its data · Section data
 - [actions.md](actions.md): `action.dart`: typed writes · `validate()` and `FieldErrors` · Optimistic updates: `optimistic()`
-- [forms.md](forms.md): Forms: fespalier_forms · Install · `form()` and `useForm` · Fields · Submit and errors · Testing (the old "Forms: `form()` and `validate()`" section of actions.md, since 0.11.0)
+- [forms.md](forms.md): Forms: `form()` and `validate()` (form() since 0.11.0; validate() is in actions.md)
 - [http.md](http.md): HTTP clients: fespalier_dio · Cancelling a load whose page is gone · Server validation errors on forms · Writes are never retried, over HTTP too
 - [app-startup.md](app-startup.md): `main()`: app.dart, startup.dart and splash.dart
 - [adapters.md](adapters.md): Adapters in the generated `main()`

@@ -165,7 +165,7 @@ abstract final class FieldErrorsDecoders {
 }
 
 /// How a server's field key becomes the name of a field of the form's record (since 0.9.0; the
-/// form is `fespalier_forms`', see https://github.com/fespalier/fespalier/blob/main/docs/forms.md).
+/// form is in `fespalier_forms`, see https://github.com/fespalier/fespalier/blob/main/docs/forms.md).
 abstract final class FieldNames {
   /// The key as the server sent it (after the decoder made a path of it: `address.street`).
   static String asIs(String key) => key;

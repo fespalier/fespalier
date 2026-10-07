@@ -10,10 +10,10 @@ What stays in `fespalier` because it does not need a form: [`FieldErrors`](actio
 
 Add `fespalier_forms` under `dependencies:` next to `fespalier`, with the same git `url` and the same `ref`: pub resolves the two to one package only if they are the same repository dependency. The snippet, kept at the release's tag, is in [`packages/fespalier_forms/README.md`](../packages/fespalier_forms/README.md).
 
-Then run `fsp gen`. The generated file imports `package:fespalier_forms/fespalier_forms.dart` when some `action.dart` has a `form()`, and an app without a form does not import it. An app that has a `form()` and no `fespalier_forms` in `pubspec.yaml` gets an error at the `form()`:
+Then run `flutter pub get` and `fsp gen` (restart `fsp watch` or `fsp dev` if one is running, so it reads the new dependency). The generated file imports `package:fespalier_forms/fespalier_forms.dart` when some `action.dart` has a `form()`, and an app without a form does not import it. An app that has a `form()` and no `fespalier_forms` in `pubspec.yaml` gets an error at the `form()`:
 
 ```text
-✗ nickname/action.dart:6  `form()` is the form of `action()`, and since 0.11.0 forms are in the fespalier_forms package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the same git `url` and `ref` as fespalier
+✗ (account)/nickname/action.dart:6  `form()` is the form of `action()`, and since 0.11.0 forms are in the fespalier_forms package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the same git `url` and `ref` as fespalier
 ```
 
 Pages use inferred types (`final form = NicknameRoute.useForm(ref, data: profile)`), so they need no import. Code that names `ActionForm`, `ActionField`, `ActionTextField`, `ActionFormFields`, `FieldCodec`, `ActionFormMessages`, `ActionFormValidation` or `useActionForm` imports `package:fespalier_forms/fespalier_forms.dart`: `package:fespalier` no longer exports them.

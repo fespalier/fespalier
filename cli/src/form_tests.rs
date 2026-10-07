@@ -639,11 +639,11 @@ fn a_form_needs_the_forms_package_in_the_pubspec() {
         errors,
         [format!(
             "✗ nickname/action.dart:2  {}",
-            crate::forms::MISSING_PACKAGE
+            crate::forms::missing_package("form", "action")
         )]
     );
     assert_eq!(
-        crate::forms::MISSING_PACKAGE,
+        crate::forms::missing_package("form", "action"),
         "`form()` is the form of `action()`, and since 0.11.0 forms are in the fespalier_forms package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the same git `url` and `ref` as fespalier"
     );
 }

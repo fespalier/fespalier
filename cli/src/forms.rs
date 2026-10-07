@@ -69,18 +69,23 @@ pub fn check_dependency(app: &App, cfg: &Config, diags: &mut Diags) {
     if cfg.forms_dependency {
         return;
     }
-    for form in app
+    for (action, form) in app
         .routes
         .iter()
         .flat_map(|r| &r.actions)
-        .filter_map(|a| a.form.as_ref())
+        .filter_map(|a| a.form.as_ref().map(|f| (a, f)))
     {
-        diags.error(&form.file, Some(&form.span), MISSING_PACKAGE);
+        let message = missing_package(&form.function, &action.name);
+        diags.error(&form.file, Some(&form.span), &message);
     }
 }
 
-/// The message of [`check_dependency`].
-pub const MISSING_PACKAGE: &str = "`form()` is the form of `action()`, and since 0.11.0 forms are in the fespalier_forms package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the same git `url` and `ref` as fespalier";
+/// The message of [`check_dependency`]: `form` is the form of `action`.
+pub fn missing_package(form: &str, action: &str) -> String {
+    format!(
+        "`{form}()` is the form of `{action}()`, and since 0.11.0 forms are in the fespalier_forms package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the same git `url` and `ref` as fespalier"
+    )
+}
 
 /// The `FieldCodec` a text field of this exact type is read with, or `None` for a field of
 /// another type (a `bool`, an enum, a date...), which is a plain value field.

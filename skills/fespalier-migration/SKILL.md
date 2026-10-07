@@ -32,8 +32,7 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 ## 0.10 to 0.11: what to check
 
-0.11.0 is a **breaking** release for apps with forms (`form()` in an `action.dart`); an app with none changes nothing but
-what `fsp gen` writes for the other 0.11 changes below. Bump the `ref:` of `fespalier` (and every companion) to the 0.11.0
+0.11.0 is a **breaking** release for apps with forms (`form()` in an `action.dart`); an app with none changes nothing. Bump the `ref:` of `fespalier` (and every companion) to the 0.11.0
 tag, then:
 
 1. **Add `fespalier_forms`** under `dependencies:`, at the **same git `url` and `ref` as `fespalier`** (the block is in

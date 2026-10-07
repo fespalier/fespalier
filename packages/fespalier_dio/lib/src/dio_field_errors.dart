@@ -7,7 +7,8 @@ import 'problem.dart';
 extension FespalierDioFieldErrors<T> on Future<T> {
   /// Completes like this future, except that a [DioException] whose response has a status in
   /// [statuses] and a body [decoder] recognises is thrown as those [FieldErrors], so the form
-  /// (see https://github.com/fespalier/fespalier/blob/main/docs/forms.md, `fespalier_forms`) shows each message under its field. Any other error is rethrown as it was: the very same object.
+  /// (see https://github.com/fespalier/fespalier/blob/main/docs/forms.md, `fespalier_forms`) shows
+  /// each message under its field. Any other error is rethrown as it was: the very same object.
   ///
   /// It is not an interceptor on purpose: an interceptor can only reject with a `DioException`, and
   /// a form reads a [FieldErrors]. Use it in an `action.dart` (a `data.dart` that gets a 422 wants

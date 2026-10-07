@@ -270,6 +270,140 @@ void main() {
     );
   });
 
+  group('B2 (wipe): nothing is written back into an account after its wipe', () {
+    test(
+      'a send in the air when the account is wiped (the scope stays) writes nothing',
+      () async {
+        final fake = FakeCrateStackTransport()..on('a', (_) => 'a');
+        final gate = GateTransport(fake)..gate = Completer<void>();
+        final store = InMemoryLocalStore();
+        final c = containerFor(transport: gate, store: store);
+        final pending = c
+            .read(intentQueue)
+            .submit<Object?>(
+              const RpcCall('a', 1),
+              subject: 's',
+              decode: (o) => o,
+            );
+        await settle();
+        expect(store.keys('cs/u1/intent/'), hasLength(1));
+        await c.read(crateStackAccount).clear();
+        fake.offline = true;
+        gate.gate!.complete();
+        await pending;
+        expect(store.keys('cs/u1/'), isEmpty);
+      },
+    );
+
+    test('and when the scope goes null', () async {
+      final fake = FakeCrateStackTransport()..on('a', (_) => 'a');
+      final gate = GateTransport(fake)..gate = Completer<void>();
+      final store = InMemoryLocalStore();
+      final c = scoped(transport: gate, store: store);
+      final pending = c
+          .read(intentQueue)
+          .submit<Object?>(const RpcCall('a', 1), decode: (o) => o);
+      await settle();
+      await c.read(crateStackAccount).clear();
+      c.read(who.notifier).set(null);
+      fake.offline = true;
+      gate.gate!.complete();
+      await pending;
+      expect(store.keys('cs/A/'), isEmpty);
+    });
+
+    test(
+      'a drain in the air when the account is wiped writes nothing and sends no more',
+      () async {
+        final fake = FakeCrateStackTransport()
+          ..on('a', (_) => 'a')
+          ..on('b', (_) => 'b');
+        final gate = GateTransport(fake);
+        final store = InMemoryLocalStore();
+        final c = containerFor(transport: gate, store: store);
+        fake.offline = true;
+        final queue = c.read(intentQueue);
+        await queue.submit<Object?>(const RpcCall('a', 1), decode: (o) => o);
+        await queue.submit<Object?>(const RpcCall('b', 2), decode: (o) => o);
+        fake.offline = false;
+        gate.gate = Completer<void>();
+        final drain = queue.drain();
+        await settle();
+        fake.offline = true;
+        await c.read(crateStackAccount).clear();
+        gate.gate!.complete();
+        await drain;
+        expect(fake.runs('b'), 0);
+        expect(store.keys('cs/u1/'), isEmpty);
+      },
+    );
+
+    test(
+      'serve does not save the answer of a wiped account, the scope staying',
+      () async {
+        final store = InMemoryLocalStore();
+        final c = containerFor(store: store);
+        final gate = Completer<String>();
+        final read = FutureProvider<Served<String>>(
+          (ref) async => ref.serve<String>(
+            key: 'me',
+            codec: ServedCodec(toJson: (v) => v, fromJson: (j) => j! as String),
+            fetch: () => gate.future,
+          ),
+        );
+        final sub = c.listen(read, (_, _) {});
+        addTearDown(sub.close);
+        await settle();
+        await c.read(crateStackAccount).clear();
+        gate.complete('secret');
+        await settle();
+        await settle();
+        expect(store.keys('cs/u1/'), isEmpty);
+      },
+    );
+
+    test(
+      'an edit in the air when the account is wiped is not written back',
+      () async {
+        final inner = InMemoryLocalStore();
+        final c = containerFor(store: AsyncStore(inner));
+        final edit = c.read(ownedRows).edit('notes', 'n1', {'title': 't'});
+        await c.read(crateStackAccount).clear();
+        await edit;
+        expect(inner.keys('cs/u1/'), isEmpty);
+      },
+    );
+
+    test(
+      'a sync in the air when the account is wiped adopts nothing',
+      () async {
+        final store = InMemoryLocalStore();
+        final server = GatedPull(
+          PullPage([
+            OwnedRow(
+              collection: 'notes',
+              id: 'n1',
+              fields: {'title': 'x'},
+              stamps: {'title': const Hlc(5, 0, 'srv')},
+            ),
+          ], nextCursor: '1'),
+        );
+        final c = containerFor(
+          store: store,
+          rowServer: server,
+          collections: const ['notes'],
+        );
+        final run = c.read(syncEngine).sync(SyncReason.manual);
+        await settle();
+        await c.read(crateStackAccount).clear();
+        server.gate.complete();
+        final report = await run;
+        expect(report.pulled, 0);
+        expect(store.keys('cs/u1/'), isEmpty);
+      },
+    );
+  });
+
   group('H1: a read does not write after its account left', () {
     test(
       'serve does not save the answer of an account that signed out meanwhile',

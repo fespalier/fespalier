@@ -35,7 +35,9 @@ final class IntentQueue {
     required CrateStackTransport Function() transport,
     required CrateStackErrors Function() errors,
     required BumpTags bump,
-  }) : _store = store,
+    WipeGenerations? wipes,
+  }) : _wipes = wipes ?? WipeGenerations(),
+       _store = store,
        _scope = scope,
        _transport = transport,
        _errors = errors,
@@ -46,6 +48,7 @@ final class IntentQueue {
   final CrateStackTransport Function() _transport;
   final CrateStackErrors Function() _errors;
   final BumpTags _bump;
+  final WipeGenerations _wipes;
 
   final Set<String> _inFlight = {};
   String? _seqScope;
@@ -86,17 +89,21 @@ final class IntentQueue {
     return next;
   }
 
-  /// Saves [intent] under [prefix]. Unless [create], only if it is still there: an intent that was
-  /// wiped while its call was in the air stays wiped.
-  Future<void> _write(
-    String prefix,
+  /// Saves [intent] under [prefix] of [scope], unless that account was wiped since [generation]
+  /// was read: what an operation holds when its account's data is wiped is dropped, never written
+  /// back. Unless [create], also only if the intent is still there. Whether it was saved.
+  Future<bool> _write(
+    String scope,
+    int generation,
     Intent intent, {
     bool create = false,
   }) async {
-    final key = '$prefix${intent.id}';
-    if (!create && await _store.read(key) == null) return;
+    final key = '${_prefixOf(scope)}${intent.id}';
+    if (!create && await _store.read(key) == null) return false;
+    if (_wipes.of(scope) != generation) return false;
     await _store.write(key, jsonEncode(intent.toJson()));
     _bump({intentsTag});
+    return true;
   }
 
   Future<void> _remove(String prefix, Intent intent) async {
@@ -129,6 +136,7 @@ final class IntentQueue {
     final scope =
         _requireScope(); // a StateError, before anything is saved, when nobody is signed in
     final prefix = _prefixOf(scope);
+    final generation = _wipes.of(scope);
     final (intent, blocked) = await _exclusive(() async {
       final seq = await _nextSeq(scope);
       final earlier =
@@ -147,7 +155,10 @@ final class IntentQueue {
         status: earlier ? IntentStatus.pending : IntentStatus.sent,
       );
       final saved = Intent.fromJson(jsonDecode(jsonEncode(draft.toJson())));
-      await _write(prefix, saved, create: true);
+      // The account was wiped while this waited its turn: nothing is saved, so nothing is sent.
+      if (!await _write(scope, generation, saved, create: true)) {
+        throw const CrateStackCancelled();
+      }
       if (!earlier) _inFlight.add(saved.id);
       return (saved, earlier);
     });
@@ -170,7 +181,7 @@ final class IntentQueue {
           );
         }
         final kept = intent.copyWith(status: IntentStatus.pending);
-        await _write(prefix, kept);
+        await _write(scope, generation, kept);
         return Queued<T>(kept);
       }
       switch (failure) {
@@ -179,7 +190,7 @@ final class IntentQueue {
             CrateStackUnauthenticated() ||
             CrateStackCancelled():
           final kept = intent.copyWith(status: IntentStatus.pending);
-          await _write(prefix, kept);
+          await _write(scope, generation, kept);
           return Queued<T>(kept);
         case CrateStackUnavailable():
           final kept = intent.copyWith(
@@ -187,7 +198,7 @@ final class IntentQueue {
             attempt: intent.attempt + 1,
             failures: intent.failures + 1,
           );
-          await _write(prefix, kept);
+          await _write(scope, generation, kept);
           return Queued<T>(kept);
         case CrateStackRefused() ||
             CrateStackConflict() ||
@@ -218,6 +229,7 @@ final class IntentQueue {
     final scope = _scope();
     if (scope == null) return const DrainReport();
     final prefix = _prefixOf(scope);
+    final generation = _wipes.of(scope);
     final all = await _listIn(prefix);
     final blocked = <String>{
       for (final intent in all)
@@ -233,7 +245,7 @@ final class IntentQueue {
     var reached = false;
     for (final saved in all) {
       // A's intent is never sent under B's session.
-      if (_scope() != scope) break;
+      if (_scope() != scope || _wipes.of(scope) != generation) break;
       if (!saved.undecided || _inFlight.contains(saved.id)) continue;
       final subject = saved.subject;
       if (subject != null && blocked.contains(subject)) continue;
@@ -242,7 +254,9 @@ final class IntentQueue {
         final sending = saved.status == IntentStatus.sent
             ? saved
             : saved.copyWith(status: IntentStatus.sent);
-        if (sending != saved) await _write(prefix, sending);
+        if (sending != saved) {
+          await _write(scope, generation, sending);
+        }
         try {
           await _transport().send(
             sending.call,
@@ -263,14 +277,16 @@ final class IntentQueue {
                 );
               }
               await _write(
-                prefix,
+                scope,
+                generation,
                 sending.copyWith(status: IntentStatus.pending),
               );
               retained++;
               if (subject != null) blocked.add(subject);
             case CrateStackOffline():
               await _write(
-                prefix,
+                scope,
+                generation,
                 sending.copyWith(status: IntentStatus.pending),
               );
               offline = true;
@@ -280,7 +296,8 @@ final class IntentQueue {
                 CrateStackNoLocalData():
               reached = reached || failure is! CrateStackCancelled;
               await _write(
-                prefix,
+                scope,
+                generation,
                 sending.copyWith(status: IntentStatus.pending),
               );
               retained++;
@@ -288,7 +305,8 @@ final class IntentQueue {
             case CrateStackUnavailable():
               reached = true;
               await _write(
-                prefix,
+                scope,
+                generation,
                 sending.copyWith(
                   status: IntentStatus.pending,
                   attempt: sending.attempt + 1,
@@ -300,14 +318,16 @@ final class IntentQueue {
             case CrateStackConflict(:final code):
               reached = true;
               await _write(
-                prefix,
+                scope,
+                generation,
                 sending.copyWith(status: IntentStatus.conflict, reason: code),
               );
               conflicts++;
             case CrateStackRefused(:final code, :final message):
               reached = true;
               await _write(
-                prefix,
+                scope,
+                generation,
                 sending.copyWith(
                   status: IntentStatus.failed,
                   // Only the wire code is kept; the one bug the server names in its message
@@ -369,7 +389,9 @@ final class IntentQueue {
   FutureOr<void> clear() async {
     final scope = _scope();
     if (scope == null) return;
+    _wipes.wiped(scope);
     await _store.clear(_prefixOf(scope));
+    _wipes.wiped(scope);
     _bump({intentsTag});
   }
 }
@@ -386,6 +408,7 @@ final intentQueue = Provider<IntentQueue>((ref) {
     transport: () => ref.read(crateStackTransport),
     errors: () => errors,
     bump: ref.watch(crateStackBump),
+    wipes: ref.watch(crateStackWipes),
   );
 });
 

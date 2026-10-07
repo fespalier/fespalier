@@ -119,7 +119,9 @@ final class SyncEngine implements SyncRunner {
     this.minInterval = const Duration(seconds: 10),
     CrateStackErrors errors = const CrateStackErrors([]),
     String? Function()? scope,
-  }) : _rows = rows,
+    WipeGenerations? wipes,
+  }) : _wipes = wipes ?? WipeGenerations(),
+       _rows = rows,
        _rowSync = rowSync,
        _intents = intents,
        _collections = collections,
@@ -136,6 +138,7 @@ final class SyncEngine implements SyncRunner {
 
   /// The account a run belongs to; a run whose account changed stops without touching the new one.
   final String? Function()? _scope;
+  final WipeGenerations _wipes;
 
   /// A sync caused by a signal (resume, reconnect, tick) within this long of the last one that
   /// reached the server does nothing. `start` and `manual` always run.
@@ -217,9 +220,14 @@ final class SyncEngine implements SyncRunner {
 
   Future<SyncReport> _run(SyncReason reason) async {
     final scope = _scope?.call();
-    // Thrown between steps when the account changed: what came back is the old account's.
+    final generation = scope == null ? 0 : _wipes.of(scope);
+    // Thrown between steps when the account changed or was wiped: what came back is gone.
     void ensureSameAccount() {
-      if (_scope != null && _scope() != scope) throw const _AccountChanged();
+      if (_scope != null &&
+          (_scope() != scope ||
+              (scope != null && _wipes.of(scope) != generation))) {
+        throw const _AccountChanged();
+      }
     }
 
     final changed = <String>{};
@@ -359,6 +367,7 @@ final class SyncEngine implements SyncRunner {
     final dirty = await _rows.dirty(_collections);
     if (dirty.isEmpty) return const PushResult();
     final scope = _scope?.call();
+    final generation = scope == null ? 0 : _wipes.of(scope);
     final PushResult result;
     try {
       result = await rowSync.push(dirty);
@@ -368,7 +377,11 @@ final class SyncEngine implements SyncRunner {
       Error.throwWithStackTrace(failure, stackTrace);
     }
     void ensure() {
-      if (_scope != null && _scope() != scope) throw const _AccountChanged();
+      if (_scope != null &&
+          (_scope() != scope ||
+              (scope != null && _wipes.of(scope) != generation))) {
+        throw const _AccountChanged();
+      }
     }
 
     final changed = <String>{};
@@ -401,6 +414,7 @@ final syncEngine = Provider<SyncEngine>((ref) {
     bump: ref.watch(crateStackBump),
     errors: ref.watch(crateStackErrors),
     scope: () => ref.mounted ? scope : null,
+    wipes: ref.watch(crateStackWipes),
   );
 });
 

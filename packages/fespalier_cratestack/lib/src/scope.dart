@@ -16,6 +16,28 @@ final crateStackScope = Provider<String?>((ref) => null);
 /// percent-encoded, so no scope is the prefix of another.
 String scopePrefix(String scope) => 'cs/${Uri.encodeComponent(scope)}/';
 
+/// A count per account that goes up each time the account's data is wiped.
+///
+/// An operation that started for an account captures its count, and checks it again after every
+/// `await`, before every write: if it moved, the data the operation was working on is gone, and what
+/// it holds must be dropped, not written back (a wiped intent, or a read of a signed-out account,
+/// would come back otherwise).
+final class WipeGenerations {
+  /// No account wiped yet.
+  WipeGenerations();
+
+  final Map<String, int> _counts = {};
+
+  /// The count of [scope].
+  int of(String scope) => _counts[scope] ?? 0;
+
+  /// [scope]'s data was (or is being) wiped.
+  void wiped(String scope) => _counts[scope] = of(scope) + 1;
+}
+
+/// The wipe counts the intent queue, owned rows, the sync engine and `serve` share.
+final crateStackWipes = Provider<WipeGenerations>((ref) => WipeGenerations());
+
 /// What a sign-out wipes: the intents, owned rows, cursors and cached reads of one account.
 final class CrateStackAccount {
   /// The wiper over [store] and [cache], for the scope [scope] answers.
@@ -23,13 +45,16 @@ final class CrateStackAccount {
     required LocalStore store,
     required ReadCache cache,
     required String? Function() scope,
+    WipeGenerations? wipes,
   }) : _store = store,
        _cache = cache,
-       _scope = scope;
+       _scope = scope,
+       _wipes = wipes ?? WipeGenerations();
 
   final LocalStore _store;
   final ReadCache _cache;
   final String? Function() _scope;
+  final WipeGenerations _wipes;
 
   /// Deletes every intent, owned row, sync cursor and cached read of [scope] (default: the current
   /// scope; a sign-out passes the account it is leaving, because the scope may already be null).
@@ -39,9 +64,13 @@ final class CrateStackAccount {
   FutureOr<void> clear({String? scope}) {
     final target = scope ?? _scope();
     if (target == null) return null;
+    // Before, so a write that is in flight is dropped; after, so one that started meanwhile is too.
+    _wipes.wiped(target);
     return andThen<void, void>(
       _store.clear(scopePrefix(target)),
-      (_) => _cache.clear(target),
+      (_) => andThen<void, void>(_cache.clear(target), (_) {
+        _wipes.wiped(target);
+      }),
     );
   }
 }
@@ -52,5 +81,6 @@ final crateStackAccount = Provider<CrateStackAccount>(
     store: ref.watch(localStore),
     cache: ref.watch(readCache),
     scope: () => ref.read(crateStackScope),
+    wipes: ref.watch(crateStackWipes),
   ),
 );

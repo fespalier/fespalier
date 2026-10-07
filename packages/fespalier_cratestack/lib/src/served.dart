@@ -116,6 +116,8 @@ extension CrateStackServeRef on Ref {
       );
     }
     final scope = watch(crateStackScope);
+    final wipes = read(crateStackWipes);
+    final generation = scope == null ? 0 : wipes.of(scope);
     watch(crateStackRevision(tag ?? _tagOf(key)));
     final cache = watch(readCache);
     final errors = read(crateStackErrors);
@@ -166,7 +168,10 @@ extension CrateStackServeRef on Ref {
       final at = clock.now();
       // Not for an account that signed out (or a read that was rebuilt) while the call was in
       // the air: its sign-out wipe must stay done.
-      if (scope != null && mounted && read(crateStackScope) == scope) {
+      if (scope != null &&
+          mounted &&
+          read(crateStackScope) == scope &&
+          wipes.of(scope) == generation) {
         try {
           await cache.write(scope, key, codec.version, codec.toJson(value), at);
         } on Object catch (error) {

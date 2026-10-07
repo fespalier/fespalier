@@ -26,13 +26,16 @@ final class OwnedRows {
     required LocalStore store,
     required String? Function() scope,
     required BumpTags bump,
+    WipeGenerations? wipes,
   }) : _store = store,
        _scope = scope,
-       _bump = bump;
+       _bump = bump,
+       _wipes = wipes ?? WipeGenerations();
 
   final LocalStore _store;
   final String? Function() _scope;
   final BumpTags _bump;
+  final WipeGenerations _wipes;
 
   String? _nodeCached;
   Future<String>? _nodePending;
@@ -128,34 +131,39 @@ final class OwnedRows {
   ) {
     // The account is read once: an edit that finishes after a sign-out is the old account's.
     final prefix = _prefix();
+    final account = _scope()!;
+    final generation = _wipes.of(account);
     final rowKey = _rowKey(prefix, collection, id);
     final hlcKey = '${prefix}hlc';
     return andThen<String, OwnedRow>(
       node(),
       (node) => andThen<Hlc?, OwnedRow>(
         _last(prefix),
-        (last) =>
-            andThen<OwnedRow?, OwnedRow>(_get(prefix, collection, id), (saved) {
-              final row = saved ?? OwnedRow(collection: collection, id: id);
-              if (changes.isEmpty) return row;
-              var stamp = last;
-              for (final change in changes.entries) {
-                stamp = Hlc.next(stamp, node);
-                row.fields[change.key] = change.value;
-                row.stamps[change.key] = stamp;
-                row.dirty.add(change.key);
-              }
-              return andThen<void, OwnedRow>(
-                _store.writeAll({
-                  rowKey: jsonEncode(row.toJson()),
-                  hlcKey: stamp!.pack(),
-                }),
-                (_) {
-                  _bump({collection});
-                  return row;
-                },
-              );
+        (last) => andThen<OwnedRow?, OwnedRow>(_get(prefix, collection, id), (
+          saved,
+        ) {
+          final row = saved ?? OwnedRow(collection: collection, id: id);
+          if (changes.isEmpty) return row;
+          var stamp = last;
+          for (final change in changes.entries) {
+            stamp = Hlc.next(stamp, node);
+            row.fields[change.key] = change.value;
+            row.stamps[change.key] = stamp;
+            row.dirty.add(change.key);
+          }
+          // The account was wiped while this ran: the edit is not written back.
+          if (_wipes.of(account) != generation) return row;
+          return andThen<void, OwnedRow>(
+            _store.writeAll({
+              rowKey: jsonEncode(row.toJson()),
+              hlcKey: stamp!.pack(),
             }),
+            (_) {
+              _bump({collection});
+              return row;
+            },
+          );
+        }),
       ),
     );
   }
@@ -176,6 +184,8 @@ final class OwnedRows {
     if (server.isEmpty) return 0;
     // The account is read once: rows that arrive after a sign-out are the old account's.
     final prefix = _prefix();
+    final account = _scope()!;
+    final generation = _wipes.of(account);
     final hlcKey = '${prefix}hlc';
     return andThen<String, int>(
       node(),
@@ -204,6 +214,7 @@ final class OwnedRows {
               }
             }
             if (clockNow != null) writes[hlcKey] = clockNow.pack();
+            if (_wipes.of(account) != generation) return 0;
             return andThen<void, int>(
               _store.writeAll(writes),
               (_) => server.length,
@@ -237,5 +248,6 @@ final ownedRows = Provider<OwnedRows>((ref) {
     store: ref.watch(localStore),
     scope: () => ref.mounted ? scope : null,
     bump: ref.watch(crateStackBump),
+    wipes: ref.watch(crateStackWipes),
   );
 });

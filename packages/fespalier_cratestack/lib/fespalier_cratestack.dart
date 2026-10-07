@@ -41,7 +41,12 @@ export 'src/revision.dart'
 export 'src/row_sync.dart'
     show PullPage, PushResult, RowRejection, RowSync, rowSync, syncCollections;
 export 'src/scope.dart'
-    show CrateStackAccount, crateStackAccount, crateStackScope;
+    show
+        CrateStackAccount,
+        WipeGenerations,
+        crateStackAccount,
+        crateStackScope,
+        crateStackWipes;
 export 'src/served.dart';
 export 'src/sync_engine.dart'
     show

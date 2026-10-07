@@ -195,6 +195,21 @@ class FakeOfflineTiles implements OfflineTiles {
     listener(DownloadFailed(reason));
   }
 
+  final List<Completer<void>> _heldDeletes = [];
+
+  /// Whether [delete] waits for [releaseDeletes] before it takes effect, to put another call
+  /// between a delete and the next one.
+  bool holdDeletes = false;
+
+  /// Lets the held [delete] calls take effect.
+  void releaseDeletes() {
+    final held = List.of(_heldDeletes);
+    _heldDeletes.clear();
+    for (final completer in held) {
+      completer.complete();
+    }
+  }
+
   /// Lets the held [download] futures complete.
   void releaseDownloads() {
     final held = List.of(_held);
@@ -220,8 +235,6 @@ class FakeOfflineTiles implements OfflineTiles {
     void Function(DownloadEvent event) onEvent,
   ) async {
     downloads.add(request);
-    final error = downloadError;
-    if (error != null) throw error;
     var id = _nextId++;
     for (final old in List.of(_regions)) {
       if (duplicates == FakeDuplicates.keep ||
@@ -232,6 +245,9 @@ class FakeOfflineTiles implements OfflineTiles {
       _regions.remove(old);
       if (duplicates == FakeDuplicates.reuseId) id = old.id;
     }
+    // Android deletes the duplicate first, so a download that then fails has lost the old pack.
+    final error = downloadError;
+    if (error != null) throw error;
     final region = FakeRegion._(id, request).._onEvent = onEvent;
     _regions.add(region);
     if (holdDownloads) {
@@ -286,6 +302,11 @@ class FakeOfflineTiles implements OfflineTiles {
     deleted.add(id);
     final error = deleteError;
     if (error != null) throw error;
+    if (holdDeletes) {
+      final completer = Completer<void>();
+      _heldDeletes.add(completer);
+      await completer.future;
+    }
     final region = _byId(id);
     if (region == null) throw StateError('No such region.');
     _tell(region, const DownloadFailed(PackFailure.replaced));

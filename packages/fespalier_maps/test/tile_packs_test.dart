@@ -523,4 +523,102 @@ void main() {
       expect(tiles.all, isEmpty);
     });
   });
+
+  group('a start that lands between two deletes', () {
+    test(
+      'remove does not delete the region a new start holds (iOS id reuse)',
+      () async {
+        tiles = FakeOfflineTiles(duplicates: FakeDuplicates.reuseId);
+        container = make(tiles);
+        tiles.seed(pack('a'), complete: false);
+        tiles.seed(pack('a'), complete: false);
+        await packs().refresh();
+        tiles.holdDeletes = true;
+        final removing = packs().remove('a');
+        await pumpEventQueue();
+        final started = packs().start(pack('a'));
+        await pumpEventQueue();
+        tiles.holdDeletes = false;
+        tiles.releaseDeletes();
+        await started;
+        await removing;
+        await pumpEventQueue();
+        expect(status('a'), isA<Downloading>());
+        expect(
+          tiles.regionOf('a'),
+          isNotNull,
+          reason: 'the running download keeps its region',
+        );
+        expect(tiles.deleted, [
+          1,
+        ], reason: 'the second id was left to the new owner');
+        tiles.finish('a', bytes: 9);
+        await pumpEventQueue();
+        expect(status('a'), const Complete(bytes: 9));
+        expect(tiles.regionOf('a'), isNotNull);
+      },
+    );
+
+    test(
+      'refresh does not delete spare regions of a key that started meanwhile',
+      () async {
+        tiles = FakeOfflineTiles(duplicates: FakeDuplicates.keep);
+        container = make(tiles);
+        tiles.seed(pack('a'));
+        final second = tiles.seed(pack('a'), complete: false);
+        final third = tiles.seed(pack('a'), complete: false);
+        tiles.holdDeletes = true;
+        final refreshing = packs().refresh();
+        await pumpEventQueue();
+        // The complete region is kept; the other two are spares, and the first delete is held.
+        final started = packs().start(pack('a'));
+        await pumpEventQueue();
+        tiles.holdDeletes = false;
+        tiles.releaseDeletes();
+        await started;
+        await refreshing;
+        await pumpEventQueue();
+        expect(status('a'), isA<Downloading>());
+        expect(tiles.deleted, [
+          second.id,
+        ], reason: 'the first delete was already under way');
+        expect(tiles.all.map((r) => r.id), contains(third.id));
+      },
+    );
+  });
+
+  test(
+    'old pack lost, re-download failed: the plugin deleted it first',
+    () async {
+      tiles.seed(pack('a'));
+      await packs().refresh();
+      tiles.downloadError = StateError('offline');
+      await packs().start(pack('a'));
+      expect(status('a'), const Failed(PackFailure.other));
+      expect(tiles.all, isEmpty);
+      await packs().refresh();
+      expect(
+        container.read(tilePacks).containsKey('a'),
+        isTrue,
+        reason: 'a Failed pack stays until removed',
+      );
+    },
+  );
+
+  test(
+    'a key whose pack left no region does not block another key\'s definition',
+    () async {
+      final same = RegionPackRequest(
+        key: 'b',
+        bounds: pack('a').bounds,
+        styleUrl: style,
+        minZoom: 10,
+        maxZoom: 12,
+      );
+      await packs().start(pack('a'));
+      tiles.fail('a', PackFailure.limitExceeded);
+      await packs().start(same);
+      expect(status('b'), isA<Downloading>());
+    },
+  );
 }

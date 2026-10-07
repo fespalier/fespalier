@@ -275,8 +275,9 @@ final class MapLibreOfflineTiles implements OfflineTiles {
 }
 
 /// MapLibre reports progress as a **percentage**: both native sides compute
-/// `100.0 * completedResources / requiredResources` (Android `OfflineManagerUtils.java`, iOS
-/// `OfflineManagerUtils.swift`), in the download events and in `getOfflineRegionStatus` alike.
+/// `100.0 * completedResources / requiredResources`. Download events: Android
+/// `OfflineManagerUtils.java` (`setObserverOnRegion`), iOS `OfflinePackDownloadManager.swift`
+/// (lines 303-309); `getOfflineRegionStatus`: both platforms' `OfflineManagerUtils`.
 /// The port speaks a fraction, so divide by 100 and keep it in 0 to 1.
 @visibleForTesting
 double progressFraction(double percent) =>

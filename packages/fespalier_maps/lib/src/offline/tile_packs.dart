@@ -72,6 +72,10 @@ final class StorageUse {
 /// of an interrupted or failed one, or a `start` of a complete one) removes the old region when
 /// the download begins, and a download that then fails has lost the old pack. And two keys
 /// cannot share a definition: [start] refuses the second with [PackFailure.duplicateRegion].
+///
+/// If the provider is invalidated while a download runs, the state starts empty and the events of
+/// that download are dropped until [refresh] reads the database again (it then shows the pack as
+/// [Interrupted] or [Complete]); the platform keeps downloading meanwhile.
 class TilePacks extends Notifier<Map<String, PackStatus>> {
   late OfflineTiles _tiles;
 
@@ -130,6 +134,14 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
     mapsFinish(token, result, outcome: outcome ?? TelemetryOutcome.ok);
   }
 
+  // Whether a pack in this state may have a region in the database. A failure that comes before
+  // or removes the region leaves none, so it does not block another key's definition.
+  static bool _holdsRegion(PackStatus? status) => switch (status) {
+    null || Absent() => false,
+    Failed(:final reason) => reason == PackFailure.other,
+    _ => true,
+  };
+
   static bool _sameDefinition(RegionPackRequest a, RegionPackRequest b) =>
       a.bounds == b.bounds &&
       a.styleUrl == b.styleUrl &&
@@ -141,6 +153,11 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
   /// A request that is not [RegionPackRequest.isValid] ends in [Failed] with
   /// [PackFailure.invalidRegion], and one whose definition another key already has ends in
   /// [PackFailure.duplicateRegion]; nothing reaches MapLibre in either case.
+  ///
+  /// Call [refresh] before the first [start] of a session: the duplicate refusal only sees the
+  /// packs this notifier knows, and a pack of an earlier session is known after a refresh. A key
+  /// whose pack failed without leaving a region (`limitExceeded`, `invalidRegion`,
+  /// `duplicateRegion`, `unsupported`, `replaced`) does not block another key's definition.
   ///
   /// Completes when MapLibre has accepted the region, not when the download ends: the end is
   /// [Complete] or [Failed] in [state].
@@ -157,7 +174,7 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
     }
     for (final entry in _requests.entries) {
       if (entry.key != key &&
-          state.containsKey(entry.key) &&
+          _holdsRegion(state[entry.key]) &&
           _sameDefinition(entry.value, request)) {
         _set(key, const Failed(PackFailure.duplicateRegion));
         return;
@@ -350,6 +367,9 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
     );
     Object? failure;
     for (final id in ids) {
+      // A start of this key during an await owns the key now, and on iOS may hold one of these
+      // ids: whatever is left is the new owner's to settle.
+      if (_generation[key] != generation) return;
       try {
         await _tiles.delete(id);
         if (_generation[key] == generation) {
@@ -435,7 +455,7 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
     // One synchronous pass over the state as it is now: a pack that started (or was removed)
     // while the statuses were read is left to that call.
     final next = {...state};
-    final toDelete = <int>[];
+    final toDelete = <({String key, int id, int generation})>[];
     for (final entry in chosen.entries) {
       final key = entry.key;
       if (_isActive(state[key]) ||
@@ -447,7 +467,9 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
       _requests[key] = entry.value.region.request!;
       if (entry.value.status is Complete) {
         _older.remove(key);
-        toDelete.addAll(spare[key]!);
+        for (final id in spare[key]!) {
+          toDelete.add((key: key, id: id, generation: _generation[key] ?? 0));
+        }
       } else {
         _older[key] = {...spare[key]!};
       }
@@ -464,8 +486,15 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
       }
     }
     state = next;
-    for (final id in toDelete) {
-      await _tryDelete(id);
+    for (final entry in toDelete) {
+      // Skip what a start or a removal of the key took over since the regions were read (on iOS
+      // it may be running on one of these ids).
+      if (!ref.mounted ||
+          (_generation[entry.key] ?? 0) != entry.generation ||
+          _isActive(state[entry.key])) {
+        continue;
+      }
+      await _tryDelete(entry.id);
     }
   }
 

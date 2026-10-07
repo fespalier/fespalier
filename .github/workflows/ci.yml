@@ -207,7 +207,7 @@ jobs:
   scaffold:
     name: Scaffolded files compile
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
     steps:
@@ -271,6 +271,120 @@ jobs:
           DART
           find lib -name '*.dart' ! -name '*.g.dart' -print0 |
             xargs -0 dart format --output=none --set-exit-if-changed
+          flutter analyze
+      # `fespalier: adapters:` compiles with the generated main() and with `main: manual` (since
+      # 0.11.0): no example has an adapter package, and a nested one would break `just flutter`'s
+      # analyze, so a path package that overrides every member is made in the runner's temp folder.
+      - name: Adapters compile with the generated main and with main manual
+        env:
+          FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
+        run: |
+          cargo build --quiet --manifest-path cli/Cargo.toml
+          cd "$RUNNER_TEMP"
+          # A path package that overrides every member of a FespalierAdapter.
+          mkdir -p demo_adapter/lib
+          cat > demo_adapter/pubspec.yaml <<'YAML'
+          name: demo_adapter
+          publish_to: none
+          environment:
+            sdk: ^3.8.0
+          dependencies:
+            flutter:
+              sdk: flutter
+            fespalier:
+              path: GITHUB_WORKSPACE/packages/fespalier
+          YAML
+          sed -i "s|GITHUB_WORKSPACE|$GITHUB_WORKSPACE|" demo_adapter/pubspec.yaml
+          cat > demo_adapter/lib/fespalier_adapter.dart <<'DART'
+          import 'package:fespalier/fespalier.dart';
+          import 'package:fespalier/startup.dart';
+          import 'package:flutter/widgets.dart';
+
+          const adapter = DemoAdapter();
+
+          class DemoAdapter extends FespalierAdapter {
+            const DemoAdapter();
+
+            @override
+            Future<void> zone(Future<void> Function() body) => body();
+
+            @override
+            Future<void>? beforeRun() => null;
+
+            @override
+            List<Override> overrides() => const [];
+
+            @override
+            List<ProviderObserver> providerObservers() => const [];
+
+            @override
+            List<NavigatorObserver> routerObservers() => const [];
+
+            @override
+            Widget wrap(Widget root) => root;
+
+            @override
+            void attach(GoRouter router, ProviderContainer container) {}
+          }
+          DART
+          flutter create --empty --project-name adapter_app --platforms web adapter_app
+          cd adapter_app
+          flutter pub add fespalier --path "$GITHUB_WORKSPACE/packages/fespalier"
+          flutter pub add demo_adapter --path ../demo_adapter
+          mkdir -p lib/app
+          cat > lib/app/page.dart <<'DART'
+          import 'package:flutter/material.dart';
+
+          class HomePage extends StatelessWidget {
+            const HomePage({super.key});
+
+            @override
+            Widget build(BuildContext context) => const Text('home');
+          }
+          DART
+          # 1. The generated main() calls AppAdapters.
+          printf '\nfespalier:\n  adapters: [demo_adapter]\n' >> pubspec.yaml
+          "$FSP_BIN" gen
+          grep -q 'abstract final class AppAdapters' lib/app.g.dart
+          grep -q 'attach: AppRoutes.attach' lib/app.main.g.dart
+          cat > lib/main.dart <<'DART'
+          import 'package:adapter_app/app.main.g.dart';
+
+          Future<void> main() => AppMain.run();
+          DART
+          flutter analyze
+          # 2. main: manual keeps AppAdapters, and the app's own main() calls it.
+          sed -i 's|^  adapters: \[demo_adapter\]|  main: manual\n  adapters: [demo_adapter]|' pubspec.yaml
+          rm lib/app.main.g.dart
+          "$FSP_BIN" gen
+          test ! -f lib/app.main.g.dart
+          grep -q 'abstract final class AppAdapters' lib/app.g.dart
+          cat > lib/main.dart <<'DART'
+          import 'package:adapter_app/app.g.dart';
+          import 'package:fespalier/fespalier.dart';
+          import 'package:flutter/material.dart';
+
+          Future<void> main() => AppAdapters.zone(() async {
+            WidgetsFlutterBinding.ensureInitialized();
+            if (AppAdapters.beforeRun() case final ready?) await ready;
+            final container = ProviderContainer(
+              overrides: [...AppAdapters.overrides()],
+              observers: [...AppAdapters.providerObservers()],
+            );
+            final router = AppRoutes.router(
+              observers: [...AppAdapters.routerObservers()],
+            );
+            AppRoutes.attach(router, container);
+            runApp(
+              AppAdapters.wrap(
+                UncontrolledProviderScope(
+                  container: container,
+                  child: MaterialApp.router(routerConfig: router),
+                ),
+              ),
+            );
+          });
+          DART
           flutter analyze
       # A release build has none of fespalier's telemetry code either (since 0.8.1): the app does not
       # opt in (`fespalier: telemetry: true`), so no call site passes a `TelemetrySite`, and nothing

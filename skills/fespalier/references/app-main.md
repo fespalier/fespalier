@@ -151,8 +151,8 @@ fespalier:
   adapters: [my_tools, my_reporter] # the first is the outermost
 ```
 
-For each name `n`, at index `i`, `lib/app.main.g.dart` imports `package:n/fespalier_adapter.dart as _a{i}` and calls
-`_a{i}.adapter`, a **`FespalierAdapter`** (`package:fespalier/startup.dart`) that the package exports as a
+For each name `n`, at index `i`, `lib/app.g.dart` (since 0.11.0; on 0.10.0 and earlier `lib/app.main.g.dart`) imports
+`package:n/fespalier_adapter.dart as _a{i}` and `AppAdapters` calls `_a{i}.adapter`, a **`FespalierAdapter`** (`package:fespalier/startup.dart`) that the package exports as a
 top-level `adapter`. The output depends on the pubspec alone, never on `pub get` or the pub cache, so `fsp check`
 gives the same bytes before and after it. An app can write one in a package of its own:
 
@@ -170,29 +170,51 @@ class MyToolsAdapter extends FespalierAdapter {
 }
 ```
 
-| Member                | Runs                                                                      | Notes                                                                                                                                                                  |
-| --------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zone(body)`          | around **all** of `main()`, outside startup.dart's `zone()`               | `Future<void>`; call `body` once. Before the binding exists                                                                                                            |
-| `beforeRun()`         | after `ensureInitialized()`, before `runApp`                              | `Future<void>?`: return `null` for nothing to wait for (not awaited: no `Future`, no microtask). A `Future` delays the first frame, so a local read, never the network |
-| `overrides()`         | once, after `startup()` succeeded, **before** `startup()`'s own overrides | Overriding a provider `startup()` also overrides is Riverpod's "Tried to override a provider twice" in debug                                                           |
-| `providerObservers()` | with `providerObservers` of startup.dart, the adapters' first             |                                                                                                                                                                        |
-| `routerObservers()`   | when the router is built, before startup.dart's `routerObservers`         | A new observer on each call: an observer belongs to one navigator                                                                                                      |
-| `wrap(root)`          | around the root widget, outside the `ProviderScope` and the splash        | `SentryWidget`, `PostHogWidget`                                                                                                                                        |
+| Member                      | Runs                                                                                                     | Notes                                                                                                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zone(body)`                | around **all** of `main()`, outside startup.dart's `zone()`                                              | `Future<void>`; call `body` once. Before the binding exists                                                                                                            |
+| `beforeRun()`               | after `ensureInitialized()`, before `runApp`                                                             | `Future<void>?`: return `null` for nothing to wait for (not awaited: no `Future`, no microtask). A `Future` delays the first frame, so a local read, never the network |
+| `overrides()`               | once, after `startup()` succeeded, **before** `startup()`'s own overrides                                | Overriding a provider `startup()` also overrides is Riverpod's "Tried to override a provider twice" in debug                                                           |
+| `providerObservers()`       | with `providerObservers` of startup.dart, the adapters' first                                            |                                                                                                                                                                        |
+| `routerObservers()`         | when the router is built, before startup.dart's `routerObservers`                                        | A new observer on each call: an observer belongs to one navigator                                                                                                      |
+| `wrap(root)`                | around the root widget, outside the `ProviderScope` and the splash                                       | `SentryWidget`, `PostHogWidget`                                                                                                                                        |
+| `attach(router, container)` | once per router (since 0.11.0), after the first frame that shows the router (the `ProviderScope` exists) | Subscribe with `container.listen` (a notification tap, a shortcut); do not navigate synchronously. An adapter that throws here is reported and the others still run    |
 
 Each default adds nothing. The rules are fespalier's own: no timer, sync stays sync, nothing touches a platform
 plugin until it is used (so `AppMain.root()` boots in a widget test).
 
 - **Order.** The first package is the outermost: its zone and its wrapper go around the others'.
 - **Errors, all from `fsp`** (quoted in `fespalier-troubleshooting`, its app-main diagnostics page): a name that is
-  not a package name, a duplicate, `fespalier` itself, a name not under `dependencies:`, and `main: manual` with
-  `adapters:` (a generated `main()` is what calls them).
+  not a package name, a duplicate, `fespalier` itself, and a name not under `dependencies:`. `main: manual` with
+  `adapters:` was an error up to 0.10.0 and is fine since 0.11.0 (below).
+- **`extends`, never `implements`** `FespalierAdapter`: a member added later (`attach`, since 0.11.0) has a default
+  for a subclass only.
+- **`attach` (since 0.11.0).** The generated main passes `AppRoutes.attach` to the `StartupGate`, which calls it
+  after the first frame that shows the router, with the app's `ProviderContainer` (so an adapter may change a provider there). `AppRoutes.attach(router)` with no container (what
+  `AppRoutes.router()` calls) skips the adapters. `pumpRouter` never attaches them.
 - **No per-adapter keys.** Deploy-time options come from `--dart-define`; anything custom stays in `startup.dart`.
 - **Not every companion is an adapter** (since 0.10.0): `fespalier_tolgee` and `fespalier_cratestack` ship **no**
   `fespalier_adapter.dart` (the setup is app code, which `startup()` already is), so `adapters: [fespalier_tolgee]` makes the
-  generated `lib/app.main.g.dart` import a file that does not exist (`Target of URI doesn't exist`). Wire them in `startup()`
+  generated `lib/app.g.dart` import a file that does not exist (`Target of URI doesn't exist`). Wire them in `startup()`
   ([`fespalier-i18n`](../../fespalier-i18n/SKILL.md), [`fespalier-cratestack`](../../fespalier-cratestack/SKILL.md)).
 - **Tests.** `pumpRouter(tester, router, app: AppMain.app)` and `fsp test` never see the adapters; `AppMain.root()`
   is the app as it runs, adapters included.
+
+### With `main: manual`: `AppAdapters` (since 0.11.0)
+
+`adapters:` with `main: manual` writes no `app.main.g.dart`, but `lib/app.g.dart` defines **`AppAdapters`**
+(`zone`, `beforeRun`, `overrides`, `providerObservers`, `routerObservers`, `wrap`, each forwarding to
+`FespalierAdapters` from `package:fespalier/startup.dart`) and your own `main()` calls it, in the same order as
+the generated one, all inside `AppAdapters.zone(() async { ... })`:
+
+1. `WidgetsFlutterBinding.ensureInitialized()`, then `await AppAdapters.beforeRun()`.
+2. A `ProviderContainer` with `AppAdapters.overrides()` and `AppAdapters.providerObservers()`.
+3. `AppRoutes.router(observers: [...AppAdapters.routerObservers()])`.
+4. **`AppRoutes.attach(router, container)`**.
+5. `runApp(AppAdapters.wrap(UncontrolledProviderScope(...)))`.
+
+Forgetting `AppRoutes.attach(router, container)` means no adapter's `attach` runs (calling it twice is safe).
+Full example: `docs/adapters.md`, "With main: manual: AppAdapters".
 
 ## Gotchas
 
@@ -201,7 +223,7 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
 - **`zone()` runs on the web.** A zone that needs `dart:io` or an isolate must behave there:
   `otel_zone`'s `runGuarded` never runs its body in a browser and leaves the app blank, so write
   `kIsWeb ? body() : observability.runGuarded(body)`.
-- **Adapters do nothing unless `lib/main.dart` is `Future<void> main() => AppMain.run();`.** `fsp` does not
+- **Adapters do nothing unless `lib/main.dart` is `Future<void> main() => AppMain.run();` (or calls `AppAdapters`).** `fsp` does not
   read `lib/main.dart`: an app whose own `main()` still calls `runApp` by hand ignores them, without a message.
 - **An app.dart `router()` must pass `observers: AppMain.routerObservers()`** to `AppRoutes.router(...)`, or the
   adapters' router observers are not added (a warning from `fsp`, quoted in `fespalier-troubleshooting`).

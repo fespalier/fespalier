@@ -193,7 +193,9 @@ Any other value is an error that lists the three:
 
 `adapters` (since 0.9.0) is a list of Dart package names that plug into the generated `main()`; see
 [Adapters in the generated `main()`](adapters.md). The key makes `main: auto` write
-`lib/app.main.g.dart`, and `main: manual` with it is an error.
+`lib/app.main.g.dart`. Since 0.11.0 it also puts `AppAdapters` in `lib/app.g.dart`, whatever `main:` says, so
+`main: manual` with it is fine (it was an error before): your own `main()` calls `AppAdapters`
+([With `main: manual`](adapters.md#with-main-manual-appadapters)).
 
 ### telemetry
 

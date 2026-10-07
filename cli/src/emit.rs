@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::Serialize;
 
+use crate::adapters::{self, AdaptersCx};
 use crate::config::{Config, DataRetry, Remount};
 use crate::dart::Span;
 use crate::devtools;
@@ -84,6 +85,10 @@ struct FileCx {
     /// The generated `AppRoutes.attach` exists: for observe.dart hooks (and, with `telemetry`,
     /// for telemetry). Without either, `router()` attaches DevTools as it always did.
     attach: bool,
+    /// `fespalier: adapters:` is not empty: the file defines `AppAdapters` (since 0.11.0).
+    adapters: Option<AdaptersCx>,
+    /// What `AppRoutes.attach`'s doc comment says follows the router.
+    attach_what: String,
 }
 
 /// One `import` of the generated file.
@@ -664,7 +669,9 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         case_sensitive: app.routes[0].case_sensitive,
         observe: has_observe,
         telemetry: cfg.telemetry,
-        attach: has_observe || cfg.telemetry,
+        attach: has_observe || cfg.telemetry || !cfg.adapters.is_empty(),
+        adapters: adapters::cx(&cfg.adapters),
+        attach_what: attach_what(has_observe, cfg.telemetry, !cfg.adapters.is_empty()),
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
         semantics_ids: cfg.semantics_ids,
@@ -672,6 +679,26 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         scroll_restoration: cfg.scroll_restoration,
     };
     templates::render("app.g.dart", &cx)
+}
+
+/// `DevTools and the observe.dart hooks`: what `AppRoutes.attach` lets follow the router.
+fn attach_what(observe: bool, telemetry: bool, adapters: bool) -> String {
+    let mut parts = vec!["DevTools"];
+    if observe {
+        parts.push("the observe.dart hooks");
+    }
+    if telemetry {
+        parts.push("telemetry");
+    }
+    if adapters {
+        parts.push("the adapters");
+    }
+    let last = parts.pop().unwrap_or_default();
+    if parts.is_empty() {
+        last.to_string()
+    } else {
+        format!("{} and {last}", parts.join(", "))
+    }
 }
 
 /// One entry of the `RouteBase` tree that `app.g.dart` hands to `go_router`, as data: what

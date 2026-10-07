@@ -12,9 +12,6 @@ import 'package:fespalier/startup.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 {% endif %}
 import 'package:flutter/{{ "material" if material else "widgets" }}.dart';
-{% for i in extra_imports %}
-{{ i }}
-{% endfor %}
 
 import '{{ output_file }}';
 {% for i in imports %}
@@ -60,6 +57,9 @@ abstract final class AppMain {
 {% endif %}
 {% if retry %}
     retry: {{ retry }},
+{% endif %}
+{% if attach %}
+    attach: AppRoutes.attach,
 {% endif %}
     router: router,
     app: app,

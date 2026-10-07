@@ -360,6 +360,77 @@ void main() {
     );
   });
 
+  testWidgets(
+    'attach runs once, after startup(), with the router and the ProviderScope container (since 0.11.0)',
+    (tester) async {
+      final done = Completer<List<Override>>();
+      final calls = <(GoRouter, ProviderContainer)>[];
+      GoRouter? made;
+      await tester.pumpWidget(
+        StartupGate(
+          overrides: () => done.future,
+          attach: (router, container) => calls.add((router, container)),
+          router: () => made = makeRouter(),
+          app: app,
+        ),
+      );
+      expect(calls, isEmpty);
+
+      done.complete(const []);
+      await tester.pumpAndSettle();
+      expect(calls.length, 1);
+      expect(identical(calls.single.$1, made), isTrue);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(Consumer)),
+      );
+      expect(identical(calls.single.$2, container), isTrue);
+
+      await tester.pump();
+      expect(calls.length, 1);
+    },
+  );
+
+  testWidgets('an attach that writes a provider reports no error', (
+    tester,
+  ) async {
+    final counter = NotifierProvider<_Counter, int>(_Counter.new);
+    await tester.pumpWidget(
+      StartupGate(
+        attach: (router, container) =>
+            container.read(counter.notifier).increment(),
+        router: () => GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => Consumer(
+                builder: (_, ref, _) => Text('count: ${ref.watch(counter)}'),
+              ),
+            ),
+          ],
+        ),
+        app: app,
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('count: 1'), findsOneWidget);
+  });
+
+  testWidgets('an attach that throws is reported and the app still shows', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      StartupGate(
+        attach: (router, container) => throw StateError('attach boom'),
+        router: makeRouter,
+        app: app,
+      ),
+    );
+    final error = tester.takeException();
+    expect(error, isA<StateError>());
+    expect(find.text('home: default'), findsOneWidget);
+  });
+
   testWidgets('retry reaches the ProviderScope', (tester) async {
     Duration? policy(int count, Object error) => null;
     await tester.pumpWidget(
@@ -409,4 +480,11 @@ void main() {
       findsOneWidget,
     );
   });
+}
+
+class _Counter extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void increment() => state++;
 }

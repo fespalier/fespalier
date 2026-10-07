@@ -136,6 +136,8 @@
         "config:adapters",
         "docs/adapters.md",
         "packages/fespalier/lib/src/adapter.dart",
+        "packages/fespalier/lib/src/adapters.dart",
+        "docs/adapters.md#With main: manual: AppAdapters",
         "cli/src/adapters.rs",
         "README.md#At a glance",
         "README.md#How it works",

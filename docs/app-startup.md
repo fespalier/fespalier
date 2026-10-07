@@ -134,7 +134,7 @@ builds) and "Try again".
 Future<void> zone(Future<void> Function() body) => kIsWeb ? body() : observability.runGuarded(body);
 ```
 
-**`main:` in the pubspec** (see [Config](configuration.md#main)) is `auto`, `generated` or `manual`. With `manual`, `fsp` writes no `main()` and reads none of the three files (each one that is there gets a warning saying so). Use it for an app that keeps its own `main()` or its own `GoRouter`, or when a file called `app.dart` at the root of the app folder is something else.
+**`main:` in the pubspec** (see [Config](configuration.md#main)) is `auto`, `generated` or `manual`. With `manual`, `fsp` writes no `main()` and reads none of the three files (each one that is there gets a warning saying so). Use it for an app that keeps its own `main()` or its own `GoRouter`, or when a file called `app.dart` at the root of the app folder is something else. Since 0.11.0 `adapters:` still works with it: `lib/app.g.dart` defines `AppAdapters`, which your `main()` calls ([With `main: manual`](adapters.md#with-main-manual-appadapters)).
 
 **What is generated.** `AppMain` has three members:
 

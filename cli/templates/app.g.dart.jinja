@@ -199,6 +199,12 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/nav.dart';
 {% endif %}
 import 'package:flutter/widgets.dart';
+{% if adapters %}
+import 'package:fespalier/startup.dart' show FespalierAdapters, Override;
+{% for a in adapters.imports %}
+import 'package:{{ a.name }}/fespalier_adapter.dart' as {{ a.alias }};
+{% endfor %}
+{% endif %}
 
 {% for i in imports %}
 import '{{ i.path }}'{{ " deferred" if i.deferred }} as _i{{ loop.index0 }};
@@ -207,6 +213,32 @@ import '{{ i.path }}'{{ " deferred" if i.deferred }} as _i{{ loop.index0 }};
 {{ i }}
 {% endfor %}
 
+{% if adapters %}
+/// The packages under `fespalier: adapters:` in pubspec.yaml, in that order (since 0.11.0). The
+/// generated main() (lib/app.main.g.dart) calls these; with `main: manual`, your main() does.
+abstract final class AppAdapters {
+  static final _all = FespalierAdapters([{% for a in adapters.imports %}{{ a.alias }}.adapter{{ ", " if not loop.last }}{% endfor %}]);
+
+  /// Runs [body] inside every adapter's zone, the first one's outermost.
+  static Future<void> zone(Future<void> Function() body) => _all.zone(body);
+
+  /// Each adapter's beforeRun(), in order; null when none has anything to wait for.
+  static Future<void>? beforeRun() => _all.beforeRun();
+
+  /// The ProviderScope's overrides, before startup()'s own.
+  static List<Override> overrides() => _all.overrides();
+
+  /// The ProviderScope's observers.
+  static List<ProviderObserver> providerObservers() => _all.providerObservers();
+
+  /// The router's observers (new ones on each call).
+  static List<NavigatorObserver> routerObservers() => _all.routerObservers();
+
+  /// Wraps the root widget, the first adapter's outermost.
+  static Widget wrap(Widget root) => _all.wrap(root);
+}
+
+{% endif %}
 /// The file tree under {{ app_dir }}/, ready to mount.
 abstract final class AppRoutes {
   static String _base = '/';
@@ -252,15 +284,25 @@ abstract final class AppRoutes {
     return router;
   }
 
-  /// Lets {{ "DevTools, the observe.dart hooks and telemetry" if observe and telemetry else ("DevTools and the observe.dart hooks" if observe else "DevTools and telemetry") }} follow [router]: [router] calls it, and an app that mounts the
+  /// Lets {{ attach_what }} follow [router]: [router] calls it, and an app that mounts the
   /// tree in a GoRouter of its own calls it once with that router.
-  static void attach(GoRouter router) {
+{% if adapters %}
+  ///
+  /// With [container], also each adapter's `attach` (since 0.11.0), once per router. [router]
+  /// calls it without one; the generated main() calls it again with the app's container once
+  /// the ProviderScope exists, and an app that builds its own router or main() calls
+  /// `AppRoutes.attach(router, container)` itself.
+{% endif %}
+  static void attach(GoRouter router{{ ", [ProviderContainer? container]" if adapters }}) {
     if (kFespalierDevTools) devToolsAttach(router);
 {% if observe %}
     observeAttach(router, _observeAt);
 {% endif %}
 {% if telemetry %}
     telemetryAttach(router, base: () => _base);
+{% endif %}
+{% if adapters %}
+    if (container != null) AppAdapters._all.attach(router, container);
 {% endif %}
   }
 {% else %}

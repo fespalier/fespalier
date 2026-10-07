@@ -1106,11 +1106,6 @@ impl Pubspec {
             config.tasks = c.tasks;
             config.main = c.main.unwrap_or_default();
             config.adapters = adapters(c.adapters.unwrap_or_default(), &raw.dependencies)?;
-            if config.main == MainMode::Manual && !config.adapters.is_empty() {
-                bail!(
-                    "`fespalier.adapters` is wired by the generated main(), and `main: manual` writes none; remove `main: manual`, or wire each adapter in your own main() and remove `adapters`"
-                );
-            }
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }
@@ -1172,7 +1167,7 @@ impl Pubspec {
 }
 
 /// `adapters:`, checked: each a Dart package name, none twice, none `fespalier` itself, and each
-/// under `dependencies:` (the generated `main()` imports `package:<name>/fespalier_adapter.dart`).
+/// under `dependencies:` (the generated `app.g.dart` imports `package:<name>/fespalier_adapter.dart`).
 fn adapters(names: Vec<String>, dependencies: &Option<Value>) -> Result<Vec<String>> {
     let mut out: Vec<String> = vec![];
     for name in names {

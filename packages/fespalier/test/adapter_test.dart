@@ -79,32 +79,34 @@ GoRouter makeRouter() => GoRouter(
 Widget app(GoRouter router) => MaterialApp.router(routerConfig: router);
 
 /// The generated `AppMain` for two adapters `a` and `b`, around a startup.dart that has a
-/// `zone()` (`startup`), an async `startup()` and a `providerObservers`.
+/// `zone()` (`startup`), an async `startup()` and a `providerObservers`: every call goes through
+/// `AppAdapters`, which is a `FespalierAdapters` (since 0.11.0).
 class Main {
-  Main(this.a, this.b, {this.startup, this.own = const []});
+  Main(
+    FespalierAdapter a,
+    FespalierAdapter b, {
+    this.startup,
+    this.own = const [],
+  }) : adapters = FespalierAdapters([a, b]);
 
-  final FespalierAdapter a;
-  final FespalierAdapter b;
+  final FespalierAdapters adapters;
   final Future<List<Override>> Function()? startup;
   final List<Override> own;
 
-  Future<void> run() => a.zone(() => b.zone(_main));
+  Future<void> run() => adapters.zone(_main);
 
   Future<void> _main() async {
-    if (a.beforeRun() case final ready?) await ready;
-    if (b.beforeRun() case final ready?) await ready;
+    if (adapters.beforeRun() case final ready?) await ready;
     log.add('runApp');
   }
 
-  Widget root() => a.wrap(
-    b.wrap(
-      StartupGate(
-        extraOverrides: () => [...a.overrides(), ...b.overrides()],
-        overrides: startup ?? () async => own,
-        observers: () => [...a.providerObservers(), ...b.providerObservers()],
-        router: makeRouter,
-        app: app,
-      ),
+  Widget root() => adapters.wrap(
+    StartupGate(
+      extraOverrides: adapters.overrides,
+      overrides: startup ?? () async => own,
+      observers: adapters.providerObservers,
+      router: makeRouter,
+      app: app,
     ),
   );
 }
@@ -123,6 +125,11 @@ void main() {
       expect(a.overrides(), isEmpty);
       expect(a.providerObservers(), isEmpty);
       expect(a.routerObservers(), isEmpty);
+      final router = makeRouter();
+      addTearDown(router.dispose);
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      a.attach(router, container);
       const root = SizedBox();
       expect(identical(a.wrap(root), root), isTrue);
     });

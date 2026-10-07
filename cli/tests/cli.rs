@@ -3069,10 +3069,11 @@ fsp run codegen in {root}
     assert!(!dir.path().join("lib/app.g.dart").exists());
 }
 
-/// `fespalier: adapters:` (since 0.9.0) writes the generated `main()` on its own, importing each
-/// package's `fespalier_adapter.dart`, and `main: manual` with it is refused by every command.
+/// `fespalier: adapters:` (since 0.9.0) writes the generated `main()` on its own, calling
+/// `AppAdapters`, which `app.g.dart` defines; `main: manual` keeps `AppAdapters` and writes no
+/// main (since 0.11.0, it used to be refused).
 #[test]
-fn adapters_write_the_main_and_main_manual_refuses_them() {
+fn adapters_write_the_main_and_main_manual_keeps_them() {
     let dir = project();
     fs::write(
         dir.path().join("pubspec.yaml"),
@@ -3088,25 +3089,39 @@ fn adapters_write_the_main_and_main_manual_refuses_them() {
     );
     let main = fs::read_to_string(dir.path().join("lib/app.main.g.dart")).unwrap();
     assert!(
-        main.contains("import 'package:fespalier_sentry/fespalier_adapter.dart' as _a0;")
-            && main.contains("static Future<void> run() => _a0.adapter.zone(_main);"),
+        main.contains("static Future<void> run() => AppAdapters.zone(_main);")
+            && !main.contains("fespalier_adapter.dart"),
         "{main}"
+    );
+    let app_g = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    assert!(
+        app_g.contains("import 'package:fespalier_sentry/fespalier_adapter.dart' as _a0;")
+            && app_g.contains("FespalierAdapters([_a0.adapter])"),
+        "{app_g}"
     );
     assert_eq!(
         fsp(dir.path(), &["check"]),
         (true, "✓ 1 route, no errors\n".into())
     );
 
+    fs::remove_file(dir.path().join("lib/app.main.g.dart")).unwrap();
     fs::write(
         dir.path().join("pubspec.yaml"),
         "name: demo\ndependencies:\n  fespalier_sentry: ^1.0.0\nfespalier:\n  main: manual\n  adapters: [fespalier_sentry]\n",
     )
     .unwrap();
-    for command in ["check", "gen"] {
-        let (ok, err) = fsp(dir.path(), &[command]);
-        assert!(
-            !ok && err.contains("`fespalier.adapters` is wired by the generated main(), and `main: manual` writes none; remove `main: manual`, or wire each adapter in your own main() and remove `adapters`"),
-            "{command}: {err}"
-        );
-    }
+    assert_eq!(
+        fsp(dir.path(), &["gen"]),
+        (true, "✓ 1 route, lib/app.g.dart unchanged\n".into())
+    );
+    assert!(!dir.path().join("lib/app.main.g.dart").exists());
+    let app_g = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    assert!(
+        app_g.contains("abstract final class AppAdapters"),
+        "{app_g}"
+    );
+    assert_eq!(
+        fsp(dir.path(), &["check"]),
+        (true, "✓ 1 route, no errors\n".into())
+    );
 }

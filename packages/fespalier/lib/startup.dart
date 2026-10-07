@@ -19,4 +19,7 @@ export 'package:hooks_riverpod/misc.dart' show Override;
 
 // What a package plugs into the generated main() (since 0.9.0).
 export 'src/adapter.dart' show FespalierAdapter;
+
+// The adapters as one: what the generated `AppAdapters` forwards to (since 0.11.0).
+export 'src/adapters.dart' show FespalierAdapters;
 export 'src/startup.dart' show StartupGate;

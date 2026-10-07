@@ -1,0 +1,55 @@
+name: fespalier_cratestack
+description: Offline-first CrateStack clients for fespalier — reads that say how current they are, mutations queued with idempotency keys, owned rows merged field by field, and the sync triggers.
+version: 0.9.1 # x-release-please-version
+# Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
+publish_to: 'none'
+homepage: https://github.com/fespalier/fespalier
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_cratestack
+issue_tracker: https://github.com/fespalier/fespalier/issues
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  # The test clock: fetchedAt, the HLC and the sync interval follow testWidgets' fake clock (fespalier pins the same).
+  clock: ^1.1.1
+  # Only dio.dart imports it. 5.7.0: the lowest the floor job can test, the same floor fespalier_dio claims.
+  dio: ^5.7.0
+  flutter:
+    sdk: flutter
+  # The same repository dependency an app writes (same url, path and ref), so the two resolve to
+  # one package: a path dependency would resolve "at <sha>" and conflict with the app's tag.
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.9.1 # x-release-please-version
+  fespalier_dio:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_dio
+      ref: v0.9.1 # x-release-please-version
+  # Only hive.dart imports it. Pure Dart: the floor fespalier_storage already proves on Flutter 3.32.
+  hive_ce: ^2.16.0
+
+dev_dependencies:
+  # Proves the reconnect trigger with the real ConnectivitySignal and FakeConnectivity; lib/ never imports it.
+  fespalier_connectivity:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_connectivity
+      ref: v0.9.1 # x-release-please-version
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# In this repository the package is built against the fespalier packages beside it. A dependency's
+# overrides are ignored, so apps never see this.
+dependency_overrides:
+  fespalier:
+    path: ../fespalier
+  fespalier_dio:
+    path: ../fespalier_dio
+  fespalier_connectivity:
+    path: ../fespalier_connectivity

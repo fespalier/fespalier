@@ -95,6 +95,7 @@ jobs:
           - packages/fespalier_forms
           - packages/fespalier_maps
           - packages/fespalier_push
+          - packages/fespalier_biometrics
           - examples/shop
           - examples/features
           - examples/tabs
@@ -171,6 +172,7 @@ jobs:
           - packages/fespalier_forms
           - packages/fespalier_maps
           - packages/fespalier_push
+          - packages/fespalier_biometrics
           - examples/minimal
     defaults:
       run:

@@ -1,0 +1,27 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    # A public API without a doc comment is the defect this package is least
+    # able to afford: every route helper here is called from generated code
+    # and from apps, and an undocumented one gets guessed at.
+    public_member_api_docs: error
+
+linter:
+  rules:
+    # File names stay snake_case (lib/src/unlock.dart), which is what
+    # pub.dev and the Dart style guide expect, so `file_names` stays on.
+    public_member_api_docs: true
+    always_declare_return_types: true
+    avoid_dynamic_calls: true
+    prefer_final_locals: true
+    unawaited_futures: true
+
+# Additional information about this file can be found at
+# https://dart.dev/guides/language/analysis-options

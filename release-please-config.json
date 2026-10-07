@@ -197,6 +197,14 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier_biometrics/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_biometrics/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier/extension/devtools/config.yaml"
         },
         {

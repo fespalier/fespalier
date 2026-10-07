@@ -1133,7 +1133,7 @@ fn the_platform_file_keys_are_checked_and_normalized() {
             ios,
             "android_manifest: android/app/src/main/AndroidManifest.xml"
         ]),
-        "`fespalier.links.android_manifest` needs `android_package` (with `android_sha256`): the intent filters are for the Android app"
+        "`fespalier.links.android_manifest` needs `android_package` (with `android_sha256`, unless `out: false`): the intent filters are for the Android app"
     );
     // A flavour that sets only the file has no app for it.
     assert_eq!(
@@ -1172,12 +1172,13 @@ fn flavours_keep_the_order_the_pubspec_writes() {
 #[test]
 fn out_false_writes_no_folder_and_frees_the_package_from_its_fingerprints() {
     let d = "domains: [shop.example.com]";
+    let m = "android_manifest: android/app/src/main/AndroidManifest.xml";
     // The default is unchanged.
     let l = links_cfg(&[d]).unwrap();
     assert!(l.write_out);
     assert_eq!(l.out, "links");
 
-    let l = links_cfg(&[d, "out: false", "android_package: com.example.shop"]).unwrap();
+    let l = links_cfg(&[d, "out: false", m, "android_package: com.example.shop"]).unwrap();
     assert!(!l.write_out);
     assert_eq!(l.apps_android[0].package, "com.example.shop");
     assert!(l.apps_android[0].sha256.is_empty());
@@ -1186,12 +1187,15 @@ fn out_false_writes_no_folder_and_frees_the_package_from_its_fingerprints() {
     let bad = error_of(&[
         d,
         "out: false",
+        m,
         "android_package: com.example.shop",
         "android_sha256: [nope]",
     ]);
     assert!(bad.contains("is not a SHA-256 fingerprint"), "{bad}");
-    let bad = error_of(&[d, "out: false", "android_package: shop"]);
+    let bad = error_of(&[d, "out: false", m, "android_package: shop"]);
     assert!(bad.contains("must be an Android application id"), "{bad}");
+    let bad = error_of(&[d, "out: false", m, "android_sha256: [nope]"]);
+    assert!(bad.contains("is not a SHA-256 fingerprint"), "{bad}");
 
     // Without the switch the fingerprints are required, and the message says why.
     let e = error_of(&[d, "android_package: com.example.shop"]);
@@ -1205,21 +1209,77 @@ fn out_false_writes_no_folder_and_frees_the_package_from_its_fingerprints() {
     let e = error_of(&[d, "out: deeplinks", "android_package: com.example.shop"]);
     assert!(e.contains("needs `android_sha256`"), "{e}");
 
-    // A flavour needs none either; `true` is refused.
+    // A flavour needs none either.
     assert!(
         links_cfg(&[
             d,
             "out: false",
+            m,
             "flavors:",
             "  prod: { android_package: com.example.shop }",
         ])
         .is_ok()
     );
+}
+
+#[test]
+fn out_false_works_without_an_android_app() {
+    let d = "domains: [shop.example.com]";
+    let ent = "ios_entitlements: ios/Runner/Runner.entitlements";
+    let ios = "ios_app_id: ABCDE12345.com.example.shop";
+    // iOS only: no `android_package`, so no fingerprints and no complaint about them.
+    let l = links_cfg(&[d, "out: false", ios, ent]).unwrap();
+    assert!(l.apps_android.is_empty());
+    assert_eq!(l.apps_ios.len(), 1);
+    // An iOS-only flavour.
+    let l = links_cfg(&[
+        d,
+        "out: false",
+        "flavors:",
+        "  prod: { ios_app_id: ABCDE12345.com.example.shop, ios_entitlements: ios/Runner/Runner.entitlements }",
+    ])
+    .unwrap();
+    assert!(l.apps_android.is_empty());
+    // A manifest alone is not enough without an Android app.
+    let e = error_of(&[
+        d,
+        "out: false",
+        "android_manifest: android/app/src/main/AndroidManifest.xml",
+    ]);
+    assert!(
+        e.contains("`fespalier.links.android_manifest` needs `android_package`"),
+        "{e}"
+    );
+}
+
+#[test]
+fn out_false_needs_a_platform_file_to_manage() {
+    let d = "domains: [shop.example.com]";
+    let none = "`fespalier.links.out: false` leaves `fsp links` nothing to write: set `android_manifest` or `ios_entitlements`, or leave `out` out";
+    assert_eq!(error_of(&[d, "out: false"]), none);
+    assert_eq!(
+        error_of(&[d, "out: false", "ios_app_id: ABCDE12345.com.example.shop"]),
+        none
+    );
+    assert_eq!(
+        error_of(&[d, "out: false", "android_package: com.example.shop"]),
+        none
+    );
+}
+
+#[test]
+fn the_out_key_is_a_folder_or_false() {
+    let d = "domains: [shop.example.com]";
     let e = error_of(&[d, "out: true"]);
     assert!(
         e.contains("`fespalier.links.out` is a folder, or `false`"),
         "{e}"
     );
+    // A list is neither: the error says what `out:` takes.
+    let yaml = "name: demo\nfespalier:\n  links:\n    domains: [shop.example.com]\n    out: [a]\n";
+    let e = format!("{:#}", Pubspec::parse(yaml).err().expect("an error"));
+    assert!(e.contains("a folder name, or `false`"), "{e}");
+    assert!(!e.contains("untagged"), "{e}");
 }
 
 fn rest_page(name: &str) -> String {

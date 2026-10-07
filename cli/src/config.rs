@@ -374,13 +374,31 @@ pub struct LinksConfig {
 }
 
 /// `links: out:` (a folder; since 0.12.0 also `false`, for no folder at all).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinksOut {
     /// A folder, relative to the project.
     Folder(String),
     /// `false` writes no sitemap and no `.well-known` files; `true` is refused.
     Flag(bool),
+}
+
+impl<'de> Deserialize<'de> for LinksOut {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl serde::de::Visitor<'_> for V {
+            type Value = LinksOut;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a folder name, or `false` for no sitemap and no `.well-known` files")
+            }
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<LinksOut, E> {
+                Ok(LinksOut::Flag(v))
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<LinksOut, E> {
+                Ok(LinksOut::Folder(v.to_string()))
+            }
+        }
+        d.deserialize_any(V)
+    }
 }
 
 /// One entry of `links: flavors:` (since 0.11.0): the apps of one build flavour.
@@ -561,8 +579,11 @@ fn android_app(
     needs_sha: bool,
 ) -> Result<Option<AndroidApp>> {
     let sha = fingerprints(key, sha256)?;
-    match (package, sha.is_empty() && needs_sha) {
-        (Some(package), false) => {
+    match (package, sha.is_empty()) {
+        (Some(_), true) if needs_sha => bail!(
+            "`{key}.android_package` needs `android_sha256` while `fsp links` writes assetlinks.json: that file lists the fingerprints of the certificates the app is signed with (`keytool -list -v -keystore <keystore>`; with Play App Signing, the one in the Play Console). Set `links: out: false` to manage only the manifest and the entitlements, which need none"
+        ),
+        (Some(package), _) => {
             if !is_application_id(package) {
                 bail!(
                     "`{key}.android_package` must be an Android application id like `com.example.shop` (two or more parts separated by dots, each starting with a letter, with letters, digits and `_`), got `{package}`"
@@ -574,9 +595,6 @@ fn android_app(
                 sha256: sha,
             }))
         }
-        (Some(_), true) => bail!(
-            "`{key}.android_package` needs `android_sha256` while `fsp links` writes assetlinks.json: that file lists the fingerprints of the certificates the app is signed with (`keytool -list -v -keystore <keystore>`; with Play App Signing, the one in the Play Console). Set `links: out: false` to manage only the manifest and the entitlements, which need none"
-        ),
         (None, false) => bail!(
             "`{key}.android_sha256` needs `android_package`: the application id assetlinks.json is for"
         ),
@@ -755,7 +773,16 @@ impl LinksConfig {
             .transpose()?;
         if android_manifest.is_some() && apps_android.is_empty() {
             bail!(
-                "`fespalier.links.android_manifest` needs `android_package` (with `android_sha256`): the intent filters are for the Android app"
+                "`fespalier.links.android_manifest` needs `android_package` (with `android_sha256`, unless `out: false`): the intent filters are for the Android app"
+            );
+        }
+
+        if !write_out
+            && android_manifest.is_none()
+            && apps_ios.iter().all(|a| a.entitlements.is_none())
+        {
+            bail!(
+                "`fespalier.links.out: false` leaves `fsp links` nothing to write: set `android_manifest` or `ios_entitlements`, or leave `out` out"
             );
         }
 
@@ -767,7 +794,7 @@ impl LinksConfig {
             }
             if apps_android.is_empty() && apps_ios.is_empty() {
                 bail!(
-                    "`fespalier.links.scheme` is written into the Android and iOS files: set `android_package` (with `android_sha256`) or `ios_app_id` too"
+                    "`fespalier.links.scheme` is written into the Android and iOS files: set `android_package` (with `android_sha256`, unless `out: false`) or `ios_app_id` too"
                 );
             }
         } else if self.scheme_host.is_some() {

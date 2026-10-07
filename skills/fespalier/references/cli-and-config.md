@@ -144,7 +144,7 @@ and, with `scheme`, `ios/info-url-types.xml` (iOS, when `ios_app_id` is set); an
   an `<array>`, or a file that is not a plist with a `<dict>`, is an error. It warns when
   `ios/Runner.xcodeproj/project.pbxproj` has no `CODE_SIGN_ENTITLEMENTS` naming the file.
 - **Flavours (since 0.11.0).** `flavors:` maps a name (letters, digits, `_`, starting lower-case: `prod`, `devStaging`) to
-  `android_package` (with `android_sha256`) and/or `ios_app_id`, instead of the flat keys (both
+  `android_package` (with `android_sha256`, unless `out: false`) and/or `ios_app_id`, instead of the flat keys (both
   is an error; the flat keys stay valid as one unnamed app and give the output they always did).
   `assetlinks.json` has one statement per package, the association file one `details` entry with
   every app id in `appIDs`; domains and the scheme are shared (a flavour with `domains:` is

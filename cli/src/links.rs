@@ -780,10 +780,11 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
             format!("{out}/{}", f.path)
         }
     };
-    let mut outputs = files(&app, &links)?;
-    if !links.write_out {
-        outputs.clear();
-    }
+    let outputs = if links.write_out {
+        files(&app, &links)?
+    } else {
+        vec![]
+    };
     let (platform, platform_warnings) = platform_files::plan(
         project,
         &links,

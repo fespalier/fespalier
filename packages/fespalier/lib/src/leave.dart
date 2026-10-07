@@ -431,9 +431,10 @@ FutureOr<void> leaveWithoutAsking(
   };
   router.routerDelegate.addListener(onCommit);
   bypass.during++;
-  void settle() {
+  // [requested]: whether the route information changed since the start, read when `navigate`
+  // is done, so that a pop made right after it returns is not taken for its request.
+  void settle({required bool requested}) {
     bypass.during--;
-    final requested = !identical(start, router.routeInformationProvider.value);
     if (committed || !requested) {
       router.routerDelegate.removeListener(onCommit);
     } else {
@@ -442,20 +443,30 @@ FutureOr<void> leaveWithoutAsking(
     }
   }
 
+  bool requested() => !identical(start, router.routeInformationProvider.value);
+
   final FutureOr<void> result;
   try {
     result = navigate();
   } catch (_) {
-    settle();
+    settle(requested: requested());
     rethrow;
   }
-  // The window closes at the end of this microtask turn, after the ones go_router queued for a
-  // `pop` that `navigate` made (it answers `onExit` in a microtask), and before anything that
-  // runs later.
   if (result is Future<void>) {
-    return result.whenComplete(() => scheduleMicrotask(settle));
+    // Whatever `navigate` queued before it finished (a `pop` is answered in a microtask) runs
+    // before this callback does, and the caller's own continuation runs after it.
+    return result.then<void>(
+      (_) => settle(requested: requested()),
+      onError: (Object error, StackTrace stack) {
+        settle(requested: requested());
+        Error.throwWithStackTrace(error, stack);
+      },
+    );
   }
-  scheduleMicrotask(settle);
+  // The window stays open to the end of this microtask turn, so that go_router's microtask for
+  // a `pop` that `navigate` made runs inside it, and closes before anything that runs later.
+  final asked = requested();
+  scheduleMicrotask(() => settle(requested: asked));
   return null;
 }
 

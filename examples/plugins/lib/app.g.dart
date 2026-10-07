@@ -12,6 +12,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:flutter/widgets.dart';
 import 'package:fespalier/startup.dart' show FespalierAdapters, Override;
 import 'package:fespalier_push/fespalier_adapter.dart' as _a0;
+import 'package:fespalier_analytics/fespalier_adapter.dart' as _a1;
 
 import 'app/page.dart' as _i0;
 import 'app/not_found.dart' as _i1;
@@ -23,7 +24,7 @@ import 'app/orders/\$id/page.dart' as _i5;
 /// The packages under `fespalier: adapters:` in pubspec.yaml, in that order (since 0.11.0). The
 /// generated main() (lib/app.main.g.dart) calls these; with `main: manual`, your main() does.
 abstract final class AppAdapters {
-  static final _all = FespalierAdapters([_a0.adapter]);
+  static final _all = FespalierAdapters([_a0.adapter, _a1.adapter]);
 
   /// Runs [body] inside every adapter's zone, the first one's outermost.
   static Future<void> zone(Future<void> Function() body) => _all.zone(body);

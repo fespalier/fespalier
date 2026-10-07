@@ -30,7 +30,7 @@ name: Release
 # fallback to GITHUB_TOKEN (org releasing.md, trap 1). GITHUB_TOKEN here only reads the checkout.
 #
 # If this fails the release stays a draft with the tag in place: fix the cause and re-run the
-# failed jobs. See "Releasing" in the README.
+# failed jobs. See docs/releasing.md.
 
 on:
   push:

@@ -1,5 +1,5 @@
 // The generated main() (lib/app.main.g.dart): startup.dart, splash.dart and app.dart run
-// together, in the order the README says. Every step waits on microtasks only, so the tests
+// together, in the order docs/app-startup.md says. Every step waits on microtasks only, so the tests
 // are deterministic.
 import 'dart:async';
 

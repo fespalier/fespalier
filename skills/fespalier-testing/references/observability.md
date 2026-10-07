@@ -8,8 +8,8 @@ quickly?"), not as metrics. It is for development. Use it to see what a running 
 route is slow, which guard redirects, and which `data.dart` fails. It is not a test tool: a widget test
 asserts behaviour (`pumpRouter`), and a production collector is the app's own.
 
-The README section
-[Dashboards on your computer](https://github.com/fespalier/fespalier#dashboards-on-your-computer-fsp-telemetry)
+The docs page
+[Dashboards on your computer](https://github.com/fespalier/fespalier/blob/main/docs/telemetry-dashboards.md)
 is the user documentation; the messages are in `fespalier-troubleshooting`,
 `references/diagnostics-telemetry.md`.
 
@@ -98,7 +98,7 @@ explains it, with the App and the time range kept.
 ### What the colours mean (since 0.8.1)
 
 A tile is green (good), amber (needs attention) or red (bad), by one table of limits for both backends and for the
-dashed lines and table cells too. They are defaults for a mobile app; the README's "Reading the colours" has the
+dashed lines and table cells too. They are defaults for a mobile app; the "Reading the colours" section of docs/telemetry-dashboards.md has the
 reason for each.
 
 | Measure                                            | Good      | Needs attention | Bad       |

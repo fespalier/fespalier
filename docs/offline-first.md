@@ -8,13 +8,13 @@ for a CrateStack client is in [CrateStack with fespalier](cratestack.md). The id
 
 Everything a user changes is one of two kinds, and the two are handled differently.
 
-| | Rows a user **owns** | **Decisions** only the server makes |
-| --- | --- | --- |
-| Examples | a note, a draft, a to-do, a setting | cancel an order, accept an invitation, transfer a balance |
-| Written | on the device at once, offline or not | as an **intent**: saved, sent, and decided by the server |
-| Conflicts | merged field by field, nobody is asked | the server answers, the person resolves a conflict |
-| The page shows | the new value immediately | "will send when back online", never a success the server has not given |
-| In this package | `OwnedRows`, `RowSync` | `IntentQueue` |
+|                 | Rows a user **owns**                   | **Decisions** only the server makes                                    |
+| --------------- | -------------------------------------- | ---------------------------------------------------------------------- |
+| Examples        | a note, a draft, a to-do, a setting    | cancel an order, accept an invitation, transfer a balance              |
+| Written         | on the device at once, offline or not  | as an **intent**: saved, sent, and decided by the server               |
+| Conflicts       | merged field by field, nobody is asked | the server answers, the person resolves a conflict                     |
+| The page shows  | the new value immediately              | "will send when back online", never a success the server has not given |
+| In this package | `OwnedRows`, `RowSync`                 | `IntentQueue`                                                          |
 
 Some calls stay **online-only, on purpose**: a one-time code, a stock reservation, anything that has to be
 answered now. Do not queue them. A call that should fail when there is no network is a feature.
@@ -32,12 +32,12 @@ FutureOr<Served<List<Order>>> data(Ref ref) => ref.serve(
 
 A read has a policy:
 
-| Policy | Looks first at | Use it for |
-| --- | --- | --- |
-| `networkFirst` (default) | the server, then the device on a connection failure | anything others can change |
-| `cacheFirst` | the device, then the server if there is nothing | data that does not change once saved |
-| `localOnly` | the device only, the copy an earlier read saved | data that is only ever read here (rows this device owns are read from `ownedRows`, below) |
-| `serverOnly` | the server only; offline is an error, never a guess | what must be current |
+| Policy                   | Looks first at                                      | Use it for                                                                                |
+| ------------------------ | --------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `networkFirst` (default) | the server, then the device on a connection failure | anything others can change                                                                |
+| `cacheFirst`             | the device, then the server if there is nothing     | data that does not change once saved                                                      |
+| `localOnly`              | the device only, the copy an earlier read saved     | data that is only ever read here (rows this device owns are read from `ownedRows`, below) |
+| `serverOnly`             | the server only; offline is an error, never a guess | what must be current                                                                      |
 
 The rules that keep it honest:
 
@@ -55,7 +55,7 @@ The rules that keep it honest:
   `500` does not: the server did answer. With Dio, add `CrateStackPortalInterceptor`: Dio does not throw on an HTML
   `200`, so without it the page reaches the client as a decoding error that no reader knows.
 
-The `Freshness` rules of `data.dart` (`staleTime`, `refetchOnResume`, `refetchOnReconnect`) still say *when* a
+The `Freshness` rules of `data.dart` (`staleTime`, `refetchOnResume`, `refetchOnReconnect`) still say _when_ a
 read runs again; `serve` says where its answer comes from.
 
 ## Intents
@@ -161,11 +161,11 @@ runs even when the push failed, and stops at the first sign of no network.
 
 `autoSync`, watched once in the root `layout.dart`, runs a sync on four occasions, and each one exists for a reason:
 
-| Trigger | Why it is needed |
-| --- | --- |
-| start | work queued in the last session should not wait for an event |
-| resume | the app came back; the device may have been offline for hours |
-| reconnect | the network came back while the app stayed open |
+| Trigger        | Why it is needed                                                                  |
+| -------------- | --------------------------------------------------------------------------------- |
+| start          | work queued in the last session should not wait for an event                      |
+| resume         | the app came back; the device may have been offline for hours                     |
+| reconnect      | the network came back while the app stayed open                                   |
 | the app's tick | a device that never backgrounds and never loses signal would otherwise never push |
 
 The first three come from fespalier: `appResumeSignal`, `reconnectSignal` (override it with

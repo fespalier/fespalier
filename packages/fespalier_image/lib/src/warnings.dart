@@ -14,7 +14,7 @@ void warnUnconfigured(String source) {
     debugPrint(
       'fespalier_image: "$source" is not a URL and no image CDN is configured, '
       'so it is fetched as it is. Override imageCdnProvider in startup() '
-      '(README, "Images").',
+      '(docs/responsive-images.md, "Images").',
     );
     return true;
   }());

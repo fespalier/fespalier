@@ -24,7 +24,7 @@ dependencies:
 
 dev_dependencies:
   # Only the signing tests use it, to check each builder's payload against the providers' published
-  # examples. The package itself computes no signature and takes no key (README, "Signed image URLs").
+  # examples. The package itself computes no signature and takes no key (docs/responsive-images.md, "Signed image URLs").
   crypto: ^3.0.6
   flutter_lints: ^6.0.0
   flutter_test:

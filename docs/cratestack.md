@@ -9,8 +9,7 @@ Install and the short version: [`packages/fespalier_cratestack/README.md`](../pa
 
 ## What it is, and what it is not
 
-- **No `fsp` change.** No `fespalier:` config key, no new file kind, and the generated `app.g.dart` has the
-  same bytes. You write `data.dart` and `action.dart` as always and call this package inside them.
+- **No `fsp` change.** You write `data.dart` and `action.dart` as always and call this package inside them.
 - **No CrateStack package.** The package never imports CrateStack's Dart runtime. Your generated client
   reaches it through two small seams you write once (a transport and an error reader, below), so its
   pinned dependencies (`cratestack_cbor` pins `flutter_rust_bridge` exactly) stay yours.
@@ -206,11 +205,11 @@ Things to know:
 - **`Served<T>` is the value and how current it is.** `source` is `network` or `local`, `fetchedAt` is when the
   server last answered this read for this account, `stale` follows the `maxAge` you pass. The page parameter must
   be spelled exactly as `data()` returns it (`Served<List<Order>>`): `fsp` matches by type, syntactically.
-- **`freshness` still decides *when* a read runs again; `serve` decides *where the answer comes from*.** Do not
+- **`freshness` still decides _when_ a read runs again; `serve` decides _where the answer comes from_.** Do not
   combine `serve` with `dataCache`: `serve` keeps its own copy, per account.
 - **`ref.cancellable` stops the request with the provider.** The generated options carry no cancel token, so the
   token travels in a zone value that `CrateStackCancelInterceptor` picks up. Call it before the first `await`.
-  The body must be only the client call: `ref.watch` and `ref.read` other providers *before* it, as the example
+  The body must be only the client call: `ref.watch` and `ref.read` other providers _before_ it, as the example
   does. A provider that is built inside the body runs in the same zone, and its own requests would take this
   provider's token and be cancelled with it.
 - **The default `invalidates` of an action reloads `data` after any outcome**, `Queued` included. That is
@@ -280,16 +279,16 @@ against a server that cannot.
 The package builds the key as `<intent id>#<attempt>`, and sends the stored bytes every time. The answers it
 recognises, row by row:
 
-| The server answers | Classified as | The intent |
-| --- | --- | --- |
-| success | | deleted, `touches` bumped |
-| no answer (network, timeout, gateway or captive-portal page) | `CrateStackOffline` | `pending`, same key |
-| `409` + `Retry-After`, or `409` `TRANSACTION_ABORTED` (the server did not store it) | `CrateStackInFlight` | `pending`, same key |
-| `401` | `CrateStackUnauthenticated` | `pending`, same key |
-| `5xx`, an envelope that cannot be read | `CrateStackUnavailable` | `pending`, **next key**, `failures + 1` |
-| `422` `idempotency_key_conflict` | refused | `failed` |
-| `409` without `Retry-After` and not `TRANSACTION_ABORTED` | `CrateStackConflict` | `conflict` (the person resolves it) |
-| any other `4xx` | `CrateStackRefused` | `failed`, the wire code only |
+| The server answers                                                                  | Classified as               | The intent                              |
+| ----------------------------------------------------------------------------------- | --------------------------- | --------------------------------------- |
+| success                                                                             |                             | deleted, `touches` bumped               |
+| no answer (network, timeout, gateway or captive-portal page)                        | `CrateStackOffline`         | `pending`, same key                     |
+| `409` + `Retry-After`, or `409` `TRANSACTION_ABORTED` (the server did not store it) | `CrateStackInFlight`        | `pending`, same key                     |
+| `401`                                                                               | `CrateStackUnauthenticated` | `pending`, same key                     |
+| `5xx`, an envelope that cannot be read                                              | `CrateStackUnavailable`     | `pending`, **next key**, `failures + 1` |
+| `422` `idempotency_key_conflict`                                                    | refused                     | `failed`                                |
+| `409` without `Retry-After` and not `TRANSACTION_ABORTED`                           | `CrateStackConflict`        | `conflict` (the person resolves it)     |
+| any other `4xx`                                                                     | `CrateStackRefused`         | `failed`, the wire code only            |
 
 **Validation errors become form errors.** `withCrateStackFieldErrors(ref)` turns a `422` `VALIDATION_ERROR` into
 fespalier's `FieldErrors`, like `withFieldErrors` in `fespalier_dio` does. CrateStack documents the message
@@ -366,16 +365,16 @@ that uses them leaves nothing pending. `ManualSyncTicker`, `FakeRowServer` and `
 
 ## 10. Debug messages
 
-| You see | It means | Do this |
-| --- | --- | --- |
-| `UnimplementedError: fespalier_cratestack: override crateStackTransport ...` | An intent or a sync ran with no transport | Override `crateStackTransport` in `startup()` (section 2) |
-| `StateError: fespalier_cratestack: crateStackScope is null ...` | Someone called `submit` or `OwnedRows` while signed out | Override `crateStackScope`, and keep calls that must work signed out (a sign-in) out of the queue |
-| `CrateStackNoLocalData` in `error.dart` | A single-row read had no answer and nothing stored | Show it with a retry; or pass `empty` if the read is a list |
-| `ArgumentError ... serve needs a fetch` | `ref.serve` with a policy other than `localOnly` and no `fetch:` | Pass `fetch:` |
-| An intent stuck `failed` with a code | The server refused it | Show the code, then `intentQueue.discard(id)`; the message is never stored |
-| An intent stuck `conflict` | The server answered `409` without `Retry-After` | Let the person resolve it, then `discard` and submit again |
-| A queued intent never sends | No trigger is running | Watch `autoSync` in the root `layout.dart`; check `crateStackScope` is the account that queued it |
-| `fespalier_cratestack: ... an error no reader knows` (debug line) | A client threw something no reader classifies | Add a reader to `crateStackErrors` for it |
+| You see                                                                      | It means                                                         | Do this                                                                                           |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `UnimplementedError: fespalier_cratestack: override crateStackTransport ...` | An intent or a sync ran with no transport                        | Override `crateStackTransport` in `startup()` (section 2)                                         |
+| `StateError: fespalier_cratestack: crateStackScope is null ...`              | Someone called `submit` or `OwnedRows` while signed out          | Override `crateStackScope`, and keep calls that must work signed out (a sign-in) out of the queue |
+| `CrateStackNoLocalData` in `error.dart`                                      | A single-row read had no answer and nothing stored               | Show it with a retry; or pass `empty` if the read is a list                                       |
+| `ArgumentError ... serve needs a fetch`                                      | `ref.serve` with a policy other than `localOnly` and no `fetch:` | Pass `fetch:`                                                                                     |
+| An intent stuck `failed` with a code                                         | The server refused it                                            | Show the code, then `intentQueue.discard(id)`; the message is never stored                        |
+| An intent stuck `conflict`                                                   | The server answered `409` without `Retry-After`                  | Let the person resolve it, then `discard` and submit again                                        |
+| A queued intent never sends                                                  | No trigger is running                                            | Watch `autoSync` in the root `layout.dart`; check `crateStackScope` is the account that queued it |
+| `fespalier_cratestack: ... an error no reader knows` (debug line)            | A client threw something no reader classifies                    | Add a reader to `crateStackErrors` for it                                                         |
 
 ## 11. Not built
 

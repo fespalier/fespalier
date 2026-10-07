@@ -1,4 +1,4 @@
-// Regenerates the README screenshots in docs/images/telemetry (`just telemetry-screenshots`).
+// Regenerates the docs screenshots in docs/images/telemetry (`just telemetry-screenshots`).
 //
 //   node scripts/telemetry/screenshots.mjs [--no-start] [--no-seed] [--keep] [--app-build <dir>]
 //                                          [--out <dir>] [--width <px>]

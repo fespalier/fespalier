@@ -135,7 +135,7 @@ void main() {
   });
 
   group('the flag is let go of with the guard', () {
-    // fespalier keeps a guard that redirected subscribed until the next navigation commits (README, "Guards"), so
+    // fespalier keeps a guard that redirected subscribed until the next navigation commits (docs/guards.md, "Guards"), so
     // the flag, which the guard watches, is listened to for one navigation longer than the page it gated was
     // there. These tests pin that: if fespalier changes the lifetime of a redirecting guard, they say so.
     testWidgets('on the page: one subscription, gone at the next navigation', (

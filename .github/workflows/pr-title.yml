@@ -12,7 +12,7 @@ name: pr-title
 # shape, so without this gate the release PR would simply never appear, and
 # nothing would say why. (The repository setting that makes the title the
 # squash subject, `PR_TITLE`, is not something a workflow can assert; see
-# "Releasing" in the README.)
+# docs/releasing.md.)
 #
 # This is deliberately a separate workflow rather than a job in `ci.yml`.
 # A PR title is changed by editing it, which raises `edited` and not

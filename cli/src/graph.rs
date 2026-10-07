@@ -61,7 +61,7 @@ struct Builder {
 }
 
 /// The markers of a route, in the order `fsp routes` lists its tags. A new marker goes here
-/// and in the README's list; both renderers take them as they are.
+/// and in the list of docs/cli.md; both renderers take them as they are.
 pub fn markers(r: &Route, root: bool, guarded: bool) -> Vec<&'static str> {
     let mut out = vec![];
     if r.redirect.is_some() {

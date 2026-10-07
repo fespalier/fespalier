@@ -6,7 +6,7 @@
 # matching its "tag pattern" (v{{version}}), so a run from a branch is refused here first.
 # `release.yml` creates that v<version> tag (manual publish, or push the tag yourself).
 #
-# One-time setup on pub.dev is described in "Releasing" in the README.
+# One-time setup on pub.dev is described in docs/releasing.md.
 name: Publish to pub.dev
 
 on:

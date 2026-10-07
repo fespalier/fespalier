@@ -20,7 +20,7 @@ dependencies:
       ref: <the same tag>
 ```
 
-(A fragment, not a sample: pub resolves the pair only at a release tag. The root README has the annotated block.)
+(A fragment, not a sample: pub resolves the pair only at a release tag. `docs/data.md` has the annotated block.)
 
 ## Which one
 

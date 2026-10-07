@@ -113,7 +113,7 @@ question, and `references/integration.md` precache, heroes, the web, caching, te
 
 ## The traps
 
-- **An unconfigured app fetches `products/3.jpg` as a URL**, fails as a network error, and prints once in a debug build: `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it is fetched as it is. Override imageCdnProvider in startup() (README, "Images").` The fix is the `startup()` override.
+- **An unconfigured app fetches `products/3.jpg` as a URL**, fails as a network error, and prints once in a debug build: `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it is fetched as it is. Override imageCdnProvider in startup() (docs/responsive-images.md, "Images").` The fix is the `startup()` override.
 - **It chooses once and only grows.** An animated box (`AnimatedSize`, a hero) asks for one width; a smaller
   box never asks again. For a box that really should get a sharper image as it grows, `growWithBox: true`.
   "It loads twice" is a box that grew with `growWithBox`, or a precache at another width than the page

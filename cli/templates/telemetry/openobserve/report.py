@@ -24,7 +24,7 @@ GRADES = ("good", "attention", "bad")
 MARKS = {"good": "✓ good", "attention": "! needs attention", "bad": "✗ bad"}
 NO_SPANS = (
     "no fespalier spans in the last hour: is the app running, with telemetry: true and "
-    'FespalierOtel installed? (README, "Telemetry")'
+    'FespalierOtel installed? (docs/observability.md, "Telemetry")'
 )
 
 

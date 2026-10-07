@@ -5,7 +5,7 @@ Network images sized by their layout, for [fespalier](https://github.com/fespali
 widths and asks the app's image CDN for that one: imgproxy and EmgR, Cloudinary, imgix, Thumbor, a URL
 template, or a srcset that the backend signed. It wraps no image package and no CDN SDK.
 
-The main README documents all of it: [Images](https://github.com/fespalier/fespalier#images) (the CDN, the
+The docs cover all of it: [Images](https://github.com/fespalier/fespalier/blob/main/docs/responsive-images.md) (the CDN, the
 buckets, the widget, each builder, signing, heroes, the web, caching, testing, what it costs). This page is
 the short version.
 
@@ -66,7 +66,7 @@ The package has no parameter for a signing key or a salt and ships no HMAC code,
 binary or in `main.dart.js` is public, `--dart-define` included, and turns your resizer into an open image
 proxy. Let the backend return signed URLs as a srcset (`SrcsetUrlBuilder`), or run the server unsigned with its
 source and option allowlists and presets only, or give a builder a `signer:` that looks signatures up. The
-README's [Signed image URLs](https://github.com/fespalier/fespalier#signed-image-urls) has the three ways.
+docs' [Signed image URLs](https://github.com/fespalier/fespalier/blob/main/docs/responsive-images.md#signed-image-urls) has the three ways.
 
 ## Tests
 

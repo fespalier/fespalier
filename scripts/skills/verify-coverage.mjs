@@ -27,13 +27,20 @@
 //    `fespalier` crate AND `packages/fespalier/pubspec.yaml` existing. A bare
 //    `AGENTS.md` identifies nothing.
 //
-// 2. THE DOCUMENTATION SURFACE IS NOT A PAGE TREE. fespalier has one long
-//    README plus a few long pages under docs/ (docs/cratestack.md, docs/offline-first.md, docs/i18n-tolgee.md; docs/images holds README screenshots), so "one page per feature" does not exist.
-//    What is machine-enumerable, and what a new feature has to touch, is:
+// 2. THE DOCUMENTATION SURFACE IS A SHORT README PLUS docs/. A page is not one
+//    feature, so "one page per feature" does not exist, and the unit a skill
+//    claims is the heading. What is machine-enumerable, and what a new feature
+//    has to touch, is:
 //
 //      README.md headings        every `##`..`####` outside a code fence is a
 //                                section a skill must cover. Claimed as
 //                                `README.md#<heading text>`.
+//      documentation pages       every top-level docs/*.md (docs/images holds
+//                                screenshots, no pages). Claimed as
+//                                `docs/<name>.md`; a page's own `#` title is
+//                                the page, so it has no heading id.
+//      documentation sections    every `##`..`####` of those pages, claimed as
+//                                `docs/<name>.md#<heading text>`.
 //      file kinds                `Kind::file()` in cli/src/scan.rs: a new
 //                                file name (`page.dart`, `route.dart`, ...)
 //                                is a new thing an app can write. Claimed
@@ -67,6 +74,10 @@
 // 4. INTERNAL LINKS ARE CHECKED HERE TOO. Nothing else in CI resolves a
 //    relative link, so one from one skill page to another that moved would
 //    otherwise ship. Every relative Markdown link under skills/ must resolve.
+//    check-links.mjs goes further across README.md, docs/, skills/, the
+//    packages', examples' and editors' READMEs, AGENTS.md and ROADMAP.md:
+//    every relative link and every #anchor (and a github.com/fespalier/fespalier
+//    link, read as the local file) must resolve.
 //
 // 5. A STALE EXEMPTION IS A NOTE, NOT A FAILURE. An exemption is not a claim:
 //    it asserts that nothing here describes the item, so one that points at
@@ -86,6 +97,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, resolve, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkLinks } from "./check-links.mjs";
 
 // The repository root, and skills/ inside it: the skills ship in the fespalier repository.
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -387,6 +399,17 @@ for (const file of markdownFiles(SKILLS)) {
   }
 }
 
+// ----------------------------- links and anchors across the documentation
+//
+// README.md, docs/, skills/, the packages', examples' and editors' READMEs, AGENTS.md and
+// ROADMAP.md: see check-links.mjs. A page that moved, or a heading that was renamed, breaks
+// the links to it, and nothing else in CI follows a link.
+{
+  const checked = checkLinks(fespalier);
+  for (const problem of checked.problems) note(`broken link: ${problem}`);
+  linkCount += checked.count;
+}
+
 // ------------------------------------------------ the fespalier-side surfaces
 
 const read = (rel) => readFileSync(join(fespalier, rel), "utf8");
@@ -399,14 +422,14 @@ const walk = (dir, prefix) =>
       : [`${prefix}/${e.name}`],
   );
 
-// `## Heading` .. `#### Heading`, outside fenced code blocks, as `README.md#Heading`.
-function readmeHeadings(text) {
+// `## Heading` .. `#### Heading`, outside fenced code blocks, as `<file>#Heading`.
+function headings(text, file) {
   const out = [];
   let fenced = false;
   for (const line of text.split("\n")) {
     if (/^```/.test(line)) fenced = !fenced;
     const m = !fenced && /^#{2,4} (.+?)\s*$/.exec(line);
-    if (m) out.push(`README.md#${m[1]}`);
+    if (m) out.push(`${file}#${m[1]}`);
   }
   return out;
 }
@@ -444,9 +467,27 @@ const surfaces = [];
 // The README's headings.
 {
   const text = read("README.md");
-  const ids = readmeHeadings(text);
+  const ids = headings(text, "README.md");
   surfaces.push({ name: "README sections", count: ids.length });
   ids.forEach((id) => add(id, "README sections"));
+}
+// The documentation pages (docs/*.md, top level) and their headings.
+{
+  const docsDir = join(fespalier, "docs");
+  const pages = existsSync(docsDir)
+    ? readdirSync(docsDir)
+        .filter((f) => f.endsWith(".md"))
+        .sort()
+        .map((f) => `docs/${f}`)
+    : [];
+  if (pages.length === 0) {
+    note(`found no documentation pages in ${fespalier}/docs.`);
+  }
+  surfaces.push({ name: "documentation pages", count: pages.length });
+  pages.forEach((page) => add(page, "documentation pages"));
+  const ids = pages.flatMap((page) => headings(read(page), page));
+  surfaces.push({ name: "documentation sections", count: ids.length });
+  ids.forEach((id) => add(id, "documentation sections"));
 }
 // File kinds, config keys, commands: read from the Rust source.
 for (const [name, file, parse] of [
@@ -548,7 +589,7 @@ const known = new Set(items.map((i) => i.id));
 // Does a claimed id exist in the checkout? Paths by the filesystem; the rest by
 // what the surfaces above just found.
 const exists = (id) =>
-  /^(README\.md#|kind:|config:|command:)/.test(id)
+  /^([^#]+\.md#|kind:|config:|command:)/.test(id)
     ? known.has(id)
     : existsSync(join(fespalier, id));
 
@@ -611,6 +652,10 @@ function covers(id) {
 const hint = {
   "README sections":
     "a README section: fold its content into the owning skill and claim it, or exempt it with a reason",
+  "documentation pages":
+    "a docs/ page: the skill that owns its topic claims it (`docs/<name>.md`), or exempt it with a reason",
+  "documentation sections":
+    "a section of a docs/ page: fold its content into the owning skill and claim it (`docs/<name>.md#<heading>`), or exempt it with a reason",
   "file kinds":
     "a new FILE KIND an app can write: it needs prose in `fespalier` (file-kinds.md) and in the skill that owns its behaviour",
   "config keys":

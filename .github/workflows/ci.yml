@@ -50,7 +50,7 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
-      - name: Versions agree (Cargo.toml, pubspec.yaml, fsp init, READMEs, launcher)
+      - name: Versions agree (Cargo.toml, pubspec.yaml, fsp init, READMEs and docs, launcher)
         run: cargo test --test versions
       - name: Examples check cleanly
         run: |
@@ -596,9 +596,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      # Every README section, file kind, config key and fsp command claimed by a skill, and
-      # every claim still real; frontmatter, version stamps and links (skills/README.md).
+      # Every README and docs/ section, file kind, config key and fsp command claimed by a skill,
+      # and every claim still real; frontmatter, version stamps, and every link and anchor in the
+      # documentation (skills/README.md).
       - name: Coverage, both ways
         run: node scripts/skills/verify-coverage.mjs
       - name: Formatted (prettier)
-        run: npx --yes prettier@3.8.1 --check "skills/**/*.{md,json}"
+        run: npx --yes prettier@3.8.1 --check README.md "docs/*.md" "skills/**/*.{md,json}"

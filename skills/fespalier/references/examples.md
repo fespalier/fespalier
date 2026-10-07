@@ -69,7 +69,7 @@ After changing the emitter or a template, regenerate the committed outputs with
 everywhere it is spelled out (`cli/tests/versions.rs`): `cli/Cargo.toml`, the package's
 `pubspec.yaml`, the `ref:` that `fsp init` prints and the READMEs' `ref:`, `--tag` and
 `FSP_VERSION`; **a release bumps those together**. The repository's `main` later moved to
-release-please for that; follow whatever `README.md` "Releasing" says on the branch you are
+release-please for that; follow whatever `docs/releasing.md` says on the branch you are
 on.
 
 ## Design notes worth knowing

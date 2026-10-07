@@ -161,7 +161,7 @@ packaging:
 # The agent skills in skills/ match the code: coverage, frontmatter, stamps, links (needs Node)
 skills:
     node scripts/skills/verify-coverage.mjs
-    npx --yes prettier@3.8.1 --check "skills/**/*.{md,json}"
+    npx --yes prettier@3.8.1 --check README.md "docs/*.md" "skills/**/*.{md,json}"
 
 # Build the skills' code samples, all or the given .md files (needs Flutter; slow, not in `just ci`)
 skill-samples *files:
@@ -172,7 +172,7 @@ skill-samples *files:
 
 # FSP_CHROMIUM=/path/to/chrome uses a Chromium that is already on disk.
 #
-# Regenerate the README screenshots in docs/images/telemetry (Docker, Node, Chromium; about 10 minutes; not part of `just ci` or CI)
+# Regenerate the docs screenshots in docs/images/telemetry (Docker, Node, Chromium; about 10 minutes; not part of `just ci` or CI)
 telemetry-screenshots:
     cd ci/web-routes && npm ci
     node scripts/telemetry/screenshots.mjs
@@ -214,7 +214,7 @@ dev-e2e:
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
 # are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
 # `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, the Flutter 3.32
-# floor is `just floor`, and the README screenshots are `just telemetry-screenshots` (not in CI at all).
+# floor is `just floor`, and the docs screenshots are `just telemetry-screenshots` (not in CI at all).
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs
 ci: lint test deny check-examples flutter devtools packaging telemetry skills

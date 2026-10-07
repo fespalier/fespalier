@@ -129,7 +129,7 @@ pub struct TelemetryCmd {
 
 /// W1: printed after a successful start when the project `fsp` runs in (the working folder or
 /// `--project`) has `telemetry` off, so the app would send the stack nothing.
-const W1: &str = "⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (README, \"Telemetry\")";
+const W1: &str = "⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (docs/observability.md, \"Telemetry\")";
 
 /// Whether W1 applies: a project was found and its config loads with `telemetry` off. A config
 /// that does not load is not this command's business.

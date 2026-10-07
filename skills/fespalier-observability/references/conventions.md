@@ -4,8 +4,8 @@ Since 0.8.1. This is the contract that dashboards and alerts are built on. `fesp
 is `1`. Within version 1 a change may only **add** (an attribute, an event, a value of an enum-like
 attribute). Renaming or removing a name or a value, or changing the meaning or unit of an attribute, is
 version 2, a breaking release. `packages/fespalier_otel/lib/src/conventions.dart` holds every name as a
-constant and `test/conventions_test.dart` as a literal; the README's
-[Telemetry conventions](https://github.com/fespalier/fespalier#telemetry-conventions) section has the
+constant and `test/conventions_test.dart` as a literal; the docs'
+[Telemetry conventions](https://github.com/fespalier/fespalier/blob/main/docs/telemetry-conventions.md) page has the
 tables.
 
 OpenTelemetry's semantic conventions are followed where they exist (`service.*`, `url.*`, `error.type`,

@@ -11,7 +11,7 @@
    env.example; `docker compose config` accepts it (skipped without Docker Compose, unless
    FSP_REQUIRE_DOCKER=1, which CI sets: then it fails instead).
 5. The dashboards are plain: questions for titles, a description on every panel, one table of
-   thresholds that colours both backends and that the README's "Reading the colours" repeats.
+   thresholds that colours both backends and that the docs' "Reading the colours" (docs/telemetry-dashboards.md) repeats.
 6. The dashboard importer, and the report (`fsp telemetry --report`), run against a fake OpenObserve.
 
 A run with Docker is scripts/telemetry/smoke.py (`just telemetry-smoke`).
@@ -48,7 +48,7 @@ STACK = ROOT / "cli/templates/telemetry"
 COMPOSE = STACK / "compose.yaml"
 IMPORTER = STACK / "openobserve/import.py"
 REPORT = STACK / "openobserve/report.py"
-README = ROOT / "README.md"
+DASHBOARDS_DOC = ROOT / "docs" / "telemetry-dashboards.md"
 
 print(
     "telemetry conventions: read from packages/fespalier_otel/lib/src/conventions.dart",
@@ -478,7 +478,7 @@ class Plain(unittest.TestCase):
 
 
 def threshold_cells(item):
-    """The Good, Needs attention and Bad cells of the README's table for one threshold."""
+    """The Good, Needs attention and Bad cells of the docs' table for one threshold."""
     unit = {"ms": " ms", "percent": " %", "count": ""}[item["unit"]]
     low, high = item["good_below"], item["bad_from"]
     good = f"< {low:g}{unit}" if item["unit"] != "count" else "0"
@@ -600,9 +600,11 @@ class Verdicts(unittest.TestCase):
                 if panel["type"] == "metric" and "CASE WHEN" in panel["queries"][0]["query"] and panel["config"].get("mappings"):
                     self.assertEqual(self.style["no_data"], panel["config"]["no_value_replacement"], panel["id"])
 
-    def test_readme_reading_the_colours_matches_the_thresholds(self):
-        text = README.read_text(encoding="utf-8")
-        section = text.split("#### Reading the colours", 1)[1].split("\n#### ", 1)[0]
+    def test_docs_reading_the_colours_matches_the_thresholds(self):
+        text = DASHBOARDS_DOC.read_text(encoding="utf-8")
+        # "## Reading the colours" ends at the next heading of level 1 or 2 (a "###" would not end it)
+        rest = text.split("\n## Reading the colours\n", 1)[1]
+        section = re.split(r"^#{1,2} ", rest, maxsplit=1, flags=re.M)[0]
         rows = {}
         for line in section.splitlines():
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
@@ -1178,7 +1180,7 @@ class Report(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertEqual(
             "no fespalier spans in the last hour: is the app running, with telemetry: true and FespalierOtel "
-            'installed? (README, "Telemetry")\n',
+            'installed? (docs/observability.md, "Telemetry")\n',
             text,
         )
 

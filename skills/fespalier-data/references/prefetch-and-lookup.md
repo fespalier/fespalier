@@ -261,7 +261,7 @@ hides go_router's own `RouteMatch` to make room for it; import
 - `XRoute.data` is an ordinary family (or plain) provider: `ref.watch`,
   `ref.listen`, `ref.invalidate` and `ProviderScope(overrides: [...])` all work on
   it. The usual way to fake a backend is to override the provider your `data()`
-  reads (the README's testing example does `apiProvider.overrideWithValue(FakeApi())`).
+  reads (the testing example in `docs/testing.md` does `apiProvider.overrideWithValue(FakeApi())`).
 - For a **selector** `data.dart`, `XRoute.data` **is** the provider you selected
   (`CatalogRoute.data(1) == productProvider(1)`), so overriding `productProvider`
   overrides what the route shows too.

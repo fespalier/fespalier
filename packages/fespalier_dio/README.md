@@ -5,8 +5,8 @@ gone stops, a server's validation error lands under its form field, and a write 
 itself is unchanged: no `fsp` change, no `fespalier:` key, and the same `app.g.dart`. It starts no timer and no
 listener, and it has no retry policy of its own (a backoff needs a timer).
 
-The main README documents it in context:
-[HTTP clients](https://github.com/fespalier/fespalier#http-clients-fespalier_dio). This page is the short version.
+The docs cover it in context:
+[HTTP clients](https://github.com/fespalier/fespalier/blob/main/docs/http.md). This page is the short version.
 
 ## Install
 

@@ -1,7 +1,7 @@
 # Documented claims that were not true
 
-**Where the README and the code disagree, the code is right.** These skills live in the
-fespalier repository, so a disagreement found here is fixed in the README in the same
+**Where the docs and the code disagree, the code is right.** These skills live in the
+fespalier repository, so a disagreement found here is fixed in the docs in the same
 change, and this page keeps the record: a reader whose app pins an older fespalier is
 still reading that version's README.
 
@@ -70,12 +70,12 @@ that records what the router tells the platform (`SystemChannels.navigation`).
    `optionURLReflectsImperativeAPIs` is off by default); 0.6.0 adds the `push_updates_url`
    pubspec key, and `router()` now assigns that go_router flag on every call.
 
-## Things the README leaves out
+## Things the docs leave out
 
 As of v0.4.0:
 
-- **`fsp` honours `FSP_DART`** (a path to `dart`) for `--format`; the README documents only
+- **`fsp` honours `FSP_DART`** (a path to `dart`) for `--format`; the docs document only
   `dart` on `PATH`.
 - **`executables: fsp: fespalier`** in the package's `pubspec.yaml` means
-  `dart pub global activate` can install it as `fsp`; the README documents only the
+  `dart pub global activate` can install it as `fsp`; the docs document only the
   binary installers, `cargo install` and `dart run fespalier`. (Not exercised here.)

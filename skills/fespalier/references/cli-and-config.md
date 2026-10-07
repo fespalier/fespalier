@@ -416,7 +416,7 @@ prefixed, and stopped when it ends. `fsp telemetry` starts its stack and returns
 | `curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh \| sh`    | Linux and macOS. `~/.local/bin`, SHA-256 checked. `FSP_VERSION=v<x.y.z>`, `FSP_INSTALL_DIR`, `FSP_BASE_URL`                                        |
 | `irm https://raw.githubusercontent.com/fespalier/fespalier/main/install.ps1 \| iex`         | Windows. `%LOCALAPPDATA%\fespalier\bin`; same three variables, set as `$env:...`                                                                   |
 | `cargo install --git https://github.com/fespalier/fespalier --tag v<x.y.z> fespalier`       | Any platform with Rust                                                                                                                             |
-| `scoop bucket add fespalier https://github.com/fespalier/scoop-bucket && scoop install fsp` | Windows. The latest release, once it has pushed to the bucket (README, "Releasing")                                                                |
+| `scoop bucket add fespalier https://github.com/fespalier/scoop-bucket && scoop install fsp` | Windows. The latest release, once it has pushed to the bucket (docs/releasing.md, "Releasing")                                                     |
 | `scoop install https://github.com/fespalier/fespalier/releases/latest/download/fsp.json`    | Windows, from the release's own manifest: no bucket needed                                                                                         |
 | `brew tap fespalier/tap && brew install fsp` (or `brew install fespalier/tap/fsp`)          | macOS and Linux. The latest release, once it has pushed to the tap. `brew install ./fsp.rb` or a URL is refused: use the install script until then |
 | `dart run fespalier <command>`                                                              | Installs nothing; see below                                                                                                                        |
@@ -558,7 +558,7 @@ file to exist.
 
 ## Speed (as measured by the maintainers)
 
-README "Performance", synthetic apps, release build, 4 cores, warm cache: a **cold `gen`**
+docs/cli.md, "Performance", synthetic apps, release build, 4 cores, warm cache: a **cold `gen`**
 is about 56 ms at 500 routes, 156 ms at 2,000 and 429 ms at 5,000 (the 5,000-route app is
 7,400 files and a 5.8 MB `app.g.dart`); a cold `gen`/`check` parses on all cores once a run
 has about 64 files to parse. `fsp watch` keeps parse results between runs and **skips

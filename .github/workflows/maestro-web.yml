@@ -1,7 +1,7 @@
 # Real Maestro against the shop's web build, weekly and on demand. NOT a gate: Maestro's web support
 # is beta and pairs its own ChromeDriver with whatever Chrome the runner has, so a red run usually
 # means Chrome or Maestro moved. ci.yml's `web-routes` job is the gate (Playwright, pinned). If this
-# one is red for reasons outside fespalier four weeks running, delete it and the README sentence.
+# one is red for reasons outside fespalier four weeks running, delete it and the sentence about it in docs/route-tests.md (Maestro flows).
 name: maestro-web
 
 on:

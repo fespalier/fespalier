@@ -47,7 +47,7 @@ intellijPlatform {
     }
     buildSearchableOptions = false
     publishing {
-        // A maintainer step: `PUBLISH_TOKEN=... ./gradlew publishPlugin` (see README, "Releasing").
+        // A maintainer step: `PUBLISH_TOKEN=... ./gradlew publishPlugin` (see docs/releasing.md, "Releasing").
         token = providers.environmentVariable("PUBLISH_TOKEN")
     }
 }

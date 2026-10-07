@@ -192,8 +192,8 @@ and the reserved names.
 
 ## Where the truth is
 
-The README in `fespalier/fespalier` is long and exact as far as anyone has checked;
-where it and the code disagree, the `.rs` and `.dart` files win, and
+The README and the `docs/` pages of `fespalier/fespalier` are long and exact as far as anyone has checked;
+where they and the code disagree, the `.rs` and `.dart` files win, and
 [`fespalier-troubleshooting`](../fespalier-troubleshooting/) lists the disagreements
 found so far and the release that fixed each. `examples/minimal` is the smallest real app (read it
 first); `examples/features` exercises nearly every rule, with widget tests; what each example

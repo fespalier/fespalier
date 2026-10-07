@@ -202,7 +202,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       // The image rebuilt in the overlay measures the rectangle of the flight at its first
       // layout, and downloads a bucket for it: one more URL than the thumbnail and the page
-      // (README, "Images in heroes"). With the flight shuttle there is none.
+      // (docs/responsive-images.md, "Images in heroes"). With the flight shuttle there is none.
       expect(fakes.requested.length, greaterThan(2));
       await tester.pumpAndSettle();
     },

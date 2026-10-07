@@ -3127,6 +3127,84 @@ fn adapters_write_the_main_and_main_manual_keeps_them() {
 }
 
 #[test]
+fn links_out_false_manages_only_the_platform_files_and_needs_no_fingerprints() {
+    let dir = project();
+    let root = dir.path();
+    let pubspec = root.join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    let manifest_path = "android/app/src/main/AndroidManifest.xml";
+    fs::create_dir_all(root.join("android/app/src/main")).unwrap();
+    fs::write(
+        root.join(manifest_path),
+        include_str!("fixtures/links/AndroidManifest.xml"),
+    )
+    .unwrap();
+    let section = |out: &str, sha: bool| {
+        let sha = if sha {
+            "    android_sha256: [\"14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5\"]\n"
+        } else {
+            ""
+        };
+        format!(
+            "{base}fespalier:\n  links:\n    domains: [shop.example.com]\n    android_package: com.example.shop\n{sha}    android_manifest: {manifest_path}\n{out}"
+        )
+    };
+
+    // A package without fingerprints is refused while the sitemap and assetlinks are written.
+    fs::write(&pubspec, section("", false)).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        !ok && err.contains("needs `android_sha256` while `fsp links` writes assetlinks.json"),
+        "{err}"
+    );
+    assert!(!root.join("links").exists());
+
+    // The default still writes the sitemap.
+    fs::write(&pubspec, section("", true)).unwrap();
+    assert!(fsp_full(root, &["links"], &[]).0);
+    assert!(root.join("links/web/sitemap.xml").exists());
+    fs::remove_dir_all(root.join("links")).unwrap();
+    fs::write(
+        root.join(manifest_path),
+        include_str!("fixtures/links/AndroidManifest.xml"),
+    )
+    .unwrap();
+
+    // `out: false`: no fingerprints needed, only the manifest is written and checked.
+    fs::write(&pubspec, section("    out: false\n", false)).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        !ok && err.contains("1 file(s) out of date; run `fsp links`"),
+        "{err}"
+    );
+    assert!(!err.contains("sitemap"), "{err}");
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(ok, "{err}");
+    assert!(err.contains(&format!("  edited {manifest_path}")), "{err}");
+    assert!(
+        err.contains("✓ links: 1 platform files (0 written, 1 edited, 0 unchanged)"),
+        "{err}"
+    );
+    assert!(!root.join("links").exists(), "no sitemap, no folder");
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        ok && err.contains("✓ links: 1 platform files are up to date"),
+        "{err}"
+    );
+
+    // --check ignores a sitemap that is there, and `out: true` is refused.
+    fs::create_dir_all(root.join("links/web")).unwrap();
+    fs::write(root.join("links/web/sitemap.xml"), "stale").unwrap();
+    assert!(fsp_full(root, &["links", "--check"], &[]).0);
+    fs::write(&pubspec, section("    out: true\n", true)).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        !ok && err.contains("`fespalier.links.out` is a folder, or `false`"),
+        "{err}"
+    );
+}
+
+#[test]
 fn links_edits_the_platform_files_and_check_follows_them() {
     let dir = project();
     let root = dir.path();

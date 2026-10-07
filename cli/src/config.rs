@@ -370,7 +370,35 @@ pub struct LinksConfig {
     ios_entitlements: Option<String>,
     android_manifest: Option<String>,
     flavors: Option<Flavors>,
-    out: Option<String>,
+    out: Option<LinksOut>,
+}
+
+/// `links: out:` (a folder; since 0.12.0 also `false`, for no folder at all).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinksOut {
+    /// A folder, relative to the project.
+    Folder(String),
+    /// `false` writes no sitemap and no `.well-known` files; `true` is refused.
+    Flag(bool),
+}
+
+impl<'de> Deserialize<'de> for LinksOut {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl serde::de::Visitor<'_> for V {
+            type Value = LinksOut;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a folder name, or `false` for no sitemap and no `.well-known` files")
+            }
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<LinksOut, E> {
+                Ok(LinksOut::Flag(v))
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<LinksOut, E> {
+                Ok(LinksOut::Folder(v.to_string()))
+            }
+        }
+        d.deserialize_any(V)
+    }
 }
 
 /// One entry of `links: flavors:` (since 0.11.0): the apps of one build flavour.
@@ -464,6 +492,9 @@ pub struct Links {
     /// Normalized, `/`-separated, no trailing slash, relative to the project root; empty for
     /// the root itself.
     pub out: String,
+    /// Whether `fsp links` writes the sitemap and the `.well-known` files (and the copies of the
+    /// platform snippets) into `out`; `links: out: false` (since 0.12.0) turns it off.
+    pub write_out: bool,
 }
 
 /// A flavour name as Gradle takes it (`prod`, `devStaging`): letters, digits and `_`, starting
@@ -545,10 +576,14 @@ fn android_app(
     flavor: Option<&str>,
     package: Option<&str>,
     sha256: Option<&[String]>,
+    needs_sha: bool,
 ) -> Result<Option<AndroidApp>> {
     let sha = fingerprints(key, sha256)?;
     match (package, sha.is_empty()) {
-        (Some(package), false) => {
+        (Some(_), true) if needs_sha => bail!(
+            "`{key}.android_package` needs `android_sha256` while `fsp links` writes assetlinks.json: that file lists the fingerprints of the certificates the app is signed with (`keytool -list -v -keystore <keystore>`; with Play App Signing, the one in the Play Console). Set `links: out: false` to manage only the manifest and the entitlements, which need none"
+        ),
+        (Some(package), _) => {
             if !is_application_id(package) {
                 bail!(
                     "`{key}.android_package` must be an Android application id like `com.example.shop` (two or more parts separated by dots, each starting with a letter, with letters, digits and `_`), got `{package}`"
@@ -560,9 +595,6 @@ fn android_app(
                 sha256: sha,
             }))
         }
-        (Some(_), true) => bail!(
-            "`{key}.android_package` needs `android_sha256`: assetlinks.json lists the fingerprints of the certificates the app is signed with (`keytool -list -v -keystore <keystore>`; with Play App Signing, the one in the Play Console)"
-        ),
         (None, false) => bail!(
             "`{key}.android_sha256` needs `android_package`: the application id assetlinks.json is for"
         ),
@@ -638,6 +670,14 @@ impl LinksConfig {
             bail!("`fespalier.links.flavors` is empty: list a flavour, or leave it out");
         }
         let flavors = self.flavors.as_ref();
+        let (out, write_out) = match &self.out {
+            None => (DEFAULT_LINKS_OUT.to_string(), true),
+            Some(LinksOut::Folder(raw)) => (project_folder("links.out", raw)?, true),
+            Some(LinksOut::Flag(false)) => (String::new(), false),
+            Some(LinksOut::Flag(true)) => bail!(
+                "`fespalier.links.out` is a folder, or `false` for no sitemap and no `.well-known` files; leave it out for the default `{DEFAULT_LINKS_OUT}`"
+            ),
+        };
         let (mut apps_android, mut apps_ios) = (vec![], vec![]);
         match flavors {
             None => {
@@ -646,6 +686,7 @@ impl LinksConfig {
                     None,
                     self.android_package.as_deref(),
                     self.android_sha256.as_deref(),
+                    write_out,
                 )?);
                 apps_ios.extend(ios_app(
                     "fespalier.links",
@@ -687,6 +728,7 @@ impl LinksConfig {
                         Some(name),
                         f.android_package.as_deref(),
                         f.android_sha256.as_deref(),
+                        write_out,
                     )? {
                         if let Some(other) = apps_android.iter().find(|o| o.package == a.package) {
                             bail!(
@@ -731,7 +773,16 @@ impl LinksConfig {
             .transpose()?;
         if android_manifest.is_some() && apps_android.is_empty() {
             bail!(
-                "`fespalier.links.android_manifest` needs `android_package` (with `android_sha256`): the intent filters are for the Android app"
+                "`fespalier.links.android_manifest` needs `android_package` (with `android_sha256`, unless `out: false`): the intent filters are for the Android app"
+            );
+        }
+
+        if !write_out
+            && android_manifest.is_none()
+            && apps_ios.iter().all(|a| a.entitlements.is_none())
+        {
+            bail!(
+                "`fespalier.links.out: false` leaves `fsp links` nothing to write: set `android_manifest` or `ios_entitlements`, or leave `out` out"
             );
         }
 
@@ -743,7 +794,7 @@ impl LinksConfig {
             }
             if apps_android.is_empty() && apps_ios.is_empty() {
                 bail!(
-                    "`fespalier.links.scheme` is written into the Android and iOS files: set `android_package` (with `android_sha256`) or `ios_app_id` too"
+                    "`fespalier.links.scheme` is written into the Android and iOS files: set `android_package` (with `android_sha256`, unless `out: false`) or `ios_app_id` too"
                 );
             }
         } else if self.scheme_host.is_some() {
@@ -773,10 +824,6 @@ impl LinksConfig {
                 Some(out)
             }
         };
-        let out = match &self.out {
-            None => DEFAULT_LINKS_OUT.to_string(),
-            Some(raw) => project_folder("links.out", raw)?,
-        };
         Ok(Links {
             domains,
             scheme: self.scheme.clone(),
@@ -786,6 +833,7 @@ impl LinksConfig {
             apps_ios,
             android_manifest,
             out,
+            write_out,
         })
     }
 }

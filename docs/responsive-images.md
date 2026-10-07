@@ -518,7 +518,7 @@ expect(fakes.requested, ['http://localhost:13001/unsigned/rs:fill:128:128/aHR0â€
 builder.
 
 - Put the override in `pumpRouter(overrides:)` and in `test/routes/setup.dart`'s `overrides(pattern)`
-  ([Route smoke tests](cli.md#route-smoke-tests-fsp-test)), or every test that reaches a page with an
+  ([Route smoke tests](route-tests.md#route-smoke-tests-fsp-test)), or every test that reaches a page with an
   image goes through the fake `HttpClient`.
 - A `FakeImages`' providers are equal for one URL of one instance and never equal to another's, so an
   image cached by an earlier test is not reused.
@@ -528,7 +528,7 @@ builder.
 
 Since 0.9.0. With a telemetry sink installed, each network load is an `image` operation:
 `TelemetryOp.image` through `FespalierTelemetry.begin` and `finish`, and a span `image {cdn}` (for example
-`image emgr`) with these attributes ([Telemetry conventions](observability.md#telemetry-conventions)):
+`image emgr`) with these attributes ([Telemetry conventions](telemetry-conventions.md#telemetry-conventions)):
 
 - `fespalier.image.cdn`;
 - `fespalier.image.width` (the bucket);

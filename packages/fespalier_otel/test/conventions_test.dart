@@ -1,4 +1,4 @@
-// The telemetry conventions, contract version 1 (docs/observability.md, "Telemetry conventions"): every name
+// The telemetry conventions, contract version 1 (docs/telemetry-conventions.md, "Telemetry conventions"): every name
 // below is a string literal on purpose. A dashboard is built on these, so renaming one must
 // fail here before it can ship; adding one is allowed (add its line).
 import 'package:fespalier/fespalier.dart' show NavigationSource;

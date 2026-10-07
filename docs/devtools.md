@@ -46,7 +46,7 @@ final router = GoRouter(routes: [...yourRoutes, ...AppRoutes.mount()]);
 if (kFespalierDevTools) devToolsAttach(router);
 ```
 
-## What it costs
+## What DevTools costs
 
 **Nothing in a release build.** `kFespalierDevTools` is a `const` that is false there, and the generated `app.g.dart` calls the extension's code only under `if (kFespalierDevTools)`, so the compiler removes the service extensions, the route tree and the code that serves them.
 

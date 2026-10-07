@@ -2,36 +2,40 @@
 
 The [README](../README.md) is the 60-second path. These pages are the reference, one topic each.
 
-| Page                                                               | What is in it                                                                                                          |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| [Installation and setup](getting-started.md)                       | Every way to install `fsp`, the companion packages, `fsp init`, keeping `app.g.dart` in CI, platform notes             |
-| [Configuration](configuration.md)                                  | Every key of the `fespalier:` section of `pubspec.yaml`, and `route.dart`                                              |
-| [File kinds](file-kinds.md)                                        | What each file under `lib/app/` is, what it exports and what it receives                                               |
-| [Migration](migration.md)                                          | Adopting fespalier in a go_router app, and what changed between releases                                               |
-| [Routing](routing.md)                                              | Segment types, enums, catch-alls, query parameters, case, localized paths, groups, not-found views, the route manifest |
-| [Navigation](navigation.md)                                        | Typed navigation, `of` and `copyWith`, `remount`, `extra`, the root navigator, `RouteLink`, deferred routes            |
-| [Layouts](layouts.md)                                              | Tab layouts, menus and breadcrumbs, adaptive navigation, transitions, state and scroll restoration                     |
-| [Guards](guards.md)                                                | `guard.dart`, `redirect.dart`, feature flags                                                                           |
-| [Data](data.md)                                                    | `data.dart`, retries, freshness, reconnects, caches, section data, typed helpers                                       |
-| [Actions and forms](actions.md)                                    | `action.dart`, `form()` and `validate()`, optimistic updates                                                           |
-| [HTTP clients](http.md)                                            | Dio and `package:http`: cancelling, server field errors, writes never retried                                          |
-| [`main()`, app.dart, startup.dart and splash.dart](app-startup.md) | The generated `main()` and the three root files                                                                        |
-| [Adapters](adapters.md)                                            | Packages that plug into the generated `main()`                                                                         |
-| [Authentication](auth.md)                                          | Signed-in routes with `fespalier_auth`, OpenID Connect, device-bound tokens                                            |
-| [Images](responsive-images.md)                                     | Responsive CDN images with `fespalier_image`                                                                           |
-| [Observability](observability.md)                                  | Route lifecycle, telemetry, OpenTelemetry, Sentry, Crashlytics, conventions                                            |
-| [Dashboards on your computer](telemetry-dashboards.md)             | `fsp telemetry`: OpenObserve and Grafana with fespalier's dashboards                                                   |
-| [DevTools extension](devtools.md)                                  | See routes, guards, data and actions in Flutter DevTools                                                               |
-| [CLI reference](cli.md)                                            | Every `fsp` command, the generated file, editor plugins, `fsp dev`, performance                                        |
-| [Testing](testing.md)                                              | `pumpRouter`, `currentLocation`, the app around the router, deferred routes in tests                                   |
-| [Run the examples](examples.md)                                    | minimal, shop, features, tabs, telemetry and auth                                                                      |
-| [Troubleshooting](troubleshooting.md)                              | Things to know, known limitations, symptoms                                                                            |
-| [FAQ](faq.md)                                                      | Design notes: why the API is shaped the way it is                                                                      |
-| [Development](development.md)                                      | The repository layout, `just ci`, what CI runs                                                                         |
-| [Releasing](releasing.md)                                          | How a release is cut (maintainers)                                                                                     |
+| Page | What is in it |
+| --- | --- |
+| [Installation and setup](getting-started.md) | Install options, companion packages, `fsp init`, CI, platform notes |
+| [Configuration](configuration.md) | Every `fespalier:` key of `pubspec.yaml`, and `route.dart` |
+| [File kinds](file-kinds.md) | What each file under `lib/app/` is, exports and receives |
+| [Migration](migration.md) | Adopting fespalier in a go_router app, and what changed per release |
+| [Routing](routing.md) | Segments, enums, catch-alls, query parameters, case, localized paths, groups, not-found, the manifest |
+| [Navigation](navigation.md) | Typed navigation, `of` and `copyWith`, `remount`, `extra`, `RouteLink`, deferred routes |
+| [Layouts](layouts.md) | Tab layouts, menus, adaptive navigation, transitions, state and scroll restoration |
+| [Guards](guards.md) | `guard.dart`, `redirect.dart`, feature flags |
+| [Data](data.md) | `data.dart`, retries, freshness, caches, section data, typed helpers |
+| [Actions and forms](actions.md) | `action.dart`, `form()`, `validate()`, optimistic updates |
+| [HTTP clients](http.md) | Dio and `package:http`: cancelling, field errors, writes never retried |
+| [`main()`, app.dart, startup.dart and splash.dart](app-startup.md) | The generated `main()` and the root files |
+| [Adapters](adapters.md) | Packages that plug into the generated `main()` |
+| [Authentication](auth.md) | Signed-in routes with `fespalier_auth`, OpenID Connect, DPoP |
+| [Images](responsive-images.md) | Responsive CDN images with `fespalier_image` |
+| [Translations](i18n-tolgee.md) | Tolgee texts with `fespalier_tolgee`: offline, over the air, language from the URL |
+| [Observability](observability.md) | Lifecycle hooks, telemetry, OpenTelemetry, Sentry, Crashlytics |
+| [Telemetry conventions](telemetry-conventions.md) | Span, event and attribute names: contract version 1 |
+| [Dashboards on your computer](telemetry-dashboards.md) | `fsp telemetry`: OpenObserve and Grafana |
+| [DevTools extension](devtools.md) | Routes, guards, data and actions in Flutter DevTools |
+| [CLI reference](cli.md) | Every `fsp` command, the generated file, editor plugins, `fsp dev`, performance |
+| [Route tests](route-tests.md) | `fsp test` smoke tests and `fsp maestro` flows |
+| [Testing](testing.md) | `pumpRouter`, `currentLocation`, the app around the router |
+| [Run the examples](examples.md) | minimal, shop, features, tabs, telemetry and auth |
+| [Troubleshooting](troubleshooting.md) | Symptoms, things to know, known limitations |
+| [FAQ](faq.md) | Why the API is shaped this way |
+| [Development](development.md) | The repository, `just ci`, what CI runs |
+| [Releasing](releasing.md) | How a release is cut (maintainers) |
 
-**Looking for a section of the old single-file README?** An older link such as
-`github.com/fespalier/fespalier#telemetry`, or a message that says `(README, "Telemetry")`, finds its
+## Old README sections
+
+An older link such as `github.com/fespalier/fespalier#telemetry`, or a message that says `(README, "Telemetry")`, finds its
 section here:
 
 | Old README section                                    | Now                                                                                              |
@@ -101,9 +105,9 @@ section here:
 | The generator                                         | [cli.md](cli.md#the-generator)                                                                   |
 | Deep links and a sitemap (`fsp links`)                | [cli.md](cli.md#deep-links-and-a-sitemap-fsp-links)                                              |
 | Checking string paths                                 | [cli.md](cli.md#checking-string-paths)                                                           |
-| Maestro flows (`fsp maestro`)                         | [cli.md](cli.md#maestro-flows-fsp-maestro)                                                       |
+| Maestro flows (`fsp maestro`)                         | [route-tests.md](route-tests.md#maestro-flows-fsp-maestro)                                                       |
 | Web chunk sizes (`fsp size`)                          | [cli.md](cli.md#web-chunk-sizes-fsp-size)                                                        |
-| Route smoke tests (`fsp test`)                        | [cli.md](cli.md#route-smoke-tests-fsp-test)                                                      |
+| Route smoke tests (`fsp test`)                        | [route-tests.md](route-tests.md#route-smoke-tests-fsp-test)                                                      |
 | Performance                                           | [cli.md](cli.md#performance)                                                                     |
 | Authentication                                        | [auth.md](auth.md)                                                                               |
 | Installing fespalier_auth                             | [auth.md](auth.md#installing-fespalier_auth)                                                     |
@@ -129,7 +133,7 @@ section here:
 | Several sinks: combine and add                        | [observability.md](observability.md#several-sinks-combine-and-add)                               |
 | Spans around data() and actions                       | [observability.md](observability.md#spans-around-data-and-actions)                               |
 | Where a navigation came from: navigateFrom            | [observability.md](observability.md#where-a-navigation-came-from-navigatefrom)                   |
-| Telemetry conventions                                 | [observability.md](observability.md#telemetry-conventions)                                       |
+| Telemetry conventions                                 | [telemetry-conventions.md](telemetry-conventions.md#telemetry-conventions)                                       |
 | Testing telemetry                                     | [observability.md](observability.md#testing-telemetry)                                           |
 | What it costs                                         | [observability.md](observability.md#what-it-costs)                                               |
 | Dashboards on your computer: `fsp telemetry`          | [telemetry-dashboards.md](telemetry-dashboards.md)                                               |

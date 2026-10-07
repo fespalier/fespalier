@@ -79,7 +79,7 @@ _Sample data from `scripts/telemetry/seed.py --showcase`._
 
 Click a row of a table in OpenObserve, or a tile in Grafana, to open the dashboard that explains it (the App and the time range come along).
 
-Every query uses only the names of the [telemetry conventions](observability.md#telemetry-conventions), which `scripts/telemetry/build_dashboards.py` reads from `packages/fespalier_otel/lib/src/conventions.dart`; a test (`scripts/test_telemetry.py`) fails when a query names anything else. Nothing is charted that fespalier does not emit.
+Every query uses only the names of the [telemetry conventions](telemetry-conventions.md#telemetry-conventions), which `scripts/telemetry/build_dashboards.py` reads from `packages/fespalier_otel/lib/src/conventions.dart`; a test (`scripts/test_telemetry.py`) fails when a query names anything else. Nothing is charted that fespalier does not emit.
 
 ## Reading the colours
 

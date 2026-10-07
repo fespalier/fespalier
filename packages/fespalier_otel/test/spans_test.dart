@@ -823,7 +823,7 @@ void main() {
 
   // Last in the file: by now every operation has run. This is the golden list of what fespalier
   // emits, contract version 1. A name that is not in it was added (add it here, and to the
-  // docs/observability.md's conventions); one that is gone was renamed or removed, which is version 2.
+  // docs/telemetry-conventions.md); one that is gone was renamed or removed, which is version 2.
   test('what was emitted is exactly the contract', () {
     remember();
     expect(seenSpans, {

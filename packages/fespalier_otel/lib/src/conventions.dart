@@ -1,6 +1,6 @@
 /// The telemetry conventions, contract version 1 (since 0.8.1): every span name, event name,
 /// attribute key and enum-like value `FespalierOtel` emits. The "Telemetry conventions" section of
-/// docs/observability.md is the published copy; `test/conventions_test.dart` holds each of these as
+/// docs/telemetry-conventions.md is the published copy; `test/conventions_test.dart` holds each of these as
 /// a string literal, so a rename fails a test before it ships.
 ///
 /// Within version 1 a change may only add: a new attribute key, a new event or a new value of an

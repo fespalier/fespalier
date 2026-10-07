@@ -371,7 +371,7 @@ String? takeNavigationSource() {
 }
 
 /// The values of [TelemetryEnd.outcome]. They are the contract values of the telemetry
-/// conventions (docs/observability.md, "Telemetry conventions").
+/// conventions (docs/telemetry-conventions.md, "Telemetry conventions").
 abstract final class TelemetryOutcome {
   /// navigate: the location matched a page. action, deferred: it worked.
   static const String ok = 'ok';

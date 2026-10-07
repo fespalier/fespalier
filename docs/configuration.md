@@ -152,7 +152,7 @@ reported: `unknown_path` is `warning` (the default), `error` or `off`.
 
 ### semantics_ids and maestro
 
-`semantics_ids` (since 0.7.0) and `maestro:` are about [Maestro](cli.md#maestro-flows-fsp-maestro): the first
+`semantics_ids` (since 0.7.0) and `maestro:` are about [Maestro](route-tests.md#maestro-flows-fsp-maestro): the first
 changes the generated file, the second is read, and checked, only by `fsp maestro`.
 
 ### scroll_restoration
@@ -167,7 +167,7 @@ that isn't a bool is an error.
 
 ### test
 
-`test:` (since 0.8.1) is what [`fsp test`](cli.md#route-smoke-tests-fsp-test) reads, and only that command checks it.
+`test:` (since 0.8.1) is what [`fsp test`](route-tests.md#route-smoke-tests-fsp-test) reads, and only that command checks it.
 
 ### tasks
 

@@ -53,7 +53,7 @@ note under [Getting started](getting-started.md#go_router-18-and-material) appli
 which `fsp init` writes, routes animate and no nested `material_ui` app is needed in tests.
 
 `examples/*/test/` has working tests for every file kind. For tests on a device or in a browser, and
-journeys across routes, see [Maestro flows](cli.md#maestro-flows-fsp-maestro).
+journeys across routes, see [Maestro flows](route-tests.md#maestro-flows-fsp-maestro).
 
 ## The app around the router
 
@@ -82,7 +82,7 @@ all of these.
 `pumpRouter` also takes `app:` (since 0.8.1), a function from the router to the app widget around it
 (the default is `MaterialApp.router(routerConfig: router)`), and `package:fespalier/testing.dart` exports
 riverpod's `Override`. `findRoutePage(pattern)` finds a page by its `semantics_ids` identifier, and
-`smokeTestRoute` is what [`fsp test`](cli.md#route-smoke-tests-fsp-test) runs for each route; the shop's generated
+`smokeTestRoute` is what [`fsp test`](route-tests.md#route-smoke-tests-fsp-test) runs for each route; the shop's generated
 smoke tests are checked by `just check-examples`.
 
 ## Deferred routes in tests
@@ -112,5 +112,5 @@ Each package and command has its own testing notes:
 - Telemetry: [Testing telemetry](observability.md#testing-telemetry) (`RecordingTelemetry`).
 - Sentry: [Testing with Sentry](observability.md#testing-with-sentry) (`RecordingSentry`).
 - Images: [Testing images](responsive-images.md#testing-images) (`FakeImages`).
-- A smoke test per route: [Route smoke tests](cli.md#route-smoke-tests-fsp-test).
-- On a device or in a browser: [Maestro flows](cli.md#maestro-flows-fsp-maestro).
+- A smoke test per route: [Route smoke tests](route-tests.md#route-smoke-tests-fsp-test).
+- On a device or in a browser: [Maestro flows](route-tests.md#maestro-flows-fsp-maestro).

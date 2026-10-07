@@ -437,7 +437,7 @@ Call it inside the test body, where the fake clock starts. Pass `backend:` to re
 (`signIns`, `refreshes`, `signOuts`), to make it fail (`signInError`, `refreshError`) or to hold a call open
 (`gate`, a `Completer<void>`: a pending state to look at), `tokenLifetime:` to age the session with
 `tester.pump(const Duration(minutes: 6))`, `apiOrigins:` and `client:` (a `MockClient`) to test an API call.
-Signed out, a guarded route lands on `/sign-in?from=%2Forders`. In [`fsp test`](cli.md#route-smoke-tests-fsp-test),
+Signed out, a guarded route lands on `/sign-in?from=%2Forders`. In [`fsp test`](route-tests.md#route-smoke-tests-fsp-test),
 the setup file returns `fakeAuth(signedInAs: …)` from `overrides`, so guarded routes render:
 
 ```dart
@@ -446,4 +446,4 @@ List<Override> overrides(String pattern) => fakeAuth(signedInAs: const AuthUser(
 ```
 
 `FakeProof` stands in for a proof of possession, and `RecordingTelemetry` sees the `auth` spans (`#2 start auth
-refresh backend=fake trigger=expired`); [Telemetry conventions](observability.md#telemetry-conventions) lists their attributes.
+refresh backend=fake trigger=expired`); [Telemetry conventions](telemetry-conventions.md#telemetry-conventions) lists their attributes.

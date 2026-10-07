@@ -75,7 +75,7 @@
         "docs/cli.md#`fsp build` and `fsp run`",
         "docs/cli.md#Plain output, CI and Windows",
         "docs/cli.md#Deep links and a sitemap (`fsp links`)",
-        "docs/cli.md#Maestro flows (`fsp maestro`)",
+        "docs/route-tests.md#Maestro flows (`fsp maestro`)",
         "docs/cli.md#Web chunk sizes (`fsp size`)",
         "README.md",
         "ROADMAP.md",
@@ -222,6 +222,19 @@
         "docs/routing.md#Typed catch-alls",
         "docs/routing.md#Case and trailing slashes",
         "docs/routing.md#Localized paths",
+        "docs/i18n-tolgee.md",
+        "docs/i18n-tolgee.md#What it is, and why not the `tolgee` SDK",
+        "docs/i18n-tolgee.md#Install",
+        "docs/i18n-tolgee.md#Locales and the URL",
+        "docs/i18n-tolgee.md#The scope",
+        "docs/i18n-tolgee.md#Reading it",
+        "docs/i18n-tolgee.md#Bundled translations",
+        "docs/i18n-tolgee.md#Over the air",
+        "docs/i18n-tolgee.md#Cache and the offline fallback chain",
+        "docs/i18n-tolgee.md#In-context editing (debug only)",
+        "docs/i18n-tolgee.md#Testing",
+        "docs/i18n-tolgee.md#Rules and what it costs",
+        "docs/i18n-tolgee.md#Not built",
         "docs/routing.md#Non-ASCII spellings",
         "docs/routing.md#`(group)` folders",
         "docs/routing.md#Not-found views",
@@ -410,6 +423,7 @@
     "fespalier-testing": {
       "covers": [
         "docs/testing.md",
+        "docs/route-tests.md",
         "packages/fespalier/lib/testing.dart",
         "docs/auth.md#Testing signed-in routes",
         "packages/fespalier_auth/lib/testing.dart",
@@ -418,10 +432,10 @@
         "packages/fespalier_flags/lib/testing.dart",
         "packages/fespalier_storage/lib/testing.dart",
         "packages/fespalier_connectivity/lib/testing.dart",
-        "docs/cli.md#Maestro flows (`fsp maestro`)",
+        "docs/route-tests.md#Maestro flows (`fsp maestro`)",
         "config:semantics_ids",
         "packages/fespalier/lib/src/web_semantics.dart",
-        "docs/cli.md#Route smoke tests (`fsp test`)",
+        "docs/route-tests.md#Route smoke tests (`fsp test`)",
         "docs/telemetry-dashboards.md",
         "docs/telemetry-dashboards.md#The app side",
         "docs/telemetry-dashboards.md#The dashboards",
@@ -484,7 +498,7 @@
         "cli/src/dev.rs",
         "docs/devtools.md#What it shows",
         "docs/devtools.md#How to see it",
-        "docs/devtools.md#What it costs",
+        "docs/devtools.md#What DevTools costs",
         "docs/devtools.md#Limits",
         "docs/devtools.md#Protocol for tool authors",
         "docs/troubleshooting.md#Things to know",
@@ -533,7 +547,7 @@
         "docs/observability.md#Telemetry",
         "docs/observability.md#Turning it on",
         "docs/observability.md#OpenTelemetry with otel_zone",
-        "docs/observability.md#Telemetry conventions",
+        "docs/telemetry-conventions.md#Telemetry conventions",
         "docs/observability.md#Testing telemetry",
         "docs/observability.md#What it costs",
         "kind:observe.dart",
@@ -562,7 +576,8 @@
         "packages/fespalier_sentry/lib/src/options.dart",
         "packages/fespalier_sentry/lib/src/scrub.dart",
         "packages/fespalier_sentry/lib/src/tokens.dart",
-        "docs/observability.md"
+        "docs/observability.md",
+        "docs/telemetry-conventions.md"
       ]
     },
     "fespalier-images": {
@@ -616,7 +631,8 @@
     "cli/templates/new/_macros.dart.jinja",
     "README.md#Documentation",
     "README.md#Contributing",
-    "docs/README.md"
+    "docs/README.md",
+    "docs/README.md#Old README sections"
   ],
   "exemptReasons": {
     "docs/releasing.md": "Maintainer-only release procedure (Homebrew, Scoop, the JetBrains Marketplace, checksum pinning). An app author's agent never acts on it: release-please cuts the releases, and a skill would only go stale.",
@@ -624,6 +640,7 @@
     "cli/templates/new/_macros.dart.jinja": "A Jinja formatting helper for the `fsp new` templates, added after the baseline. It changes how a scaffold is laid out, not what any file kind means.",
     "README.md#Documentation": "Navigation only: it links to the documentation and to AGENTS.md, and states no behaviour a skill could get wrong.",
     "README.md#Contributing": "Navigation only: it links to the documentation and to AGENTS.md, and states no behaviour a skill could get wrong.",
+    "docs/README.md#Old README sections": "Navigation only: the map from the old README headings to the pages.",
     "docs/README.md": "Navigation only: the page index and the map from the old README headings to the pages, and states no behaviour a skill could get wrong."
   }
 }

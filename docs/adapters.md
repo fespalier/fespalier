@@ -100,5 +100,5 @@ Without `adapters:` none of these lines is written.
   function: ``app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there``.
 
 **In tests.** `pumpRouter(tester, router, app: AppMain.app)` (see [Testing](testing.md)) never sees the
-adapters, and neither do the [`fsp test`](cli.md#route-smoke-tests-fsp-test) smoke tests.
+adapters, and neither do the [`fsp test`](route-tests.md#route-smoke-tests-fsp-test) smoke tests.
 `AppMain.root()` is the app as it runs, adapters included.

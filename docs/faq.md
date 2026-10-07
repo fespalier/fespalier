@@ -116,4 +116,4 @@ No. The packages are git dependencies pinned at a release tag. See
 ### What does it cost in a release build?
 
 Nothing for what you do not use: DevTools support and telemetry are compiled out. See
-[DevTools extension](devtools.md#what-it-costs) and [What it costs](observability.md#what-it-costs).
+[DevTools extension](devtools.md#what-devtools-costs) and [What it costs](observability.md#what-it-costs).

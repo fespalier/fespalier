@@ -10,7 +10,7 @@ up gets the same `Future`).
 
 The package has no platform code and no `local_auth` dependency: the platform check is a `BiometricPrompt` the app writes
 once, a recipe of about 25 lines in [`biometric-prompts.md`](biometric-prompts.md) (`local_auth` 3.x) or
-[`biometric-prompts-local-auth-2.md`](biometric-prompts-local-auth-2.md) (2.x, for Flutter before 3.35), because the two
+[`biometric-prompts-local-auth-2.md`](biometric-prompts-local-auth-2.md) (2.x, for Flutter before 3.38), because the two
 `local_auth` majors cannot share one source. It depends on `clock` and fespalier, starts no timer and adds no listener.
 
 ```yaml
@@ -38,7 +38,7 @@ dependencies:
 | `biometricUnlock`, `BiometricUnlock`               | The state (`Locked`, `Unlocking`, `Unlocked(at)`) and its notifier: `unlock(reason)`, `lock()`, `isFresh({maxAge})`                                                                                              |
 | `requireUnlocked(ref, uri, unlock:, maxAge:)`      | The guard: `null` while unlocked, else the unlock page's location with `from`. Synchronous, never prompts                                                                                                        |
 | `withBiometrics(ref, reason, action, maxAge:)`     | For an action: prompts unless the unlock is younger than `maxAge` (default: always), throws `BiometricDeclined(outcome)` when it does not pass                                                                   |
-| `biometricPolicy`, `BiometricPolicy(resumeGrace:)` | When the app relocks on a resume. Default 10 seconds after the unlock; `Duration.zero` is every resume                                                                                                           |
+| `biometricPolicy`, `BiometricPolicy(resumeGrace:)` | When the app relocks on a return from the background. Default: 10 seconds or more after the unlock; `Duration.zero` is every return                                                                              |
 | `biometricAvailable`                               | `FutureProvider<bool>` for the unlock page ("Use your passcode" instead of a button that cannot work)                                                                                                            |
 | `FakeBiometricPrompt`, `biometricTestOverrides`    | `package:fespalier_biometrics/testing.dart`: queued outcomes, `prompts` count, `hold()` and `release()` for a sheet that is up                                                                                   |
 
@@ -68,7 +68,7 @@ import 'package:my_app/app.g.dart';
 
 /// Guards /vault and everything below it. Synchronous, so a cold deep link shows the unlock page in its first frame,
 /// and it never prompts: the unlock page does. `maxAge` makes an unlock older than five minutes count as locked at the
-/// next navigation or resume (there is no timer, so a page already open stays open).
+/// next navigation (there is no timer, so a page already open stays open).
 GuardResult guard(Ref ref, {required Uri uri}) => requireUnlocked(
   ref,
   uri,
@@ -253,16 +253,23 @@ Future<List<Override>> startup() async => [
   as unlocked, so `withBiometrics` on `/vault` does not send the person to the unlock page while the sheet is showing.
 - **The unlock page navigates.** Nothing watches the unlock for it; it calls `context.go(returnTo(from))` after a
   success. `returnTo` ignores a `from` that is not a path in the app.
-- **Relock on resume, with no timer and no listener.** `BiometricUnlock` watches core's `appResumeSignal`, so a resume
-  runs its `build` again; it goes back to `Locked` when the resume is at least `resumeGrace` after the unlock. The
-  default is 10 seconds, not zero, because the platform's sheet pauses the app and the resume can land just after the
-  answer: with `Duration.zero` the sheet could undo its own unlock. A resume while a sheet is up never drops the prompt.
+- **Relock when the app comes back, with no timer and no listener.** `BiometricUnlock` watches core's `appShowSignal`
+  (since 0.13.0: `onShow`, visible again **after being hidden**), so a return from the background runs its `build`
+  again; it goes back to `Locked` when the return is at least `resumeGrace` after the unlock. It is not
+  `appResumeSignal`: a notification shade, Control Center, a call banner and the platform's own biometric sheet go
+  inactive and back, and none of them relocks. A return while a sheet is up never drops the prompt, and one past the
+  grace still relocks when the sheet ends without a success.
+- **The default grace is a trade-off.** 10 seconds, not zero, because the platform's sheet and some system overlays can
+  hide the app and show it just after the answer: with `Duration.zero` the sheet could undo its own unlock. The price is
+  a 10-second window after each unlock in which leaving the app and coming back asks nothing. Guard something worth
+  more with a shorter grace or zero, and check on a device.
 - **An expiry is evaluated, not scheduled.** `maxAge` is compared with `clock.now()` when a guard runs or `isFresh` is
-  asked, that is at the next navigation or resume, never by itself. A page left open stays open past its `maxAge`.
+  asked, that is at the next navigation (or a re-run of the guard), never by itself. A page left open stays open past
+  its `maxAge`. A clock set back counts as expired for both `maxAge` and the grace.
 - **Telemetry** (`fespalier.biometrics.prompt`, with `fespalier.biometrics.result` set to the outcome's name) is reported
   to an installed sink and nothing else: never the reason text. Outcomes map to `ok`, `cancelled`, `rejected` (failed,
   locked out), `skipped` (unavailable) and `error` (a prompt that threw).
-- `appResumeSignal` is core's, and an `autoDispose` provider: the unlock state keeps it alive for the app's life, which
+- `appShowSignal` is core's, and an `autoDispose` provider: the unlock state keeps it alive for the app's life, which
   is one `AppLifecycleListener` core owns. A `ProviderContainer` test has no `WidgetsBinding`, which is what
   `biometricTestOverrides` replaces it for.
 

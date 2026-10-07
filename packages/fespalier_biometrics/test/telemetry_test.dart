@@ -17,7 +17,7 @@ void main() {
   ProviderContainer containerOf(BiometricPrompt prompt) {
     final container = ProviderContainer(
       overrides: [
-        appResumeSignal.overrideWith(RefetchSignal.new),
+        appShowSignal.overrideWith(RefetchSignal.new),
         biometricPrompt.overrideWithValue(prompt),
       ],
     );

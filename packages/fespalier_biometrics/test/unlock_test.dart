@@ -69,7 +69,7 @@ void main() {
       expect(container.read(biometricUnlock), isA<Locked>());
       final throwing = ProviderContainer(
         overrides: [
-          appResumeSignal.overrideWith(RefetchSignal.new),
+          appShowSignal.overrideWith(RefetchSignal.new),
           biometricPrompt.overrideWithValue(_Throws()),
         ],
       );
@@ -125,7 +125,7 @@ void main() {
     expect(notifier.isFresh(), isFalse);
   });
 
-  group('relock on resume', () {
+  group('relock on return from hidden', () {
     final start = DateTime(2026, 10, 7, 9);
     const policy = BiometricPolicy(resumeGrace: Duration(seconds: 30));
 
@@ -136,7 +136,7 @@ void main() {
         () => container.read(biometricUnlock.notifier).unlock('r'),
       );
       withClock(Clock.fixed(start.add(const Duration(seconds: 29))), () {
-        container.read(appResumeSignal.notifier).fire();
+        container.read(appShowSignal.notifier).fire();
         expect(container.read(biometricUnlock), isA<Unlocked>());
       });
     });
@@ -150,9 +150,9 @@ void main() {
           () => container.read(biometricUnlock.notifier).unlock('r'),
         );
         withClock(Clock.fixed(start.add(const Duration(seconds: 30))), () {
-          container.read(appResumeSignal.notifier).fire();
+          container.read(appShowSignal.notifier).fire();
           expect(container.read(biometricUnlock), isA<Locked>());
-          container.read(appResumeSignal.notifier).fire();
+          container.read(appShowSignal.notifier).fire();
           expect(container.read(biometricUnlock), isA<Locked>());
         });
       },
@@ -168,7 +168,7 @@ void main() {
         () => container.read(biometricUnlock.notifier).unlock('r'),
       );
       withClock(Clock.fixed(start), () {
-        container.read(appResumeSignal.notifier).fire();
+        container.read(appShowSignal.notifier).fire();
         expect(container.read(biometricUnlock), isA<Locked>());
       });
     });
@@ -183,7 +183,7 @@ void main() {
         );
         final notifier = container.read(biometricUnlock.notifier);
         final flight = notifier.unlock('r');
-        container.read(appResumeSignal.notifier).fire();
+        container.read(appShowSignal.notifier).fire();
         expect(container.read(biometricUnlock), isA<Unlocking>());
         prompt.release();
         expect(await flight, BiometricOutcome.success);
@@ -193,9 +193,107 @@ void main() {
     );
   });
 
+  group('what happens under a sheet', () {
+    final start = DateTime(2026, 10, 7, 9);
+
+    test(
+      'a lock() under a withBiometrics sheet stays locked after a cancel',
+      () async {
+        final prompt = FakeBiometricPrompt(
+          outcomes: [BiometricOutcome.success, BiometricOutcome.cancelled],
+        );
+        final container = containerOf(prompt);
+        final notifier = container.read(biometricUnlock.notifier);
+        await notifier.unlock('first');
+        prompt.hold();
+        final flight = notifier.unlock('second');
+        notifier.lock();
+        expect(notifier.isFresh(), isFalse);
+        prompt.release(BiometricOutcome.cancelled);
+        await flight;
+        expect(container.read(biometricUnlock), isA<Locked>());
+      },
+    );
+
+    test(
+      'a show past the grace under a sheet is not lost when the sheet is cancelled',
+      () async {
+        final prompt = FakeBiometricPrompt(
+          outcomes: [BiometricOutcome.success, BiometricOutcome.cancelled],
+        );
+        final container = containerOf(
+          prompt,
+          policy: const BiometricPolicy(resumeGrace: Duration(seconds: 30)),
+        );
+        final notifier = container.read(biometricUnlock.notifier);
+        await withClock(Clock.fixed(start), () => notifier.unlock('first'));
+        prompt.hold();
+        final flight = withClock(
+          Clock.fixed(start.add(const Duration(seconds: 40))),
+          () => notifier.unlock('second'),
+        );
+        withClock(Clock.fixed(start.add(const Duration(seconds: 41))), () {
+          container.read(appShowSignal.notifier).fire();
+        });
+        expect(
+          (container.read(biometricUnlock) as Unlocking).wasUnlocked,
+          isFalse,
+        );
+        prompt.release(BiometricOutcome.cancelled);
+        await flight;
+        expect(container.read(biometricUnlock), isA<Locked>());
+      },
+    );
+
+    test(
+      'a guard re-run under a sheet over an unlock still sees it fresh',
+      () async {
+        final prompt = FakeBiometricPrompt();
+        final container = containerOf(prompt);
+        final notifier = container.read(biometricUnlock.notifier);
+        await notifier.unlock('first');
+        prompt.hold();
+        final flight = notifier.unlock('second');
+        expect(container.read(biometricUnlock), isA<Unlocking>());
+        expect(notifier.isFresh(), isTrue);
+        prompt.release();
+        await flight;
+      },
+    );
+  });
+
+  group('a clock set back', () {
+    final start = DateTime(2026, 10, 7, 9);
+
+    test('is expired for isFresh, whatever the maxAge', () async {
+      final container = containerOf(FakeBiometricPrompt());
+      final notifier = container.read(biometricUnlock.notifier);
+      await withClock(Clock.fixed(start), () => notifier.unlock('r'));
+      withClock(Clock.fixed(start.subtract(const Duration(hours: 1))), () {
+        expect(notifier.isFresh(maxAge: const Duration(days: 1)), isFalse);
+        expect(notifier.isFresh(), isTrue);
+      });
+    });
+
+    test('relocks on a show, even inside any grace', () async {
+      final container = containerOf(
+        FakeBiometricPrompt(),
+        policy: const BiometricPolicy(resumeGrace: Duration(days: 1)),
+      );
+      await withClock(
+        Clock.fixed(start),
+        () => container.read(biometricUnlock.notifier).unlock('r'),
+      );
+      withClock(Clock.fixed(start.subtract(const Duration(hours: 1))), () {
+        container.read(appShowSignal.notifier).fire();
+        expect(container.read(biometricUnlock), isA<Locked>());
+      });
+    });
+  });
+
   test('unconfigured, reading the prompt says what to override', () {
     final container = ProviderContainer(
-      overrides: [appResumeSignal.overrideWith(RefetchSignal.new)],
+      overrides: [appShowSignal.overrideWith(RefetchSignal.new)],
     );
     addTearDown(container.dispose);
     expect(

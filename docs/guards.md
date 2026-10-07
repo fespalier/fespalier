@@ -221,7 +221,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-The platform check is **not** in the package. `local_auth` 2.x and 3.x cannot share one source (2.x takes `AuthenticationOptions` and defaults `useErrorDialogs` to native dialogs, 3.x takes named parameters, throws `LocalAuthException` and needs Flutter 3.35 or newer), so the package defines a `BiometricPrompt` (`isAvailable()` and `authenticate(reason)`, returning a `BiometricOutcome`: `success`, `cancelled`, `failed`, `unavailable`, `lockedOut`) and each `local_auth` is a recipe of about 25 lines in the fespalier-guards skill (`biometric-prompts.md` for 3.x, `biometric-prompts-local-auth-2.md` for 2.x). It shows the platform's own sheet and never a Flutter dialog. The app gives its prompt in `startup()`:
+The platform check is **not** in the package. `local_auth` 2.x and 3.x cannot share one source (2.x takes `AuthenticationOptions` and defaults `useErrorDialogs` to native dialogs, 3.x takes named parameters, throws `LocalAuthException` and needs Flutter 3.38 or newer), so the package defines a `BiometricPrompt` (`isAvailable()` and `authenticate(reason)`, returning a `BiometricOutcome`: `success`, `cancelled`, `failed`, `unavailable`, `lockedOut`) and each `local_auth` is a recipe of about 25 lines in the fespalier-guards skill (`biometric-prompts.md` for 3.x, `biometric-prompts-local-auth-2.md` for 2.x). It shows the platform's own sheet and never a Flutter dialog. The app gives its prompt in `startup()`:
 
 ```dart
 // lib/app/startup.dart
@@ -255,7 +255,7 @@ FilledButton(
 
 - **`unlock(reason)` is single-flight and never throws.** While a sheet is up, a second call (a double tap, two buttons) gets the same `Future`. A prompt that throws is `BiometricOutcome.failed`. Anything but a success leaves the state as it was before the call.
 - **The guard watches only whether the app is unlocked.** A prompt coming and going (`Unlocking`) and a second `Unlocked` stamp do not run it again, so a re-run is never a re-prompt; a `lock()` or a relock does run it, and the router leaves the page. A prompt over an unlocked page (an action's) does not send the page away: `Unlocking` carries whether the app was unlocked, and the guard keeps its answer.
-- **`maxAge:`** also requires the unlock to be younger than that by `package:clock`. It is evaluated when the guard runs or when `isFresh(maxAge:)` is asked, that is at the next navigation or resume, never by itself: there is no timer, so a page left open stays open.
+- **`maxAge:`** also requires the unlock to be younger than that by `package:clock`. It is evaluated when the guard runs or when `isFresh(maxAge:)` is asked, that is at the next navigation (or any re-run of the guard), never by itself: there is no timer, so a page left open stays open.
 - **`biometricAvailable`** is a `FutureProvider<bool>` for the unlock page, which can offer "Use your passcode" instead of a button that cannot work.
 
 ### Actions that ask again
@@ -268,16 +268,16 @@ Future<String> action(Ref ref, {required String input}) =>
 
 `withBiometrics(ref, reason, action, {maxAge})` is for the write or the read that must not run on a borrowed phone. It prompts unless the unlock is younger than `maxAge` (the default, `Duration.zero`, asks every time), runs `action` after a success, and throws `BiometricDeclined(outcome)` otherwise, which an [action](actions.md)'s state shows like any failure. A success also counts as an unlock for the guards.
 
-### Relock on resume
+### Relock when the app comes back
 
-`BiometricUnlock` watches core's `appResumeSignal`, so a resume runs its `build` again, and it goes back to `Locked` when the resume is at least `BiometricPolicy.resumeGrace` after the unlock. The guard then sends the person to the unlock page. It adds no listener of its own and no timer (`appResumeSignal` is core's one `AppLifecycleListener`, kept alive while the notifier is).
+`BiometricUnlock` watches core's `appShowSignal` (since 0.13.0: `AppLifecycleListener.onShow`, the app is visible again **after it was hidden**), so a return from the background runs its `build` again, and it goes back to `Locked` when that return is at least `BiometricPolicy.resumeGrace` after the unlock. The guard then sends the person to the unlock page. It adds no listener of its own and no timer (`appShowSignal` is core's one `AppLifecycleListener`, kept alive while the notifier is). It is not `appResumeSignal`: an iOS notification shade or Control Center, a call banner and the platform's own biometric sheet make the app inactive and back, and none of them is a return from the background.
 
 ```dart
-// lib/app/startup.dart: every resume locks
+// lib/app/startup.dart: every return from the background locks
 biometricPolicy.overrideWithValue(const BiometricPolicy(resumeGrace: Duration.zero)),
 ```
 
-The default is 10 seconds, not zero: the platform's sheet pauses the app, and the resume can arrive just after the sheet's answer, so with `Duration.zero` the sheet can undo its own unlock. A resume while a sheet is up never drops the prompt. Locking does not clear the data providers that loaded a secret; invalidate them when `biometricUnlock` goes to `Locked` if that matters.
+**The default grace is 10 seconds, and that is a trade-off.** The platform's sheet and some system overlays can hide the app and show it just after the sheet's answer, so with `Duration.zero` the sheet could undo its own unlock. The price is a window of 10 seconds after each unlock in which putting the app in the background and bringing it back asks nothing: on a borrowed phone, that is the time someone has. An app that guards something worth more sets a shorter grace, or zero, and checks on a device that the platform's sheet does not lock it. Switching apps through the iOS app switcher without the app being hidden is not a return either. A return while a sheet is up never drops the prompt, and one past the grace still relocks when the sheet ends without a success (`persistAcrossBackgrounding`). A clock set back counts as expired, so winding the clock back does not keep an unlock. Locking does not clear the data providers that loaded a secret; invalidate them when `biometricUnlock` goes to `Locked` if that matters.
 
 Each prompt is reported as one `fespalier.biometrics.prompt` operation with `fespalier.biometrics.result` set to the outcome's name, to an installed [telemetry](observability.md#telemetry) sink. Never the reason text.
 
@@ -303,4 +303,4 @@ testWidgets('locked: the vault sends the person to unlock, and nothing is prompt
 });
 ```
 
-Move time with `withClock(Clock.fixed(...))` for `maxAge` and the grace, and fire a resume with `container.read(appResumeSignal.notifier).fire()` (the real signal needs a `WidgetsBinding`, which `biometricTestOverrides` swaps for a plain one).
+Move time with `withClock(Clock.fixed(...))` for `maxAge` and the grace, and fire a return from the background with `container.read(appShowSignal.notifier).fire()` (the real signal needs a `WidgetsBinding`, which `biometricTestOverrides` swaps for a plain one; with a binding, `handleAppLifecycleStateChanged` through `hidden` and back is the real thing).

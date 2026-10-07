@@ -14,7 +14,7 @@ bool _open(UnlockState state) => switch (state) {
 /// unlocked, otherwise the location of the app's unlock page with the `from` it should return to.
 ///
 /// ```dart
-/// GuardResult guard(Ref ref, Uri uri) =>
+/// GuardResult guard(Ref ref, {required Uri uri}) =>
 ///     requireUnlocked(ref, uri, unlock: (from) => UnlockRoute(from: from));
 /// ```
 ///
@@ -25,7 +25,8 @@ bool _open(UnlockState state) => switch (state) {
 /// a lock, or a relock by the policy, does, and the router leaves the page.
 ///
 /// With [maxAge] the unlock must also be younger than that, by `package:clock`, when the guard runs:
-/// an expiry takes effect at the next navigation or resume, never by itself (there is no timer).
+/// an expiry takes effect when the guard next runs (the next navigation, or a re-run because what it
+/// watches changed), never by itself: there is no timer, so a page already open stays open.
 GuardResult requireUnlocked(
   Ref ref,
   Uri uri, {

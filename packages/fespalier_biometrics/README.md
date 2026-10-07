@@ -2,7 +2,7 @@
 
 Biometric unlock for [fespalier](https://github.com/fespalier/fespalier) (since 0.13.0): a guard that **never prompts**
 (`requireUnlocked` reads the unlock state and redirects to the app's unlock page), one single-flight `unlock()` that the
-unlock page calls, `withBiometrics` for an action that must ask again, and a relock on resume. The platform check
+unlock page calls, `withBiometrics` for an action that must ask again, and a relock when the app comes back from the background. The platform check
 (`local_auth`) is a recipe, not a dependency: the package has no platform code, starts no timer and adds no listener.
 
 The docs cover all of it: [Biometric unlock](https://github.com/fespalier/fespalier/blob/main/docs/guards.md#biometric-unlock-fespalier_biometrics)
@@ -53,7 +53,7 @@ Future<String> action(Ref ref, {required String input}) =>
 ```
 
 The `local_auth` 3.x recipe is the fespalier-guards skill's `biometric-prompts.md` and the 2.x one
-`biometric-prompts-local-auth-2.md` (2.x for Flutter before 3.35: the two majors cannot share one source).
+`biometric-prompts-local-auth-2.md` (2.x for Flutter before 3.38: the two majors cannot share one source).
 
 ## Test it
 
@@ -75,8 +75,8 @@ expect(prompt.prompts, 0); // and nothing was prompted
 
 - **A guard never prompts.** A guard that runs again, for any reason, cannot show a second sheet; only `unlock()` and
   `withBiometrics` prompt, single-flight.
-- **No timer, no listener.** The relock is a watch of core's `appResumeSignal`; an expiry (`maxAge`) is evaluated at the
-  next navigation or resume, never by itself. `test/no_timers_test.dart` greps `lib/` for it.
+- **No timer, no listener.** The relock is a watch of core's `appShowSignal` (the app shown again after being hidden, not
+  just inactive); an expiry (`maxAge`) is evaluated when a guard next runs, never by itself. `test/no_timers_test.dart` greps `lib/` for it.
 - **Telemetry is constants only:** `fespalier.biometrics.prompt` with `fespalier.biometrics.result` (the outcome's name).
   Never the reason text.
 - Not built: a lock screen widget, a passcode of the app's own, storing a secret behind the biometric (that is a

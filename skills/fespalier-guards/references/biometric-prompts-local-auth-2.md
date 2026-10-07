@@ -1,6 +1,6 @@
 # Biometric prompts: `local_auth` 2.x
 
-Since 0.13.0. The 2.x recipe for a [`BiometricPrompt`](biometrics.md), for an app on a Flutter older than 3.35 (`local_auth`
+Since 0.13.0. The 2.x recipe for a [`BiometricPrompt`](biometrics.md), for an app on a Flutter older than 3.38 (`local_auth`
 3.x needs Flutter 3.38 per its pubspec; the 3.x recipe is [`biometric-prompts.md`](biometric-prompts.md)). `local_auth`
 is a recipe, not a dependency of `fespalier_biometrics`.
 
@@ -57,7 +57,8 @@ final class LocalAuthPrompt extends BiometricPrompt {
         auth_error.notAvailable ||
         auth_error.notEnrolled ||
         auth_error.passcodeNotSet ||
-        auth_error.otherOperatingSystem => BiometricOutcome.unavailable,
+        auth_error.otherOperatingSystem ||
+        auth_error.biometricOnlyNotSupported => BiometricOutcome.unavailable,
         _ => BiometricOutcome.failed,
       };
     }

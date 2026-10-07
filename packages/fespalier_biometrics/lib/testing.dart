@@ -5,7 +5,7 @@ import 'dart:async';
 
 import 'package:fespalier/testing.dart' show Override;
 import 'package:fespalier_biometrics/fespalier_biometrics.dart';
-import 'package:fespalier/fespalier.dart' show RefetchSignal, appResumeSignal;
+import 'package:fespalier/fespalier.dart' show RefetchSignal, appShowSignal;
 
 export 'package:fespalier_biometrics/fespalier_biometrics.dart'
     show BiometricOutcome, BiometricPrompt;
@@ -34,6 +34,7 @@ final class FakeBiometricPrompt extends BiometricPrompt {
   final List<String> reasons = [];
 
   Completer<BiometricOutcome>? _held;
+  Completer<BiometricOutcome>? _taken;
 
   /// Queues [outcome] after what is queued.
   void enqueue(BiometricOutcome outcome) => _queue.add(outcome);
@@ -42,10 +43,11 @@ final class FakeBiometricPrompt extends BiometricPrompt {
   /// the sheet is "up".
   void hold() => _held = Completer<BiometricOutcome>();
 
-  /// Ends a held prompt with [outcome].
+  /// Ends a held prompt with [outcome]. It may come before the prompt starts: the outcome waits for
+  /// the [authenticate] that takes the hold.
   void release([BiometricOutcome outcome = BiometricOutcome.success]) {
-    _held?.complete(outcome);
-    _held = null;
+    final held = _held ?? _taken;
+    if (held != null && !held.isCompleted) held.complete(outcome);
   }
 
   @override
@@ -56,20 +58,24 @@ final class FakeBiometricPrompt extends BiometricPrompt {
     prompts++;
     reasons.add(reason);
     final held = _held;
-    if (held != null) return held.future;
+    if (held != null) {
+      _held = null;
+      _taken = held;
+      return held.future;
+    }
     final outcome = _queue.isEmpty ? fallback : _queue.removeAt(0);
     return Future<BiometricOutcome>.value(outcome);
   }
 }
 
 /// The overrides a test of a biometric screen needs (since 0.13.0): [prompt] as the app's prompt, and
-/// a resume signal that fires only when the test calls `container.read(appResumeSignal.notifier).fire()`
+/// a return-from-hidden signal that fires only when the test calls `container.read(appShowSignal.notifier).fire()`
 /// (the real one needs a `WidgetsBinding`, which a `ProviderContainer` test has not).
 List<Override> biometricTestOverrides(
   FakeBiometricPrompt prompt, {
   BiometricPolicy? policy,
 }) => [
   biometricPrompt.overrideWithValue(prompt),
-  appResumeSignal.overrideWith(RefetchSignal.new),
+  appShowSignal.overrideWith(RefetchSignal.new),
   if (policy != null) biometricPolicy.overrideWithValue(policy),
 ];

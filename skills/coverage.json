@@ -463,7 +463,9 @@
         "docs/guards.md#Biometric unlock: fespalier_biometrics",
         "docs/guards.md#The unlock page",
         "docs/guards.md#Actions that ask again",
-        "docs/guards.md#Relock on resume",
+        "docs/guards.md#Relock when the app comes back",
+        "docs/guards.md#Testing an unlock",
+        "packages/fespalier_biometrics/lib/testing.dart",
         "packages/fespalier_biometrics/README.md",
         "packages/fespalier_biometrics/lib/fespalier_biometrics.dart"
       ]
@@ -477,8 +479,6 @@
         "packages/fespalier_auth/lib/testing.dart",
         "packages/fespalier_sign_keypair/lib/testing.dart",
         "docs/guards.md#Testing flagged routes",
-        "docs/guards.md#Testing an unlock",
-        "packages/fespalier_biometrics/lib/testing.dart",
         "packages/fespalier_flags/lib/testing.dart",
         "packages/fespalier_storage/lib/testing.dart",
         "packages/fespalier_connectivity/lib/testing.dart",

@@ -208,15 +208,50 @@ void main() {
     });
     expect(find.text('Secret'), findsOneWidget);
     withClock(Clock.fixed(start.add(const Duration(seconds: 10))), () {
-      container.read(appResumeSignal.notifier).fire();
+      container.read(appShowSignal.notifier).fire();
     });
     await tester.pumpAndSettle();
     expect(find.text('Secret'), findsOneWidget);
     withClock(Clock.fixed(start.add(const Duration(seconds: 31))), () {
-      container.read(appResumeSignal.notifier).fire();
+      container.read(appShowSignal.notifier).fire();
     });
     await tester.pumpAndSettle();
     expect(currentLocation(tester), startsWith('/unlock'));
     expect(prompt.prompts, 1);
   });
+
+  testWidgets(
+    'inactive and back (a notification shade) keeps the unlock; hidden and back relocks',
+    (tester) async {
+      final prompt = FakeBiometricPrompt();
+      // The real appShowSignal, on the tester's binding.
+      await pumpRouter(
+        tester,
+        routerAt('/secret'),
+        overrides: [
+          biometricPrompt.overrideWithValue(prompt),
+          biometricPolicy.overrideWithValue(
+            const BiometricPolicy(resumeGrace: Duration.zero),
+          ),
+        ],
+      );
+      await tester.tap(find.text('Unlock'));
+      await tester.pumpAndSettle();
+      expect(find.text('Secret'), findsOneWidget);
+      final binding = tester.binding;
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(find.text('Secret'), findsOneWidget);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), startsWith('/unlock'));
+      expect(prompt.prompts, 1);
+    },
+  );
 }

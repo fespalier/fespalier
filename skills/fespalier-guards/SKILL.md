@@ -231,9 +231,10 @@ synchronously; the unlock page beside the guarded folder calls `ref.read(biometr
 (single-flight, never throws) and goes to `returnTo(from)`; `withBiometrics(ref, reason, action, maxAge:)` makes an
 action ask again and throws `BiometricDeclined`. The app gives a `BiometricPrompt` in `startup()`
 (`biometricPrompt.overrideWithValue(...)`); `local_auth` is a recipe, not a dependency, because its 2.x and 3.x cannot
-share one source. The state relocks on a resume at least `BiometricPolicy.resumeGrace` after the unlock (default 10 s)
-through core's `appResumeSignal`, with no timer and no listener; `maxAge` is checked at the next navigation or resume,
-never by itself. Telemetry is `fespalier.biometrics.prompt` with `fespalier.biometrics.result`. Never call `unlock()`
+share one source. The state relocks when the app comes back from the background (core's `appShowSignal`, not a notification shade or
+the platform's sheet) at least `BiometricPolicy.resumeGrace` after the unlock, with no timer and no listener; the
+default 10 s grace is a security trade-off the reference states; `maxAge` is checked at the next navigation, never by
+itself. Telemetry is `fespalier.biometrics.prompt` with `fespalier.biometrics.result`. Never call `unlock()`
 from `build` or a guard; never put a guard on the unlock page.
 
 [`references/biometrics.md`](references/biometrics.md) has the package in full and a compiled starter;
@@ -254,6 +255,6 @@ from `build` or a guard; never put a guard on the unlock page.
 | Feature flags (since 0.9.0): `flagGuard`, flag providers, `FakeFlags`                    | [`references/feature-flags.md`](references/feature-flags.md)                                                                                                         |
 | Flag sources (since 0.9.0): Remote Config, LaunchDarkly, PostHog, GrowthBook             | [`references/flag-sources.md`](references/flag-sources.md)                                                                                                           |
 | Biometric unlock (since 0.13.0): `requireUnlocked`, `unlock()`, `withBiometrics`, relock | [`references/biometrics.md`](references/biometrics.md)                                                                                                               |
-| `local_auth` as a `BiometricPrompt` (3.x, and 2.x for Flutter before 3.35)               | [`references/biometric-prompts.md`](references/biometric-prompts.md), [`references/biometric-prompts-local-auth-2.md`](references/biometric-prompts-local-auth-2.md) |
+| `local_auth` as a `BiometricPrompt` (3.x, and 2.x for Flutter before 3.38)               | [`references/biometric-prompts.md`](references/biometric-prompts.md), [`references/biometric-prompts-local-auth-2.md`](references/biometric-prompts-local-auth-2.md) |
 | Testing a guarded route                                                                  | `fespalier-testing`                                                                                                                                                  |
 | An `fsp` error on a guard or redirect                                                    | `fespalier-troubleshooting`                                                                                                                                          |

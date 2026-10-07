@@ -2,8 +2,8 @@
 
 Since 0.13.0. A [`BiometricPrompt`](biometrics.md) is two methods, and `local_auth` is the plugin that implements them.
 It is a **recipe, not a dependency of `fespalier_biometrics`**: `local_auth` 2.x and 3.x cannot share one source (2.x
-takes `AuthenticationOptions`, 3.x takes named parameters and throws `LocalAuthException`, and 3.x needs Flutter 3.35 or
-newer), and an app that already uses another plugin should not link this one. This page is `local_auth` **3.x**;
+takes `AuthenticationOptions`, 3.x takes named parameters and throws `LocalAuthException`, and 3.x needs Flutter 3.38
+or newer), and an app that already uses another plugin should not link this one. This page is `local_auth` **3.x**;
 [`biometric-prompts-local-auth-2.md`](biometric-prompts-local-auth-2.md) is 2.x.
 
 The sample is built by `just skill-samples` (`fsp gen`, `flutter analyze`); nothing runs the plugin at test time. Last

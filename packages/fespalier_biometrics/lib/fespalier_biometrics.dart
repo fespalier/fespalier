@@ -1,6 +1,6 @@
 /// Biometric unlock for fespalier (since 0.13.0): a guard that never prompts (`requireUnlocked`),
 /// one single-flight `unlock()` that the app's unlock page calls, `withBiometrics` for an action,
-/// and a relock policy driven by the app's resume. The platform plugin (`local_auth`) is a recipe
+/// and a relock policy driven by the app coming back from the background. The platform plugin (`local_auth`) is a recipe
 /// in the fespalier-guards skill, not a dependency: this library has no platform code.
 library;
 

@@ -272,11 +272,19 @@ class PinPickerModel extends ChangeNotifier {
   /// already has one for that point (a picked result), and drop every answer still on its way.
   void onIdle(GeoPoint point) {
     if (_awaitingFix && _panned) {
-      // A pan that came to rest while the fix is awaited: the person chose a place. The fix, when
-      // it arrives, is stale; the pan is adopted, whatever the answer.
-      _awaitingFix = false;
-      _locateSeq++;
-      _chosen = true;
+      if (_farFromStart(point)) {
+        // A pan that came to rest away from where the map started while the fix is awaited: the
+        // person chose a place. The fix, when it arrives, is stale; the pan is adopted, whatever
+        // the answer.
+        _awaitingFix = false;
+        _locateSeq++;
+        _chosen = true;
+      } else {
+        // A movement and a rest at the start: the map's own at load (iOS reports a camera move
+        // for any region change, and maplibre_gl does not say whether a gesture caused it), not
+        // a choice. The fix still lands.
+        _panned = false;
+      }
     }
     if (_awaitingFix || !_chosen) return;
     _moving = false;
@@ -453,6 +461,13 @@ class PinPickerModel extends ChangeNotifier {
     final guess = _guessFor == point ? _guess : null;
     mapsPicked(guessed: guess != null);
     return PickedPlace(point, guess: guess);
+  }
+
+  /// More than about a kilometre (0.01 degree) from where the map started: a rest the person made.
+  bool _farFromStart(GeoPoint point) {
+    final start = initialCamera.center;
+    return (point.latitude - start.latitude).abs() >= 0.01 ||
+        (point.longitude - start.longitude).abs() >= 0.01;
   }
 
   /// Within about a metre: the map's idle point after a move to a picked place is not exactly it.

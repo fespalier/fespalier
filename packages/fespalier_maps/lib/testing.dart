@@ -12,9 +12,11 @@ import 'fespalier_maps.dart';
 /// The key of the box a [FakeMapSurface] builds.
 const Key fakeMapKey = ValueKey<String>('fespalier_maps.fake_map');
 
-/// A [MapSurface] that is a box. Like the real map it keeps the camera callbacks it was first built
-/// with. The test plays the map: [startMove] and [idleAt] are what a
-/// real map reports, and [moves] is what the picker asked of it.
+/// A [MapSurface] that is a box. Like the real map it keeps the camera callbacks of the build that
+/// mounted it, and like [MapLibreSurface] it can have several maps mounted at once (a picker
+/// pushed over a picker): the test's [startMove], [idleAt] and [moveTo] reach the one mounted
+/// last, and the one under it again when that one goes. The test plays the map: [startMove] and
+/// [idleAt] are what a real map reports, and [moves] is what the pickers asked of it.
 class FakeMapSurface extends MapSurface {
   /// A fake. With [idleOnMove], [moveTo] ends with an idle event at the point it was given, the
   /// way a real map comes to rest after an animation.
@@ -23,14 +25,16 @@ class FakeMapSurface extends MapSurface {
   /// Whether [moveTo] reports an idle event at the new centre.
   final bool idleOnMove;
 
-  /// The moves the picker asked for, in order.
+  /// The moves the pickers asked for, in order.
   final List<({GeoPoint center, double? zoom})> moves = [];
 
-  /// The camera the map was built with, or null before it was.
+  /// The camera the last map was built with, or null before one was.
   MapCamera? shown;
 
-  void Function(GeoPoint center)? _onIdle;
-  VoidCallback? _onMove;
+  final List<_FakeMapState> _mounted = [];
+
+  /// How many maps are mounted now.
+  int get mountedCount => _mounted.length;
 
   @override
   Widget build(
@@ -40,24 +44,62 @@ class FakeMapSurface extends MapSurface {
     required VoidCallback onMove,
   }) {
     shown = initial;
-    // Like MapLibreMap, which keeps the callbacks of the build that created the platform view: a
-    // picker that rebuilt with new ones would leave the map talking to the old ones.
-    _onIdle ??= onIdle;
-    _onMove ??= onMove;
-    return const SizedBox.expand(key: fakeMapKey);
+    return _FakeMap(surface: this, onIdle: onIdle, onMove: onMove);
   }
 
-  /// The camera starts to move (a drag).
-  void startMove() => _onMove?.call();
+  /// The camera of the map mounted last starts to move (a drag).
+  void startMove() {
+    if (_mounted.isNotEmpty) _mounted.last.onMove();
+  }
 
-  /// The camera comes to rest with [center] under the pin.
-  void idleAt(GeoPoint center) => _onIdle?.call(center);
+  /// The camera of the map mounted last comes to rest with [center] under the pin.
+  void idleAt(GeoPoint center) {
+    if (_mounted.isNotEmpty) _mounted.last.onIdle(center);
+  }
 
   @override
   Future<void> moveTo(GeoPoint center, {double? zoom}) async {
     moves.add((center: center, zoom: zoom));
     if (idleOnMove) idleAt(center);
   }
+}
+
+class _FakeMap extends StatefulWidget {
+  const _FakeMap({
+    required this.surface,
+    required this.onIdle,
+    required this.onMove,
+  });
+
+  final FakeMapSurface surface;
+  final void Function(GeoPoint center) onIdle;
+  final VoidCallback onMove;
+
+  @override
+  State<_FakeMap> createState() => _FakeMapState();
+}
+
+class _FakeMapState extends State<_FakeMap> {
+  // Captured once, as MapLibreMap does when its platform view is created.
+  late final void Function(GeoPoint center) onIdle;
+  late final VoidCallback onMove;
+
+  @override
+  void initState() {
+    super.initState();
+    onIdle = widget.onIdle;
+    onMove = widget.onMove;
+    widget.surface._mounted.add(this);
+  }
+
+  @override
+  void dispose() {
+    widget.surface._mounted.remove(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.expand(key: fakeMapKey);
 }
 
 /// One call a [FakeGeocoder] received, held until the test completes it.

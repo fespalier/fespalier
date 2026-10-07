@@ -150,6 +150,35 @@ void main() {
     );
 
     test(
+      'a move and a rest at the start while awaiting (the map\'s own at load) leave the fix to land',
+      () async {
+        final position = FakePositionSource(const Fixed(home), hold: true);
+        final rig = Rig(position: position);
+        final seeding = rig.model.seed();
+        rig.model.onMove();
+        rig.model.onIdle(const GeoPoint(0, 0));
+        rig.model.onIdle(const GeoPoint(0.001, 0.001));
+        expect(rig.model.center, isNull);
+        position.release();
+        await seeding;
+        expect(rig.map.moves, [(center: home, zoom: 16.0)]);
+        expect(rig.model.center, home);
+      },
+    );
+
+    test('a rest away from the start while awaiting is adopted', () async {
+      final position = FakePositionSource(const Fixed(home), hold: true);
+      final rig = Rig(position: position);
+      final seeding = rig.model.seed();
+      rig.model.onMove();
+      rig.model.onIdle(const GeoPoint(0.5, 0.5));
+      expect(rig.model.center, const GeoPoint(0.5, 0.5));
+      position.release();
+      await seeding;
+      expect(rig.map.moves, isEmpty);
+    });
+
+    test(
       'a spurious move with no rest at load does not cancel the seed',
       () async {
         final position = FakePositionSource(const Fixed(home), hold: true);

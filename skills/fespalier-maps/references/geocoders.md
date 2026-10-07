@@ -12,6 +12,9 @@ abstract interface class Geocoder {
 }
 ```
 
+The Dart in these recipes uses null-aware elements (`?expr` inside a list), so they need Dart 3.8, which is the floor of
+`fespalier_maps` itself.
+
 ## The contract
 
 - **Throw on failure** (a refused request, a bad status, a body that is not what you expect). The picker turns it into
@@ -74,18 +77,23 @@ class NominatimGeocoder implements Geocoder {
   // App code may read the clock and wait; the package's own lib may not.
   DateTime? _last;
   Future<void> _turn = Future<void>.value();
-  final Map<String, Object?> _cache = {}; // insertion order is the LRU order
+  // Futures, so two overlapping identical calls share one request; insertion order is the LRU order.
+  final Map<String, Future<Object?>> _cache = {};
 
-  Future<T> _cached<T>(String key, Future<T> Function() load) async {
-    if (_cache.containsKey(key)) {
-      final hit = _cache.remove(key);
+  Future<T> _cached<T>(String key, Future<T> Function() load) {
+    final hit = _cache.remove(key);
+    if (hit != null) {
       _cache[key] = hit; // most recently used last
-      return hit as T;
+      return hit as Future<T>;
     }
-    final value = await load();
-    _cache[key] = value;
+    final future = load();
+    _cache[key] = future;
+    // A failure is not kept: the next call asks again.
+    future.then<void>((_) {}, onError: (Object _) {
+      _cache.remove(key);
+    });
     if (_cache.length > cacheSize) _cache.remove(_cache.keys.first);
-    return value;
+    return future;
   }
 
   /// Requests go one at a time, at least [minGap] apart.

@@ -71,7 +71,8 @@ abstract interface class PositionSource {
 /// The map under the pin. The MapLibre one is `MapLibreSurface` in
 /// `package:fespalier_maps/maplibre.dart`; `FakeMapSurface` is in `testing.dart`.
 ///
-/// A surface serves one picker at a time: [build] binds the callbacks it is given.
+/// A surface may serve several pickers (stacked, or one after the other): [build] binds the callbacks
+/// it is given to the map it builds, and [moveTo] moves the map that was mounted last.
 abstract class MapSurface {
   /// A surface.
   const MapSurface();

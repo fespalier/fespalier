@@ -2,6 +2,8 @@
 // confirmation that comes back through a real `push<PickedPlace>`, and nothing that opens over
 // the page.
 
+import 'dart:async';
+
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_maps/fespalier_maps.dart';
@@ -321,6 +323,84 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(currentLocation(tester), '/');
+    },
+  );
+
+  testWidgets(
+    'two pickers on one surface: the one pushed over the other, then popped',
+    (tester) async {
+      final map = FakeMapSurface(idleOnMove: true);
+      final position = FakePositionSource(const Fixed(home));
+      Widget picker(String name, {PositionSource? position}) => PinPicker(
+        map: map,
+        geocoder: FakeGeocoder(
+          reverseAnswer: (p) => PlaceGuess(p, '$name@${p.latitude}'),
+        ),
+        position: position,
+        guess: (context, g) =>
+            Text(g.guess?.label ?? 'none', key: Key('card:$name')),
+        searchField: (context, s) => TextButton(
+          key: Key('locate:$name'),
+          onPressed: s.useMyLocation,
+          child: const Text('here'),
+        ),
+        confirm: (context, confirm) => const SizedBox.shrink(),
+      );
+      late BuildContext below;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              below = context;
+              return Scaffold(body: picker('A', position: position));
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(map.mountedCount, 1);
+      // A got its fix: the fake map came to rest at it.
+      expect(find.text('A@4.05'), findsOneWidget);
+
+      unawaited(
+        Navigator.of(below).push<void>(
+          MaterialPageRoute<void>(builder: (_) => Scaffold(body: picker('B'))),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(map.mountedCount, 2);
+      map.startMove();
+      map.idleAt(there);
+      await tester.pump();
+      expect(find.byKey(const Key('card:B')), findsOneWidget);
+      expect(
+        (tester.widget<Text>(find.byKey(const Key('card:B')))).data,
+        'B@4.06',
+      );
+      expect(
+        find.byKey(const Key('card:A'), skipOffstage: false),
+        findsOneWidget,
+      );
+
+      Navigator.of(tester.element(find.byKey(const Key('card:B')))).pop();
+      await tester.pumpAndSettle();
+      expect(map.mountedCount, 1);
+      // A hears the map again, and moves it again.
+      final before = map.moves.length;
+      await tester.tap(find.byKey(const Key('locate:A')));
+      await tester.pump();
+      expect(map.moves.length, before + 1);
+      expect(
+        (tester.widget<Text>(find.byKey(const Key('card:A')))).data,
+        'A@4.05',
+      );
+      map.startMove();
+      map.idleAt(const GeoPoint(4.2, 9.9));
+      await tester.pump();
+      expect(
+        (tester.widget<Text>(find.byKey(const Key('card:A')))).data,
+        'A@4.2',
+      );
     },
   );
 

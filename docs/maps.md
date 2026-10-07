@@ -129,9 +129,12 @@ keeps the last answer in `PinGuess.fix`: a refusal leaves the map where it is an
 `useMyLocation` again, or to open the system settings when it is `Denied(permanent: true)`.
 
 The fix moves the map once, when it arrives. If the person has panned in the meantime it does not: their rest was adopted
-(a pan still going when the answer arrives is adopted at its rest). One thing needs a device check: the map's own movements
-at load (a minimum-zoom clamp, say) are not told apart from a person's, except that only a movement followed by a rest
-counts, so a camera that moves and rests by itself while the fix is awaited would be taken for a choice.
+(a pan still going when the answer arrives is adopted at its rest). A rest counts as a choice only when it is away from where
+the map started (about a kilometre, 0.01 degree): iOS reports a camera move for any region change and `maplibre_gl` does not
+say whether a gesture caused it, so a move and a rest at the start are the map's own and the fix still lands. What needs a
+device check is a map's own movement that ends somewhere else (a minimum-zoom clamp that recentres, say), which would be
+taken for a choice. "Use my location" is explicit and always moves the map: a pan made after tapping it, before the answer,
+is overridden by the fix.
 
 ## The map
 
@@ -142,10 +145,11 @@ counts, so a camera that moves and rests by itself while the fix is awaited woul
 final _map = MapLibreSurface(styleString: 'https://tiles.example.com/style.json');
 ```
 
-A surface serves one picker at a time and can be reused by the next (a top-level `final` is fine): it holds the map's
-controller, which is how `moveTo` reaches the map, and forgets it when its map is disposed. `maplibre_gl` keeps the camera
-callbacks of the first build, so the surface gives it forwarders that read the latest ones, and the picker keeps one model
-across rebuilds (a new geocoder or locale is assigned to it). It rotates and tilts nothing by default (`rotateGesturesEnabled: false`, `tiltGesturesEnabled:
+One surface can serve several pickers (a top-level `final` is fine), one after the other or stacked, a pickup picker that
+pushes a drop-off picker: each mounted map keeps its own controller, pending move and callbacks, `moveTo` reaches the one
+mounted last, and when that one goes the one under it is the target again. `maplibre_gl` keeps the camera callbacks of the
+build that created the platform view, so the map gets forwarders that read the latest ones of its own picker, and the picker
+keeps one model across rebuilds (a new geocoder or locale is assigned to it). It rotates and tilts nothing by default (`rotateGesturesEnabled: false`, `tiltGesturesEnabled:
 false`, no compass), and it listens to nothing: the camera events are the widget's own callbacks. The default style is
 MapLibre's demo style, for trying things out; an app uses its own tiles and follows their attribution.
 

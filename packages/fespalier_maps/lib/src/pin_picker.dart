@@ -47,7 +47,7 @@ class PinPicker extends HookWidget {
 
   /// The map under the pin: `MapLibreSurface` from `package:fespalier_maps/maplibre.dart`.
   /// Keep one instance for the life of the page (a `final` field or a provider), not one per
-  /// build: a new [map] makes a new picker state. A surface serves one picker at a time.
+  /// build: a new [map] makes a new picker state. A surface may serve several pickers; `moveTo` reaches the one mounted last.
   final MapSurface map;
 
   /// The geocoder; the app's choice and the app's terms of use.
@@ -94,10 +94,20 @@ class PinPicker extends HookWidget {
       router.pop(place);
     } else {
       // Nothing under the page (opened by a link, or with `go`): there is nobody to answer, and
-      // GoRouter.pop would throw. The navigator pops a route when it has one, and does nothing
-      // otherwise; the app that opens the picker that way passes [onPicked].
+      // GoRouter.pop would throw. A navigator with a route under this one is popped; otherwise
+      // nothing happens, and the app that opens the picker that way passes [onPicked].
       final navigator = Navigator.maybeOf(context);
-      if (navigator != null) unawaited(navigator.maybePop(place));
+      if (navigator != null && navigator.canPop()) {
+        navigator.pop(place);
+      } else {
+        assert(() {
+          debugPrint(
+            'fespalier_maps: PinPicker has nowhere to pop to (the page was opened with go or a '
+            'link): pass onPicked: to receive the place.',
+          );
+          return true;
+        }());
+      }
     }
   }
 

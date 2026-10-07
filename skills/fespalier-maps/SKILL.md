@@ -68,9 +68,9 @@ The page, the push, the three widgets and a test that runs the whole round trip 
   field with it). The picker lays out your three builders at its bottom edge: `guess`, then `searchField` (with its
   results), then `confirm`. The `confirm` callback is **null** until the pin has a point and the map is at rest: pass it
   straight to a button's `onPressed`.
-- **Keep one `MapLibreSurface` per picker** (a top-level `final` or a provider; reusing it on a second visit is fine). It
-  holds the map controller that `moveTo` uses and forgets it when its map is disposed; a new instance per build loses the
-  controller, and a new `map:` makes a new picker state. A new geocoder or locale in a rebuild is fine: the picker keeps its
+- **Keep one `MapLibreSurface`, not one per build** (a top-level `final` or a provider; reusing it on a second visit, or
+  for a picker pushed over a picker, is fine). Each mounted map keeps its own controller and callbacks, and `moveTo` reaches
+  the one mounted last; a new instance per build loses the controller, and a new `map:` makes a new picker state. A new geocoder or locale in a rebuild is fine: the picker keeps its
   model.
 - **Nothing opens over the page**: no dialog, no sheet, no menu, no snack bar (the permission prompt is the platform's own).
   A refusal is a value, `PinGuess.fix` (`Denied`, `ServiceOff`, `Unavailable`): render a hint, not an error page.
@@ -89,8 +89,9 @@ The page, the push, the three widgets and a test that runs the whole round trip 
 - **An `initial:` camera turns the position off.** With `initial:` (editing a saved place) the picker starts there and the
   position source is asked only when the person taps "use my location" (`PinSearch.useMyLocation`).
 - **The fix moves the map once, when it arrives**, unless the person panned (and came to rest) or picked a result first:
-  then their choice stands and the fix is dropped. Not checked on a device: whether a map's own movements at load (a zoom
-  clamp) can look like a pan.
+  then their choice stands and the fix is dropped. A rest within about a kilometre of where the map started is taken for the
+  map's own (iOS reports a move for any region change) and does not count. "Use my location" always moves the map, even over
+  a pan made after tapping it. Not checked on a device: a map's own movement that ends somewhere else (a zoom clamp).
 - **Confirming on a page opened with `go` or a link pops nothing** (there is nowhere to go back to) and does not throw; pass
   `onPicked:` for that case.
 - **A picked result is not re-geocoded.** `pick` shows the result's label as the guess and the map's rest at that point

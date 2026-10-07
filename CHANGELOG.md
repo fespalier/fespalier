@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.0](https://github.com/fespalier/fespalier/compare/v0.11.0...v0.12.0) (2026-10-07)
+
+
+### Features
+
+* fsp links can skip the sitemap and manage the manifest without fingerprints ([#112](https://github.com/fespalier/fespalier/issues/112)) ([326fa04](https://github.com/fespalier/fespalier/commit/326fa04970baed828ac1da1714a4c04efb5743aa))
+* sendPlatformLink, telemetryFollows, and fsp links warns when Flutter deep linking is off ([#110](https://github.com/fespalier/fespalier/issues/110)) ([ae37aae](https://github.com/fespalier/fespalier/commit/ae37aae69f3735473ffd3a63e0bc56058c2a2edb))
+* startup.dart ready(container) and attach(router, container), run on the app's own container before the first route ([#111](https://github.com/fespalier/fespalier/issues/111)) ([db8d370](https://github.com/fespalier/fespalier/commit/db8d3704935c51d838d6a34254ccd52ee35275b2))
+
+
+### Documentation
+
+* README and package READMEs pass markdownlint ([#108](https://github.com/fespalier/fespalier/issues/108)) ([89b4332](https://github.com/fespalier/fespalier/commit/89b43327b6c0f0e7e10e17d28e6393f25a5391ff))
+
 ## [0.11.0](https://github.com/fespalier/fespalier/compare/v0.10.0...v0.11.0) (2026-10-07)
 
 

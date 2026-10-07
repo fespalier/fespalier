@@ -19,7 +19,8 @@ abstract class PushSource {
   FutureOr<PushMessage?> initialTap();
 
   /// Taps on a notification while the app runs or sits in the background. Listened to once per
-  /// `ProviderScope`, so a single-subscription stream is fine.
+  /// `ProviderScope`; make it a broadcast stream, so a tap that arrives before the subscription
+  /// does not wait for it (and a rebuilt scope can listen again).
   Stream<PushMessage> get taps;
 
   /// Messages delivered while the app is in the foreground. Nothing is shown for them: it is

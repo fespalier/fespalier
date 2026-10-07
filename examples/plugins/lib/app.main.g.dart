@@ -36,16 +36,13 @@ abstract final class AppMain {
   /// The widget [run] gives `runApp`: startup() (splash.dart while it runs, and if it fails),
   /// then a `ProviderScope` with the overrides it returned around app.dart, which gets
   /// [router]'s router. [router] is called once, after startup().
-  static Widget root({GoRouter Function() router = _router}) =>
-      AppAdapters.wrap(
-        StartupGate(
-          extraOverrides: _extraOverrides,
-          observers: _providerObservers,
-          attach: AppRoutes.attach,
-          router: router,
-          app: app,
-        ),
-      );
+  static Widget root({GoRouter Function() router = _router}) => AppAdapters.wrap(StartupGate(
+    extraOverrides: _extraOverrides,
+    observers: _providerObservers,
+    attach: AppRoutes.attach,
+    router: router,
+    app: app,
+  ));
 
   /// app.dart's widget around [router]. Tests boot the app as it runs, theme and
   /// localizations included: `pumpRouter(tester, router, app: AppMain.app)`.
@@ -53,18 +50,11 @@ abstract final class AppMain {
 
   /// The router's observers: the adapters', then startup.dart's `routerObservers` (since 0.9.0).
   /// An app.dart `router()` passes them to `AppRoutes.router(observers: ...)`.
-  static List<NavigatorObserver> routerObservers() => [
-    ...AppAdapters.routerObservers(),
-  ];
+  static List<NavigatorObserver> routerObservers() => [...AppAdapters.routerObservers()];
 }
 
-GoRouter _router() => AppRoutes.router(
-  launch: AppMain.launch,
-  observers: AppMain.routerObservers(),
-);
+GoRouter _router() => AppRoutes.router(launch: AppMain.launch, observers: AppMain.routerObservers());
 
 List<Override> _extraOverrides() => [...AppAdapters.overrides()];
 
-List<ProviderObserver> _providerObservers() => [
-  ...AppAdapters.providerObservers(),
-];
+List<ProviderObserver> _providerObservers() => [...AppAdapters.providerObservers()];

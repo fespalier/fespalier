@@ -1,6 +1,5 @@
 import 'package:fespalier_push/fespalier_push.dart';
 import 'package:fespalier_push/testing.dart';
-import 'package:flutter/foundation.dart';
 
 import 'app.g.dart';
 
@@ -23,5 +22,4 @@ final List<String> sentTokens = [];
 /// What `FespalierPush.configure(onToken:)` calls.
 void sendToken(String token) {
   sentTokens.add(token);
-  debugPrint('push token: $token');
 }

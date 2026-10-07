@@ -19,6 +19,8 @@ import 'src/telemetry.dart';
 /// What the generated `AppAdapters` forwards to.
 const adapter = PushAdapter();
 
+final Expando<bool> _attached = Expando<bool>('fespalier_push');
+
 /// Cold start through [launch], warm taps and tokens through [attach].
 final class PushAdapter extends FespalierAdapter {
   /// Constant, like every adapter.
@@ -60,7 +62,7 @@ final class PushAdapter extends FespalierAdapter {
 
   InboundLaunch? _cold(PushConfig config, PushMessage? message) {
     if (message == null) return null;
-    FespalierPush.coldStartId = message.id;
+    pushColdStartId = message.id;
     final token = _begin(FespalierPushConventions.cold);
     final target = _map(config, message);
     _finish(token, routed: target != null);
@@ -76,29 +78,47 @@ final class PushAdapter extends FespalierAdapter {
   void attach(GoRouter router, ProviderContainer container) {
     final config = FespalierPush.configured();
     if (config == null) return;
-    var last = FespalierPush.coldStartId;
-    FespalierPush.coldStartId = null;
+    // One subscription per container: a second router on the same container (a test, a rebuilt
+    // router) does not open every tap twice. Taps go to the first router.
+    if (_attached[container] != null) return;
+    _attached[container] = true;
+    var cold = pushColdStartId;
+    pushColdStartId = null;
     container.listen<AsyncValue<_Tap>>(_taps, (previous, next) {
-      final tap = next.value;
-      if (tap == null) return;
-      final id = tap.message.id;
-      if (id != null && id == last) {
-        // The same notification seen twice (a cold start also on `taps`): once.
-        last = null;
-        return;
+      switch (next) {
+        case AsyncError(:final error, :final stackTrace):
+          // Not `next.value`: it keeps the previous tap, and an error would open it again.
+          _report(error, stackTrace, 'in the stream of notification taps');
+        case AsyncData(:final value):
+          if (identical(previous?.value, value)) return;
+          final id = value.message.id;
+          if (id != null && id == cold) {
+            // The cold-start notification seen again on `taps`: once.
+            cold = null;
+            return;
+          }
+          _warm(router, config, value.message);
+        case AsyncLoading():
+          break;
       }
-      last = id;
-      _warm(router, config, tap.message);
     });
     final onToken = config.onToken;
     if (onToken != null) {
       container.listen<AsyncValue<String>>(pushToken, (previous, next) {
-        final token = next.value;
-        if (token == null) return;
-        try {
-          onToken(token);
-        } catch (error, stack) {
-          _report(error, stack, 'in the onToken callback');
+        switch (next) {
+          case AsyncError(:final error, :final stackTrace):
+            _report(error, stackTrace, 'in the stream of push tokens');
+          case AsyncData(:final value):
+            if (previous is AsyncData<String> && previous.value == value) {
+              return;
+            }
+            try {
+              onToken(value);
+            } catch (error, stack) {
+              _report(error, stack, 'in the onToken callback');
+            }
+          case AsyncLoading():
+            break;
         }
       }, fireImmediately: true);
     }
@@ -123,7 +143,7 @@ final class PushAdapter extends FespalierAdapter {
           }
         });
       } catch (error, stack) {
-        failure = error;
+        failure = StateError('fespalier_push: the navigation failed');
         _report(error, stack, 'opening the notification');
       }
     }

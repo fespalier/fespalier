@@ -27,7 +27,7 @@ Vendor SDKs release weekly: when a major lands, rebuild this page. **The floors 
 - **Initialise the vendor inside the source, lazily.** `launch()` runs after the binding exists and inside the adapters'
   zones, so `Firebase.initializeApp()` belongs in the first call that needs it, not in `main()` before `AppMain.run()`
   (a binding created outside the zone `AppMain.run()` uses draws Flutter's zone-mismatch warning).
-- **`taps` and `received` are listened to once per `ProviderScope`**: a single-subscription stream is fine.
+- **`taps` and `received` are listened to once per `ProviderScope`**: make them broadcast streams (a rebuilt scope listens again). The Firebase source below ends them with `asBroadcastStream()`.
 - **A token that is not there yet is not an error.** On iOS `getToken()` throws `apns-token-not-set` until the APNs token
   arrives; the source yields nothing then and the refresh stream delivers the token.
 - **Never put the payload in `raw` for the package to read**: `raw` is for your `PushRoute` only.
@@ -78,12 +78,16 @@ final class FirebasePushSource extends PushSource {
     return message == null ? null : _message(message);
   }
 
-  // Both are static streams of the plugin; initialTap() ran first, so Firebase is started.
+  // Static streams of the plugin; Firebase is started before either is read, whatever ran first.
   @override
-  Stream<PushMessage> get taps => FirebaseMessaging.onMessageOpenedApp.map(_message);
+  Stream<PushMessage> get taps => Stream.fromFuture(
+    _messaging,
+  ).asyncExpand((_) => FirebaseMessaging.onMessageOpenedApp.map(_message)).asBroadcastStream();
 
   @override
-  Stream<PushMessage> get received => FirebaseMessaging.onMessage.map(_message);
+  Stream<PushMessage> get received => Stream.fromFuture(
+    _messaging,
+  ).asyncExpand((_) => FirebaseMessaging.onMessage.map(_message)).asBroadcastStream();
 
   @override
   Stream<String> get tokens async* {
@@ -109,7 +113,7 @@ final class FirebasePushSource extends PushSource {
 ```
 
 Wire it with `FespalierPush.configure(source: FirebasePushSource(initialize: () => Firebase.initializeApp(options:
-DefaultFirebaseOptions.currentPlatform)), route: pushRoute, onToken: ...)` in `main()` (`push.md`). On Android 13 and later
+DefaultFirebaseOptions.currentPlatform)), route: pushRoute, onToken: ...)` in `main()` (`push.md`). On iOS a foreground message shows nothing unless you call `FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true)`; on Android set `com.google.firebase.messaging.default_notification_channel_id` in the manifest for the channel notifications use. On Android 13 and later
 the notification permission is a runtime prompt: `requestPermission` is yours to call, at a moment the person understands.
 `FirebaseMessaging.onBackgroundMessage` (a data message while the app is not running) is a top-level function of your own and
 has nothing to do with taps.
@@ -136,7 +140,7 @@ PushMessage? _fromPayload(NotificationResponse? response) {
   try {
     final data = jsonDecode(payload);
     return data is Map<String, Object?>
-        ? PushMessage(id: '${response?.id}', data: data)
+        ? PushMessage(id: data['fcm_id'] as String?, data: data)
         : null;
   } on FormatException {
     return null;
@@ -174,7 +178,9 @@ final class LocalTaps {
 
   Stream<PushMessage> get taps => _taps.stream;
 
-  /// Show a foreground message; [data] is what the tap will map.
+  /// Show a foreground message; [data] is what the tap will map. Put the Firebase `messageId` in
+  /// `data['fcm_id']` (or leave it out): it is the tap's message id, and a constant would stop
+  /// the package telling two notifications apart.
   Future<void> show(int id, String title, String body, Map<String, Object?> data) => _plugin.show(
     id: id,
     title: title,
@@ -190,8 +196,9 @@ final class LocalTaps {
 
 In the Firebase source, `initialTap()` is `await local.launchTap() ?? firebaseInitial`, `taps` merges `local.taps` into
 `FirebaseMessaging.onMessageOpenedApp` (`StreamGroup.merge` from `package:async`, or an `async*` with `yield*` in turn if
-you need no extra dependency), and the `received` handler calls `local.show(...)`. A notification the plugin shows has an
-id of its own, not Firebase's `messageId`, so a tap on it is never taken for the cold-start one by mistake. The plugin's
+you need no extra dependency), and the `received` handler calls `local.show(...)`. The tap's message id is the Firebase
+`messageId` kept in the payload as `fcm_id` (null when absent), never the plugin's own notification id, which is often a
+constant: the package opens every tap but the one that cold-started the app twice. The plugin's
 `show` and `initialize` take named parameters from 20.0; an older range uses positional ones.
 
 ## An APNs-only source

@@ -42,8 +42,7 @@ Future<void> main() {
 - **Warm taps and tokens are `attach(router, container)`**: one `container.listen` each, closed with the `ProviderScope`.
   `onToken` gets the current token and each different refresh; it runs after the first frame. The package has **no HTTP
   code and never posts a token**, and never calls `requestPermission` (the app decides when: `requestPushPermission(ref)`).
-- **A tap seen twice is opened once**, by message id: some Android and plugin combinations deliver the cold-start
-  notification on `initialTap()` and again on `taps`. A message without an id cannot be deduplicated.
+- **A tap seen twice is opened once**, by message id, for the cold-start notification only: some Android and plugin combinations deliver it on `initialTap()` and again on `taps`. Any other tap opens, whatever its id, so give a real unique id or null, never a constant. A tap between `runApp` and the first frame can be lost, and a second router on the same container is ignored.
 - **Guards still run.** A signed-out tap on a guarded page lands on the login page with `from`. Nothing is bypassed.
 - **Unconfigured**: one `FlutterError` reports ``fespalier_push is listed under `fespalier: adapters:` but was never
 configured: call FespalierPush.configure(source: ..., route: ...) in main() before AppMain.run()``; the adapter then does

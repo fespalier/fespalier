@@ -135,8 +135,7 @@ abstract final class AppRoutes {
   }) {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
-    if (kFespalierDevTools)
-      devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl);
     return [
       GoRoute(
         path: joinLocation(at, '/'),
@@ -144,19 +143,7 @@ abstract final class AppRoutes {
         routes: [
           GoRoute(
             path: 'account',
-            redirect: (context, state) => traceGuard(
-              state,
-              'g1@2',
-              refGuard(
-                context,
-                'g1@2',
-                (ref) => _i2.guard(ref, uri: state.uri),
-              ),
-              telemetry: const TelemetrySite(
-                '(members)/guard.dart',
-                route: '/account',
-              ),
-            ),
+            redirect: (context, state) => traceGuard(state, 'g1@2', refGuard(context, 'g1@2', (ref) => _i2.guard(ref, uri: state.uri)), telemetry: const TelemetrySite('(members)/guard.dart', route: '/account')),
             builder: (context, state) => const _i3.AccountPage(),
           ),
           GoRoute(
@@ -184,18 +171,11 @@ abstract final class AppRoutes {
 
   /// Every route as [matchUrl] tries it, most specific first.
   static final List<RouteMatcher> _matchers = [
-    RouteMatcher(
-      [],
-      (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const []),
-    ),
-    RouteMatcher([
-      'account',
-    ], (s) => UrlMatch(s.uri, const AccountRoute(), const {}, const [])),
+    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const [])),
+    RouteMatcher(['account'], (s) => UrlMatch(s.uri, const AccountRoute(), const {}, const [])),
     RouteMatcher(['login'], (s) {
       final p = _params3(s);
-      return UrlMatch(s.uri, LoginRoute(from: p.from), {
-        'from': p.from,
-      }, const []);
+      return UrlMatch(s.uri, LoginRoute(from: p.from), {'from': p.from}, const []);
     }),
     RouteMatcher(['orders', ':id'], (s) {
       final p = _params5(s);
@@ -214,15 +194,13 @@ abstract final class AppRoutes {
   /// of `/products/42` is `[ProductRoute.data(42)]`), so warming them, with
   /// `ref.prefetchAll(AppRoutes.dataAt(uri) ?? [])`, warms the page. Empty for a route
   /// without data; null when no route fits or a segment doesn't parse.
-  static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) =>
-      matchUrl(uri)?.data;
+  static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
 
   /// Starts loading everything the page at [uri] reads, `ref.prefetchAll(dataAt(uri) ?? [])`: one
   /// handle keeps it all alive until it is closed (or `keepFor` passes). A location that matches no
   /// route, or a route without data, has nothing to warm and gets a closed handle. It never
   /// navigates and runs no guard.
-  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) =>
-      ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);
+  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);
 
   /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
   static List<RouteInfo<Object?>> get all => AppManifest.all;
@@ -243,7 +221,11 @@ abstract final class AppRoutes {
 abstract final class AppManifest {
   /// Every route, in the order of the table at the top of the file.
   static const List<RouteInfo<Object?>> all = [
-    RouteInfo(type: HomeRoute, path: '/', folder: ''),
+    RouteInfo(
+      type: HomeRoute,
+      path: '/',
+      folder: '',
+    ),
     RouteInfo(
       type: AccountRoute,
       path: '/account',
@@ -298,12 +280,10 @@ final class HomeRoute extends TypedLocation {
 
   /// The HomeRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static HomeRoute of(BuildContext context) =>
-      routeOf<HomeRoute>(context, AppRoutes.matchUrl);
+  static HomeRoute of(BuildContext context) => routeOf<HomeRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static HomeRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<HomeRoute>(context, AppRoutes.matchUrl);
+  static HomeRoute? maybeOf(BuildContext context) => maybeRouteOf<HomeRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/account` → (members)/account/page.dart
@@ -315,12 +295,10 @@ final class AccountRoute extends TypedLocation {
 
   /// The AccountRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static AccountRoute of(BuildContext context) =>
-      routeOf<AccountRoute>(context, AppRoutes.matchUrl);
+  static AccountRoute of(BuildContext context) => routeOf<AccountRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static AccountRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<AccountRoute>(context, AppRoutes.matchUrl);
+  static AccountRoute? maybeOf(BuildContext context) => maybeRouteOf<AccountRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/login` → login/page.dart
@@ -330,17 +308,14 @@ final class LoginRoute extends TypedLocation {
   final String? from;
 
   @override
-  String get location =>
-      withQuery(joinLocation(AppRoutes.base, '/login'), {'from': from});
+  String get location => withQuery(joinLocation(AppRoutes.base, '/login'), {'from': from});
 
   /// The LoginRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static LoginRoute of(BuildContext context) =>
-      routeOf<LoginRoute>(context, AppRoutes.matchUrl);
+  static LoginRoute of(BuildContext context) => routeOf<LoginRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static LoginRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<LoginRoute>(context, AppRoutes.matchUrl);
+  static LoginRoute? maybeOf(BuildContext context) => maybeRouteOf<LoginRoute>(context, AppRoutes.matchUrl);
 
   /// A copy with the given segments and query parameters changed; one left out keeps its value, and
   /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
@@ -362,12 +337,10 @@ final class OrderRoute extends TypedLocation {
 
   /// The OrderRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static OrderRoute of(BuildContext context) =>
-      routeOf<OrderRoute>(context, AppRoutes.matchUrl);
+  static OrderRoute of(BuildContext context) => routeOf<OrderRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static OrderRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<OrderRoute>(context, AppRoutes.matchUrl);
+  static OrderRoute? maybeOf(BuildContext context) => maybeRouteOf<OrderRoute>(context, AppRoutes.matchUrl);
 
   /// A copy with the given segments and query parameters changed; one left out keeps its value, and
   /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
@@ -386,8 +359,7 @@ final class _Keep {
 
 const _keep = _Keep();
 
-T _kept<T>(Object? value, T current) =>
-    identical(value, _keep) ? current : value as T;
+T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : value as T;
 
 ({String? from}) _params3(GoRouterState s) => (from: Query.asString(s, 'from'));
 
@@ -396,5 +368,4 @@ T _kept<T>(Object? value, T current) =>
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() =>
-    '{"protocol":1,"package":"plugins","appDir":"lib/app","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/account","route":"AccountRoute","file":"(members)/account/page.dart","folder":"(members)/account","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":[],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"orders/\$id/page.dart","folder":"orders/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}],"sites":{"g1@2":{"kind":"guard","file":"(members)/guard.dart","route":"AccountRoute","pattern":"/account"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"plugins","appDir":"lib/app","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/account","route":"AccountRoute","file":"(members)/account/page.dart","folder":"(members)/account","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":[],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"orders/\$id/page.dart","folder":"orders/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}],"sites":{"g1@2":{"kind":"guard","file":"(members)/guard.dart","route":"AccountRoute","pattern":"/account"}}}';

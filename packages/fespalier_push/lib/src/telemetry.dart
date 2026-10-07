@@ -8,7 +8,9 @@ abstract final class FespalierPushConventions {
   /// Start attribute of [open]: [cold] or [warm].
   static const String state = 'fespalier.push.state';
 
-  /// End attribute of [open]: whether the mapping gave a place (`bool`).
+  /// End attribute of [open]: whether the mapping gave a place and the navigation was made
+  /// (`bool`). On a cold start another adapter's `launch()` may still win: then the place was
+  /// given and not used.
   static const String routed = 'fespalier.push.routed';
 
   /// [state] value: the tap that cold-started the app.

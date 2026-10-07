@@ -74,6 +74,12 @@ class FakePushSource extends PushSource {
   /// A tap on a notification while the app runs.
   void tap(PushMessage message) => _taps.add(message);
 
+  /// The tap stream fails (a plugin error).
+  void tapError(Object error) => _taps.addError(error);
+
+  /// The token stream fails.
+  void tokenError(Object error) => _tokens.addError(error);
+
   /// A message delivered in the foreground.
   void deliver(PushMessage message) => _received.add(message);
 

@@ -4,6 +4,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_push/fespalier_adapter.dart';
 import 'package:fespalier_push/fespalier_push.dart';
+import 'package:fespalier_push/src/configure.dart' show pushColdStartId;
 import 'package:fespalier_push/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -103,7 +104,7 @@ void main() {
       expect(launch?.source, NavigationSource.notification);
       expect(launch?.extra, 'x');
       // It was read once.
-      FespalierPush.coldStartId = null;
+      pushColdStartId = null;
       expect(adapter.launch(), isNull);
       expect(rec.log, [
         '#1 start custom fespalier.push.open fespalier.push.state=cold',
@@ -216,7 +217,7 @@ void main() {
     testWidgets('the cold-start id seen again on taps is dropped once', (
       tester,
     ) async {
-      FespalierPush.coldStartId = 'cold';
+      pushColdStartId = 'cold';
       await start(tester);
       source.tap(const PushMessage(id: 'cold', data: {'link': '/a'}));
       await tester.pumpAndSettle();
@@ -235,6 +236,52 @@ void main() {
       router.go('/');
       await tester.pumpAndSettle();
       source.tap(m);
+      await tester.pumpAndSettle();
+      expect(here(), '/a');
+    });
+
+    testWidgets('a stream error is reported and re-opens nothing', (
+      tester,
+    ) async {
+      await start(tester, onToken: true);
+      source.tap(const PushMessage(data: {'link': '/a'}));
+      await tester.pumpAndSettle();
+      router.go('/');
+      await tester.pumpAndSettle();
+      source.tapError(StateError('plugin'));
+      source.tokenError(StateError('token plugin'));
+      await tester.pumpAndSettle();
+      expect(here(), '/');
+      expect(tokens, ['t1']);
+      expect(reported.map((d) => '${d.exception}'), [
+        contains('plugin'),
+        contains('token plugin'),
+      ]);
+    });
+
+    testWidgets('a second router on the same container opens a tap once', (
+      tester,
+    ) async {
+      await start(tester);
+      final other = _router();
+      addTearDown(other.dispose);
+      adapter.attach(other, container);
+      source.tap(const PushMessage(data: {'link': '/a'}));
+      await tester.pumpAndSettle();
+      expect(here(), '/a');
+      // The first router took it, and `other` was never given a subscription.
+      expect(rec.log.where((l) => l.contains('start custom')), hasLength(1));
+    });
+
+    testWidgets('a second notification with the same id opens too', (
+      tester,
+    ) async {
+      await start(tester);
+      source.tap(const PushMessage(id: 'x', data: {'link': '/a'}));
+      await tester.pumpAndSettle();
+      router.go('/');
+      await tester.pumpAndSettle();
+      source.tap(const PushMessage(id: 'x', data: {'link': '/a'}));
       await tester.pumpAndSettle();
       expect(here(), '/a');
     });

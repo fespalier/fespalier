@@ -4,6 +4,10 @@ import 'package:flutter/widgets.dart';
 import 'route.dart';
 import 'source.dart';
 
+/// The message id that cold-started the app, so the same tap seen again on `taps` is dropped
+/// once. Internal: `lib/src` is not exported.
+String? pushColdStartId;
+
 /// What `FespalierPush.configure` stored.
 final class PushConfig {
   /// Made by [FespalierPush.configure].
@@ -48,14 +52,11 @@ abstract final class FespalierPush {
   static void debugReset() {
     _config = null;
     _reported = false;
-    coldStartId = null;
+    pushColdStartId = null;
   }
 
   static PushConfig? _config;
   static bool _reported = false;
-
-  /// The message id that cold-started the app, so the same tap seen again on `taps` is dropped.
-  static String? coldStartId;
 
   /// What [configure] stored. When there is none, reports it once (a `FlutterError`) and answers
   /// null: the adapter does nothing and never throws out of `launch` or `attach`.

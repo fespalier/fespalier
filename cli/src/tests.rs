@@ -123,7 +123,15 @@ fn views_built_without_arguments_are_const_when_their_constructor_is() {
 
 #[test]
 fn committed_output_is_up_to_date() {
-    for name in ["shop", "features", "tabs", "minimal", "telemetry", "auth"] {
+    for name in [
+        "shop",
+        "features",
+        "tabs",
+        "minimal",
+        "telemetry",
+        "auth",
+        "plugins",
+    ] {
         // The examples' own pubspec.yaml: `output_manifest:` and `meta:` change what is written.
         let cfg = Config::load(&examples(name)).unwrap();
         let (code, main, diags, app) =
@@ -183,7 +191,15 @@ fn committed_output_is_up_to_date() {
 /// `examples/shop` has a string path that matches and a silenced one that does not.
 #[test]
 fn examples_have_no_unknown_paths() {
-    for name in ["shop", "features", "tabs", "minimal", "telemetry", "auth"] {
+    for name in [
+        "shop",
+        "features",
+        "tabs",
+        "minimal",
+        "telemetry",
+        "auth",
+        "plugins",
+    ] {
         let cfg = Config::load(&examples(name)).unwrap();
         let (_, diags, app) = crate::analyze(&examples(name).join("lib/app"), &cfg).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);

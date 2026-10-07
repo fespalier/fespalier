@@ -30,6 +30,20 @@ flutter analyze && flutter test
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
 
+## 0.10 to 0.11: what to check (adapters)
+
+Bump the `ref:` to the 0.11.0 tag and run the matching `fsp gen`. **An app without `fespalier: adapters:` regenerates
+byte for byte the same files.** An app with `adapters:` regenerates two:
+
+1. `lib/app.g.dart` gains `AppAdapters` and the adapters' imports (`package:<name>/fespalier_adapter.dart as _a0`), and
+   `AppRoutes.attach` takes an optional `ProviderContainer` and runs each adapter's `attach` with it.
+2. `lib/app.main.g.dart` no longer imports the adapters: it calls `AppAdapters.zone`, `.beforeRun()`, `.wrap`,
+   `.overrides()`, `.providerObservers()` and `.routerObservers()`, and gives the `StartupGate` `attach: AppRoutes.attach`.
+3. `main: manual` with `adapters:` is accepted (0.10.0 refused it): call `AppAdapters` from your `main()` and
+   `AppRoutes.attach(router, container)` once both exist (`fespalier`, app-main page).
+4. `FespalierAdapter` has a new member, `attach(router, container)`, with an empty default. An adapter that
+   **`implements`** `FespalierAdapter` (not `extends`) stops compiling: extend it.
+
 ## 0.9 to 0.10: what to check
 
 Bump the `ref:` to the 0.10.0 tag, run the matching `fsp gen` as always, and expect **`lib/app.g.dart` unchanged**. This was

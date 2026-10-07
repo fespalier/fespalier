@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show Override;
 
@@ -47,4 +48,11 @@ abstract class FespalierAdapter {
   /// Wraps the root widget, outside the `ProviderScope` and around the splash too
   /// (`SentryWidget`, `PostHogWidget`).
   Widget wrap(Widget root) => root;
+
+  /// Called once per router, after the router is made and the app's `ProviderScope` exists (since
+  /// 0.11.0): the generated `AppRoutes.attach` calls it, and the generated `main()` calls that.
+  /// Subscribe here (a notification tap, a shortcut). Do not navigate synchronously. Hold what you
+  /// subscribe in a provider of [container] (`container.listen`), so it goes with the
+  /// `ProviderScope`. No timer. An adapter that throws here is reported and the app still runs.
+  void attach(GoRouter router, ProviderContainer container) {}
 }

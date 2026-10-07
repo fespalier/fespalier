@@ -29,6 +29,7 @@ class StartupGate extends StatefulWidget {
     this.splash,
     this.observers,
     this.retry,
+    this.attach,
     required this.router,
     required this.app,
   }) : assert(
@@ -59,6 +60,11 @@ class StartupGate extends StatefulWidget {
 
   /// The `ProviderScope`'s retry policy.
   final Duration? Function(int retryCount, Object error)? retry;
+
+  /// Called once, right after [router] made the router, with the app's `ProviderContainer`: the
+  /// generated `AppRoutes.attach`, which runs each adapter's `attach` (since 0.11.0). An error
+  /// is reported and the app still shows.
+  final void Function(GoRouter router, ProviderContainer container)? attach;
 
   /// Called once, after `startup()`, inside the `ProviderScope`; the router is disposed with
   /// the gate.
@@ -194,7 +200,11 @@ class _StartupGateState extends State<StartupGate> {
         overrides: _overrides,
         observers: _observers,
         retry: widget.retry,
-        child: _RouterHost(router: widget.router, app: widget.app),
+        child: _RouterHost(
+          router: widget.router,
+          attach: widget.attach,
+          app: widget.app,
+        ),
       );
     }
     final error = _error;
@@ -217,9 +227,10 @@ class _StartupGateState extends State<StartupGate> {
 
 /// Makes the router once, after `startup()`, and disposes it with the app.
 class _RouterHost extends StatefulWidget {
-  const _RouterHost({required this.router, required this.app});
+  const _RouterHost({required this.router, this.attach, required this.app});
 
   final GoRouter Function() router;
+  final void Function(GoRouter router, ProviderContainer container)? attach;
   final Widget Function(GoRouter router) app;
 
   @override
@@ -233,6 +244,28 @@ class _RouterHostState extends State<_RouterHost> {
   void initState() {
     super.initState();
     _router = widget.router();
+    _attach();
+  }
+
+  /// Hands the router and the scope's container to the adapters. In `initState` the scope is
+  /// found without listening to it.
+  void _attach() {
+    final attach = widget.attach;
+    if (attach == null) return;
+    try {
+      attach(_router, ProviderScope.containerOf(context, listen: false));
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'fespalier',
+          context: ErrorDescription(
+            'while attaching the adapters to the router',
+          ),
+        ),
+      );
+    }
   }
 
   @override

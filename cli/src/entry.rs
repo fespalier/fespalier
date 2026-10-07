@@ -3,7 +3,9 @@
 //! and read by `lib/main.dart` as `Future<void> main() => AppMain.run();`.
 //!
 //! Which files exist decides everything (`fespalier: main:` says whether they are read), and the
-//! file is separate from `app.g.dart`, which is byte-for-byte what it was without them.
+//! file is separate from `app.g.dart`, which is byte-for-byte what it was without them, unless the
+//! app lists `fespalier: adapters:`: then `app.g.dart` also holds `AppAdapters` (since 0.11.0), and
+//! this main calls it.
 
 use serde::Serialize;
 
@@ -18,8 +20,6 @@ use crate::templates;
 /// 0.9.0, see `adapters.rs`); with every field empty the output is what the root files alone say.
 #[derive(Debug, Default)]
 pub struct MainHooks {
-    /// Extra imports of the main file, as written (`import 'package:x/x.dart' as _o;`).
-    pub imports: Vec<String>,
     /// Calls that wrap `main()`, outermost first, each a `Future<void> Function(Future<void> Function())`
     /// expression; they go outside startup.dart's own `zone()`.
     pub wrappers: Vec<String>,
@@ -37,6 +37,9 @@ pub struct MainHooks {
     /// Expressions of `Widget Function(Widget)`, outermost first, around the `StartupGate` that
     /// `AppMain.root()` returns (since 0.9.0).
     pub root_wrappers: Vec<String>,
+    /// `StartupGate(attach: AppRoutes.attach)`: the router and the app's container go to the
+    /// adapters' `attach` (since 0.11.0).
+    pub attach: bool,
 }
 
 const ROOT_FILES: [Kind; 3] = [Kind::App, Kind::Startup, Kind::Splash];
@@ -210,7 +213,7 @@ pub fn emit(
         output_file: cfg.output.rsplit('/').next().unwrap_or(&cfg.output),
         deferred: app.routes.iter().any(crate::resolve::Route::defers_page),
         material: !has_app,
-        extra_imports: &hooks.imports,
+        attach: hooks.attach,
         imports: &imports,
         zone_note,
         run,
@@ -251,7 +254,8 @@ struct FileCx<'a> {
     deferred: bool,
     /// No `app.dart`: the file names `MaterialApp`, which `material.dart` has.
     material: bool,
-    extra_imports: &'a [String],
+    /// `StartupGate(attach: AppRoutes.attach)`.
+    attach: bool,
     imports: &'a [ImportCx],
     /// How the doc comment of `run` says what runs inside the zones: startup.dart's `zone()` and
     /// the adapters', or nothing.

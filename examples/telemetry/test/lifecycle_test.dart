@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
+import 'package:flutter/widgets.dart' show SizedBox;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:telemetry/analytics.dart';
 import 'package:telemetry/app.g.dart';
@@ -123,4 +124,16 @@ void main() {
       expect(c.exists(OrderRoute.data(2)), isFalse);
     },
   );
+
+  testWidgets('only the scope keeps the order loaded once its page is not built', (
+    tester,
+  ) async {
+    final router = AppRoutes.router(initialLocation: '/orders/1');
+    final c = await boot(tester, router);
+    // Nothing builds the page any more, so nothing watches the data: the page instance is still
+    // on the router's stack, and the scope's `hold` is all that keeps it out of autoDispose.
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(c.pump);
+    expect(c.exists(OrderRoute.data(1)), isTrue);
+  });
 }

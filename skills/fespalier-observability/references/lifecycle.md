@@ -99,16 +99,25 @@ void onEnter(Ref ref, {required int id, required RouteScope scope}) {
 }
 ```
 
-- `hold(provider)` listens in the app's container (the one `AppRoutes.attach(router, container)` got, else the one above
-  the root navigator) until the page leaves. A parked tab and a page covered by another one keep it.
+- `hold(provider)` listens in the app's container (the one `AppRoutes.attach(router, container)` got, which the generated
+  `main()` passes in an app with an `observe.dart`; else the one above the root navigator) until the page leaves. A parked
+  tab and a page covered by another one keep it, and a held provider stays active in a parked tab (Riverpod would pause one
+  whose listeners are all in a hidden tab). Hooks run in the root container, not a nested `ProviderScope`.
 - Lifetime: parked tab, same scope; back to the tab, same scope (`onFocus`); `/c/1` to `/c/2`, new scope; a query change
   or `remount: onLocation` on one, same scope; a page pushed twice, two scopes. A deferred page's scope starts at enter, so
   hold nothing declared in the deferred library.
 - At leave, for one instance: the `onLeave` hooks (innermost first), then the `scope.onLeave` callbacks (newest first, each
   caught and reported with context `while running a RouteScope.onLeave callback of <id>`), then the held subscriptions close.
-  A disposed router runs no leave.
-- `hold` and `onLeave` after the leave throw a `StateError`. Nothing is created until a hook asks, and no timer, microtask or
-  listener is added.
+  A disposed router runs no leave, but disposing the **container** ends the scope: the first `hold` or `onLeave` listens
+  to a provider of its own whose `ref.onDispose` ends it, so the callbacks run (a `pumpRouter` test needs no extra
+  cleanup). No listener, timer or microtask of fespalier's.
+- `hold` and `onLeave` after the leave throw a `StateError`. A scope is a plain object made at the page's
+  first `onEnter` (every generated `onEnter` takes one), with no subscription until `hold` or `onLeave`.
+- The instance id is `'<pageKey>#<matchedLocation>'` for a page whose key is a path template, `'<pageKey>@<path>'` for a
+  random key (`push`, `pushReplacement`). `replace` keeps the replaced page's key, so a query-only `replace` on a tree
+  page is no transition. An error page has no matching `pageInstanceId`. Test a hook with `TestRouteScope(container)` from
+  `package:fespalier/testing.dart` and `scope.leave()`. This `onEnter` is not go_router's top-level one nor
+  `FespalierAdapter.onEnter`.
 - `RouteHooks.onEnter` is `void Function(Ref ref, RouteScope scope)?`: a hand-built `RouteHooks` takes two parameters, and
   the generated closure is always `onEnter: (ref, scope) => ...` (so every app with an `observe.dart` regenerates).
 

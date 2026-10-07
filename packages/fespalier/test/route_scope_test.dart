@@ -5,7 +5,6 @@ import 'dart:async';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier/src/route_scope.dart' show RouteScopeImpl;
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -31,6 +30,7 @@ ProviderContainer? bootContainer;
 
 final held = Provider.autoDispose<int>((ref) {
   builds++;
+  ref.onCancel(() => log.add('cancel'));
   ref.onDispose(() => disposes++);
   return 1;
 });
@@ -173,24 +173,17 @@ void main() {
             'observe.dart',
             onEnter: (ref, scope) {
               if (uri.path != '/x') scope.hold(held);
-              scope.onLeave(() => log.add('callback 1 (disposes $disposes)'));
-              scope.onLeave(() => log.add('callback 2 (disposes $disposes)'));
+              scope.onLeave(() => log.add('callback 1'));
+              scope.onLeave(() => log.add('callback 2'));
             },
-            onLeave: (ref) => log.add('hook (disposes $disposes)'),
+            onLeave: (ref) => log.add('hook'),
           ),
         ],
       );
       await go(tester, r, '/x');
-      expect(log, [
-        'hook (disposes 0)',
-        'callback 2 (disposes 0)',
-        'callback 1 (disposes 0)',
-      ]);
-      expect(
-        disposes,
-        1,
-        reason: 'the subscription closed after the callbacks',
-      );
+      // `onCancel` fires when the last listener goes: the subscription closed last.
+      expect(log, ['hook', 'callback 2', 'callback 1', 'cancel']);
+      expect(disposes, 1);
     },
   );
 
@@ -277,7 +270,7 @@ void main() {
       ],
     );
     await go(tester, r, '/x');
-    expect(log, ['last', 'first']);
+    expect(log, ['last', 'first', 'cancel']);
     expect(disposes, 1);
     expect(reported, hasLength(1));
     expect(reported.single.exception.toString(), contains('nope'));
@@ -331,26 +324,118 @@ void main() {
     expect(container.exists(held), isTrue);
   });
 
-  test('a scope adds no microtask and no timer of its own', () {
-    int microtasks({required bool scoped}) {
-      var count = -1;
+  testWidgets('two observe.dart files of a page share one scope', (
+    tester,
+  ) async {
+    final seen = <RouteScope>[];
+    final r = await boot(
+      tester,
+      hooks: (uri) => [
+        RouteHooks('a/observe.dart', onEnter: (ref, scope) => seen.add(scope)),
+        RouteHooks('b/observe.dart', onEnter: (ref, scope) => seen.add(scope)),
+      ],
+    );
+    expect(seen, hasLength(2));
+    expect(identical(seen[0], seen[1]), isTrue);
+    await go(tester, r, '/x');
+    expect(seen.first.isActive, isFalse);
+  });
+
+  testWidgets(
+    'replace on a tree page keeps its key: a query is no transition',
+    (tester) async {
+      final r = await boot(tester, initial: '/a/1');
+      final first = scopes.single;
+      log.clear();
+      unawaited(r.replace<void>('/a/1?q=2'));
+      await tester.pumpAndSettle();
+      expect(scopes, [first]);
+      expect(first.isActive, isTrue);
+      expect(log, isEmpty);
+      unawaited(r.replace<void>('/a/2'));
+      await tester.pumpAndSettle();
+      expect(first.isActive, isFalse);
+      expect(scopes, hasLength(2));
+      expect(scopes.last.id, contains('#/a/2'));
+    },
+  );
+
+  testWidgets('pushReplacement on a tree page ends it and starts a new scope', (
+    tester,
+  ) async {
+    final r = await boot(tester, initial: '/a/1');
+    final first = scopes.single;
+    unawaited(r.pushReplacement<void>('/x'));
+    await tester.pumpAndSettle();
+    expect(first.isActive, isFalse);
+    expect(scopes.last.id, contains('@/x'));
+    expect(scopes.last.isActive, isTrue);
+  });
+
+  testWidgets(
+    'a navigation that a redirect sends elsewhere scopes the final page',
+    (tester) async {
+      final r = GoRouter(
+        initialLocation: '/a',
+        redirect: (_, s) => s.uri.path == '/go' ? '/x' : null,
+        routes: [
+          GoRoute(path: '/a', builder: (_, _) => page('a')),
+          GoRoute(path: '/x', builder: (_, _) => page('x')),
+          GoRoute(path: '/go', builder: (_, _) => page('go')),
+        ],
+      );
+      log.clear();
+      scopes.clear();
+      observeAttach(r, hooksFor);
+      await pumpRouter(tester, r);
+      r.go('/go');
+      await tester.pumpAndSettle();
+      expect(scopes.map((s) => s.uri.path), ['/a', '/x']);
+      scopes.last.hold(held);
+      expect(scopes.last.isActive, isTrue);
+    },
+  );
+
+  testWidgets('disposing the container ends the scope: its callbacks run', (
+    tester,
+  ) async {
+    log.clear();
+    scopes.clear();
+    final container = ProviderContainer();
+    final r = router(container: container);
+    await pumpRouter(tester, r, container: container);
+    expect(scopes.single.isActive, isTrue);
+    await tester.pumpWidget(const SizedBox());
+    log.clear();
+    container.dispose();
+    expect(scopes.single.isActive, isFalse);
+    expect(log, ['callback 2 /a', 'callback 1 /a', 'cancel']);
+  });
+
+  test('a scope that ends adds no microtask and no timer of its own', () {
+    (int, int) scheduled({required bool scoped}) {
+      var count = (-1, -1);
       fakeAsync((async) {
         final container = ProviderContainer();
         if (scoped) {
-          RouteScopeImpl('id', Uri.parse('/'), container)
+          final scope = TestRouteScope(container)
             ..hold(held)
             ..onLeave(() {});
+          scope.leave();
         } else {
-          // What Riverpod schedules for a listener, with no scope around it.
-          container.listen<Object?>(held, (_, _) {});
+          // The two listens a scope makes (the held provider and its own), closed.
+          container.listen<Object?>(held, (_, _) {}).close();
+          container
+              .listen<Object?>(Provider.autoDispose((ref) => 1), (_, _) {})
+              .close();
         }
-        count = async.microtaskCount;
-        expect(async.pendingTimers, isEmpty);
+        count = (async.microtaskCount, async.pendingTimers.length);
         container.dispose();
       });
       return count;
     }
 
-    expect(microtasks(scoped: true), microtasks(scoped: false));
+    // Riverpod schedules work for a listener and for a close; the scope adds nothing to that.
+    expect(scheduled(scoped: true), scheduled(scoped: false));
   });
 }

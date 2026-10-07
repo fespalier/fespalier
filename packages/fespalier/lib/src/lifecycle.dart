@@ -69,8 +69,10 @@ Duration? _noRetry(int retryCount, Object error) => null;
 final class _Instance {
   _Instance(this.id, this.uri, this.fullPath, this.branches);
 
-  /// A tree page: go_router's page key and its matched location; a pushed page: its own page
-  /// key and the path it shows.
+  /// `'<pageKey>#<matchedLocation>'` for a page whose key is a route's path template (a tree
+  /// page, and also a page `replace` put in its place: `replace` keeps the replaced page's key),
+  /// `'<pageKey>@<path>'` for a page with a random key (`push`, `pushReplacement`). See
+  /// `instanceId`.
   final String id;
 
   /// Where the page is, query included.
@@ -147,7 +149,9 @@ final class _Entered {
   /// When the page entered, for telemetry's `fespalier.page.duration_ms`.
   final Stopwatch watch = Stopwatch()..start();
 
-  /// The page's scope, made when it entered if a hook takes one; ended when the page leaves.
+  /// The page's scope: a plain object made when an `onEnter` of the page first runs (the
+  /// generated closures all take one), with no subscription until a hook calls `hold`; ended
+  /// when the page leaves.
   RouteScopeImpl? scope;
 }
 
@@ -342,7 +346,11 @@ final class RouterWatch {
         );
       }
       _run(e.hooks.reversed, 'onLeave', (h) => h.onLeave);
-      e.scope?.end();
+      try {
+        e.scope?.end();
+      } catch (error, st) {
+        _report(error, st, 'while ending the RouteScope of ${e.instance.id}');
+      }
     }
     // Then the page on top: entered for the first time, or on top again.
     final visible = walk.instances.lastOrNull;

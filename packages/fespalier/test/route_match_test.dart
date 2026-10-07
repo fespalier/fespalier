@@ -2,7 +2,7 @@
 // and the PrefetchHandle that prefetch returns.
 
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier/src/route_scope.dart' show RouteScopeImpl;
+import 'package:fespalier/testing.dart' show TestRouteScope;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -148,12 +148,7 @@ void main() {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       container.listen(
-        Provider.autoDispose<void>(
-          (ref) => h(
-            ref,
-            RouteScopeImpl('id', Uri.parse('/products/42'), container),
-          ),
-        ),
+        Provider.autoDispose<void>((ref) => h(ref, TestRouteScope(container))),
         (_, _) {},
       );
       expect(seen, ['42 /products/42']);

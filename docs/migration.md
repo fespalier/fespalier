@@ -51,7 +51,13 @@ What changed between releases, newest first, each with a link to the reference s
   you wrote keeps compiling unchanged; one that builds a `RouteHooks` by hand takes two parameters.
   `onEnter(Ref ref, {required RouteScope scope})` may call `scope.hold(provider)` (kept loaded until the
   page is gone, a parked tab included) and `scope.onLeave(callback)`. `AppRoutes.attach` takes the
-  app's `ProviderContainer` in an app with an `observe.dart` too, and the hooks run in it.
+  app's `ProviderContainer` in an app with an `observe.dart` too: `lib/app.main.g.dart` now gives the
+  `StartupGate` `attach: AppRoutes.attach` (regenerate it with `fsp gen`), and the hooks run in the app's root
+  container, where a provider overridden only in a nested `ProviderScope` reads its default.
+  A scope ends, and its `onLeave` callbacks run, when its container is disposed.
+  **Page ids changed for `replace`:** the lifecycle (`observe.dart`, telemetry, Sentry breadcrumbs) told a page made by
+  `replace` apart by a random key, and now by the key of the page it replaces. `replace('/c/1?q=2')` on the tree page
+  `/c/1` is no longer a leave and an enter; `replace('/c/2')` still is, and so are `push` and `pushReplacement`.
 
 ### 0.9.x
 

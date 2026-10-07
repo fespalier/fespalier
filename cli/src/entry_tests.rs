@@ -1367,3 +1367,19 @@ fn adapters_with_each_root_file_combination() {
         ],
     );
 }
+
+#[test]
+fn an_observe_dart_gets_the_container_from_the_generated_main() {
+    let g = run_gen(&[
+        ("page.dart", HOME),
+        ("app.dart", APP),
+        (
+            "observe.dart",
+            "import 'package:fespalier/fespalier.dart';\nvoid onEnter() {}",
+        ),
+    ]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    has(&g.main.unwrap(), &["    attach: AppRoutes.attach,"]);
+    let plain = run_gen(&[("page.dart", HOME), ("app.dart", APP)]);
+    has_not(&plain.main.unwrap(), &["attach: AppRoutes.attach"]);
+}

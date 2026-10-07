@@ -637,6 +637,14 @@ void telemetryAttach(GoRouter router, {required String Function() base}) {
   }
 }
 
+/// Whether [router] reports its navigations and page events to the installed
+/// [FespalierTelemetry] sink (since 0.12.0): true once `telemetryAttach` ran for it, which the
+/// generated `AppRoutes.attach` does only in an app generated with `telemetry: true`. An adapter
+/// whose sink needs page events calls it from `attach` and reports the missing `telemetry: true`
+/// once. It makes no watch, starts no timer and reads no provider.
+bool telemetryFollows(GoRouter router) =>
+    RouterWatch.peek(router)?.followsTelemetry ?? false;
+
 // ---------------------------------------------------------------------------------------------
 // Dispatch. Everything below is internal: not exported.
 

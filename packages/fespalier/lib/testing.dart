@@ -15,6 +15,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -30,6 +31,38 @@ export 'package:hooks_riverpod/misc.dart' show Override;
 
 /// A `RouteScope` for a test of an `observe.dart` hook that takes one (since 0.11.0).
 export 'src/route_scope.dart' show TestRouteScope;
+
+/// Delivers [link] to the app the way the platform does when a user opens an App Link, a
+/// Universal Link or a custom scheme while it runs (since 0.12.0): a `pushRouteInformation`
+/// message on the `flutter/navigation` channel, which Flutter hands to the router, so go_router
+/// parses it and, in an app generated with `telemetry: true` or `adapters:` (the router is built
+/// with `links: true`), `onEnter` of each adapter sees it with `source` `link` and telemetry
+/// reports `fespalier.navigation.source=link`. Then, unless [settle] is false, it pumps until nothing
+/// is scheduled (turn it off to look at a loading view, as with `pumpRouter`).
+///
+/// ```dart
+/// await pumpRouter(tester, AppRoutes.router());
+/// await sendPlatformLink(tester, Uri.parse('https://shop.example.com/products/2'));
+/// expect(currentLocation(tester), '/products/2');
+/// ```
+///
+/// A warm link only: a cold start is `tester.binding.platformDispatcher.defaultRouteNameTestValue`
+/// set before `pumpRouter`. A link whose host the manifest does not list reaches the router all
+/// the same: the platform's association check is not part of a widget test.
+Future<void> sendPlatformLink(
+  WidgetTester tester,
+  Uri link, {
+  bool settle = true,
+}) async {
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    'flutter/navigation',
+    const JSONMethodCodec().encodeMethodCall(
+      MethodCall('pushRouteInformation', {'location': link.toString()}),
+    ),
+    (_) {},
+  );
+  if (settle) await tester.pumpAndSettle();
+}
 
 Duration? _noRetry(int retryCount, Object error) => null;
 

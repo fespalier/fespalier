@@ -510,3 +510,90 @@ fn a_missing_entitlements_folder_is_an_error_not_a_new_ios_tree() {
     let (files, _) = pf::plan(dir.path(), &both(), FILTERS).unwrap();
     assert!(files.iter().any(|f| f.path == PLIST && f.created));
 }
+
+// --- Flutter's deep linking switch ------------------------------------------------------
+
+const MANIFEST_OFF: &str = "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n    <application>\n        <activity android:name=\".MainActivity\">\n            <meta-data android:name=\"flutter_deeplinking_enabled\" android:value=\"false\" />\n        </activity>\n    </application>\n</manifest>\n";
+
+#[test]
+fn a_manifest_that_turns_deep_linking_off_is_a_warning() {
+    assert_eq!(
+        pf::android_deeplinking_off(PATH, MANIFEST_OFF).unwrap(),
+        format!(
+            "flutter_deeplinking_enabled is false in {PATH}: Flutter will not hand links to the router (intended with a deep-link plugin: see docs/navigation.md, \"With a deep-link plugin\")"
+        )
+    );
+}
+
+#[test]
+fn a_manifest_with_deep_linking_on_or_unset_is_quiet() {
+    assert_eq!(pf::android_deeplinking_off(PATH, MANIFEST), None);
+    let on = MANIFEST_OFF.replace("\"false\"", "\"true\"");
+    assert_eq!(pf::android_deeplinking_off(PATH, &on), None);
+    // A commented-out tag is not a setting.
+    let commented = MANIFEST_OFF
+        .replace("<meta-data", "<!-- <meta-data")
+        .replace("/>", "/> -->");
+    assert_eq!(pf::android_deeplinking_off(PATH, &commented), None);
+    // Another meta-data with the value false is not the switch.
+    let other = MANIFEST_OFF.replace("flutter_deeplinking_enabled", "flutter_impeller");
+    assert_eq!(pf::android_deeplinking_off(PATH, &other), None);
+}
+
+const INFO: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n\t<key>CFBundleName</key>\n\t<string>shop</string>\n\t<key>FlutterDeepLinkingEnabled</key>\n\t<false/>\n</dict>\n</plist>\n";
+
+#[test]
+fn an_info_plist_that_turns_deep_linking_off_is_a_warning() {
+    assert_eq!(
+        pf::ios_deeplinking_off(pf::INFO_PLIST, INFO).unwrap(),
+        "FlutterDeepLinkingEnabled is false in ios/Runner/Info.plist: Flutter will not hand links to the router (intended with a deep-link plugin: see docs/navigation.md, \"With a deep-link plugin\")"
+    );
+    assert!(pf::ios_deeplinking_off("p", &INFO.replace("<false/>", "<false />")).is_some());
+}
+
+#[test]
+fn an_info_plist_with_deep_linking_on_or_unset_is_quiet() {
+    assert_eq!(
+        pf::ios_deeplinking_off("p", &INFO.replace("false", "true")),
+        None
+    );
+    assert_eq!(
+        pf::ios_deeplinking_off(
+            "p",
+            "<dict><key>CFBundleName</key><string>a</string></dict>"
+        ),
+        None
+    );
+    let commented = INFO
+        .replace("<key>Flutter", "<!-- <key>Flutter")
+        .replace("<false/>", "<false/> -->");
+    assert_eq!(pf::ios_deeplinking_off("p", &commented), None);
+}
+
+#[test]
+fn any_value_but_true_turns_the_manifest_switch_off_and_only_under_an_activity() {
+    let zero = MANIFEST_OFF.replace("\"false\"", "\"0\"");
+    assert!(pf::android_deeplinking_off(PATH, &zero).is_some());
+    let upper = MANIFEST_OFF.replace("\"false\"", "\"TRUE\"");
+    assert_eq!(pf::android_deeplinking_off(PATH, &upper), None);
+    // Under <application>, Flutter does not read it.
+    let app = "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n    <application>\n        <meta-data android:name=\"flutter_deeplinking_enabled\" android:value=\"false\" />\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>\n";
+    assert_eq!(pf::android_deeplinking_off(PATH, app), None);
+}
+
+#[test]
+fn an_info_plist_string_or_integer_can_turn_the_switch_off() {
+    for off in [
+        "<string>NO</string>",
+        "<string>false</string>",
+        "<string>0</string>",
+        "<integer>0</integer>",
+    ] {
+        let info = INFO.replace("<false/>", off);
+        assert!(pf::ios_deeplinking_off("p", &info).is_some(), "{off}");
+    }
+    for on in ["<string>YES</string>", "<integer>1</integer>", "<true/>"] {
+        let info = INFO.replace("<false/>", on);
+        assert_eq!(pf::ios_deeplinking_off("p", &info), None, "{on}");
+    }
+}

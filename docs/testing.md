@@ -43,6 +43,7 @@ Tips:
 - The generated `AppRoutes` remembers the last `router()` or `mount()` (its `base` and `rootNavigatorKey`), and a call without a `navigatorKey` makes a fresh one (since 0.5.0). A test that mounts under a prefix restores the defaults with `addTearDown(AppRoutes.mount)`, so no test depends on the order they run in.
 - Return synchronously from a guard when you can (see [Guards](guards.md)): any `Future`, even `Future.value(...)`, costs a frame, so a test sees a blank first frame before the page, where a synchronous guard shows the page at once.
 - If a widget hangs on to its own `WidgetRef` (to call `prefetch` from a test, say), take it from an element: `tester.element(find.byType(AppLayout)) as WidgetRef`.
+- A link the platform opens while the app runs is `await sendPlatformLink(tester, Uri.parse('https://shop.example.com/products/2'))` (since 0.12.0, from `package:fespalier/testing.dart`); see [Platform links end to end](navigation.md#platform-links-end-to-end).
 - go_router builds the whole matched stack, so a deep link like `/products/2` also runs `/products`' `data.dart` underneath. If your fakes use `Future.delayed`, pump long enough for the delays in both (or use `pumpAndSettle`), or the test ends with "A Timer is still pending".
 
 The library is separate from `package:fespalier/fespalier.dart`, so your app never imports

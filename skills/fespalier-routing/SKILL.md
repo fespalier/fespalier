@@ -117,6 +117,16 @@ main passes it `AppMain.launch`, the adapters' answer, and a `main: manual` app 
 and **any `onEnter` makes go_router parse every navigation asynchronously and apply its redirect limit to all of them**.
 An app.dart `router()` must pass `launch: AppMain.launch` on (an `fsp` warning otherwise). Details: `docs/navigation.md`, "Opening the app: launches and platform links".
 
+**Platform links end to end, and a deep-link plugin (since 0.12.0).** There is no deep-link package: Flutter (deep linking is
+on by default since 3.27) hands the link to go_router and the router marks it `link`. The steps are `links:` in the pubspec,
+`fsp links` (files, and the manifest and entitlements with the opt-in keys), `.well-known` served with no redirect, and a
+device check (`adb shell am start -a android.intent.action.VIEW -d <url> <package>`, `xcrun simctl openurl booted <url>`);
+a widget test calls `sendPlatformLink(tester, Uri.parse(url))` from `package:fespalier/testing.dart`. `fsp links` warns
+(never fails) when `flutter_deeplinking_enabled` is false in the manifest or `FlutterDeepLinkingEnabled` is false in
+`ios/Runner/Info.plist`. A plugin such as `app_links` or Branch needs that switch off, and then fespalier sees no platform
+link: an adapter of your own answers `launch()` from `getInitialLink()` and forwards warm links with
+`navigateFrom(NavigationSource.link, ...)`. Recipe: [`references/links.md`](references/links.md), "Platform links end to end".
+
 ## Not-found views
 
 A `not_found.dart` at the root is the app-wide one (without it users see a plain

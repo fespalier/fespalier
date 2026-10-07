@@ -204,3 +204,55 @@ Future<void> main() => AppAdapters.zone(() async {
 - An app that mounts the tree in a `GoRouter` of its own (`AppRoutes.mount`) calls the same line with that
   router.
 - `AppAdapters.overrides()` goes before your own overrides, as in the generated main.
+
+## Adapters that need your code
+
+_Since 0.12.0 (a pattern; it needs nothing new in fespalier)._ The pubspec carries no per-adapter options, and
+`launch()` runs before any `ProviderScope` exists, so a provider override cannot hand an adapter the app's own code:
+a push adapter needs your mapping from a payload to a route, an analytics adapter its backend, a bridge its generated
+client. The one place that runs before the adapters is your `main()`. So an adapter that needs app code is configured
+there, with one static call, before `AppMain.run()`:
+
+```dart
+// lib/main.dart
+Future<void> main() {
+  FespalierPush.configure(source: MyPushSource(), route: pushRoute); // before the adapters run
+  return AppMain.run();
+}
+```
+
+Every package that does this has the same shape, so that a second one holds no surprise:
+
+- **`configure` is a static method on an `abstract final class`** (`FespalierPush`, `FespalierAnalytics`), and the
+  adapter in `fespalier_adapter.dart` reads what it stored. Nothing else is global.
+- **Calling it twice replaces.** A hot restart runs `main()` again, and the second call wins.
+- **An unconfigured adapter says so once and does nothing.** It reports one `FlutterError.reportError` that names the
+  missing call (`call FespalierPush.configure(...) in main() before AppMain.run()`) and leaves `launch()`, `attach()`
+  and the others as no-ops. It never throws out of them: an adapter must not stop an app from starting.
+- **`@visibleForTesting static void debugReset()`** clears what `configure` stored, for the test that sets up its own.
+
+With `main: manual`, call `configure` in your own `main()` before `AppAdapters.zone`, the first line of the example
+under [With `main: manual`](#with-main-manual-appadapters). `AppMain.root()` in a widget test runs no `main()`, so a
+test that boots the app calls `configure` itself (with the package's fake from its `testing.dart`) before it pumps.
+
+**An adapter that needs `telemetry: true`.** A sink that wants page events (screen views for analytics) gets them only
+from an app generated with `telemetry: true`: the generated `attach` is what makes the router report them. An adapter
+cannot read the pubspec, but its `attach(router, container)` can ask the router:
+
+```dart
+@override
+void attach(GoRouter router, ProviderContainer container) {
+  if (!telemetryFollows(router)) {
+    FlutterError.reportError(FlutterErrorDetails(
+      exception: StateError('my_analytics needs `telemetry: true` in the fespalier: section of pubspec.yaml'),
+      library: 'my_analytics',
+    ));
+  }
+}
+```
+
+`telemetryFollows(router)` (since 0.12.0, in `package:fespalier/fespalier.dart`) is true once `telemetryAttach` ran for
+that router, which the generated `AppRoutes.attach` does only with `telemetry: true`. It reads, and starts nothing: no
+watch, no timer, no provider. It says nothing about whether a sink is installed (`FespalierTelemetry.current`), only
+whether the router reports to one. The generated `AppRoutes.attach` calls `telemetryAttach` just before it calls the
+adapters' `attach`, so the answer is settled there.

@@ -198,6 +198,13 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
   after the first frame that shows the router, with the app's `ProviderContainer` (so an adapter may change a provider there). `AppRoutes.attach(router)` with no container (what
   `AppRoutes.router()` calls) skips the adapters. `pumpRouter` never attaches them.
 - **No per-adapter keys.** Deploy-time options come from `--dart-define`; anything custom stays in `startup.dart`.
+- **An adapter that needs your code (since 0.12.0; a pattern):** configure it in `main()` before `AppMain.run()`
+  (`FespalierPush.configure(...)`; with `main: manual`, before `AppAdapters.zone`), because `launch()` runs before any
+  `ProviderScope`. Shape: a static `configure` on an `abstract final class`; a second call replaces (hot restart); an
+  unconfigured adapter reports one `FlutterError.reportError` naming the call and does nothing; a `debugReset()` marked
+  `@visibleForTesting`. `AppMain.root()` in a test runs no `main()`: call `configure` with the fake first. An adapter
+  whose sink needs page events asks `telemetryFollows(router)` (since 0.12.0, `package:fespalier/fespalier.dart`) in
+  `attach` and reports a missing `telemetry: true`. `docs/adapters.md`, "Adapters that need your code".
 - **Not every companion is an adapter** (since 0.10.0): `fespalier_tolgee` and `fespalier_cratestack` ship **no**
   `fespalier_adapter.dart` (the setup is app code, which `startup()` already is), so `adapters: [fespalier_tolgee]` makes the
   generated `lib/app.g.dart` import a file that does not exist (`Target of URI doesn't exist`). Wire them in `startup()`

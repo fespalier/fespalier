@@ -205,6 +205,9 @@ final class RouterWatch {
 
   // Telemetry: set by `enableTelemetry`.
   bool _telemetry = false;
+
+  /// Whether `enableTelemetry` ran: the router's navigations and page events reach the sink.
+  bool get followsTelemetry => _telemetry;
   String Function()? _base;
   _Nav? _nav;
   NavSnapshot? _snapshot;

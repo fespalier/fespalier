@@ -187,6 +187,9 @@ final class RouterWatch {
   static RouterWatch of(GoRouter router) =>
       _watches[router] ??= RouterWatch._(router);
 
+  /// The watch on [router] when something made one, else null: it makes none.
+  static RouterWatch? peek(GoRouter router) => _watches[router];
+
   /// The router being watched.
   final GoRouter router;
 

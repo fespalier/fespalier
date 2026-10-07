@@ -2,7 +2,7 @@
 
 ## Route lifecycle: `observe.dart`
 
-Since 0.8.1, an `observe.dart` runs code when a page becomes the one the user sees, when it is on top again, and when it is gone: analytics, logging, a window title. It observes and cannot veto (blocking a leave is go_router's `GoRoute.onExit`, which fespalier does not wrap).
+Since 0.8.1, an `observe.dart` runs code when a page becomes the one the user sees, when it is on top again, and when it is gone: analytics, logging, a window title. It observes and cannot veto: to ask before a page goes, use [`leave.dart`](navigation.md#leaving-a-page-leavedart).
 
 ```dart
 // lib/app/observe.dart: every page of the app

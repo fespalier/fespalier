@@ -229,6 +229,100 @@ It is bound like `transition.dart` (`key`, `child`, `state`), and what it return
 
 The route table marks it `(present, root)`, and the manifest's `presentation` is `RoutePresentation.custom` (fespalier can't know it is a sheet: say so in a `meta.dart` if you want to).
 
+## Leaving a page: `leave.dart`
+
+Since 0.11.0, a `leave.dart` is asked before its folder's page goes: a form with unsaved changes, a call in progress. It returns `true` to let the page go and `false` to keep it, and it asks however the app does (no dialog is assumed). It is go_router's `GoRoute.onExit`, written for you, with a back gesture that asks too.
+
+```dart
+// lib/app/orders/$id/edit/leave.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// Asked before /orders/:id/edit goes. True lets it go; false keeps it.
+LeaveResult leave(BuildContext context, Ref ref, {required int id, required PageLeave page}) async {
+  if (!page.isDirty) return true; // stays sync when you return a bool directly
+  final ok = await showModalBottomSheet<bool>(context: context, builder: (c) => DiscardSheet());
+  return ok ?? false;
+}
+```
+
+**The function.** `leave`, a public top-level function that returns `LeaveResult` (`FutureOr<bool>`, so the file needs no `dart:async`); `FutureOr<bool>`, `Future<bool>` and `bool` are accepted too. Other functions in the file are helpers and are ignored.
+
+**The parameters.** Positional, each optional and in this order: `BuildContext context`, then `Ref ref`. The context is the **root navigator's** (go_router hands it to `onExit`, not the page's), so `showModalBottomSheet(context: context)` opens above every layout and tab bar. The `Ref` is a throwaway provider's, kept open until the answer is in, so it is still valid after an `await`. Named, bound like a [guard's](guards.md): the folder's segments and those above it, typed (`required int id`); query parameters, optional and nullable (they belong to the folder's route); `Uri uri`; `extra`, typed, as a guard takes it; and `PageLeave page`, by type and name. `WidgetRef`, `ProviderContainer` and `TypedLocation` are errors.
+
+**What `leave()` learns: `PageLeave`.** `page.state` is the `GoRouterState` of the page that is going. `page.isDirty` says whether anything on the page would be lost (any `LeaveSource` it registered is dirty), `page.canKeep` whether one can save its input as a draft, `page.keep()` makes each save its draft and `page.discard()` makes each drop it. A page with nothing registered is clean and cannot keep.
+
+**A folder's own page only.** A `leave.dart` is not inherited: it applies to its folder's `GoRoute` and nothing else, because go_router already asks a parent's `onExit` when the parent's own match exits:
+
+- `/orders/1/edit` to `/orders/1` asks `edit` only;
+- `/orders/1/edit` to `/home` asks `edit`, then `$id`;
+- a [`nest = false`](routing.md#a-sibling-with-a-compound-path) sibling leaves its parent's match, so the parent's `leave.dart` is asked too.
+
+The folder needs a `page.dart`: a layout's shell has no `onExit` in go_router, so a `leave.dart` beside a `layout.dart` alone is an error (put one beside each page that needs it), and so is one in a `redirect.dart` folder, which never stays on screen.
+
+**What is asked.**
+
+- **Asked:**
+  - `go`, `replace`, `pushReplacement`, `pop`, `context.pop` and `Navigator.pop` of the page;
+  - Android back (through `PopScope` and `GoRouter.pop`, or go_router's root fallback, where `true` closes the app);
+  - the web's back and forward (refused: the address bar is reset to the page, a new history entry, forward history lost);
+  - a guard's refresh or redirect, **including a sign-out redirect**: check auth in `leave()`, or wrap sign-out in `leaveWithoutAsking`;
+  - go_router's `onEnter` (the adapters', since 0.11.0) and guards run first at parse time; `onExit` runs after, in the delegate;
+  - leaving a tab layout, for the **active** tab's pages only.
+- **Not asked:**
+  - a tab switch (fespalier parks; go_router would ask);
+  - a parked tab's pages when the whole layout leaves (use drafts);
+  - a query-only change (`copyWith(page: 2)`);
+  - a dialog or sheet (a pageless route) on top;
+  - `refresh()` with the same match list;
+  - a redirect.dart route;
+  - layouts;
+  - an imperative `Navigator.push` or replace outside go_router;
+  - process kill, hot restart, `router.dispose()`;
+  - the page's own `PopScope(canPop: false)`, which wins for system back.
+- **Known gap:** on go_router 17.0 to 17.3 (Flutter below 3.38), popping a whole `ShellRoute` page off the root navigator skips the leaf's `leave()` (go_router fixed it in 17.4.0).
+
+`/c/1` to `/c/2` is asked, whatever [`remount`](#remounting-a-page-remount) says: it is another page instance. A query-only change is the same one.
+
+**The answer.**
+
+- **Synchronous stays synchronous.** A `leave()` that returns a `bool` makes no `Future` and no microtask of its own.
+- **One prompt at a time.** While a prompt for a page is open, a second ask of the same page (a double tap on back, a second `go`) gets the same answer and `leave()` does not run again.
+- **Errors fail open.** A `leave()` that throws, now or in its `Future`, is reported with `FlutterError.reportError` (library `fespalier`, context `while running leave() of orders/$id/edit/leave.dart`) and the page goes: a broken `leave()` never traps the user. In a widget test that fails the test.
+- **A segment that does not parse** shows not-found, so there is nothing to ask and the page goes.
+
+**Skipping the question: `leaveWithoutAsking`.**
+
+A navigation the user has already decided, such as signing out, should not ask:
+
+```dart
+leaveWithoutAsking(router, () => ref.read(auth).signOut());
+```
+
+Every page that goes during `navigate()`, and when what it started settles later (a guard's redirect after the sign-out finishes), is let through while the router's route information is still the one `navigate()` left behind. The next navigation makes a new one, and pages ask again. `GoRouter.of(context)` gives the router.
+
+**The back gestures.**
+
+Every generated page of a folder with a `leave.dart` is wrapped in `leaveScope`, which holds the page's sources and a `PopScope`. When the page's route can pop (a pushed page), the `PopScope` lets a pop through only if the page has at least one source and every source is clean; otherwise the back is turned into `GoRouter.pop`, which asks `leave()`. So:
+
+- **The iOS edge swipe** is off while the page has no source or a source is dirty, because the gesture animates the page away before go_router can refuse. It works when every source is clean, and the pop then asks `leave()` like any other.
+- **Android's predictive back** shows no preview while the `PopScope` blocks.
+- **Android back** always goes through `leave()`: through the `PopScope` on a pushed page, and, on the bottom page of a navigator, through go_router's own fallback, where `true` lets the system close the app and `false` keeps it.
+
+**What a page registers: `LeaveSource`.**
+
+`LeaveSource` is what a form, or anything else that holds input, registers to be asked about: `isDirty`, `canKeep`, `keep()`, `discard()`, and it is a `Listenable` (the `PopScope` is rebuilt when it notifies). A widget under the page registers it in the page's scope, safely during `build`:
+
+```dart
+final unregister = LeaveScope.maybeOf(context)?.register(source); // null in a page without a leave.dart
+```
+
+Core knows nothing of forms: the `fespalier_forms` package's forms are sources.
+
+**Diagnostics and the scaffold.**
+
+`fsp new 'orders/[id]/edit' --leave` writes the file. Each error says what to change: the function is missing or returns the wrong type, the folder has no `page.dart` or has a `redirect.dart`, a `WidgetRef` or `ProviderContainer` is taken, the positional parameters are not `context` then `ref`, or `PageLeave` is not called `page`.
+
 ## Links: `RouteLink`
 
 `RouteLink` (since 0.5.0) is a link to a route: a real `<a href>` on the web, a plain widget everywhere else, and a click that goes through go_router either way.

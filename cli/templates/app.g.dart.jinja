@@ -60,6 +60,9 @@ guardWithParams(
   (v) => {{ call }},
 )
 {%- endmacro %}
+{% macro leave_scope(page) -%}
+leaveScope(state, {{ page }})
+{%- endmacro %}
 {% macro scroll_memory(page) -%}
 RouteScrollMemory(
   state: state,
@@ -157,8 +160,14 @@ GoRoute(
 {% endfor %}
   ]),
 {% endif %}
+{% if r.leave %}
+  onExit: (context, state) => {{ r.leave | indent(2) }},
+{% endif %}
 {% if r.page %}
 {% set page = with_segments(r.seg_fn, view(r), r.not_found) if r.seg_fn else view(r) %}
+{% if r.leave %}
+{% set page = leave_scope(page) %}
+{% endif %}
 {% if scroll_restoration %}
 {% set page = scroll_memory(page) %}
 {% endif %}

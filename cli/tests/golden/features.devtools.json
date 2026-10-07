@@ -210,7 +210,9 @@
                   "route": "NewDocRoute",
                   "file": "docs/new/page.dart",
                   "folder": "docs/new",
-                  "markers": [],
+                  "markers": [
+                    "leave"
+                  ],
                   "params": [],
                   "redirect": false,
                   "children": []

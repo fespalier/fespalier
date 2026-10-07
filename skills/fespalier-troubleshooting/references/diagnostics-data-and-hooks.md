@@ -140,6 +140,36 @@ outside a `HookWidget` is `flutter_hooks`' own assertion.
 A login page that shows **"Nothing at /login"** is not an error message of `fsp`: the guard
 covers the login page itself (`fespalier-guards`).
 
+## `leave.dart`
+
+Since 0.11.0 (`cli/src/resolve.rs`, `packages/fespalier/lib/src/leave.dart`). The rules behind them are in
+[`fespalier-routing`](../../fespalier-routing/references/leaving-a-page.md). The errors are at the function or at the parameter at fault.
+
+| Message                                                                                                                                                                                | Cause and fix                                                                                                                                                   |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ``expected `LeaveResult leave(BuildContext context, Ref ref, {...})`: true lets the page go, false keeps it``                                                                          | The file has no function called `leave` (a helper alone does not count).                                                                                        |
+| ``leave() must return `LeaveResult` (`FutureOr<bool>`): true lets the page go, false keeps it``                                                                                        | The return type is missing or another one (`void`, `Future<void>`). Use `LeaveResult`, `FutureOr<bool>`, `Future<bool>` or `bool`.                              |
+| `leave.dart is asked before this folder's page goes, and this folder has no page.dart (a layout's shell has no onExit in go_router: put a leave.dart beside each page that needs one)` | A `leave.dart` in a folder with no `page.dart` (a layout's shell has no `onExit` in go_router). Move it beside each page that needs one.                        |
+| `a redirect.dart route never stays on screen, so there is nothing to leave: remove leave.dart`                                                                                         | A `leave.dart` beside a `redirect.dart`. Remove it.                                                                                                             |
+| `` leave() runs outside the page's widget tree (go_router hands it the root navigator's context): take `Ref` ``                                                                        | A positional `WidgetRef`. Take `Ref ref`; the `BuildContext` it gets is the root navigator's.                                                                   |
+| ``leave() takes `Ref ref`; `ProviderContainer` is the older form of guards, not of leave()``                                                                                           | A positional `ProviderContainer`. Take `Ref ref`.                                                                                                               |
+| ``leave()'s positional parameters are `BuildContext context` then `Ref ref`, each optional; the rest are named``                                                                       | A positional parameter in another order or type, or `PageLeave` written positionally. Everything but `context` and `ref` is named: `{required PageLeave page}`. |
+| `` the page that is going is `PageLeave page`; name the parameter `page` ``                                                                                                            | A `PageLeave` parameter under another name. It is bound by type and name.                                                                                       |
+
+At run time (a `FlutterError.reportError` report, library `fespalier`):
+
+| Message                                               | Cause and fix                                                                                                                       |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `while running leave() of orders/$id/edit/leave.dart` | `leave()` threw (now or in its `Future`). The page was let go: a broken `leave()` never traps the user. Fix the exception it names. |
+
+Symptoms with no message:
+
+- **`leave()` never runs on a tab switch.** By design: the page is parked, not gone. Use drafts for what a parked tab holds.
+- **A page leaves without asking when the whole `ShellRoute` is popped (Flutter below 3.38).** go_router 17.0 to 17.3 skips the leaf's `onExit`; fixed in 17.4.0.
+- **The iOS swipe does nothing on a page with a `leave.dart`.** It is off while the page has no registered source or a dirty one; with all sources clean it pops and asks.
+- **A sign-out redirect asks.** A guard's redirect is asked like any navigation: check auth in `leave()`, or `leaveWithoutAsking(router, signOut)`.
+- **A `leave()` in the parent folder is asked too.** go_router asks every exiting match, deepest first; it is not inherited, both run.
+
 ## `transition.dart` and `present.dart`
 
 | Message                                                                                         | Cause and fix                                                                                           |

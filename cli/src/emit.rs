@@ -155,6 +155,9 @@ struct TreeCx {
     root_at: Option<(String, Option<Span>)>,
     /// A tab shell's `navigatorContainerBuilder`, when its layout.dart has a `container`.
     container: Option<String>,
+    /// For a `GoRoute` whose folder has a leave.dart: the `onExit` expression (since 0.11.0); the
+    /// page is wrapped in `leaveScope`.
+    leave: Option<String>,
     routes: Vec<TreeCx>,
     /// Starts with a `:segment` (or, for a `ShellRoute`, holds a route that does).
     #[serde(skip)]
@@ -507,6 +510,8 @@ enum ParamsFn {
     Guard(usize),
     /// What one folder's observe.dart reads from the URL.
     Observe(usize),
+    /// What one folder's leave.dart reads from the URL.
+    Leave(usize),
 }
 
 impl ParamsFn {
@@ -516,6 +521,7 @@ impl ParamsFn {
             ParamsFn::Layout(id) => format!("_layout{id}"),
             ParamsFn::Guard(id) => format!("_guard{id}"),
             ParamsFn::Observe(id) => format!("_observe{id}"),
+            ParamsFn::Leave(id) => format!("_leave{id}"),
         }
     }
 }
@@ -920,6 +926,8 @@ fn in_builder(b: &Bind) -> String {
         // Only an observe.dart hook takes this; `observe_closure` spells it.
         Bind::Route => "m.route".into(),
         Bind::Scope => "scope".into(),
+        // Only a leave.dart takes this; `leave_expr` spells it.
+        Bind::PageLeave => "page".into(),
         Bind::PageKey => "state.pageKey".into(),
         Bind::State => "state".into(),
         Bind::IsShell => "false".into(),
@@ -1057,6 +1065,7 @@ fn routes_of(
             root: r.root,
             root_at: r.root.then(|| (rel(r, Kind::Layout), None)),
             container: None,
+            leave: None,
             dynamic: out.iter().any(|r| r.dynamic),
             catch_all: out.iter().any(|r| r.catch_all),
             serves: None,
@@ -1430,6 +1439,43 @@ fn hook_call(
     }
 }
 
+/// The `onExit` of a folder's `GoRoute` for its leave.dart (since 0.11.0): `leaveExit` asks the
+/// function, with the root navigator's `context` (`go_router`'s) and a throwaway `Ref`, and hands it
+/// what the page registered as `page`. A segment that doesn't parse lets the page go (it shows
+/// not-found). `state` is the one of the route that is exiting.
+///
+/// `_i3.leave(context, ref, id: v.id, uri: state.uri, page: page)`, inside `leaveWithParams` when
+/// it reads the URL.
+fn leave_expr(r: &Route, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<String> {
+    let l = r.leave.as_ref()?;
+    let mut args = vec![];
+    if l.takes_context {
+        args.push("context".to_string());
+    }
+    if l.takes_ref {
+        args.push("ref".to_string());
+    }
+    args.extend(l.args.iter().map(|a| match a.bind {
+        Bind::Uri => format!("{}: state.uri", a.name),
+        Bind::PageLeave => format!("{}: page", a.name),
+        _ => format!("{}: {}", a.name, in_hook(&a.bind)),
+    }));
+    let call = format!("_i{}.leave({})", l.import, args.join(", "));
+    let call = if l.keys().is_empty() {
+        call
+    } else {
+        fns.insert(ParamsFn::Leave(id));
+        format!(
+            "leaveWithParams(() => {}(state), (v) => {call})",
+            ParamsFn::Leave(id).name()
+        )
+    };
+    Some(format!(
+        "leaveExit(context, state, {}, (ref, page) => {call})",
+        dart_str(&rel(r, Kind::Leave))
+    ))
+}
+
 /// The parse function a route's own guard and redirect share, when it needs one.
 fn own_seg_fn(app: &App, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<String> {
     (!app.url_params(&app.routes[id]).is_empty()).then(|| {
@@ -1566,6 +1612,7 @@ fn page_route(
         root: root_key,
         root_at: root_key.then(|| (rel(r, Kind::Page), r.page_span.clone())),
         container: None,
+        leave: leave_expr(r, id, fns),
         routes,
         dynamic: locale::has_params(path),
         catch_all: path.contains("(.+)"),
@@ -1620,6 +1667,7 @@ fn redirect_route(
         root: false,
         root_at: None,
         container: None,
+        leave: None,
         routes: vec![],
         dynamic: locale::has_params(path),
         catch_all: path.contains("(.+)"),
@@ -1724,6 +1772,7 @@ fn tab_routes(
         container: app.routes[id]
             .container
             .then(|| format!("_i{}.container", layout.import)),
+        leave: None,
         serves: None,
         has_params: false,
         case_sensitive: true,
@@ -2789,12 +2838,25 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
             p.retain(|(n, _)| keys.contains(n));
             p
         }
+        ParamsFn::Leave(id) => {
+            let r = &app.routes[id];
+            let keys = r
+                .leave
+                .as_ref()
+                .map(resolve::Leave::keys)
+                .unwrap_or_default();
+            let mut p = app.typed_segs(r);
+            p.extend(r.query.iter().cloned());
+            p.retain(|(n, _)| keys.contains(n));
+            p
+        }
     };
     let owner = match f {
         ParamsFn::Route(id)
         | ParamsFn::Layout(id)
         | ParamsFn::Guard(id)
-        | ParamsFn::Observe(id) => &app.routes[id],
+        | ParamsFn::Observe(id)
+        | ParamsFn::Leave(id) => &app.routes[id],
     };
     let catch_all = |n: &str| {
         owner
@@ -3070,6 +3132,9 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     }
     if r.page.is_some() && !r.observers.is_empty() {
         tags.push("observe");
+    }
+    if r.page.is_some() && r.leave.is_some() {
+        tags.push("leave");
     }
     if r.layout.is_some() {
         tags.push("layout");

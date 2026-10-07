@@ -1,0 +1,94 @@
+# Leaving a page: `leave.dart`
+
+Since 0.11.0. A `leave.dart` is asked before its folder's page goes: a form with unsaved changes, a
+call in progress. `fsp gen` emits it as the `onExit` of the folder's `GoRoute`, wraps the page in
+`leaveScope` and so makes the back gestures ask too. Full text: `docs/navigation.md`, "Leaving a page:
+`leave.dart`".
+
+```dart
+// lib/app/orders/$id/edit/leave.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// Asked before /orders/:id/edit goes. True lets it go; false keeps it.
+LeaveResult leave(BuildContext context, Ref ref, {required int id, required PageLeave page}) async {
+  if (!page.isDirty) return true; // stays sync when you return a bool directly
+  final ok = await showModalBottomSheet<bool>(context: context, builder: (c) => DiscardSheet());
+  return ok ?? false;
+}
+```
+
+`fsp new 'orders/[id]/edit' --leave` writes it.
+
+## The file
+
+- **Return type:** `LeaveResult` (`FutureOr<bool>`; no `dart:async` needed), `FutureOr<bool>`, `Future<bool>` or
+  `bool`. `true` lets the page go, `false` keeps it.
+- **Positional parameters**, each optional and in this order: `BuildContext context`, `Ref ref`. The context is the
+  **root navigator's** (go_router's), so `showModalBottomSheet(context: context)` opens above every shell. The `Ref` is a
+  throwaway provider's, kept open until the answer is in, so it is valid after an `await`. `WidgetRef` and
+  `ProviderContainer` are errors.
+- **Named parameters**, bound like a guard's: the folder's segments and those above it, query (the folder route's),
+  `Uri uri`, typed `extra` (as a guard takes it) and `PageLeave page`, by type and name. `TypedLocation` is not bound.
+- **One folder, one page.** It is **not inherited**: go_router already asks a parent's `onExit` when the parent's own
+  match exits (`/orders/1/edit` to `/orders/1` asks `edit` only; to `/home` asks `edit`, then `$id`). A `nest = false`
+  sibling exits its parent's match, so the parent's `leave.dart` is asked. The folder needs a `page.dart` (a
+  layout's shell has no `onExit` in go_router) and must not be a `redirect.dart` route.
+
+## `PageLeave`, `LeaveSource`, `LeaveScope`
+
+- `PageLeave`: `state` (the route's `GoRouterState`), `isDirty` (any registered source is dirty), `canKeep` (some source
+  can save a draft), `keep()` (each source saves its draft), `discard()` (each drops it). A page with nothing registered
+  is clean and cannot keep.
+- `LeaveSource` (a `Listenable`): `isDirty`, `canKeep`, `keep()`, `discard()`. Implemented by `fespalier_forms`' forms;
+  core knows nothing of forms. A source that turns dirty or clean must notify.
+- `LeaveScope.maybeOf(context)?.register(source)` (null in a page without a `leave.dart`) registers a source and returns
+  what unregisters it; it is safe during `build`.
+- The registry is keyed by `pageInstanceId(state)`, never by the remount key, so a `remount` page keeps asking about the
+  form its rebuilt subtree registers.
+
+## What is asked, and what is not
+
+**Asked:** `go`, `replace`, `pushReplacement`, `pop`, `context.pop` and `Navigator.pop` of the page; Android back
+(through `PopScope` and `GoRouter.pop`, or go_router's root fallback, where `true` closes the app); the web's back and
+forward (refused: the address bar is reset to the page, a new history entry, forward history lost); a guard's refresh or
+redirect, **including a sign-out redirect**; leaving a tab layout, for the **active** tab's pages only. go_router's
+`onEnter` and guards run first at parse time; `onExit` runs after.
+
+**Not asked:** a tab switch (fespalier parks; go_router would ask); a parked tab's pages when the whole layout leaves (use
+drafts); a query-only change; a dialog or sheet (a pageless route) on top; `refresh()` with the same match list; a
+`redirect.dart` route; layouts; an imperative `Navigator.push` or replace outside go_router; process kill, hot restart,
+`router.dispose()`; the page's own `PopScope(canPop: false)`, which wins for system back. `/c/1` to `/c/2` is asked,
+whatever `remount` says.
+
+**Known gap:** on go_router 17.0 to 17.3 (Flutter below 3.38) popping a whole `ShellRoute` page off the root navigator
+skips the leaf's `leave()` (fixed in 17.4.0).
+
+## How it answers
+
+1. `leaveWithoutAsking(router, () => navigate())` lets a navigation through, now or when what it started settles later,
+   while the router's route information is still the one `navigate()` left; the next navigation expires it. Wrap
+   sign-out in it, or check auth in `leave()`.
+2. A tab switch goes through without calling `leave()`.
+3. One prompt at a time: a second ask of the same page instance gets the first's answer.
+4. `leave()` runs with its `Ref` and the page's `PageLeave`. A throw, sync or async, is reported with
+   `FlutterError.reportError` (context `while running leave() of <file>`) and the page goes: a broken `leave()` never traps
+   the user. A segment that does not parse lets the page go (it shows not-found).
+5. A synchronous answer stays synchronous: no `Future`, no microtask of fespalier's.
+
+## The back gestures
+
+`leaveScope` wraps the page in a `PopScope`. On a page whose route can pop, `canPop` is true only when the page has at
+least one source and every source is clean; otherwise the back becomes `GoRouter.pop`, which asks `leave()`. So the iOS
+edge swipe is **off** while there is no source or a source is dirty (and works when all are clean), Android's predictive
+back shows no preview while blocked, and Android back always reaches `leave()`. On the bottom page of a navigator
+`canPop` is true, so go_router's own fallback asks `leave()`.
+
+## Tests
+
+`pumpRouter` (`package:fespalier/testing.dart`) is enough: `router.go(...)`, then pump, and look at what stayed. The
+system back is `handlePlatformMessage('flutter/navigation', JSONMethodCodec().encodeMethodCall(MethodCall('popRoute')), ...)`.
+`packages/fespalier/test/leave_test.dart` and `examples/features/test/leave_test.dart` have both. A test of the
+`ShellRoute` pop case must skip itself below go_router 17.4.
+
+Diagnostics: [`fespalier-troubleshooting`](../../fespalier-troubleshooting/references/diagnostics-data-and-hooks.md#leavedart).

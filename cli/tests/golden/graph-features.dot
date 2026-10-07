@@ -24,7 +24,7 @@ digraph routes {
       n10 [label="/catalog/:productId/reviews\nReviewsRoute\n(data)"];
       n11 [label="/counter\nCounterRoute\n(data)"];
       n12 [label="/docs\nDocsIndexRoute"];
-      n13 [label="/docs/new\nNewDocRoute"];
+      n13 [label="/docs/new\nNewDocRoute\n(leave)"];
       n14 [label="/docs/*rest\nDocsRoute"];
       n15 [label="/feed\nFeedRoute"];
       n16 [label="/files\nFilesRoute"];

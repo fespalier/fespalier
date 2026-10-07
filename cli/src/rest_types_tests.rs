@@ -417,6 +417,7 @@ fn fsp_new_keeps_the_type_an_existing_catch_all_has() {
         transition: false,
         nav: false,
         observe: false,
+        leave: false,
     };
     crate::scaffold::new_route(dir.path(), &args).unwrap();
     let data = fs::read_to_string(dir.path().join("lib/app/docs/$$rest/data.dart")).unwrap();

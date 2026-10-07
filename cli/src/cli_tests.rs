@@ -31,6 +31,7 @@ fn args(route: &str, layout: bool) -> NewArgs {
         transition: false,
         nav: false,
         observe: false,
+        leave: false,
     }
 }
 
@@ -96,6 +97,7 @@ fn everything(route: &str, function: bool) -> NewArgs {
         transition: true,
         nav: true,
         observe: true,
+        leave: true,
         ..args(route, true)
     }
 }
@@ -227,6 +229,47 @@ fn new_observe_scaffolds_a_working_observe_dart() {
     assert!(diags.0.is_empty(), "{:?}", diags.0);
     assert!(
         code.contains("observeAttach(router, _observeAt, container: container);"),
+        "{code}"
+    );
+    // It is not written over: the file is yours once it exists.
+    assert!(scaffold::new_route(dir.path(), &a).is_err());
+}
+
+/// `fsp new --leave` writes a leave.dart that the generator reads without a complaint: `context`,
+/// `ref`, the segments of the path and `page`, answering true.
+#[test]
+fn new_leave_scaffolds_a_working_leave_dart() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("pubspec.yaml"), "name: demo\n").unwrap();
+    crate::init::run(dir.path()).unwrap();
+    let mut a = args("orders/[orderId]", false);
+    a.leave = true;
+    let created = scaffold::new_route(dir.path(), &a).unwrap();
+    assert!(
+        created.contains(&"lib/app/orders/$orderId/leave.dart".to_string()),
+        "{created:?}"
+    );
+    let leave = fs::read_to_string(dir.path().join("lib/app/orders/$orderId/leave.dart")).unwrap();
+    assert!(
+        leave.contains(
+            "LeaveResult leave(\n  BuildContext context,\n  Ref ref, {\n  required String orderId,\n  required PageLeave page,\n}) => true;"
+        ) || leave.contains(
+            "LeaveResult leave(BuildContext context, Ref ref, {required String orderId, required PageLeave page}) =>"
+        ),
+        "{leave}"
+    );
+    assert!(
+        leave.contains("/// Asked before /orders/:orderId goes"),
+        "{leave}"
+    );
+    let (code, diags, _) = crate::build(
+        &dir.path().join("lib/app"),
+        &crate::config::Config::default(),
+    )
+    .unwrap();
+    assert!(diags.0.is_empty(), "{:?}", diags.0);
+    assert!(
+        code.contains("onExit: (context, state) => leaveExit("),
         "{code}"
     );
     // It is not written over: the file is yours once it exists.

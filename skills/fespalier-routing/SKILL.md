@@ -147,6 +147,7 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
 | A deep link must not build the page above (`refund` under `refund/confirm`)  | `route.dart` with `const nest = false;` (0.4.0): a sibling with a compound path, same reference            |
 | A page full-screen above the tab bar, URL still under its parent             | `navigator.dart`: [`references/navigators-and-present.md`](references/navigators-and-present.md)           |
 | A sheet or dialog page class of your own, with a URL                         | `present.dart`: same reference                                                                             |
+| Ask before a page goes (unsaved changes), Android back and the iOS swipe too | `leave.dart` (0.11.0): [`references/leaving-a-page.md`](references/leaving-a-page.md)                      |
 | A route that only forwards (`/old-products/3` to `/products/3`)              | `redirect.dart` (`fespalier-guards`)                                                                       |
 | Every route's path, groups, layouts, params and your own metadata at runtime | `meta.dart` and `AppManifest`: [`references/manifest-and-meta.md`](references/manifest-and-meta.md)        |
 | A link that shows its URL, opens in a tab, and preloads the page's data      | `RouteLink`, `RouteLinkScope` (0.5.0): [`references/links.md`](references/links.md)                        |

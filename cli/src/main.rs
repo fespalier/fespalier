@@ -494,6 +494,8 @@ mod graph_tests;
 #[cfg(test)]
 mod incremental_tests;
 #[cfg(test)]
+mod leave_tests;
+#[cfg(test)]
 mod links_tests;
 #[cfg(test)]
 mod lint_tests;

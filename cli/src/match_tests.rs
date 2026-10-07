@@ -858,6 +858,7 @@ fn new_args(route: &str, not_found: bool) -> NewArgs {
         transition: false,
         nav: false,
         observe: false,
+        leave: false,
         function: false,
         not_found,
     }

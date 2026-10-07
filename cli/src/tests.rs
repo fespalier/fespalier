@@ -943,6 +943,7 @@ fn scaffold_then_generate() {
         transition: false,
         nav: false,
         observe: false,
+        leave: false,
     };
     scaffold::new_route(dir.path(), &args("orders/[orderId]", true)).unwrap();
     let data = fs::read_to_string(dir.path().join("lib/app/orders/$orderId/data.dart")).unwrap();
@@ -1361,6 +1362,7 @@ fn scaffold_writes_a_transition() {
         transition: true,
         nav: false,
         observe: false,
+        leave: false,
     };
     scaffold::new_route(dir.path(), &args).unwrap();
     let t = fs::read_to_string(dir.path().join("lib/app/docs/transition.dart")).unwrap();
@@ -1936,6 +1938,7 @@ fn scaffold_honours_app_dir() {
         transition: false,
         nav: false,
         observe: false,
+        leave: false,
     };
     scaffold::new_route(dir.path(), &args).unwrap();
     assert!(dir.path().join("lib/pages/docs/$slug/page.dart").exists());

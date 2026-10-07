@@ -262,7 +262,7 @@ fn observe_and_telemetry_share_attach() {
         &c,
         &[
             "/// Lets DevTools, the observe.dart hooks and telemetry follow [router]",
-            "observeAttach(router, _observeAt);",
+            "observeAttach(router, _observeAt, container: container);",
             "telemetryAttach(router, base: () => _base);",
         ],
     );

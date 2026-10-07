@@ -83,6 +83,35 @@ void main() {
 
 `pumpRouter` keeps working: hooks add no timer and need no `runAsync`.
 
+## The page's scope: `RouteScope` (since 0.11.0)
+
+`onEnter` may take `{required RouteScope scope}` (bound **by its type**, and it must be called `scope`; a
+positional one, a different name, or a `RouteScope` in `onLeave` or `onFocus` is an error: texts in
+[`diagnostics-observability.md`](../../fespalier-troubleshooting/references/diagnostics-observability.md)). It is the
+lifecycle's own page instance, with the same identity (`pageInstanceId(state)`, `'<pageKey>#<matchedLocation>'` for a tree
+page and `'<pageKey>@<path>'` for a pushed one), shared by every `observe.dart` of the page.
+
+```dart
+void onEnter(Ref ref, {required int id, required RouteScope scope}) {
+  scope.hold(OrderRoute.data(id));          // kept loaded while the page is on a navigator
+  final sub = ref.read(orderSocket).subscribe(id);
+  scope.onLeave(sub.cancel);                // no Ref here: capture what it needs
+}
+```
+
+- `hold(provider)` listens in the app's container (the one `AppRoutes.attach(router, container)` got, else the one above
+  the root navigator) until the page leaves. A parked tab and a page covered by another one keep it.
+- Lifetime: parked tab, same scope; back to the tab, same scope (`onFocus`); `/c/1` to `/c/2`, new scope; a query change
+  or `remount: onLocation` on one, same scope; a page pushed twice, two scopes. A deferred page's scope starts at enter, so
+  hold nothing declared in the deferred library.
+- At leave, for one instance: the `onLeave` hooks (innermost first), then the `scope.onLeave` callbacks (newest first, each
+  caught and reported with context `while running a RouteScope.onLeave callback of <id>`), then the held subscriptions close.
+  A disposed router runs no leave.
+- `hold` and `onLeave` after the leave throw a `StateError`. Nothing is created until a hook asks, and no timer, microtask or
+  listener is added.
+- `RouteHooks.onEnter` is `void Function(Ref ref, RouteScope scope)?`: a hand-built `RouteHooks` takes two parameters, and
+  the generated closure is always `onEnter: (ref, scope) => ...` (so every app with an `observe.dart` regenerates).
+
 ## Not built
 
 No hook for layouts or sections, no `onCover`/`onBlur`, and no veto: `onLeave` cannot stop a navigation

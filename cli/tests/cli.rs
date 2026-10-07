@@ -211,7 +211,7 @@ fn new_observe_writes_the_hooks_and_the_generated_file_attaches_them() {
     );
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
     assert!(
-        code.contains("observeAttach(router, _observeAt);"),
+        code.contains("observeAttach(router, _observeAt, container: container);"),
         "{code}"
     );
     // `fsp new` with nothing to write names every flag, this one included.

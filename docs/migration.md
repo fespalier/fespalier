@@ -45,6 +45,14 @@ What changed between releases, newest first, each with a link to the reference s
   `DraftCodec`. A key of an action with a form can no longer be called `draft`. Drafts go to `formDraftStorage`, which
   is your `dataCacheStorage` unless you override it; call `clearFormDrafts` when somebody signs out.
 
+- **`observe.dart`'s `onEnter` can take a `RouteScope`** ([The page's scope](observability.md#the-pages-scope-routescope)).
+  `RouteHooks.onEnter` is `void Function(Ref ref, RouteScope scope)?` now: every app with an `observe.dart`
+  regenerates (`fsp gen`), because the generated closures read `onEnter: (ref, scope) => ...`. A hook
+  you wrote keeps compiling unchanged; one that builds a `RouteHooks` by hand takes two parameters.
+  `onEnter(Ref ref, {required RouteScope scope})` may call `scope.hold(provider)` (kept loaded until the
+  page is gone, a parked tab included) and `scope.onLeave(callback)`. `AppRoutes.attach` takes the
+  app's `ProviderContainer` in an app with an `observe.dart` too, and the hooks run in it.
+
 ### 0.9.x
 
 - **Page names** ([Transitions](layouts.md#transitions)). Every `pageBuilder:` the generated file writes

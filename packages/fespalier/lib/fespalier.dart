@@ -47,6 +47,8 @@ export 'src/inbound.dart' show InboundLaunch, InboundNavigation, launchRouter;
 export 'src/layout_page.dart';
 // Route lifecycle (since 0.8.1): what a generated app.g.dart builds from observe.dart files.
 export 'src/lifecycle.dart' show RouteHooks, observeAttach;
+// The page instance's scope an observe.dart onEnter takes (since 0.11.0).
+export 'src/route_scope.dart' show RouteScope, pageInstanceId;
 export 'src/location.dart';
 export 'src/not_found.dart';
 export 'src/optimistic.dart';

@@ -226,7 +226,7 @@ fn new_observe_scaffolds_a_working_observe_dart() {
     .unwrap();
     assert!(diags.0.is_empty(), "{:?}", diags.0);
     assert!(
-        code.contains("observeAttach(router, _observeAt);"),
+        code.contains("observeAttach(router, _observeAt, container: container);"),
         "{code}"
     );
     // It is not written over: the file is yours once it exists.

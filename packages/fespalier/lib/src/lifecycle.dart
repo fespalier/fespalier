@@ -18,6 +18,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'inbound.dart' show clearPlatformLink, platformLinkSource;
 import 'navigation_kind.dart';
 import 'route_info.dart' show pathTemplate;
+import 'route_scope.dart';
 import 'telemetry.dart';
 
 /// The hooks of one `observe.dart` for one page: what a generated `app.g.dart` builds for the
@@ -30,8 +31,9 @@ final class RouteHooks {
   /// The observe.dart these hooks come from, relative to the app folder.
   final String file;
 
-  /// `onEnter`: the page became the visible one for the first time.
-  final void Function(Ref ref)? onEnter;
+  /// `onEnter`: the page became the visible one for the first time. [RouteScope] is the page
+  /// instance's scope (since 0.11.0), shared by every observe.dart of the page.
+  final void Function(Ref ref, RouteScope scope)? onEnter;
 
   /// `onLeave`: the page is gone.
   final void Function(Ref ref)? onLeave;
@@ -47,11 +49,17 @@ final class RouteHooks {
 /// Hooks run at the end of the first frame that shows the change, so a widget test pumps
 /// before it looks at what they did. The router's own notifiers are all there is to clean up,
 /// and they go with the router.
+///
+/// Hooks run in [container] when it is given (since 0.11.0: the generated
+/// `AppRoutes.attach(router, container)` passes the app's), else in the container found above
+/// the root navigator.
 void observeAttach(
   GoRouter router,
-  List<RouteHooks> Function(Uri uri) hooksAt,
-) {
+  List<RouteHooks> Function(Uri uri) hooksAt, {
+  ProviderContainer? container,
+}) {
   final watch = RouterWatch.of(router)..hooksAt = hooksAt;
+  if (container != null) watch.container = container;
   watch.scheduleFirst();
 }
 
@@ -93,7 +101,7 @@ final class _Walk {
       if (m is ImperativeRouteMatch) {
         instances.add(
           _Instance(
-            '${m.pageKey.value}@${m.matches.uri.path}',
+            instanceId(m.pageKey.value, m.matchedLocation, m.matches.uri.path),
             m.matches.uri,
             m.matches.fullPath,
             branches,
@@ -112,7 +120,7 @@ final class _Walk {
       } else if (m is RouteMatch) {
         instances.add(
           _Instance(
-            '${m.pageKey.value}#${m.matchedLocation}',
+            instanceId(m.pageKey.value, m.matchedLocation, uri.path),
             uri,
             m.pageKey.value,
             branches,
@@ -138,6 +146,9 @@ final class _Entered {
 
   /// When the page entered, for telemetry's `fespalier.page.duration_ms`.
   final Stopwatch watch = Stopwatch()..start();
+
+  /// The page's scope, made when it entered if a hook takes one; ended when the page leaves.
+  RouteScopeImpl? scope;
 }
 
 /// A navigation telemetry is following: from the request (or the commit that had none) to the
@@ -177,6 +188,9 @@ final class RouterWatch {
 
   /// The generated `_observeAt`, once `observeAttach` was called.
   List<RouteHooks> Function(Uri uri)? hooksAt;
+
+  /// The app's container, when `observeAttach` was given one.
+  ProviderContainer? container;
 
   bool _pending = false;
   final Map<String, _Entered> _entered = {};
@@ -328,6 +342,7 @@ final class RouterWatch {
         );
       }
       _run(e.hooks.reversed, 'onLeave', (h) => h.onLeave);
+      e.scope?.end();
     }
     // Then the page on top: entered for the first time, or on top again.
     final visible = walk.instances.lastOrNull;
@@ -340,7 +355,12 @@ final class RouterWatch {
         if (_telemetry) {
           pages.add(TelemetryPage(TelemetryPageKind.enter, pattern));
         }
-        _run(hooks, 'onEnter', (h) => h.onEnter);
+        final entered = _entered[visible.id]!;
+        _run(hooks, 'onEnter', (h) {
+          final hook = h.onEnter;
+          if (hook == null) return null;
+          return (ref) => hook(ref, entered.scope ??= _scopeFor(visible));
+        });
       } else if (_top != visible.id) {
         if (_telemetry) {
           pages.add(TelemetryPage(TelemetryPageKind.focus, pattern));
@@ -350,6 +370,16 @@ final class RouterWatch {
     }
     _top = visible?.id;
     if (_telemetry) _finishTelemetry(config, visible, pages);
+  }
+
+  RouteScopeImpl _scopeFor(_Instance i) {
+    final container =
+        this.container ??
+        ProviderScope.containerOf(
+          router.routerDelegate.navigatorKey.currentContext!,
+          listen: false,
+        );
+    return RouteScopeImpl(i.id, i.uri, container);
   }
 
   String? _patternOf(_Instance i) =>
@@ -421,7 +451,8 @@ final class RouterWatch {
           router.routerDelegate.navigatorKey.currentContext;
       if (context == null) return;
       try {
-        final container = ProviderScope.containerOf(context, listen: false);
+        final container =
+            this.container ?? ProviderScope.containerOf(context, listen: false);
         // The hook gets the `Ref` of a throwaway provider, but runs once that provider is
         // built: Riverpod forbids changing another provider while one is being built, and a
         // hook that notifies a notifier (`ref.read(views.notifier).add(...)`) must be able to.

@@ -103,4 +103,24 @@ void main() {
       'enter /login',
     ]);
   });
+
+  testWidgets(
+    "the order page's scope holds its data and runs onLeave at leave",
+    (tester) async {
+      scopeLog.clear();
+      final router = AppRoutes.router(initialLocation: '/orders/1');
+      final c = await boot(tester, router);
+      expect(c.exists(OrderRoute.data(1)), isTrue);
+      // Another id is another page instance: the scope of order 1 ends.
+      router.go('/orders/2');
+      await tester.pumpAndSettle();
+      expect(scopeLog, ['order 1 scope left']);
+      expect(c.exists(OrderRoute.data(1)), isFalse);
+      expect(c.exists(OrderRoute.data(2)), isTrue);
+      router.go('/login');
+      await tester.pumpAndSettle();
+      expect(scopeLog, ['order 1 scope left', 'order 2 scope left']);
+      expect(c.exists(OrderRoute.data(2)), isFalse);
+    },
+  );
 }

@@ -21,7 +21,7 @@ void onLeave(Ref ref, {required int id}) => ref.read(log).info('left product $id
 
 **The functions.** Any of `onEnter`, `onLeave` and `onFocus`, at least one, each a public top-level function that returns `void` (written out). Other functions in the file are helpers and are ignored.
 
-**The parameters.** An optional positional `Ref ref` first, then named parameters bound like a [guard's](guards.md): the folder's segments and those above it, typed (`required int id`); query parameters, optional and nullable (the folder route's when it has a `page.dart`, else the hook's alone); `Uri uri`, the page's location (mount prefix included); and `TypedLocation route`, the typed route of the page the hook runs for (`ProductRoute(id: 3)`).
+**The parameters.** An optional positional `Ref ref` first, then named parameters bound like a [guard's](guards.md): the folder's segments and those above it, typed (`required int id`); query parameters, optional and nullable (the folder route's when it has a `page.dart`, else the hook's alone); `Uri uri`, the page's location (mount prefix included); and `TypedLocation route`, the typed route of the page the hook runs for (`ProductRoute(id: 3)`); and, in `onEnter` only, `RouteScope scope`, the page instance's scope ([below](#the-pages-scope-routescope)).
 
 `extra`, `ProviderContainer` and `WidgetRef` are errors. The `Ref` is a throwaway provider's, closed when the hook returns: `ref.read` works, and so does changing another provider (`ref.read(views.notifier).add(...)`); `ref.watch` watches nothing that lasts.
 
@@ -52,6 +52,41 @@ void onLeave(Ref ref, {required int id}) => ref.read(log).info('left product $id
 **Errors.** A hook that throws is caught and reported with `FlutterError.reportError` (library `fespalier`, context `while running onEnter of products/$id/observe.dart`, the hook and the file filled in), and the hooks after it still run. In a widget test that fails the test.
 
 **Other rules:** hooks fire after the frame, not at `context.go()` (a test pumps first: `await tester.pump()`); none runs when the router is disposed or the app is killed; layouts and sections have none; a hook may navigate (it is looked at at the end of the next frame; to redirect, use a [guard](guards.md)); `fsp new 'orders/[id]' --observe` writes the file. An `observe.dart` with no `page.dart` at or below its folder is a warning, and one with none of the three functions an error.
+
+### The page's scope: `RouteScope`
+
+Since 0.11.0, `onEnter` may take `{required RouteScope scope}`: the scope of the page instance that entered, from the end of the frame that first shows it to the end of the frame it is gone from every navigator. It is how a hook ties something to the page's life without a widget:
+
+```dart
+// lib/app/orders/$id/observe.dart
+void onEnter(Ref ref, {required int id, required RouteScope scope}) {
+  scope.hold(OrderRoute.data(id));          // loaded for as long as this page is on a navigator
+  final sub = ref.read(orderSocket).subscribe(id);
+  scope.onLeave(sub.cancel);                // runs when this page instance is gone
+}
+```
+
+- `scope.hold(provider)` keeps a provider listened in the app's container until the page leaves, so an `autoDispose` provider (a route's `data`) stays loaded while the page is parked in a tab or covered by another page. It throws a `StateError` once the page has left.
+- `scope.onLeave(callback)` runs `callback` when the page leaves, newest first. It has no `Ref`: the hook's is closed by then, so capture what the callback needs. It throws a `StateError` once the page has left.
+- `scope.id` is the page instance's identity (`pageInstanceId(state)` for the page's `GoRouterState`), `scope.uri` the location it entered with and `scope.isActive` false once it left.
+
+The scope is the lifecycle's own instance, so it lives exactly as long as the events above say:
+
+| Case                                            | Scope                                                                                |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------ |
+| a page parked in another tab                    | stays (parked is not gone)                                                           |
+| back to that tab                                | the same scope (`onFocus`)                                                           |
+| `/c/1` to `/c/2`                                | the old one ends, a new one starts                                                   |
+| a query change, or `remount: onLocation` on one | the same scope (remount rebuilds the widget, not the instance)                       |
+| a page pushed twice                             | two scopes                                                                           |
+| a page covered by a pushed one                  | stays                                                                                |
+| a deferred page                                 | starts at enter, while the code loads: hold nothing declared in the deferred library |
+
+All the `observe.dart` files of a page share one scope. At leave, for one page instance: the `onLeave` hooks run first, innermost folder first (they can still read what is held), then the `scope.onLeave` callbacks, newest first, each caught and reported with `FlutterError.reportError` (context `while running a RouteScope.onLeave callback of <id>`), then the held providers are released. When the router is disposed no leave runs, as for the hooks; the subscriptions go with the container.
+
+Hooks run in the container `AppRoutes.attach(router, container)` was given, else in the one above the root navigator. A scope creates nothing until the page enters, and no timer, microtask or listener of its own. `keep_previous` is not affected: holding `XRoute.data(id)` only keeps it out of `autoDispose` while the page is on a navigator.
+
+`onEnter` here is not go_router's top-level `onEnter` (its router-level hook): `observe.dart`'s runs after the navigation, for one page. The generated `RouteHooks.onEnter` takes `(ref, scope)` since 0.11.0.
 
 ## Telemetry
 

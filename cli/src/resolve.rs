@@ -72,6 +72,8 @@ pub enum Bind {
     Raw(String),
     /// An observe.dart hook's `TypedLocation route`: the typed route of the page the hook runs for.
     Route,
+    /// An observe.dart `onEnter`'s `RouteScope scope`: the page instance's scope.
+    Scope,
 }
 
 #[derive(Debug, Clone)]
@@ -430,7 +432,7 @@ pub struct ObserveHook {
     pub name: &'static str,
     /// Whether it takes a leading `Ref`.
     pub takes_ref: bool,
-    /// Segments, then query parameters, then `uri`, then `route`.
+    /// Segments, then query parameters, then `uri`, then `route`, then `scope`.
     pub args: Vec<Arg>,
 }
 
@@ -3712,8 +3714,34 @@ impl Resolver<'_> {
             let skip = first.skip().max(usize::from(takes_widget_ref(f)));
             let mut rest = vec![];
             let mut typed_route = None;
+            let mut route_scope = None;
             for p in f.params.iter().skip(skip) {
-                if p.name == "extra" {
+                if p.ty.as_ref().is_some_and(|t| t.is("RouteScope")) {
+                    if name != "onEnter" {
+                        let msg = format!(
+                            "`{what}` can't take `RouteScope`: the scope is handed to `onEnter()`, which registers what runs at leave with `scope.onLeave(...)`"
+                        );
+                        self.diags.error(&file, Some(&p.span), msg);
+                    } else if p.name != "scope" {
+                        self.diags.error(
+                            &file,
+                            Some(&p.span),
+                            "the page's scope is `RouteScope scope`; name the parameter `scope`",
+                        );
+                    } else if !p.named {
+                        self.diags.error(
+                            &file,
+                            Some(&p.span),
+                            "take the page's scope as a named parameter: `{required RouteScope scope}`",
+                        );
+                    } else {
+                        route_scope = Some(Arg {
+                            name: "scope".into(),
+                            named: true,
+                            bind: Bind::Scope,
+                        });
+                    }
+                } else if p.name == "extra" {
                     let msg = format!(
                         "{what} can't take `extra`: a hook runs after the navigation, when the page's `extra` is not kept"
                     );
@@ -3738,6 +3766,7 @@ impl Resolver<'_> {
             }
             let mut args = self.hook_args(&file, rest.into_iter(), segs, scope, &what);
             args.extend(typed_route);
+            args.extend(route_scope);
             hooks.push(ObserveHook {
                 name,
                 takes_ref: first == HookFirst::Ref,
@@ -4238,6 +4267,7 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
     let (gets, accepts): (&str, &[&str]) = match bind {
         Bind::Uri => ("the requested Uri", &["Uri"]),
         Bind::Route => ("the page's typed route", &["TypedLocation"]),
+        Bind::Scope => ("the page's scope", &["RouteScope"]),
         Bind::Child => ("the page as a Widget", &["Widget"]),
         Bind::Shell => (
             "the StatefulNavigationShell",

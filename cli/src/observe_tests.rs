@@ -82,14 +82,14 @@ fn a_hook_binds_the_segments_above_its_folder_and_the_typed_route() {
         &[
             // The home page has the root hooks only.
             "RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const []), observe: (s, m) {",
-            "RouteHooks('observe.dart', onEnter: (ref) => _i1.onEnter(ref, uri: s.uri, route: m.route)),",
+            "RouteHooks('observe.dart', onEnter: (ref, scope) => _i1.onEnter(ref, uri: s.uri, route: m.route)),",
             // The item page has the root's, then its folder's, outermost first.
             "final o2 = _observe2(s);",
-            "RouteHooks('items/\\$id/observe.dart', onEnter: (ref) => _i3.onEnter(ref, id: o2.id), onLeave: (ref) => _i3.onLeave(ref, id: o2.id), onFocus: (_) => _i3.onFocus(id: o2.id)),",
+            "RouteHooks('items/\\$id/observe.dart', onEnter: (ref, scope) => _i3.onEnter(ref, id: o2.id), onLeave: (ref) => _i3.onLeave(ref, id: o2.id), onFocus: (_) => _i3.onFocus(id: o2.id)),",
             "({int id}) _observe2(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
             "static List<RouteHooks> _observeAt(Uri uri) => observeRoutes(uri, base, _matchers);",
             "static void attach(GoRouter router, [ProviderContainer? container]) {",
-            "observeAttach(router, _observeAt);",
+            "observeAttach(router, _observeAt, container: container);",
             "attach(router);",
         ],
     );
@@ -368,5 +368,82 @@ fn a_segment_that_is_not_above_the_folder_is_the_guards_error() {
     assert!(
         d[0].contains("`id` isn't a segment of this path (it has none)"),
         "{d:?}"
+    );
+}
+
+#[test]
+fn an_on_enter_without_ref_gets_both_closure_parameters() {
+    let c = code(&[
+        ("page.dart", &page("Home")),
+        ("observe.dart", &hooks("void onEnter() {}")),
+    ]);
+    has(&c, &["onEnter: (ref, scope) => _i1.onEnter()"]);
+}
+
+#[test]
+fn on_enter_binds_the_page_scope() {
+    let c = code(&[
+        ("page.dart", &page("Home")),
+        (
+            "observe.dart",
+            &hooks("void onEnter(Ref ref, {required RouteScope scope, Uri? uri}) {}"),
+        ),
+    ]);
+    has(
+        &c,
+        &["onEnter: (ref, scope) => _i1.onEnter(ref, uri: s.uri, scope: scope)"],
+    );
+}
+
+#[test]
+fn s1_the_scope_must_be_called_scope() {
+    let d = diags(&[
+        ("page.dart", &page("Home")),
+        (
+            "observe.dart",
+            &hooks("void onEnter({required RouteScope where}) {}"),
+        ),
+    ]);
+    assert_eq!(
+        d,
+        ["✗ observe.dart:2  the page's scope is `RouteScope scope`; name the parameter `scope`"]
+    );
+}
+
+#[test]
+fn s2_the_scope_is_a_named_parameter() {
+    let d = diags(&[
+        ("page.dart", &page("Home")),
+        (
+            "observe.dart",
+            &hooks("void onEnter(Ref ref, RouteScope scope) {}"),
+        ),
+    ]);
+    assert_eq!(
+        d,
+        [
+            "✗ observe.dart:2  take the page's scope as a named parameter: `{required RouteScope scope}`"
+        ]
+    );
+}
+
+#[test]
+fn s3_only_on_enter_takes_the_scope() {
+    let d = diags(&[
+        ("page.dart", &page("Home")),
+        (
+            "observe.dart",
+            &hooks(
+                "void onLeave({required RouteScope scope}) {}\n\
+                 void onFocus({required RouteScope scope}) {}",
+            ),
+        ),
+    ]);
+    assert_eq!(
+        d,
+        [
+            "✗ observe.dart:2  `onLeave()` can't take `RouteScope`: the scope is handed to `onEnter()`, which registers what runs at leave with `scope.onLeave(...)`",
+            "✗ observe.dart:3  `onFocus()` can't take `RouteScope`: the scope is handed to `onEnter()`, which registers what runs at leave with `scope.onLeave(...)`",
+        ]
     );
 }

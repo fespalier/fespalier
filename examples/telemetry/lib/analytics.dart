@@ -13,3 +13,7 @@ class Views extends Notifier<List<String>> {
 /// The views the hooks saw, in order: `enter /orders/:id`, `leave /orders/:id`.
 final NotifierProvider<Views, List<String>> views =
     NotifierProvider<Views, List<String>>(Views.new);
+
+/// What `scope.onLeave` callbacks wrote down: a `Ref` is gone by the time a page leaves, so what
+/// runs at leave has to reach its client without one (here, a plain list).
+final List<String> scopeLog = [];

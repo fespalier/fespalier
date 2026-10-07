@@ -1,6 +1,6 @@
 ---
 name: fespalier-observability
-description: "Observing a fespalier app (since 0.8.1) — observe.dart (onEnter, onFocus and onLeave hooks for analytics, logging and titles: which pages they run for, in which order, when they fire after the frame, parked tabs, the Ref a hook gets, errors), the telemetry config key and FespalierTelemetry, the fespalier_otel adapter on otel_zone and OpenTelemetry (install, wiring, FespalierOtel.endpoint, the web limitation of runGuarded), the telemetry conventions (contract version 1: every span, event and attribute name), RecordingTelemetry for tests, and what telemetry costs; and, since 0.9.0, several sinks in the one slot (FespalierTelemetry.combine and add, per-sink tokens, isolation), the within hook that makes a data or action span current so HTTP spans nest under it (traceDataCall, the error-zone rule), and navigateFrom with fespalier.navigation.source; and, since 0.9.0, fespalier_sentry (Sentry, errors first: every error and crash tagged with the route pattern, the app file and the action, one breadcrumb per page change, release health, the OpenTelemetry trace id on each event next to fespalier_otel; screen-load transactions and spans on request with tracing: true; RecordingSentry for tests) and FespalierTelemetry.traceOf and linkTrace. Load before adding an observe.dart, turning on telemetry, wiring otel_zone or Sentry, adding a second sink, building a dashboard on the spans, or when a hook never fires, fires twice or throws."
+description: "Observing a fespalier app (since 0.8.1) — observe.dart (onEnter, onFocus and onLeave hooks for analytics, logging and titles: which pages they run for, in which order, when they fire after the frame, parked tabs, the Ref a hook gets, and, since 0.11.0, the page instance's RouteScope that onEnter takes with hold and onLeave, errors), the telemetry config key and FespalierTelemetry, the fespalier_otel adapter on otel_zone and OpenTelemetry (install, wiring, FespalierOtel.endpoint, the web limitation of runGuarded), the telemetry conventions (contract version 1: every span, event and attribute name), RecordingTelemetry for tests, and what telemetry costs; and, since 0.9.0, several sinks in the one slot (FespalierTelemetry.combine and add, per-sink tokens, isolation), the within hook that makes a data or action span current so HTTP spans nest under it (traceDataCall, the error-zone rule), and navigateFrom with fespalier.navigation.source; and, since 0.9.0, fespalier_sentry (Sentry, errors first: every error and crash tagged with the route pattern, the app file and the action, one breadcrumb per page change, release health, the OpenTelemetry trace id on each event next to fespalier_otel; screen-load transactions and spans on request with tracing: true; RecordingSentry for tests) and FespalierTelemetry.traceOf and linkTrace. Load before adding an observe.dart, turning on telemetry, wiring otel_zone or Sentry, adding a second sink, building a dashboard on the spans, or when a hook never fires, fires twice or throws."
 ---
 
 # fespalier-observability
@@ -31,12 +31,14 @@ void onLeave(Ref ref, {required int id}) => ref.read(analytics).left('product', 
 Any of `onEnter`, `onFocus`, `onLeave` (at least one), each a public top-level function that **returns
 `void`**. Parameters: an optional positional `Ref ref`, then named ones: the segments of its folder and
 above, optional nullable query parameters, `Uri uri`, and `TypedLocation route` (bound **by its type**: it
-must be called `route`). It applies to every **page** (`page.dart`) at and below its folder, in
+must be called `route`); `onEnter` alone may also take `{required RouteScope scope}` (since 0.11.0, bound by its type, called
+`scope`: `scope.hold(provider)` keeps a provider loaded while the page is on a navigator, `scope.onLeave(callback)` runs
+when the page is gone). It applies to every **page** (`page.dart`) at and below its folder, in
 page-less `(group)` folders too, `nest = false` pages included; a `redirect.dart` route never enters.
 Order for one page: `onEnter` and `onFocus` run outermost folder first, `onLeave` innermost first.
 
 Read [`references/lifecycle.md`](references/lifecycle.md) for when each fires (the rule that decides it,
-tabs, pushes, redirects), the `Ref` a hook gets, errors, and the traps.
+tabs, pushes, redirects), the `Ref` a hook gets, the page's `RouteScope`, errors, and the traps.
 
 ## Telemetry
 
@@ -141,6 +143,7 @@ zoneValues: {...})`.
 ## Where the code is
 
 - Hooks: `packages/fespalier/lib/src/lifecycle.dart` (the router watch, `RouteHooks`, `observeAttach`);
+  `route_scope.dart` (`RouteScope`, `pageInstanceId`);
   the generator reads `observe.dart` in `cli/src/resolve.rs` and writes `RouteMatcher.observe`,
   `_observeAt` and `AppRoutes.attach` into `app.g.dart`.
 - Telemetry: `packages/fespalier/lib/src/telemetry.dart` (the sink API, `combine`, `within`,

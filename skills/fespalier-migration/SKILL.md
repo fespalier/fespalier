@@ -58,6 +58,20 @@ package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the s
 form: its hook, `useForm`, takes a parameter called `draft`; rename it ``). Drafts are kept in `formDraftStorage` (your
    `dataCacheStorage` by default): call `clearFormDrafts(ref)` at sign-out and give `formDraftScope` the account.
 
+### Route lifecycle
+
+An app with an `observe.dart` regenerates `lib/app.g.dart`, and nothing else changes for a hook you wrote.
+
+1. The generated closures read `onEnter: (ref, scope) => ...` now: `RouteHooks.onEnter` is
+   `void Function(Ref ref, RouteScope scope)?`. A hand-built `RouteHooks` (a test, a fork) takes two parameters:
+   `onEnter: (ref, _) => ...`. Run `fsp gen` with the 0.11.0 `fsp`.
+2. `onEnter` may take `{required RouteScope scope}`: `scope.hold(provider)` keeps a provider (a route's `data`) loaded
+   until the page is gone, a parked tab included, and `scope.onLeave(callback)` runs when it is gone. `onLeave` and
+   `onFocus` cannot take it (an error). The page instance, the order at leave and the lifetimes are on
+   [`fespalier-observability`](../fespalier-observability/SKILL.md)'s lifecycle page.
+3. `AppRoutes.attach` takes the optional `ProviderContainer` in an app with an `observe.dart` too (it had it only with
+   `adapters:`), and the hooks run in that container when it is given. `AppRoutes.attach(router)` works as before.
+
 ### Adapters
 
 **An app without `fespalier: adapters:`

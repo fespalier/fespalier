@@ -565,6 +565,7 @@
     "fespalier-observability": {
       "covers": [
         "docs/observability.md#Route lifecycle: `observe.dart`",
+        "docs/observability.md#The page's scope: `RouteScope`",
         "docs/observability.md#Telemetry",
         "docs/observability.md#Turning it on",
         "docs/observability.md#OpenTelemetry with otel_zone",
@@ -574,6 +575,7 @@
         "kind:observe.dart",
         "config:telemetry",
         "packages/fespalier/lib/src/lifecycle.dart",
+        "packages/fespalier/lib/src/route_scope.dart",
         "packages/fespalier/lib/src/telemetry.dart",
         "packages/fespalier/lib/src/navigation_kind.dart",
         "packages/fespalier/lib/src/version.dart",

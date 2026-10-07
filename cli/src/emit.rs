@@ -89,6 +89,9 @@ struct FileCx {
     attach: bool,
     /// `fespalier: adapters:` is not empty: the file defines `AppAdapters` (since 0.11.0).
     adapters: Option<AdaptersCx>,
+    /// `AppRoutes.attach` takes the app's `ProviderContainer`: for the adapters' `attach` and
+    /// for the observe.dart hooks' `RouteScope` (since 0.11.0).
+    container_param: bool,
     /// What `AppRoutes.attach`'s doc comment says follows the router.
     attach_what: String,
     /// `launchRouter(links: true)`: platform links are marked `NavigationSource.link`, for
@@ -679,6 +682,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         observe: has_observe,
         telemetry: cfg.telemetry,
         attach: has_observe || cfg.telemetry || !cfg.adapters.is_empty(),
+        container_param: has_observe || !cfg.adapters.is_empty(),
         adapters: adapters::cx(&cfg.adapters),
         attach_what: attach_what(has_observe, cfg.telemetry, !cfg.adapters.is_empty()),
         links: cfg.telemetry || !cfg.adapters.is_empty(),
@@ -915,6 +919,7 @@ fn in_builder(b: &Bind) -> String {
         Bind::Uri => "uri".into(),
         // Only an observe.dart hook takes this; `observe_closure` spells it.
         Bind::Route => "m.route".into(),
+        Bind::Scope => "scope".into(),
         Bind::PageKey => "state.pageKey".into(),
         Bind::State => "state".into(),
         Bind::IsShell => "false".into(),
@@ -2549,12 +2554,21 @@ fn observe_closure(app: &App, r: &Route, fns: &mut BTreeSet<ParamsFn>) -> String
                 args.extend(h.args.iter().map(|a| match a.bind {
                     Bind::Uri => format!("{}: s.uri", a.name),
                     Bind::Route => format!("{}: m.route", a.name),
+                    Bind::Scope => format!("{}: scope", a.name),
                     _ => format!("{}: {var}.{}", a.name, a.name),
                 }));
+                // `onEnter` always takes `(ref, scope)`: wildcards don't exist before Dart 3.7.
+                let closure = if h.name == "onEnter" {
+                    "ref, scope"
+                } else if h.takes_ref {
+                    "ref"
+                } else {
+                    "_"
+                };
                 format!(
                     "{}: ({}) => _i{}.{}({})",
                     h.name,
-                    if h.takes_ref { "ref" } else { "_" },
+                    closure,
                     o.import,
                     h.name,
                     args.join(", ")

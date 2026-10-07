@@ -49,12 +49,12 @@ the app's. Nothing in CI draws a map or builds Android with `maplibre_gl`: a dev
 Three libraries, so an app links only what it uses, and one rule: **the page is yours, the three widgets in it are yours,
 the geocoder is yours.**
 
-| You import                                   | For                                                                                                                                                                                                                                        |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `package:fespalier_maps/fespalier_maps.dart` | `PinPicker`, `PinPickerModel`, `GeoPoint`, `PlaceGuess`, `PickedPlace`, `MapCamera`, the seams `Geocoder`, `PositionSource` (`PositionFix`: `Fixed`, `ServiceOff`, `Denied`, `Unavailable`) and `MapSurface`, `tileCount`, `MapsTelemetry` |
-| `package:fespalier_maps/maplibre.dart`       | `MapLibreSurface`, the one file that imports `maplibre_gl`                                                                                                                                                                                 |
-| `package:fespalier_maps/geolocator.dart`     | `GeolocatorPositionSource`, the one file that imports `geolocator`                                                                                                                                                                         |
-| `package:fespalier_maps/testing.dart`        | `FakeMapSurface`, `FakeGeocoder`, `FakePositionSource`                                                                                                                                                                                     |
+| You import                                   | For                                                                                                                                                                                                                                                      |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_maps/fespalier_maps.dart` | `PinPicker`, `PinPickerModel`, `GeoPoint`, `PlaceGuess`, `PickedPlace`, `MapCamera`, `MapBinding`, the seams `Geocoder`, `PositionSource` (`PositionFix`: `Fixed`, `ServiceOff`, `Denied`, `Unavailable`) and `MapSurface`, `tileCount`, `MapsTelemetry` |
+| `package:fespalier_maps/maplibre.dart`       | `MapLibreSurface`, the one file that imports `maplibre_gl`                                                                                                                                                                                               |
+| `package:fespalier_maps/geolocator.dart`     | `GeolocatorPositionSource`, the one file that imports `geolocator`                                                                                                                                                                                       |
+| `package:fespalier_maps/testing.dart`        | `FakeMapSurface` (`FakeMapMount`, `attachOnMount: false` for a map that exists late), `FakeGeocoder`, `FakePositionSource`                                                                                                                               |
 
 The page, the push, the three widgets and a test that runs the whole round trip on fakes are compiled in
 [`references/pin-picker.md`](references/pin-picker.md). A geocoder is [`references/geocoders.md`](references/geocoders.md).
@@ -70,7 +70,7 @@ The page, the push, the three widgets and a test that runs the whole round trip 
   straight to a button's `onPressed`.
 - **A `MapLibreSurface` is configuration** with value equality (a `const`, a top-level `final`, or one built in `build`),
   shared freely, also by a picker pushed over a picker. Each map it builds belongs to its picker's `MapBinding`: a move made
-  for one picker reaches only its map. A `map:` that is not equal to the last makes a new picker state. A new geocoder or locale in a rebuild is fine: the picker keeps its
+  for one picker reaches only its map. A new `map:` never makes a new picker: a theme switch (another style) updates the map in place and keeps the pin, guess and position; a surface of another type replaces the map, which opens where the pin is. A new geocoder or locale in a rebuild is fine: the picker keeps its
   model.
 - **Nothing opens over the page**: no dialog, no sheet, no menu, no snack bar (the permission prompt is the platform's own).
   A refusal is a value, `PinGuess.fix` (`Denied`, `ServiceOff`, `Unavailable`): render a hint, not an error page.

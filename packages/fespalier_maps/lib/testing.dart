@@ -19,8 +19,14 @@ const Key fakeMapKey = ValueKey<String>('fespalier_maps.fake_map');
 /// surface's own [startMove] and [idleAt].
 class FakeMapSurface extends MapSurface {
   /// A fake. With [idleOnMove], a move ends with an idle event at the point it moved to, on the
-  /// mount that moved, the way a real map comes to rest after an animation.
-  FakeMapSurface({this.idleOnMove = false});
+  /// mount that moved, the way a real map comes to rest after an animation. With
+  /// `attachOnMount: false` a mounted map is not attached to its picker until the test calls
+  /// [FakeMapMount.create], the way a platform view exists some time after its widget does: a
+  /// move made before that is parked.
+  FakeMapSurface({this.idleOnMove = false, this.attachOnMount = true});
+
+  /// Whether a mount attaches to its binding at once.
+  final bool attachOnMount;
 
   /// Whether a move reports an idle event at the new centre.
   final bool idleOnMove;
@@ -42,7 +48,7 @@ class FakeMapSurface extends MapSurface {
   FakeMapMount mount(MapBinding binding) {
     final mount = FakeMapMount._(this, binding);
     mounts.add(mount);
-    binding.attach(mount._move);
+    if (attachOnMount) mount.create();
     return mount;
   }
 
@@ -71,8 +77,9 @@ class FakeMapSurface extends MapSurface {
 final class FakeMapMount {
   FakeMapMount._(this.surface, this.binding);
 
-  /// The surface that built it.
-  final FakeMapSurface surface;
+  /// The surface that built it (the current one: it changes when the surface is replaced by
+  /// another of the same type, the map being updated in place).
+  FakeMapSurface surface;
 
   /// The picker's binding.
   final MapBinding binding;
@@ -89,10 +96,14 @@ final class FakeMapMount {
   /// The camera comes to rest with [center] under the pin.
   void idleAt(GeoPoint center) => binding.idle(center);
 
+  /// The map's platform view comes up: the binding attaches, and a move parked until now is
+  /// applied, without animation.
+  void create() => binding.attach(_move);
+
   /// Takes the map away, as unmounting its widget does: the binding is detached.
   void unmount() {
     surface.mounts.remove(this);
-    binding.detach();
+    binding.detach(_move);
   }
 
   Future<void> _move(
@@ -124,6 +135,17 @@ class _FakeMapState extends State<_FakeMap> {
   void initState() {
     super.initState();
     _mount = widget.surface.mount(widget.binding);
+  }
+
+  @override
+  void didUpdateWidget(_FakeMap old) {
+    super.didUpdateWidget(old);
+    // Updated in place, as `MapLibreMap` applies new options: the same map, another surface.
+    if (!identical(old.surface, widget.surface)) {
+      old.surface.mounts.remove(_mount);
+      _mount.surface = widget.surface;
+      widget.surface.mounts.add(_mount);
+    }
   }
 
   @override

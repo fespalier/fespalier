@@ -52,10 +52,10 @@ void main() {
 
   PinPickerModel model({FakeGeocoder? geocoder, FakePositionSource? position}) {
     final m = PinPickerModel(
-      map: FakeMapSurface(),
       geocoder: geocoder ?? FakeGeocoder(),
       position: position,
     );
+    FakeMapSurface().mount(m.binding);
     addTearDown(m.dispose);
     return m;
   }

@@ -18,7 +18,7 @@ import 'fespalier_maps.dart';
 /// binding makes. `MapLibreMap` captures its camera callbacks once, when the platform view is
 /// created; the ones given to it here call the binding, which is the same for the map's life. It
 /// listens to nothing. The map is a platform view and needs a device to be seen.
-class MapLibreSurface extends MapSurface {
+final class MapLibreSurface extends MapSurface {
   /// A surface drawing [styleString] (a style URL or the style's JSON). The default is
   /// MapLibre's demo style, which is for trying things out: an app uses its own tiles and
   /// follows their terms of use and attribution.
@@ -98,12 +98,15 @@ class _MapLibreHost extends StatefulWidget {
 
 class _MapLibreHostState extends State<_MapLibreHost> {
   MapLibreMapController? _controller;
+  // The camera of the first build only: `MapLibreMap` ignores a later one, and this host is
+  // updated in place when the surface's options change.
+  late final MapCamera _initial = widget.initial;
 
   @override
   void dispose() {
     // The map is gone with this state: moves made for it are parked again, none reach a dead
-    // controller.
-    widget.binding.detach();
+    // controller. Only if this map is still the attached one (see [MapBinding.detach]).
+    widget.binding.detach(_move);
     _controller = null;
     super.dispose();
   }
@@ -148,11 +151,8 @@ class _MapLibreHostState extends State<_MapLibreHost> {
     return MapLibreMap(
       styleString: surface.styleString,
       initialCameraPosition: CameraPosition(
-        target: LatLng(
-          widget.initial.center.latitude,
-          widget.initial.center.longitude,
-        ),
-        zoom: widget.initial.zoom,
+        target: LatLng(_initial.center.latitude, _initial.center.longitude),
+        zoom: _initial.zoom,
       ),
       trackCameraPosition: true,
       rotateGesturesEnabled: surface.rotateGesturesEnabled,

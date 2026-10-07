@@ -94,10 +94,9 @@ final class PinGuess {
 /// that a newer request has overtaken (a sequence number, never a debounce). It starts no timer
 /// and listens to nothing. Telemetry (`MapsTelemetry`) carries kinds and results, never a place.
 class PinPickerModel extends ChangeNotifier {
-  /// A model over [map] and [geocoder]. With an [initial] camera the picker starts there and
+  /// A model over [geocoder]. With an [initial] camera the picker starts there and
   /// [position] is not asked; without one, [position] (when given) seeds the map once.
   PinPickerModel({
-    required this.map,
     required this.geocoder,
     this.position,
     this.initial,
@@ -106,9 +105,6 @@ class PinPickerModel extends ChangeNotifier {
   }) : _chosen = initial != null,
        _center = initial?.center,
        _awaitingFix = initial == null && position != null;
-
-  /// The map under the pin.
-  final MapSurface map;
 
   /// The link to the map built for this picker: the model moves the map through it and the map
   /// reports to the model through it. One for the life of the model.
@@ -130,8 +126,15 @@ class PinPickerModel extends ChangeNotifier {
   /// The zoom the map moves to for a fix or a picked result.
   double focusZoom;
 
-  /// What the map shows first.
-  MapCamera get initialCamera => initial ?? MapCamera.world;
+  /// What a map built now shows first: where the picker started (the [initial] camera, or
+  /// [MapCamera.world]) until the pin has a point, then that point, so a map that replaces
+  /// another (a surface of another type) opens where the pin is.
+  MapCamera get initialCamera {
+    final point = _center;
+    final start = initial ?? MapCamera.world;
+    if (point == null || point == start.center) return start;
+    return MapCamera(point, zoom: focusZoom);
+  }
 
   GeoPoint? _center;
   bool _chosen;
@@ -276,6 +279,8 @@ class PinPickerModel extends ChangeNotifier {
   /// The map came to rest with [point] under the pin: ask the geocoder for a name, unless it
   /// already has one for that point (a picked result), and drop every answer still on its way.
   void onIdle(GeoPoint point) {
+    // A move is parked (the map does not exist yet): this rest is of the camera it was built with.
+    if (binding.hasParkedMove) return;
     if (_awaitingFix && _panned) {
       if (_farFromStart(point)) {
         // A pan that came to rest away from where the map started while the fix is awaited: the
@@ -472,7 +477,7 @@ class PinPickerModel extends ChangeNotifier {
   /// Only asked while the fix is awaited, which is only without an `initial:` camera, so the start
   /// is always [MapCamera.world] (0, 0 at zoom 1) and the rule never applies with `initial:`.
   bool _farFromStart(GeoPoint point) {
-    final start = initialCamera.center;
+    final start = (initial ?? MapCamera.world).center;
     return (point.latitude - start.latitude).abs() >= 0.01 ||
         (point.longitude - start.longitude).abs() >= 0.01;
   }

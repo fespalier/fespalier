@@ -405,40 +405,94 @@ void main() {
   );
 
   testWidgets(
-    'swapping the map: of a mounted picker leaks nothing and lands the seed on the new map',
+    'a surface that differs only in style keeps the pin, the guess and the position',
     (tester) async {
-      final a = FakeMapSurface();
-      final b = FakeMapSurface();
+      final light = FakeMapSurface(idleOnMove: true);
+      final dark = FakeMapSurface(idleOnMove: true);
+      final position = FakePositionSource(const Fixed(home));
+      final geocoder = FakeGeocoder(
+        reverseAnswer: (p) => PlaceGuess(p, 'Rue A'),
+      );
       Widget app(FakeMapSurface map) => host(
         PinPicker(
           map: map,
-          geocoder: FakeGeocoder(),
-          position: FakePositionSource(const Fixed(home)),
-          guess: (context, g) => const SizedBox.shrink(),
+          geocoder: geocoder,
+          position: position,
+          guess: (context, g) =>
+              Text(g.guess?.label ?? 'none', key: const Key('card')),
           searchField: (context, s) => const SizedBox.shrink(),
-          confirm: (context, confirm) => const SizedBox.shrink(),
+          confirm: (context, confirm) => ElevatedButton(
+            key: const Key('confirm'),
+            onPressed: confirm,
+            child: const Text('ok'),
+          ),
         ),
       );
-      await tester.pumpWidget(app(a));
+      await tester.pumpWidget(app(light));
       await tester.pump();
-      expect(a.mountedCount, 1);
-      expect(a.mounts.single.moves.single.center, home);
-      await tester.pumpWidget(app(b));
+      expect(find.text('Rue A'), findsOneWidget);
+      final mount = light.mounts.single;
+      await tester.pumpWidget(app(dark));
       await tester.pump();
+      expect(find.text('Rue A'), findsOneWidget, reason: 'the guess survives');
+      expect(position.calls, 1, reason: 'and the position is not asked again');
+      expect(light.mountedCount, 0);
       expect(
-        a.mountedCount,
-        0,
-        reason: 'the old surface keeps no disposed mount',
+        dark.mounts.single,
+        same(mount),
+        reason: 'the same map, updated in place',
       );
-      expect(b.mountedCount, 1);
+      expect(geocoder.reverseCalls, hasLength(1));
+      expect(confirmEnabled(tester), isTrue);
+    },
+  );
+
+  testWidgets(
+    'a surface of another type replaces the map, which opens where the pin is, and stays attached',
+    (tester) async {
+      final fake = FakeMapSurface();
+      final box = _BoxSurface();
+      final position = FakePositionSource(const Fixed(home));
+      Widget app(MapSurface map) => host(
+        PinPicker(
+          map: map,
+          geocoder: FakeGeocoder(reverseAnswer: (p) => PlaceGuess(p, 'Rue A')),
+          position: position,
+          guess: (context, g) =>
+              Text(g.guess?.label ?? 'none', key: const Key('card')),
+          searchField: (context, s) => TextButton(
+            key: const Key('locate'),
+            onPressed: s.useMyLocation,
+            child: const Text('here'),
+          ),
+          confirm: (context, confirm) => ElevatedButton(
+            key: const Key('confirm'),
+            onPressed: confirm,
+            child: const Text('ok'),
+          ),
+        ),
+      );
+      await tester.pumpWidget(app(fake));
+      await tester.pump();
+      fake.startMove();
+      fake.idleAt(there);
+      await tester.pump();
+      expect(find.text('Rue A'), findsOneWidget);
+      await tester.pumpWidget(app(box));
+      await tester.pump();
+      expect(fake.mountedCount, 0);
       expect(
-        b.mounts.single.moves.single.center,
-        home,
-        reason: 'the new picker seeded the new map',
+        box.shown?.center,
+        there,
+        reason: 'opens where the pin is, not at the start',
       );
-      expect(a.moves, hasLength(1), reason: 'and the old map got nothing more');
-      await tester.pumpWidget(const SizedBox());
-      expect(b.mountedCount, 0);
+      expect(position.calls, 1);
+      expect(find.text('Rue A'), findsOneWidget);
+      expect(confirmEnabled(tester), isTrue);
+      // The old map was disposed after the new one attached: it must not have detached it.
+      await tester.tap(find.byKey(const Key('locate')));
+      await tester.pump();
+      expect(box.moves, [home]);
     },
   );
 
@@ -529,4 +583,55 @@ void main() {
       reason: 'only the route\'s own',
     );
   });
+}
+
+/// A surface of another type than the fake, to replace a map by one that is not the same widget.
+class _BoxSurface extends MapSurface {
+  MapCamera? shown;
+  final List<GeoPoint> moves = [];
+
+  @override
+  Widget build(BuildContext context, MapCamera initial, MapBinding binding) {
+    shown = initial;
+    return _Box(
+      key: ValueKey<MapBinding>(binding),
+      surface: this,
+      binding: binding,
+    );
+  }
+}
+
+class _Box extends StatefulWidget {
+  const _Box({super.key, required this.surface, required this.binding});
+
+  final _BoxSurface surface;
+  final MapBinding binding;
+
+  @override
+  State<_Box> createState() => _BoxState();
+}
+
+class _BoxState extends State<_Box> {
+  Future<void> _move(
+    GeoPoint center,
+    double? zoom, {
+    required bool animate,
+  }) async {
+    widget.surface.moves.add(center);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.binding.attach(_move);
+  }
+
+  @override
+  void dispose() {
+    widget.binding.detach(_move);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.expand();
 }

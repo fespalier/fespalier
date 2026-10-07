@@ -74,19 +74,40 @@ void main() {
     () async {
       final applied = <String>[];
       final binding = MapBinding(onIdle: (_) {}, onMove: () {});
+      Future<void> mover(
+        GeoPoint center,
+        double? zoom, {
+        required bool animate,
+      }) async {
+        applied.add('${center.latitude}:$zoom:$animate');
+      }
+
       await binding.moveTo(home, zoom: 5);
+      expect(binding.hasParkedMove, isTrue);
       await binding.moveTo(const GeoPoint(1, 1), zoom: 6);
       expect(binding.isAttached, isFalse);
-      binding.attach((center, zoom, {required animate}) async {
-        applied.add('${center.latitude}:$zoom:$animate');
-      });
+      binding.attach(mover);
+      expect(binding.hasParkedMove, isFalse);
       await Future<void>.value();
       expect(applied, [
         '1.0:6.0:false',
       ], reason: 'only the latest parked move, not animated');
       await binding.moveTo(home);
       expect(applied.last, '4.05:null:true');
-      binding.detach();
+      // Another map attached since (a surface of another type replaced this one): the old one
+      // detaching afterwards changes nothing.
+      Future<void> other(
+        GeoPoint center,
+        double? zoom, {
+        required bool animate,
+      }) async {
+        applied.add('other');
+      }
+
+      binding.attach(other);
+      binding.detach(mover);
+      expect(binding.isAttached, isTrue);
+      binding.detach(other);
       expect(binding.isAttached, isFalse);
       await binding.moveTo(home);
       expect(applied, hasLength(2), reason: 'parked again after detach');

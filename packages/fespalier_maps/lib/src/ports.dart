@@ -76,8 +76,9 @@ abstract interface class PositionSource {
 /// A picker (`PinPickerModel`) owns one binding for its life and hands it to [MapSurface.build].
 /// A surface implementation, once its map exists, calls [attach] with a function that moves that
 /// map, forwards the map's events to [move] and [idle], and calls [detach] when the map goes.
-/// Before [attach] a move is parked (the latest one) and is applied, without animation, when the
-/// map arrives; after [detach] it is parked again, and [dispose] (the picker's end) drops it.
+/// With no map attached a move is parked (the latest one) and applied, without animation, when a
+/// map attaches; there is none parked while a map is attached. [dispose] (the picker's end)
+/// drops it.
 final class MapBinding {
   /// A binding that reports the map's events to [onIdle] and [onMove].
   MapBinding({
@@ -95,6 +96,10 @@ final class MapBinding {
 
   /// Whether a map is attached.
   bool get isAttached => _mover != null;
+
+  /// Whether a move is parked, waiting for a map: the rests a map reports until it has applied it
+  /// are of the camera it was built with.
+  bool get hasParkedMove => _pending != null;
 
   /// Moves the camera of the attached map so that [center] is under the pin, at [zoom] when
   /// given. With no map yet the move is parked until [attach]; after [dispose] it does nothing.
@@ -127,8 +132,18 @@ final class MapBinding {
     }
   }
 
-  /// For a surface: the map is gone. Its parked move, if any, goes with it.
-  void detach() {
+  /// For a surface: the map that attached [mover] is gone. Only that map detaches: when another
+  /// has attached since (a surface of another type replaced it, and the old one is disposed after
+  /// the new one is up) nothing happens. Moves made from now are parked for the next map.
+  void detach(
+    Future<void> Function(
+      GeoPoint center,
+      double? zoom, {
+      required bool animate,
+    })
+    mover,
+  ) {
+    if (_mover != mover) return;
     _mover = null;
     _pending = null;
   }

@@ -152,8 +152,10 @@ A surface is configuration, with value equality, and holds no state about a pick
 picker. Each map it builds has its own controller and receives only the moves of its own picker's binding. A move made before
 the platform view exists is parked and applied without animation when it does; when the map is disposed the binding is
 detached. `maplibre_gl` keeps the camera callbacks of the build that created the platform view, which is why they call the
-binding, and why the picker keeps one model, and one binding, across rebuilds (a new geocoder or locale is assigned to it; a
-`map:` that is not equal to the last makes a new picker with a new map). It rotates and tilts nothing by default (`rotateGesturesEnabled: false`, `tiltGesturesEnabled:
+binding, and why the picker keeps one model, and one binding, for its whole life: a new geocoder, locale or `map:` never
+makes a new picker. A surface that differs only in its options (a theme switch changes the style) is applied to the same map
+in place, so the pin, the guess, the search and the position survive; a surface of another type replaces the map, which opens
+where the pin is, and the old map detaching afterwards does not detach the new one. It rotates and tilts nothing by default (`rotateGesturesEnabled: false`, `tiltGesturesEnabled:
 false`, no compass), and it listens to nothing: the camera events are the widget's own callbacks. The default style is
 MapLibre's demo style, for trying things out; an app uses its own tiles and follows their attribution.
 

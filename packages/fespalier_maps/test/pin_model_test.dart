@@ -19,7 +19,6 @@ class Rig {
   }) : map = map ?? FakeMapSurface(),
        geocoder = geocoder ?? FakeGeocoder() {
     model = PinPickerModel(
-      map: this.map,
       geocoder: this.geocoder,
       position: position,
       initial: initial,
@@ -177,6 +176,52 @@ void main() {
       position.release();
       await seeding;
       expect(rig.map.moves, isEmpty);
+    });
+
+    test(
+      'a fix that arrives before the map exists is parked and applied, unanimated, when it does',
+      () async {
+        final map = FakeMapSurface(attachOnMount: false);
+        final position = FakePositionSource(const Fixed(home));
+        final rig = Rig(position: position, map: map);
+        await rig.model.seed();
+        expect(rig.model.center, home);
+        expect(map.mounts.single.moves, isEmpty);
+        expect(rig.model.binding.hasParkedMove, isTrue);
+        map.mounts.single.create();
+        expect(map.mounts.single.moves, [(center: home, zoom: 16.0)]);
+        expect(map.mounts.single.animated, [false]);
+        expect(rig.model.binding.hasParkedMove, isFalse);
+      },
+    );
+
+    test(
+      'a rest at the camera the map was built with, before the parked move applies, is not a place',
+      () async {
+        final map = FakeMapSurface(attachOnMount: false);
+        final rig = Rig(
+          position: FakePositionSource(const Fixed(home)),
+          map: map,
+        );
+        await rig.model.seed();
+        map.mounts.single.idleAt(const GeoPoint(0, 0));
+        expect(rig.model.center, home, reason: 'not null island');
+        expect(rig.model.confirm()?.point, home);
+        expect(rig.geocoder.reverseCalls, isEmpty);
+        map.mounts.single.create();
+        map.mounts.single.idleAt(home);
+        await pumpEventQueue();
+        expect(rig.geocoder.reverseCalls.single.argument, home);
+      },
+    );
+
+    test('a map that replaces another opens where the pin is', () async {
+      final rig = Rig();
+      expect(rig.model.initialCamera, MapCamera.world);
+      rig.settleAt(home);
+      expect(rig.model.initialCamera, MapCamera(home, zoom: 16));
+      final started = Rig(initial: const MapCamera(home, zoom: 12));
+      expect(started.model.initialCamera, const MapCamera(home, zoom: 12));
     });
 
     test(

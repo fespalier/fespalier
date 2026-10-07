@@ -46,9 +46,10 @@ class PinPicker extends HookWidget {
   });
 
   /// The map under the pin: `MapLibreSurface` from `package:fespalier_maps/maplibre.dart`.
-  /// A surface is configuration, shared freely (a `const`, a `final`, one built in `build`
-  /// when it has value equality, as `MapLibreSurface` does). A [map] that is not equal to the
-  /// last one makes a new picker state, with a new map.
+  /// A surface is configuration, shared freely (a `const`, a `final`, one built in `build`).
+  /// It may change while the picker is up (a theme switch changes the style): the picker keeps
+  /// its pin, guess and search, and `maplibre_gl` applies the new options in place. A surface of
+  /// another type replaces the map, which then opens where the pin is.
   final MapSurface map;
 
   /// The geocoder; the app's choice and the app's terms of use.
@@ -116,17 +117,16 @@ class PinPicker extends HookWidget {
   Widget build(BuildContext context) {
     // One model for the life of the page, whatever the parent rebuilds with: the map captured this
     // model's callbacks when it was created, so a new model would leave it talking to the old one.
-    // A new geocoder, locale or zoom is assigned to it; a new [map] is a new picker.
+    // A new geocoder, locale, zoom or [map] is assigned or rebuilt around it, never a new picker.
     final model = useMemoized(
       () => PinPickerModel(
-        map: map,
         geocoder: geocoder,
         position: position,
         initial: initial,
         locale: locale,
         focusZoom: focusZoom,
       ),
-      [map],
+      const [],
     );
     model
       ..geocoder = geocoder

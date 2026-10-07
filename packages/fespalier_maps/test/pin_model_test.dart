@@ -79,17 +79,89 @@ void main() {
       });
     }
 
-    test('a move while the fix is awaited is ignored: the fix lands', () async {
-      final position = FakePositionSource(const Fixed(home), hold: true);
-      final rig = Rig(position: position);
-      final seeding = rig.model.seed();
-      rig.model.onMove();
-      rig.model.onIdle(there);
-      expect(rig.model.center, isNull);
-      position.release();
-      await seeding;
-      expect(rig.model.center, home);
-    });
+    test(
+      'a pan that comes to rest while the fix is awaited is adopted; the fix is stale',
+      () async {
+        final position = FakePositionSource(const Fixed(home), hold: true);
+        final rig = Rig(position: position);
+        final seeding = rig.model.seed();
+        rig.model.onMove();
+        rig.model.onIdle(there);
+        expect(rig.model.center, there);
+        position.release();
+        await seeding;
+        expect(
+          rig.map.moves,
+          isEmpty,
+          reason: 'a late fix does not move the map from under them',
+        );
+        expect(rig.model.center, there);
+        expect(rig.model.confirm()?.point, there);
+      },
+    );
+
+    test(
+      'a pan still going when a denial arrives is adopted at its rest',
+      () async {
+        final position = FakePositionSource(const Denied(), hold: true);
+        final rig = Rig(position: position);
+        final seeding = rig.model.seed();
+        rig.model.onMove();
+        position.release();
+        await seeding;
+        expect(rig.model.guessState.fix, isA<Denied>());
+        rig.model.onIdle(there);
+        expect(rig.model.center, there);
+        expect(rig.model.canConfirm, isTrue);
+      },
+    );
+
+    test(
+      'a fix that arrives while the person is still panning does not move the map',
+      () async {
+        final position = FakePositionSource(const Fixed(home), hold: true);
+        final rig = Rig(position: position);
+        final seeding = rig.model.seed();
+        rig.model.onMove();
+        position.release();
+        await seeding;
+        expect(rig.map.moves, isEmpty);
+        rig.model.onIdle(there);
+        expect(rig.model.center, there);
+      },
+    );
+
+    test(
+      'a result picked while the fix is awaited is not overridden by it',
+      () async {
+        final position = FakePositionSource(const Fixed(home), hold: true);
+        final rig = Rig(position: position);
+        final seeding = rig.model.seed();
+        final douala = named('Douala', const GeoPoint(4.0511, 9.7679));
+        rig.model.search.pick(douala);
+        await pumpEventQueue();
+        position.release();
+        await seeding;
+        expect(rig.map.moves, [(center: douala.point, zoom: 16.0)]);
+        expect(rig.model.center, douala.point);
+        expect(rig.model.confirm()?.point, douala.point);
+        expect(rig.model.confirm()?.guess, douala);
+      },
+    );
+
+    test(
+      'a spurious move with no rest at load does not cancel the seed',
+      () async {
+        final position = FakePositionSource(const Fixed(home), hold: true);
+        final rig = Rig(position: position);
+        final seeding = rig.model.seed();
+        rig.model.onIdle(const GeoPoint(0, 0));
+        expect(rig.model.center, isNull);
+        position.release();
+        await seeding;
+        expect(rig.model.center, home);
+      },
+    );
 
     test(
       'an initial camera is the start and the position is not asked',
@@ -175,27 +247,96 @@ void main() {
     });
 
     test(
-      'an answer that a newer idle overtook is dropped, either order',
+      'one request at a time: the newest rest waits, the answer it overtook is dropped',
       () async {
-        for (final newestFirst in [true, false]) {
-          final rig = Rig(geocoder: FakeGeocoder(hold: true));
-          rig.settleAt(home);
+        final rig = Rig(geocoder: FakeGeocoder(hold: true));
+        rig.settleAt(home);
+        rig.model.onMove();
+        rig.model.onIdle(there);
+        final calls = rig.geocoder.reverseCalls;
+        expect(
+          calls,
+          hasLength(1),
+          reason: 'the second rest is queued, not sent',
+        );
+        expect(rig.model.guessState.guessing, isTrue);
+        calls[0].complete(named('home', home));
+        await pumpEventQueue();
+        expect(
+          rig.model.guessState.guess,
+          isNull,
+          reason: 'the pin left that point',
+        );
+        expect(rig.model.guessState.guessing, isTrue);
+        expect(calls, hasLength(2));
+        expect(calls[1].argument, there);
+        calls[1].complete(named('there', there));
+        await pumpEventQueue();
+        expect(rig.model.guessState.guess, named('there', there));
+        expect(rig.model.guessState.guessing, isFalse);
+        expect(rig.model.confirm()?.guess, named('there', there));
+      },
+    );
+
+    test(
+      'many rests while one request is out send one more, for the newest',
+      () async {
+        final rig = Rig(geocoder: FakeGeocoder(hold: true));
+        rig.settleAt(home);
+        for (var i = 1; i <= 5; i++) {
           rig.model.onMove();
-          rig.model.onIdle(there);
-          final calls = rig.geocoder.reverseCalls;
-          expect(calls, hasLength(2));
-          if (newestFirst) {
-            calls[1].complete(named('there', there));
-            calls[0].complete(named('home', home));
-          } else {
-            calls[0].complete(named('home', home));
-            calls[1].complete(named('there', there));
-          }
-          await pumpEventQueue();
-          expect(rig.model.guessState.guess, named('there', there));
-          expect(rig.model.guessState.guessing, isFalse);
-          expect(rig.model.confirm()?.guess, named('there', there));
+          rig.model.onIdle(GeoPoint(5.0 + i, 9.7));
         }
+        final calls = rig.geocoder.reverseCalls;
+        expect(calls, hasLength(1));
+        calls[0].complete(null);
+        await pumpEventQueue();
+        expect(calls, hasLength(2));
+        expect(calls[1].argument, const GeoPoint(10.0, 9.7));
+        calls[1].complete(null);
+        await pumpEventQueue();
+        expect(calls, hasLength(2));
+      },
+    );
+
+    test(
+      'a rest back at the point being asked about sends nothing and keeps that answer',
+      () async {
+        final rig = Rig(geocoder: FakeGeocoder(hold: true));
+        rig.settleAt(home);
+        rig.model.onMove();
+        rig.model.onIdle(there);
+        rig.model.onMove();
+        rig.model.onIdle(home);
+        final calls = rig.geocoder.reverseCalls;
+        calls[0].complete(named('home', home));
+        await pumpEventQueue();
+        expect(calls, hasLength(1));
+        expect(rig.model.guessState.guess, named('home', home));
+      },
+    );
+
+    test('a rest at the point being asked about is not asked twice', () async {
+      final rig = Rig(geocoder: FakeGeocoder(hold: true));
+      rig.settleAt(home);
+      rig.model.onMove();
+      rig.model.onIdle(home);
+      expect(rig.geocoder.reverseCalls, hasLength(1));
+    });
+
+    test(
+      'a result picked while a request is out drops its answer and queues nothing',
+      () async {
+        final rig = Rig(geocoder: FakeGeocoder(hold: true));
+        rig.settleAt(home);
+        final douala = named('Douala', const GeoPoint(4.0511, 9.7679));
+        rig.model.search.pick(douala);
+        rig.model.onMove();
+        rig.model.onIdle(douala.point);
+        rig.geocoder.reverseCalls.single.complete(named('old', home));
+        await pumpEventQueue();
+        expect(rig.geocoder.reverseCalls, hasLength(1));
+        expect(rig.model.guessState.guess, douala);
       },
     );
 

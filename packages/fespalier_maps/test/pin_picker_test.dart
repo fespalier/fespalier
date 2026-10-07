@@ -88,15 +88,16 @@ void main() {
     final f = Fixture();
     await tester.pumpWidget(host(f.picker()));
     final map = tester.getCenter(find.byKey(fakeMapKey));
+    // The glyph's tip is 2/24 of its 48 px box above the bottom edge: that is the point.
     final tip = tester.getRect(find.byIcon(Icons.location_on)).bottomCenter;
     expect(tip.dx, closeTo(map.dx, 0.01));
-    expect(tip.dy, closeTo(map.dy, 0.01));
+    expect(tip.dy - 4, closeTo(map.dy, 0.01));
     expect(f.map.shown, MapCamera.world);
     // The map moving under it does not move the pin.
     f.map.startMove();
     await tester.pump();
     expect(
-      tester.getRect(find.byIcon(Icons.location_on)).bottomCenter.dy,
+      tester.getRect(find.byIcon(Icons.location_on)).bottomCenter.dy - 4,
       closeTo(map.dy, 0.01),
     );
   });
@@ -169,8 +170,11 @@ void main() {
       f.map.startMove();
       f.map.idleAt(there);
       await tester.pump();
-      f.geocoder.reverseCalls[1].complete(PlaceGuess(there, 'New'));
+      expect(f.geocoder.reverseCalls, hasLength(1), reason: 'one at a time');
       f.geocoder.reverseCalls[0].complete(PlaceGuess(home, 'Old'));
+      await tester.pump();
+      expect(find.text('Best guess: Old'), findsNothing);
+      f.geocoder.reverseCalls[1].complete(PlaceGuess(there, 'New'));
       await tester.pump();
       expect(find.text('Best guess: New'), findsOneWidget);
       expect(find.text('Best guess: Old'), findsNothing);
@@ -258,6 +262,67 @@ void main() {
     expect(currentLocation(tester), '/');
     expect(await result, PickedPlace(there, guess: PlaceGuess(there, 'Rue A')));
   });
+
+  testWidgets(
+    'a parent that rebuilds with a new geocoder and locale keeps the map talking to the picker',
+    (tester) async {
+      final map = FakeMapSurface();
+      final first = FakeGeocoder(reverseAnswer: (p) => PlaceGuess(p, 'First'));
+      final second = FakeGeocoder(
+        reverseAnswer: (p) => PlaceGuess(p, 'Second'),
+      );
+      Widget app(FakeGeocoder geocoder, String locale) => host(
+        PinPicker(
+          map: map,
+          geocoder: geocoder,
+          locale: locale,
+          guess: (context, g) =>
+              Text(g.guess?.label ?? 'none', key: const Key('card')),
+          searchField: (context, s) => const SizedBox.shrink(),
+          confirm: (context, confirm) => ElevatedButton(
+            key: const Key('confirm'),
+            onPressed: confirm,
+            child: const Text('ok'),
+          ),
+        ),
+      );
+      await tester.pumpWidget(app(first, 'en'));
+      map.startMove();
+      map.idleAt(home);
+      await tester.pump();
+      expect(find.text('First'), findsOneWidget);
+      // The map captured the callbacks of the first build; the picker must still hear it.
+      await tester.pumpWidget(app(second, 'fr'));
+      map.startMove();
+      map.idleAt(there);
+      await tester.pump();
+      expect(find.text('Second'), findsOneWidget);
+      expect(second.reverseLocales, ['fr']);
+      expect(confirmEnabled(tester), isTrue);
+    },
+  );
+
+  testWidgets(
+    'confirm on a page opened with go (nothing to pop) does not throw',
+    (tester) async {
+      final f = Fixture(initial: const MapCamera(home));
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => Scaffold(body: f.picker()),
+          ),
+        ],
+      );
+      await pumpRouter(tester, router);
+      f.map.idleAt(home);
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('confirm')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(currentLocation(tester), '/');
+    },
+  );
 
   testWidgets('nothing opens over the page, whatever the person does', (
     tester,

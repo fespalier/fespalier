@@ -12,9 +12,12 @@ import 'fespalier_maps.dart';
 
 /// A [MapSurface] over `MapLibreMap`.
 ///
-/// Keep one instance for the life of the page: it holds the map's controller, which is how
-/// [moveTo] reaches the map. It listens to nothing: the camera events are the widget's own
-/// callbacks. The map is a platform view and needs a device to be seen.
+/// It serves one picker at a time and may be reused by the next one (a top-level `final` is
+/// fine): it holds the map's controller, which is how [moveTo] reaches the map, and forgets it
+/// when its map is disposed. `MapLibreMap` captures its camera callbacks once, when the platform
+/// view is created; the ones given to it here are forwarders that read the latest callbacks of
+/// the last [build]. It listens to nothing: the camera events are the widget's own callbacks.
+/// The map is a platform view and needs a device to be seen.
 class MapLibreSurface extends MapSurface {
   /// A surface drawing [styleString] (a style URL or the style's JSON). The default is
   /// MapLibre's demo style, which is for trying things out: an app uses its own tiles and
@@ -49,6 +52,17 @@ class MapLibreSurface extends MapSurface {
   MapLibreMapController? _controller;
   GeoPoint? _pending;
   double? _pendingZoom;
+  void Function(GeoPoint center)? _onIdle;
+  VoidCallback? _onMove;
+  Object? _host;
+
+  void _forwardMove() => _onMove?.call();
+
+  void _forwardIdle() {
+    final target = _controller?.cameraPosition?.target;
+    if (target == null) return;
+    _onIdle?.call(GeoPoint(target.latitude, target.longitude));
+  }
 
   @override
   Widget build(
@@ -57,6 +71,23 @@ class MapLibreSurface extends MapSurface {
     required void Function(GeoPoint center) onIdle,
     required VoidCallback onMove,
   }) {
+    _onIdle = onIdle;
+    _onMove = onMove;
+    return _SurfaceHost(
+      key: ValueKey<Object>(this),
+      onAttach: (host) => _host = host,
+      onDetach: (host) {
+        // Only the host that is still the current one forgets: a new page's map may already be up.
+        if (!identical(_host, host)) return;
+        _host = null;
+        _controller = null;
+        _pending = null;
+      },
+      child: _map(initial),
+    );
+  }
+
+  Widget _map(MapCamera initial) {
     return MapLibreMap(
       styleString: styleString,
       initialCameraPosition: CameraPosition(
@@ -76,13 +107,8 @@ class MapLibreSurface extends MapSurface {
           _apply(controller, pending, _pendingZoom, animate: false);
         }
       },
-      onCameraMove: (_) => onMove(),
-      onCameraIdle: () {
-        final target = _controller?.cameraPosition?.target;
-        if (target != null) {
-          onIdle(GeoPoint(target.latitude, target.longitude));
-        }
-      },
+      onCameraMove: (_) => _forwardMove(),
+      onCameraIdle: _forwardIdle,
     );
   }
 
@@ -117,4 +143,38 @@ class MapLibreSurface extends MapSurface {
       // A controller that was disposed with its page costs the move, never the picker.
     }
   }
+}
+
+/// Tells the surface when its map is gone, so a reused surface does not talk to a dead controller.
+class _SurfaceHost extends StatefulWidget {
+  const _SurfaceHost({
+    super.key,
+    required this.onAttach,
+    required this.onDetach,
+    required this.child,
+  });
+
+  final void Function(Object host) onAttach;
+  final void Function(Object host) onDetach;
+  final Widget child;
+
+  @override
+  State<_SurfaceHost> createState() => _SurfaceHostState();
+}
+
+class _SurfaceHostState extends State<_SurfaceHost> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onAttach(this);
+  }
+
+  @override
+  void dispose() {
+    widget.onDetach(this);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

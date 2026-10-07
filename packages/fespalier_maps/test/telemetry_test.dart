@@ -139,6 +139,7 @@ void main() {
       m.onMove();
       m.onIdle(const GeoPoint(4.06, 9.77));
       geocoder.reverseCalls[0].complete(null);
+      await pumpEventQueue();
       geocoder.reverseCalls[1].complete(null);
       await pumpEventQueue();
       expect(

@@ -23,16 +23,20 @@ abstract interface class Geocoder {
 - **Both are called from the UI isolate and must not block**: do the HTTP, parse a small body, return.
 - **A label is a guess.** Whatever the provider's `display_name` is, the picker shows it as a guess; keep `label` short
   (a street, a place) and put the long form in `detail`.
-- **Each reverse is one request per rest of the map**, and a person can pan a lot. Rate limits are the provider's, not the
-  picker's (no debounce timer): a public server is for light use, which is why an app with real traffic runs its own
-  instance or uses a paid one.
+- **The picker sends at most one `reverse` at a time** (the newest rest waits for the answer on its way), with no timer, so
+  a person who pans a lot costs one request per answer. Rate limits and caching are **yours**: the picker does not space
+  requests, so a public server needs the spacing and the cache below, and an app with real traffic runs its own instance
+  or uses a paid one.
 
 ## Nominatim
 
 OpenStreetMap's geocoder. Its public server's [usage policy](https://operations.osmfoundation.org/policies/nominatim/)
 (read it before shipping, it changes): at most one request per second, "no heavy uses"; a valid `User-Agent` or `Referer`
 that **identifies your application** (a library's default is not enough); **no auto-complete search** (which is why the
-picker submits a query instead of searching per keystroke); cache results; display the OpenStreetMap attribution. A
+picker submits a query instead of searching per keystroke); cache results ("clients sending repeatedly the same query may
+be classified as faulty and blocked"); display the OpenStreetMap attribution. The recipe below **implements the spacing and
+the cache**: requests go one after another at least a second apart, and answers are kept in a small LRU keyed by the query
+(or the coordinate rounded to five decimals, about a metre) and the language. A
 browser cannot set `User-Agent`, so on the web the `Referer` identifies the app, and the optional `email` parameter is the
 documented way to leave a contact. For anything beyond light use, run your own instance.
 
@@ -63,7 +67,43 @@ class NominatimGeocoder implements Geocoder {
   final String baseUrl;
   final String? email;
 
-  Future<Object?> _get(String path, Map<String, String> query) async {
+  /// The policy's "absolute maximum of 1 request per second", with a margin.
+  static const Duration minGap = Duration(milliseconds: 1100);
+  static const int cacheSize = 64;
+
+  // App code may read the clock and wait; the package's own lib may not.
+  DateTime? _last;
+  Future<void> _turn = Future<void>.value();
+  final Map<String, Object?> _cache = {}; // insertion order is the LRU order
+
+  Future<T> _cached<T>(String key, Future<T> Function() load) async {
+    if (_cache.containsKey(key)) {
+      final hit = _cache.remove(key);
+      _cache[key] = hit; // most recently used last
+      return hit as T;
+    }
+    final value = await load();
+    _cache[key] = value;
+    if (_cache.length > cacheSize) _cache.remove(_cache.keys.first);
+    return value;
+  }
+
+  /// Requests go one at a time, at least [minGap] apart.
+  Future<Object?> _get(String path, Map<String, String> query) {
+    final result = _turn.then((_) async {
+      final last = _last;
+      if (last != null) {
+        final wait = minGap - DateTime.now().difference(last);
+        if (wait > Duration.zero) await Future<void>.delayed(wait);
+      }
+      _last = DateTime.now();
+      return _fetch(path, query);
+    });
+    _turn = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  Future<Object?> _fetch(String path, Map<String, String> query) async {
     final uri = Uri.parse('$baseUrl$path').replace(queryParameters: {
       'format': 'jsonv2',
       if (email != null) 'email': email!,
@@ -90,30 +130,32 @@ class NominatimGeocoder implements Geocoder {
   }
 
   @override
-  Future<List<PlaceGuess>> search(String query, {GeoPoint? near, String? locale}) async {
-    final body = await _get('/search', {
-      'q': query,
-      'limit': '5',
-      if (locale != null) 'accept-language': locale,
-      // A preference, not a limit: bounded=0 is the default, so places outside still answer.
-      if (near != null)
-        'viewbox': '${near.longitude - 0.5},${near.latitude + 0.5},${near.longitude + 0.5},${near.latitude - 0.5}',
-    });
-    if (body is! List<Object?>) throw StateError('geocoder answered an unexpected body');
-    return [for (final item in body) ?_guess(item)];
-  }
+  Future<List<PlaceGuess>> search(String query, {GeoPoint? near, String? locale}) =>
+      _cached('s|${locale ?? ''}|${query.trim().toLowerCase()}', () async {
+        final body = await _get('/search', {
+          'q': query,
+          'limit': '5',
+          if (locale != null) 'accept-language': locale,
+          // A preference, not a limit: bounded=0 is the default, so places outside still answer.
+          if (near != null)
+            'viewbox': '${near.longitude - 0.5},${near.latitude + 0.5},${near.longitude + 0.5},${near.latitude - 0.5}',
+        });
+        if (body is! List<Object?>) throw StateError('geocoder answered an unexpected body');
+        return [for (final item in body) ?_guess(item)];
+      });
 
   @override
-  Future<PlaceGuess?> reverse(GeoPoint point, {String? locale}) async {
-    final body = await _get('/reverse', {
-      'lat': '${point.latitude}',
-      'lon': '${point.longitude}',
-      'zoom': '18',
-      if (locale != null) 'accept-language': locale,
-    });
-    // "Unable to geocode" arrives as {"error": ...} with status 200: nothing there.
-    return body is Map<String, Object?> && body['error'] == null ? _guess(body) : null;
-  }
+  Future<PlaceGuess?> reverse(GeoPoint point, {String? locale}) =>
+      _cached('r|${locale ?? ''}|${point.latitude.toStringAsFixed(5)},${point.longitude.toStringAsFixed(5)}', () async {
+        final body = await _get('/reverse', {
+          'lat': '${point.latitude}',
+          'lon': '${point.longitude}',
+          'zoom': '18',
+          if (locale != null) 'accept-language': locale,
+        });
+        // "Unable to geocode" arrives as {"error": ...} with status 200: nothing there.
+        return body is Map<String, Object?> && body['error'] == null ? _guess(body) : null;
+      });
 }
 ```
 

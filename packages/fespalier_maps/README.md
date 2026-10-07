@@ -50,7 +50,7 @@ import 'package:fespalier_maps/fespalier_maps.dart';
 import 'package:fespalier_maps/geolocator.dart';
 import 'package:fespalier_maps/maplibre.dart';
 
-final _map = MapLibreSurface(styleString: 'https://tiles.example.com/style.json'); // one instance for the page
+final _map = MapLibreSurface(styleString: 'https://tiles.example.com/style.json'); // one per picker
 
 class PickPlacePage extends StatelessWidget {
   const PickPlacePage({super.key});

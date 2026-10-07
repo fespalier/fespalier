@@ -12,7 +12,8 @@ import 'fespalier_maps.dart';
 /// The key of the box a [FakeMapSurface] builds.
 const Key fakeMapKey = ValueKey<String>('fespalier_maps.fake_map');
 
-/// A [MapSurface] that is a box. The test plays the map: [startMove] and [idleAt] are what a
+/// A [MapSurface] that is a box. Like the real map it keeps the camera callbacks it was first built
+/// with. The test plays the map: [startMove] and [idleAt] are what a
 /// real map reports, and [moves] is what the picker asked of it.
 class FakeMapSurface extends MapSurface {
   /// A fake. With [idleOnMove], [moveTo] ends with an idle event at the point it was given, the
@@ -39,8 +40,10 @@ class FakeMapSurface extends MapSurface {
     required VoidCallback onMove,
   }) {
     shown = initial;
-    _onIdle = onIdle;
-    _onMove = onMove;
+    // Like MapLibreMap, which keeps the callbacks of the build that created the platform view: a
+    // picker that rebuilt with new ones would leave the map talking to the old ones.
+    _onIdle ??= onIdle;
+    _onMove ??= onMove;
     return const SizedBox.expand(key: fakeMapKey);
   }
 

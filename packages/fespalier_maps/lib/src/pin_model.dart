@@ -110,20 +110,21 @@ class PinPickerModel extends ChangeNotifier {
   /// The map under the pin.
   final MapSurface map;
 
-  /// The geocoder.
-  final Geocoder geocoder;
+  /// The geocoder. Assigned again by [PinPicker] on every build, so a new geocoder or locale
+  /// takes effect without a new model: the map captured this model's callbacks once.
+  Geocoder geocoder;
 
   /// Where the device is, or null for a picker that never asks.
-  final PositionSource? position;
+  PositionSource? position;
 
   /// Where the map starts (an existing place being edited), or null for [MapCamera.world].
   final MapCamera? initial;
 
   /// The BCP 47 tag the geocoder is asked to label in.
-  final String? locale;
+  String? locale;
 
   /// The zoom the map moves to for a fix or a picked result.
-  final double focusZoom;
+  double focusZoom;
 
   /// What the map shows first.
   MapCamera get initialCamera => initial ?? MapCamera.world;
@@ -131,6 +132,7 @@ class PinPickerModel extends ChangeNotifier {
   GeoPoint? _center;
   bool _chosen;
   bool _awaitingFix;
+  bool _panned = false;
   bool _moving = false;
   bool _disposed = false;
 
@@ -139,6 +141,10 @@ class PinPickerModel extends ChangeNotifier {
   bool _guessing = false;
   bool _guessFailed = false;
   int _reverseSeq = 0;
+  bool _reverseInFlight = false;
+  int _inFlightSeq = -1;
+  GeoPoint? _inFlightPoint;
+  GeoPoint? _queued;
 
   String _query = '';
   List<PlaceGuess> _results = const [];
@@ -193,7 +199,7 @@ class PinPickerModel extends ChangeNotifier {
   /// map. Call it once, after the first frame.
   Future<void> seed() async {
     if (!_awaitingFix) return;
-    await _locate();
+    await _locate(seed: true);
     notifyListeners();
   }
 
@@ -201,10 +207,11 @@ class PinPickerModel extends ChangeNotifier {
   Future<void> useMyLocation() async {
     if (position == null) return;
     _awaitingFix = false;
-    await _locate();
+    _panned = false;
+    await _locate(seed: false);
   }
 
-  Future<void> _locate() async {
+  Future<void> _locate({required bool seed}) async {
     final source = position;
     if (source == null) return;
     final seq = ++_locateSeq;
@@ -227,6 +234,10 @@ class PinPickerModel extends ChangeNotifier {
     // heard, possibly before the move's Future completes.
     _awaitingFix = false;
     _fix = answer;
+    // The person is panning while the seed arrives: the map is theirs now. Their rest is adopted
+    // by [onIdle] whatever the answer was, and a fix never moves the map from under them.
+    final yielded = seed && _panned;
+    if (yielded) _chosen = true;
     mapsFinish(
       token,
       switch (answer) {
@@ -240,12 +251,17 @@ class PinPickerModel extends ChangeNotifier {
           : TelemetryOutcome.ok,
     );
     notifyListeners();
-    if (answer is Fixed) await _moveTo(answer.point);
+    if (answer is Fixed && !yielded) await _moveTo(answer.point);
   }
 
   /// The map started to move under the pin.
   void onMove() {
-    if (_awaitingFix) return;
+    if (_awaitingFix) {
+      // Remembered, not acted on: the map's own first movements at load are not the person's.
+      // The rest that follows decides (see [onIdle]).
+      _panned = true;
+      return;
+    }
     _chosen = true;
     if (_moving) return;
     _moving = true;
@@ -255,6 +271,13 @@ class PinPickerModel extends ChangeNotifier {
   /// The map came to rest with [point] under the pin: ask the geocoder for a name, unless it
   /// already has one for that point (a picked result), and drop every answer still on its way.
   void onIdle(GeoPoint point) {
+    if (_awaitingFix && _panned) {
+      // A pan that came to rest while the fix is awaited: the person chose a place. The fix, when
+      // it arrives, is stale; the pan is adopted, whatever the answer.
+      _awaitingFix = false;
+      _locateSeq++;
+      _chosen = true;
+    }
     if (_awaitingFix || !_chosen) return;
     _moving = false;
     _center = point;
@@ -264,16 +287,32 @@ class PinPickerModel extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    unawaited(_reverse(point));
-  }
-
-  Future<void> _reverse(GeoPoint point) async {
-    final seq = ++_reverseSeq;
     _guess = null;
     _guessFor = null;
     _guessing = true;
     _guessFailed = false;
     notifyListeners();
+    if (_reverseInFlight) {
+      // At most one reverse request at a time. The pin is already being asked about, or the
+      // newest rest waits (replacing any older one) for the answer on its way.
+      final asking = _inFlightPoint;
+      if (asking != null &&
+          _inFlightSeq == _reverseSeq &&
+          _near(asking, point)) {
+        _queued = null;
+      } else {
+        _queued = point;
+      }
+      return;
+    }
+    unawaited(_reverse(point));
+  }
+
+  Future<void> _reverse(GeoPoint point) async {
+    final seq = ++_reverseSeq;
+    _reverseInFlight = true;
+    _inFlightSeq = seq;
+    _inFlightPoint = point;
     final token = mapsBegin(MapsTelemetry.geocode, {
       MapsTelemetry.direction: MapsTelemetry.directionReverse,
     });
@@ -284,12 +323,16 @@ class PinPickerModel extends ChangeNotifier {
     } catch (_) {
       failed = true;
     }
-    if (_disposed || seq != _reverseSeq) {
+    _reverseInFlight = false;
+    final next = _queued;
+    _queued = null;
+    if (_disposed || seq != _reverseSeq || next != null) {
       mapsFinish(
         token,
         MapsTelemetry.resultStale,
         outcome: TelemetryOutcome.superseded,
       );
+      if (!_disposed && next != null) unawaited(_reverse(next));
       return;
     }
     _guessing = false;
@@ -375,6 +418,9 @@ class PinPickerModel extends ChangeNotifier {
   Future<void> pick(PlaceGuess place) async {
     _searchSeq++;
     _reverseSeq++;
+    _queued = null;
+    // A fix still on its way must not move the map off the place that was just chosen.
+    _locateSeq++;
     _results = const [];
     _searching = false;
     _chosen = true;

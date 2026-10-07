@@ -68,12 +68,15 @@ The page, the push, the three widgets and a test that runs the whole round trip 
   field with it). The picker lays out your three builders at its bottom edge: `guess`, then `searchField` (with its
   results), then `confirm`. The `confirm` callback is **null** until the pin has a point and the map is at rest: pass it
   straight to a button's `onPressed`.
-- **Keep one `MapLibreSurface` for the life of the page** (a top-level `final`, a provider). It holds the map controller
-  that `moveTo` uses; a new instance per build loses it.
+- **Keep one `MapLibreSurface` per picker** (a top-level `final` or a provider; reusing it on a second visit is fine). It
+  holds the map controller that `moveTo` uses and forgets it when its map is disposed; a new instance per build loses the
+  controller, and a new `map:` makes a new picker state. A new geocoder or locale in a rebuild is fine: the picker keeps its
+  model.
 - **Nothing opens over the page**: no dialog, no sheet, no menu, no snack bar (the permission prompt is the platform's own).
   A refusal is a value, `PinGuess.fix` (`Denied`, `ServiceOff`, `Unavailable`): render a hint, not an error page.
 - **Search is submitted, not typed per keystroke.** `PinSearch.submit` goes on the keyboard's search action. Public
-  geocoders forbid search-as-you-type, and the package has no debounce timer.
+  geocoders forbid search-as-you-type, and the package has no debounce timer. Reverse geocoding asks at most one request at
+  a time (the newest rest waits), but the rate limit and the cache are the geocoder's: see `geocoders.md`.
 - **The geocoder throws on failure and the picker never shows its text.** `PinSearch.failed` and `PinGuess.failed` are
   flags.
 
@@ -85,8 +88,11 @@ The page, the push, the three widgets and a test that runs the whole round trip 
   moved the map; render `PinGuess.fix` to say so.
 - **An `initial:` camera turns the position off.** With `initial:` (editing a saved place) the picker starts there and the
   position source is asked only when the person taps "use my location" (`PinSearch.useMyLocation`).
-- **The fix moves the map once, when it arrives**, even if the person has started dragging (the platform prompt covers the
-  map while it waits).
+- **The fix moves the map once, when it arrives**, unless the person panned (and came to rest) or picked a result first:
+  then their choice stands and the fix is dropped. Not checked on a device: whether a map's own movements at load (a zoom
+  clamp) can look like a pan.
+- **Confirming on a page opened with `go` or a link pops nothing** (there is nowhere to go back to) and does not throw; pass
+  `onPicked:` for that case.
 - **A picked result is not re-geocoded.** `pick` shows the result's label as the guess and the map's rest at that point
   asks the geocoder nothing; a nudge of more than about a metre does.
 - **The map's callbacks are the only source of the centre.** A `MapSurface` of your own must call `onMove` when the camera

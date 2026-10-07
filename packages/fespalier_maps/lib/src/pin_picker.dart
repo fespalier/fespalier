@@ -7,6 +7,9 @@ import 'geo.dart';
 import 'pin_model.dart';
 import 'ports.dart';
 
+/// Where the tip of Material's `location_on` glyph is, as a fraction of its box (22 of 24).
+const double _glyphTip = 22 / 24;
+
 /// A page body that picks a place: the pin is fixed at the centre and the map moves under it.
 ///
 /// - **Seeded once** from [position] (the platform's own permission prompt, never a dialog of
@@ -43,7 +46,8 @@ class PinPicker extends HookWidget {
   });
 
   /// The map under the pin: `MapLibreSurface` from `package:fespalier_maps/maplibre.dart`.
-  /// Keep one instance for the life of the page (a `const` or a provider), not one per build.
+  /// Keep one instance for the life of the page (a `final` field or a provider), not one per
+  /// build: a new [map] makes a new picker state. A surface serves one picker at a time.
   final MapSurface map;
 
   /// The geocoder; the app's choice and the app's terms of use.
@@ -72,7 +76,8 @@ class PinPicker extends HookWidget {
   /// The confirm button; its callback is null until a place can be returned.
   final Widget Function(BuildContext context, VoidCallback? confirm) confirm;
 
-  /// The pin; its bottom centre is the point. A plain location marker by default.
+  /// The pin; its bottom centre is the point. By default Material's `location_on` glyph, placed
+  /// so that the tip of the marker (not the bottom of its box) is the point.
   final Widget? pin;
 
   /// Called with the place instead of popping the route.
@@ -85,15 +90,22 @@ class PinPicker extends HookWidget {
       return;
     }
     final router = GoRouter.maybeOf(context);
-    if (router != null) {
+    if (router != null && router.canPop()) {
       router.pop(place);
     } else {
-      Navigator.of(context).pop(place);
+      // Nothing under the page (opened by a link, or with `go`): there is nobody to answer, and
+      // GoRouter.pop would throw. The navigator pops a route when it has one, and does nothing
+      // otherwise; the app that opens the picker that way passes [onPicked].
+      final navigator = Navigator.maybeOf(context);
+      if (navigator != null) unawaited(navigator.maybePop(place));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // One model for the life of the page, whatever the parent rebuilds with: the map captured this
+    // model's callbacks when it was created, so a new model would leave it talking to the old one.
+    // A new geocoder, locale or zoom is assigned to it; a new [map] is a new picker.
     final model = useMemoized(
       () => PinPickerModel(
         map: map,
@@ -103,8 +115,13 @@ class PinPicker extends HookWidget {
         locale: locale,
         focusZoom: focusZoom,
       ),
-      [map, geocoder, position, initial, locale, focusZoom],
+      [map],
     );
+    model
+      ..geocoder = geocoder
+      ..position = position
+      ..locale = locale
+      ..focusZoom = focusZoom;
     useListenable(model);
     useEffect(() {
       unawaited(model.seed());
@@ -125,7 +142,8 @@ class PinPicker extends HookWidget {
         Center(
           child: IgnorePointer(
             child: FractionalTranslation(
-              translation: const Offset(0, -0.5),
+              // A custom pin's bottom centre is the point; the glyph's tip is 2/24 above its box.
+              translation: Offset(0, pin == null ? -(_glyphTip - 0.5) : -0.5),
               child: pin ?? const Icon(Icons.location_on, size: 48),
             ),
           ),

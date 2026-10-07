@@ -66,18 +66,24 @@ class PickPlacePage extends StatelessWidget {
 
 How it behaves, each point pinned by a test:
 
-- **The pin is fixed and the map moves under it.** The pin's bottom centre is the point, at the map's centre. A custom
-  `pin:` widget is placed the same way. The pin never moves while the map does.
+- **The pin is fixed and the map moves under it.** The tip of the default marker is the point, at the map's centre. A custom
+  `pin:` widget is placed with its bottom centre there. The pin never moves while the map does.
 - **Seeded once.** Without an `initial:` camera, the picker asks the `PositionSource` once and moves the map to the fix
   (zoom 16 by default, `focusZoom`). With an `initial:` (editing a saved place) it starts there and does not ask until
   the person taps "use my location". The map's first rest, on the whole world, is not a choice: the pin has no point
   (`PinGuess.center` is null, and `confirm` is null) until a fix lands, a result is picked, or the person moves the map.
+  A pan that comes to rest while the fix is still awaited is the person's choice: it is adopted at once and the fix, when
+  it arrives, is dropped. Picking a result does the same.
 - **Reverse geocoding runs when the map comes to rest**, on the map's idle event, never while it moves, and there is no
-  debounce timer. Every request has a sequence number: an answer that arrives after a newer request, or after a pick, is
-  dropped. A point that already has a name (a picked result) is not asked again.
+  debounce timer. **At most one reverse request is in flight**: the newest rest waits (replacing an older one that was
+  waiting) until the answer on its way returns, and that answer, made for a point the pin has left, is dropped. A rest at
+  the point already being asked about sends nothing, and a point that already has a name (a picked result) is not asked
+  again. So a person who pans a lot costs the geocoder one request at a time, not one per rest.
 - **Confirming** returns `PickedPlace(point, guess:)` through `GoRouter.pop`, so `await ...push<PickedPlace>(context)`
   completes with it. The `confirm` callback is null until the pin has a point and the map is at rest. The guess comes
-  with the place only when it was made for exactly that point, never a stale one. `onPicked:` replaces the pop.
+  with the place only when it was made for exactly that point, never a stale one. `onPicked:` replaces the pop. A page
+  opened with `go` (or by a link) has nothing to pop to: the picker does not throw, and does nothing unless you pass
+  `onPicked:`.
 - **Nothing opens over the page**: no dialog, no menu, no sheet, no snack bar. `test/no_timers_test.dart` greps `lib/` for
   them. The location permission prompt is the platform's own.
 
@@ -108,8 +114,10 @@ abstract interface class Geocoder {
 ```
 
 Throw on failure: the picker shows "no answer" (`PinSearch.failed`, `PinGuess.failed`) and never keeps or shows the
-error's text. The skill's `geocoders.md` has compiled recipes for Nominatim (with its usage policy: the public server is
-for light use, needs an identifying `User-Agent` or `Referer`, and no autocomplete), Photon and your own backend.
+error's text. The skill's `geocoders.md` has compiled recipes for Nominatim, Photon and your own backend. The Nominatim one
+implements its public server's policy that you must not skip: requests at least a second apart, an LRU cache of answers,
+an identifying `User-Agent` or `Referer`, and no autocomplete. The picker itself sends one reverse request at a time but
+does no spacing or caching: that is the geocoder's.
 
 ## Where the device is
 
@@ -120,8 +128,10 @@ when it is `denied`, and takes one fix (`LocationAccuracy.high`, a 15 second lim
 keeps the last answer in `PinGuess.fix`: a refusal leaves the map where it is and lets you show a hint with a button to
 `useMyLocation` again, or to open the system settings when it is `Denied(permanent: true)`.
 
-The fix moves the map once when it arrives, even if the person has started to drag in the meantime (the platform prompt
-usually covers the map while it waits).
+The fix moves the map once, when it arrives. If the person has panned in the meantime it does not: their rest was adopted
+(a pan still going when the answer arrives is adopted at its rest). One thing needs a device check: the map's own movements
+at load (a minimum-zoom clamp, say) are not told apart from a person's, except that only a movement followed by a rest
+counts, so a camera that moves and rests by itself while the fix is awaited would be taken for a choice.
 
 ## The map
 
@@ -132,8 +142,10 @@ usually covers the map while it waits).
 final _map = MapLibreSurface(styleString: 'https://tiles.example.com/style.json');
 ```
 
-Keep **one instance** for the life of the page (a `final` field, a provider): it holds the map's controller, which is how
-`moveTo` reaches the map. It rotates and tilts nothing by default (`rotateGesturesEnabled: false`, `tiltGesturesEnabled:
+A surface serves one picker at a time and can be reused by the next (a top-level `final` is fine): it holds the map's
+controller, which is how `moveTo` reaches the map, and forgets it when its map is disposed. `maplibre_gl` keeps the camera
+callbacks of the first build, so the surface gives it forwarders that read the latest ones, and the picker keeps one model
+across rebuilds (a new geocoder or locale is assigned to it). It rotates and tilts nothing by default (`rotateGesturesEnabled: false`, `tiltGesturesEnabled:
 false`, no compass), and it listens to nothing: the camera events are the widget's own callbacks. The default style is
 MapLibre's demo style, for trying things out; an app uses its own tiles and follows their attribution.
 

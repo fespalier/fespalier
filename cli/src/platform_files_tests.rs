@@ -42,11 +42,12 @@ fn manifest_error(current: &str) -> String {
     )
 }
 
+fn edit_plist(path: &str, current: &str, domains: &[String]) -> anyhow::Result<String> {
+    pf::edit_entitlements(path, current, domains).map(|r| r.0)
+}
+
 fn plist_error(current: &str) -> String {
-    format!(
-        "{:#}",
-        pf::edit_entitlements(PLIST, current, &domains()).unwrap_err()
-    )
+    format!("{:#}", edit_plist(PLIST, current, &domains()).unwrap_err())
 }
 
 #[test]
@@ -250,22 +251,19 @@ fn bare(body: &str) -> String {
 #[test]
 fn an_absent_key_is_added_before_the_end_of_the_dict() {
     let current = bare("\t<key>aps-environment</key>\n\t<string>development</string>\n");
-    let text = pf::edit_entitlements(PLIST, &current, &domains()).unwrap();
+    let text = edit_plist(PLIST, &current, &domains()).unwrap();
     assert_eq!(
         text,
         bare(
             "\t<key>aps-environment</key>\n\t<string>development</string>\n\t<key>com.apple.developer.associated-domains</key>\n\t<array>\n\t\t<string>applinks:shop.example.com</string>\n\t\t<string>applinks:www.shop.example.com</string>\n\t</array>\n"
         )
     );
-    assert_eq!(
-        pf::edit_entitlements(PLIST, &text, &domains()).unwrap(),
-        text
-    );
+    assert_eq!(edit_plist(PLIST, &text, &domains()).unwrap(), text);
 }
 
 #[test]
 fn an_existing_key_keeps_its_other_entries_and_puts_ours_after_them() {
-    let text = pf::edit_entitlements(PLIST, ENTITLEMENTS, &domains()).unwrap();
+    let text = edit_plist(PLIST, ENTITLEMENTS, &domains()).unwrap();
     assert_eq!(
         text,
         ENTITLEMENTS.replace(
@@ -273,12 +271,9 @@ fn an_existing_key_keeps_its_other_entries_and_puts_ours_after_them() {
             "\t\t<string>webcredentials:shop.example.com</string>\n\t\t<string>applinks:shop.example.com</string>\n\t\t<string>applinks:www.shop.example.com</string>\n"
         )
     );
-    assert_eq!(
-        pf::edit_entitlements(PLIST, &text, &domains()).unwrap(),
-        text
-    );
+    assert_eq!(edit_plist(PLIST, &text, &domains()).unwrap(), text);
     // An application's own order of things is only touched where it has to be.
-    let only = pf::edit_entitlements(PLIST, &text, &["shop.example.com".to_string()]).unwrap();
+    let only = edit_plist(PLIST, &text, &["shop.example.com".to_string()]).unwrap();
     assert!(!only.contains("www.shop") && only.contains("webcredentials:shop.example.com"));
 }
 
@@ -289,7 +284,7 @@ fn an_empty_array_and_an_empty_dict_are_filled() {
         let current = bare(&format!(
             "\t<key>com.apple.developer.associated-domains</key>\n\t{empty}\n"
         ));
-        let text = pf::edit_entitlements(PLIST, &current, one).unwrap();
+        let text = edit_plist(PLIST, &current, one).unwrap();
         assert_eq!(
             text,
             bare(
@@ -298,7 +293,7 @@ fn an_empty_array_and_an_empty_dict_are_filled() {
             "{empty}"
         );
     }
-    let text = pf::edit_entitlements(PLIST, EMPTY_DICT, one).unwrap();
+    let text = edit_plist(PLIST, EMPTY_DICT, one).unwrap();
     assert_eq!(
         text,
         EMPTY_DICT.replace(
@@ -306,7 +301,7 @@ fn an_empty_array_and_an_empty_dict_are_filled() {
             "<dict>\n\t<key>com.apple.developer.associated-domains</key>\n\t<array>\n\t\t<string>applinks:shop.example.com</string>\n\t</array>\n</dict>"
         )
     );
-    assert_eq!(pf::edit_entitlements(PLIST, &text, one).unwrap(), text);
+    assert_eq!(edit_plist(PLIST, &text, one).unwrap(), text);
 }
 
 #[test]
@@ -316,13 +311,10 @@ fn a_new_file_is_a_whole_plist_and_crlf_is_kept() {
     assert!(!text.contains("<!-- "), "{text}");
     assert!(text.contains("\t\t<string>applinks:www.shop.example.com</string>\n"));
     // What `fsp` writes is what it leaves alone.
-    assert_eq!(
-        pf::edit_entitlements(PLIST, &text, &domains()).unwrap(),
-        text
-    );
+    assert_eq!(edit_plist(PLIST, &text, &domains()).unwrap(), text);
 
     let crlf = ENTITLEMENTS.replace('\n', "\r\n");
-    let edited = pf::edit_entitlements(PLIST, &crlf, &domains()).unwrap();
+    let edited = edit_plist(PLIST, &crlf, &domains()).unwrap();
     assert!(!edited.replace("\r\n", "").contains('\n'));
 }
 
@@ -352,4 +344,169 @@ fn what_is_not_an_editable_plist_says_so() {
     );
     let no_value = bare("\t<key>com.apple.developer.associated-domains</key>\n");
     assert!(plist_error(&no_value).contains("is not an <array>"));
+}
+
+// --- what the review of the first version found --------------------------------------
+
+fn tempdir_with(files: &[(&str, &[u8])]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    for (path, bytes) in files {
+        let full = dir.path().join(path);
+        std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+        std::fs::write(full, bytes).unwrap();
+    }
+    dir
+}
+
+fn both() -> Links {
+    cfg(&[
+        "domains: [shop.example.com]",
+        "android_package: com.example.shop",
+        &format!("android_sha256: [\"{}\"]", "AB:".repeat(31) + "AB"),
+        "android_manifest: android/app/src/main/AndroidManifest.xml",
+        "ios_app_id: ABCDE12345.com.example.shop",
+        "ios_entitlements: ios/Runner/Runner.entitlements",
+    ])
+}
+
+#[test]
+fn a_file_that_is_not_utf8_is_refused_not_rewritten() {
+    let mut bytes = MANIFEST.as_bytes().to_vec();
+    bytes.splice(0..0, b"<!-- caf\xE9 -->\n".iter().copied());
+    let dir = tempdir_with(&[(PATH, &bytes), (PLIST, ENTITLEMENTS.as_bytes())]);
+    let e = format!("{:#}", pf::plan(dir.path(), &both(), FILTERS).unwrap_err());
+    assert_eq!(
+        e,
+        format!("{PATH} is not UTF-8; fsp links edits only UTF-8 files")
+    );
+    let dir = tempdir_with(&[(PATH, MANIFEST.as_bytes()), (PLIST, b"<plist>\xFF</plist>")]);
+    let e = format!("{:#}", pf::plan(dir.path(), &both(), FILTERS).unwrap_err());
+    assert_eq!(
+        e,
+        format!("{PLIST} is not UTF-8; fsp links edits only UTF-8 files")
+    );
+}
+
+#[test]
+fn a_main_action_outside_an_intent_filter_is_not_a_launcher() {
+    let queries = MANIFEST.replace(
+        "<action android:name=\"android.intent.action.PROCESS_TEXT\"/>",
+        "<action android:name=\"android.intent.action.MAIN\"/>",
+    );
+    assert_eq!(edited(&queries).1, Was::NoMarkers);
+}
+
+#[test]
+fn markers_outside_an_activity_are_an_error() {
+    let in_app = MANIFEST.replace(
+        "        <!-- Don't delete",
+        "        <!-- fsp links: begin -->\n        <!-- fsp links: end -->\n        <!-- Don't delete",
+    );
+    let e = manifest_error(&in_app);
+    assert_eq!(
+        e,
+        format!(
+            "{PATH}: the fsp links markers are not inside an <activity>, where Android reads intent filters; move both onto lines of their own inside the activity that opens links"
+        )
+    );
+    // One in the activity and one outside it is as wrong.
+    let split = MANIFEST
+        .replace(
+            "            <meta-data\n              android:name=\"io.flutter.embedding.android.NormalTheme\"",
+            "            <!-- fsp links: begin -->\n            <meta-data\n              android:name=\"io.flutter.embedding.android.NormalTheme\"",
+        )
+        .replace(
+            "        <!-- Don't delete",
+            "        <!-- fsp links: end -->\n        <!-- Don't delete",
+        );
+    assert!(manifest_error(&split).contains("not inside an <activity>"));
+}
+
+#[test]
+fn a_comment_that_only_starts_like_the_begin_marker_is_not_one() {
+    let note = MANIFEST.replace(
+        "        <!-- Don't delete",
+        "        <!-- fsp links: beginning of notes -->\n        <!-- Don't delete",
+    );
+    assert_eq!(edited(&note).1, Was::NoMarkers);
+}
+
+#[test]
+fn a_tab_indented_manifest_gets_tab_indented_markers() {
+    let tabs = MANIFEST.replace("    ", "\t");
+    let (text, _) = edited(&tabs);
+    assert!(text.contains("\t\t\t<!-- fsp links: begin."), "{text}");
+    assert!(!text.contains("\t    "), "mixed indentation");
+    assert_eq!(edited(&text).1, Was::Current);
+}
+
+#[test]
+fn a_filter_that_tools_removes_is_not_ours() {
+    let links = both();
+    let hand = MANIFEST.replace(
+        "        </activity>\n",
+        "            <intent-filter tools:node=\"remove\">\n                <action android:name=\"android.intent.action.VIEW\"/>\n                <data android:scheme=\"https\" android:host=\"shop.example.com\"/>\n            </intent-filter>\n        </activity>\n",
+    );
+    assert!(pf::foreign_filters(PATH, &hand, &links).is_empty());
+}
+
+#[test]
+fn the_build_setting_may_spell_the_path_in_any_of_xcodes_ways() {
+    for value in [
+        "Runner/Runner.entitlements",
+        "\"$(SRCROOT)/Runner/Runner.entitlements\"",
+        "\"${SRCROOT}/Runner/Runner.entitlements\"",
+        "\"$(PROJECT_DIR)/Runner/Runner.entitlements\"",
+        "\"$(SOURCE_ROOT)/Runner/Runner.entitlements\"",
+        "./Runner/Runner.entitlements",
+    ] {
+        let pbx = format!("\t\t\t\tCODE_SIGN_ENTITLEMENTS = {value};\n");
+        assert!(
+            pf::pbxproj_references(&pbx, "Runner/Runner.entitlements"),
+            "{value}"
+        );
+    }
+    assert!(!pf::pbxproj_references(
+        "CODE_SIGN_ENTITLEMENTS = Runner/Other.entitlements;",
+        "Runner/Runner.entitlements"
+    ));
+}
+
+#[test]
+fn only_our_applinks_items_are_rewritten_and_the_rest_is_byte_for_byte() {
+    let current = bare(
+        "\t<key>com.apple.developer.associated-domains</key>\n\t<array>\n\t\t<!-- keep me -->\n\t\t<string>webcredentials:shop.example.com</string>\n\t\t\t<string>applinks:old.example.com?mode=developer</string>\n\t\t  <string>applinks:shop.example.com</string>\n\t\t<!-- and me -->\n\t</array>\n",
+    );
+    let (text, removed) = pf::edit_entitlements(PLIST, &current, &domains()[..1]).unwrap();
+    assert_eq!(
+        text,
+        bare(
+            "\t<key>com.apple.developer.associated-domains</key>\n\t<array>\n\t\t<!-- keep me -->\n\t\t<string>webcredentials:shop.example.com</string>\n\t\t<!-- and me -->\n\t\t<string>applinks:shop.example.com</string>\n\t</array>\n"
+        )
+    );
+    assert_eq!(removed.len(), 1, "{removed:?}");
+    assert_eq!(
+        removed[0],
+        format!(
+            "{PLIST}: removed `applinks:old.example.com?mode=developer` from `com.apple.developer.associated-domains`: fsp links owns every applinks: entry, and `old.example.com` is not in `fespalier.links.domains`"
+        )
+    );
+    // Our own entries already there are not a warning, and the file is the same bytes.
+    let (again, none) = pf::edit_entitlements(PLIST, &text, &domains()[..1]).unwrap();
+    assert_eq!((again, none.len()), (text, 0));
+}
+
+#[test]
+fn a_missing_entitlements_folder_is_an_error_not_a_new_ios_tree() {
+    let dir = tempdir_with(&[(PATH, MANIFEST.as_bytes())]);
+    let e = format!("{:#}", pf::plan(dir.path(), &both(), FILTERS).unwrap_err());
+    assert_eq!(
+        e,
+        format!(
+            "{PLIST}: the folder ios/Runner does not exist; fsp links writes the file, not the iOS project: run `flutter create --platforms ios .`, or create the folder"
+        )
+    );
+    let dir = tempdir_with(&[(PATH, MANIFEST.as_bytes()), ("ios/Runner/Info.plist", b"x")]);
+    let (files, _) = pf::plan(dir.path(), &both(), FILTERS).unwrap();
+    assert!(files.iter().any(|f| f.path == PLIST && f.created));
 }

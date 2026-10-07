@@ -307,14 +307,21 @@ pub(crate) fn android_filters_body(links: &[Link], cfg: &Links) -> String {
     out
 }
 
-/// `android/intent-filters.xml`: the filters under a comment that says where to paste them.
+/// `android/intent-filters.xml`: the filters under a comment that says where to paste them, or
+/// that `fsp links` puts them there itself.
 fn android_filters(links: &[Link], cfg: &Links) -> String {
-    format!(
-        "<!-- Written by `fsp links` from lib/app: don't edit it, run `fsp links` again.\n\
-         \x20    Paste these elements into the <activity> of android/app/src/main/AndroidManifest.xml\n\
-         \x20    that has the MAIN/LAUNCHER intent filter, replacing the ones pasted before. -->\n{}",
-        android_filters_body(links, cfg)
-    )
+    let comment = match &cfg.android_manifest {
+        Some(manifest) => format!(
+            "<!-- Written by `fsp links` from lib/app: don't edit it, run `fsp links` again.\n\
+             \x20    `fsp links` puts these elements into {manifest} itself (android_manifest:):\n\
+             \x20    this file is a copy to read, don't paste it. -->\n"
+        ),
+        None => "<!-- Written by `fsp links` from lib/app: don't edit it, run `fsp links` again.\n\
+             \x20    Paste these elements into the <activity> of android/app/src/main/AndroidManifest.xml\n\
+             \x20    that has the MAIN/LAUNCHER intent filter, replacing the ones pasted before. -->\n"
+            .to_string(),
+    };
+    format!("{comment}{}", android_filters_body(links, cfg))
 }
 
 fn asset_links(apps: &[AndroidApp]) -> String {
@@ -439,12 +446,11 @@ const PLIST_HEAD: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
 
 /// An entitlements plist with the `applinks:` entries of `domains`; `comment` adds the line that
 /// says where the entries go (the paste file's), and leaves it out of a file `fsp` owns.
-pub(crate) fn entitlements(domains: &[String], comment: bool) -> String {
+pub(crate) fn entitlements(domains: &[String], comment: Option<&str>) -> String {
     let mut out = String::from(PLIST_HEAD);
-    if comment {
-        out.push_str(
-            "<!-- Written by `fsp links`: add these entries to ios/Runner/Runner.entitlements. -->\n",
-        );
+    if let Some(comment) = comment {
+        out.push_str(comment);
+        out.push('\n');
     }
     out.push_str("<plist version=\"1.0\">\n<dict>\n");
     out.push_str("\t<key>com.apple.developer.associated-domains</key>\n\t<array>\n");
@@ -453,6 +459,24 @@ pub(crate) fn entitlements(domains: &[String], comment: bool) -> String {
     }
     out.push_str("\t</array>\n</dict>\n</plist>\n");
     out
+}
+
+/// The comment of `ios/associated-domains.entitlements`.
+fn entitlements_comment(cfg: &Links) -> String {
+    let managed: Vec<&str> = cfg
+        .apps_ios
+        .iter()
+        .filter_map(|a| a.entitlements.as_deref())
+        .collect();
+    if managed.is_empty() {
+        "<!-- Written by `fsp links`: add these entries to ios/Runner/Runner.entitlements. -->"
+            .to_string()
+    } else {
+        format!(
+            "<!-- Written by `fsp links`: `fsp links` adds these entries to {} itself (ios_entitlements:); this file is a copy to read, don't paste it. -->",
+            managed.join(", ")
+        )
+    }
 }
 
 fn url_types(scheme: &str, app_id: &str) -> String {
@@ -701,7 +725,7 @@ pub fn files(app: &App, cfg: &Links) -> Result<Vec<OutFile>> {
         file(ASSET_LINKS, android.map(|a| asset_links(a))),
         file(
             IOS_ENTITLEMENTS,
-            ios.map(|_| entitlements(&cfg.domains, true)),
+            ios.map(|_| entitlements(&cfg.domains, Some(&entitlements_comment(cfg)))),
         ),
         file(
             IOS_URL_TYPES,
@@ -711,6 +735,20 @@ pub fn files(app: &App, cfg: &Links) -> Result<Vec<OutFile>> {
         file(AASA, ios.map(|_| aasa(&links, cfg, &cfg.apps_ios))),
         file(SITEMAP, Some(sitemap(&links, &cfg.domains[0]))),
     ])
+}
+
+/// Writes `text` to `path` through a temporary file next to it and a rename, so an interrupted
+/// run leaves the old file, not an empty one. The file's permissions are kept.
+fn write_atomic(path: &Path, text: &str) -> Result<()> {
+    let name = path
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let tmp = path.with_file_name(format!(".{name}.fsp-tmp"));
+    fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
+    if let Ok(meta) = fs::metadata(path) {
+        let _ = fs::set_permissions(&tmp, meta.permissions());
+    }
+    fs::rename(&tmp, path).with_context(|| format!("writing {}", path.display()))
 }
 
 /// `fsp links` (write) and `fsp links --check` (compare, change nothing, fail when stale).
@@ -779,23 +817,23 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
             eprintln!("  removed {}", shown(f));
         }
     }
-    let (mut edited, mut platform_stale) = (0, vec![]);
+    let (mut edited, mut created, mut platform_stale) = (0, 0, vec![]);
     for f in platform.iter().filter(|f| f.stale.is_some()) {
         platform_stale.extend(f.stale.clone());
         if check {
             continue;
         }
-        let path = project.join(&f.path);
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-        }
-        fs::write(&path, &f.text).with_context(|| format!("writing {}", path.display()))?;
+        write_atomic(&project.join(&f.path), &f.text)?;
         eprintln!(
             "  {} {}",
             if f.created { "wrote" } else { "edited" },
             f.path
         );
-        edited += 1;
+        if f.created {
+            created += 1;
+        } else {
+            edited += 1;
+        }
     }
     let platform_count = platform.len();
     let and_platform = |detail: String| {
@@ -823,8 +861,8 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
         "✓ links: {count} files in {folder} ({written} written, {} unchanged){}",
         count - written,
         and_platform(format!(
-            " ({edited} edited, {} unchanged)",
-            platform_count - edited
+            " ({created} written, {edited} edited, {} unchanged)",
+            platform_count - edited - created
         ))
     );
     Ok(())

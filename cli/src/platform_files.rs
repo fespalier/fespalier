@@ -323,7 +323,13 @@ fn markers(path: &str, text: &str, scan: &Scan) -> Result<Option<(Range, Range)>
     let begins: Vec<_> = scan
         .comments
         .iter()
-        .filter(|c| inner(c).starts_with("fsp links: begin"))
+        .filter(|c| {
+            inner(c)
+                .strip_prefix("fsp links: begin")
+                .is_some_and(|rest| {
+                    rest.is_empty() || rest.starts_with(|ch: char| ch == '.' || ch.is_whitespace())
+                })
+        })
         .collect();
     let ends: Vec<_> = scan
         .comments
@@ -354,7 +360,9 @@ fn main_activity_end(text: &str) -> Option<usize> {
         if n.name != "action" || n.attr("android:name") != Some(MAIN_ACTION) {
             continue;
         }
-        let filter = n.parent.filter(|p| nodes[*p].name == "intent-filter")?;
+        let Some(filter) = n.parent.filter(|p| nodes[*p].name == "intent-filter") else {
+            continue;
+        };
         if let Some(activity) = nodes[filter]
             .parent
             .filter(|p| nodes[*p].name == "activity")
@@ -374,7 +382,15 @@ fn indented(filters: &str, indent: &str, eol: &str) -> String {
     for line in filters.lines() {
         if !line.is_empty() {
             out.push_str(indent);
-            out.push_str(line);
+            let body = line.trim_start_matches(' ');
+            let steps = (line.len() - body.len()) / 4;
+            // A tab-indented file gets tabs for the filter's own nesting too.
+            out.push_str(&if indent.contains('\t') {
+                "\t".repeat(steps)
+            } else {
+                " ".repeat(steps * 4)
+            });
+            out.push_str(body);
         }
         out.push_str(eol);
     }
@@ -391,6 +407,24 @@ pub fn edit_manifest(path: &str, current: &str, filters: &str) -> Result<(String
     let eol = eol_of(current);
     let scan = scan(current).ok_or_else(|| no_activity(path))?;
     if let Some(((begin, _), (end, _))) = markers(path, current, &scan)? {
+        let (nodes, _) = tree(&scan).ok_or_else(|| no_activity(path))?;
+        let enclosing = |pos: usize| {
+            nodes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| n.start < pos && pos < n.close_start)
+                .max_by_key(|(_, n)| n.start)
+                .map(|(i, _)| i)
+        };
+        let (at_begin, at_end) = (enclosing(begin), enclosing(end));
+        let in_activity = at_begin == at_end
+            && at_begin
+                .is_some_and(|i| matches!(nodes[i].name.as_str(), "activity" | "activity-alias"));
+        if !in_activity {
+            return Err(anyhow::anyhow!(
+                "{path}: the fsp links markers are not inside an <activity>, where Android reads intent filters; move both onto lines of their own inside the activity that opens links"
+            ));
+        }
         let le = line_end(current, begin);
         let from = le
             + if current[le..].starts_with("\r\n") {
@@ -416,7 +450,11 @@ pub fn edit_manifest(path: &str, current: &str, filters: &str) -> Result<(String
         return Err(no_activity(path));
     }
     let at = line_start(current, close);
-    let indent = format!("{}    ", indent_at(current, close));
+    let outer = indent_at(current, close);
+    let indent = format!(
+        "{outer}{}",
+        if outer.contains('\t') { "\t" } else { "    " }
+    );
     let mut block = format!("{indent}{BEGIN}{eol}");
     block.push_str(&indented(filters, &indent, eol));
     block.push_str(&format!("{indent}{END}{eol}"));
@@ -443,6 +481,9 @@ pub fn foreign_filters(path: &str, text: &str, cfg: &Links) -> Vec<String> {
     let mut out = vec![];
     for filter in nodes.iter().filter(|n| n.name == "intent-filter") {
         if inside.is_some_and(|(b, e)| filter.start > b && filter.start < e) {
+            continue;
+        }
+        if matches!(filter.attr("tools:node"), Some("remove" | "removeAll")) {
             continue;
         }
         let kids: Vec<&Node> = filter.children.iter().map(|c| &nodes[*c]).collect();
@@ -524,16 +565,22 @@ fn domains_entry(domains: &[String], indent: &str, eol: &str) -> String {
 /// The text of a new entitlements file for `domains`.
 #[must_use]
 pub fn new_entitlements(domains: &[String]) -> String {
-    entitlements(domains, false)
+    entitlements(domains, None)
 }
 
 /// `current` (the plist at `path`) with the `applinks:` entries of `domains` in its
-/// associated-domains array, other entries kept before them.
+/// associated-domains array. Only `fsp`'s own `applinks:` items are removed and rewritten (the
+/// rest of the file stays byte for byte), and the new ones go before the array's end. Also the
+/// warnings for each removed entry whose host isn't one of the domains.
 ///
 /// # Errors
 /// When the file isn't a property list with a `<dict>` at the top, or its
 /// `com.apple.developer.associated-domains` is not an `<array>`.
-pub fn edit_entitlements(path: &str, current: &str, domains: &[String]) -> Result<String> {
+pub fn edit_entitlements(
+    path: &str,
+    current: &str,
+    domains: &[String],
+) -> Result<(String, Vec<String>)> {
     let eol = eol_of(current);
     let (nodes, roots) = scan(current)
         .and_then(|s| tree(&s))
@@ -562,7 +609,7 @@ pub fn edit_entitlements(path: &str, current: &str, domains: &[String]) -> Resul
             let mut text = String::from(&current[..dict.start]);
             text.push_str(&format!("<dict>{eol}{entry}{indent}</dict>"));
             text.push_str(&current[dict.end..]);
-            return Ok(text);
+            return Ok((text, vec![]));
         }
         let indent = match kids.last() {
             Some(last) if starts_line(current, last.start) => {
@@ -585,7 +632,7 @@ pub fn edit_entitlements(path: &str, current: &str, domains: &[String]) -> Resul
             text.push_str(&entry);
             text.push_str(&current[dict.close_start..]);
         }
-        return Ok(text);
+        return Ok((text, vec![]));
     };
 
     let array = kids
@@ -610,33 +657,93 @@ pub fn edit_entitlements(path: &str, current: &str, domains: &[String]) -> Resul
                 .trim()
                 .starts_with("applinks:")
     };
-    let mut body = String::new();
-    for n in items.iter().filter(|n| !owned(n)) {
-        body.push_str(&format!("{item_indent}{}{eol}", &current[n.start..n.end]));
+    let mine: Vec<&Node> = items.iter().copied().filter(|n| owned(n)).collect();
+    let wanted = applinks(domains);
+    if mine.len() == wanted.len()
+        && mine
+            .iter()
+            .zip(&wanted)
+            .all(|(n, w)| current[n.start..n.end] == *w)
+    {
+        return Ok((current.to_string(), vec![]));
     }
-    for s in applinks(domains) {
-        body.push_str(&format!("{item_indent}{s}{eol}"));
+    // fsp owns every applinks: entry; one whose host isn't a domain is dropped, with a warning.
+    let mut removed = vec![];
+    for n in &mine {
+        let entry = current[n.open_end..n.close_start].trim();
+        let host = entry["applinks:".len()..]
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if !domains.contains(&host) {
+            removed.push(format!(
+                "{path}: removed `{entry}` from `{DOMAINS_KEY}`: fsp links owns every applinks: entry, and `{host}` is not in `fespalier.links.domains`"
+            ));
+        }
     }
-    let new = format!("<array>{eol}{body}{outer}</array>");
-    if current[array.start..array.end] == new {
-        return Ok(current.to_string());
+    let lines: String = wanted
+        .iter()
+        .map(|s| format!("{item_indent}{s}{eol}"))
+        .collect();
+    let mut text = current.to_string();
+    // Only the applinks: items go (their whole line when they have it to themselves).
+    for n in mine.iter().rev() {
+        let (from, to) = if starts_line(&text, n.start)
+            && text[n.end..line_end(&text, n.end)].trim().is_empty()
+        {
+            let le = line_end(&text, n.end);
+            let nl = if text[le..].starts_with("\r\n") {
+                2
+            } else {
+                usize::from(text[le..].starts_with('\n'))
+            };
+            (line_start(&text, n.start), le + nl)
+        } else {
+            (n.start, n.end)
+        };
+        text.replace_range(from..to, "");
     }
-    let mut text = String::from(&current[..array.start]);
-    text.push_str(&new);
-    text.push_str(&current[array.end..]);
-    Ok(text)
+    // The array's own end moved by what was removed before it.
+    let shift = current.len() - text.len();
+    if array.self_closing {
+        text.replace_range(
+            array.start..array.end,
+            &format!("<array>{eol}{lines}{outer}</array>"),
+        );
+    } else {
+        let close = array.close_start - shift;
+        if starts_line(&text, close) {
+            text.insert_str(line_start(&text, close), &lines);
+        } else {
+            text.insert_str(close, &format!("{eol}{lines}{outer}"));
+        }
+    }
+    Ok((text, removed))
 }
 
 /// Whether `ios/Runner.xcodeproj/project.pbxproj` sets `CODE_SIGN_ENTITLEMENTS` to `rel`, a
 /// path relative to ios/.
-fn pbxproj_references(pbxproj: &str, rel: &str) -> bool {
+pub(crate) fn pbxproj_references(pbxproj: &str, rel: &str) -> bool {
     pbxproj
         .lines()
         .filter_map(|l| l.trim().strip_prefix("CODE_SIGN_ENTITLEMENTS"))
         .filter_map(|l| l.trim_start().strip_prefix('='))
         .any(|v| {
             let v = v.trim().trim_end_matches(';').trim().trim_matches('"');
-            v.strip_prefix("$(SRCROOT)/").unwrap_or(v) == rel
+            let v = [
+                "$(SRCROOT)/",
+                "${SRCROOT}/",
+                "$(PROJECT_DIR)/",
+                "${PROJECT_DIR}/",
+                "$(SOURCE_ROOT)/",
+                "${SOURCE_ROOT}/",
+                "./",
+            ]
+            .iter()
+            .find_map(|p| v.strip_prefix(p))
+            .unwrap_or(v);
+            v == rel
         })
 }
 
@@ -666,6 +773,13 @@ pub struct Planned {
     pub created: bool,
 }
 
+/// A file's text; the edit writes the whole file back, so one that isn't UTF-8 is refused
+/// instead of being changed outside the markers.
+fn utf8(path: &str, bytes: Vec<u8>) -> Result<String> {
+    String::from_utf8(bytes)
+        .map_err(|_| anyhow::anyhow!("{path} is not UTF-8; fsp links edits only UTF-8 files"))
+}
+
 /// The platform files `cfg` names, as they should be, and the warnings met on the way.
 ///
 /// `filters` are the intent filters, without a comment, one element per line.
@@ -682,7 +796,7 @@ pub fn plan(project: &Path, cfg: &Links, filters: &str) -> Result<(Vec<Planned>,
                 "{path} not found (`fespalier.links.android_manifest`); run `flutter create --platforms android .`, or fix the path"
             );
         };
-        let current = String::from_utf8_lossy(&bytes).into_owned();
+        let current = utf8(path, bytes)?;
         warnings.extend(foreign_filters(path, &current, cfg));
         let (text, was) = edit_manifest(path, &current, filters)?;
         let stale = match was {
@@ -710,15 +824,24 @@ pub fn plan(project: &Path, cfg: &Links, filters: &str) -> Result<(Vec<Planned>,
         }
         warnings.extend(unreferenced(project, path));
         files.push(match read(path) {
-            None => Planned {
+            None => {
+                let folder = path.rsplit_once('/').map_or("ios", |(f, _)| f);
+                if !project.join(folder).is_dir() {
+                    bail!(
+                        "{path}: the folder {folder} does not exist; fsp links writes the file, not the iOS project: run `flutter create --platforms ios .`, or create the folder"
+                    );
+                }
+                Planned {
                 path: path.to_string(),
                 text: new_entitlements(&cfg.domains),
                 stale: Some(format!("{path} is missing")),
                 created: true,
-            },
+                }
+            }
             Some(bytes) => {
-                let current = String::from_utf8_lossy(&bytes).into_owned();
-                let text = edit_entitlements(path, &current, &cfg.domains)?;
+                let current = utf8(path, bytes)?;
+                let (text, removed) = edit_entitlements(path, &current, &cfg.domains)?;
+                warnings.extend(removed);
                 let stale = (text != current).then(|| {
                     format!("{path}: the applinks: entries of {DOMAINS_KEY} are out of date")
                 });

@@ -3153,6 +3153,7 @@ fn links_edits_the_platform_files_and_check_follows_them() {
     let template = include_str!("fixtures/links/AndroidManifest.xml");
     fs::write(root.join(manifest_path), template).unwrap();
     fs::create_dir_all(root.join("ios/Runner.xcodeproj")).unwrap();
+    fs::create_dir_all(root.join("ios/Runner")).unwrap();
     fs::write(
         root.join("ios/Runner.xcodeproj/project.pbxproj"),
         "CODE_SIGN_ENTITLEMENTS = Runner/Other.entitlements;\n",
@@ -3189,7 +3190,7 @@ fn links_edits_the_platform_files_and_check_follows_them() {
         "{err}"
     );
     assert!(
-        err.contains("and 2 platform files (2 edited, 0 unchanged)"),
+        err.contains("and 2 platform files (1 written, 1 edited, 0 unchanged)"),
         "{err}"
     );
     let manifest = fs::read_to_string(root.join(manifest_path)).unwrap();
@@ -3202,6 +3203,23 @@ fn links_edits_the_platform_files_and_check_follows_them() {
         fs::read_to_string(root.join(plist_path))
             .unwrap()
             .contains("<string>applinks:shop.example.com</string>")
+    );
+
+    // The paste files say `fsp` does the pasting, and no temporary file stays behind.
+    let paste = fs::read_to_string(root.join("links/android/intent-filters.xml")).unwrap();
+    assert!(
+        paste.contains("this file is a copy to read, don't paste it"),
+        "{paste}"
+    );
+    let paste = fs::read_to_string(root.join("links/ios/associated-domains.entitlements")).unwrap();
+    assert!(
+        paste.contains("this file is a copy to read, don't paste it"),
+        "{paste}"
+    );
+    assert!(
+        !root
+            .join("ios/Runner/.Runner.entitlements.fsp-tmp")
+            .exists()
     );
 
     // Pointing the build setting at it quiets the warning; everything is up to date.
@@ -3218,7 +3236,7 @@ fn links_edits_the_platform_files_and_check_follows_them() {
     );
     let (ok, _, err) = fsp_full(root, &["links"], &[]);
     assert!(
-        ok && !err.contains("  edited ") && err.contains("(0 edited, 2 unchanged)"),
+        ok && !err.contains("  edited ") && err.contains("(0 written, 0 edited, 2 unchanged)"),
         "{err}"
     );
 

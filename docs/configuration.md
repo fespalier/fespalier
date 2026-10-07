@@ -151,7 +151,7 @@ address bar (and in the browser's history) as `go` does, and back pops it.
 `links:` is what [`fsp links`](cli.md#deep-links-and-a-sitemap-fsp-links) reads; only that command checks its values.
 Since 0.11.0 it also takes `flavors:` (one app per build flavour, [Flavours](cli.md#flavours)), `scheme_host`
 and `paths:` ([Host-less schemes and path patterns](cli.md#host-less-schemes-and-path-patterns)).
-`android_manifest` and `ios_entitlements` (per flavour, or flat for one app) make `fsp links` edit those files
+`android_manifest` (top level only) and `ios_entitlements` (per flavour, or flat for one app) make `fsp links` edit those files
 ([Editing AndroidManifest.xml and the entitlements](cli.md#editing-androidmanifestxml-and-the-entitlements));
 `fsp links --check` in CI is [Links in CI](cli.md#links-in-ci).
 

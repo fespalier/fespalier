@@ -314,6 +314,7 @@ fespalier:
   links:
     domains: [shop.example.com]
     scheme: myshop
+    android_manifest: android/app/src/main/AndroidManifest.xml # since 0.11.0, one for all flavours (see below)
     flavors:
       prod:
         android_package: com.example.shop
@@ -362,7 +363,7 @@ fespalier:
     ios_entitlements: ios/Runner/Runner.entitlements # needs ios_app_id; per flavour with `flavors:`
 ```
 
-`android_manifest` is a path to a file called `AndroidManifest.xml` under `android/`, and `ios_entitlements` a `.entitlements` file under `ios/`, both relative to the project. Each flavour names its own `ios_entitlements` (two may name the same file). The domains are the same in every flavour, so each file gets the same entries.
+`android_manifest` is a path to a file called `AndroidManifest.xml` under `android/`, and `ios_entitlements` a `.entitlements` file under `ios/`, both relative to the project. `android_manifest` is top-level only (a flavour's own is an unknown field): the filters are the same for every flavour, and a flavour's manifest in `android/app/src/<flavour>/` is a case for markers by hand. Each flavour names its own `ios_entitlements` (two may name the same file). The domains are the same in every flavour, so each file gets the same entries.
 
 **The manifest.** The intent filters go between two comment markers, in the one `<activity>` that has the `MAIN` intent filter:
 
@@ -377,16 +378,19 @@ fespalier:
 
 - **The first run** has no markers to go by. It finds the activity with the `MAIN` action (an `<activity-alias>` and anything in a comment don't count) and inserts the block before its `</activity>`, indented four spaces deeper than that line. The file must have exactly one such activity, and the file must exist: `fsp` doesn't create a manifest (`flutter create --platforms android .` does).
 - **Later runs** replace only what is between the markers, so a second run changes no byte, and nothing outside them is touched: your other filters, your comments, the file's line endings.
+- **Markers must be inside an `<activity>`** (or `<activity-alias>`), both in the same one: Android reads intent filters nowhere else, so markers in `<application>` or split between elements are an error.
 - **By hand.** A manifest with several launcher activities, or a flavour manifest of its own, gets the markers where you want them: write `<!-- fsp links: begin -->` and `<!-- fsp links: end -->` on two lines of their own inside the activity that opens links, and run `fsp links`. Those marker lines stay as you wrote them.
 - **A filter of your own** for one of the `domains` (or for the `scheme`, with `scheme_host: false`) outside the markers is a warning, with its line: remove it, `fsp links` writes that filter now.
 
-**An entitlements file.** `fsp links` owns the `<string>applinks:...</string>` entries of the `com.apple.developer.associated-domains` array, one per domain, and nothing else in the file:
+**An entitlements file.** `fsp links` owns **every** `<string>applinks:...</string>` entry of the `com.apple.developer.associated-domains` array, one per domain, and nothing else in the file. An `applinks:` entry you added by hand (a staging domain, `applinks:x.example.com?mode=developer`) is removed on the next run, with a warning that names it: put the domain in `domains:` instead.
 
-- With the key there, the other entries (`webcredentials:`, `activitycontinuation:`) stay where they are, and the `applinks:` ones follow them, in domain order. An empty `<array/>` is filled. A key whose value isn't an `<array>` is an error: fix it by hand.
+- With the key there, only the `applinks:` items are removed and rewritten: the other entries (`webcredentials:`, `activitycontinuation:`), comments and their indentation stay byte for byte, and the new `applinks:` items go before the end of the array, in domain order. An array that already holds exactly them is not touched. An empty `<array/>` is filled. A key whose value isn't an `<array>` is an error: fix it by hand.
 - Without the key, the entry goes in before the end of the top-level `<dict>`.
-- A file that doesn't exist is written whole (a property list with that one entry). A file that isn't a property list with a `<dict>` at the top is an error.
-- The edit leaves Xcode's layout alone: toggling the Associated Domains capability rewrites the file, and the next run splices into what Xcode wrote.
-- A file that no `CODE_SIGN_ENTITLEMENTS` in `ios/Runner.xcodeproj/project.pbxproj` names is a warning: no build uses it. Add the Associated Domains capability in Xcode, or point the build setting (per flavour configuration) at the file.
+- A file that doesn't exist is written whole (a property list with that one entry), but only when its folder does: with no `ios/Runner/`, it is an error that points at `flutter create --platforms ios .`, so `fsp links` never makes an iOS tree by itself. A file that isn't a property list with a `<dict>` at the top is an error.
+- The rest of the file is left as it is: toggling the Associated Domains capability rewrites the file, and the next run splices into what Xcode wrote.
+- A file that no `CODE_SIGN_ENTITLEMENTS` (spelled plainly, or with `$(SRCROOT)/`, `${SRCROOT}/`, `$(PROJECT_DIR)/`, `$(SOURCE_ROOT)/` or `./` in front) in `ios/Runner.xcodeproj/project.pbxproj` names is a warning: no build uses it. Add the Associated Domains capability in Xcode, or point the build setting (per flavour configuration) at the file.
+
+A file that isn't UTF-8 is an error (`{path} is not UTF-8; fsp links edits only UTF-8 files`): the edit writes the whole file back, and a lossy rewrite would change bytes outside the markers. Files are written through a temporary file and a rename, so an interrupted run never leaves one empty. The copies below `out` say, when a platform file is managed, that `fsp links` does the pasting. A filter with `tools:node="remove"` or `"removeAll"` is not warned about.
 
 `Info.plist` stays by hand, for the `CFBundleURLTypes` entry of `ios/info-url-types.xml`.
 

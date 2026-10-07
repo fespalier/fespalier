@@ -107,7 +107,7 @@ fespalier:
     paths: [/, /orders/*]                  # since 0.11.0; default: every linkable route
     android_manifest: android/app/src/main/AndroidManifest.xml  # since 0.11.0; opt in: fsp edits it
     ios_entitlements: ios/Runner/Runner.entitlements            # since 0.11.0; opt in: fsp edits its applinks: entries
-    # flavors:                             # since 0.11.0, instead of the keys for one app
+    # flavors:                             # since 0.11.0, instead of the keys for one app (android_manifest stays top-level)
     #   prod:  {android_package: ..., android_sha256: [...], ios_app_id: ..., ios_entitlements: ios/Runner/RunnerProd.entitlements}
     #   debug: {android_package: ..., android_sha256: [...], ios_app_id: ..., ios_entitlements: ios/Runner/RunnerDebug.entitlements}
     out: links                             # default; relative to the project, no `..`
@@ -127,17 +127,20 @@ and, with `scheme`, `ios/info-url-types.xml` (iOS, when `ios_app_id` is set); an
   `web/` (or serve it from the domain). Android verifies only an `assetlinks.json` served
   over HTTPS at `/.well-known/assetlinks.json` with no redirect.
 - **`android_manifest:` (since 0.11.0)** is the path of an `AndroidManifest.xml` under `android/`
-  (needs `android_package`). The filters go between `<!-- fsp links: begin. ... -->` and
+  (needs `android_package`; top level only, also with `flavors:`). The filters go between `<!-- fsp links: begin. ... -->` and
   `<!-- fsp links: end -->` in the one `<activity>` with the `MAIN` action (not an
   `<activity-alias>`, not a comment): the first run inserts the block before its `</activity>`,
   later runs replace only what is between the markers (idempotent, line endings kept). With
   several launcher activities, write `<!-- fsp links: begin -->` and `<!-- fsp links: end -->` on
   two lines of their own in the right one. The file must exist. A filter of yours for a domain
-  outside the markers is a warning.
+  outside the markers is a warning (not for `tools:node="remove"`). Markers must both sit in one
+  `<activity>`, else it is an error; a file that is not UTF-8 is refused; writes are atomic.
 - **`ios_entitlements:` (since 0.11.0)** is a `.entitlements` file under `ios/`, flat or per
-  flavour (needs `ios_app_id`). `fsp` owns the `applinks:` strings of
-  `com.apple.developer.associated-domains`: other entries stay first, ours follow; no key gets
-  one at the end of the top-level `<dict>`; a missing file is written whole. A value that is not
+  flavour (needs `ios_app_id`). `fsp` owns **every** `applinks:` string of
+  `com.apple.developer.associated-domains` (one not in `domains:` is removed, with a warning);
+  only those items are rewritten, other entries and comments stay byte for byte and ours go
+  before `</array>`; no key gets
+  one at the end of the top-level `<dict>`; a missing file is written whole, but only when its folder exists (no `ios/Runner/` is an error). A value that is not
   an `<array>`, or a file that is not a plist with a `<dict>`, is an error. It warns when
   `ios/Runner.xcodeproj/project.pbxproj` has no `CODE_SIGN_ENTITLEMENTS` naming the file.
 - **Flavours (since 0.11.0).** `flavors:` maps a name (letters, digits, `_`, starting lower-case: `prod`, `devStaging`) to

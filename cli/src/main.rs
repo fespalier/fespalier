@@ -486,6 +486,8 @@ mod enum_tests;
 #[cfg(test)]
 mod extra_tests;
 #[cfg(test)]
+mod flow_tests;
+#[cfg(test)]
 mod form_tests;
 #[cfg(test)]
 mod freshness_tests;

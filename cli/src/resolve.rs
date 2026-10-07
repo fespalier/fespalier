@@ -18,7 +18,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use heck::ToUpperCamelCase;
+use heck::{ToLowerCamelCase, ToUpperCamelCase};
 
 use crate::config::Remount;
 use crate::dart::{self, Class, Function, Lit, Module, Span, Ty};
@@ -233,8 +233,37 @@ pub struct Action {
     pub validate: Option<String>,
     /// Its `optimistic()` (since 0.8.1).
     pub optimistic: Option<Optimistic>,
+    /// Its `const steps` (since 0.11.0): the form is one over several pages, the steps of a
+    /// section.
+    pub steps: Option<StepFlow>,
     /// The function, for diagnostics.
     pub span: Span,
+}
+
+/// The `const steps` beside an action with a `form()` (since 0.11.0): the form is asked over the
+/// pages of a section, one child folder per step.
+#[derive(Debug, Clone)]
+pub struct StepFlow {
+    /// The steps in order.
+    pub steps: Vec<FlowStep>,
+    /// The name of its `skip()`, when it has one.
+    pub skip: Option<String>,
+    /// `SignupStep`: the enum the generated file declares for the steps.
+    pub enum_name: String,
+    /// The `steps` variable, for diagnostics.
+    pub file: String,
+    pub span: Span,
+}
+
+/// One step of a [`StepFlow`].
+#[derive(Debug, Clone)]
+pub struct FlowStep {
+    /// The step's folder, as `steps` names it: `name`.
+    pub folder: String,
+    /// The constant of the step enum: `name`, or `contactInfo` for `contact_info`.
+    pub constant: String,
+    /// The fields of the input the step asks for, in order.
+    pub fields: Vec<String>,
 }
 
 /// The `form()` beside an action: `NicknameFields form(Profile profile)`.
@@ -285,6 +314,12 @@ struct Companions<'a> {
     file: &'a str,
     /// The id of the route (or section) whose `action.dart` it is.
     id: usize,
+    /// The folder, for the step folders of a flow.
+    node: &'a Node,
+    /// Whether the folder is a section's (no page.dart, a layout.dart).
+    section_folder: bool,
+    /// The dynamic segments of the folder's path.
+    segs: &'a [(String, usize)],
 }
 
 /// The named parameters of a form hook that are not an action's keys: a key can't take their
@@ -309,6 +344,12 @@ pub struct ActionNames {
     pub hook: String,
     /// The hook of its form (since 0.8.1): `useForm`, or `useApproveForm`.
     pub form_hook: String,
+    /// The hook of its multi-page form (since 0.11.0): `useFlow`, or `useApproveFlow`.
+    pub flow_hook: String,
+    /// Reads the form from a step page: `flowOf`, or `approveFlowOf`.
+    pub flow_of: String,
+    /// What a guard calls to resume a flow: `resume`, or `approveResume`.
+    pub resume: String,
 }
 
 impl ActionNames {
@@ -325,6 +366,9 @@ impl ActionNames {
                 run: "submit".into(),
                 hook: "useAction".into(),
                 form_hook: "useForm".into(),
+                flow_hook: "useFlow".into(),
+                flow_of: "flowOf".into(),
+                resume: "resume".into(),
             }
         } else {
             ActionNames {
@@ -332,6 +376,9 @@ impl ActionNames {
                 run: function.into(),
                 hook: format!("use{upper}"),
                 form_hook: format!("use{upper}Form"),
+                flow_hook: format!("use{upper}Flow"),
+                flow_of: format!("{function}FlowOf"),
+                resume: format!("{function}Resume"),
             }
         }
     }
@@ -546,6 +593,9 @@ pub struct Route {
     /// This folder's own `leave.dart`, when it has a valid one and a page: not inherited, as
     /// `go_router` asks a parent's `onExit` when the parent's own match exits.
     pub leave: Option<Leave>,
+    /// The section (route id) whose flow this page is a step of (since 0.11.0): the section's
+    /// `leave.dart`, when it has one, is this page's too.
+    pub step_of: Option<usize>,
     /// A `redirect.dart` in place of a page: the route only redirects.
     pub redirect: Option<Guard>,
     /// The nearest transition.dart at or above this folder; only for pages, and
@@ -957,6 +1007,7 @@ pub fn resolve(
         }
     }
     r.settle_actions();
+    r.settle_flows();
     r.unused_freshness();
     r.app
 }
@@ -1030,6 +1081,7 @@ impl Resolver<'_> {
             observe: None,
             observers: vec![],
             leave: None,
+            step_of: None,
             redirect: None,
             transition: None,
             present: None,
@@ -1419,9 +1471,12 @@ impl Resolver<'_> {
             }
         }
         // leave.dart: asked before this folder's page goes; not inherited.
+        let is_flow = node.files.contains_key(&Kind::Layout)
+            && !node.files.contains_key(&Kind::Page)
+            && modules.get(&Kind::Action).is_some_and(forms::has_steps);
         let leave = modules
             .get(&Kind::Leave)
-            .and_then(|m| self.leave(m, node, &segs, id));
+            .and_then(|m| self.leave(m, node, &segs, id, is_flow));
         // not_found.dart: the root's is the fallback for everything; one further down covers
         // its folder, for unknown URLs under it and for unparsable segments in its routes.
         let mut not_found = up.not_found.clone();
@@ -3095,6 +3150,7 @@ impl Resolver<'_> {
                 form: None,
                 validate: None,
                 optimistic: None,
+                steps: None,
                 span: f.span.clone(),
             };
             let at = Companions {
@@ -3102,6 +3158,9 @@ impl Resolver<'_> {
                 src,
                 file: &file,
                 id,
+                node,
+                section_folder,
+                segs,
             };
             self.companions(&at, f, &input, &mut action);
             out.push(action);
@@ -3116,8 +3175,22 @@ impl Resolver<'_> {
             let name = forms::companion(&f.name, role);
             at.m.functions.iter().find(|g| g.name == name)
         };
-        if let Some(g) = find(Companion::Form) {
-            a.form = self.form(at, f, g, input, a);
+        let steps =
+            at.m.variables
+                .iter()
+                .find(|v| v.name == forms::steps_name(&f.name));
+        match (find(Companion::Form), steps) {
+            (Some(g), steps) => {
+                a.form = self.form(at, f, g, input, a, steps.is_some());
+                if let (Some(v), Some(form)) = (steps, &a.form) {
+                    a.steps = self.steps_flow(at, f, v, input, form);
+                }
+            }
+            (None, Some(v)) => {
+                let msg = "`steps` without `form()`: a flow starts from `form()`";
+                self.diags.error(at.file, Some(&v.span), msg);
+            }
+            (None, None) => {}
         }
         if let Some(g) = find(Companion::Validate) {
             a.validate = self.validate(at, f, g, input);
@@ -3136,9 +3209,15 @@ impl Resolver<'_> {
         g: &Function,
         input: &Ty,
         a: &Action,
+        is_flow: bool,
     ) -> Option<Form> {
         let (action, name) = (&f.name, &g.name);
-        let hook = ActionNames::of(action).form_hook;
+        let names = ActionNames::of(action);
+        let hook = if is_flow {
+            names.flow_hook
+        } else {
+            names.form_hook
+        };
         let file = at.file;
         let found = input.text.as_str();
         if first_is_ref(g) {
@@ -3187,6 +3266,13 @@ impl Resolver<'_> {
         let mut data = None;
         match g.params.as_slice() {
             [] => {}
+            [p] if is_flow && !p.named && p.required => {
+                let msg = format!(
+                    "`{name}()` can't take a value in a flow: `resume` runs in a guard, before any data is loaded, and builds the form from `{name}()` alone"
+                );
+                self.diags.error(file, Some(&p.span), msg);
+                ok = false;
+            }
             [p] if !p.named && p.required => {
                 if let Some(ty) = &p.ty {
                     data = Some(extra::extra_type(
@@ -3249,6 +3335,128 @@ impl Resolver<'_> {
             data,
             file: file.to_string(),
             span: g.span.clone(),
+        })
+    }
+
+    /// `const steps = {'name': ['name', 'business'], ...}` beside an action with a `form()` (since
+    /// 0.11.0): the form is asked over the pages of a section, one child folder per step. Reports
+    /// what is wrong with the map and leaves the action a plain form.
+    fn steps_flow(
+        &mut self,
+        at: &Companions,
+        f: &Function,
+        v: &dart::Variable,
+        input: &Ty,
+        form: &Form,
+    ) -> Option<StepFlow> {
+        let (file, action) = (at.file, &f.name);
+        let entries = v.lists.as_ref().filter(|l| {
+            v.is_const
+                && !l.is_empty()
+                && l.iter()
+                    .enumerate()
+                    .all(|(i, e)| l[..i].iter().all(|o| o.key != e.key))
+        });
+        let Some(entries) = entries else {
+            let msg = "`steps` must be a `const` map literal from a step folder's name to the list of the input's fields it asks for, in order";
+            self.diags.error(file, Some(&v.span), msg);
+            return None;
+        };
+        if !at.section_folder {
+            let msg = "`steps` makes `action()` a form over several pages, so action.dart must be a section's: a folder with a layout.dart and no page.dart";
+            self.diags.error(file, Some(&v.span), msg);
+            return None;
+        }
+        if !at.segs.is_empty() {
+            let names: Vec<&str> = at.segs.iter().map(|(n, _)| n.as_str()).collect();
+            let msg = format!(
+                "a flow sits at a path with no dynamic segment for now: its steps are `go`ne to by their typed routes, and `{}` would have to be given to each; move the section out of the folder that takes it",
+                names.join("`, `")
+            );
+            self.diags.error(file, Some(&v.span), msg);
+            return None;
+        }
+        let mut ok = true;
+        let mut steps = vec![];
+        let mut owner: Vec<(&str, &str)> = vec![];
+        let fields: Vec<&str> = form.fields.iter().map(|f| f.name.as_str()).collect();
+        for e in entries {
+            let name = e.key.as_str();
+            let dir = format!("{}{name}", folder_prefix(&at.node.dir));
+            let has_page = !name.contains('/')
+                && at.node.children.iter().any(|c| {
+                    c.dir == dir
+                        && matches!(c.seg, Some(Seg::Static(_)))
+                        && c.files.contains_key(&Kind::Page)
+                });
+            if !has_page {
+                let msg = format!(
+                    "`'{name}'` is a step, but `{dir}/page.dart` does not exist: each step is a child folder with a page.dart"
+                );
+                self.diags.error(file, Some(&e.key_span), msg);
+                ok = false;
+            }
+            for (field, span) in &e.values {
+                if !fields.contains(&field.as_str()) {
+                    let msg = format!("`'{field}'` is not a field of `{}`", input.text);
+                    self.diags.error(file, Some(span), msg);
+                    ok = false;
+                } else if let Some((_, first)) = owner.iter().find(|(f, _)| f == field) {
+                    let msg = format!(
+                        "`'{field}'` is asked for by `'{first}'` and `'{name}'`: a field belongs to one step"
+                    );
+                    self.diags.error(file, Some(span), msg);
+                    ok = false;
+                } else {
+                    owner.push((field, name));
+                }
+            }
+            steps.push(FlowStep {
+                folder: name.to_string(),
+                constant: name.to_lower_camel_case(),
+                fields: e.values.iter().map(|(f, _)| f.clone()).collect(),
+            });
+        }
+        for field in &fields {
+            if !owner.iter().any(|(f, _)| f == field) {
+                let msg =
+                    format!("`'{field}'` belongs to no step: add it to the step that asks for it");
+                self.diags.error(file, Some(&v.span), msg);
+                ok = false;
+            }
+        }
+        let stem = section_name(&at.node.dir);
+        let stem = stem.strip_suffix("Section").unwrap_or(&stem);
+        let enum_name = match action.as_str() {
+            "action" => format!("{stem}Step"),
+            other => format!("{stem}{}Step", other.to_upper_camel_case()),
+        };
+        let skip_name = forms::companion(action, Companion::Skip);
+        let skip = at.m.functions.iter().find(|g| g.name == skip_name);
+        let skip = skip.and_then(|g| {
+            let fits = g.ret.as_ref().is_some_and(|r| r.text == "bool")
+                && matches!(
+                    g.params.as_slice(),
+                    [a, b] if !a.named && a.required && !b.named && b.required
+                        && a.ty.as_ref().is_some_and(|t| t.text == enum_name)
+                        && b.ty.as_ref().is_some_and(|t| t.text == input.text)
+                );
+            if fits {
+                return Some(skip_name.clone());
+            }
+            let msg = format!(
+                "expected `bool {skip_name}({enum_name} step, {} input)` (`<name>Skip` for an action called `<name>`)",
+                input.text
+            );
+            self.diags.error(file, Some(&g.span), msg);
+            None
+        });
+        ok.then(|| StepFlow {
+            steps,
+            skip,
+            enum_name,
+            file: file.to_string(),
+            span: v.span.clone(),
         })
     }
 
@@ -3392,6 +3600,62 @@ impl Resolver<'_> {
         self.diags.error(file, Some(&v.span), msg);
         // Without a usable list the default stays: the actions still work.
         None
+    }
+
+    /// Ties each flow section to its steps (since 0.11.0): a step's page is asked about by the
+    /// section's `leave.dart`, and a flow sits neither inside another flow nor at a localized path.
+    fn settle_flows(&mut self) {
+        let flows: Vec<(usize, usize)> = self
+            .app
+            .routes
+            .iter()
+            .enumerate()
+            .flat_map(|(id, r)| {
+                r.actions
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, a)| a.steps.is_some())
+                    .map(move |(i, _)| (id, i))
+            })
+            .collect();
+        for (rid, i) in flows {
+            let dir = self.app.routes[rid].dir.clone();
+            let file = format!("{}action.dart", folder_prefix(&dir));
+            let Some(flow) = self.app.routes[rid].actions[i].steps.clone() else {
+                continue;
+            };
+            let outer = self.app.routes.iter().enumerate().find(|(o, r)| {
+                *o != rid
+                    && r.actions.iter().any(|a| a.steps.is_some())
+                    && (r.dir.is_empty() || dir.starts_with(&format!("{}/", r.dir)))
+            });
+            if let Some((_, outer)) = outer {
+                let msg = format!(
+                    "a flow can't sit inside another flow: this section is below the steps of {}action.dart; a step is a page, and its folder holds no flow of its own",
+                    folder_prefix(&outer.dir)
+                );
+                self.diags.error(&file, Some(&flow.span), msg);
+                continue;
+            }
+            if !self.app.routes[rid].localized.is_empty() {
+                let msg = "a flow's path can't be localized for now (a `paths` in a route.dart at or above it): `within` is its path as the folders spell it";
+                self.diags.error(&file, Some(&flow.span), msg);
+                continue;
+            }
+            let leave = self.app.routes[rid].leave.clone();
+            for step in &flow.steps {
+                let step_dir = format!("{}{}", folder_prefix(&dir), step.folder);
+                let child = self.app.routes[rid]
+                    .children
+                    .iter()
+                    .copied()
+                    .find(|&c| self.app.routes[c].dir == step_dir);
+                if let Some(c) = child {
+                    self.app.routes[c].step_of = Some(rid);
+                    self.app.routes[c].leave = leave.clone();
+                }
+            }
+        }
     }
 
     /// Settles what each action invalidates, and what its helpers are called, once every route,
@@ -3592,7 +3856,11 @@ impl Resolver<'_> {
                     (&n.run, "helper"),
                     (&n.hook, "hook"),
                 ];
-                if a.form.is_some() {
+                if a.steps.is_some() {
+                    names.push((&n.flow_hook, "flow hook"));
+                    names.push((&n.flow_of, "flow reader"));
+                    names.push((&n.resume, "resume helper"));
+                } else if a.form.is_some() {
                     names.push((&n.form_hook, "form hook"));
                 }
                 for (name, role) in names {
@@ -3827,6 +4095,7 @@ impl Resolver<'_> {
         node: &Node,
         segs: &[(String, usize)],
         route: usize,
+        is_flow: bool,
     ) -> Option<Leave> {
         let file = node.rel(Kind::Leave);
         if node.files.contains_key(&Kind::Redirect) {
@@ -3834,7 +4103,9 @@ impl Resolver<'_> {
             self.diags.error(&file, None, msg);
             return None;
         }
-        if !node.files.contains_key(&Kind::Page) {
+        // A flow section is the one page-less folder that may have one: it is the `onExit` of
+        // each of its steps (since 0.11.0).
+        if !node.files.contains_key(&Kind::Page) && !is_flow {
             let msg = "leave.dart is asked before this folder's page goes, and this folder has no page.dart (a layout's shell has no onExit in go_router: put a leave.dart beside each page that needs one)";
             self.diags.error(&file, None, msg);
             return None;
@@ -3896,6 +4167,15 @@ impl Resolver<'_> {
             Scope::Route(route),
             "leave()",
         );
+        if is_flow
+            && args
+                .iter()
+                .any(|a| matches!(a.bind, Bind::Segment(_) | Bind::Query(_) | Bind::Extra))
+        {
+            let msg = "a flow's leave() is asked on every step of the section, so it reads no segment, query parameter or `extra`: `Uri uri` has the location";
+            self.diags.error(&file, Some(&f.span), msg);
+            args.retain(|a| !matches!(a.bind, Bind::Segment(_) | Bind::Query(_) | Bind::Extra));
+        }
         args.extend(page);
         let import = self.import(&file);
         let extra = extra_of(

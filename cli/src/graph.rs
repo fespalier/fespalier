@@ -88,6 +88,9 @@ pub fn markers(r: &Route, root: bool, guarded: bool) -> Vec<&'static str> {
     if r.page.is_some() && r.leave.is_some() {
         out.push("leave");
     }
+    if r.step_of.is_some() {
+        out.push("flow");
+    }
     if r.present.is_some() {
         out.push("present");
     }

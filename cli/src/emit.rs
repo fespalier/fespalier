@@ -42,6 +42,8 @@ struct FileCx {
     routes: Vec<RouteCx>,
     /// A typed handle for each section's data.dart.
     sections: Vec<SectionCx>,
+    /// The enum of the steps of each multi-page form (since 0.11.0).
+    step_enums: Vec<StepEnumCx>,
     /// How `AppRoutes.matchUrl` matches a location to a route, most specific first.
     matchers: Vec<MatcherCx>,
     params_fns: Vec<ParamsFnCx>,
@@ -158,6 +160,9 @@ struct TreeCx {
     /// For a `GoRoute` whose folder has a leave.dart: the `onExit` expression (since 0.11.0); the
     /// page is wrapped in `leaveScope`.
     leave: Option<String>,
+    /// The page is a step of a flow (since 0.11.0): `flowStep` registers the flow of the layout
+    /// above in the page's `LeaveScope`.
+    flow_step: bool,
     routes: Vec<TreeCx>,
     /// Starts with a `:segment` (or, for a `ShellRoute`, holds a route that does).
     #[serde(skip)]
@@ -408,6 +413,9 @@ struct ActionCx {
     optimistic: Option<String>,
     /// The `useForm` hook, when the action has a `form()` (since 0.8.1).
     form: Option<FormCx>,
+    /// The members of a multi-page form, when the action has `const steps` (since 0.11.0): in
+    /// place of the `useForm` hook.
+    flow: Option<FlowCx>,
     /// The providers a success invalidates.
     invalidates: String,
     /// `{required int id, required _i5.Input input}`: the named parameters of the one-shot helper.
@@ -524,6 +532,36 @@ impl ParamsFn {
             ParamsFn::Leave(id) => format!("_leave{id}"),
         }
     }
+}
+
+/// The members of an action with `const steps`: the multi-page form of a section.
+#[derive(Serialize)]
+struct FlowCx {
+    /// The private `FlowSpec` the members share: `_flow`.
+    spec: String,
+    /// The arguments of its constructor, one per line.
+    spec_args: Vec<String>,
+    /// The members: `useFlow`, `flowOf` and `resume`, or the action's own.
+    hook: String,
+    of: String,
+    resume: String,
+    /// `{required int id, ActionFormValidation validation = ...}`.
+    params: String,
+    /// What `use` is called with after the provider.
+    use_args: String,
+    /// `{required int id, required Uri uri}`, and what `resume` is called with.
+    resume_params: String,
+    resume_args: String,
+}
+
+/// The step enum of a flow: `enum SignupStep { name, company }`.
+#[derive(Serialize)]
+struct StepEnumCx {
+    name: String,
+    /// The `action.dart` it is the steps of.
+    file: String,
+    /// Each constant and the folder of its page, in order.
+    steps: Vec<(String, String)>,
 }
 
 /// The form hook of an action with a `form()`.
@@ -664,6 +702,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         copy_with: routes.iter().any(|r| !r.fields.is_empty()),
         routes,
         sections: sections(app, diags),
+        step_enums: step_enums(app),
         matchers,
         params_fns: fns.into_iter().map(|f| params_fn(app, f)).collect(),
         providers: app
@@ -1096,6 +1135,7 @@ fn routes_of(
             root_at: r.root.then(|| (rel(r, Kind::Layout), None)),
             container: None,
             leave: None,
+            flow_step: false,
             dynamic: out.iter().any(|r| r.dynamic),
             catch_all: out.iter().any(|r| r.catch_all),
             serves: None,
@@ -1495,7 +1535,7 @@ fn hook_call(
 ///
 /// `_i3.leave(context, ref, id: v.id, uri: state.uri, page: page)`, inside `leaveWithParams` when
 /// it reads the URL.
-fn leave_expr(r: &Route, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<String> {
+fn leave_expr(app: &App, r: &Route, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<String> {
     let l = r.leave.as_ref()?;
     let mut args = vec![];
     if l.takes_context {
@@ -1519,9 +1559,21 @@ fn leave_expr(r: &Route, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<Stri
             ParamsFn::Leave(id).name()
         )
     };
+    // A step of a flow is asked about by the section's leave.dart, and only when the navigation
+    // leaves the section: `within` is its path, under the mount prefix.
+    let within = r
+        .step_of
+        .map(|s| {
+            format!(
+                ", within: joinLocation(at, {})",
+                dart_str(&resolve::pattern(&app.routes[s].url))
+            )
+        })
+        .unwrap_or_default();
+    let owner = r.step_of.map_or(r, |s| &app.routes[s]);
     Some(format!(
-        "leaveExit(context, state, {}, (ref, page) => {call})",
-        dart_str(&rel(r, Kind::Leave))
+        "leaveExit(context, state, {}, (ref, page) => {call}{within})",
+        dart_str(&rel(owner, Kind::Leave))
     ))
 }
 
@@ -1671,7 +1723,8 @@ fn page_route(
         root: root_key,
         root_at: root_key.then(|| (rel(r, Kind::Page), r.page_span.clone())),
         container: None,
-        leave: leave_expr(r, id, fns),
+        leave: leave_expr(app, r, id, fns),
+        flow_step: r.step_of.is_some(),
         routes,
         dynamic: locale::has_params(path),
         catch_all: path.contains("(.+)"),
@@ -1727,6 +1780,7 @@ fn redirect_route(
         root_at: None,
         container: None,
         leave: None,
+        flow_step: false,
         routes: vec![],
         dynamic: locale::has_params(path),
         catch_all: path.contains("(.+)"),
@@ -1845,6 +1899,7 @@ fn tab_routes(
             .then(|| format!("_i{}.container", layout.import)),
         redirects: guard_calls(app, id, &below, fns),
         leave: None,
+        flow_step: false,
         serves: None,
         has_params: false,
         case_sensitive: true,
@@ -2227,27 +2282,7 @@ fn form_cx(
         ]
         .map(String::from),
     );
-    let fields: Vec<String> = f
-        .fields
-        .iter()
-        .map(|field| {
-            let n = &field.name;
-            match (field.codec, &field.draft) {
-                (Some(codec), _) => {
-                    format!("{n}: f.text('{n}', (v) => v.{n}, FieldCodec.{codec})")
-                }
-                (None, Some(draft)) => {
-                    format!("{n}: f.value('{n}', (v) => v.{n}, draft: {draft})")
-                }
-                (None, None) => format!("{n}: f.value('{n}', (v) => v.{n})"),
-            }
-        })
-        .collect();
-    let input: Vec<String> = f
-        .fields
-        .iter()
-        .map(|field| format!("{n}: f.{n}.value", n = field.name))
-        .collect();
+    let (fields, input) = form_field_exprs(f);
     let (data, take) = if f.data.is_some() {
         ("data", "data")
     } else {
@@ -2282,12 +2317,7 @@ fn form_cx(
     if !key_names.is_empty() {
         args.push(format!("key: [{}]", key_names.join(", ")));
     }
-    let shape: Vec<String> = f
-        .fields
-        .iter()
-        .map(|f| format!("{}:{}", f.name, f.ty))
-        .collect();
-    args.push(format!("shape: {}", dart_str(&shape.join(","))));
+    args.push(format!("shape: {}", dart_str(&form_shape(f))));
     args.push("draft: draft".to_string());
     FormCx {
         hook: hook.to_string(),
@@ -2297,6 +2327,161 @@ fn form_cx(
         params: format!("{{{}}}", params.join(", ")),
         args: args.join(", "),
     }
+}
+
+/// The step enums of the app's flows.
+fn step_enums(app: &App) -> Vec<StepEnumCx> {
+    app.routes
+        .iter()
+        .flat_map(|r| {
+            r.actions.iter().filter_map(move |a| {
+                let steps = a.steps.as_ref()?;
+                Some(StepEnumCx {
+                    name: steps.enum_name.clone(),
+                    file: rel(r, Kind::Action),
+                    steps: steps
+                        .steps
+                        .iter()
+                        .map(|s| (s.constant.clone(), s.folder.clone()))
+                        .collect(),
+                })
+            })
+        })
+        .collect()
+}
+
+/// The members of the multi-page form of an action with `const steps`: a private `FlowSpec` that
+/// holds everything the form is made from, and the hook, the reader and the guard's `resume` that
+/// go through it.
+fn flow_cx(
+    app: &App,
+    r: &Route,
+    a: &Action,
+    (f, steps): (&resolve::Form, &resolve::StepFlow),
+    (names, keys, key_names): (&ActionNames, &[String], &[String]),
+) -> FlowCx {
+    let input_ty = &a.input.ty;
+    let (fields, input) = form_field_exprs(f);
+    let e = &steps.enum_name;
+    let route_of = |folder: &str| {
+        let dir = format!(
+            "{}{folder}",
+            if r.dir.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", r.dir)
+            }
+        );
+        let step = app
+            .routes
+            .iter()
+            .find(|c| c.dir == dir && c.step_of.is_some());
+        step.and_then(|c| c.name.as_deref())
+            .map_or_else(|| "null".to_string(), |n| format!("const {n}Route()"))
+    };
+    let routes: Vec<String> = steps
+        .steps
+        .iter()
+        .map(|s| format!("{e}.{}: {}", s.constant, route_of(&s.folder)))
+        .collect();
+    let mut owners = vec![];
+    for s in &steps.steps {
+        for field in &s.fields {
+            owners.push(format!("'{field}': {e}.{}", s.constant));
+        }
+    }
+    let mut spec_args = vec![
+        format!(
+            "id: {}",
+            dart_str(&format!("{}#{}", rel(r, Kind::Action), a.name))
+        ),
+        format!("shape: {}", dart_str(&form_shape(f))),
+        format!("steps: {e}.values"),
+        format!("routes: {{{}}}", routes.join(", ")),
+        format!("owners: const {{{}}}", owners.join(", ")),
+    ];
+    if let Some(skip) = &steps.skip {
+        spec_args.push(format!("skip: _i{}.{skip}", a.import));
+    }
+    spec_args.extend([
+        format!("initial: _i{}.{}", a.import, f.function),
+        format!(
+            "fields: (ActionFormFields<{input_ty}> f) => ({})",
+            fields.join(", ")
+        ),
+        format!("input: (f) => ({})", input.join(", ")),
+    ]);
+    if let Some(v) = &a.validate {
+        spec_args.push(format!("validate: _i{}.{v}", a.import));
+    }
+    let key = if key_names.is_empty() {
+        String::new()
+    } else {
+        format!("key: [{}], ", key_names.join(", "))
+    };
+    let mut params: Vec<String> = keys.to_vec();
+    params.extend(
+        [
+            "ActionFormValidation validation = ActionFormValidation.afterSubmit",
+            "FormDraft? draft = const FormDraft()",
+            "ActionFormMessages messages = const ActionFormMessages()",
+        ]
+        .map(String::from),
+    );
+    let mut resume_params: Vec<String> = keys.to_vec();
+    resume_params.push("required Uri uri".into());
+    FlowCx {
+        spec: if a.name == "action" {
+            "_flow".to_string()
+        } else {
+            format!("_{}Flow", a.name)
+        },
+        spec_args,
+        hook: names.flow_hook.clone(),
+        of: names.flow_of.clone(),
+        resume: names.resume.clone(),
+        params: format!("{{{}}}", params.join(", ")),
+        use_args: format!("{key}validation: validation, draft: draft, messages: messages"),
+        resume_params: format!("{{{}}}", resume_params.join(", ")),
+        resume_args: format!("{key}uri: uri"),
+    }
+}
+
+/// `nickname:String,age:int?`: a form's fields and types, so a form that changed drops the drafts
+/// of the old one.
+fn form_shape(f: &resolve::Form) -> String {
+    let shape: Vec<String> = f
+        .fields
+        .iter()
+        .map(|f| format!("{}:{}", f.name, f.ty))
+        .collect();
+    shape.join(",")
+}
+
+/// What a form builds its fields with, and the input it makes of them.
+fn form_field_exprs(f: &resolve::Form) -> (Vec<String>, Vec<String>) {
+    let fields = f
+        .fields
+        .iter()
+        .map(|field| {
+            let n = &field.name;
+            match (field.codec, &field.draft) {
+                (Some(codec), _) => {
+                    format!("{n}: f.text('{n}', (v) => v.{n}, FieldCodec.{codec})")
+                }
+                (None, Some(draft)) => {
+                    format!("{n}: f.value('{n}', (v) => v.{n}, draft: {draft})")
+                }
+                (None, None) => format!("{n}: f.value('{n}', (v) => v.{n})"),
+            }
+        })
+        .collect();
+    let input = f
+        .fields
+        .iter()
+        .map(|field| format!("{n}: f.{n}.value", n = field.name))
+        .collect();
+    (fields, input)
 }
 
 fn provider_expr(id: usize, d: &Data) -> String {
@@ -2537,6 +2722,9 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
                 Flow::FutureOr => ("runActionOr", "watchActionOr", "Returns its result as the action does (a value when the action gave one, else a `Future`), or throws what the action threw"),
                 Flow::Sync => ("runActionSync", "watchActionSync", "Returns its result at once, or throws what the action threw"),
             };
+            let flow = a.steps.as_ref().zip(a.form.as_ref()).map(|(steps, f)| {
+                flow_cx(app, r, a, (f, steps), (&names, &hook_keys_list, &hook_key_names))
+            });
             ActionCx {
                 name: a.name.clone(),
                 file: rel(r, Kind::Action),
@@ -2556,7 +2744,12 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
                 call: format!("_i{}.{}({})", a.import, a.name, call_args.join(", ")),
                 validate: a.validate.as_ref().map(|v| format!("_i{}.{v}", a.import)),
                 optimistic,
-                form: a.form.as_ref().map(|f| form_cx(r, a, f, &names.form_hook, &hook_keys_list, &hook_key_names)),
+                form: a
+                    .form
+                    .as_ref()
+                    .filter(|_| a.steps.is_none())
+                    .map(|f| form_cx(r, a, f, &names.form_hook, &hook_keys_list, &hook_key_names)),
+                flow,
                 key_param: key_ty,
                 invalidates: if invalidates.is_empty() {
                     format!("const <{list}>[]")
@@ -3207,6 +3400,9 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     }
     if r.page.is_some() && r.leave.is_some() {
         tags.push("leave");
+    }
+    if r.step_of.is_some() {
+        tags.push("flow");
     }
     if r.layout.is_some() {
         tags.push("layout");

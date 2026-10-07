@@ -69,6 +69,10 @@
     <data android:pathPattern="/laden/..*" />
     <data android:pathPattern="/shops/..*" />
     <data android:pathPattern="/shops/..*/items/..*" />
+    <data android:path="/signup/company" />
+    <data android:path="/signup/contact" />
+    <data android:path="/signup/name" />
+    <data android:path="/signup/review" />
     <data android:pathPattern="/teams/..*/members" />
     <data android:pathPattern="/teams/..*/members/..*" />
     <data android:pathPattern="/teams/..*/settings" />
@@ -144,6 +148,10 @@
     <data android:pathPattern="/laden/..*" />
     <data android:pathPattern="/shops/..*" />
     <data android:pathPattern="/shops/..*/items/..*" />
+    <data android:path="/signup/company" />
+    <data android:path="/signup/contact" />
+    <data android:path="/signup/name" />
+    <data android:path="/signup/review" />
     <data android:pathPattern="/teams/..*/members" />
     <data android:pathPattern="/teams/..*/members/..*" />
     <data android:pathPattern="/teams/..*/settings" />
@@ -220,6 +228,10 @@
     <data android:pathPattern="/laden/..*" />
     <data android:pathPattern="/shops/..*" />
     <data android:pathPattern="/shops/..*/items/..*" />
+    <data android:path="/signup/company" />
+    <data android:path="/signup/contact" />
+    <data android:path="/signup/name" />
+    <data android:path="/signup/review" />
     <data android:pathPattern="/teams/..*/members" />
     <data android:pathPattern="/teams/..*/members/..*" />
     <data android:pathPattern="/teams/..*/settings" />

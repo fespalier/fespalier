@@ -49,40 +49,48 @@ digraph routes {
         n32 [label="/reports/yearly\nYearlyReportRoute"];
       }
       n33 [label="/search\nSearchRoute\n(data)"];
-      n34 [label="/ticks\nTicksRoute\n(data)"];
-      n35 [label="/vault\nVaultRoute\n(guard)"];
-      n36 [label="/:slug\nSlugRoute"];
       subgraph cluster_b3 {
+        label="layout signup/layout.dart (guard)";
+        style=rounded;
+        n34 [label="/signup/company\nSignupCompanyRoute\n(guard, leave, flow)"];
+        n35 [label="/signup/contact\nSignupContactRoute\n(guard, leave, flow)"];
+        n36 [label="/signup/name\nSignupNameRoute\n(guard, leave, flow)"];
+        n37 [label="/signup/review\nSignupReviewRoute\n(guard, leave, flow)"];
+      }
+      n38 [label="/ticks\nTicksRoute\n(data)"];
+      n39 [label="/vault\nVaultRoute\n(guard)"];
+      n40 [label="/:slug\nSlugRoute"];
+      subgraph cluster_b4 {
         label="layout notes/layout.dart";
         style=rounded;
-        n37 [label="/notes/:id\nNoteRoute\n(guard)"];
+        n41 [label="/notes/:id\nNoteRoute\n(guard)"];
       }
-      n38 [label="/old-shops/:shop\nOldShopsShopRoute\n(redirect)", style=dashed];
-      n39 [label="/orders/:id\nOrderRoute"];
-      n40 [label="/orders/:id/refund\nRefundRoute\n(data, action, guard)"];
-      n41 [label="/orders/:id/refund/receipt\nReceiptRoute"];
-      n42 [label="/orders/:id/refund/confirm\nConfirmRefundRoute\n(guard, sibling)"];
-      n43 [label="/remount/location/:id\nRemountLocationRoute"];
-      n44 [label="/remount/never/:id\nRemountNeverRoute"];
-      n45 [label="/remount/segments/:id\nRemountSegmentsRoute"];
-      n46 [label="/shop/:category\nCategoryShopRoute\nfr /boutique/:category, de /laden/:category\n(data)"];
-      subgraph cluster_b4 {
+      n42 [label="/old-shops/:shop\nOldShopsShopRoute\n(redirect)", style=dashed];
+      n43 [label="/orders/:id\nOrderRoute"];
+      n44 [label="/orders/:id/refund\nRefundRoute\n(data, action, guard)"];
+      n45 [label="/orders/:id/refund/receipt\nReceiptRoute"];
+      n46 [label="/orders/:id/refund/confirm\nConfirmRefundRoute\n(guard, sibling)"];
+      n47 [label="/remount/location/:id\nRemountLocationRoute"];
+      n48 [label="/remount/never/:id\nRemountNeverRoute"];
+      n49 [label="/remount/segments/:id\nRemountSegmentsRoute"];
+      n50 [label="/shop/:category\nCategoryShopRoute\nfr /boutique/:category, de /laden/:category\n(data)"];
+      subgraph cluster_b5 {
         label="layout shops/$shop/layout.dart (guard)";
         style=rounded;
-        n47 [label="/shops/:shop\nShopRoute\n(guard)"];
-        n48 [label="/shops/:shop/items/:id\nItemRoute\n(data)"];
+        n51 [label="/shops/:shop\nShopRoute\n(guard)"];
+        n52 [label="/shops/:shop/items/:id\nItemRoute\n(data)"];
       }
-      subgraph cluster_b5 {
+      subgraph cluster_b6 {
         label="layout teams/$teamId/layout.dart (data, fresh, cached)";
         style=rounded;
-        n49 [label="/teams/:teamId/members\nMembersRoute"];
-        n50 [label="/teams/:teamId/members/:member\nMemberRoute\n(data, fresh)"];
-        n51 [label="/teams/:teamId/settings\nTeamSettingsRoute"];
+        n53 [label="/teams/:teamId/members\nMembersRoute"];
+        n54 [label="/teams/:teamId/members/:member\nMemberRoute\n(data, fresh)"];
+        n55 [label="/teams/:teamId/settings\nTeamSettingsRoute"];
       }
-      n52 [label="/browse/*categories\nBrowseRoute\n(data)"];
-      n53 [label="/compare/*ids\nCompareRoute\n(data)"];
-      n54 [label="/files/*path?\nFilesRoute"];
-      n55 [label="/wiki/*article\nWikiRoute\n(data)"];
+      n56 [label="/browse/*categories\nBrowseRoute\n(data)"];
+      n57 [label="/compare/*ids\nCompareRoute\n(data)"];
+      n58 [label="/files/*path?\nFilesRoute"];
+      n59 [label="/wiki/*article\nWikiRoute\n(data)"];
     }
   }
   n0 -> n1;
@@ -112,17 +120,21 @@ digraph routes {
   n0 -> n37;
   n0 -> n38;
   n0 -> n39;
+  n0 -> n40;
+  n0 -> n41;
+  n0 -> n42;
   n0 -> n43;
-  n0 -> n44;
-  n0 -> n45;
-  n0 -> n46;
   n0 -> n47;
+  n0 -> n48;
   n0 -> n49;
+  n0 -> n50;
   n0 -> n51;
-  n0 -> n52;
   n0 -> n53;
-  n0 -> n54;
   n0 -> n55;
+  n0 -> n56;
+  n0 -> n57;
+  n0 -> n58;
+  n0 -> n59;
   n8 -> n9;
   n9 -> n10;
   n12 -> n13;
@@ -135,9 +147,9 @@ digraph routes {
   n25 -> n29;
   n25 -> n30;
   n26 -> n27;
-  n39 -> n40;
-  n39 -> n42;
-  n40 -> n41;
-  n47 -> n48;
-  n49 -> n50;
+  n43 -> n44;
+  n43 -> n46;
+  n44 -> n45;
+  n51 -> n52;
+  n53 -> n54;
 }

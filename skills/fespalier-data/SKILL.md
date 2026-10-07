@@ -203,8 +203,15 @@ Profile optimistic(Profile current, NicknameFields input) => Profile(input.nickn
   `draft:`, "Keep as draft". The form registers itself as the page's `LeaveSource`; `leavePrompt` is the
   app's question (override it on material_ui); `LeavePrompts.answer(choice)` is the test's.
 
+- **Multi-page forms (since 0.11.0)**: a section whose `action.dart` has `const steps` (step folder to the fields it
+  asks for) is one form over several pages with one draft: `SignupSection.useFlow(ref)` in the layout (inside a
+  `FormFlowScope`), `flowOf(context)` in a step, `flow.next(context)` checking that step's fields only, `back`, `goTo`,
+  `progress`, server errors sent to the step that owns the field, a `guard.dart` calling `resume(ref, uri:)`, and one
+  `leave.dart` beside the layout asked once when the flow is left.
+
 [`references/forms.md`](references/forms.md) (the package, `form()` and `useForm`, fields, submit and
-errors, drafts, a sample that compiles with its test) and
+errors, drafts, a sample that compiles with its test),
+[`references/flows.md`](references/flows.md) (multi-page forms) and
 [`references/optimistic.md`](references/optimistic.md) (`validate()`, `FieldErrors` and `optimistic()`)
 have every rule.
 

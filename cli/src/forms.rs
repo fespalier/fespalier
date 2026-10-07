@@ -20,10 +20,18 @@ pub enum Companion {
     Validate,
     /// `optimistic(T current, Input input)`: what the page shows while the write is in flight.
     Optimistic,
+    /// `skip(Step step, Input input)`: whether a step of a multi-page form is left out (since
+    /// 0.11.0).
+    Skip,
 }
 
 impl Companion {
-    pub const ALL: [Companion; 3] = [Companion::Form, Companion::Validate, Companion::Optimistic];
+    pub const ALL: [Companion; 4] = [
+        Companion::Form,
+        Companion::Validate,
+        Companion::Optimistic,
+        Companion::Skip,
+    ];
 
     /// The companion's name for the plain action: `form`.
     pub fn plain(self) -> &'static str {
@@ -31,6 +39,7 @@ impl Companion {
             Companion::Form => "form",
             Companion::Validate => "validate",
             Companion::Optimistic => "optimistic",
+            Companion::Skip => "skip",
         }
     }
 
@@ -40,6 +49,7 @@ impl Companion {
             Companion::Form => "Form",
             Companion::Validate => "Validate",
             Companion::Optimistic => "Optimistic",
+            Companion::Skip => "Skip",
         }
     }
 
@@ -49,6 +59,7 @@ impl Companion {
             Companion::Form => "form",
             Companion::Validate => "validation",
             Companion::Optimistic => "optimistic patch",
+            Companion::Skip => "skip rule",
         }
     }
 }
@@ -61,6 +72,27 @@ pub fn companion(action: &str, role: Companion) -> String {
     } else {
         format!("{action}{}", role.suffix())
     }
+}
+
+/// The name of the `const steps` map of the action called `action` (since 0.11.0): `steps`, or
+/// `approveSteps` for `approve`. A map there makes the action's form a multi-page one.
+pub fn steps_name(action: &str) -> String {
+    if action == "action" {
+        "steps".to_string()
+    } else {
+        format!("{action}Steps")
+    }
+}
+
+/// Whether a module declares the steps of some action in it: a `steps` variable, or `<name>Steps`
+/// beside a function `<name>`.
+pub fn has_steps(m: &crate::dart::Module) -> bool {
+    m.variables.iter().any(|v| {
+        v.name == "steps"
+            || v.name
+                .strip_suffix("Steps")
+                .is_some_and(|a| m.functions.iter().any(|f| f.name == a))
+    })
 }
 
 /// `form()` needs the `fespalier_forms` package (since 0.11.0): the generated file imports it. An

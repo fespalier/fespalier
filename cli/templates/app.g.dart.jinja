@@ -16,6 +16,25 @@
   /// The form of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}, for `build` in a `HookConsumerWidget`: a typed field per field of its input, starting from `{{ a.form.function }}({{ "data" if a.form.has_data }})`; `onSubmit` checks the fields{{ " and `" ~ a.form.validate ~ "()`" if a.form.validate }}, then runs it, and is null while it runs. Since 0.8.1.
   static final {{ a.form.hook }} = (WidgetRef ref, {{ a.form.params }}) => useActionForm(ref, {{ a.provider }}{{ a.key }}, {{ a.form.args }});
 {%- endif %}
+{%- if a.flow %}
+
+
+  /// What the form of `{{ a.name }}()` ({{ a.file }}) is made of: its steps, the fields each asks for, and how they start. Since 0.11.0.
+  static final {{ a.flow.spec }} = FlowSpec(
+{% for arg in a.flow.spec_args %}
+    {{ arg | indent(4) }},
+{% endfor %}
+  );
+
+  /// The multi-page form of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}, for the `build` of the section's layout, in a `HookConsumerWidget`: a typed field per field of its input, shared by every step; `next` checks the fields of the step on screen and goes to the next one, `submit` runs the action. A draft is kept by default, with the steps done. Since 0.11.0.
+  static final {{ a.flow.hook }} = (WidgetRef ref, {{ a.flow.params }}) => {{ a.flow.spec }}.use(ref, {{ a.provider }}{{ a.key }}, {{ a.flow.use_args }});
+
+  /// The flow of the layout above [context], from a step page. Since 0.11.0.
+  static final {{ a.flow.of }} = (BuildContext context) => {{ a.flow.spec }}.of(context);
+
+  /// What a guard in this folder returns to resume the flow: where the first step not done is, when the location asked for is a step past it, else null. Since 0.11.0.
+  static GuardResult {{ a.flow.resume }}(Ref ref, {{ a.flow.resume_params }}) => {{ a.flow.spec }}.resume(ref, {{ a.flow.resume_args }});
+{%- endif %}
 {%- endmacro %}
 {% macro trace_data(p) -%}
 {% if telemetry -%}
@@ -60,8 +79,12 @@ guardWithParams(
   (v) => {{ call }},
 )
 {%- endmacro %}
-{% macro leave_scope(page) -%}
+{% macro leave_scope(page, flow_step) -%}
+{% if flow_step -%}
+leaveScope(state, flowStep({{ page }}))
+{%- else -%}
 leaveScope(state, {{ page }})
+{%- endif %}
 {%- endmacro %}
 {% macro scroll_memory(page) -%}
 RouteScrollMemory(
@@ -173,7 +196,7 @@ GoRoute(
   onExit: (context, state) => {{ r.leave | indent(2) }},
 {% endif %}
 {% if r.page %}
-{% set body = leave_scope(view(r)) if r.leave else view(r) %}
+{% set body = leave_scope(view(r), r.flow_step) if r.leave else view(r) %}
 {% set page = with_segments(r.seg_fn, body, r.not_found) if r.seg_fn else body %}
 {% if scroll_restoration %}
 {% set page = scroll_memory(page) %}
@@ -487,6 +510,16 @@ abstract final class AppRoutes {
 
 {{ manifest_body(manifest) }}
 {% endif %}
+{% for e in step_enums %}
+
+/// The steps of the form of {{ e.file }}, in order: each is a child folder of the section with a page.dart (since 0.11.0).
+enum {{ e.name }} {
+{% for s in e.steps %}
+  /// `{{ s[1] }}/page.dart`
+  {{ s[0] }}{{ "," if not loop.last else ";" }}
+{% endfor %}
+}
+{% endfor %}
 {% for r in sections %}
 
 {% if r.has_data %}

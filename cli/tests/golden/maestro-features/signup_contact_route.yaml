@@ -1,0 +1,14 @@
+# Written by `fsp maestro` from lib/app/signup/contact/page.dart: don't edit it, run `fsp maestro` again.
+# Guarded by signup/guard.dart: ../sign-in.yaml runs before the link.
+appId: "com.example.features"
+name: "/signup/contact"
+tags:
+  - "fespalier"
+---
+- launchApp
+- runFlow: "../sign-in.yaml"
+- openLink: "features://app.example.com/signup/contact"
+- extendedWaitUntil:
+    visible:
+      id: "route:/signup/contact"
+    timeout: 20000

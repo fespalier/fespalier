@@ -140,36 +140,52 @@ FutureOr<void> _index(
   ]);
 });
 
+/// What a draft holds: the saved [fields], and, for a multi-page form (since 0.11.0), the names
+/// of the [steps] that were done.
+typedef DraftEntry = ({Map<String, Object?> fields, List<String> steps});
+
 /// The saved fields of the draft under [key], or null when there is none, it is older than its
 /// `maxAge`, or it was saved for another [shape] or entry version (those are deleted).
 FutureOr<Map<String, Object?>?> loadDraft(
   Storage<String, String> storage,
   String key,
   String shape,
-) => _guard<Map<String, Object?>?>(
+) => _then<DraftEntry?, Map<String, Object?>?>(
+  loadDraftEntry(storage, key, shape),
+  (entry) => entry?.fields,
+);
+
+/// [loadDraft] with the steps a multi-page form had done.
+FutureOr<DraftEntry?> loadDraftEntry(
+  Storage<String, String> storage,
+  String key,
+  String shape,
+) => _guard<DraftEntry?>(
   'could not be read',
   null,
-  () => _then<PersistedData<String>?, Map<String, Object?>?>(
-    storage.read(key),
-    (saved) {
-      if (saved == null) return null;
-      final expired = saved.expireAt?.isBefore(clock.now()) ?? false;
-      if (expired || saved.destroyKey != shape) {
-        _drop(storage, key);
-        return null;
-      }
-      try {
-        final entry = jsonDecode(saved.data) as Map<String, Object?>;
-        if (entry['v'] != draftEntryVersion) throw const FormatException('v');
-        return Map<String, Object?>.of(
+  () => _then<PersistedData<String>?, DraftEntry?>(storage.read(key), (saved) {
+    if (saved == null) return null;
+    final expired = saved.expireAt?.isBefore(clock.now()) ?? false;
+    if (expired || saved.destroyKey != shape) {
+      _drop(storage, key);
+      return null;
+    }
+    try {
+      final entry = jsonDecode(saved.data) as Map<String, Object?>;
+      if (entry['v'] != draftEntryVersion) throw const FormatException('v');
+      return (
+        fields: Map<String, Object?>.of(
           entry['fields']! as Map<String, Object?>,
-        );
-      } on Object {
-        _drop(storage, key);
-        return null;
-      }
-    },
-  ),
+        ),
+        steps: [
+          for (final s in (entry['steps'] as List? ?? const [])) s as String,
+        ],
+      );
+    } on Object {
+      _drop(storage, key);
+      return null;
+    }
+  }),
 );
 
 void _drop(Storage<String, String> storage, String key) {
@@ -178,7 +194,8 @@ void _drop(Storage<String, String> storage, String key) {
   }
 }
 
-/// Saves [fields] under [key], for [maxAge] and the [shape] of the form, and lists the key.
+/// Saves [fields] under [key], for [maxAge] and the [shape] of the form, and lists the key. A
+/// multi-page form saves the [steps] it has done too.
 FutureOr<void> saveDraft(
   Storage<String, String> storage,
   String key,
@@ -186,6 +203,7 @@ FutureOr<void> saveDraft(
   Duration maxAge,
   Map<String, Object?> fields, {
   int? generation,
+  List<String>? steps,
 }) => _guard<void>(
   'could not be saved',
   null,
@@ -195,7 +213,7 @@ FutureOr<void> saveDraft(
     return _then<void, void>(
       storage.write(
         key,
-        jsonEncode({'v': draftEntryVersion, 'fields': fields}),
+        jsonEncode({'v': draftEntryVersion, 'fields': fields, 'steps': ?steps}),
         StorageOptions(cacheTime: StorageCacheTime(maxAge), destroyKey: shape),
       ),
       (_) => _index(storage, key, add: true),

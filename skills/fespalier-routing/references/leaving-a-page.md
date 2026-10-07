@@ -45,7 +45,7 @@ LeaveResult leave(BuildContext context, Ref ref, {required int id, required Page
   one by itself, and a page with none is always clean). A source that turns dirty or clean must notify.
 - `LeaveScope.maybeOf(context)?.onBack(() => handled)` lets a source take the system back itself (a step of a
   multi-page form): handlers run newest first on Android's back and `Navigator.maybePop`, the first that returns true
-  stops the pop and `leave()`. Not consulted on the first page of a navigator or by the iOS swipe.
+  stops the pop and `leave()`. Not consulted on the first page of a navigator; while one is registered the iOS swipe is off.
 - `LeaveScope.maybeOf(context)?.register(source)` (null in a page without a `leave.dart`) registers a source and returns
   what unregisters it; it is safe during `build`.
 - The registry is keyed by `pageInstanceId(state)`, never by the remount key, so a `remount` page keeps asking about the
@@ -71,15 +71,18 @@ skips the leaf's `leave()` (fixed in 17.4.0).
 
 ## How it answers
 
-1. `await leaveWithoutAsking(router, () => navigate())` (navigate may be async) lets pages go while it runs and its
-   `Future` is pending, plus the one commit it requested that was not applied yet (a one-shot listener); it never
-   covers a pop after `navigate` returns or a `navigate` that requests nothing (a failed sign-out asks again). Wrap
+1. `await leaveWithoutAsking(router, () => navigate())` (navigate may be async; it always returns a `Future`) lets pages go
+   while it runs and its `Future` is pending, then waits for fespalier's guards to settle (container `pump`, async guards)
+   and lets their `refresh` through, plus one requested commit not yet applied (an identity ticket and a one-shot
+   listener); it never covers a pop after the window, a `navigate` that requests nothing or a request that commits
+   nothing (a failed sign-out asks again). Wrap
    sign-out in it, or check auth in `leave()`.
 2. A tab switch goes through without calling `leave()`, unless a route it reaches that the page is not already
-   under has a `redirect:` (a guard): that may take the navigation out of the shell, so it asks. A hand-written
+   under has a `redirect:` (a guard of that tab's own folder): that may take the navigation out of the shell, so it asks. A guard of the tabs' folder or above runs on the tab shell (since 0.11.0), so it never does. A hand-written
    top-level `redirect:` cannot be seen.
 3. One prompt at a time: a second ask of the same page instance waits for the first and answers `true` only if the
-   page is still there afterwards (a double pop completes once; a back joining a `go`'s prompt never closes the app). A
+   page is still there afterwards (a double pop completes once; a back joining a `go`'s prompt never closes the app; a
+   newer `go` joining an earlier one's prompt is refused: the first navigation wins). A
    `leave()` whose `Future` never completes holds every later ask. `leave()` must `read`, not `watch`: its first
    answer stands.
 4. `leave()` runs with its `Ref` and the page's `PageLeave`. A throw, sync or async, is reported with

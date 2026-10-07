@@ -17,6 +17,7 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'guards.dart' show guardRefreshHooks, guardsContainer, guardsIdle;
 import 'lifecycle.dart' show RouterWatch;
 import 'route_scope.dart' show pageInstanceId;
 import 'segments.dart' show BadSegment;
@@ -103,7 +104,8 @@ final class LeaveScope {
   /// It is consulted where the page's `PopScope` is: on a page whose route can pop (a pushed
   /// page, or any page above the first of its navigator), by Android's back and by
   /// `Navigator.maybePop`. On the first page of a navigator, go_router's own fallback asks
-  /// `leave()` and the handlers are not consulted; the iOS edge swipe pops without them too.
+  /// `leave()` and the handlers are not consulted. While a handler is registered the page's
+  /// `PopScope` blocks, so the iOS edge swipe is off (there is no back to hand to a handler).
   VoidCallback onBack(bool Function() handler) {
     _backs.add(handler);
     _owner._sourcesChanged();
@@ -281,7 +283,8 @@ final class _LeaveScopeState extends State<_LeaveScopeWidget> {
 ///    take the navigation out of the shell; a top-level `redirect:` of the router cannot be seen
 ///    and is not asked about.
 /// 3. A prompt already open for this page instance is shared by a second ask, which answers
-///    `true` only if the page is still there when the first has acted on it.
+///    `true` only if the page is still there when the first has acted on it: a newer `go` that
+///    joins the prompt of an earlier one is refused when that one has taken the page away.
 /// 4. [leave] runs with a `Ref` of a throwaway provider, kept open until the answer is in, and
 ///    the [PageLeave] of what the page registered.
 /// 5. A `leave()` that throws, now or later, is reported with `FlutterError.reportError`
@@ -404,70 +407,121 @@ LeaveResult leaveWithParams<V>(
 /// await leaveWithoutAsking(router, () => ref.read(auth).signOut());
 /// ```
 ///
-/// No page asks while [navigate] runs, nor while the `Future` it returns is pending. If it
-/// requested a navigation that has not been applied by then (a guard's redirect that settles
-/// later), that one commit is let through too; the window closes at the router's first commit
-/// after the request, with a one-shot listener (no timer). It never covers a pop after
-/// [navigate] returns, or a `navigate` that requests nothing: a sign-out that fails leaves every
-/// page asking again.
+/// It always returns a `Future` (a `navigate` that throws makes it fail, after the window has
+/// closed), which completes when the window has:
 ///
-/// Returns what [navigate] returns, so a caller can await it.
-FutureOr<void> leaveWithoutAsking(
+/// 1. No page asks while [navigate] runs, nor while the `Future` it returns is pending, and
+///    until the end of the microtask turn it returns in (go_router answers the `onExit` of a
+///    `pop` in a microtask).
+/// 2. Then it waits for fespalier's own guards to settle what [navigate] changed: the container
+///    runs what it scheduled (`pump`), and any asynchronous guard still being evaluated is
+///    awaited. The `refresh` a guard asks for in that time is let through (and nothing else
+///    is, so a pop made now still asks): a sign-out whose session a guard watches ends at the
+///    login page without a question.
+/// 3. If [navigate] requested a navigation the router has not committed by then, that one is
+///    let through too, while the route information is still the one it left (an identity
+///    ticket), until the router's first commit: a one-shot listener, no timer. A request that
+///    commits nothing (a `go` to where you are) is closed by the next navigation.
+///
+/// It never covers a pop after the window, nor a `navigate` that requests nothing: a sign-out
+/// that fails leaves every page asking again. A redirect made by a hand-written top-level
+/// `redirect:` of the router, settling later than the guards fespalier knows of, is not
+/// waited for.
+Future<void> leaveWithoutAsking(
   GoRouter router,
   FutureOr<void> Function() navigate,
 ) {
   final bypass = _bypass[router] ??= _Bypass();
   final start = router.routeInformationProvider.value;
   var committed = false;
-  var armed = false;
+  Object? ticket;
   late final VoidCallback onCommit;
   onCommit = () {
     committed = true;
     router.routerDelegate.removeListener(onCommit);
-    if (armed) {
-      armed = false;
-      bypass.armed--;
+    if (ticket != null) {
+      bypass.tickets.remove(ticket);
+      ticket = null;
     }
   };
   router.routerDelegate.addListener(onCommit);
   bypass.during++;
-  // [requested]: whether the route information changed since the start, read when `navigate`
-  // is done, so that a pop made right after it returns is not taken for its request.
-  void settle({required bool requested}) {
+  bypass.waiting++;
+  // A refresh a guard asks for in the window is let through, and the pass is held to the end
+  // of it: an asynchronous guard is evaluated again by the router before it answers `onExit`.
+  var held = 0;
+  guardRefreshHooks[router] = (refresh) {
+    bypass.during++;
+    held++;
+    refresh();
+  };
+
+  final navigated = Completer<bool>();
+  Object? error;
+  StackTrace? stack;
+  void closeNavigation() {
+    if (navigated.isCompleted) return;
     bypass.during--;
-    if (committed || !requested) {
-      router.routerDelegate.removeListener(onCommit);
-    } else {
-      armed = true;
-      bypass.armed++;
-    }
-  }
-
-  bool requested() => !identical(start, router.routeInformationProvider.value);
-
-  final FutureOr<void> result;
-  try {
-    result = navigate();
-  } catch (_) {
-    settle(requested: requested());
-    rethrow;
-  }
-  if (result is Future<void>) {
-    // Whatever `navigate` queued before it finished (a `pop` is answered in a microtask) runs
-    // before this callback does, and the caller's own continuation runs after it.
-    return result.then<void>(
-      (_) => settle(requested: requested()),
-      onError: (Object error, StackTrace stack) {
-        settle(requested: requested());
-        Error.throwWithStackTrace(error, stack);
-      },
+    // Whether the route information changed, read now: a pop made right after this returns
+    // must not be taken for what `navigate` requested.
+    navigated.complete(
+      !identical(start, router.routeInformationProvider.value),
     );
   }
-  // The window stays open to the end of this microtask turn, so that go_router's microtask for
-  // a `pop` that `navigate` made runs inside it, and closes before anything that runs later.
-  final asked = requested();
-  scheduleMicrotask(() => settle(requested: asked));
-  return null;
+
+  FutureOr<void> result;
+  try {
+    result = navigate();
+  } catch (e, st) {
+    error = e;
+    stack = st;
+    result = null;
+  }
+  if (result is Future<void>) {
+    result.then<void>(
+      (_) => closeNavigation(),
+      onError: (Object e, StackTrace st) {
+        error = e;
+        stack = st;
+        closeNavigation();
+      },
+    );
+  } else {
+    scheduleMicrotask(closeNavigation);
+  }
+
+  Future<void> finish() async {
+    final requested = await navigated.future;
+    try {
+      final container =
+          RouterWatch.peek(router)?.container ?? guardsContainer(router);
+      for (var i = 0; i < 16; i++) {
+        if (container != null) await container.pump();
+        final idle = guardsIdle(router);
+        if (idle == null) break;
+        await idle;
+      }
+      // What a refresh set going (the router evaluates an async guard again) answers within a
+      // few microtask turns, and commits.
+      for (var i = 0; held > 0 && !committed && i < 8; i++) {
+        await Future<void>.value();
+      }
+    } finally {
+      bypass.during -= held;
+      bypass.waiting--;
+      if (bypass.waiting == 0) guardRefreshHooks[router] = null;
+      if (committed || !requested) {
+        router.routerDelegate.removeListener(onCommit);
+      } else {
+        ticket = router.routeInformationProvider.value;
+        bypass.tickets.add(ticket!);
+      }
+    }
+    final failure = error;
+    if (failure != null) Error.throwWithStackTrace(failure, stack!);
+  }
+
+  return finish();
 }
 
 final _bypass = Expando<_Bypass>('fespalier leaveWithoutAsking');
@@ -476,13 +530,19 @@ final _bypass = Expando<_Bypass>('fespalier leaveWithoutAsking');
 final _asking = Expando<Map<String, Future<bool>>>('fespalier leave asking');
 
 final class _Bypass {
-  /// Inside `navigate()` of `leaveWithoutAsking`, or while its `Future` is pending.
+  /// Inside `navigate()` of `leaveWithoutAsking`, while its `Future` is pending, or running a
+  /// guard's refresh in its window.
   int during = 0;
 
-  /// Navigations it requested that the router has not committed yet.
-  int armed = 0;
+  /// Windows still waiting for the guards.
+  int waiting = 0;
 
-  bool allows(GoRouter router) => during > 0 || armed > 0;
+  /// The route information of each navigation a window requested that is not committed yet.
+  final tickets = <Object>[];
+
+  bool allows(GoRouter router) =>
+      during > 0 ||
+      tickets.any((t) => identical(t, router.routeInformationProvider.value));
 }
 
 Duration? _noRetry(int retryCount, Object error) => null;

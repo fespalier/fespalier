@@ -108,6 +108,15 @@ StatefulShellRoute.indexedStack(
 {% if r.root %}
   parentNavigatorKey: rootNavigatorKey,
 {% endif %}
+{% if r.redirects | length == 1 %}
+  redirect: (context, state) => {{ redirect_call(r.redirects[0]) | indent(2) }},
+{% elif r.redirects %}
+  redirect: (context, state) => firstRedirect([
+{% for c in r.redirects %}
+    () => {{ redirect_call(c) | indent(4) }},
+{% endfor %}
+  ]),
+{% endif %}
   pageBuilder: (context, state, navigationShell) => namedPage({{ r.layout.page_name }}, () => {{ layout_page(r.layout) | indent(2) }}),
   branches: [
 {% for b in r.branches %}

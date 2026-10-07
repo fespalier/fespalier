@@ -749,6 +749,8 @@ pub enum Frame {
     Tabs {
         id: usize,
         root: bool,
+        /// The folders of the guards that run on the shell, before every tab (since 0.11.0).
+        guards: Vec<usize>,
         branches: Vec<(String, Vec<Frame>)>,
     },
 }
@@ -758,15 +760,30 @@ pub fn frames(app: &App) -> Vec<Frame> {
     fn frame(t: TreeCx) -> Frame {
         let children = |routes: Vec<TreeCx>| routes.into_iter().map(frame).collect();
         match (t.layout.is_some(), t.serves) {
-            (true, _) if !t.branches.is_empty() => Frame::Tabs {
-                id: t.id,
-                root: t.root,
-                branches: t
-                    .branches
-                    .into_iter()
-                    .map(|b| (b.name, children(b.routes)))
-                    .collect(),
-            },
+            (true, _) if !t.branches.is_empty() => {
+                let guards: Vec<usize> = t.redirects.iter().filter_map(|c| c.guard).collect();
+                Frame::Tabs {
+                    id: t.id,
+                    root: t.root,
+                    branches: t
+                        .branches
+                        .into_iter()
+                        .map(|b| {
+                            let mut routes: Vec<Frame> = children(b.routes);
+                            // The tab shell's guards cover each tab's first routes, as ever.
+                            if !guards.is_empty() {
+                                for f in &mut routes {
+                                    if let Frame::Route { guarded, .. } = f {
+                                        *guarded = true;
+                                    }
+                                }
+                            }
+                            (b.name, routes)
+                        })
+                        .collect(),
+                    guards,
+                }
+            }
             (true, _) | (false, None) => Frame::Shell {
                 id: t.id,
                 root: t.root,
@@ -1015,10 +1032,23 @@ fn routes_of(
             let mut out: Vec<TreeCx> = parent
                 .iter()
                 .map(|p| {
-                    without_catch_all(page_route(app, id, top, p, false, inherited, fns, ids), r)
+                    without_catch_all(
+                        page_route(app, id, top, p, false, inherited, OwnGuard::Route, fns, ids),
+                        r,
+                    )
                 })
                 .collect();
-            out.push(page_route(app, id, top, &path, true, inherited, fns, ids));
+            out.push(page_route(
+                app,
+                id,
+                top,
+                &path,
+                true,
+                inherited,
+                OwnGuard::Route,
+                fns,
+                ids,
+            ));
             // What leaves the page goes beside it, below its guard too: the routes are the
             // page's siblings, with the folders in between in their paths.
             let mut leaving = vec![];
@@ -1349,40 +1379,59 @@ fn not_founds(app: &App) -> Vec<NotFoundCx> {
         .collect()
 }
 
+/// The calls of the guards in folders `guards` (outermost first), as the redirects of the route
+/// or tab shell of folder `id`.
+fn guard_calls(
+    app: &App,
+    id: usize,
+    guards: &[usize],
+    fns: &mut BTreeSet<ParamsFn>,
+) -> Vec<CallCx> {
+    let r = &app.routes[id];
+    guards
+        .iter()
+        .map(|&g| {
+            let guard = app.routes[g]
+                .guard
+                .as_ref()
+                .expect("inherited guards have a guard");
+            let seg_fn = (!guard.keys().is_empty()).then(|| {
+                fns.insert(ParamsFn::Guard(g));
+                ParamsFn::Guard(g).name()
+            });
+            hook_call(
+                guard,
+                "guard",
+                &devtools::site_guard(g, id),
+                Some(g),
+                seg_fn,
+                (rel(&app.routes[g], Kind::Guard), resolve::pattern(&r.url)),
+            )
+        })
+        .collect()
+}
+
 /// The redirect chain of a route: the guards inherited from page-less folders
-/// above (outermost first), then the folder's own guard and `redirect.dart`.
-/// `seg_fn` parses the route's own params for the last two.
+/// above (outermost first), then the folder's own guard (unless `own_guard` is off: the tab
+/// shell of the folder runs it) and `redirect.dart`. `seg_fn` parses the route's own params for
+/// the last two.
 fn redirects_of(
     app: &App,
     id: usize,
     inherited: &[usize],
+    own_guard: bool,
     seg_fn: &Option<String>,
     fns: &mut BTreeSet<ParamsFn>,
 ) -> Vec<CallCx> {
     let r = &app.routes[id];
-    let mut out = vec![];
-    for &g in inherited {
-        let guard = app.routes[g]
-            .guard
-            .as_ref()
-            .expect("inherited guards have a guard");
-        let seg_fn = (!guard.keys().is_empty()).then(|| {
-            fns.insert(ParamsFn::Guard(g));
-            ParamsFn::Guard(g).name()
-        });
-        out.push(hook_call(
-            guard,
-            "guard",
-            &devtools::site_guard(g, id),
-            Some(g),
-            seg_fn,
-            (rel(&app.routes[g], Kind::Guard), resolve::pattern(&r.url)),
-        ));
-    }
+    let mut out = guard_calls(app, id, inherited, fns);
     for (hook, name, site, guard) in [
         (&r.guard, "guard", devtools::site_guard(id, id), Some(id)),
         (&r.redirect, "redirect", devtools::site_redirect(id), None),
     ] {
+        if name == "guard" && !own_guard {
+            continue;
+        }
         if let Some(h) = hook {
             let own = seg_fn.clone().filter(|_| !h.keys().is_empty());
             let kind = if name == "guard" {
@@ -1522,6 +1571,14 @@ pub(crate) fn with_semantics(id: &str, page: String) -> String {
     format!("Semantics(identifier: {id}, container: true, explicitChildNodes: true, child: {page})")
 }
 
+/// Whose guard of the folder a page's route runs: the route's own, or (a tab layout's own page)
+/// the tab shell's.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OwnGuard {
+    Route,
+    Shell,
+}
+
 /// The `GoRoute` for a folder's page.dart. Its subfolders' routes nest below it,
 /// unless `nested` is off (a tab layout's own page sits beside its tabs).
 #[allow(clippy::too_many_arguments)]
@@ -1532,9 +1589,11 @@ fn page_route(
     path: &str,
     nested: bool,
     inherited: &[usize],
+    guards: OwnGuard,
     fns: &mut BTreeSet<ParamsFn>,
     ids: bool,
 ) -> TreeCx {
+    let own_guard = guards == OwnGuard::Route;
     let r = &app.routes[id];
     let page = r.page.as_ref().expect("page_route needs a page.dart");
     let routes = if nested {
@@ -1548,7 +1607,7 @@ fn page_route(
         vec![]
     };
     let seg_fn = own_seg_fn(app, id, fns);
-    let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
+    let redirects = redirects_of(app, id, inherited, own_guard, &seg_fn, fns);
     let remount = remount_args(r);
     let root_key = r.root && r.layout.is_none();
     let (loading, error) = fallbacks(r);
@@ -1627,7 +1686,7 @@ fn page_route(
         localized: locale::is_localized(path),
         sibling: r.sibling,
         id,
-        guarded: !inherited.is_empty() || r.guard.is_some(),
+        guarded: !inherited.is_empty() || (own_guard && r.guard.is_some()),
     }
 }
 
@@ -1642,7 +1701,7 @@ fn redirect_route(
 ) -> TreeCx {
     let r = &app.routes[id];
     let seg_fn = own_seg_fn(app, id, fns);
-    let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
+    let redirects = redirects_of(app, id, inherited, true, &seg_fn, fns);
     TreeCx {
         layout: None,
         branches: vec![],
@@ -1715,9 +1774,21 @@ fn tab_routes(
         .enumerate()
         .map(|(i, b)| {
             let routes = match *b {
-                Branch::Own => vec![page_route(app, id, top, path, false, inherited, fns, ids)],
+                // The guards above the tabs run on the tab shell, not on each tab: a tab
+                // switch is then asked about only for a guard of the tab's own.
+                Branch::Own => vec![page_route(
+                    app,
+                    id,
+                    top,
+                    path,
+                    false,
+                    &[],
+                    OwnGuard::Shell,
+                    fns,
+                    ids,
+                )],
                 Branch::Folder(c) => {
-                    static_first(routes_of(app, c, top, &next, &below, false, fns, ids))
+                    static_first(routes_of(app, c, top, &next, &[], false, fns, ids))
                 }
             };
             // go_router opens a tab at its first route, and can't do that for a route with a
@@ -1756,7 +1827,7 @@ fn tab_routes(
         catch_all: branches.iter().flat_map(|b| &b.routes).any(|r| r.catch_all),
         branches,
         path: String::new(),
-        redirects: vec![],
+
         not_found_builder: false,
         seg_fn: None,
         page: String::new(),
@@ -1772,6 +1843,7 @@ fn tab_routes(
         container: app.routes[id]
             .container
             .then(|| format!("_i{}.container", layout.import)),
+        redirects: guard_calls(app, id, &below, fns),
         leave: None,
         serves: None,
         has_params: false,

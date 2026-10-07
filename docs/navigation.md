@@ -270,7 +270,7 @@ The folder needs a `page.dart`: a layout's shell has no `onExit` in go_router, s
   - go_router's `onEnter` (the adapters', since 0.11.0) and guards run first at parse time; `onExit` runs after, in the delegate;
   - leaving a tab layout, for the **active** tab's pages only.
 - **Not asked:**
-  - a tab switch (fespalier parks; go_router would ask), unless a route it reaches that the page is not already under has a `redirect:` of its own (a `guard.dart`): that redirect may take the navigation out of the tab layout, so the page is asked. A hand-written top-level `redirect:` on the router cannot be seen and is not asked about;
+  - a tab switch (fespalier parks; go_router would ask), unless a route it reaches that the page is not already under has a `redirect:` of its own (a `guard.dart` in that tab's own folder): that redirect may take the navigation out of the tab layout, so the page is asked. A guard of the tabs' folder, or above it, is emitted on the tab shell (since 0.11.0), so it never makes a switch ask. A hand-written top-level `redirect:` on the router cannot be seen and is not asked about;
   - a parked tab's pages when the whole layout leaves (use drafts);
   - a query-only change (`copyWith(page: 2)`), nor `replace` of a pushed page with itself at another query;
   - a dialog or sheet (a pageless route) on top;
@@ -287,7 +287,7 @@ The folder needs a `page.dart`: a layout's shell has no `onExit` in go_router, s
 **The answer.**
 
 - **Synchronous stays synchronous.** A `leave()` that returns a `bool` makes no `Future` and no microtask of its own.
-- **One prompt at a time.** While a prompt for a page is open, a second ask of the same page (a double tap on back, a second `go`) waits for it and `leave()` does not run again. The first answer acts on the page; a second ask answers `true` only if the page is still there after that, so a double pop completes once and a back that joined a `go`'s prompt never closes the app. A `leave()` whose `Future` never completes holds every later ask of that page: complete it.
+- **One prompt at a time.** While a prompt for a page is open, a second ask of the same page (a double tap on back, a second `go`) waits for it and `leave()` does not run again. The first answer acts on the page; a second ask answers `true` only if the page is still there after that, so a double pop completes once and a back that joined a `go`'s prompt never closes the app. A `leave()` whose `Future` never completes holds every later ask of that page: complete it. A newer `go` that joins the prompt of an earlier one is refused once the earlier one has taken the page away (the first navigation wins).
 - **Errors fail open.** A `leave()` that throws, now or in its `Future`, is reported with `FlutterError.reportError` (library `fespalier`, context `while running leave() of orders/$id/edit/leave.dart`) and the page goes: a broken `leave()` never traps the user. In a widget test that fails the test.
 - **A segment that does not parse** shows not-found, so there is nothing to ask and the page goes; the not-found page is not wrapped, so it keeps the iOS swipe.
 - **A pop is judged by where the router is going.** While an asynchronously guarded `go` is still being parsed, a pop of a page in a tab is compared with that destination and may be taken for a tab switch.
@@ -300,7 +300,7 @@ A navigation the user has already decided, such as signing out, should not ask:
 await leaveWithoutAsking(router, () => ref.read(auth).signOut());
 ```
 
-`navigate` may be asynchronous: no page asks while it runs and while the `Future` it returns is pending, and `leaveWithoutAsking` returns that `Future`. If it requested a navigation that the router has not committed yet (a guard's redirect that settles a moment later), that one commit is let through too; a one-shot listener closes the window at the first commit. It never covers a pop after `navigate()` returns, nor a `navigate` that requests nothing: a sign-out that fails leaves every page asking again. `GoRouter.of(context)` gives the router.
+`navigate` may be asynchronous: no page asks while it runs and while the `Future` it returns is pending. `leaveWithoutAsking` always returns a `Future`, which completes when its window has closed: it waits for what fespalier's own guards settle after `navigate` (the container runs what was scheduled, an asynchronous guard still being evaluated is awaited) and lets through the `refresh` a guard asks for in that time, so signing out a session that a `guard.dart` watches ends at the login page without a question. If `navigate` requested a navigation that the router has not committed by then, that one is let through too, while the route information is still the one it left, until the first commit (a one-shot listener). It never covers a pop after the window, nor a `navigate` that requests nothing or a request that commits nothing (a `go` to where you are): a sign-out that fails leaves every page asking again. A hand-written top-level `redirect:` that settles later is not waited for. `GoRouter.of(context)` gives the router.
 
 **The back gestures.**
 
@@ -320,7 +320,7 @@ final unregister = LeaveScope.maybeOf(context)?.register(source); // null in a p
 
 Core knows nothing of forms: it is the `fespalier_forms` package that makes its forms sources, in a later release; until then register your own, as `examples/features` does for its new-doc page.
 
-A source with somewhere to go back to inside the page (a step of a multi-page form) can take the system back itself: `LeaveScope.maybeOf(context)?.onBack(() => handled)` registers a handler that runs, newest first, on Android's back and `Navigator.maybePop`; the first that returns `true` has handled it, and the page is not popped and `leave()` is not asked. It is consulted where the page's `PopScope` is, so not on the first page of a navigator (go_router's own fallback asks `leave()` there) and not for the iOS swipe.
+A source with somewhere to go back to inside the page (a step of a multi-page form) can take the system back itself: `LeaveScope.maybeOf(context)?.onBack(() => handled)` registers a handler that runs, newest first, on Android's back and `Navigator.maybePop`; the first that returns `true` has handled it, and the page is not popped and `leave()` is not asked. It is consulted where the page's `PopScope` is, so not on the first page of a navigator (go_router's own fallback asks `leave()` there). While a handler is registered the iOS swipe is off.
 
 **Diagnostics and the scaffold.**
 

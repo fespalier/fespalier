@@ -2579,19 +2579,40 @@ fn guards_above_a_tab_layout_cover_every_tab() {
         ("(tabs)/profile/page.dart", &page("Profile")),
         ("(tabs)/profile/edit/page.dart", &page("Edit")),
     ]);
-    // One per tab's first-level route; /profile/edit nests inside /profile.
-    assert_eq!(guard_calls(&c), 2, "{c}");
+    // One, on the tab shell (since 0.11.0): a switch between tabs does not copy it into each
+    // tab's route, so a leave.dart can tell a tab's own guard from the one above them.
+    assert_eq!(guard_calls(&c), 1, "{c}");
     assert!(!c.contains("firstRedirect"), "{c}");
+    let shell = at(&c, "StatefulShellRoute");
+    let branches = at(&c, "branches:");
+    assert!(
+        c[shell..branches].contains("redirect: (context, state) => traceGuard(state, 'g1@"),
+        "{c}"
+    );
+    assert!(!c[branches..].contains("redirect:"), "{c}");
 
     // A guard in the tab layout's own folder, which has a page: it covers the
-    // page and the tabs beside it.
+    // page and the tabs beside it, from the shell too.
     let c = code(&[
         ("layout.dart", TABS),
         ("page.dart", HOME),
         ("guard.dart", NOOP_GUARD),
         ("search/page.dart", &page("Search")),
     ]);
-    assert_eq!(guard_calls(&c), 2, "{c}");
+    assert_eq!(guard_calls(&c), 1, "{c}");
+    let branches = at(&c, "branches:");
+    assert!(!c[branches..].contains("redirect:"), "{c}");
+
+    // A guard of a tab's own stays on that tab's route.
+    let c = code(&[
+        ("(tabs)/layout.dart", TABS),
+        ("(tabs)/search/page.dart", &page("Search")),
+        ("(tabs)/profile/page.dart", &page("Profile")),
+        ("(tabs)/profile/guard.dart", NOOP_GUARD),
+    ]);
+    assert_eq!(guard_calls(&c), 1, "{c}");
+    let branches = at(&c, "branches:");
+    assert!(c[branches..].contains("redirect:"), "{c}");
 }
 
 #[test]

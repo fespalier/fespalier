@@ -192,7 +192,9 @@ impl Builder {
                     items: self.items(app, children),
                 })
             }
-            Frame::Tabs { id, root, branches } => {
+            Frame::Tabs {
+                id, root, branches, ..
+            } => {
                 let r = &app.routes[*id];
                 let marks = layout_marks(r, *root);
                 let title = with_marks(format!("tabs {}", file(&r.dir, "layout.dart")), &marks);

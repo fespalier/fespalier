@@ -93,6 +93,19 @@ final Map<String, bool Function()> backs = {};
 /// Whether the guarded tab's route redirects out of the shell.
 bool guardOn = false;
 
+/// How often the guard on the tab shell ran.
+int shellRuns = 0;
+
+/// A session the guards of `/inbox` and `/inbox2` watch.
+final session = NotifierProvider<Session, bool>(Session.new);
+
+class Session extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  set signedIn(bool value) => state = value;
+}
+
 /// Registers [handler] with the page's `LeaveScope.onBack`.
 class BackRegistrar extends StatefulWidget {
   const BackRegistrar(this.handler, {super.key, required this.child});
@@ -131,9 +144,11 @@ GoRoute leaving(
   String label, {
   List<RouteBase> routes = const [],
   String Function(GoRouterState state)? labelOf,
+  GoRouterRedirect? redirect,
 }) {
   return GoRoute(
     path: path,
+    redirect: redirect,
     onExit: (context, state) => leaveExit(
       context,
       state,
@@ -173,6 +188,11 @@ GoRouter router({String initial = '/a', String? Function(Uri uri)? redirect}) {
     redirect: redirect == null ? null : (context, state) => redirect(state.uri),
     routes: [
       StatefulShellRoute.indexedStack(
+        // A guard above the tabs, as the generator emits it: on the shell, not on each tab.
+        redirect: (context, state) {
+          shellRuns++;
+          return null;
+        },
         builder: (context, state, shell) => shell,
         branches: [
           StatefulShellBranch(
@@ -204,6 +224,26 @@ GoRouter router({String initial = '/a', String? Function(Uri uri)? redirect}) {
         ],
       ),
       leaving('/x', 'x'),
+      leaving(
+        '/inbox',
+        'inbox',
+        redirect: (context, state) => refGuard(
+          context,
+          'g1@inbox',
+          (ref) => ref.watch(session) ? null : '/login',
+        ),
+      ),
+      leaving(
+        '/inbox2',
+        'inbox2',
+        redirect: (context, state) =>
+            refGuard(context, 'g2@inbox2', (ref) async {
+              final signedIn = ref.watch(session);
+              await Future<void>.value();
+              return signedIn ? null : '/login';
+            }),
+      ),
+      plain('/login', 'login'),
       ShellRoute(
         parentNavigatorKey: rootKey,
         builder: (context, state, child) => child,
@@ -259,6 +299,7 @@ Future<GoRouter> boot(
   sources.clear();
   backs.clear();
   guardOn = false;
+  shellRuns = 0;
   answer = (_, _) => true;
   final r = router(initial: initial, redirect: redirect);
   await pumpRouter(tester, r);
@@ -777,7 +818,7 @@ void main() {
     ) async {
       final r = await boot(tester, initial: '/x');
       answer = (_, _) => false;
-      leaveWithoutAsking(r, () => r.go('/y'));
+      unawaited(leaveWithoutAsking(r, () => r.go('/y')));
       await settle(tester);
       expect(find.text('y'), findsOneWidget);
       expect(asked, isEmpty);
@@ -794,7 +835,7 @@ void main() {
       final r = await boot(tester, initial: '/y');
       await push(tester, r, '/x');
       answer = (_, _) => false;
-      leaveWithoutAsking(r, r.pop);
+      unawaited(leaveWithoutAsking(r, r.pop));
       await settle(tester);
       expect(find.text('y'), findsOneWidget);
       expect(asked, isEmpty);
@@ -818,7 +859,7 @@ void main() {
       expect(asked, ['x']);
       expect(find.text('x'), findsOneWidget);
       // The one way round it is to say so.
-      leaveWithoutAsking(r, r.refresh);
+      unawaited(leaveWithoutAsking(r, r.refresh));
       await settle(tester);
       expect(asked, ['x']);
       expect(find.text('z'), findsOneWidget);
@@ -1093,6 +1134,83 @@ void main() {
     });
   });
 
+  group('a guard on the tab shell', () {
+    testWidgets('runs for every tab and does not make a switch ask', (
+      tester,
+    ) async {
+      final r = await boot(tester);
+      final atBoot = shellRuns;
+      answer = (_, _) => false;
+      StatefulNavigationShell.of(tester.element(find.text('a'))).goBranch(1);
+      await settle(tester);
+      expect(find.text('b'), findsOneWidget);
+      expect(shellRuns, greaterThan(atBoot), reason: 'it ran for the new tab');
+      r.go('/a');
+      await settle(tester);
+      expect(asked, isEmpty);
+      expect(find.text('a'), findsOneWidget);
+    });
+  });
+
+  group('signing out through fespalier guards', () {
+    for (final inbox in ['inbox', 'inbox2']) {
+      for (final asyncNavigate in [false, true]) {
+        testWidgets(
+          'leaveWithoutAsking: /$inbox, ${asyncNavigate ? 'async' : 'sync'} sign-out',
+          (tester) async {
+            final r = await boot(tester, initial: '/$inbox');
+            answer = (_, _) => false;
+            final container = ProviderScope.containerOf(
+              tester.element(find.text(inbox)),
+            );
+            final done = leaveWithoutAsking(r, () {
+              if (asyncNavigate) {
+                return Future<void>.value().then(
+                  (_) => container.read(session.notifier).signedIn = false,
+                );
+              }
+              container.read(session.notifier).signedIn = false;
+              return null;
+            });
+            await settle(tester);
+            await done;
+            await settle(tester);
+            expect(asked, isEmpty);
+            expect(where(r), '/login');
+          },
+        );
+      }
+    }
+
+    testWidgets('the same sign-out without leaveWithoutAsking asks', (
+      tester,
+    ) async {
+      final r = await boot(tester, initial: '/inbox');
+      answer = (_, _) => false;
+      final container = ProviderScope.containerOf(
+        tester.element(find.text('inbox')),
+      );
+      container.read(session.notifier).signedIn = false;
+      await settle(tester);
+      expect(asked, ['inbox']);
+      expect(where(r), '/inbox');
+    });
+
+    testWidgets('a request that commits nothing leaves no pass behind', (
+      tester,
+    ) async {
+      final r = await boot(tester, initial: '/x');
+      answer = (_, _) => false;
+      final done = leaveWithoutAsking(r, () => r.go('/x'));
+      await settle(tester);
+      await done;
+      r.go('/y');
+      await settle(tester);
+      expect(asked, ['x']);
+      expect(find.text('x'), findsOneWidget);
+    });
+  });
+
   group('review fixes', () {
     testWidgets(
       'a switch to a guarded tab is asked: its redirect may leave the shell',
@@ -1168,7 +1286,7 @@ void main() {
         final r = await boot(tester, initial: '/y');
         await push(tester, r, '/x');
         answer = (_, _) => false;
-        leaveWithoutAsking(r, () {});
+        unawaited(leaveWithoutAsking(r, () {}));
         r.pop();
         await settle(tester);
         expect(asked, ['x']);

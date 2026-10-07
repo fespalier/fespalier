@@ -124,11 +124,22 @@ void main() {
     expect(find.text('New doc'), findsOneWidget);
   });
 
-  testWidgets('the catch-all beside it is not asked', (tester) async {
-    final router = await boot(tester, '/docs/guide');
-    router.go('/docs');
+  testWidgets(
+      'the catch-all beside it is not asked, whatever is dirty below it', (
+    tester,
+  ) async {
+    final router = await boot(tester, '/docs/new');
+    await tester.enterText(find.byType(TextField), 'draft');
+    unawaited(router.push<void>('/docs/guide'));
+    await tester.pumpAndSettle();
+    expect(find.text('Doc guide'), findsOneWidget);
+    router.pop();
     await tester.pumpAndSettle();
     expect(find.text('Discard this doc?'), findsNothing);
-    expect(find.text('Docs index'), findsOneWidget);
+    expect(find.text('New doc'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'draft',
+    );
   });
 }

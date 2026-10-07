@@ -10,10 +10,7 @@
 | `ProviderListenable<AsyncValue<T>> data({…}) => productProvider(id)`                                                                     | calls it and uses the provider it returns; nothing is wrapped                 | a provider for it already exists, above all a `riverpod_generator` one                                   |
 | `final data = FutureProvider<T>(…)` (or `StreamProvider`, `AsyncNotifierProvider`, `StreamNotifierProvider`), type arguments spelled out | uses it as-is                                                                 | you want to write the provider yourself (a notifier, `keepAlive`, `retry:`) and it belongs to this route |
 
-**Selecting a provider.** Don't write `Future<Product> data(Ref ref, …) => ref.watch(productProvider(id).future)`
-for a provider you have: that puts a second provider in front of the real one, and awaiting
-`.future` in it drops the error the real provider holds while it retries, so the route
-can't show `error.dart` during the retry window. Select the provider instead:
+**Selecting a provider.** If a provider for the data already exists, select it:
 
 ```dart
 // lib/app/products/$productId/data.dart
@@ -21,40 +18,36 @@ ProviderListenable<AsyncValue<ProductView>> data({required String productId}) =>
     productProvider(productId);   // a generated family, a FutureProvider.family, ...
 ```
 
-- **The return type is what says so.** `ProviderListenable<AsyncValue<T>>` with no `Ref`
-  parameter (the function returns the provider, it doesn't read one). `T` is what the
-  page's parameter is matched to by type, as with `Future<T>`. It's a syntax-only read of the
-  return type: a generated provider's own type, like `ProductFamily`, isn't resolved.
+Don't write `Future<Product> data(Ref ref, …) => ref.watch(productProvider(id).future)` instead. That puts a
+second provider in front of the real one, and awaiting `.future` in it drops the error the real provider holds
+while it retries, so the route can't show `error.dart` during the retry window.
+
+- **The return type says so.** `ProviderListenable<AsyncValue<T>>` with no `Ref` parameter (the function returns
+  the provider, it doesn't read one). `T` is what the page's parameter is matched to by type, as with
+  `Future<T>`. It is a syntax-only read: a generated provider's own type, like `ProductFamily`, isn't resolved.
   `ProviderListenable` comes from `package:fespalier/fespalier.dart`.
-- **Parameters are the function form's.** Named parameters are segments and query
-  parameters, keyed and typed exactly as in `data(Ref ref, {…})` below; any other parameter is
-  an error at that parameter. Positional parameters and a `Ref` are errors too.
-- **`XRoute.data` is the selected provider** (`ProductDetailRoute.data('x') ==
-productProvider('x')`), and `watch`, `read`, `prefetch` and `refresh` all go to it. The
-  generated `DataView` watches it directly: no wrapper, no `.future` hop, one fetch per
-  navigation. `refresh` (and `error.dart`'s `retry`) invalidates the selected provider, and
-  `refresh` reads it again, so it runs once.
-- **The app's provider keeps its own `retry`, `keepAlive` and dependencies**, so
-  [`data_retry`](#retries-and-reloads) doesn't apply to it: it only configures the providers
-  fespalier creates. `keep_previous` does (it is about what the view shows). The app's
-  `ProviderScope(retry: …)` applies unless the provider sets its own.
-- **Refresh needs a provider, not just a listenable.** Watching only needs a
-  `ProviderListenable`, but invalidating needs the provider itself. The declared type stays
-  `ProviderListenable<AsyncValue<T>>`, the same for every kind of provider, and the runtime
-  checks what it gets (a `ProviderOrFamily` with a `.future`, which every
-  `FutureProvider`, `StreamProvider` and generated async provider is). Returning
-  something else, say `productProvider(id).select(…)`, builds and watches fine, but
-  `refresh` and `retry` throw a `StateError` that says to return the provider itself.
-- A section's `data.dart` can be a selector too, and takes segments and query parameters
-  like a page's.
+- **Parameters are the function form's.** Named parameters are segments and query parameters, keyed and typed as
+  in `data(Ref ref, {…})` below. Any other parameter, a positional one or a `Ref` is an error at that parameter.
+- **`XRoute.data` is the selected provider** (`ProductDetailRoute.data('x') == productProvider('x')`), and
+  `watch`, `read`, `prefetch` and `refresh` all go to it. The generated `DataView` watches it directly: no
+  wrapper, no `.future` hop, one fetch per navigation. `refresh` (and `error.dart`'s `retry`) invalidates the
+  selected provider, and `refresh` reads it again, so it runs once.
+- **The app's provider keeps its own `retry`, `keepAlive` and dependencies**, so [`data_retry`](#retries-and-reloads)
+  doesn't apply to it (it only configures the providers fespalier creates). `keep_previous` does, because it is
+  about what the view shows. The app's `ProviderScope(retry: …)` applies unless the provider sets its own.
+- **Refresh needs a provider, not just a listenable.** The declared type stays `ProviderListenable<AsyncValue<T>>`
+  for every kind of provider, and the runtime checks what it gets (a `ProviderOrFamily` with a `.future`, which
+  every `FutureProvider`, `StreamProvider` and generated async provider is). Returning something else, say
+  `productProvider(id).select(…)`, builds and watches fine, but `refresh` and `retry` throw a `StateError` that
+  says to return the provider itself.
+- A section's `data.dart` can be a selector too, and takes segments and query parameters like a page's.
 
-The other two: write a function and fespalier wraps it in an autoDispose
-`FutureProvider` (or `StreamProvider` for a `Stream`). Or export a provider named `data` yourself:
-`FutureProvider`, `StreamProvider`, `AsyncNotifierProvider` or `StreamNotifierProvider`,
-with its type arguments spelled out. It's used as-is.
+**The other two forms.** Write a function and fespalier wraps it in an autoDispose `FutureProvider` (a
+`StreamProvider` for a `Stream`). Or export a provider named `data` yourself (`FutureProvider`, `StreamProvider`,
+`AsyncNotifierProvider` or `StreamNotifierProvider`, with its type arguments spelled out): it is used as-is.
 
-In all three forms the route exposes it as `XRoute.data`, keyed by the segments and query
-parameters `data.dart` uses:
+In all three forms the route exposes it as `XRoute.data`, keyed by the segments and query parameters `data.dart`
+uses:
 
 | Parameters used | Provider                              | Watch it with                                   |
 | --------------- | ------------------------------------- | ----------------------------------------------- |
@@ -62,19 +55,17 @@ parameters `data.dart` uses:
 | one             | `.family<T, int>`                     | `ref.watch(ProductRoute.data(42))`              |
 | several         | `.family<T, ({String shop, int id})>` | `ref.watch(ItemRoute.data((shop: 'a', id: 1)))` |
 
-A family provider you write yourself follows the same rule, for segments: with several
-of them, its argument is a record naming the ones it uses, e.g. `({String shop, int id})`.
-It can't be keyed by a query parameter (a record field that isn't a segment is an error).
-To key by one, write the function form (`Future<T> data(Ref ref, {int? page})`) or select your
-provider with a `data()` that takes it (see above).
+A family provider you write yourself follows the same rule for segments: with several, its argument is a record
+naming the ones it uses, e.g. `({String shop, int id})`. It can't be keyed by a query parameter (a record field
+that isn't a segment is an error). To key by one, write the function form (`Future<T> data(Ref ref, {int? page})`)
+or select your provider with a `data()` that takes it.
 
-To see a scaffolded `error.dart` and its retry, throw from `data.dart`, e.g.
-`throw Exception('offline')`.
+To see a scaffolded `error.dart` and its retry, throw from `data.dart`, e.g. `throw Exception('offline')`.
 
 ### Retries and reloads
 
-Two settings in the `fespalier:` section of `pubspec.yaml` decide what a route shows while
-its `data.dart` fails or loads again:
+Two settings in the `fespalier:` section of `pubspec.yaml` decide what a route shows while its `data.dart` fails or
+loads again:
 
 ```yaml
 fespalier:
@@ -82,21 +73,20 @@ fespalier:
   keep_previous: true # true | false
 ```
 
-**`keep_previous: true` (the default).** `loading.dart` is only for the first load. Once
-the provider has a value or an error, a reload (`ref.invalidate`, `refresh`, the section's
-dependencies changing) keeps rendering it: the old page stays until the new value arrives,
-instead of blinking to `loading.dart` and back. `error.dart`'s `retry` still invalidates the
-provider; the error stays up until the new run has an answer. Off, `loading.dart` shows
-whenever the provider is loading (a refresh included), except while a write whose
-[`optimistic()`](actions.md#optimistic-updates-optimistic) patched the data settles (since 0.8.1). This is `skipLoadingOnReload` and
-`skipLoadingOnRefresh` on Riverpod's `AsyncValue.when`. It applies to a route's `data.dart` and
-to a section's, including a provider you write yourself.
+**`keep_previous: true` (the default).** `loading.dart` is only for the first load. Once the provider has a value or
+an error, a reload (`ref.invalidate`, `refresh`, the section's dependencies changing) keeps rendering it: the old
+page stays until the new value arrives, instead of blinking to `loading.dart` and back. `error.dart`'s `retry` still
+invalidates the provider, and the error stays up until the new run has an answer. This is `skipLoadingOnReload` and
+`skipLoadingOnRefresh` on Riverpod's `AsyncValue.when`, and it applies to a route's `data.dart` and a section's,
+including a provider you write yourself.
 
-**`data_retry: inherit` (the default).** Riverpod 3 retries a failed provider on its own,
-with backoff, and the app's `ProviderScope(retry: ...)` or `ProviderContainer(retry: ...)`
-decides how. The providers fespalier generates for `data()` functions don't set their own
-policy, so the app's applies. An app that wants a failure to settle into `error.dart` after
-a few attempts writes:
+With `false`, `loading.dart` shows whenever the provider is loading (a refresh included), except while a write whose
+[`optimistic()`](actions.md#optimistic-updates-optimistic) patched the data settles (since 0.8.1).
+
+**`data_retry: inherit` (the default).** Riverpod 3 retries a failed provider on its own, with backoff, and the app's
+`ProviderScope(retry: ...)` or `ProviderContainer(retry: ...)` decides how. The providers fespalier generates for
+`data()` functions don't set their own policy, so the app's applies. To have a failure settle into `error.dart` after a
+few attempts:
 
 ```dart
 ProviderScope(
@@ -105,30 +95,26 @@ ProviderScope(
 )
 ```
 
-Riverpod's own default (10 retries with doubling delays, none for an `Error`) applies when the
-app sets none. A provider you write yourself always follows the app's policy, or its own `retry:`.
+Riverpod's own default (10 retries with doubling delays, none for an `Error`) applies when the app sets none. A
+provider you write yourself always follows the app's policy, or its own `retry:`.
 
-Together the two make `error.dart` show as soon as `data.dart` fails, retrying or not:
-a provider that failed and is being retried is `AsyncLoading` with its error still held, and
-with `keep_previous` on `DataView` shows that error, not `loading.dart`, for the whole retry
-window. It goes to the data when a retry succeeds, and stays on the error when the policy gives up.
-With `keep_previous: false` a retry shows `loading.dart` again.
+A provider that failed and is being retried is `AsyncLoading` with its error still held. With `keep_previous` on,
+`DataView` shows that error, not `loading.dart`, for the whole retry window: `error.dart` shows as soon as
+`data.dart` fails, retrying or not. It goes to the data when a retry succeeds, and stays on the error when the
+policy gives up. With `keep_previous: false` a retry shows `loading.dart` again.
 
-**`data_retry: none`.** Every generated `data()` provider gets
-`retry: (retryCount, error) => null`, whatever the app's policy is: a failure is final until
-`error.dart`'s `retry` runs it again, which is how 0.1.1 behaved.
+**`data_retry: none`.** Every generated `data()` provider gets `retry: (retryCount, error) => null`, whatever the
+app's policy is: a failure is final until `error.dart`'s `retry` runs it again (the behaviour of 0.1.1).
 
-**A route with a `freshness` or a `dataCache`** (since 0.8.1) keeps its data when a reload fails,
-whatever `keep_previous` says: `error.dart` only shows when there is nothing to show (see
-[Freshness](#freshness-staletime-resume-and-reconnect)). And `DataView` shows a value that
-Riverpod's offline persistence restored (`isFromCache`) while the fresh one loads, with
-`keep_previous: false` too.
+**A route with a `freshness` or a `dataCache`** (since 0.8.1) keeps its data when a reload fails, whatever
+`keep_previous` says: `error.dart` only shows when there is nothing to show (see
+[Freshness](#freshness-staletime-resume-and-reconnect)). And `DataView` shows a value that Riverpod's offline
+persistence restored (`isFromCache`) while the fresh one loads, with `keep_previous: false` too.
 
 ### Freshness: `staleTime`, resume and reconnect
 
-Since 0.8.1 a `data.dart` can say when its value is old enough to load again. It is opt in: a
-route without the declaration below loads once and keeps the value for as long as something
-watches it, as before.
+Since 0.8.1 a `data.dart` can say when its value is old enough to load again. It is opt in: a route without the
+declaration loads once and keeps the value for as long as something watches it.
 
 ```dart
 // lib/app/products/$id/data.dart
@@ -145,17 +131,15 @@ Future<Product> data(Ref ref, {required int id}) =>
     ref.watch(apiProvider).product(id);
 ```
 
-`freshness` is a top-level variable of exactly that name, `const` or `final`, whose initializer is
-a `Freshness(...)` call (`const Freshness(...)` and `prefix.Freshness(...)` are fine). fsp does not
-read the duration: the generated file refers to `_i13.freshness`, and the Dart analyzer checks it.
-It applies to the **function form** that returns a `Future<T>`, a `FutureOr<T>` or a plain `T`. In
-a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider it is
-an error that says what to do instead (below).
+`freshness` is a top-level variable of exactly that name, `const` or `final`, whose initializer is a
+`Freshness(...)` call (`const Freshness(...)` and `prefix.Freshness(...)` are fine). fsp does not read the duration:
+the generated file refers to `_i13.freshness`, and the Dart analyzer checks it. It applies to the **function form**
+that returns a `Future<T>`, a `FutureOr<T>` or a plain `T`. In a `data.dart` that returns a `Stream`, selects a
+provider or exports its own `data` provider it is an error that says what to do instead (see Diagnostics below).
 
-**A folder's default.** The same constant in a `route.dart` is the default of every `data()`
-function at and below that folder (a [section's](#section-data) included): the nearest
-`route.dart` wins, and a `data.dart`'s own `freshness` wins over all of them. A root
-`lib/app/route.dart` is the app-wide default.
+**A folder's default.** The same constant in a `route.dart` is the default of every `data()` function at and below
+that folder (a [section's](#section-data) included). The nearest `route.dart` wins, and a `data.dart`'s own
+`freshness` wins over all of them. A root `lib/app/route.dart` is the app-wide default.
 
 ```dart
 // lib/app/teams/$teamId/route.dart
@@ -165,94 +149,89 @@ import 'package:fespalier/fespalier.dart';
 const freshness = Freshness(staleTime: Duration(seconds: 30));
 ```
 
-The cascade is a default, not a demand: a selector, a provider form or a `Stream` below is skipped
-without a word. A `route.dart` whose `freshness` applies to no `data.dart` is a warning. There is no
-`fespalier:` key for it: a Dart constant is type-checked, and needs no duration grammar in YAML.
+The cascade is a default, not a demand: a selector, a provider form or a `Stream` below is skipped without a word. A
+`route.dart` whose `freshness` applies to no `data.dart` is a warning. There is no `fespalier:` key for it: a Dart
+constant is type-checked, and needs no duration grammar in YAML.
 
-**What "stale" means.** A value is stale once it has been in memory for `staleTime` since it
-_arrived_ (the `Future` completed; for a synchronous `data()`, the microtask after it was built).
-A value that is still loading, or an error, is never stale; Riverpod's retry and `error.dart`'s
-retry handle those. Nothing polls: no timer starts, and data on screen that goes stale stays as
-it is until something reads it. A stale value is loaded again **when something reads it**:
+**What "stale" means.** A value is stale once it has been in memory for `staleTime` since it _arrived_ (the `Future`
+completed; for a synchronous `data()`, the microtask after it was built). A value that is still loading, or an
+error, is never stale: Riverpod's retry and `error.dart`'s retry handle those. Nothing polls: no timer starts, and
+stale data on screen stays as it is until something reads it. A stale value is loaded again **when something reads
+it**:
 
-1. **A new listener.** A page opening on it (`DataView`), a `SectionView` of a page that opens
-   below a section, `XRoute.watch` in a widget that mounts, `prefetch` / `preload` /
-   `AppRoutes.preload`, a [`RouteLink`](navigation.md#preloading-the-data-behind-a-link) preloading on hover,
-   `XRoute.read`.
-2. **A listener coming back.** A page uncovered by a pop, a tab shown again: Flutter turns
-   `TickerMode` back on, and Riverpod resumes the subscription.
+1. **A new listener.** A page opening on it (`DataView`), a `SectionView` of a page that opens below a section,
+   `XRoute.watch` in a widget that mounts, `prefetch` / `preload` / `AppRoutes.preload`, a
+   [`RouteLink`](navigation.md#preloading-the-data-behind-a-link) preloading on hover, `XRoute.read`.
+2. **A listener coming back.** A page uncovered by a pop, a tab shown again: Flutter turns `TickerMode` back on, and
+   Riverpod resumes the subscription.
 3. **A signal**, with `refetchOnResume` or `refetchOnReconnect` (below).
 
 The stale value shows **at once** (no `Future`, no blank frame), and the new one replaces it
-(stale-while-revalidate). With `keep_previous: true` (the default) the old page stays until the new
-value arrives; with `keep_previous: false` `loading.dart` shows while it loads, as for any refresh.
-If the load fails, the page **keeps its data** (see `keepDataOnError`, below), the error is in
-`XRoute.watch(ref).error`, and `XRoute.refresh(ref)` completes with it.
+(stale-while-revalidate). With `keep_previous: true` (the default) the old page stays until the new value arrives;
+with `keep_previous: false` `loading.dart` shows while it loads, as for any refresh. If the load fails, the page
+**keeps its data** (see `keepDataOnError`, below), the error is in `XRoute.watch(ref).error`, and
+`XRoute.refresh(ref)` completes with it.
 
 Things to know:
 
-- **Every new reader counts.** With a small `staleTime`, a section's data loads again each time a
-  page below it opens, because that page's `SectionView` is a new listener. `Duration.zero` loads
-  on every open, and a prefetch is then only a head start for the first paint.
-- **`read` returns what is in memory**, stale or not, and starts the reload. Use `refresh` for a
-  value that is surely fresh: it waits for the network.
+- **Every new reader counts.** With a small `staleTime`, a section's data loads again each time a page below it
+  opens, because that page's `SectionView` is a new listener. `Duration.zero` loads on every open, and a prefetch is
+  then only a head start for the first paint.
+- **`read` returns what is in memory**, stale or not, and starts the reload. Use `refresh` for a value that is surely
+  fresh: it waits for the network.
 - **An invalidation is not a read.** `ref.invalidate`, `XRoute.refresh` and an
-  [`action.dart`](actions.md#actiondart-typed-writes)'s `invalidates` load at once, whatever the `staleTime`:
-  `staleTime` is for reads only.
-- **`keepFor` is another thing.** `prefetch(ref, keepFor: …)` is how long a handle keeps a value in
-  memory with nothing on screen; `staleTime` is how long it counts as fresh. With a ten minute
-  `keepFor` and a one minute `staleTime`, opening the page five minutes later shows the kept value
-  at once and loads it again. A handle that is still alive across an app resume loads under
-  `refetchOnResume` too (it is alive, so it listens); `staleTime` bounds that.
+  [`action.dart`](actions.md#actiondart-typed-writes)'s `invalidates` load at once, whatever the `staleTime`.
+- **`keepFor` is another thing.** `prefetch(ref, keepFor: …)` is how long a handle keeps a value in memory with
+  nothing on screen; `staleTime` is how long it counts as fresh. With a ten minute `keepFor` and a one minute
+  `staleTime`, opening the page five minutes later shows the kept value at once and loads it again. A handle still
+  alive across an app resume loads under `refetchOnResume` too (it is alive, so it listens); `staleTime` bounds that.
 
-**Resume and reconnect.** `refetchOnResume: true` loads the value again when the app comes back to
-the foreground (`AppLifecycleListener.onResume`), and `refetchOnReconnect: true` when
-`reconnectSignal` fires. Both use the threshold `staleTime ?? Duration.zero`: without a
-`staleTime`, every signal loads again, so set one with `refetchOnResume` unless every focus should
-reload (an iOS notification shade or a browser window regaining focus is a resume too). Each is a
-Riverpod provider holding a count, a `RefetchSignal`, that the data provider listens to:
+**Resume and reconnect.** `refetchOnResume: true` loads the value again when the app comes back to the foreground
+(`AppLifecycleListener.onResume`), and `refetchOnReconnect: true` when `reconnectSignal` fires. Both use the
+threshold `staleTime ?? Duration.zero`: without a `staleTime`, every signal loads again, so set one with
+`refetchOnResume` unless every focus should reload (an iOS notification shade or a browser window regaining focus is
+a resume too). Each signal is a Riverpod provider holding a count, a `RefetchSignal`, that the data provider listens
+to:
 
-- `appResumeSignal` fires on resume. It is created only while a provider with `refetchOnResume`
-  listens to it, and its `AppLifecycleListener` goes with it.
-- `reconnectSignal` **never fires by itself**: Flutter has no API for "the network is back". Override it with
-  a `RefetchSignal` of your own that listens to your connectivity source, or call
+- `appResumeSignal` fires on resume. It is created only while a provider with `refetchOnResume` listens to it, and
+  its `AppLifecycleListener` goes with it.
+- `reconnectSignal` **never fires by itself**: Flutter has no API for "the network is back". Override it with a
+  `RefetchSignal` of your own that listens to your connectivity source, or call
   `ref.read(reconnectSignal.notifier).fire()` where you know. `fespalier_connectivity` (since 0.9.0,
   [below](#reconnects-fespalier_connectivity)) is that signal from `connectivity_plus`, tested:
   `reconnectSignal.overrideWith(ConnectivitySignal.new)` in `startup()`.
 
-**Your own provider.** `freshData(ref, const Freshness(...), value)` is what the generated provider
-wraps its value in. It returns `value` itself (a `Future` stays the `Future`, a value stays a
-value), so a selector's target or a provider-form `data.dart` can give itself the same rules:
+**Your own provider.** `freshData(ref, const Freshness(...), value)` is what the generated provider wraps its value
+in. It returns `value` itself (a `Future` stays the `Future`, a value stays a value), so a selector's target or a
+provider-form `data.dart` can give itself the same rules:
 `Future<Product> build() => freshData(ref, const Freshness(…), _fetch());`.
 
-**A failed reload keeps the page.** A route whose `data.dart` has a `freshness` or a `dataCache`
-(or inherits one) gets `keepDataOnError: true` on its `DataView`: a reload that fails (a stale
-value loaded again, a start offline) leaves the page on its data, and `error.dart` only shows
-when there is nothing to show. The cost is that a failed `refresh()` is hidden behind the old
-page: `refresh()` completes with the error (show a snackbar), and `XRoute.watch(ref).hasError`
-is there for a banner.
+**A failed reload keeps the page.** A route whose `data.dart` has a `freshness` or a `dataCache` (or inherits one)
+gets `keepDataOnError: true` on its `DataView`: a reload that fails (a stale value loaded again, a start offline)
+leaves the page on its data, and `error.dart` only shows when there is nothing to show. The cost is that a failed
+`refresh()` is hidden behind the old page: `refresh()` completes with the error (show a snackbar), and
+`XRoute.watch(ref).hasError` is there for a banner.
 
 **Testing.** `testWidgets` runs in fake async and ages data by `clock.now()`, so
-`await tester.pump(const Duration(minutes: 6))` makes a value stale without waiting and without a
-timer. A resume is `tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive)`
-and then `.resumed`, or `container.read(appResumeSignal.notifier).fire()` (the container is what
-`pumpRouter` returns); a reconnect is `container.read(reconnectSignal.notifier).fire()`. A test
-that builds a `refetchOnResume` provider in a bare `ProviderContainer`, with no binding, throws
-when the signal is built: use `testWidgets`, or override
-`appResumeSignal.overrideWith(RefetchSignal.new)`. Two things need a frame or two to show: a
-reload starts on a frame and its value shows on the next, so `pump()` a few times (or
-`pumpAndSettle` when nothing waits on a real delay).
+`await tester.pump(const Duration(minutes: 6))` makes a value stale without waiting and without a timer.
 
-`examples/shop` carries `freshness` on `products/$id/data.dart`, `examples/features` the
-`route.dart` default on `teams/$teamId/`; each has a `test/freshness_test.dart`.
+- A resume is `tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive)` and then `.resumed`, or
+  `container.read(appResumeSignal.notifier).fire()` (the container is what `pumpRouter` returns). A reconnect is
+  `container.read(reconnectSignal.notifier).fire()`.
+- A test that builds a `refetchOnResume` provider in a bare `ProviderContainer`, with no binding, throws when the
+  signal is built: use `testWidgets`, or override `appResumeSignal.overrideWith(RefetchSignal.new)`.
+- A reload starts on a frame and its value shows on the next, so `pump()` a few times (or `pumpAndSettle` when
+  nothing waits on a real delay).
 
-**Diagnostics.** A `freshness` that is not a `Freshness(...)` call, a second one, one in a
-`data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider, and a
-`dataCache` in a `route.dart`, are errors that say what to write instead; their messages are in the
-[troubleshooting skill](../skills/fespalier-troubleshooting/references/diagnostics-data-and-hooks.md).
-`freshness` and `dataCache` are names fsp now reads in a `data.dart`, so an app with a public
-top-level variable of one of those names and another type gets the first error: rename it (a
-private `_freshness` is never read).
+`examples/shop` carries `freshness` on `products/$id/data.dart`, `examples/features` the `route.dart` default on
+`teams/$teamId/`; each has a `test/freshness_test.dart`.
+
+**Diagnostics.** These are errors that say what to write instead: a `freshness` that is not a `Freshness(...)` call,
+a second one, one in a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider, and
+a `dataCache` in a `route.dart`. Their messages are in the
+[troubleshooting skill](../skills/fespalier-troubleshooting/references/diagnostics-data-and-hooks.md). `freshness` and
+`dataCache` are names fsp reads in a `data.dart`, so an app with a public top-level variable of one of those names
+and another type gets the first error: rename it (a private `_freshness` is never read).
 
 ### Reconnects: fespalier_connectivity
 
@@ -603,30 +582,26 @@ final warm = ProductRoute(id: 42).prefetch(ref);   // a PrefetchHandle, before n
 final all = ProductRoute(id: 42).preload(ref);     // the same, for everything the page reads
 ```
 
-`watch` includes the patches of an [`optimistic()`](actions.md#optimistic-updates-optimistic) when the data
-has any (since 0.8.1).
+`watch` includes the patches of an [`optimistic()`](actions.md#optimistic-updates-optimistic) when the data has any
+(since 0.8.1).
 
-`watch` and `read` are _static_, and take the keys the provider uses as named arguments
-(`ItemRoute.watch(ref, shop: 'a', id: 1)`, `SearchRoute.watch(ref, q: 'ap', page: 2)`;
-none for a route without keys). They can't be instance methods: `ProductRoute(id: 42).watch(ref)`
-would have to write `AsyncValue<Product>` into the generated file, and the generator never
-copies your imports. A static function value takes its type from the provider by
-inference, so `Product` flows through and is never `dynamic`. (More in
-[Design notes](faq.md#design-notes).)
+**`watch` and `read` are static**, and take the keys the provider uses as named arguments
+(`ItemRoute.watch(ref, shop: 'a', id: 1)`, `SearchRoute.watch(ref, q: 'ap', page: 2)`; none for a route without
+keys). They can't be instance methods: `ProductRoute(id: 42).watch(ref)` would have to write `AsyncValue<Product>`
+into the generated file, and the generator never copies your imports. A static function value takes its type from the
+provider by inference, so `Product` flows through and is never `dynamic` (more in
+[Design notes](faq.md#design-notes)).
 
-`read` keeps the provider alive until it completes, which a plain `ref.read(p.future)`
-doesn't for an `autoDispose` provider. Don't call it from `build`. On a route with a
-[`freshness`](#freshness-staletime-resume-and-reconnect) (since 0.8.1) `read` returns the value in
-memory even if it is stale, and starts the reload; `refresh` waits for the network.
+**`read`** keeps the provider alive until it completes, which a plain `ref.read(p.future)` doesn't for an
+`autoDispose` provider. Don't call it from `build`. On a route with a
+[`freshness`](#freshness-staletime-resume-and-reconnect) (since 0.8.1) it returns the value in memory even if it is
+stale, and starts the reload; `refresh` waits for the network.
 
-`prefetch(ref)` starts the load and returns a `PrefetchHandle` that **keeps the provider alive
-until you call `close()`** on it, so the page you navigate to next shows the value at once. The
-generated providers are `autoDispose`, so a prefetch nobody watches would be dropped in the same
-frame; the handle is what holds it, and how long is yours to decide: an app's prefetch queue
-holds one per lease and closes it when the lease ends. `keepFor:` is an optional auto-close
-(`prefetch(ref, keepFor: Duration(seconds: 30))` closes the handle after that long). A failed
-load isn't kept (the handle closes itself): the page starts a fresh one instead. Call it before
-`go`, e.g. on hover:
+**`prefetch(ref)`** starts the load and returns a `PrefetchHandle` that **keeps the provider alive until you call
+`close()`** on it, so the page you navigate to next shows the value at once. The generated providers are
+`autoDispose`, so a prefetch nobody watches would be dropped in the same frame; the handle holds it, and how long is
+yours to decide (an app's prefetch queue holds one per lease and closes it when the lease ends). Call it before `go`,
+e.g. on hover:
 
 ```dart
 MouseRegion(
@@ -636,24 +611,25 @@ MouseRegion(
 )
 ```
 
-A few things to know: closing twice is fine, and `handle.isClosed` tells; the subscription
-also ends when the widget whose `ref` you pass is disposed, and since 0.5.0 that closes the
-handle and cancels its `keepFor` timer with it, so no timer outlives the widget; while the
-widget is alive `keepFor` holds a timer, so a widget test that uses it should `pump` past it (or
-pass `Duration.zero`, which starts the load and keeps nothing); and _the default changed_: a prefetch used to lapse after 30 seconds without a
-`keepFor`, and now lasts until closed (a `prefetch(ref)` whose handle is dropped lasts as
-long as the widget behind `ref`). `prefetchKeepAlive` is gone.
-`prefetch` warms the route's _own_ `data.dart`. `preload(ref)` (since 0.5.0) warms _everything the
-page reads_: the data of each [section](#section-data) above it, then its own, the list
-`AppRoutes.dataAt` gives for its location, behind one handle that closes them all
-(see [Links](navigation.md#links-routelink)). A route with no data at all returns a closed handle; one whose page is
+- `keepFor:` is an optional auto-close: `prefetch(ref, keepFor: Duration(seconds: 30))` closes the handle after that
+  long. While the widget is alive `keepFor` holds a timer, so a widget test that uses it should `pump` past it (or
+  pass `Duration.zero`, which starts the load and keeps nothing).
+- A failed load isn't kept (the handle closes itself): the page starts a fresh one instead.
+- Closing twice is fine, and `handle.isClosed` tells.
+- The subscription also ends when the widget whose `ref` you pass is disposed. Since 0.5.0 that closes the handle
+  and cancels its `keepFor` timer with it, so no timer outlives the widget. A `prefetch(ref)` whose handle is
+  dropped lasts as long as the widget behind `ref`. (What changed in 0.7.0 is in [Migration](migration.md).)
+
+**`preload(ref)`** (since 0.5.0) warms _everything the page reads_, where `prefetch` warms the route's _own_
+`data.dart`: the data of each [section](#section-data) above it, then its own, the list `AppRoutes.dataAt` gives for
+its location, behind one handle that closes them all (see [Links](navigation.md#links-routelink)). A route with no
+data at all returns a closed handle; one whose page is
 [deferred](navigation.md#deferred-routes-a-pages-code-on-demand) (since 0.7.0) also starts loading its code.
-Because these are members of the route class, `watch`, `read`, `prefetch`, `preload`, `refresh`,
-`ref` and `keepFor` can't be segment or query names (`preload` is reserved since 0.5.0), nor
-(since 0.5.0) can `of`, `maybeOf` and `copyWith` (see
-[the URL as state](navigation.md#the-url-as-state-of-and-copywith)), and neither
-can the helpers of an [`action.dart`](actions.md#actiondart-typed-writes) (`submit`, `useAction`, or an
-action's own name).
+
+**Reserved names.** Because these are members of the route class, `watch`, `read`, `prefetch`, `preload`, `refresh`,
+`ref` and `keepFor` can't be segment or query names (`preload` is reserved since 0.5.0), nor (since 0.5.0) can `of`,
+`maybeOf` and `copyWith` (see [the URL as state](navigation.md#the-url-as-state-of-and-copywith)), nor the helpers of
+an [`action.dart`](actions.md#actiondart-typed-writes) (`submit`, `useAction`, or an action's own name).
 
 ## From a location to its data
 

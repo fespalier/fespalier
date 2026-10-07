@@ -46,28 +46,29 @@ All commands take `--project <dir>` (default: the nearest folder with a `pubspec
 
 ### fsp new
 
+`fsp new` writes `page.dart` plus the kinds you ask for with flags. It skips files that already exist,
+then regenerates `lib/app.g.dart` and prints the result line (if that fails, it lists the files it
+created).
+
+- **Class names** come from `--name` (default: from the path, e.g. `ProductsId`). A segment that
+  already has a type elsewhere in the tree keeps it.
+- **`--function`** writes [function views](file-kinds.md#function-views) instead of classes, and
+  `--name` becomes the `routeName` (an UpperCamelCase name).
+- **`--no-page`** leaves `page.dart` out.
+- **`--not-found`** adds a `not_found.dart` that takes the segments of its path as `String`s (see
+  [Not-found views](routing.md#not-found-views)).
+- **A `(group)` target** (like `'(account)'`) gets no `page.dart` either, since a group has no URL of
+  its own; write one by hand if you want the group to serve its parent's URL. After
+  `fsp new '(account)' --layout`, the generator warns "folder has no page.dart and no routes below
+  it; skipped" until you add a route inside the group. That is expected.
+
 `fsp gen`, `check` and `watch` also look at the string paths in `lib/` (see
-[Checking string paths](#checking-string-paths)). `fsp new` writes `page.dart` (plus the kinds you ask for with flags), skips files that
-already exist, and takes its class names from `--name` (default: from the path, e.g.
-`ProductsId`). With `--function` it writes [function views](file-kinds.md#function-views) instead of classes,
-and `--name` becomes the `routeName` (an UpperCamelCase name). A segment that already has a
-type elsewhere in the tree keeps it. Pass
-`--no-page` to leave `page.dart` out, and `--not-found` to add a `not_found.dart` that takes the
-segments of its path as `String`s (see [Not-found views](routing.md#not-found-views)). A `(group)` target (like `'(account)'`) gets no
-`page.dart` either, since a group has no URL of its own; write one by hand if you want the
-group to serve its parent's URL. It then regenerates `lib/app.g.dart` and prints the
-result line; if that fails, it lists the files it created. After `fsp new '(account)'
---layout`, the generator warns "folder has no page.dart and no routes below it; skipped"
-until you add a route inside the group. That's expected.
+[Checking string paths](#checking-string-paths)).
 
 ### fsp routes
 
 `fsp routes` prints what the header of `lib/app.g.dart` lists: each route's URL pattern, its typed
-route class, its `page.dart` and its tags (`redirect`, `data`, `action`, `guard`, `layout`, `transition`,
-`present`, `observe` (a page with an [`observe.dart`](observability.md#route-lifecycle-observedart) at or above it, since 0.8.1), `root`, `sibling` for a route with [`nest = false`](routing.md#a-sibling-with-a-compound-path), and
-`remount` for a page that [starts again when its URL changes](navigation.md#remounting-a-page-remount), and last `deferred` for a page whose
-[code loads on demand](navigation.md#deferred-routes-a-pages-code-on-demand), since 0.7.0). Since 0.8.1 `fresh` follows `data` for a route whose data has a
-[`freshness`](data.md#freshness-staletime-resume-and-reconnect), and `cached` for one with a [`dataCache`](data.md#a-cache-that-survives-a-restart-datacache).
+route class, its `page.dart` and its tags.
 
 ```text
 /products/:id  ProductRoute   products/$id/page.dart  (data, transition)
@@ -75,10 +76,31 @@ route class, its `page.dart` and its tags (`redirect`, `data`, `action`, `guard`
 
 A route with [localized paths](routing.md#localized-paths) lists each spelling under its row (`fr  /produits/:id`).
 
+The tags are `redirect`, `data`, `action`, `guard`, `layout`, `transition`, `present`, and:
+
+- `observe`: a page with an [`observe.dart`](observability.md#route-lifecycle-observedart) at or above it (since 0.8.1);
+- `root`;
+- `sibling`: a route with [`nest = false`](routing.md#a-sibling-with-a-compound-path);
+- `remount`: a page that [starts again when its URL changes](navigation.md#remounting-a-page-remount);
+- `deferred`, always last: a page whose [code loads on demand](navigation.md#deferred-routes-a-pages-code-on-demand) (since 0.7.0);
+- `fresh` (since 0.8.1), after `data`: its data has a [`freshness`](data.md#freshness-staletime-resume-and-reconnect);
+- `cached` (since 0.8.1): it has a [`dataCache`](data.md#a-cache-that-survives-a-restart-datacache).
+
 **`--graph`** (since 0.5.0) prints the route _tree_ instead, to paste into a README, a pull request
-or an issue: `fsp routes --graph` (or `--graph mermaid`) writes a Mermaid `flowchart TD`, which
-GitHub renders in Markdown, and `--graph dot` a Graphviz `digraph` (`fsp routes --graph dot | dot -Tsvg`).
-It draws what `app.g.dart` gives go_router, not the folders:
+or an issue. `fsp routes --graph` (or `--graph mermaid`) writes a Mermaid `flowchart TD`, which
+GitHub renders in Markdown; `--graph dot` writes a Graphviz `digraph` (`fsp routes --graph dot | dot -Tsvg`).
+
+```text
+flowchart TD
+  subgraph rootnav["root navigator"]
+    subgraph b0["layout layout.dart"]
+      n0["/<br/>HomeRoute"]
+      n1["/cart<br/>CartRoute"]
+      n2["/checkout<br/>CheckoutRoute<br/>(guard)"]
+      ...
+```
+
+The graph shows what `app.g.dart` gives go_router, not the folders:
 
 - **Nodes** are routes: the URL pattern, the route class, each spelling of a
   [localized path](routing.md#localized-paths) and the markers (`redirect`, `data`, `fresh`, `cached`, `action`, `guard`,
@@ -94,22 +116,12 @@ The output has no timestamp and a fixed order, so a graph committed to a doc cha
 routes do. `--graph` and `--json` cannot be combined.
 
 **`--graph json`** (since 0.7.0) prints the same tree as JSON, with each guard, `redirect.dart`,
-`data.dart` and `action.dart` as a _site_ the generated code names. It is what the
-[DevTools extension](devtools.md) reads, and `app.g.dart` embeds it. Every route has its URL
-pattern, its route class, its file and folder (relative to the app folder), its markers, its typed parameters and
+`data.dart` and `action.dart` as a _site_ the generated code names. The
+[DevTools extension](devtools.md) reads it, and `app.g.dart` embeds it. Every route has its URL
+pattern, route class, file and folder (relative to the app folder), markers, typed parameters and
 each other spelling of a localized path; layouts and tab layouts are items of their own.
 
-```text
-flowchart TD
-  subgraph rootnav["root navigator"]
-    subgraph b0["layout layout.dart"]
-      n0["/<br/>HomeRoute"]
-      n1["/cart<br/>CartRoute"]
-      n2["/checkout<br/>CheckoutRoute<br/>(guard)"]
-      ...
-```
-
-With `--json` it prints one JSON object per line, for scripts and editors, with each
+**`--json`** prints one JSON object per line, for scripts and editors, with each
 route's parameters and the [manifest](routing.md#route-manifest-and-metadart)'s fields; `file` is relative to
 the project root:
 
@@ -133,10 +145,10 @@ the project root:
 
 ### JSON diagnostics
 
-**`--json` diagnostics.** `fsp gen --json` and `fsp check --json` print each diagnostic to
-stdout as one JSON object per line, instead of the rendering below, so an editor can turn them
-into squiggles. The success and failure lines still go to stderr, and stdout is empty when
-there is nothing to report:
+`fsp gen --json` and `fsp check --json` print each diagnostic to stdout as one JSON object per line
+instead of the rendering shown under [What the commands print](#what-the-commands-print), so an editor
+can turn them into squiggles. The success and failure lines still go to stderr, and stdout is empty
+when there is nothing to report.
 
 ```json
 {
@@ -153,39 +165,40 @@ a diagnostic that isn't about a place in a file. `severity` is `error` or `warni
 
 ### Formatting
 
-**Formatting.** The generated file is not formatted by default, so a committed
-`app.g.dart` doesn't depend on which Dart SDK ran `fsp`. `fsp gen --format`, or `format: true` in
-the pubspec section, pipes it through `dart format` (which needs `dart` on your `PATH`; without
-it `fsp` warns and writes the unformatted code). It uses your package's language version
-and `analysis_options.yaml` (`formatter: page_width`), like `dart format lib/`, and
-`fsp gen` compares the formatted text with the file on disk, so a formatted file that is up
-to date stays "unchanged". `fsp watch`, `fsp new` and `fsp init` follow `format:` in the
-pubspec. `fsp check` writes and compares nothing, so it never runs `dart`.
+The generated file is not formatted by default, so a committed `app.g.dart` doesn't depend on which
+Dart SDK ran `fsp`. To format it, use `fsp gen --format` or `format: true` in the pubspec section.
+
+- It pipes the file through `dart format`, which needs `dart` on your `PATH`; without it `fsp` warns
+  and writes the unformatted code.
+- It uses your package's language version and `analysis_options.yaml` (`formatter: page_width`),
+  like `dart format lib/`.
+- `fsp gen` compares the formatted text with the file on disk, so a formatted file that is up to date
+  stays "unchanged".
+- `fsp watch`, `fsp new` and `fsp init` follow `format:` in the pubspec.
+- `fsp check` writes and compares nothing, so it never runs `dart`.
 
 ### What the commands print
 
-What the commands print:
-
 - `fsp gen`: `✓ 12 routes → lib/app.g.dart`, or `✓ 12 routes, lib/app.g.dart unchanged`
-  when the output didn't change (with `output_manifest`, or a [generated `main()`](app-startup.md)
-  since 0.8.1, every file is named: `✓ 12 routes → lib/app.g.dart, lib/app.main.g.dart`).
+  when the output didn't change. With `output_manifest`, or a [generated `main()`](app-startup.md)
+  since 0.8.1, every file is named: `✓ 12 routes → lib/app.g.dart, lib/app.main.g.dart`.
 - `fsp check`: `✓ 12 routes, no errors`.
 - `fsp dev` (since 0.9.0): the same `gen` line, then the [full-screen view](#running-your-app-fsp-dev), or with `--no-tui`
   the lines of each process with its name in front, `[fsp] ✓ 12 routes → lib/app.g.dart (3.1ms)`.
 - `fsp watch`: the `gen` line once at startup, then a line each time a save changes
-  `lib/app.g.dart`. An edit that doesn't (a widget's `build` method, say) prints nothing.
-  It ignores its own output and file reads, so it doesn't loop while idle. It keeps the parse
-  results of files that didn't change, so a save parses only the file you saved; a save that
-  leaves everything the generator reads as it was (a colocated widget, say) doesn't resolve or
-  render again, and `dart format` (with `format: true`) only runs on generated code it hasn't
-  formatted before. It also watches the rest of `lib/` (Dart files and folders only), because the
-  enum a segment names is declared there: editing `lib/models/category.dart` regenerates. See
-  [Performance](#performance).
+  `lib/app.g.dart`. An edit that doesn't (a widget's `build` method, say) prints nothing. It ignores
+  its own output and file reads, so it doesn't loop while idle.
+  - It keeps the parse results of files that didn't change, so a save parses only the file you saved.
+    A save that leaves everything the generator reads as it was (a colocated widget, say) doesn't
+    resolve or render again, and `dart format` (with `format: true`) only runs on generated code it
+    hasn't formatted before.
+  - It also watches the rest of `lib/` (Dart files and folders only), because the enum a segment names
+    is declared there: editing `lib/models/category.dart` regenerates.
+  - See [Performance](#performance).
 
-Errors point at the parameter or declaration at fault, and `app.g.dart` is left
-untouched while there are any. A file that can't be fully parsed gets a warning instead
-(the Dart compiler reports the exact error), and the generator works with what it could
-read:
+Errors point at the parameter or declaration at fault, and `app.g.dart` is left untouched while there
+are any. A file that can't be fully parsed gets a warning instead (the Dart compiler reports the exact
+error), and the generator works with what it could read:
 
 ```text
 error: can't fill `label`: it isn't a segment of this path ($shop, $id) or data.dart's String
@@ -202,11 +215,11 @@ error: `$id` is int in products/$id/data.dart:6 but String here
 `lib/app.g.dart` is plain go_router + Riverpod code that's meant to be read and committed.
 It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
 
-- **Types are never re-spelled.** The generator doesn't copy your imports. Values flow
-  through inference, and each route's provider is a `static final` whose type is inferred.
-  The exceptions are a page's (or a layout's, guard's or redirect's) [typed `extra`](navigation.md#typed-extra)
-  and an [enum segment or query parameter](routing.md#enum-segments), whose types the typed route has to
-  name; it imports those types by name from the file's imports.
+- **Types are never re-spelled.** The generator doesn't copy your imports. Values flow through
+  inference, and each route's provider is a `static final` whose type is inferred. The exceptions are a
+  page's (or a layout's, guard's or redirect's) [typed `extra`](navigation.md#typed-extra) and an
+  [enum segment or query parameter](routing.md#enum-segments), whose types the typed route has to name;
+  it imports those types by name from the file's imports.
 - **Segments and query parameters are parsed into a record** (`({int id, int? page})`).
   Records compare by value, so providers are keyed by them directly.
 - **Page-less folders** fold into their children's paths (`greet/$name` → `'greet/:name'`).
@@ -219,20 +232,20 @@ It opens with a route table (see `examples/shop/lib/app.g.dart`). Some details:
 
 ## Editor plugins
 
-**Editor support.** Two editor plugins sit on top of the JSON diagnostics. Neither is on a
-marketplace yet, so you build them from source. Both use `fsp` from your `PATH`, or `dart run
-fespalier` when there is none, and both check again when you save a file under the app folder
-(`fespalier: app_dir:` in `pubspec.yaml`, `lib/app` by default).
+Two editor plugins sit on top of the JSON diagnostics. Neither is on a marketplace yet, so you build
+them from source. Both use `fsp` from your `PATH`, or `dart run fespalier` when there is none, and both
+check again when you save a file under the app folder (`fespalier: app_dir:` in `pubspec.yaml`,
+`lib/app` by default).
 
 - **VS Code:** `editors/vscode/` puts the diagnostics in the Problems panel, with a
-  `fespalier: generate` command and a status bar item. Build it with `npm install && npm test
-&& npx @vscode/vsce package` in that folder and install the `.vsix` (see
-  `editors/vscode/README.md`). `fespalier.runner` chooses the runner.
+  `fespalier: generate` command and a status bar item. `fespalier.runner` chooses the runner. Build it
+  with `npm install && npm test && npx @vscode/vsce package` in that folder and install the `.vsix`
+  (see `editors/vscode/README.md`).
 - **IntelliJ IDEA and Android Studio:** `editors/intellij/` (Kotlin) underlines the problems
   in the editor, with their severity, in the files under the app folder, and adds
   _Tools | fespalier: Generate_ and _fespalier: Check_; a notification says when `fsp` could
-  not run. Settings | Tools | fespalier chooses the runner (auto, `fsp`, or `dart run
-fespalier`) and the path to `fsp`. It works on platform 252 (2025.2) and later; the
+  not run. Settings | Tools | fespalier chooses the runner (auto, `fsp`, or `dart run fespalier`) and
+  the path to `fsp`. It works on platform 252 (2025.2) and later; the
   highlighting of route files needs the Dart plugin, which Android Studio includes. Build it
   with JDK 21:
 
@@ -247,9 +260,9 @@ fespalier`) and the path to `fsp`. It works on platform 252 (2025.2) and later; 
 
 ## Running your app: `fsp dev`
 
-Since 0.9.0. `fsp dev` is `fsp watch` and `flutter run` in one terminal. It writes `lib/app.g.dart`, starts the
-app, and **hot restarts** it whenever the routes change, because a new route needs a restart. Any other save of a
-Dart file under `lib/` gets a **hot reload**. It needs no configuration.
+Since 0.9.0. `fsp dev` is `fsp watch` and `flutter run` in one terminal, with no configuration. It
+writes `lib/app.g.dart`, starts the app, and **hot restarts** it whenever the routes change, because a
+new route needs a restart. Any other save of a Dart file under `lib/` gets a **hot reload**.
 
 ```sh
 fsp dev                  # pick a device, run the app, keep app.g.dart current
@@ -267,16 +280,16 @@ fsp dev -- -d chrome     # anything after -- goes to flutter run
 | `/`            | filter the log; `Esc` clears                       |
 | `?` / `q`      | help / quit                                        |
 
-The header shows the device, the web address or VM service, and the DevTools link. The status line shows the
-route count, the first routing error (clickable in terminals that support links), and how long the last hot
-reload took. When flutter stops by itself (a build error, say), the view stays: fix it and press `R`.
-
-`fsp dev` runs `flutter run --machine` and talks to it over flutter's own protocol, so it works the same on macOS,
-Linux and Windows. Flutter's other keys (`p`, `w`, ...) live in DevTools (`d`). You can still run `fsp watch` next
-to your own `flutter run`, or your editor's.
-
-With several devices, `fsp dev` asks which one (and remembers the answer in `.dart_tool/fespalier/dev.json`); with
-one phone or emulator it picks that, as `flutter run` does. Name one yourself after `--`: `fsp dev -- -d chrome`.
+- The header shows the device, the web address or VM service, and the DevTools link.
+- The status line shows the route count, the first routing error (clickable in terminals that support
+  links), and how long the last hot reload took.
+- When flutter stops by itself (a build error, say), the view stays: fix it and press `R`.
+- `fsp dev` runs `flutter run --machine` and talks to it over flutter's own protocol, so it works the
+  same on macOS, Linux and Windows. Flutter's other keys (`p`, `w`, ...) live in DevTools (`d`).
+- You can still run `fsp watch` next to your own `flutter run`, or your editor's.
+- With several devices, `fsp dev` asks which one (and remembers the answer in
+  `.dart_tool/fespalier/dev.json`); with one phone or emulator it picks that, as `flutter run` does.
+  Name one yourself after `--`: `fsp dev -- -d chrome`.
 
 ### Tasks: commands around `flutter run`
 
@@ -303,15 +316,15 @@ fespalier:
 | `env`        | Variables for these commands (not for the app: use `--dart-define` for that).                                                                                                                                |
 | `hot_reload` | `dev` only. `false` turns the automatic reload and restart off; `r` and `R` still work.                                                                                                                      |
 
-A command written as a string runs in the shell (`sh` on macOS and Linux, `cmd` on Windows). Written as a list
-(`[flutter, test]`) it runs with no shell, the same everywhere. `fsp` at the start of a command is the `fsp`
-running the task, even under `dart run fespalier`. A mistake in `tasks:` is reported by `fsp dev`, `fsp build`
-and `fsp run`, never by `fsp gen`.
-
-A list under `before` or `after` is a list of commands, so `before: [dart, run, x]` is three shell commands
-(`dart`, `run` and `x`); write `before: [[dart, run, x]]` for one command with no shell. A task that is only
-`run` can be written as the command itself, as `codegen` is above. A custom `run` gets `--machine` and the
-arguments after `--` appended, but not a device: put `-d` in it, or after `--`.
+- A command written as a string runs in the shell (`sh` on macOS and Linux, `cmd` on Windows).
+  Written as a list (`[flutter, test]`) it runs with no shell, the same everywhere.
+- `fsp` at the start of a command is the `fsp` running the task, even under `dart run fespalier`.
+- A list under `before` or `after` is a list of commands, so `before: [dart, run, x]` is three shell
+  commands (`dart`, `run` and `x`); write `before: [[dart, run, x]]` for one command with no shell.
+- A task that is only `run` can be written as the command itself, as `codegen` is above.
+- A custom `run` gets `--machine` and the arguments after `--` appended, but not a device: put `-d` in
+  it, or after `--`.
+- A mistake in `tasks:` is reported by `fsp dev`, `fsp build` and `fsp run`, never by `fsp gen`.
 
 ### `fsp build` and `fsp run`
 
@@ -332,18 +345,20 @@ web: # fsp run web
 
 ### Plain output, CI and Windows
 
-Outside a terminal (CI, an IDE's run panel), with `TERM=dumb`, or with `fsp dev --no-tui`, `fsp dev` prints each
-line with the name of the process in front (`[flutter]`, `[fsp]`, `[build_runner]`), and you type `r`, `R` or `q`
-followed by Enter. With several devices and no terminal to ask in, pass one: `fsp dev -- -d <id>`. Quitting asks
-flutter to stop the app, then stops the `with` commands and everything they started. A second `q` or Ctrl-C stops
-them at once.
+Outside a terminal (CI, an IDE's run panel), with `TERM=dumb`, or with `fsp dev --no-tui`, `fsp dev`
+prints each line with the name of the process in front (`[flutter]`, `[fsp]`, `[build_runner]`). You type
+`r`, `R` or `q` followed by Enter.
+
+- With several devices and no terminal to ask in, pass one: `fsp dev -- -d <id>`.
+- Quitting asks flutter to stop the app, then stops the `with` commands and everything they started. A
+  second `q` or Ctrl-C stops them at once.
 
 ## Deep links and a sitemap (`fsp links`)
 
-Since 0.5.0. The URLs your app opens are its routes, so the lists the platforms want of them can be
-written from the route tree instead of kept by hand: the `<intent-filter>`s of Android App Links and
-`assetlinks.json`, the `apple-app-site-association` file and the entitlement of iOS Universal Links,
-and a `sitemap.xml`. Say where the app lives in `pubspec.yaml`:
+Since 0.5.0. The URLs your app opens are its routes, so `fsp links` writes the lists the platforms want
+from the route tree instead of you keeping them by hand: the `<intent-filter>`s of Android App Links and
+`assetlinks.json`, the `apple-app-site-association` file and the entitlement of iOS Universal Links, and a
+`sitemap.xml`. Say where the app lives in `pubspec.yaml`:
 
 ```yaml
 fespalier:
@@ -368,11 +383,11 @@ links/
   web/sitemap.xml                             every static route, on the first domain
 ```
 
-The Android files are written when `android_package` is set (it needs `android_sha256`, and the
-reverse), the iOS ones when `ios_app_id` is, and the sitemap always. A key that is missing, a
-fingerprint or package that isn't one and the like are errors that name the key (only `fsp links`
-checks them: a mistake there never stops `fsp gen`). A file the config no longer asks for is
-removed by `fsp links` and reported by `--check`.
+- The Android files are written when `android_package` is set (it needs `android_sha256`, and the
+  reverse), the iOS ones when `ios_app_id` is, and the sitemap always.
+- A key that is missing, or a fingerprint or package that isn't one, is an error that names the key. Only
+  `fsp links` checks them: a mistake there never stops `fsp gen`.
+- A file the config no longer asks for is removed by `fsp links` and reported by `--check`.
 
 **What is listed.** Each route's path, in each spelling of its [localized paths](routing.md#localized-paths),
 and every route in a folder that doesn't say [`const linkable = false;`](routing.md#case-and-trailing-slashes)
@@ -393,27 +408,31 @@ so they are in the Android and iOS lists; a sitemap leaves them out.
   can't carve a hole out of the wildcard a dynamic sibling makes (a `$slug` at the root lets every
   one-segment path in).
 - **Localized spellings.** Android gets the characters as written, which it compares with the decoded
-  path (`/führer`), iOS and the sitemap the percent-encoded form (`/f%C3%BChrer`). The sitemap gives
+  path (`/führer`); iOS and the sitemap get the percent-encoded form (`/f%C3%BChrer`). The sitemap gives
   each spelling its own `<url>` with `xhtml:link` `hreflang` alternates for every locale (the
   canonical path is `x-default`).
 - **iOS case.** A route that is [case-insensitive](routing.md#case-and-trailing-slashes) gets
   `"caseSensitive": false` in its component. Android always matches by case.
 - **The sitemap lists static routes only.** Dynamic routes and catch-alls have no URL to write down
-  without data fespalier doesn't have; a way to list them at runtime is not part of this. Guards
+  without data fespalier doesn't have, and there is no way to list them at runtime. Guards
   aren't looked at either: a route behind a guard is listed, so mark it `linkable = false` if a
   crawler shouldn't see it.
 - **Mounting.** The paths are the routes' own. An app that mounts its routes under a
   prefix (`AppRoutes.mount(at: '/shop')`) has to put the prefix in front itself.
 
 **Using the files.** `fsp links` never edits `AndroidManifest.xml`, `Runner.entitlements` or
-`Info.plist`. Paste `android/intent-filters.xml` into the `<activity>` of
-`android/app/src/main/AndroidManifest.xml` that has the `MAIN`/`LAUNCHER` filter (replace what you
-pasted last time), add the `applinks:` lines of `ios/associated-domains.entitlements` to
-`ios/Runner/Runner.entitlements`, and the entry of `ios/info-url-types.xml` to `Info.plist`. Copy
-`links/web/` into your Flutter project's `web/` folder (`flutter build web` ships `.well-known/`
-as it ships the rest), or serve it from wherever the domain's server keeps its files. Android only
-verifies a domain when `assetlinks.json` is served over HTTPS at `/.well-known/assetlinks.json`
-with no redirect.
+`Info.plist`. Copy the output in yourself:
+
+1. Paste `android/intent-filters.xml` into the `<activity>` of
+   `android/app/src/main/AndroidManifest.xml` that has the `MAIN`/`LAUNCHER` filter (replace what you
+   pasted last time).
+2. Add the `applinks:` lines of `ios/associated-domains.entitlements` to `ios/Runner/Runner.entitlements`,
+   and the entry of `ios/info-url-types.xml` to `Info.plist`.
+3. Copy `links/web/` into your Flutter project's `web/` folder (`flutter build web` ships `.well-known/`
+   as it ships the rest), or serve it from wherever the domain's server keeps its files.
+
+Android only verifies a domain when `assetlinks.json` is served over HTTPS at
+`/.well-known/assetlinks.json` with no redirect.
 
 **Staying current.** The output is a function of the tree and the pubspec (a fixed order, no dates),
 so the same input gives the same bytes. `fsp links --check` writes nothing and exits non-zero when
@@ -422,11 +441,11 @@ a file is missing, out of date or no longer wanted, and names it; run it in CI n
 
 ## Checking string paths
 
-Since 0.7.0. The typed routes (`ProductRoute(id: 2).go(context)`) can't be misspelled, but a string
-path is sometimes the right thing (a CMS link, a notification payload), and `context.go('/prodcts/2')`
-compiles, runs and shows `not_found.dart`. So `fsp gen`, `check` and `watch` read the string paths
-your code gives the router and warn about one that **matches no route**. A path that matches is
-fine: typed routes are preferred, not forced.
+Since 0.7.0. A typed route (`ProductRoute(id: 2).go(context)`) can't be misspelled, but a string path is
+sometimes the right thing (a CMS link, a notification payload), and `context.go('/prodcts/2')` compiles,
+runs and shows `not_found.dart`. So `fsp gen`, `check` and `watch` read the string paths your code gives
+the router and warn about one that **matches no route**. A path that matches is fine: typed routes are
+preferred, not forced.
 
 ```text
 warning: no route matches `/prodcts/2`, so it shows not-found; did you mean `/products/2`? [unknown_path]
@@ -449,27 +468,35 @@ checks it against the tab), and `AppRoutes.match`, `matchUrl`, `dataAt` and `pre
 ask about any location. A path that is built (`'/a' + b`) or held in a variable is not a literal and is
 not read.
 
-**What matches.** The same rules as `AppRoutes.match`: segments, [catch-alls](routing.md#catch-all-segments)
-(`$$rest` needs one part, `$$$rest` none), [case](routing.md#case-and-trailing-slashes) by the route's own
-setting, every [localized spelling](routing.md#localized-paths) (mixed spellings too), non-ASCII paths and `%`
-escapes decoded, and a trailing slash or `//` ignored. A `redirect.dart` is a route; a
-`not_found.dart` is not. The query and the fragment are not looked at (`go_router` ignores
-parameters it doesn't know). Since 0.8.1 segment **types are checked** too, the way the route
-parses them: `/products/abc` reaches `products/$id`, and with `{required int id}` that route shows
-not-found, so it is reported (`` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found [unknown_path] ``).
-As in `AppRoutes.match`, the first route that fits the path decides: a later route that would take
-the text is never tried. `int`, `double`, `num`, `bool`, `DateTime` (its start only) and
-[enum](routing.md#enum-segments) segments are checked, and each part of a typed
-[catch-all](routing.md#typed-catch-alls). An enum's message lists its values and suggests the nearest. A part
-with a space or other non-ASCII whitespace is not judged (Dart trims it before parsing). The message
-names the route by its canonical pattern, also for a [localized](routing.md#localized-paths) spelling. An app
-with `unknown_path: error` that passed on 0.7.0 can fail on 0.8.1 for a path that always showed
-not-found. A path that interpolates is checked up to its first `$`: `'/products/$id'` is fine and
-`'/prodcts/$id'` is flagged (`no route starts with ...`), and the complete segments before the `$`
-are checked by type too (`'/products/abc/$tab'` is reported), but nothing after a `$` is, since the
-value can be empty or hold a `/`. A path that is not an app path is skipped: a relative one
-(`'details'`), a URL (`'https://...'`), one that starts with an interpolation (`'$base/x'`), one
-with a `..` or a malformed `%` escape.
+**What matches.** The same rules as `AppRoutes.match`:
+
+- segments, and [catch-alls](routing.md#catch-all-segments) (`$$rest` needs one part, `$$$rest` none);
+- [case](routing.md#case-and-trailing-slashes) by the route's own setting;
+- every [localized spelling](routing.md#localized-paths) (mixed spellings too);
+- non-ASCII paths and `%` escapes decoded, and a trailing slash or `//` ignored;
+- a `redirect.dart` is a route; a `not_found.dart` is not;
+- the query and the fragment are not looked at (`go_router` ignores parameters it doesn't know);
+- the first route that fits the path decides: a later route that would take the text is never tried.
+
+Since 0.8.1 segment **types are checked** too, the way the route parses them. `/products/abc` reaches
+`products/$id`, and with `{required int id}` that route shows not-found, so it is reported
+(`` `/products/abc` reaches /products/:id, but `abc` is not an int, so it shows not-found [unknown_path] ``).
+An app with `unknown_path: error` that passed on 0.7.0 can fail on 0.8.1 for a path that always showed
+not-found.
+
+- `int`, `double`, `num`, `bool`, `DateTime` (its start only) and [enum](routing.md#enum-segments)
+  segments are checked, and each part of a typed [catch-all](routing.md#typed-catch-alls).
+- An enum's message lists its values and suggests the nearest.
+- A part with a space or other non-ASCII whitespace is not judged (Dart trims it before parsing).
+- The message names the route by its canonical pattern, also for a [localized](routing.md#localized-paths) spelling.
+
+**Interpolation.** A path that interpolates is checked up to its first `$`: `'/products/$id'` is fine and
+`'/prodcts/$id'` is flagged (`no route starts with ...`). The complete segments before the `$` are checked
+by type too (`'/products/abc/$tab'` is reported), but nothing after a `$` is, since the value can be empty
+or hold a `/`.
+
+**Skipped.** A path that is not an app path: a relative one (`'details'`), a URL (`'https://...'`), one
+that starts with an interpolation (`'$base/x'`), one with a `..` or a malformed `%` escape.
 
 **Which files.** Every Dart file under `lib/` (the app folder included), except the generated ones
 (`*.g.dart`, the `output` and `output_manifest`) and folders that start with a `.`. Not `test/`,
@@ -478,10 +505,12 @@ with a `..` or a malformed `%` escape.
 
 **The mount point.** `AppRoutes.mount(at: '/shop')` is read, and a path is checked below it:
 `/shop/products/2` is looked up as `/products/2`. A path outside the mount point belongs to the host
-router (`legacyRoutes` beside `...AppRoutes.mount(at: '/shop')`) and is skipped. When `at:` is not a
-string literal, or two calls give two different values, `fsp` can't know where the tree is, and the
-check reports nothing for the run. A host router with routes of its own and the tree mounted at `/`
-gets a warning for those routes' string paths: silence them as below, or turn the lint off.
+router (`legacyRoutes` beside `...AppRoutes.mount(at: '/shop')`) and is skipped.
+
+- When `at:` is not a string literal, or two calls give two different values, `fsp` can't know where
+  the tree is, and the check reports nothing for the run.
+- A host router with routes of its own and the tree mounted at `/` gets a warning for those routes'
+  string paths: silence them as below, or turn the lint off.
 
 **Severity.** `lints:` in the `fespalier:` section of `pubspec.yaml`:
 
@@ -491,12 +520,15 @@ fespalier:
     unknown_path: warning # default; `error` fails `fsp gen` and `fsp check`; `off` skips the check
 ```
 
-A warning never fails a command, so a false positive can't break a build. With `error`, `fsp check`
-exits 1 (``1 error(s) in string paths (`lints: unknown_path: error`)``), and so do `fsp gen` and
-`fsp watch` after they write the output (`...; lib/app.g.dart is up to date`): the generated file
-doesn't depend on the lint, so a typo in some other file does not stop `watch` from regenerating.
-`fsp new` and `fsp init` report it as a warning at most. If the route tree itself has errors, the
-check doesn't run: a half-resolved tree would make every path look unknown.
+A warning never fails a command, so a false positive can't break a build. With `error`:
+
+- `fsp check` exits 1 (``1 error(s) in string paths (`lints: unknown_path: error`)``).
+- So do `fsp gen` and `fsp watch`, after they write the output (`...; lib/app.g.dart is up to date`):
+  the generated file doesn't depend on the lint, so a typo in some other file does not stop `watch`
+  from regenerating.
+- `fsp new` and `fsp init` report it as a warning at most.
+- If the route tree itself has errors, the check doesn't run: a half-resolved tree would make every
+  path look unknown.
 
 **Silencing one.** A comment on the line above, or after the path on its own line:
 
@@ -516,12 +548,11 @@ The lint's id, `unknown_path`, is what both and `lints:` name; it is also the la
 under `lib/` is saved, not only one under the app folder.
 
 **Why in `fsp`.** It already has the route tree, parses Dart, and reports diagnostics that both
-plugins show, and `fsp check` in CI and `fsp watch` next to `flutter run` get the lint with nothing
-for an app to add. An analyzer plugin would have to be loaded through `analysis_options.yaml`, which
-takes a package from pub.dev or a `path:` and not a git dependency (fespalier is one), pins an
-`analyzer` major that moves several times a year, and would need its own copy of the matcher. The
-cost of a syntax tree is that `fsp` can't know that `context` is a `BuildContext`: it only reads
-string literals in the call shapes above.
+plugins show, so `fsp check` in CI and `fsp watch` get the lint with nothing for an app to add. An
+analyzer plugin would need `analysis_options.yaml`, which takes a package from pub.dev or a `path:` and
+not a git dependency (fespalier is one), would pin an `analyzer` major that moves several times a year,
+and would need its own copy of the matcher. The cost of a syntax tree is that `fsp` can't know that
+`context` is a `BuildContext`: it only reads string literals in the call shapes above.
 
 `examples/shop` has a string path that matches (`context.go('/products?sort=expensive')`), one
 that is silenced, and `unknown_path: error`, so `just check-examples` fails if it gains a bad one.
@@ -553,22 +584,20 @@ rename a class. It is in the widget tree **if and only if the route's own page i
 - `Semantics` has no `const` constructor, so the wrapper is never `const`; a page that was `const`
   keeps its own `const` inside it, and the generated code passes the `const` lints.
 - The identifier's node is empty: `container: true` gives it a node of its own, and
-  `explicitChildNodes: true` (since 0.9.1) keeps every descendant out of it, so the node has no label and no
-  action and a screen reader reads each of the page's `Text` widgets as its own node. Without it the node
-  took in every descendant that had no node of its own, and TalkBack and VoiceOver read all the text
-  outside a scroll view (a status line, a sheet's footer, a title and its line) as one block. A page that
-  wants one announcement groups its own text with `MergeSemantics`.
+  `explicitChildNodes: true` (since 0.9.1) keeps every descendant out of it. The node has no label and no
+  action, and a screen reader reads each of the page's `Text` widgets as its own node. (Without it, TalkBack
+  and VoiceOver read all the text outside a scroll view, such as a status line, a sheet's footer, or a title
+  and its line, as one block.) A page that wants one announcement groups its own text with `MergeSemantics`.
 - With the key off (the default), the generated file is exactly what it was without the feature.
 
-On the web Flutter builds no semantics tree until a screen reader asks for one, so a driver that reads
-the page from outside finds nothing. With `semantics_ids: true` the generated `AppRoutes.mount()`
-(which `router()` calls, so an app that embeds the routes is covered too) first calls
-`ensureWebSemantics()` from `package:fespalier`. On the web it calls
-`SemanticsBinding.instance.ensureSemantics()` once and keeps the handle for the life of the app;
-anywhere else, and in every widget test (which runs on the VM), it does nothing. **That is not free:
-the tree stays on in the web build for every user of it,** which costs frame time and DOM nodes, and
-there is no key that narrows it to a test build. Weigh it before you turn the key on in an app
-whose web build you ship.
+**On the web, this is not free.** Flutter builds no semantics tree until a screen reader asks for one, so a
+driver that reads the page from outside finds nothing. With `semantics_ids: true` the generated
+`AppRoutes.mount()` (which `router()` calls, so an app that embeds the routes is covered too) first calls
+`ensureWebSemantics()` from `package:fespalier`. On the web it calls `SemanticsBinding.instance.ensureSemantics()`
+once and keeps the handle for the life of the app; anywhere else, and in every widget test (which runs on
+the VM), it does nothing. **The tree then stays on in the web build for every user of it,** which costs
+frame time and DOM nodes, and no key narrows it to a test build. Weigh it before you turn the key on in an
+app whose web build you ship.
 
 **`maestro:`** says what the flows open. These are all the keys:
 
@@ -596,12 +625,13 @@ fespalier:
   an error. A Flutter web app on the default **hash URL strategy** needs `link: http://localhost:8080/#`,
   because its routes live after the `#`; with `usePathUrlStrategy()` the default is right.
 - **`samples`** keys are folders as `fsp routes` prints them without `/page.dart` (`products/$id`,
-  `(members)/notes/$id`), and each must be a `$x`, `$$x` or `$$$x` folder. A value is text, a number, a
-  boolean or, for a catch-all, a list of them; it is percent-encoded and checked against the segment's
-  type (`int`, `double`, `num`, `bool`, and `List` of them; a `String`, a `DateTime` or an enum is taken as
-  written, because the generator doesn't know an enum's values). The sample is for the _folder_, so
-  every route below `products/$id` opens `/products/2/...`. An optional catch-all (`$$$path`) with no
-  sample is the bare path. Quote a value that must stay text (`'1.10'`).
+  `(members)/notes/$id`), and each must be a `$x`, `$$x` or `$$$x` folder.
+  - A value is text, a number, a boolean or, for a catch-all, a list of them. It is percent-encoded and
+    checked against the segment's type (`int`, `double`, `num`, `bool`, and `List` of them); a `String`, a
+    `DateTime` or an enum is taken as written, because the generator doesn't know an enum's values.
+  - The sample is for the _folder_, so every route below `products/$id` opens `/products/2/...`.
+  - An optional catch-all (`$$$path`) with no sample is the bare path.
+  - Quote a value that must stay text (`'1.10'`).
 
 `fsp maestro` writes one flow per route into `out` (commit it, like `app.g.dart`). This is the shop
 example's, `examples/shop/.maestro/routes/product_route.yaml`:
@@ -621,12 +651,13 @@ tags:
     timeout: 20000
 ```
 
-`launchApp` starts the app afresh, so every flow begins from the same state. `openLink` opens the
-route's sample URL (the long form with `autoVerify: true` for an Android app whose link is `https`,
-which skips Android's "Open with" dialog), and `extendedWaitUntil` returns the moment the identifier is
-on the screen, or fails after `timeout`. The route's guards ran, its data loaded and its page was built.
-A guarded route's flow also has `- runFlow: "../sign-in.yaml"` between `launchApp` and `openLink`
-(the path is relative to the flow, as Maestro wants it) and a comment naming the `guard.dart` files.
+- `launchApp` starts the app afresh, so every flow begins from the same state.
+- `openLink` opens the route's sample URL (the long form with `autoVerify: true` for an Android app whose
+  link is `https`, which skips Android's "Open with" dialog).
+- `extendedWaitUntil` returns the moment the identifier is on the screen, or fails after `timeout`. When it
+  returns, the route's guards ran, its data loaded and its page was built.
+- A guarded route's flow also has `- runFlow: "../sign-in.yaml"` between `launchApp` and `openLink` (the
+  path is relative to the flow, as Maestro wants it) and a comment naming the `guard.dart` files.
 
 **Which routes get a flow.** The rows are checked in this order, and the first that applies wins. Every
 skip is printed, on every run, and none of them fails `--check`.
@@ -644,19 +675,21 @@ canonical path.
 
 **Files and ownership.** A flow is named after its typed route class in snake case: `ProductRoute`
 is `product_route.yaml`, `ProPlanRoute` is `pro_plan_route.yaml`, the root `HomeRoute` is
-`home_route.yaml` (the `_route` ending keeps a file from being Maestro's `config.yaml`). Every file
-`fsp maestro` writes starts with ``# Written by `fsp maestro` ``. In `out`, a `*.yaml` file with that first
-line is `fsp`'s: `fsp maestro` deletes it when no route needs it any more, and `--check` reports it. Any
-other file there (a flow you wrote, a `config.yaml`) is never read or touched, so hand-written
-journeys live beside the generated ones. The output is a function of the tree and the pubspec (a
-fixed order, no dates), so `fsp maestro --check` writes nothing and exits non-zero when a flow is
-missing, out of date or no longer a route's, and names it; run it next to `fsp check`. It does not check that
-`lib/app.g.dart` is current: that is `fsp check`'s job. The values of `maestro:` are checked only by
-`fsp maestro`, so a mistake there never stops `fsp gen`.
+`home_route.yaml` (the `_route` ending keeps a file from being Maestro's `config.yaml`).
 
-**Running them.** `maestro test .maestro/routes`. Pass the folder, not `.maestro`: Maestro runs only the
-top-level flows of the folder it is given, and skips subfolders unless a `config.yaml` there lists them
-(`flows: ["routes/*"]`). `maestro test -e APP_ID=... -e URL=...` fills in variables.
+- Every file `fsp maestro` writes starts with ``# Written by `fsp maestro` ``. In `out`, a `*.yaml` file with
+  that first line is `fsp`'s: `fsp maestro` deletes it when no route needs it any more, and `--check`
+  reports it.
+- Any other file there (a flow you wrote, a `config.yaml`) is never read or touched, so hand-written
+  journeys live beside the generated ones.
+- The output is a function of the tree and the pubspec (a fixed order, no dates), so `fsp maestro --check`
+  writes nothing and exits non-zero when a flow is missing, out of date or no longer a route's, and names
+  it. Run it next to `fsp check`: it does not check that `lib/app.g.dart` is current.
+- The values of `maestro:` are checked only by `fsp maestro`, so a mistake there never stops `fsp gen`.
+
+**Running them.** `maestro test .maestro/routes`. Pass the folder, not `.maestro`: Maestro runs only the top-level flows of
+the folder it is given, and skips subfolders unless a `config.yaml` there lists them (`flows: ["routes/*"]`).
+`maestro test -e APP_ID=... -e URL=...` fills in variables.
 
 - **The web.** Maestro's web support is in beta. Serve the app at the `url`
   (`flutter run -d web-server --web-port 8080`, or a static server for `flutter build web`; with the
@@ -672,23 +705,24 @@ top-level flows of the folder it is given, and skips subfolders unless a `config
   On the web `openLink` reloads the app, so the sign-in has to survive a reload (a stored token, not
   in-memory state), or the guard will send the flow back to the login page.
 
-**In CI.** Since 0.8.1 this repository's `web-routes` job builds `examples/shop` for the web (a release
-build with `--no-web-resources-cdn`, in a throwaway copy: the examples have no `web/` folder), serves it,
-and replays every committed flow in Chromium, with every request that is not to the local server blocked.
-It reads the very same YAML: `launchApp`, `openLink`, then it waits for the element whose
-`flt-semantics-identifier` is the flow's `id:`, within the flow's `timeout`. That is not Maestro (the
-browser is the Chromium that a pinned [Playwright](https://playwright.dev) installs, and Maestro's own
-driver is out of the picture), so it can gate a pull request: what it proves is what fespalier answers
-for (the identifier reaches the web DOM, `ensureWebSemantics()` ran, the link opens the route, its
-guards, data and deferred chunk let the page build in time). `just web-routes` runs it (Flutter and Node
-needed, about two minutes, not part of `just ci`), and `scripts/check-web-routes.sh <example>` with
-`ci/web-routes/` is a template for an app's own CI.
+**In CI.** Since 0.8.1 this repository's `web-routes` job builds `examples/shop` for the web (a release build with
+`--no-web-resources-cdn`, in a throwaway copy: the examples have no `web/` folder), serves it, and replays
+every committed flow in Chromium, with every request that is not to the local server blocked. It reads the
+very same YAML: `launchApp`, `openLink`, then it waits for the element whose `flt-semantics-identifier` is
+the flow's `id:`, within the flow's `timeout`.
 
-To run Maestro itself, build and serve the web app, then run the flows and `fsp maestro --check`.
-Maestro's web driver follows Chrome and has broken on Chrome upgrades before (its changelog has
-Chrome-version fixes in 2.1.0, 2.2.0 and 2.9.0), so pin the Maestro version, check the download's sha256, and do not make it
-the only gate. This repository runs it weekly and on demand (`maestro-web.yml`, Maestro 2.11.0), and a
-red run there is not a failed pull request.
+That is not Maestro (the browser is the Chromium that a pinned [Playwright](https://playwright.dev)
+installs, and Maestro's own driver is out of the picture), so it can gate a pull request. What it proves is
+what fespalier answers for: the identifier reaches the web DOM, `ensureWebSemantics()` ran, the link opens
+the route, and its guards, data and deferred chunk let the page build in time. `just web-routes` runs it
+(Flutter and Node needed, about two minutes, not part of `just ci`), and `scripts/check-web-routes.sh <example>`
+with `ci/web-routes/` is a template for an app's own CI.
+
+To run Maestro itself, build and serve the web app, then run the flows and `fsp maestro --check`. Maestro's
+web driver follows Chrome and has broken on Chrome upgrades before (its changelog has Chrome-version fixes
+in 2.1.0, 2.2.0 and 2.9.0), so pin the Maestro version, check the download's sha256, and do not make it the
+only gate. This repository runs it weekly and on demand (`maestro-web.yml`, Maestro 2.11.0), and a red run
+there is not a failed pull request.
 
 ```yaml
 - run: fsp maestro --check
@@ -712,7 +746,7 @@ red run there is not a failed pull request.
 
 Since 0.8.1. A [deferred route](navigation.md#deferred-routes-a-pages-code-on-demand) is a
 `main.dart.js_N.part.js` on the web, and the chunk files say nothing about which route they belong
-to. `fsp size` reads that out of the build and reports what each deferred route costs, and it can hold
+to. `fsp size` reads that out of the build, reports what each deferred route costs, and can hold
 the build to byte budgets in CI. Build for the web first (`flutter build web`), then:
 
 ```sh
@@ -745,11 +779,13 @@ shared  main.dart.js_2.part.js  4169 B (4.1 KB): /checkout, /products/:id
   reports. The summary counts them (`6 routes, 2 deferred`).
 - A chunk that no route loads is listed as `other`, with the deferred imports that do load it (code
   of your own that uses `deferred as`).
-- **`--json`** prints one object per line on stdout: `{"kind":"main","file":"main.dart.js","bytes":…,"budget":…}`,
-  then `{"kind":"route","pattern","route","file","parts":[…],"own","shared","bytes","budget"}` for each deferred route
-  (`file` is the page, relative to the project, as in `fsp routes --json`; `parts` are
-  in dart2js's order), then `{"kind":"part","file","bytes","routes":[…]}` for every chunk (`routes` is empty for an
-  `other` one). `budget` is `null` without one.
+- **`--json`** prints one object per line on stdout:
+  - `{"kind":"main","file":"main.dart.js","bytes":…,"budget":…}`;
+  - then `{"kind":"route","pattern","route","file","parts":[…],"own","shared","bytes","budget"}` for each
+    deferred route (`file` is the page, relative to the project, as in `fsp routes --json`; `parts` are
+    in dart2js's order);
+  - then `{"kind":"part","file","bytes","routes":[…]}` for every chunk (`routes` is empty for an `other` one).
+  - `budget` is `null` without one.
 
 **How it knows.** dart2js writes a table of deferred parts into `main.dart.js`, in every build mode:
 
@@ -775,11 +811,14 @@ fespalier:
       /checkout: 8 KB
 ```
 
-A size is a number of bytes (an integer of at least 1), or a number with a unit: `B`, `KB` (1,024
-bytes) or `MB` (1,048,576 bytes), spelled in capitals, with or without a space, and with a fraction if you
-like: `3 MB`, `1.5 MB`, `64KB`, `900 B`. A budget on a route that is not deferred is an error (budget
-that code with `main`). `fsp size --check` reports as above and exits non-zero when anything is over
-(`2 over budget: /checkout, /products/:id`), and also when there is no budget to check. In CI:
+- A size is a number of bytes (an integer of at least 1), or a number with a unit: `B`, `KB` (1,024
+  bytes) or `MB` (1,048,576 bytes), spelled in capitals, with or without a space, and with a fraction if
+  you like: `3 MB`, `1.5 MB`, `64KB`, `900 B`.
+- A budget on a route that is not deferred is an error (budget that code with `main`).
+- `fsp size --check` reports as above and exits non-zero when anything is over
+  (`2 over budget: /checkout, /products/:id`), and also when there is no budget to check.
+
+In CI:
 
 ```yaml
 - run: flutter build web --release
@@ -872,15 +911,18 @@ and a page underneath another is off screen and not found. Without it, a class p
 skipped (printed below). To find a page some other way in a hand-written test, pass `page:` to
 `smokeTestRoute`.
 
-**The file and who owns it.** The file's first line is
-``// Written by `fsp test` from lib/app/: don't edit it, run `fsp test` again.`` and `fsp test` writes only
-that file. It never overwrites a file of that name that does not start with the marker: it fails and says so
-(move your file, or set `out`). The output is a function of the tree and the pubspec (route-table order, no
-dates), so `fsp test --check` writes nothing and exits non-zero when the file is missing or out of date.
-The second line is `// dart format off`. The file is laid out to need no formatting: a call is split one argument
-to a line, each with a trailing comma, which is what `dart format` leaves alone under an SDK older than 3.7
-(the short style, which does not read the marker); under 3.7 and later the marker holds the formatter off.
-Either way `dart format --set-exit-if-changed` is clean on it, in every style.
+**The file and who owns it.**
+
+- The file's first line is
+  ``// Written by `fsp test` from lib/app/: don't edit it, run `fsp test` again.`` and `fsp test` writes only
+  that file. It never overwrites a file of that name that does not start with the marker: it fails and says
+  so (move your file, or set `out`).
+- The output is a function of the tree and the pubspec (route-table order, no dates), so `fsp test --check`
+  writes nothing and exits non-zero when the file is missing or out of date.
+- The second line is `// dart format off`. The file is laid out to need no formatting: a call is split one
+  argument to a line, each with a trailing comma, which is what `dart format` leaves alone under an SDK
+  older than 3.7 (the short style, which does not read the marker); under 3.7 and later the marker holds
+  the formatter off. Either way `dart format --set-exit-if-changed` is clean on it, in every style.
 
 **`test:`** has these keys, all optional. `fsp test` works with no `test:` section at all:
 
@@ -967,12 +1009,11 @@ with fespalier's dashboards in OpenObserve (and Grafana with `--grafana`). It ne
 
 ## Performance
 
-Measured on synthetic apps (`cli/src/bench.rs`: sections of 25 routes with layouts and guards,
-a `data.dart` on every fifth route, query parameters on every third page, dynamic segments;
-5,000 routes are 7,400 files and a 5.8 MB `app.g.dart`), a release build, 4 cores, warm file
-cache. Re-run them with `cd cli && cargo test --release bench -- --ignored --nocapture
---test-threads=1`. Milliseconds (run to run they vary by about
-15%):
+Measured on synthetic apps (`cli/src/bench.rs`: sections of 25 routes with layouts and guards, a
+`data.dart` on every fifth route, query parameters on every third page, dynamic segments; 5,000 routes are
+7,400 files and a 5.8 MB `app.g.dart`), a release build, 4 cores, warm file cache. Re-run them with
+`cd cli && cargo test --release bench -- --ignored --nocapture --test-threads=1`. Milliseconds (run to run
+they vary by about 15%):
 
 | Routes | `gen` cold | `watch`: a save, output unchanged | `watch`: a save, output changed | `watch`: a file `fsp` doesn't read |
 | -----: | ---------: | --------------------------------: | ------------------------------: | ---------------------------------: |
@@ -988,13 +1029,11 @@ With `format: true` (`dart format` of the generated file):
 |  2,000 |     5.05 s |                            104 ms |                          4.93 s |                              30 ms |
 |  5,000 |     13.4 s |                            274 ms |                          14.1 s |                              77 ms |
 
-"Output unchanged" is a comment added to a page, which changes the file and not what is
-generated; "output changed" changes the type of a query parameter. Where the time goes at
-5,000 routes, cold: walking the folders and reading the files 82, parsing 208 (now spread
-over the cores), resolving 29, emitting 153 (the model 50, `minijinja` 105), writing 6.
-And `dart format`, when it is on,
-dwarfs all of it: 1.4 s at 500 routes, 5.3 s at 2,000, 14 s at 5,000, because the formatter
-reads the whole file.
+"Output unchanged" is a comment added to a page, which changes the file and not what is generated;
+"output changed" changes the type of a query parameter. Where the time goes at 5,000 routes, cold: walking
+the folders and reading the files 82, parsing 208 (now spread over the cores), resolving 29, emitting 153
+(the model 50, `minijinja` 105), writing 6. And `dart format`, when it is on, dwarfs all of it: 1.4 s at
+500 routes, 5.3 s at 2,000, 14 s at 5,000, because the formatter reads the whole file.
 
 What `watch` does about it:
 
@@ -1009,15 +1048,16 @@ What `watch` does about it:
 - **`dart format` runs only on code it hasn't formatted before**, so a save that doesn't change
   the generated code (a `build` method, most of the time) skips it: a save takes the 30 to 270 ms above, about
   what a run without `format:` takes, not the 1.2 to 13 s that formatting the whole file costs. Code that did
-  change is formatted in full, because the
-  formatter needs the whole file. If that hurts in a huge app, leave `format:` off in
-  `watch` and format in CI.
-- Nothing is written when the output is byte-identical to the file on disk (it always was so).
+  change is formatted in full, because the formatter needs the whole file. If that hurts in a huge app,
+  leave `format:` off in `watch` and format in CI.
+- Nothing is written when the output is byte-identical to the file on disk.
 
-What it doesn't do, and why: per-route caching of resolved results, and re-scanning only the
-changed folders. A full resolve is 30 ms at 5,000 routes, a tenth of a save that changes
-output, and resolving one route reads the folders above it and shares state with the others
-(names claimed, query types settled), so a per-route cache would have to replay those effects
-for a saving smaller than its bookkeeping. The walk is 80 ms at 5,000 routes, and reading the
-files a small part of it; a cache keyed on modification times would save less than it risks
-(an edit in the same timestamp tick, a file replaced by one with the same size and time).
+What it doesn't do, and why: per-route caching of resolved results, and re-scanning only the changed
+folders.
+
+- A full resolve is 30 ms at 5,000 routes, a tenth of a save that changes output. Resolving one route
+  reads the folders above it and shares state with the others (names claimed, query types settled), so a
+  per-route cache would have to replay those effects for a saving smaller than its bookkeeping.
+- The walk is 80 ms at 5,000 routes, and reading the files a small part of it. A cache keyed on
+  modification times would save less than it risks (an edit in the same timestamp tick, a file replaced by
+  one with the same size and time).

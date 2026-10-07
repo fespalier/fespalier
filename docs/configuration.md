@@ -5,9 +5,8 @@
 
 ## The fespalier: section
 
-To move things, add this optional section to
-`pubspec.yaml`. Both paths are relative to the project root and must be under `lib/`, and
-`output` must be a `.dart` file. These are the defaults:
+These are the defaults, with the optional blocks commented out. `app_dir` and `output` are relative to
+the project root and must be under `lib/`, and `output` must be a `.dart` file.
 
 ```yaml
 fespalier:
@@ -100,20 +99,20 @@ fespalier:
 
 ### case_sensitive
 
-`case_sensitive: false` makes paths match in any case, and a [`route.dart`](routing.md#case-and-trailing-slashes) sets that
-per folder (see [Case and trailing slashes](routing.md#case-and-trailing-slashes)); the same file gives a folder
-[other spellings per locale](routing.md#localized-paths) with `paths`.
+`case_sensitive: false` makes paths match in any case. A [`route.dart`](routing.md#case-and-trailing-slashes)
+sets it per folder (see [Case and trailing slashes](routing.md#case-and-trailing-slashes)), and the same file
+gives a folder [other spellings per locale](routing.md#localized-paths) with `paths`.
 
 ### remount
 
 `remount` (since 0.6.0) is `never`, `on_segments` or `on_location`: when a page gets a fresh state
-because its URL changed; a `route.dart` sets it per folder (see
+because its URL changed. A `route.dart` sets it per folder (see
 [Remounting a page](navigation.md#remounting-a-page-remount)). Any other value is an error that lists the three.
 
 ### deferred
 
 `deferred` (since 0.7.0) is `true` or `false`: whether each page's code loads on demand (`import ... deferred as`,
-a chunk of its own on the web); a `route.dart` sets it per folder (see
+a chunk of its own on the web). A `route.dart` sets it per folder (see
 [Deferred routes](navigation.md#deferred-routes-a-pages-code-on-demand)). A value that isn't a bool is an error.
 
 ### data_retry, keep_previous and file_style
@@ -124,21 +123,23 @@ write `not-found.dart` instead of `not_found.dart` (see [File names](file-kinds.
 
 ### push_updates_url
 
-`push_updates_url: true` (since 0.6.0) makes the generated `AppRoutes.router()` set go*router's
-`GoRouter.optionURLReflectsImperativeAPIs`, so on the web a typed route's `push` puts its URL in the
-address bar (and in the browser's history) as `go` does, and back pops it. The generated code
-assigns the flag on every `router()` call, `true` or `false` (the default, go_router's own), so it
-is the same in every app and every test, wherever the router is built. go_router warns about the
-cost: that URL is all the browser keeps, so a reload or a deep link of it builds that route's
-\_own* stack, not the stack it was pushed onto. In fespalier every route is a typed path, so the URL
-is always a valid page. Without the key, `push` leaves the address bar on the page below; use
-[`go` or `replace`](navigation.md#the-url-as-state-of-and-copywith) for state that belongs in the URL.
+`push_updates_url: true` (since 0.6.0) makes the generated `AppRoutes.router()` set go_router's
+`GoRouter.optionURLReflectsImperativeAPIs`. On the web, a typed route's `push` then puts its URL in the
+address bar (and in the browser's history) as `go` does, and back pops it.
+
+- The generated code assigns the flag on every `router()` call, `true` or `false` (the default, go_router's
+  own), so it is the same in every app and every test, wherever the router is built.
+- go*router warns about the cost: that URL is all the browser keeps, so a reload or a deep link of it
+  builds that route's \_own* stack, not the stack it was pushed onto. In fespalier every route is a typed
+  path, so the URL is always a valid page.
+- Without the key, `push` leaves the address bar on the page below; use
+  [`go` or `replace`](navigation.md#the-url-as-state-of-and-copywith) for state that belongs in the URL.
 
 ### meta, meta_unique and output_manifest
 
-`meta: required` makes a route without a [`meta.dart`](routing.md#route-manifest-and-metadart) an error,
-`meta_unique` makes a duplicate value in it one, and
-`output_manifest` writes the route manifest to a library of its own (same section).
+- `meta: required` makes a route without a [`meta.dart`](routing.md#route-manifest-and-metadart) an error.
+- `meta_unique` makes a duplicate value in it an error.
+- `output_manifest` writes the route manifest to a library of its own (same section).
 
 ### links
 
@@ -157,8 +158,8 @@ changes the generated file, the second is read, and checked, only by `fsp maestr
 ### scroll_restoration
 
 `scroll_restoration` (since 0.8.1) is `true` or `false`: whether each page is wrapped in a `PageStorage` that the
-browser's back and forward button hand back (see [Scroll restoration](layouts.md#scroll-restoration)). A value that isn't a
-bool is an error.
+browser's back and forward buttons hand back (see [Scroll restoration](layouts.md#scroll-restoration)). A value
+that isn't a bool is an error.
 
 ### size
 
@@ -176,12 +177,17 @@ before, next to and after `flutter run`. Only those commands check it; `fsp gen`
 ### main
 
 `main` (since 0.8.1) is `auto`, `generated` or `manual`: whether `fsp` writes [`lib/app.main.g.dart`](app-startup.md),
-with `AppMain`. `auto` writes it when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart`
-(or, since 0.9.0, when `adapters:` lists a package), `generated` always, `manual` never (and then those three
-files are not read). Any other value is an error that lists
-the three: ``unknown variant `always`, expected one of `auto`, `generated`, `manual` ``. The file sits beside
-`output`, with `.main.g.dart` in place of `.g.dart` (`lib/router/routes.g.dart` makes `lib/router/routes.main.g.dart`);
-there is no key for the path, and `output_manifest` cannot be it.
+with `AppMain`.
+
+- `auto` writes it when the app folder's root has an `app.dart`, `startup.dart` or `splash.dart` (or, since
+  0.9.0, when `adapters:` lists a package).
+- `generated` always writes it.
+- `manual` never writes it (and then those three files are not read).
+
+Any other value is an error that lists the three:
+``unknown variant `always`, expected one of `auto`, `generated`, `manual` ``. The file sits beside
+`output`, with `.main.g.dart` in place of `.g.dart` (`lib/router/routes.g.dart` makes
+`lib/router/routes.main.g.dart`); there is no key for the path, and `output_manifest` cannot be it.
 
 ### adapters
 
@@ -194,13 +200,14 @@ there is no key for the path, and `output_manifest` cannot be it.
 `telemetry` (since 0.8.1) is `true` or `false`: whether the generated file tells fespalier where each guard,
 data provider, action and deferred page is, and follows the router's navigations (see
 [Telemetry](observability.md#telemetry)). A value that isn't a bool is an error.
+
 The router's [`extraCodec`](navigation.md#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
 
 ## Per-folder settings: route.dart
 
-A `route.dart` in any folder sets, for that folder and below, what the pubspec sets for the whole app. Read from
-the source, never imported. Its constants:
+A `route.dart` in any folder sets, for that folder and below, what the pubspec sets for the whole app. It is read
+from the source, never imported. Its constants:
 
 - `const caseSensitive = <true or false>;`: whether paths match by case, [the nearest one winning](routing.md#case-and-trailing-slashes) over the pubspec's `case_sensitive`. See [Case and trailing slashes](routing.md#case-and-trailing-slashes).
 - `const paths = {'fr': 'produits'};` in a static folder: its other spellings per locale. See [Localized paths](routing.md#localized-paths).

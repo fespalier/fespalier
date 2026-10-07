@@ -30,7 +30,9 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 | [Development](development.md)                                      | The repository layout, `just ci`, what CI runs                                                                         |
 | [Releasing](releasing.md)                                          | How a release is cut (maintainers)                                                                                     |
 
-This is where every section of the old single-file README went. An older link such as `github.com/fespalier/fespalier#telemetry`, or a message that says `(README, "Telemetry")`, finds its section here.
+**Looking for a section of the old single-file README?** An older link such as
+`github.com/fespalier/fespalier#telemetry`, or a message that says `(README, "Telemetry")`, finds its
+section here:
 
 | Old README section                                    | Now                                                                                              |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------ |

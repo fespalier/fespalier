@@ -48,64 +48,65 @@ route.copyWith(sort: Sort.name, page: null).go(context);           // null clear
 SearchRoute(q: 'ap').copyWith(page: 2).location;                   // '/search?q=ap&page=2': a value, no widget
 ```
 
-- **`XRoute.of(context)`** parses the location the widget belongs to, with the parsers
+- **`XRoute.of(context)`** parses the location the widget belongs to with the parsers
   [`AppRoutes.match`](data.md#from-a-location-to-its-data) uses (it calls `AppRoutes.matchUrl`): the
-  mount point is taken off, a [localized spelling](routing.md#localized-paths) is the route it spells, and the
-  [case setting](routing.md#case-and-trailing-slashes), [enums](routing.md#enum-segments), lists and
-  [catch-alls](routing.md#catch-all-segments) read as they do for the page. It throws a `StateError` that
-  names the location when it is another route; `XRoute.maybeOf(context)` returns `null`. Use `of`
-  in a widget below the page that wasn't handed the parameters; the page itself already has them
-  as constructor arguments and rebuilds when they change. (A `const` route stays `const`:
-  `of` and `copyWith` are members, not constructor parameters.)
-- **Which location.** It is `GoRouterState.of(context)`'s: the route around the widget, not
-  whichever page is on top. A page reads the part of the URL its own route matched, with the URL's
-  query, so `/products/42?ref=mail` leaves the page of `/products` below it reading
-  `ProductsRoute(ref: 'mail')`, and a page under a pushed one, a tab that is built but not shown
-  (`preload`) read their own. A layout (a shell, a tab layout) is above any
-  one page and reads the whole location. Outside any route (`MaterialApp(home: ...)`) `of`
-  throws go_router's `GoError`, `maybeOf` returns `null`. A widget that calls it depends on its
-  route's state and rebuilds when it changes, as with `GoRouterState.of`; call it in `build` or in
-  a handler of a mounted widget, not after it is disposed.
+  mount point is taken off, a [localized spelling](routing.md#localized-paths) is the route it
+  spells, and the [case setting](routing.md#case-and-trailing-slashes),
+  [enums](routing.md#enum-segments), lists and [catch-alls](routing.md#catch-all-segments) read as
+  they do for the page. It throws a `StateError` naming the location when it is another route;
+  `XRoute.maybeOf(context)` returns `null`. Use it in a widget below the page that wasn't handed the
+  parameters; the page itself has them as constructor arguments and rebuilds when they change. (A
+  `const` route stays `const`: `of` and `copyWith` are members, not constructor parameters.)
+- **Which location.** `GoRouterState.of(context)`'s: the route around the widget, not whichever page
+  is on top. A page reads the part of the URL its own route matched, with the URL's query, so
+  `/products/42?ref=mail` leaves the page of `/products` below it reading
+  `ProductsRoute(ref: 'mail')`; a page under a pushed one and a tab that is built but not shown
+  (`preload`) read their own. A layout (a shell, a tab layout) is above any one page and reads the
+  whole location. Outside any route (`MaterialApp(home: ...)`) `of` throws go_router's `GoError` and
+  `maybeOf` returns `null`. A widget that calls it depends on its route's state and rebuilds when it
+  changes, as with `GoRouterState.of`; call it in `build` or in a handler of a mounted widget, not
+  after it is disposed.
 - **`copyWith`** takes every segment and every query parameter of the route, by name and with the
-  field's own type. One left out keeps its value; **`null` clears an optional query parameter**
-  (`page: null` leaves `?page=` out of the location), which is not the same as leaving it out. A
-  segment, and a `List` (a repeated query parameter or a catch-all), is not nullable, so
-  `copyWith(id: null)` doesn't compile: clear a list with an empty one (`tags: const []`). It
-  returns the same route class, so `.go`, `.push`, `.replace` and `.location` follow. What isn't a
-  parameter isn't carried: an `extra` is given again to `go(context, extra: ...)`, and the
-  localized spelling is chosen where the route is used (`go(context, locale: 'de')`), not by the
-  copy.
+  field's own type.
+  - A parameter left out keeps its value; **`null` clears an optional query parameter** (`page: null`
+    leaves `?page=` out of the location).
+  - A segment, and a `List` (a repeated query parameter or a catch-all), is not nullable, so
+    `copyWith(id: null)` doesn't compile: clear a list with an empty one (`tags: const []`).
+  - It returns the same route class, so `.go`, `.push`, `.replace` and `.location` follow.
+  - What isn't a parameter isn't carried: give an `extra` again to `go(context, extra: ...)`, and
+    choose the localized spelling where the route is used (`go(context, locale: 'de')`).
 - **How null differs from omitted.** `copyWith` is a getter whose type is a function with the
-  fields' types (`SearchRoute Function({String? q, int? page, Sort? sort})`), and the function
-  behind it has the parameters as `Object?` with a private `const` sentinel as the default. The
-  caller sees the clean signature; the sentinel is only visible in `app.g.dart`, and nobody can
-  pass it. See [Design notes](faq.md#design-notes).
+  fields' types (`SearchRoute Function({String? q, int? page, Sort? sort})`); the function behind it
+  takes `Object?` parameters with a private `const` sentinel as the default, visible only in
+  `app.g.dart`. See [Design notes](faq.md#design-notes).
 - **`go`, `push`, `replace`.** `go` follows the URL: on the web it adds a history entry, and back
-  and forward restore each view. `replace` (since 0.6.0) shows its location in the address bar too
-  and replaces the history entry instead of adding one, so it is the one for a change that
-  shouldn't pile up in the back stack (typing in a search box). When the page on top is part of the
-  declarative stack it is `go` inside Flutter's `Router.neglect`, on every platform: the stack
-  becomes the one the new location has by itself, and a page with the same path template keeps its
-  state. When the top was `push`ed, `replace` is go_router's own, which swaps that page and keeps the
-  stack below it. `push` stays out of the address bar and the history unless `push_updates_url: true`
-  is set in [the pubspec](configuration.md#the-fespalier-section) (since 0.6.0). On 0.5.0 `replace` was go_router's in
-  every case: the address bar followed it only when no page was below it (as a new history entry),
-  and showed the page below's URL otherwise, so use `go` for URL state there.
+  and forward restore each view.
+  - `replace` (since 0.6.0) shows its location in the address bar too and replaces the history entry
+    instead of adding one, so it is the one for a change that shouldn't pile up in the back stack
+    (typing in a search box). When the page on top is part of the declarative stack it is `go` inside
+    Flutter's `Router.neglect`, on every platform: the stack becomes the one the new location has by
+    itself, and a page with the same path template keeps its state. When the top was `push`ed,
+    `replace` is go_router's own: it swaps that page and keeps the stack below it. On 0.5.0 it was
+    go_router's in every case (the address bar followed it only when no page was below it), so use
+    `go` for URL state there.
+  - `push` stays out of the address bar and the history unless `push_updates_url: true` is set in
+    [the pubspec](configuration.md#the-fespalier-section) (since 0.6.0).
 - **`pushReplacement`** (since 0.7.0) is go_router's own, typed like `push`: the page on top leaves
   and a new one is pushed, with a new page key, and the future completes with what that page pops
   with. Use it where `replace` is wrong because the page's state or transition must not carry over:
-  a sheet that hands over to a full page, or the reverse. `replace` over a pushed page keeps its key (go_router's `replace`); over a page of the declarative stack it is a `go`, which keeps it only for the same path template. The replaced page's own
-  future never completes, and when it was the only page, neither does this one (go_router's
-  behaviour). Both take `locale:`, and `extra:` where the route has one.
-- **Reserved names.** `of`, `maybeOf` and `copyWith` are members of the route class, so
-  they can't be segment or query names (see
-  [Typed helpers on the route](data.md#typed-helpers-on-the-route)).
-- **Cost.** Both are synchronous and use no timer or microtask. `of` matches the location with the
-  generated matchers and builds one route; `copyWith` builds one (plus the small function it returns).
+  a sheet that hands over to a full page, or the reverse. (`replace` over a pushed page keeps its
+  key; over a page of the declarative stack it is a `go`, which keeps it only for the same path
+  template.) The replaced page's own future never completes, and when it was the only page, neither
+  does this one (go_router's behaviour). Both take `locale:`, and `extra:` where the route has one.
+- **Reserved names.** `of`, `maybeOf` and `copyWith` are members of the route class, so they can't
+  be segment or query names (see [Typed helpers on the route](data.md#typed-helpers-on-the-route)).
+- **Cost.** Both are synchronous and use no timer or microtask: `of` matches the location with the
+  generated matchers and builds one route; `copyWith` builds one (plus the small function it
+  returns).
 - **The page's own state.** A `copyWith` that only changes query parameters keeps the page and its
   widget state under `never` (the default) and `onSegments`, and starts the page again under
-  `onLocation`. To keep that state across `page: 2` and still start fresh for another product,
-  say `Remount.onSegments`: see [Remounting a page](#remounting-a-page-remount).
+  `onLocation`. To keep that state across `page: 2` and still start fresh for another product, say
+  `Remount.onSegments`: see [Remounting a page](#remounting-a-page-remount).
 
 `examples/shop` keeps the list's sort and page this way (`products/page.dart`, and
 `test/url_state_test.dart` with back and forward); `examples/features` has the enum, list,
@@ -113,10 +114,9 @@ catch-all and localized cases and `examples/tabs` the tabs.
 
 ## Remounting a page: `remount`
 
-_Since 0.6.0._ A page keeps its widget state when only its URL parameters change. go_router keys a
-page by its path template, so `/products/1` to `/products/2` is the same page: its widget is built
-again with the new `id`, but its `State` (a scroll position, a text field, a hook's `useState`)
-lives on. Some apps want that, others want a fresh page, and it depends on the app, so it is a
+_Since 0.6.0._ go_router keys a page by its path template, so `/products/1` to `/products/2` is the
+same page: its widget is built again with the new `id`, but its `State` (a scroll position, a text
+field, a hook's `useState`) lives on. Some apps want that, others want a fresh page, so it is a
 setting. `Remount` is an enum fespalier exports, with three values:
 
 | Value                 | The page starts again (a fresh state) when             | It keeps its state when            |
@@ -128,17 +128,17 @@ setting. `Remount` is an enum fespalier exports, with three values:
 `onSegments` is the one that fits [the URL as state](#the-url-as-state-of-and-copywith): the page
 keeps its state across `XRoute.of(context).copyWith(page: 2)`, and starts again on another product.
 
-**Where to say it.** For the whole app, in the pubspec's `fespalier:` section, with `never`,
-`on_segments` or `on_location`:
+**Where to say it.** For the whole app, in the pubspec's `fespalier:` section (`never`,
+`on_segments` or `on_location`):
 
 ```yaml
 fespalier:
   remount: on_segments
 ```
 
-For a folder, in its `route.dart`, which then covers that folder and everything below it, the
-nearest one winning over the parent's and over the pubspec, like
-[`caseSensitive`](routing.md#case-and-trailing-slashes):
+For a folder, in its `route.dart`, which covers that folder and everything below it (the nearest one
+wins over the parent's and over the pubspec, like
+[`caseSensitive`](routing.md#case-and-trailing-slashes)):
 
 ```dart
 // lib/app/products/route.dart
@@ -147,16 +147,17 @@ import 'package:fespalier/fespalier.dart';
 const remount = Remount.onSegments;
 ```
 
-It is read from the source when the tree is generated, never imported or run, so it must be
-`const` and one of `Remount.never`, `Remount.onSegments` and `Remount.onLocation`, written out
-(an import prefix, `fsp.Remount.onSegments`, is fine), and declared once; anything else is an
-error with a code frame, and so is a pubspec value that isn't one of the three (the message lists
-them). Like `caseSensitive` it is inherited by `(group)` folders and folders without a page, needs
-no page beside it, and a folder can say `Remount.never` to go back to the default under a parent
-that remounts. `fsp routes` tags such a page `remount`, and `--json` says which in a `remount` key.
+- It is read from the source when the tree is generated, never imported or run, so it must be
+  `const`, one of `Remount.never`, `Remount.onSegments` and `Remount.onLocation` written out (an
+  import prefix, `fsp.Remount.onSegments`, is fine), and declared once. Anything else is an error
+  with a code frame, and so is a pubspec value that isn't one of the three (the message lists them).
+- Like `caseSensitive` it is inherited by `(group)` folders and folders without a page and needs no
+  page beside it. A folder can say `Remount.never` to go back to the default under a parent that
+  remounts.
+- `fsp routes` tags such a page `remount`, and `--json` says which in a `remount` key.
 
-**What it keys.** Only the page of a route. The generated code gives the page a key that changes
-with the URL where it used to use go_router's `state.pageKey`:
+**What it keys.** Only the page of a route: the generated code gives it a key that changes with the
+URL, in place of go_router's `state.pageKey`.
 
 - `onSegments`: the template plus the values of the route's own path parameters, those of the
   folders above it included (`/teams/:teamId/members/:member` starts again when either changes),
@@ -171,16 +172,18 @@ A layout is not remounted, whatever its folder says: its page is keyed by its fo
 its [sections](data.md#section-data) outlive a change of the URL (the pages inside it start again by their
 own `remount`). Give a widget in a layout a `ValueKey` of your own if it should start again.
 
-**A new key is a new page.** go_router treats a page with another key as another page, not an
-update of the one it had: the navigator replaces the old page with the new one, so the page's
-transition may play, and the old page leaves with its own. How it looks is the page's
-[`transition.dart`](layouts.md#transitions) (or [`present.dart`](#presentdart-a-page-of-your-own)), which
-receives the key as its `LocalKey key` parameter, as before; pass it on to the `Page` you build,
-as `Transitions.fade` does. A `transition.dart` that takes no key can't give the new page one, so
-`remount` has nothing to act on there, and the generator warns that `remount` has no effect there.
-Without a `transition.dart` the page is a Material page, or a Cupertino one inside a
-`CupertinoApp`, built like a layout's page is (`remountPage`). Use `Transitions.none` for a page
-that should start again without animating.
+**A new key is a new page.** go_router treats a page with another key as another page: the navigator
+replaces the old page with the new one, so the page's transition may play, and the old page leaves
+with its own.
+
+- How it looks is the page's [`transition.dart`](layouts.md#transitions) (or
+  [`present.dart`](#presentdart-a-page-of-your-own)), which receives the key as its `LocalKey key`
+  parameter. Pass it on to the `Page` you build, as `Transitions.fade` does.
+- A `transition.dart` that takes no key can't give the new page one, so `remount` has nothing to act
+  on there, and the generator warns that `remount` has no effect there.
+- Without a `transition.dart` the page is a Material page, or a Cupertino one inside a
+  `CupertinoApp`, built like a layout's page is (`remountPage`).
+- Use `Transitions.none` for a page that should start again without animating.
 
 **Not what it is for.** It restarts the page's widgets, not its data: a `data.dart` provider is
 keyed by the segments and the query already, and reloads (see
@@ -210,21 +213,19 @@ NoteRoute(id: 3).go(context, extra: note);      // also push<T>(…, extra:), pu
 NoteRoute(id: 3).go(context, extra: 'oops');    // compile error: a String isn't a Note?
 ```
 
-The parameter **must be nullable** (`Note?`, `Object?` or `dynamic`; anything else is an
-error at that parameter). The object isn't in the URL, so a deep link, a page opened from
-`context.go('/notes/3')` and (without an [`extraCodec`](#restoring-extra-on-the-web)) a
-reload or a restored state all get `null`: build the page from the URL (`id`) and treat
-`extra` as a shortcut, not the source of truth. Passing an object of the wrong type around
-the typed route (a plain `context.go(location, extra: …)`) is an assertion error in debug
-builds and reads as `null` in release builds.
+The parameter **must be nullable** (`Note?`, `Object?` or `dynamic`; anything else is an error at
+that parameter). The object isn't in the URL, so a deep link, a page opened from
+`context.go('/notes/3')` and (without an [`extraCodec`](#restoring-extra-on-the-web)) a reload or a
+restored state all get `null`: build the page from the URL (`id`) and treat `extra` as a shortcut,
+not the source of truth. An object of the wrong type passed around the typed route (a plain
+`context.go(location, extra: …)`) is an assertion error in debug builds and reads as `null` in
+release builds.
 
-`extra` is a reserved name: a segment can't be called `extra`, and a query parameter of
-that name is the extra, not `?extra=`. The generated file has to name the type for the
-typed arguments, which is the one place it copies from your imports: it imports the type
-`show`ing that name from each of the file's imports (a library that doesn't export it is
-ignored; a type declared in the file itself, or under an import prefix, is found too),
-so the type must be reachable from the file's own imports. The built-in `dart:core`
-types need nothing.
+`extra` is a reserved name: a segment can't be called `extra`, and a query parameter of that name is
+the extra, not `?extra=`. The generated file names the type for the typed arguments by importing it,
+`show`ing that name, from each of the file's own imports (a library that doesn't export it is
+ignored; a type declared in the file itself, or under an import prefix, is found too), so the type
+must be reachable from those imports. The built-in `dart:core` types need nothing.
 
 **Layouts, guards and redirects take it too.** A `layout.dart`, a `guard.dart` or a
 `redirect.dart` can ask for `extra` the same way (a nullable type; a guard and a redirect take
@@ -247,11 +248,11 @@ GuardResult guard(Ref ref, {Note? extra}) =>
 A layout or a guard sees the extra of _every_ route it covers, so its type has to fit theirs,
 or it's an error at its parameter, with a code frame that lists the routes:
 
-- A guard or layout takes `Object?` (or `dynamic`) to accept anything, or **the type of the
-  routes it covers**: `Note?` above pages that take `Note?`. Nullability aside, the names have
-  to match. A route that takes no extra puts no condition on it.
-- So a layout above routes with different extra types must take `Object?`; otherwise the
-  routes that don't fit are listed:
+- A guard or layout takes `Object?` (or `dynamic`) to accept anything, or **the type of the routes it
+  covers** (`Note?` above pages that take `Note?`). Nullability aside, the names have to match. A
+  route that takes no extra puts no condition on it.
+- So a layout above routes with different extra types must take `Object?`; otherwise the routes that
+  don't fit are listed:
 
   ```text
   error: `extra` is `Note?` here, but the routes it covers take other types: `/notes/:id/print`
@@ -261,29 +262,27 @@ or it's an error at its parameter, with a code frame that lists the routes:
   ```
 
   A page's or redirect's own type decides for a route; on a route without one, the guards and
-  layouts above it must agree with each other. A layout isn't compared with a `redirect.dart`
-  route below it, which never shows it.
+  layouts above it must agree with each other. A layout isn't compared with a `redirect.dart` route
+  below it, which never shows it.
 
 - A route that takes no extra of its own gets the type its guards and layouts agree on, so
-  `NoteRoute(...).go(context, extra: note)` is typed even if the page ignores it.
-  `Object?` says nothing about a type: it adds no typed argument.
-- **A wrong type never crashes them.** A layout, a guard or a redirect sees extras meant for
-  other routes, so an object that isn't a `Note` reads as `null` (`extraOrNull`), and so does an
-  extra that isn't there. Only a page asserts, as above. The type is nullable so that `null`
-  always fits.
+  `NoteRoute(...).go(context, extra: note)` is typed even if the page ignores it. `Object?` says
+  nothing about a type: it adds no typed argument.
+- **A wrong type never crashes them.** A layout, a guard or a redirect sees extras meant for other
+  routes, so an object that isn't a `Note` reads as `null` (`extraOrNull`), and so does an extra
+  that isn't there. Only a page asserts, as above.
 
 ### Restoring `extra` on the web
 
-go_router keeps a navigation's `extra` next to its location, for the browser's history and for
-state restoration, but can only save what is JSON. Without help, an object with a `toJson()`
-comes back as the JSON `jsonEncode` made of it (a `Map`), and any other object is dropped
-(and go_router logs a warning): neither is your type, so a page that asks for a `Note?` gets
-`null` in release builds and, for the `Map`, an assertion in debug builds. To get the object
-back, give the router an `extraCodec`.
+go_router keeps a navigation's `extra` for the browser's history and for state restoration, but can
+only save JSON. Without help, an object with a `toJson()` comes back as the `Map` that `jsonEncode`
+made of it, and any other object is dropped (go_router logs a warning). Neither is your type, so a
+page that asks for a `Note?` gets `null` in release builds and, for the `Map`, an assertion in debug
+builds. To get the object back, give the router an `extraCodec`.
 
 Put a top-level `extraCodec` in `lib/app/extra_codec.dart`, at the root of the app folder (a
-`const`, a `final` or a getter; `fsp` only looks for the name). The generated
-`AppRoutes.router()` passes it as `GoRouter(extraCodec: …)`:
+`const`, a `final` or a getter; `fsp` only looks for the name). The generated `AppRoutes.router()`
+passes it as `GoRouter(extraCodec: …)`:
 
 ```dart
 // lib/app/extra_codec.dart
@@ -295,13 +294,14 @@ final extraCodec = ExtraCodec({
 });
 ```
 
-`ExtraCodec` takes each type and how it becomes JSON and back (annotate the parameter of
-`toJson`; a constructor tear-off does for `fromJson`), and saves an object under its type's
-name. `null`, strings, numbers, booleans and plain JSON lists and maps need no entry. It
-never breaks navigation: an object whose type isn't registered is saved as `null`, and saved
-data that no longer reads (the type was removed, or `fromJson` throws) comes back as `null`,
-so a page falls back to what the URL says. Pass `strict: true` to throw instead, in a test that
-checks you registered every type.
+`ExtraCodec` takes each type and how it becomes JSON and back (annotate the parameter of `toJson`; a
+constructor tear-off does for `fromJson`), and saves an object under its type's name. `null`,
+strings, numbers, booleans and plain JSON lists and maps need no entry.
+
+It never breaks navigation: an object whose type isn't registered is saved as `null`, and saved data
+that no longer reads (the type was removed, or `fromJson` throws) comes back as `null`, so a page
+falls back to what the URL says. Pass `strict: true` to throw instead, in a test that checks you
+registered every type.
 
 - The type is looked up by its exact runtime type: register each subclass of a sealed class.
 - The name is `Type.toString()`, which a release build for the web minifies (stable within a
@@ -309,10 +309,9 @@ checks you registered every type.
   `ExtraCodec({...}, names: {Note: 'note'})`.
 - Write your own `Codec<Object?, Object?>` instead if you like (`const extraCodec = MyCodec();`).
 - `AppRoutes.mount()` doesn't take it: a router you build yourself passes
-  `extraCodec: extraCodec` (imported from that file) to `GoRouter`. A router restores only what
-  it is given a `restorationScopeId` for (see [State restoration](layouts.md#state-restoration)).
-- `extra_codec.dart` in a subfolder is a warning, and a file without an `extraCodec` is an
-  error.
+  `extraCodec: extraCodec` (imported from that file) to `GoRouter`. A router restores only what it
+  is given a `restorationScopeId` for (see [State restoration](layouts.md#state-restoration)).
+- `extra_codec.dart` in a subfolder is a warning, and a file without an `extraCodec` is an error.
 
 `examples/tabs` does this for a `ProfileDraft` passed to its edit page, and its restoration test
 restarts the app and checks the draft is still there (and, for contrast, what a router without the
@@ -320,10 +319,9 @@ codec restores). `examples/features` has a layout and a guard that read a `Note?
 
 ## The root navigator (`navigator.dart`)
 
-A route's URL and the navigator it renders on are two decisions. A tab layout puts every route
-in its folder on a tab's navigator, under the navigation bar. `navigator.dart` says that a
-folder renders on the **root** navigator instead, above every layout and tab bar, without
-moving its URL:
+A route's URL and the navigator it renders on are two decisions. A tab layout puts every route in
+its folder on a tab's navigator, under the navigation bar. `navigator.dart` puts a folder on the
+**root** navigator instead, above every layout and tab bar, without moving its URL:
 
 ```dart
 // lib/app/(tabs)/profile/edit/navigator.dart
@@ -331,31 +329,34 @@ const navigator = RouteNavigator.root;
 ```
 
 `/profile/edit` is still under `/profile` (a deep link builds the Profile tab beneath it, and back
-returns to it, with its state), and the page covers the whole screen. The declaration applies to
-its folder's routes and to **every folder below it**, and the nearest one wins, like
-`transition.dart`; a page-less `(group)` folder can hold it too, for the routes inside. `fsp gen`
-emits `parentNavigatorKey: rootNavigatorKey` on the route and on all its descendants (`go_router` puts a
-route on its enclosing shell's navigator unless it says otherwise, so a child pushed from the page
-would land _under_ it), and the route table marks them `(root)`.
+returns to it, with its state), and the page covers the whole screen. The declaration applies to its
+folder's routes and to **every folder below it**, and the nearest one wins, like `transition.dart`; a
+page-less `(group)` folder can hold it too, for the routes inside. `fsp gen` emits
+`parentNavigatorKey: rootNavigatorKey` on the route and on all its descendants (`go_router` puts a
+route on its enclosing shell's navigator unless told otherwise, so a child pushed from the page would
+land _under_ it), and the route table marks them `(root)`.
 
-The generated file owns the key: `AppRoutes.rootNavigatorKey` is a `GlobalKey<NavigatorState>` the
-app can read (the last `router()` or `mount()` call's: a call that is given no key makes a fresh one
-rather than keeping an earlier call's, since 0.5.0); `AppRoutes.router(navigatorKey: …)` uses one you supply; and
-`AppRoutes.mount(at:, navigatorKey: …)` takes the **host** `GoRouter`'s own key, since a
-`parentNavigatorKey` must name an ancestor navigator.
+The generated file owns the key:
+
+- `AppRoutes.rootNavigatorKey` is a `GlobalKey<NavigatorState>` the app can read: the last
+  `router()` or `mount()` call's (since 0.5.0, a call given no key makes a fresh one rather than
+  keeping an earlier call's).
+- `AppRoutes.router(navigatorKey: …)` uses one you supply.
+- `AppRoutes.mount(at:, navigatorKey: …)` takes the **host** `GoRouter`'s own key, since a
+  `parentNavigatorKey` must name an ancestor navigator.
 
 - `fsp` reads the file from the source, like `tabs`: a `const navigator` that is
   `RouteNavigator.root` or `RouteNavigator.shell`, spelled out; anything else is an error at it.
 - **A layout is a navigator of its own.** A `layout.dart` below a root folder becomes a
   `ShellRoute(parentNavigatorKey: rootNavigatorKey, …)` (or the `StatefulShellRoute`); the routes
   inside it sit on its own navigator, since go_router doesn't allow a key other than the shell's
-  there. Below a layout nothing is inherited, and `RouteNavigator.shell` is what a folder says to
-  be explicit about it. Below a root route with **no** layout in between, `.shell` is an error:
-  go_router only lets a descendant use the root navigator or a navigator above it.
-- **A root route can't be a direct child of a shell.** go_router lifts a route out of its shell
-  only from below another route, so a root route that is the first route of a tab, or sits beside
-  others directly in a layout, is an error (put it below a `page.dart` that stays in the layout, or
-  move its folder out of the layout's folder).
+  there. Below a layout nothing is inherited, and `RouteNavigator.shell` is how a folder says so
+  explicitly. Below a root route with **no** layout in between, `.shell` is an error: go_router only
+  lets a descendant use the root navigator or a navigator above it.
+- **A root route can't be a direct child of a shell.** go_router lifts a route out of its shell only
+  from below another route, so a root route that is the first route of a tab, or sits beside others
+  directly in a layout, is an error (put it below a `page.dart` that stays in the layout, or move its
+  folder out of the layout's folder).
 - The typed route is unchanged: `EditProfileRoute().push(context)` and `.go(context)` as before.
 
 `examples/tabs` does this for `/profile/edit`; its tests check that there is no `NavigationBar`, that
@@ -413,25 +414,25 @@ is exposed to accessibility services as a link with its URL, and `const RouteLin
 the route and the builder are constant.
 
 - **On the web** it is built on `url_launcher`'s `Link`, which lays an invisible anchor over the
-  child. The browser shows the URL in its status bar, the context menu offers "open in a new
-  tab", and a middle click, or a click with Ctrl, Cmd, Shift or Alt, opens it in a new tab or
-  window. A plain click or a keyboard activation never reaches the anchor: `follow` calls
-  `GoRouter.go`, `push` or `replace` (the `method`), the page doesn't reload, and the anchor's own
-  navigation is cancelled. With `method: LinkMethod.push` a plain click pushes and a Ctrl-click
-  opens a tab. The `href` is the route's `location`, so it carries the mount prefix
-  (`AppRoutes.mount(at: '/shop')` gives `/shop/products/2`) and, with `locale: 'fr'`, the
-  localized spelling `locationFor('fr')` writes. Under a hash URL strategy the browser prefixes
-  it with `#`, as for any link.
+  child. The browser shows the URL in its status bar, the context menu offers "open in a new tab",
+  and a middle click, or a click with Ctrl, Cmd, Shift or Alt, opens it in a new tab or window.
+  - A plain click or a keyboard activation never reaches the anchor: `follow` calls `GoRouter.go`,
+    `push` or `replace` (the `method`), the page doesn't reload, and the anchor's own navigation is
+    cancelled. With `method: LinkMethod.push` a plain click pushes and a Ctrl-click opens a tab.
+  - The `href` is the route's `location`, so it carries the mount prefix
+    (`AppRoutes.mount(at: '/shop')` gives `/shop/products/2`) and, with `locale: 'fr'`, the
+    localized spelling `locationFor('fr')` writes. Under a hash URL strategy the browser prefixes it
+    with `#`, as for any link.
 - **Elsewhere** there is no anchor; `follow` navigates the same way.
-- **`uri:`** is for a location you only have as a string (a notification payload, a CMS
-  field). It is a path of this app with the mount prefix, not an external URL. In a debug build a
-  `uri:` that no route matches throws when the link builds, saying so: it asks the router above
-  it (`GoRouter.configuration.findMatch`), or `RouteLinkScope.match` below. It can't see a segment
-  that doesn't parse (`/products/abc`), which only the generated matcher does. `fsp` also warns
-  about a `Uri.parse` literal that matches no route when it builds (since 0.7.0, see
+- **`uri:`** is for a location you only have as a string (a notification payload, a CMS field). It
+  is a path of this app with the mount prefix, not an external URL. In a debug build a `uri:` that no
+  route matches throws when the link builds: it asks the router above it
+  (`GoRouter.configuration.findMatch`), or `RouteLinkScope.match` below. It can't see a segment that
+  doesn't parse (`/products/abc`), which only the generated matcher does. `fsp` also warns about a
+  `Uri.parse` literal that matches no route when it builds (since 0.7.0, see
   [Checking string paths](cli.md#checking-string-paths)).
-- **No `extra`.** An `extra` is not part of the URL, so a link has none. For a route that takes
-  one, call `route.go(context, extra: ...)` from the child's own `onTap`.
+- **No `extra`.** An `extra` is not part of the URL, so a link has none. For a route that takes one,
+  call `route.go(context, extra: ...)` from the child's own `onTap`.
 
 `RouteLinkScope` sets the defaults for every link below it, once, and needs no generated code:
 
@@ -465,12 +466,17 @@ data of each [section](data.md#section-data) above it and its own, through `rout
   under another, so a long list costs one comparison per scroll frame for the links it has
   built, and no timer.
 
-What it never does: navigate, run `guard.dart` or `redirect.dart` (a guard runs when the link
-is followed; preloading is only the load), keep a failure (a provider that throws closes the
-handle, and no page is left with an error nobody asked for), or load twice for repeated
-hovering (a link holds one handle, and a provider that several links start is loaded once). A link
-that failed to preload tries again on its next intent, but not on every scroll tick of a visible
-one. Changing the link's route or `preload` releases what it held.
+What it never does:
+
+- navigate, or run `guard.dart` or `redirect.dart` (a guard runs when the link is followed;
+  preloading is only the load);
+- keep a failure (a provider that throws closes the handle, so no page is left with an error nobody
+  asked for);
+- load twice for repeated hovering (a link holds one handle, and a provider that several links start
+  is loaded once).
+
+A link that failed to preload tries again on its next intent, but not on every scroll tick of a
+visible one. Changing the link's route or `preload` releases what it held.
 
 A link to a [deferred route](#deferred-routes-a-pages-code-on-demand) (since 0.7.0) starts the page's _code_ too, in the same
 moment, through the same `route.preload(ref)`; the code, once loaded, stays loaded, so a link
@@ -479,14 +485,17 @@ releasing its handle drops the data only.
 The same call is there without a widget, for your own queue: `ProductRoute(id: 2).preload(ref)`
 and `AppRoutes.preload(ref, uri)` return one `PrefetchHandle`; close it when the lease ends.
 
-**`onPreload`** (since 0.9.0) is for what the page needs that is not a provider, such as the image it shows,
-at the size it shows it. It runs with the link's `BuildContext` right after the link starts `route.preload(ref)`:
-for `Preload.intent` on the first intent (and on the next one after a failed preload), for `Preload.visible`
-each time the link comes back on screen. It is not called when the link preloads nothing (`Preload.none`,
-or a `uri:` link no `RouteLinkScope.match` matches). It must return at once, and what it throws is reported
-with `FlutterError.reportError` (library `fespalier`, `while running onPreload of a RouteLink to
-/products/3`) while the preload goes on. The page's size is known only where there is a `BuildContext`,
-which is why this is a callback of the link and not part of `route.preload(ref)`:
+**`onPreload`** (since 0.9.0) is for what the page needs that is not a provider, such as the image it
+shows, at the size it shows it. The page's size is known only where there is a `BuildContext`, which
+is why this is a callback of the link and not part of `route.preload(ref)`.
+
+- It runs with the link's `BuildContext` right after the link starts `route.preload(ref)`: for
+  `Preload.intent` on the first intent (and on the next one after a failed preload), for
+  `Preload.visible` each time the link comes back on screen.
+- It is not called when the link preloads nothing (`Preload.none`, or a `uri:` link no
+  `RouteLinkScope.match` matches).
+- It must return at once. What it throws is reported with `FlutterError.reportError` (library
+  `fespalier`, `while running onPreload of a RouteLink to /products/3`) while the preload goes on.
 
 ```dart
 RouteLink(
@@ -507,12 +516,12 @@ though pub resolves url_launcher's platform packages).
 ## Deferred routes: a page's code on demand
 
 _Since 0.7.0._ A Flutter web app is one JavaScript bundle: every page's code is downloaded before the
-first frame, however few the visitor opens. Dart can split it: a library imported `deferred as` is
-compiled to a file of its own that the browser fetches when `loadLibrary()` is called. fespalier
-does that for a route's `page.dart`, and loads the code the way it loads data: when the page is
-built, or ahead of time (see [Preloading](#preloading-the-data-behind-a-link)).
+first frame. Dart can split it: a library imported `deferred as` is compiled to a file of its own
+that the browser fetches when `loadLibrary()` is called. fespalier does that for a route's
+`page.dart`, and loads the code the way it loads data: when the page is built, or ahead of time (see
+[Preloading](#preloading-the-data-behind-a-link)).
 
-**Turn it on.** It is off by default, and a route that isn't deferred generates exactly the code it did
+**Turn it on.** It is off by default, and a route that isn't deferred generates the same code as
 before 0.7.0. For a folder, in its `route.dart`, which covers that folder and everything below it,
 the nearest one winning over the parent's and over the pubspec, like
 [`remount`](#remounting-a-page-remount):
@@ -560,8 +569,8 @@ three times before it gives up. Turning `deferred` on therefore binds the neares
 route it covers (an `error.dart` that asks for a segment fails the route that has none, and one that
 asks for a query parameter adds it to the typed route).
 
-**Once the code is loaded, the page is built synchronously**, with no `Future` and no extra frame:
-a second visit, or a visit after a preload, costs nothing. The page's state survives the load.
+**Once the code is loaded, the page is built synchronously**, with no `Future` and no extra frame, so
+a second visit or a visit after a preload costs nothing. The page's state survives the load.
 
 **Data and code load in parallel.** A deferred page with a `data.dart` starts its code at the first
 build, beside the data (`DataView(library: ...)`), and shows the page when both are there; `loading.dart`

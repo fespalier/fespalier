@@ -1,10 +1,10 @@
 # Authentication
 
-Since 0.9.0. fespalier's core has no auth feature, and gains none: no file kind, no `fespalier:` key, no `fsp`
-command, and `app.g.dart` is the same bytes. `package:fespalier_auth` is the pattern of
-[Guards](guards.md) packaged: a session provider, guards for `guard.dart`, token storage, lazy refresh with a
-single flight and an authenticated HTTP client, behind one `AuthBackend` interface. An app that does not
-depend on it is unchanged, and it adds no timer and no listener to one that does.
+Since 0.9.0. `package:fespalier_auth` is the pattern of [Guards](guards.md) packaged: a session provider,
+guards for `guard.dart`, token storage, lazy refresh with a single flight and an authenticated HTTP client,
+behind one `AuthBackend` interface. The core gains no file kind, `fespalier:` key or `fsp` command, and
+`app.g.dart` is the same bytes: an app that does not depend on it is unchanged, and it adds no timer and no
+listener to one that does.
 
 - **The session** is a provider, `authSession`, whose state is sealed: `SessionRestoring`,
   `SignedOut(reason)` and `SignedIn(session)`.
@@ -39,8 +39,8 @@ dependencies:
 <!-- x-release-please-end -->
 
 The package needs Dart 3.8 and Flutter 3.32 or newer. Its one plugin is `flutter_secure_storage` (the token
-store; its Android minSdk is 24, and `>=10.0.0 <12.0.0` is accepted), so it is in an app that imports this
-package whichever backend it uses. A backend that is an SDK of its own (Firebase, Supabase) keeps its own
+store; its Android minSdk is 24, and `>=10.0.0 <12.0.0` is accepted), which is in every app that imports the
+package, whichever backend it uses. A backend that is an SDK of its own (Firebase, Supabase) keeps its own
 session and does not use the store.
 
 ## The session
@@ -58,13 +58,17 @@ final state = ref.watch(authSession); // SessionRestoring | SignedOut | SignedIn
 | `authConfig`, `authInitialState` | The app's `AuthConfig`, and what `restoreAuth` read. Reading `authConfig` with no override throws a `StateError` that says what to do |
 
 There is **no `refreshing` state**: a refresh keeps `SignedIn` and swaps the tokens, so a guard that watches
-the session never runs again, and a request is never bounced to the sign-in page in the middle of one. When
-the server refuses the refresh token, the state becomes `SignedOut(reason: SignOutReason.expired)` (the
-sign-in page can say "your session expired"); `SignOutReason.user` is a sign-out, and `keyLost` is a session
-bound to a device key that is gone (see below). `AuthTokens`, `AuthUser`, `AuthSession` and `PasswordSignIn`
-print without a token, an id, an e-mail or a password (`AuthUser(roles: {admin})`), so a log line is safe.
-`unverifiedJwtClaims(token)` reads a JWT's payload for display and routing; it does not verify it, and the
-server still decides.
+the session never runs again, and a request is never bounced to the sign-in page in the middle of one.
+
+`SignedOut` carries a `SignOutReason`:
+
+- `expired`: the server refused the refresh token (the sign-in page can say "your session expired").
+- `user`: a sign-out.
+- `keyLost`: a session bound to a device key that is gone (see below).
+
+`AuthTokens`, `AuthUser`, `AuthSession` and `PasswordSignIn` print without a token, an id, an e-mail or a
+password (`AuthUser(roles: {admin})`), so a log line is safe. `unverifiedJwtClaims(token)` reads a JWT's
+payload for display and routing; it does not verify it, and the server still decides.
 
 ## Restoring at startup
 
@@ -80,12 +84,16 @@ AuthConfig authSetup() => AuthConfig(
 ```
 
 `restoreAuth` returns the overrides for the app's `ProviderScope` (the generated `main()` calls
-[`startup()`](app-startup.md) and passes them), so every guard is synchronous from
-the first navigation: a cold deep link to a signed-in page has no blank frame and no redirect. It is
-**synchronous** when the store answers synchronously (`MemoryTokenStore`, a backend that keeps its own
-session) and one keychain read otherwise (`SecureTokenStore`, the default), shown behind `splash.dart`, or the
-native splash when there is none. It does **no network**: an expired access token is refreshed by the first
-request that needs it, so an offline start works. It drops what it cannot trust, without a request:
+[`startup()`](app-startup.md) and passes them), so every guard is synchronous from the first navigation: a
+cold deep link to a signed-in page has no blank frame and no redirect.
+
+- It is **synchronous** when the store answers synchronously (`MemoryTokenStore`, a backend that keeps its own
+  session), and one keychain read otherwise (`SecureTokenStore`, the default), shown behind `splash.dart`, or
+  the native splash when there is none.
+- It does **no network**: an expired access token is refreshed by the first request that needs it, so an
+  offline start works.
+
+It drops what it cannot trust, without a request:
 
 | Stored session                                                                                  | Result                                                                                                      |
 | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -97,11 +105,16 @@ request that needs it, so an offline start works. It drops what it cannot trust,
 
 A store that cannot be read at all (a locked keychain) makes `startup()` fail, which the generated `main()`
 shows with a retry. `AuthConfig` has `backend`, `store`, `apiOrigins` and `leeway` (30 seconds before expiry
-an access token counts as expired). A stored session is `AuthSession.toJson` under one key
-(`fespalier_auth.session`): the Keychain with `first_unlock_this_device` (not in backups, not on another device),
-Android's encrypted storage, and on the web encrypted `localStorage`, which a script on the page can read: use
-`MemoryTokenStore` there (a reload signs out) for anything that matters. Install the telemetry sink first in
-`startup()` to see the restore as a span.
+an access token counts as expired). Install the telemetry sink first in `startup()` to see the restore as a
+span.
+
+**Where the session is stored.** A stored session is `AuthSession.toJson` under one key
+(`fespalier_auth.session`):
+
+- Apple: the Keychain with `first_unlock_this_device` (not in backups, not on another device).
+- Android: encrypted storage.
+- Web: encrypted `localStorage`, which a script on the page can read. Use `MemoryTokenStore` there (a reload
+  signs out) for anything that matters.
 
 An app with no `startup.dart` still works: add `authConfig.overrideWithValue(config)` to the `ProviderScope`,
 and the session restores itself at the first read. The state is `SessionRestoring` meanwhile, and the guard
@@ -138,9 +151,9 @@ GuardResult guard(Ref ref, {String? from}) => redirectIfSignedIn(ref, from: from
   and nothing moves. `returnTo` refuses `//host`, `https://…` and `/\`, so a crafted `?from=` cannot send
   the user elsewhere.
 - **The sign-in page sits beside the guarded group**, never inside it: a guard on the sign-in page would send
-  the user to the sign-in page. A guard under a **pushed** page reacts only when you pop back to it (see
-  [Guards](guards.md)), so a sign-out button over a pushed page should navigate too:
-  `const HomeRoute().go(context)`.
+  the user to the sign-in page.
+- A guard under a **pushed** page reacts only when you pop back to it (see [Guards](guards.md)), so a
+  sign-out button over a pushed page should navigate too: `const HomeRoute().go(context)`.
 - A guard is not access control: the server decides what a token may do.
 
 ## Signing in and out
@@ -179,11 +192,11 @@ when it comes from another backend than the configured one.
 frame, then clears the store, runs the backend's `signOut` (best effort: its errors are swallowed, the user is
 out anyway) and resets the proof of possession. It does nothing when nobody is signed in.
 
-A backend is `AuthBackend`: `name` (a short constant, `oidc`, `firebase`, `api`: what a stored session is
+**A backend** is `AuthBackend`: `name` (a short constant, `oidc`, `firebase`, `api`: what a stored session is
 tied to, and telemetry's `fespalier.auth.backend`), `signIn`, `refresh` and `signOut`. `refresh` throws
 `AuthRejected` when the server refused (the session is over) and anything else when it could not ask (the
-session stays). The starter in `skills/fespalier-guards/references/auth-package.md` is a complete one over
-a JSON API: a `POST /auth/login` and `/auth/refresh`.
+session stays). The starter in `skills/fespalier-guards/references/auth-package.md` is a complete one over a
+JSON API: a `POST /auth/login` and `/auth/refresh`.
 
 ## Calling your API
 
@@ -218,10 +231,11 @@ so a token cannot leak to a third party, and `apiOrigins` empty is an error the 
   `retry(attempt, statusCode:, headers:)` (send again?).
 - **One container.** The single flight is per `ProviderContainer`: a second isolate or a second web tab that
   refreshes the same rotating token gets `invalid_grant`. Refresh in one place, or do not turn rotation on.
-- **A replay is marked, and keeps its abort trigger.** A request that is sent again (after a 401 and a refresh, or after a DPoP nonce challenge) is `isAuthReplay(request)`
-  for `SessionClient` and `options.extra[authReplayKey]` (`'fespalier.auth.replay'`) for `SessionInterceptor`, so
-  a guard that refuses re-sends of writes can let that one through; the first send is not a replay. A request made
-  with `http.AbortableRequest(..., abortTrigger: future)` is copied with the same trigger (`package:http` 1.5.0 and
+- **A replay is marked, and keeps its abort trigger.** A request sent again (after a 401 and a refresh, or
+  after a DPoP nonce challenge) is `isAuthReplay(request)` for `SessionClient` and
+  `options.extra[authReplayKey]` (`'fespalier.auth.replay'`) for `SessionInterceptor`, so a guard that
+  refuses re-sends of writes can let that one through; the first send is not a replay. A request made with
+  `http.AbortableRequest(..., abortTrigger: future)` is copied with the same trigger (`package:http` 1.5.0 and
   later), so aborting still cancels the replay when the page that wanted it goes away.
 - **Do not put `RetryClient` under the session.** `package:http`'s `RetryClient` sends the same headers again, so
   under a client that signs requests it re-sends the same signature. With DPoP that is the same proof, and the server

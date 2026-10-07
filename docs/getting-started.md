@@ -1,52 +1,45 @@
 # Installation and setup
 
-The README has the 60-second path: install `fsp`, add the package, run `fsp init`. This page has the rest:
-every way to install `fsp`, the companion packages, what `fsp init` writes, how to keep `app.g.dart`
-in CI, and the platform notes.
+The [README](../README.md#getting-started) has the 60-second path: install `fsp`, add the package, run
+`fsp init`. This page has the rest: every way to install `fsp`, the companion packages, what `fsp init`
+writes, how to keep `app.g.dart` in CI, and platform notes.
 
 ## Requirements
 
-You need Flutter 3.32 or newer (Dart 3.8) for the package. go_router 18 needs Flutter
-3.44 or newer.
-
-`flutter analyze` is clean on Flutter 3.47 with go_router 17 and 18, hooks_riverpod 3 and flutter_hooks 0.21.
-
-It depends on go_router (17 or 18), hooks_riverpod 3 and flutter_hooks, and
-`package:fespalier/fespalier.dart` re-exports all three, so you don't add them yourself.
+- Flutter 3.32 or newer (Dart 3.8). go_router 18 needs Flutter 3.44 or newer.
+- `flutter analyze` is clean on Flutter 3.47 with go_router 17 and 18, hooks_riverpod 3 and flutter_hooks 0.21.
+- The package depends on go_router (17 or 18), hooks_riverpod 3 and flutter_hooks.
+  `package:fespalier/fespalier.dart` re-exports all three, so you don't add them yourself.
 
 ## Install fsp
 
 ### Linux and macOS
 
-On Linux and macOS:
-
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 ```
 
-It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION` to a release tag to pick a release (the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install
-elsewhere.
+It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION` to a release tag
+(the default is the latest) and `FSP_INSTALL_DIR=/some/dir` to install elsewhere.
 
 ### Windows
-
-In PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/fespalier/fespalier/main/install.ps1 | iex
 ```
 
-It puts `fsp.exe` in `%LOCALAPPDATA%\fespalier\bin` (tell it otherwise with
-`$env:FSP_INSTALL_DIR`, pick a release with `$env:FSP_VERSION`), checks the SHA-256, and
-prints how to add that folder to your `PATH` if it isn't there yet.
+It puts `fsp.exe` in `%LOCALAPPDATA%\fespalier\bin` (change it with `$env:FSP_INSTALL_DIR`, pick a
+release with `$env:FSP_VERSION`), checks the SHA-256, and prints how to add that folder to your `PATH`
+if it isn't there yet.
 
 ### With Rust
 
-With Rust installed, `cargo install` builds `fsp` from the release tag on any platform. The command, with
-the current tag, is in the [README](../README.md#getting-started).
+`cargo install` builds `fsp` from the release tag on any platform. The command, with the current tag, is
+in the [README](../README.md#getting-started).
 
 ### Homebrew and Scoop
 
-With Homebrew (macOS, Linux) or Scoop (Windows), from the tap and the bucket that releases push to
+Homebrew (macOS, Linux) and Scoop (Windows) install from the tap and the bucket that releases push to
 (see [Releasing](releasing.md)):
 
 ```sh
@@ -54,36 +47,45 @@ brew tap fespalier/tap && brew install fsp   # or in one go: brew install fespal
 scoop bucket add fespalier https://github.com/fespalier/scoop-bucket && scoop install fsp
 ```
 
-They hold the latest release only once it has pushed to them. Scoop also installs a manifest
-straight from a URL, so without the bucket (or before it has the release) the `fsp.json` that
-every release attaches does the same, and it names that release's archives and their SHA-256s:
+They hold the latest release only once it has pushed to them. Until then, or without the bucket, Scoop
+can install the `fsp.json` that every release attaches (it names that release's archives and their
+SHA-256s):
 
 ```powershell
 scoop install https://github.com/fespalier/fespalier/releases/latest/download/fsp.json
 ```
 
-To update that one, `scoop uninstall fsp` and run it again. Homebrew has no such fallback:
-`brew install` reads formulae from taps only (a path is refused by default, `brew install
-./fsp.rb`, see `HOMEBREW_FORBID_PACKAGES_FROM_PATHS`, and a URL is no longer accepted), so
-`fsp.rb` is only useful to a tap. Where the tap has no release yet, macOS users use the install
-script above.
+To update that one, `scoop uninstall fsp` and run it again.
+
+Homebrew has no such fallback: `brew install` reads formulae from taps only (a path such as
+`brew install ./fsp.rb` is refused by default, see `HOMEBREW_FORBID_PACKAGES_FROM_PATHS`, and a URL is
+no longer accepted), so `fsp.rb` is only useful to a tap. Where the tap has no release yet, macOS users
+use the install script above.
 
 ### Without installing: dart run fespalier
 
-Once the package is in your `pubspec.yaml` (step 2), `dart run
-fespalier <command>` runs `fsp` for you, so use it wherever these docs say `fsp`:
-`dart run fespalier init`, `dart run fespalier watch`, `dart run fespalier check`. The first
-run downloads the `fsp` release that matches the package's version, checks its SHA-256 and
-keeps it in your user cache (`~/.cache/fespalier` on Linux, `~/Library/Caches/fespalier` on
-macOS, `%LOCALAPPDATA%\fespalier` on Windows; `FSP_CACHE_DIR` moves it), so later runs start
-at once. The download is checked against the SHA-256 that this package carries for its own
-version, so a tampered release is refused (a package built from a branch has no pins yet; it
-then checks the release's `.sha256` file instead and says so). Offline with an empty cache it
-stops with one line naming the missing version; with a warm cache it never uses the network.
-It needs `tar`, which macOS, Linux and Windows 10+ include. Set `FSP_BINARY=/path/to/fsp`
-to run a binary of your own, e.g. a build from source. An `fsp` on your `PATH` is used too when its
-version is the package's, so nothing is downloaded when you have both. The package and the
-binary are versioned together, and this is what keeps them in step.
+Once the package is in your `pubspec.yaml` (step 2), `dart run fespalier <command>` runs `fsp` for you.
+Use it wherever these docs say `fsp`:
+
+```sh
+dart run fespalier init
+dart run fespalier watch
+dart run fespalier check
+```
+
+- **First run.** It downloads the `fsp` release that matches the package's version and keeps it in your
+  user cache (`~/.cache/fespalier` on Linux, `~/Library/Caches/fespalier` on macOS,
+  `%LOCALAPPDATA%\fespalier` on Windows; `FSP_CACHE_DIR` moves it). Later runs start at once.
+- **Checksum.** The download is checked against the SHA-256 that the package carries for its own version,
+  so a tampered release is refused. A package built from a branch has no pins yet: it checks the
+  release's `.sha256` file instead and says so.
+- **Offline.** With an empty cache it stops with one line naming the missing version; with a warm cache
+  it never uses the network.
+- **Requirements.** `tar`, which macOS, Linux and Windows 10+ include.
+- **Your own binary.** Set `FSP_BINARY=/path/to/fsp`, for example a build from source. An `fsp` on your
+  `PATH` is used too when its version is the package's, so nothing is downloaded when you have both.
+
+The package and the binary are versioned together, and this is what keeps them in step.
 
 ### Environment variables
 
@@ -99,15 +101,16 @@ binary are versioned together, and this is what keeps them in step.
 `fespalier_otel`, `fespalier_sentry`, `fespalier_auth`, `fespalier_sign_keypair`, `fespalier_flags`,
 `fespalier_storage`, `fespalier_connectivity`, `fespalier_adaptive`, `fespalier_image` and `fespalier_dio` are
 not published to a registry: an app uses each as a git dependency at the same release tag as `fespalier`.
-
-Add a companion next to `fespalier`, with the same `url` and the same `ref` (pub resolves the two to one
-package only if they are the same repository dependency). A mismatch fails with `Because every version of
-fespalier_flags from path depends on fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in
-packages/fespalier and demo depends on fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in
-packages/fespalier, fespalier_flags from path is forbidden.`, the form it takes when the first is a path (when
-the second is a path, the two halves swap places; the package named is the companion you added).
-
 Each package's own section shows the block to copy, and the package's README links back here.
+
+Add a companion next to `fespalier`, with the same `url` and the same `ref`: pub resolves the two to one
+package only if they are the same repository dependency. A mismatch fails like this (the form it takes
+when the first is a path; when the second is a path, the two halves swap places; the package named is the
+companion you added):
+
+```text
+Because every version of fespalier_flags from path depends on fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and demo depends on fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier, fespalier_flags from path is forbidden.
+```
 
 ## fsp init
 
@@ -117,16 +120,19 @@ Run `fsp init` in the project root:
 fsp init
 ```
 
-It creates `lib/app/layout.dart`, `page.dart`, `not_found.dart` (`not-found.dart` with
-[`file_style: kebab`](file-kinds.md#file-names)), `transition.dart` (every
-route animates with the Material transition) and, since 0.8.1, `app.dart` (the `MaterialApp.router`
-around the router; not with [`main: manual`](app-startup.md)), and writes
-`lib/app.g.dart` and, from `app.dart`, `lib/app.main.g.dart`. It never
-overwrites a file that exists: those are reported as `skip`.
-It then prints what is left to do (the dependency block above, if `pubspec.yaml` doesn't
-have it yet, and this `main.dart`). `not_found.dart` is optional: without it, unknown
-paths get a plain "Nothing at /path" view. Other folders can have their own (see
-[Not-found views](routing.md#not-found-views)).
+It creates:
+
+- `lib/app/layout.dart`, `page.dart` and `not_found.dart` (`not-found.dart` with
+  [`file_style: kebab`](file-kinds.md#file-names)). `not_found.dart` is optional: without it, unknown
+  paths get a plain "Nothing at /path" view. Other folders can have their own (see
+  [Not-found views](routing.md#not-found-views)).
+- `transition.dart`: every route animates with the Material transition.
+- Since 0.8.1, `app.dart`: the `MaterialApp.router` around the router (not with
+  [`main: manual`](app-startup.md)).
+
+It then writes `lib/app.g.dart` and, from `app.dart`, `lib/app.main.g.dart`. It never overwrites a file
+that exists: those are reported as `skip`. Last, it prints what is left to do: the dependency block above
+(if `pubspec.yaml` doesn't have it yet) and this `main.dart`:
 
 ```dart
 import 'package:my_app/app.main.g.dart';
@@ -134,15 +140,14 @@ import 'package:my_app/app.main.g.dart';
 Future<void> main() => AppMain.run();
 ```
 
-`AppMain` is generated from `lib/app/app.dart` (and `startup.dart` and `splash.dart`, if you
-add them): it starts the app inside a `ProviderScope`, builds the router once and runs
-`runApp`. See [`main()`: app.dart, startup.dart and splash.dart](app-startup.md).
-Before 0.8.1 `fsp init` printed a `main()` that built the `ProviderScope` and the
-`MaterialApp.router` itself, and that still works: it is what `main: manual` keeps.
+`AppMain` is generated from `lib/app/app.dart` (and `startup.dart` and `splash.dart`, if you add them):
+it starts the app inside a `ProviderScope`, builds the router once and runs `runApp`. See
+[`main()`: app.dart, startup.dart and splash.dart](app-startup.md). `main: manual` keeps a `main()` that
+builds the `ProviderScope` and the `MaterialApp.router` itself.
 
-A plain `flutter create` (not `flutter create --empty`) also wrote `test/widget_test.dart`,
-which refers to the `MyApp` you just replaced, so `flutter analyze` fails on it. Delete it,
-or rewrite it (see [Testing](testing.md)).
+A plain `flutter create` (not `flutter create --empty`) also wrote `test/widget_test.dart`, which refers
+to the `MyApp` you just replaced, so `flutter analyze` fails on it. Delete it, or rewrite it (see
+[Testing](testing.md)).
 
 ## Day to day
 
@@ -162,11 +167,8 @@ There are two ways to keep `app.g.dart`. Pick one.
 
 ### Commit it
 
-This is the default. `lib/app.g.dart` is plain code, meant to be read, and the app
-builds without `fsp` installed. In CI, run `fsp check`. It writes nothing (it never touches
-`app.g.dart`) and exits non-zero on routing errors. It does **not** compare the committed file
-with what the tree would generate, so it passes when `lib/app.g.dart` is stale; the end of this
-section has a check that fails then.
+This is the default. `lib/app.g.dart` is plain code, meant to be read, and the app builds without `fsp`
+installed. In CI, run `fsp check`:
 
 ```yaml
 - run: curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
@@ -174,19 +176,23 @@ section has a check that fails then.
 - run: fsp check
 ```
 
-or, with nothing to install (after `flutter pub get`): `- run: dart run fespalier check`.
+Or, with nothing to install (after `flutter pub get`): `- run: dart run fespalier check`.
+
+`fsp check` writes nothing (it never touches `app.g.dart`) and exits non-zero on routing errors. It does
+**not** compare the committed file with what the tree would generate, so it passes when `lib/app.g.dart`
+is stale. To fail on that, see [Failing CI on a stale file](#failing-ci-on-a-stale-file).
 
 ### Generate, don't commit
 
-For projects that never commit generated code (`**/*.g.dart` is
-ignored already, and every generator runs before analysis). Add the file to `.gitignore`:
+For projects that never commit generated code (`**/*.g.dart` is ignored already, and every generator
+runs before analysis). Add the file to `.gitignore`:
 
 ```gitignore
 lib/app.g.dart
 ```
 
-and generate it wherever the app is analyzed, tested or built: on a fresh clone, and in CI
-**before** `flutter analyze`, because `app.g.dart` doesn't exist until then:
+Generate it wherever the app is analyzed, tested or built: on a fresh clone, and in CI **before**
+`flutter analyze`, because `app.g.dart` doesn't exist until then:
 
 ```yaml
 - run: flutter pub get
@@ -195,19 +201,21 @@ and generate it wherever the app is analyzed, tested or built: on a fresh clone,
 - run: flutter test
 ```
 
-The generator version needs no pin of its own: `dart run fespalier` runs the `fsp` release
-that matches the `fespalier` package your `pubspec.lock` resolved, so the generator and the
-runtime `app.g.dart` imports can't drift apart, and bumping the package bumps the generator.
-The first run downloads it (SHA-256 pinned in the package, see above) into the user cache;
-keep `~/.cache/fespalier` (`FSP_CACHE_DIR`) between CI runs with `actions/cache`, keyed on
-`pubspec.lock`, to skip that. Set `FSP_BINARY` to use a binary you built. Locally,
-`dart run fespalier watch` keeps the file current. `fsp check` still works in this mode
-(it checks the routing and writes nothing), and doesn't need the generated file to exist.
+- **No version pin.** `dart run fespalier` runs the `fsp` release that matches the `fespalier` package
+  your `pubspec.lock` resolved, so the generator and the runtime `app.g.dart` imports can't drift
+  apart, and bumping the package bumps the generator.
+- **Caching.** The first run downloads it (SHA-256 pinned in the package, see
+  [above](#without-installing-dart-run-fespalier)) into the user cache. To skip that, keep
+  `~/.cache/fespalier` (`FSP_CACHE_DIR`) between CI runs with `actions/cache`, keyed on `pubspec.lock`.
+- **Your own binary.** Set `FSP_BINARY` to use one you built.
+- **Locally**, `dart run fespalier watch` keeps the file current.
+- **`fsp check`** still works in this mode (it checks the routing and writes nothing), and doesn't need
+  the generated file to exist.
 
 ### Failing CI on a stale file
 
-To fail CI on a stale committed file, regenerate it and fail on any difference. `fsp gen`
-follows `format:` in the pubspec, so the result is what you would commit:
+To fail CI on a stale committed file, regenerate it and fail on any difference. `fsp gen` follows
+`format:` in the pubspec, so the result is what you would commit:
 
 ```yaml
 - run: fsp gen
@@ -218,30 +226,27 @@ follows `format:` in the pubspec, so the result is what you would commit:
 
 ### Web URLs
 
-Flutter web uses hash URLs (`/#/products/1`) unless you switch to path
-URLs. Add `flutter_web_plugins: {sdk: flutter}` to `dependencies` and call
-`usePathUrlStrategy()` (from `package:flutter_web_plugins/url_strategy.dart`) before
-`runApp`, or, with the generated `main()` (since 0.8.1), as the first line of `startup()`: the
-router is only built after it. Your web server must also serve `index.html` for unknown paths.
+Flutter web uses hash URLs (`/#/products/1`) unless you switch to path URLs:
+
+1. Add `flutter_web_plugins: {sdk: flutter}` to `dependencies`.
+2. Call `usePathUrlStrategy()` (from `package:flutter_web_plugins/url_strategy.dart`) before `runApp`.
+   With the generated `main()` (since 0.8.1), make it the first line of `startup()`: the router is only
+   built after it.
+3. Make your web server serve `index.html` for unknown paths.
 
 ### go_router 18 and Material
 
-go_router 18 checks for `MaterialApp` from
-`package:material_ui`, not the one in `package:flutter/material.dart`. With Flutter's
-`MaterialApp`, it treats your app as a plain widgets app: routes without a
-`transition.dart` don't animate at all, and go_router's own error screen is unstyled.
-go_router 17 checks Flutter's `MaterialApp` and has no such problem. There are two ways
-around it:
+go_router 18 checks for `MaterialApp` from `package:material_ui`, not the one in
+`package:flutter/material.dart`. With Flutter's `MaterialApp` it treats your app as a plain widgets app:
+routes without a `transition.dart` don't animate at all, and go_router's own error screen is unstyled.
+go_router 17 checks Flutter's `MaterialApp` and has no such problem. Three ways around it:
 
-- Have a root `lib/app/transition.dart` that says how routes animate, e.g.
-  `Page<void> transition(LocalKey key, Widget child) => Transitions.material(key, child);`
-  (or `cupertino`). `fsp init` already adds this file. It works with either
-  `MaterialApp`, and it's the easy fix.
-- Or use `MaterialApp` from `package:material_ui` (add `material_ui` to `dependencies`).
-  It has its own `Theme` and localizations, which widgets from
-  `package:flutter/material.dart` don't read, so it only makes sense if you import
-  `package:material_ui/material_ui.dart` everywhere. Mixing the two loses your theme.
-
-Or stay on go_router 17 by adding `go_router: ^17.0.0` to your `dependencies`. The
-examples use Flutter's `MaterialApp` and each has a root `transition.dart` returning
-`Transitions.material`, so their routes animate on both go_router 17 and 18.
+- **Add a root `lib/app/transition.dart`** that says how routes animate, e.g.
+  `Page<void> transition(LocalKey key, Widget child) => Transitions.material(key, child);` (or
+  `cupertino`). `fsp init` already adds this file. It works with either `MaterialApp`, and it's the easy
+  fix. The examples each have one, so their routes animate on both go_router 17 and 18.
+- **Use `MaterialApp` from `package:material_ui`** (add `material_ui` to `dependencies`). It has its own
+  `Theme` and localizations, which widgets from `package:flutter/material.dart` don't read, so it only
+  makes sense if you import `package:material_ui/material_ui.dart` everywhere. Mixing the two loses your
+  theme.
+- **Stay on go_router 17** by adding `go_router: ^17.0.0` to your `dependencies`.

@@ -1,8 +1,8 @@
 # `main()`: app.dart, startup.dart and splash.dart
 
-Since 0.8.1 the framework can own `main()`. You write what is yours, in up to three files at the
-**root** of the app folder (a copy below it is ignored, with a warning), and `fsp` writes
-`lib/app.main.g.dart`, whose `AppMain` runs them. `lib/main.dart` stays yours, and is one line:
+Since 0.8.1 the framework can own `main()`. You write up to three files at the **root** of the app
+folder (a copy below it is ignored, with a warning), and `fsp` writes `lib/app.main.g.dart`, whose
+`AppMain` runs them. `lib/main.dart` stays yours, and is one line:
 
 ```dart
 // lib/main.dart
@@ -19,14 +19,13 @@ lib/app/
 ```
 
 All three are optional. With none of them, `main: auto` (the default) writes nothing and your own
-`main()` keeps working; any one of them makes `fsp` write `lib/app.main.g.dart`, and so does an
-[`adapters:`](adapters.md) list (since 0.9.0). `app.g.dart` is the same bytes whether
-or not they exist.
+`main()` keeps working. Any one of them makes `fsp` write `lib/app.main.g.dart`, and so does an
+[`adapters:`](adapters.md) list (since 0.9.0). `app.g.dart` is the same bytes whether or not they exist.
 
 **`app.dart`** is a view file: one public widget class (of any kind: a `ConsumerWidget` to read a
-theme-mode provider is the point) or a function `Widget app({required GoRouter router})`. It
-gets the router as a parameter named `router`, or the one typed `GoRouter` (`RouterConfig<Object>`
-works too); every other parameter has to be optional:
+theme-mode provider is the point) or a function `Widget app({required GoRouter router})`. It gets the
+router as a parameter named `router`, or the one typed `GoRouter` (`RouterConfig<Object>` works too).
+Every other parameter has to be optional.
 
 ```dart
 // lib/app/app.dart
@@ -50,9 +49,8 @@ class App extends StatelessWidget {
 GoRouter router() => AppRoutes.router(restorationScopeId: 'router');
 ```
 
-Without `router()` the router is `AppRoutes.router()`, with the `routerObservers` of
-startup.dart if it has any. Without an `app.dart` (with `main: generated`) the app is
-`MaterialApp.router(routerConfig: router)`.
+Without `router()` the router is `AppRoutes.router()`, with the `routerObservers` of startup.dart if it
+has any. Without an `app.dart` (with `main: generated`) the app is `MaterialApp.router(routerConfig: router)`.
 
 **`startup.dart`** exports, by name, any of:
 
@@ -90,16 +88,17 @@ List<NavigatorObserver> get routerObservers => [];
 Duration? retry(int retryCount, Object error) => null;
 ```
 
-At least one of them has to be there. `startup()` runs **before the router exists**: the router is
-built once, after `startup()`, and disposed with the app. That is also why `usePathUrlStrategy()`
-belongs in `startup()` (checked in a release web build with a 300 ms async `startup()`: a deep link
-`/items/2?qty=3` opened the item page, and tapping a link put `/about` in the address bar, with no `#`).
+`startup.dart` needs at least one of these exports. `startup()` runs **before the router exists**: the
+router is built once, after `startup()`, and disposed with the app. That is also why
+`usePathUrlStrategy()` belongs in `startup()` (checked in a release web build with a 300 ms async
+`startup()`: a deep link `/items/2?qty=3` opened the item page, and tapping a link put `/about` in the
+address bar, with no `#`).
 
-**`splash.dart`** is a view file too (a class or `Widget splash({...})`), built **before** the
-app: there is no `Theme`, `Localizations` or `ProviderScope` above it, only a text direction
-(from the platform locale), so use plain widgets. It can ask for `error`, `stackTrace` and
-`retry`, by name; each is nullable, because they are null while `startup()` runs and set only after
-a failure (`retry` runs `startup()` again):
+**`splash.dart`** is a view file too (a class or `Widget splash({...})`), built **before** the app:
+there is no `Theme`, `Localizations` or `ProviderScope` above it, only a text direction (from the
+platform locale), so use plain widgets. It can ask for `error`, `stackTrace` and `retry`, by name. Each
+is nullable: they are null while `startup()` runs and set only after a failure (`retry` runs
+`startup()` again):
 
 ```dart
 // lib/app/splash.dart
@@ -123,38 +122,44 @@ class Splash extends StatelessWidget {
 }
 ```
 
-**Sync stays sync.** A `startup()` that returns no `Future` (a `void`, a `List<Override>`) is done
-before the first frame, and the first frame is the app. A `Future` costs a frame: with a `splash.dart`
-it is shown meanwhile; without one, the first frame is deferred
-(`WidgetsBinding.deferFirstFrame`), so the platform's native splash (the Android and iOS launch screen,
-the web's loading page) stays until the app is ready. No timer is involved. A `startup()` that
-throws is reported with `FlutterError.reportError` (so `FlutterError.onError`, and anything listening
-to it, sees it) and shows the splash with `error` and `retry`, or, without a `splash.dart`, a plain
-"Couldn't start the app." with the error (in debug builds) and "Try again".
+**Sync stays sync.** A `startup()` that returns no `Future` (a `void`, a `List<Override>`) is done before
+the first frame, and the first frame is the app. A `Future` costs a frame:
 
-**`zone()` has to work on the web.** It runs on every platform, so a zone implementation that
-needs `dart:io` or an isolate (a crash reporter's `runGuarded`, say) must behave on the web as well.
-The telemetry SDK `otel_zone` is one that does not yet: its `runGuarded` never runs its body in a
-browser, which leaves the app blank. Until that is fixed, write
-`Future<void> zone(Future<void> Function() body) => kIsWeb ? body() : observability.runGuarded(body);`
-(`kIsWeb` is in `package:flutter/foundation.dart`).
+- with a `splash.dart`, it is shown meanwhile;
+- without one, the first frame is deferred (`WidgetsBinding.deferFirstFrame`), so the platform's native
+  splash (the Android and iOS launch screen, the web's loading page) stays until the app is ready.
+
+No timer is involved. A `startup()` that throws is reported with `FlutterError.reportError` (so
+`FlutterError.onError`, and anything listening to it, sees it) and shows the splash with `error` and
+`retry`. Without a `splash.dart` it shows a plain "Couldn't start the app." with the error (in debug
+builds) and "Try again".
+
+**`zone()` has to work on the web.** It runs on every platform, so a zone implementation that needs
+`dart:io` or an isolate (a crash reporter's `runGuarded`, say) must behave on the web as well. The
+telemetry SDK `otel_zone` does not yet: its `runGuarded` never runs its body in a browser, which leaves
+the app blank. Until that is fixed, write this (`kIsWeb` is in `package:flutter/foundation.dart`):
+
+```dart
+Future<void> zone(Future<void> Function() body) => kIsWeb ? body() : observability.runGuarded(body);
+```
 
 **`main:` in the pubspec** (see [Config](configuration.md#main)) is `auto`, `generated` or `manual`.
-With `manual`, `fsp` writes no `main()` and reads none of the three files (each one that is
-there gets a warning saying so): use it for an app that keeps its own `main()` or its own
-`GoRouter`, or when a file called `app.dart` at the root of the app folder is something else.
+With `manual`, `fsp` writes no `main()` and reads none of the three files (each one that is there gets
+a warning saying so). Use it for an app that keeps its own `main()` or its own `GoRouter`, or when a
+file called `app.dart` at the root of the app folder is something else.
 
 **What is generated.** `AppMain` has three members:
 
 - `AppMain.run()`: what `lib/main.dart` calls. Inside `zone()` (if any): the binding, the code of the
-  [deferred routes](navigation.md#deferred-routes-a-pages-code-on-demand) (loaded before the first frame, off the web,
-  as a hand-written `main()` did with `AppRoutes.loadDeferred()`), then `runApp(root())`.
+  [deferred routes](navigation.md#deferred-routes-a-pages-code-on-demand) (loaded before the first frame,
+  off the web, as `AppRoutes.loadDeferred()` does in a hand-written `main()`), then `runApp(root())`.
 - `AppMain.root({router})`: the widget `runApp` gets, a `StartupGate` from `package:fespalier/startup.dart`:
   `startup()`, `splash.dart`, then a `ProviderScope` with the overrides, observers and retry around
   `app.dart`. `router` builds the router (default: app.dart's `router()`, else `AppRoutes.router`).
 - `AppMain.app(router)`: `app.dart`'s widget around a router, for tests (see [Testing](testing.md)).
 
-**From a 0.7 app.** Nothing changes until you opt in. To move the code of a hand-written `main()`:
+**From a 0.7 app.** Nothing changes until you opt in. To move the code of a hand-written `main()` (the
+full upgrade notes are in [Migration](migration.md#081)):
 
 | Today, in `lib/main.dart`                                                 | 0.8.1                                                                                        |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -167,8 +172,9 @@ there gets a warning saying so): use it for an app that keeps its own `main()` o
 | `if (!kIsWeb) await AppRoutes.loadDeferred();`                            | generated: delete it                                                                         |
 | `void main() => runApp(…)`                                                | `Future<void> main() => AppMain.run();`                                                      |
 
-A bad root file is an error with the way out in its message: an `app.dart` without a `router`
-parameter says "the app's widget gets the router: add `required this.router` (a `GoRouter`) … If this
-file is not the app around the router, move it out of the app folder's root or set `main: manual`".
-`examples/minimal`, `shop` and `features` use the generated `main()` (`features` has all three
-files and a `zone()`), and `examples/tabs` keeps a `main()` of its own.
+A bad root file is an error with the way out in its message. An `app.dart` without a `router` parameter
+says "the app's widget gets the router: add `required this.router` (a `GoRouter`) … If this file is not
+the app around the router, move it out of the app folder's root or set `main: manual`".
+
+`examples/minimal`, `shop` and `features` use the generated `main()` (`features` has all three files and
+a `zone()`), and `examples/tabs` keeps a `main()` of its own.

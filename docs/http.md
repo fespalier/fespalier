@@ -1,11 +1,13 @@
 # HTTP clients: fespalier_dio
 
-Since 0.9.0. fespalier's core has no HTTP client, and gains none: no file kind, no `fespalier:` key, no `fsp`
-command, and `app.g.dart` is the same bytes. `package:fespalier_dio` is what the two clients most apps use,
-[Dio](https://pub.dev/packages/dio) and [`package:http`](https://pub.dev/packages/http), need to keep three of
+Since 0.9.0. `package:fespalier_dio` helps the two clients most apps use,
+[Dio](https://pub.dev/packages/dio) and [`package:http`](https://pub.dev/packages/http), keep three of
 fespalier's promises: **a load whose page is gone stops**, **a server's validation error lands under its form
-field**, and **a write is never sent twice**. An app that does not depend on it is unchanged, and it starts no
-timer and no listener in one that does.
+field**, and **a write is never sent twice**.
+
+fespalier's core has no HTTP client and gains none: no file kind, no `fespalier:` key, no `fsp` command, and
+`app.g.dart` is the same bytes. An app that does not depend on the package is unchanged, and the package starts no
+timer and no listener.
 
 Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
@@ -28,7 +30,7 @@ dependencies:
 <!-- x-release-please-end -->
 
 It needs Dart 3.8 and Flutter 3.32 or newer, and depends on `dio` (`^5.7.0`) and `http` (`^1.5.0`, the first
-release with abortable requests). It is three libraries, so an app that uses one client imports only that one:
+release with abortable requests). It is three libraries; import only the one you use:
 
 | Library                                    | For            | What is in it                                                                                                     |
 | ------------------------------------------ | -------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -36,16 +38,16 @@ release with abortable requests). It is three libraries, so an app that uses one
 | `package:fespalier_dio/http.dart`          | `package:http` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `WriteGuardClient`                            |
 | `package:fespalier_dio/problem.dart`       | no client      | `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf`: for chopper, or a client of your own (both above export it) |
 
-Nothing here retries, logs or traces by itself: there is no retry policy of its own (a backoff needs a timer, and
-fespalier has none), and the HTTP spans and the trace headers come from the instrumentation you add to the client
-(`otel_dio`, `sentry_dio`), not from this package.
+Nothing here retries, logs or traces by itself. It has no retry policy of its own (a backoff needs a timer, and
+fespalier has none), and the HTTP spans and trace headers come from the instrumentation you add to the client
+(`otel_dio`, `sentry_dio`).
 
 ## Cancelling a load whose page is gone
 
 A `data.dart` runs again when its provider is rebuilt (an invalidation, a changed key) and is dropped when its page
-is left. The result of the old build is thrown away either way, but a request goes on to its end. `ref.cancelToken()`
+is left. The old build's result is thrown away either way, but its request goes on to the end. `ref.cancelToken()`
 (Dio) and `ref.abortTrigger()` or `ref.abortable(client)` (`package:http`) tie the request to the build that made
-it: they fire in `ref.onDispose`, which runs when the provider is disposed **and** before it rebuilds.
+it. They fire in `ref.onDispose`, which runs when the provider is disposed **and** before it rebuilds.
 
 ```dart
 // lib/app/products/$id/data.dart
@@ -66,27 +68,27 @@ Future<Product> data(Ref ref, {required int id}) async {
 // or one request: http.AbortableRequest('GET', url, abortTrigger: ref.abortTrigger())
 ```
 
-- **Ask before the first `await`.** After the provider is gone (a stale `ref`), `onDispose` would throw, so the token
+- **Ask before the first `await`.** After the provider is gone (a stale `ref`) `onDispose` would throw, so the token
   comes back already cancelled and the trigger already fired: the request fails at once instead of running for a
   page nobody sees.
 - **One token serves every request of the build**, and a request that a retrier or an authentication refresh sends
-  again keeps it, because it sends the same options.
+  again keeps it (same options).
 - **What the request fails with.** Dio: a `DioException` of type `cancel` whose `error` is `fespalier_dio: the
 provider that started this request was disposed`. `package:http`: `RequestAbortedException` ("Request aborted by
-  `abortTrigger`"). It fails after its provider is gone: fespalier's data span has ended as `disposed`, so with
+  `abortTrigger`"). fespalier's data span has already ended as `disposed`, so with
   [telemetry](observability.md#telemetry) it is not an error, and Riverpod ignores the old build's result.
 - **`ref.abortable(client)`** sends each request as its `Abortable` twin (`Request`, `MultipartRequest` or
-  `StreamedRequest`, with the headers, the body and the redirect settings; a request that has a trigger of its own
-  is aborted by whichever fires first). Closing the wrapper does not close your client. The abort reaches the
-  network only if the client under it honours the trigger: `package:http`'s own clients and `RetryClient` do, a
-  `MockClient` leaves it to its handler.
+  `StreamedRequest`, with headers, body and redirect settings). A request that has a trigger of its own is aborted
+  by whichever fires first. Closing the wrapper does not close your client. The abort reaches the network only if
+  the client under it honours the trigger: `package:http`'s own clients and `RetryClient` do, a `MockClient` leaves
+  it to its handler.
 - It starts **no timer**: the cancellation runs inside `dispose`, which is synchronous.
 
 ## Server validation errors on forms
 
-A form shows the [`FieldErrors`](actions.md#forms-form-and-validate) its action threw under the field of the same name, and
-`form.error` shows `FieldErrors.message` and the messages of keys that are no field. `withFieldErrors()` on the
-action's own `Future` turns the server's answer into that exception, in whichever shape the server sends it:
+A form shows the [`FieldErrors`](actions.md#forms-form-and-validate) its action threw under the field of the same
+name, and `form.error` shows `FieldErrors.message` and the messages of keys that are no field. `withFieldErrors()`
+on the action's own `Future` turns the server's answer into that exception, in whichever shape the server sends it:
 
 ```dart
 // lib/app/(account)/nickname/action.dart
@@ -101,11 +103,13 @@ Future<Profile> action(Ref ref, {required NicknameFields input}) async {
 ```
 
 It is an extension on the `Future`, **not an interceptor**: an interceptor can only reject with a `DioException`,
-and a form reads a `FieldErrors`. So it works on any `Future<T>`: a retrofit client's
-`api.updateProfile(...).withFieldErrors()` too, and for `package:http` there is one on `Future<http.Response>` (it
-returns the response when there is nothing to throw). Use it in an `action.dart`: a `data.dart` that gets a 422
-wants its `error.dart`. For a client with no `Future` to extend (chopper), `fieldErrorsOf(response.statusCode,
-response.body)` returns the `FieldErrors`, or null, and you throw it.
+and a form reads a `FieldErrors`. So it works on any `Future<T>` (a retrofit client's
+`api.updateProfile(...).withFieldErrors()` too), and `package:http` has one on `Future<http.Response>` (it returns
+the response when there is nothing to throw).
+
+- Use it in an `action.dart`. A `data.dart` that gets a 422 wants its `error.dart`.
+- For a client with no `Future` to extend (chopper), `fieldErrorsOf(response.statusCode, response.body)` returns the
+  `FieldErrors`, or null, and you throw it.
 
 The rules, in order (`fieldErrorsOf`):
 
@@ -130,17 +134,18 @@ The rules, in order (`fieldErrorsOf`):
 | `flatMap`        | Django REST framework `{field: [message], non_field_errors: [message]}` | `field: ...`, and `non_field_errors` as the message. Not when `type`, `title`, `status`, `errors` or `detail` is a key, nor for a plain-string `message` or `error` |
 
 Each decoder asks for its exact shape and returns null for anything else, so a body that is not a validation error
-is never read as one; `standard` tries them in the order above. `FieldNames.camelCase` turns `first_name`,
-`FirstName` and `first-name` into `firstName`, each dotted segment on its own. It changes case only: `nick_name`
-becomes `nickName`, not `nickname`, so a name that differs by more is mapped by hand, as in the sample. A decoder of
-your own is a `FieldErrors? Function(Object? body)` that gets the body as a map.
+is never read as one. `standard` tries them in the order above.
+
+`FieldNames.camelCase` turns `first_name`, `FirstName` and `first-name` into `firstName`, each dotted segment on its
+own. It changes case only (`nick_name` becomes `nickName`, not `nickname`), so map a name that differs by more by
+hand, as in the sample. A decoder of your own is a `FieldErrors? Function(Object? body)` that gets the body as a map.
 
 ## Writes are never retried, over HTTP too
 
 fespalier promises [a write is never retried](actions.md#actiondart-typed-writes): its generated provider does not use
-Riverpod's retry. A client's retry layer would break that promise from below: `dio_smart_retry` retries every method
-by default, and `package:http`'s `RetryClient` retries a 503 for every method. `WriteGuard` (Dio) and
-`WriteGuardClient` (`package:http`) keep it.
+Riverpod's retry. A client's retry layer would break that from below (`dio_smart_retry` retries every method by
+default, and `package:http`'s `RetryClient` retries a 503 for every method). `WriteGuard` (Dio) and
+`WriteGuardClient` (`package:http`) keep the promise.
 
 ```dart
 final dio = Provider<Dio>((ref) {

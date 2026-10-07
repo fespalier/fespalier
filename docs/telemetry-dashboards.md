@@ -1,6 +1,8 @@
 # Dashboards on your computer: `fsp telemetry`
 
-Since 0.8.1. fespalier's telemetry (spans for navigations, guards, `data.dart` loads, actions and deferred loads) is only useful when someone looks at it. `fsp telemetry` starts a stack on your computer that receives it and shows four ready-made dashboards, written as the questions an app developer asks ("Do screens open quickly?", "How often do actions fail?") rather than as metrics: an OpenTelemetry collector, [OpenObserve](https://openobserve.ai), and, with `--grafana`, [Grafana](https://grafana.com) with the same dashboards. It needs [Docker](https://docs.docker.com/get-docker/) with Compose 2.20 or later, and runs in any folder, with or without a project: the stack belongs to you, not to one app.
+Since 0.8.1. `fsp telemetry` starts a stack on your computer that receives fespalier's telemetry (spans for navigations, guards, `data.dart` loads, actions and deferred loads) and shows four ready-made dashboards. They are written as the questions an app developer asks ("Do screens open quickly?", "How often do actions fail?"), not as metrics.
+
+The stack is an OpenTelemetry collector, [OpenObserve](https://openobserve.ai) and, with `--grafana`, [Grafana](https://grafana.com) with the same dashboards. It needs [Docker](https://docs.docker.com/get-docker/) with Compose 2.20 or later, and runs in any folder, with or without a project: the stack belongs to you, not to one app.
 
 ![fespalier's App health dashboard in OpenObserve: eight tiles answer whether screens open and load quickly and whether loads, actions or the app fail, coloured green, amber or red, above a table of verdicts in words.](images/telemetry/openobserve-app-health.png)
 
@@ -50,7 +52,11 @@ The port in `endpoint()` is 4318. If you changed `FSP_OTLP_HTTP_PORT`, pass the 
 
 ## The dashboards
 
-Each has an **App** variable (the resource's `service.name`, so apps are told apart in one stack; it starts on the first app) and shows the last hour. They are in OpenObserve's folder `fespalier`, and in Grafana's, where **App health** is the home page. Every title is a question, every panel has an ⓘ (Grafana: (i)) that says what it shows, what good looks like and which file to open when it is not, and every tile is green, amber or red ([Reading the colours](#reading-the-colours)).
+Each dashboard has an **App** variable (the resource's `service.name`, so apps are told apart in one stack; it starts on the first app) and shows the last hour. They are in OpenObserve's folder `fespalier`, and in Grafana's, where **App health** is the home page.
+
+- Every title is a question.
+- Every panel has an ⓘ (Grafana: (i)) that says what it shows, what good looks like and which file to open when it is not.
+- Every tile is green, amber or red ([Reading the colours](#reading-the-colours)).
 
 | Dashboard                | Answers                                                                                                                                                                                                                                                                                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -71,7 +77,9 @@ _Sample data from `scripts/telemetry/seed.py --showcase`._
 
 _Sample data from `scripts/telemetry/seed.py --showcase`._
 
-Click a row of a table in OpenObserve, or a tile in Grafana, to open the dashboard that explains it (the App and the time range come along). Every query uses only the names of the [telemetry conventions](observability.md#telemetry-conventions), which `scripts/telemetry/build_dashboards.py` reads from `packages/fespalier_otel/lib/src/conventions.dart`, and a test (`scripts/test_telemetry.py`) fails when a query names anything else. Nothing is charted that fespalier does not emit.
+Click a row of a table in OpenObserve, or a tile in Grafana, to open the dashboard that explains it (the App and the time range come along).
+
+Every query uses only the names of the [telemetry conventions](observability.md#telemetry-conventions), which `scripts/telemetry/build_dashboards.py` reads from `packages/fespalier_otel/lib/src/conventions.dart`; a test (`scripts/test_telemetry.py`) fails when a query names anything else. Nothing is charted that fespalier does not emit.
 
 ## Reading the colours
 
@@ -106,7 +114,7 @@ Since 0.8.1. A tile is **green** when the answer is good, **amber** when it need
 
 Run from inside an app (or with `--project`), a start also checks that app: when its `fespalier:` section has `telemetry` off, which is the default, `fsp telemetry` prints ``⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (docs/observability.md, "Telemetry")`` after the import and before the summary, and still exits 0. It says nothing outside a project, and not for `--no-start`, `--stop` or `--reset`.
 
-The files go to one folder per user, `~/.fespalier/telemetry` (`%USERPROFILE%` on Windows), not into the app: `flutter clean` cannot delete them, and the Docker project name is fixed (`fespalier-telemetry`), so every app on your computer shares one stack. Running `fsp telemetry` again rewrites any file that differs (an upgrade of `fsp` upgrades the stack) and never touches `.env`.
+**Where the files go.** One folder per user, `~/.fespalier/telemetry` (`%USERPROFILE%` on Windows), not into the app, so `flutter clean` cannot delete them. The Docker project name is fixed (`fespalier-telemetry`), so every app on your computer shares one stack. Running `fsp telemetry` again rewrites any file that differs (an upgrade of `fsp` upgrades the stack) and never touches `.env`.
 
 **Settings** go in `.env` in that folder, written from `env.example` on the first run and never overwritten. Every value has the same default in `compose.yaml`, so the stack also runs with no `.env` at all, as `docker compose up -d` in that folder:
 
@@ -120,7 +128,9 @@ The files go to one folder per user, `~/.fespalier/telemetry` (`%USERPROFILE%` o
 | `FSP_OTLP_CORS_ORIGIN`                     | `http://localhost`: one more browser origin allowed to send OTLP |
 | `FSP_O2_WAIT`                              | `180`: seconds the dashboard importer waits for OpenObserve      |
 
-OpenObserve refuses a weak root password and restarts forever: it needs 8 to 128 characters with a lowercase letter, an uppercase letter, a digit and a symbol. The root user is created on the first start only, so change the password in `.env` and then run `fsp telemetry --reset`. A port that is taken is `FSP_O2_PORT` and the like in `.env`.
+**Passwords.** OpenObserve refuses a weak root password and restarts forever: it needs 8 to 128 characters with a lowercase letter, an uppercase letter, a digit and a symbol. The root user is created on the first start only, so change the password in `.env` and then run `fsp telemetry --reset`.
+
+**Ports.** A port that is taken is `FSP_O2_PORT` and the like in `.env`.
 
 ## A summary in the terminal: `--report`
 
@@ -153,7 +163,7 @@ The mark and the word are the colour, in words. The SQL is read from the generat
 
 A web app posts OTLP/HTTP to the collector from another origin (`http://localhost:<port>` to `http://localhost:4318`), which needs CORS: the collector allows `http://localhost:*` and `http://127.0.0.1:*`, plus `FSP_OTLP_CORS_ORIGIN`. A page served over `https` cannot post to `http://localhost` (mixed content); use `flutter run -d chrome` in development.
 
-**`otel_zone`'s `runGuarded` does not run its body on the web** (checked with `otel_zone` v0.5.0): inside the zone, before the body, it opens a `ReceivePort` from `dart:isolate`, which the web does not have, and the zone's own handler swallows the error. The app stays blank and nothing is printed. `start()` itself works on the web. Until `otel_zone` guards that call, do not use the zone on the web:
+**`otel_zone`'s `runGuarded` does not run its body on the web** (checked with `otel_zone` v0.5.0). Inside the zone, before the body, it opens a `ReceivePort` from `dart:isolate`, which the web does not have, and the zone's own handler swallows the error: the app stays blank and nothing is printed. `start()` itself works on the web. Until `otel_zone` guards that call, do not use the zone on the web:
 
 ```dart
 Future<void> zone(Future<void> Function() body) =>
@@ -180,6 +190,10 @@ _Sample data from `scripts/telemetry/seed.py --showcase`._
 
 ## Your own copy
 
-`fsp telemetry --no-start --dir ops/telemetry` writes the stack where you want it, for a team that wants to commit or change it. The folder `cli/templates/telemetry/` in the fespalier repository is the same stack and runs as it is (`docker compose up -d` in it). A dashboard that someone edited in OpenObserve is left alone when a new `fsp` brings a new version (the importer says so; delete the dashboard to get ours back), and Grafana's are read-only (provisioned): save a copy to change one. A dashboard that a newer `fsp` no longer ships is deleted from OpenObserve when nobody edited it, and Grafana drops its file; `fsp telemetry` deletes the stale files in its folder too. The collector file's `span_metrics` and `count` blocks are what to copy into a production collector.
+`fsp telemetry --no-start --dir ops/telemetry` writes the stack where you want it, for a team that wants to commit or change it. The folder `cli/templates/telemetry/` in the fespalier repository is the same stack and runs as it is (`docker compose up -d` in it). The collector file's `span_metrics` and `count` blocks are what to copy into a production collector.
+
+- A dashboard that someone edited in OpenObserve is left alone when a new `fsp` brings a new version (the importer says so; delete the dashboard to get ours back).
+- Grafana's dashboards are read-only (provisioned): save a copy to change one.
+- A dashboard that a newer `fsp` no longer ships is deleted from OpenObserve when nobody edited it, and Grafana drops its file; `fsp telemetry` deletes the stale files in its folder too.
 
 Images are pinned by tag and digest (collector `0.161.0`, OpenObserve `v1.0.4`, Grafana `13.2.3`), for `amd64` and `arm64`.

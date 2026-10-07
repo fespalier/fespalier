@@ -2,12 +2,6 @@
 
 ## pumpRouter and currentLocation
 
-`package:fespalier/testing.dart` has two helpers for widget tests (and `RecordingTelemetry`, see [Testing
-telemetry](observability.md#testing-telemetry)). `observe.dart` hooks run after the frame, so `await tester.pump()` before
-looking at what they did. Boot the app at a
-location with `pumpRouter`, and read where it is with `currentLocation` (it follows `go`, `pop` and
-`push`: after a push it is the pushed location, the top of the stack):
-
 ```dart
 import 'package:fespalier/testing.dart';
 
@@ -26,30 +20,30 @@ testWidgets('shows a product', (tester) async {
 });
 ```
 
+`package:fespalier/testing.dart` has two helpers for widget tests, plus `RecordingTelemetry` (see [Testing
+telemetry](observability.md#testing-telemetry)):
+
+- `pumpRouter` boots the app at a location.
+- `currentLocation` reads where it is. It follows `go`, `pop` and `push`: after a push it is the pushed location, the top of the stack.
+
+`observe.dart` hooks run after the frame, so `await tester.pump()` before looking at what they did.
+
 `pumpRouter(tester, router, {overrides, container, settle, retry, disposeRouter, app})` wraps the router in a
 `ProviderScope` and Flutter's `MaterialApp.router` (or the widget `app` builds, see below), and returns the `ProviderContainer`
-(for `container.read(...)`). `settle` (on by default) pumps until nothing is scheduled: turn
-it off to look at a loading view, then `pump` the time you want. Pass your own `container`
-instead of `overrides` to share one with code outside the widget tree; it's yours to
-dispose. `retry` is the container's Riverpod retry policy, and it defaults to **no retries**,
-unlike a real app, whose generated providers keep Riverpod's automatic retry unless
-`data_retry: none` says otherwise: a failing `data.dart` shows its `error.dart` at once and
-leaves no timer behind. To test what the app's policy does, pass
-`retry: ProviderContainer.defaultRetry` (or your own function). A policy that keeps retrying
-leaves a timer pending when the test ends, so dispose the returned container first. Make a new
-router per test, since a router remembers where it went. `pumpRouter` disposes the router when
-the test ends (since 0.5.0), so `LeakTesting` finds nothing left behind. A test that disposes it
-itself with an `addTearDown` registered before the call, as tests written for 0.4.x do, passes
-`disposeRouter: false` (since 0.6.0): those teardowns run after `pumpRouter`'s, and a second
-`dispose` throws. Don't share a router between tests. The generated `AppRoutes` remembers the last
-`router()` or `mount()` (its `base` and `rootNavigatorKey`), and a call without a `navigatorKey`
-makes a fresh one (since 0.5.0), so a test that mounts under a prefix restores the defaults with
-`addTearDown(AppRoutes.mount)`, and no test depends on the order they run in. Return
-synchronously from a guard when you can (see [Guards](guards.md)): any `Future`, even
-`Future.value(...)`, costs a frame, so a test sees a blank first frame before the page, where a
-synchronous guard shows the page at once. If a widget
-hangs on to its own `WidgetRef` (to call `prefetch` from a test, say), take it from an
-element: `tester.element(find.byType(AppLayout)) as WidgetRef`.
+(for `container.read(...)`).
+
+- **`settle`** (on by default) pumps until nothing is scheduled. Turn it off to look at a loading view, then `pump` the time you want.
+- **`container`**: pass your own instead of `overrides` to share one with code outside the widget tree. It's yours to dispose.
+- **`retry`** is the container's Riverpod retry policy. It defaults to **no retries**, unlike a real app, whose generated providers keep Riverpod's automatic retry unless `data_retry: none` says otherwise. So a failing `data.dart` shows its `error.dart` at once and leaves no timer behind. To test what the app's policy does, pass `retry: ProviderContainer.defaultRetry` (or your own function). A policy that keeps retrying leaves a timer pending when the test ends, so dispose the returned container first.
+- **`disposeRouter`**: `pumpRouter` disposes the router when the test ends (since 0.5.0), so `LeakTesting` finds nothing left behind. A test that disposes it itself with an `addTearDown` registered before the call (as tests written for 0.4.x do) passes `disposeRouter: false` (since 0.6.0): those teardowns run after `pumpRouter`'s, and a second `dispose` throws.
+
+Tips:
+
+- Make a new router per test, since a router remembers where it went. Don't share one between tests.
+- The generated `AppRoutes` remembers the last `router()` or `mount()` (its `base` and `rootNavigatorKey`), and a call without a `navigatorKey` makes a fresh one (since 0.5.0). A test that mounts under a prefix restores the defaults with `addTearDown(AppRoutes.mount)`, so no test depends on the order they run in.
+- Return synchronously from a guard when you can (see [Guards](guards.md)): any `Future`, even `Future.value(...)`, costs a frame, so a test sees a blank first frame before the page, where a synchronous guard shows the page at once.
+- If a widget hangs on to its own `WidgetRef` (to call `prefetch` from a test, say), take it from an element: `tester.element(find.byType(AppLayout)) as WidgetRef`.
+- go_router builds the whole matched stack, so a deep link like `/products/2` also runs `/products`' `data.dart` underneath. If your fakes use `Future.delayed`, pump long enough for the delays in both (or use `pumpAndSettle`), or the test ends with "A Timer is still pending".
 
 The library is separate from `package:fespalier/fespalier.dart`, so your app never imports
 `flutter_test`. It's a regular `flutter_test: sdk: flutter` dependency of `fespalier`
@@ -58,10 +52,7 @@ anyway and doesn't ship. The helper uses Flutter's `MaterialApp`; with go_router
 note under [Getting started](getting-started.md#go_router-18-and-material) applies: with a root `transition.dart`,
 which `fsp init` writes, routes animate and no nested `material_ui` app is needed in tests.
 
-go_router builds the whole matched stack, so a deep link like `/products/2` also runs
-`/products`' `data.dart` underneath. If your fakes use `Future.delayed`, pump long enough
-for the delays in both (or use `pumpAndSettle`), or the test ends with "A Timer is still
-pending". `examples/*/test/` has working tests for every file kind. For tests on a device or in a browser, and
+`examples/*/test/` has working tests for every file kind. For tests on a device or in a browser, and
 journeys across routes, see [Maestro flows](cli.md#maestro-flows-fsp-maestro).
 
 ## The app around the router

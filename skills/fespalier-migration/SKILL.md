@@ -57,6 +57,12 @@ package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the s
    A key of an action with a form can no longer be called `draft` (`fsp` says `` `draft` can't be a key of an action with a
 form: its hook, `useForm`, takes a parameter called `draft`; rename it ``). Drafts are kept in `formDraftStorage` (your
    `dataCacheStorage` by default): call `clearFormDrafts(ref)` at sign-out and give `formDraftScope` the account.
+7. **Asking before unsaved changes go is new and changes no generated code.** A `leave.dart` that is
+   `leaveIfClean(context, ref, page)` (from `fespalier_forms`) asks in a bottom sheet ("Keep editing", "Discard",
+   "Keep as draft" for a form with a `draft:`); a `useForm` under a page with a `leave.dart` registers its form as the
+   page's `LeaveSource` itself. The sheet is Flutter's (`showModalBottomSheet`), so an app on material_ui's
+   `MaterialApp`, which has no `MaterialLocalizations`, overrides `leavePrompt` with its own sheet. See
+   the forms reference of `fespalier-data`, "Leaving with unsaved changes".
 
 ### Route lifecycle
 

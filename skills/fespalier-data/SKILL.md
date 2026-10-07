@@ -198,6 +198,10 @@ Profile optimistic(Profile current, NicknameFields input) => Profile(input.nickn
   background, restored when the form starts, deleted by a success or `reset()`) in
   `formDraftStorage` (your `dataCacheStorage` by default), scoped by `formDraftScope`; `clearFormDrafts`
   at sign-out.
+- **Leaving with unsaved changes (since 0.11.0)**: a `leave.dart` that is `leaveIfClean(context, ref, page)`
+  asks when a form has changed, in a bottom sheet: "Keep editing", "Discard" and, for a form with a
+  `draft:`, "Keep as draft". The form registers itself as the page's `LeaveSource`; `leavePrompt` is the
+  app's question (override it on material_ui); `LeavePrompts.answer(choice)` is the test's.
 
 [`references/forms.md`](references/forms.md) (the package, `form()` and `useForm`, fields, submit and
 errors, drafts, a sample that compiles with its test) and

@@ -11,7 +11,7 @@ digraph routes {
       subgraph cluster_b1 {
         label="layout (account)/layout.dart";
         style=rounded;
-        n1 [label="/nickname\nNicknameRoute\n(data, action)"];
+        n1 [label="/nickname\nNicknameRoute\n(data, action, leave)"];
         n2 [label="/profile\nProfileRoute"];
         n3 [label="/settings\nSettingsRoute"];
       }

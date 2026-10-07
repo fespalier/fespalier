@@ -112,6 +112,76 @@ final signIn = SignInRoute.useForm(ref, draft: const FormDraft(exclude: {'passwo
 - **Storage that evicts.** A storage with a size budget (`fespalier_storage`'s) may evict a draft, as it may evict anything it holds. The index is rewritten with every save, so it outlives the drafts it lists, but if it is evicted anyway `clearFormDrafts` misses the drafts that are left: for an app where sign-out must remove every draft, give `formDraftStorage` a storage with no budget. A draft is a convenience, not a record: nothing is lost that the server had.
 - **A storage that throws** never costs the page: the error is printed in debug and the form goes on without a draft.
 
+## Leaving with unsaved changes
+
+A page with a form that has unsaved changes should ask before it goes (since 0.11.0). The question is asked by the page's [`leave.dart`](navigation.md#leaving-a-page-leavedart), and a form is a `LeaveSource` that registers itself with the page's scope: a `useForm` under a page whose folder has a `leave.dart` needs nothing else, and `page.isDirty` is "some form on the page has changed". `leaveIfClean` is the whole `leave()` for a page whose only question is that one:
+
+```dart
+// lib/app/(account)/nickname/leave.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_forms/fespalier_forms.dart';
+import 'package:flutter/widgets.dart';
+
+LeaveResult leave(BuildContext context, Ref ref, {required PageLeave page}) =>
+    leaveIfClean(context, ref, page);
+```
+
+- **A clean page goes at once**, with a synchronous `true`: no `Future`, no microtask, no sheet. A form is clean when no field differs from what it started from (after a successful submit the fields are the new baseline).
+- **Otherwise it asks** the app's `leavePrompt` (or the `ask:` of that call) and acts on the answer, a `LeaveChoice`:
+  - `stay` answers `false`: the page and what was typed stay;
+  - `discard` calls `page.discard()` and answers `true`: each form drops its draft and does **not** write one when the page is disposed;
+  - `keep` waits for `page.keep()`, which writes each form's draft, and answers `true`: the form is found as it was when the route is opened again. A storage that writes later is waited for, so the page does not go before the draft is on the disk.
+- **`keep` needs a changed field the draft keeps.** A form can keep (`canKeep`) when its `useForm` was given a `draft:`, there is a `formDraftStorage`, and a changed field is one the draft holds: not in `exclude`, and a text field or a value field with a `DraftCodec`. Otherwise the sheet has two buttons (a form changed only in its `password` has nothing a draft could keep, and keeping would delete the draft it had). A form with no `draft:` still asks: its choice is between staying and losing the changes.
+- **The back gestures.** The page is wrapped in a `PopScope`, so the iOS edge swipe is on while every form is clean and off while one has changed (the sheet is the only way out of a changed form); Android's back asks like a link does. See [the back gestures](navigation.md#leaving-a-page-leavedart).
+- **Navigate after the save, not from inside it.** Go to the next page after `await form.submit()` (or when the action's state turns to data), never from the action body: the page would be asked while the form still has its changes, and the question would come after a successful save.
+- **A discard that the page's route overruled.** If a parent route's `leave()` refuses after the form was discarded, the page stays with the text as typed, but the form writes no draft (on dispose or in the background) until the next edit.
+- **A page with a `leave.dart` and no form** has no source, so `page.isDirty` is false and nothing asks, but its iOS swipe is off. Register a source for it, or leave the `leave.dart` out.
+
+**The sheet.** The default prompt, `askToLeaveSheet()`, is a bottom sheet on Flutter's `showModalBottomSheet`, opened on the root navigator, with "Keep editing", "Discard" and, when `page.canKeep`, "Keep as draft". Dismissing it (the scrim, a swipe down) is "Keep editing". Translate it with `LeaveSheetMessages`, for the whole app or for one call:
+
+```dart
+// the whole app
+ProviderScope(
+  overrides: [
+    leavePrompt.overrideWithValue(
+      askToLeaveSheet(
+        messages: const LeaveSheetMessages(
+          title: 'Jeter les modifications ?',
+          body: 'Ce que vous avez change n\'est pas enregistre.',
+          stay: 'Continuer',
+          discard: 'Jeter',
+          keep: 'Garder un brouillon',
+        ),
+      ),
+    ),
+  ],
+  child: const App(),
+)
+
+// one page
+LeaveResult leave(BuildContext context, Ref ref, {required PageLeave page}) =>
+    leaveIfClean(context, ref, page, ask: askToLeaveSheet(messages: nicknameMessages));
+```
+
+**Your own prompt.** `leavePrompt` is a `Provider<LeavePrompt>`, where a `LeavePrompt` is `FutureOr<LeaveChoice> Function(BuildContext context, PageLeave page)`: override it with a sheet of your design system, and answer a `LeaveChoice` (now or later). The `context` is the root navigator's, so a sheet opens above every layout and tab bar.
+
+**An app on material_ui.** The default sheet is Flutter's and needs Flutter's `MaterialLocalizations`, which a material_ui `MaterialApp` does not provide. Override the prompt with that library's own sheet:
+
+```dart
+leavePrompt.overrideWithValue((context, page) async {
+  final choice = await showMySheet<LeaveChoice>( // material_ui's own, or your design system's
+    context: context,
+    builder: (sheet) => MyLeaveSheet(
+      canKeep: page.canKeep,
+      onChoice: (c) => Navigator.of(sheet).pop(c),
+    ),
+  );
+  return choice ?? LeaveChoice.stay;
+}),
+```
+
+**What it does not cover.** Everything [`leave.dart` does not ask about](navigation.md#leaving-a-page-leavedart): a tab switch (the page is parked, not gone), a parked tab's pages when the whole layout leaves, a process kill. A form still writes its draft when it is disposed and when the app goes to the background, so drafts cover what the question does not.
+
 ## Testing
 
 A form is tested through its page: `pumpRouter` boots the app at the location (see [Testing](testing.md)), `enterText` and `tap` drive it, and the pending write is held on a `Completer`, so no timer and no `runAsync` is needed.
@@ -133,6 +203,7 @@ testWidgets('a taken nickname is shown under its field', (tester) async {
 
 - **Hold the save** on a `Completer` in your fake server to look at the pending state (`onSubmit` is `null`), then complete it and `pump`.
 - **`package:fespalier_forms/testing.dart`** has `isFieldErrors(fields, message:)`, a matcher for the `FieldErrors` an action throws: `expectLater(run(input), throwsA(isFieldErrors({'nickname': 'Taken'})))`.
+- **The leave question** (since 0.11.0). `LeavePrompts.answer(LeaveChoice.discard)` in `overrides` answers the prompt at once, with no sheet: `pumpRouter(tester, router, overrides: [LeavePrompts.answer(LeaveChoice.keep)])`. To test the sheet itself, change a field, navigate away and tap "Keep editing", "Discard" or "Keep as draft"; `readFormDraft` then says whether a draft was kept. `examples/features` has `test/leave_nickname_test.dart` (stay, discard, keep, the iOS swipe on when clean).
 - **Drafts.** Share one `MemoryDataStorage` between two `pumpRouter` calls (or leave a page and come back) to see a draft kept and restored. `seedFormDraft(container, id:, key:, shape:, fields:)` writes the draft of "the app was closed with this typed in", and `readFormDraft(container, id:, key:, shape:)` reads what a form kept; both go through the container's `formDraftStorage` and `formDraftScope`. The `id` and `shape` are the strings in `app.g.dart`'s `useForm`. The app going to the background is `tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused)` (and back to `resumed` before the next `pump`).
 - **`examples/features`** has `test/forms_test.dart`: validation, errors per field, a pending submit, reset, an optimistic patch that the server's value replaces, and the nickname form's draft.
 - A form disposes its controllers with the page; a test under `LeakTesting` finds nothing left behind.

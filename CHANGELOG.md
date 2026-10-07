@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.11.0](https://github.com/fespalier/fespalier/compare/v0.10.0...v0.11.0) (2026-10-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* RouteHooks.onEnter takes a RouteScope, so every app with an observe.dart regenerates app.g.dart with the matching fsp; replace on a tree page now keeps the page's instance id, so a query-only replace is no leave and enter for observe.dart and telemetry.
+* a FespalierTelemetry sink with an exhaustive switch on TelemetryOp stops compiling until it adds a TelemetryOp.custom case (or ends the switch with a wildcard); TelemetryStart gains name and attributes, and TelemetryEnd gains attributes.
+* form() and useForm need the fespalier_forms package. Add fespalier_forms under dependencies, at the same git url and ref as fespalier, and run fsp gen: app.g.dart now imports package:fespalier_forms/fespalier_forms.dart, and fsp reports an error until the dependency is there. Code that names ActionForm, ActionField, ActionTextField, ActionFormFields, FieldCodec, ActionFormMessages, ActionFormValidation or useActionForm imports package:fespalier_forms/fespalier_forms.dart; package:fespalier no longer exports them. FieldErrors, validate() and optimistic() stay in fespalier. See docs/migration.md, 0.11.0.
+
+### Features
+
+* AppAdapters in app.g.dart, adapters with main: manual, FespalierAdapter.attach ([#95](https://github.com/fespalier/fespalier/issues/95)) ([17f0aa5](https://github.com/fespalier/fespalier/commit/17f0aa5b82655fbbe600fec546031c6ceff81f06))
+* AppRoutes.router(launch:) and AppRoutes.onEnter ([#102](https://github.com/fespalier/fespalier/issues/102)) ([beab769](https://github.com/fespalier/fespalier/commit/beab7694405bc872172dc68db1eaa8fb067459f6))
+* forms move out of fespalier into the fespalier_forms package ([b7cf9d4](https://github.com/fespalier/fespalier/commit/b7cf9d4151dc5fc050e18ec2e3e0e65bad3f95d4))
+* **forms:** drafts, a form's input kept per route and restored on return ([#101](https://github.com/fespalier/fespalier/issues/101)) ([f0a3caf](https://github.com/fespalier/fespalier/commit/f0a3cafa7e6ece7b69999bf9f2da73a32595fd5a))
+* **forms:** leaveIfClean, a bottom sheet that asks before unsaved changes go ([#105](https://github.com/fespalier/fespalier/issues/105)) ([d9d929a](https://github.com/fespalier/fespalier/commit/d9d929a4f8647da1260c7bfc8a447638ac496cec))
+* **forms:** multi-page forms, a section's steps sharing one form and one draft ([#106](https://github.com/fespalier/fespalier/issues/106)) ([43da577](https://github.com/fespalier/fespalier/commit/43da5771320b07df5d28b153bd9b04557e3b74e6))
+* fsp links edits AndroidManifest.xml and the entitlements, and --check follows them ([#100](https://github.com/fespalier/fespalier/issues/100)) ([66868e2](https://github.com/fespalier/fespalier/commit/66868e279941610d3b575626df711b3ba81e1d93))
+* fsp links flavours, host-less schemes and path patterns ([#97](https://github.com/fespalier/fespalier/issues/97)) ([c7d226f](https://github.com/fespalier/fespalier/commit/c7d226f7e7fc8956f765d077fbae183cb1ccb33c))
+* InboundLaunch, platform links tagged in telemetry, FespalierAdapter.launch and onEnter ([#99](https://github.com/fespalier/fespalier/issues/99)) ([d93338e](https://github.com/fespalier/fespalier/commit/d93338e6e270b3589fb5b00307ead527b216e9cd))
+* leave.dart, asked before a page goes (GoRoute.onExit), with a back gesture that asks too ([#104](https://github.com/fespalier/fespalier/issues/104)) ([8acb192](https://github.com/fespalier/fespalier/commit/8acb192162be731b0bb57831d942b91d4a36f36a))
+* RouteScope, a page instance's scope for observe.dart's onEnter, with hold and onLeave ([3683868](https://github.com/fespalier/fespalier/commit/3683868d7c1d5761fde34c51b0a530e518a26915))
+* TelemetryOp.custom for packages' own operations ([4f13b41](https://github.com/fespalier/fespalier/commit/4f13b4190f249aefca7aa8d3165fcfca6763f376))
+
+
+### Bug Fixes
+
+* **skills:** no code span ends in a space, so markdownlint passes on skills and docs ([#94](https://github.com/fespalier/fespalier/issues/94)) ([c5529c8](https://github.com/fespalier/fespalier/commit/c5529c86311fd63c653e3411fb1dbd1d587cc2b8))
+
+
+### Continuous Integration
+
+* the 0.9.0 adapters step finds the adapter import in app.g.dart ([#107](https://github.com/fespalier/fespalier/issues/107)) ([7a8dadc](https://github.com/fespalier/fespalier/commit/7a8dadcbab31cb06356178969ab05550065e974b))
+
 ## [0.10.0](https://github.com/fespalier/fespalier/compare/v0.9.1...v0.10.0) (2026-10-07)
 
 

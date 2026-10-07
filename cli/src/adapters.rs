@@ -10,8 +10,9 @@
 //! `packages/fespalier/lib/src/adapter.dart`). Its members have a no-op default, so the
 //! generated `main()` calls all of them the same way for every package, and the Dart compiler
 //! checks the shapes. Since 0.11.0 `app.g.dart` imports them as `AppAdapters`, whatever `main:`
-//! says, so an app with `main: manual` calls them from its own `main()` too. The output is a function of the pubspec alone: not of `.dart_tool/`, nor of
-//! the pub cache, so `fsp check` gives the same bytes before and after `pub get`.
+//! says, so an app with `main: manual` calls them from its own `main()` too. The output is a
+//! function of the pubspec alone: not of `.dart_tool/`, nor of the pub cache, so `fsp check`
+//! gives the same bytes before and after `pub get`.
 //!
 //! The first package is the outermost: its zone and its wrapper go around the others'.
 

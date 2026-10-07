@@ -247,13 +247,26 @@ class _RouterHostState extends State<_RouterHost> {
     _attach();
   }
 
-  /// Hands the router and the scope's container to the adapters. In `initState` the scope is
-  /// found without listening to it.
+  /// Hands the router and the scope's container to the adapters, after the frame that shows the
+  /// router (Riverpod forbids changing a provider while the tree builds, and an adapter may).
+  /// In `initState` the scope is found without listening to it; the callback is queued in the
+  /// frame being built, so no extra frame is scheduled.
   void _attach() {
     final attach = widget.attach;
     if (attach == null) return;
+    final container = ProviderScope.containerOf(context, listen: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _runAttach(attach, container);
+    });
+  }
+
+  void _runAttach(
+    void Function(GoRouter router, ProviderContainer container) attach,
+    ProviderContainer container,
+  ) {
     try {
-      attach(_router, ProviderScope.containerOf(context, listen: false));
+      attach(_router, container);
     } catch (error, stackTrace) {
       FlutterError.reportError(
         FlutterErrorDetails(

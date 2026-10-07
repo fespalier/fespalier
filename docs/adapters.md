@@ -34,15 +34,15 @@ The adapters on the [roadmap](../ROADMAP.md) (error reporting, analytics, notifi
 launches, ...) are packages of this kind. `FespalierAdapter` has seven members, each with a default that
 adds nothing, so an adapter overrides what it needs:
 
-| Member                      | When it runs                                                                                  | What it is for                                                                                                                          |
-| --------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `zone(body)`                | Around **all** of `main()`, outside startup.dart's `zone()`; before the binding exists        | An SDK that wraps the app (`SentryFlutter.init(..., appRunner: body)`). Call `body` once                                                |
-| `beforeRun()`               | In `main()` after `WidgetsFlutterBinding.ensureInitialized()`, before `runApp`                | Installing a telemetry sink (`FespalierTelemetry.add`), opening a store. Return `null` for nothing to wait for                          |
-| `overrides()`               | Once, after `startup()` succeeded, **before** `startup()`'s own overrides                     | `dataCacheStorage`, `reconnectSignal`, a flag source                                                                                    |
-| `providerObservers()`       | With `startup()`'s `providerObservers`, the adapters' first                                   | A `ProviderObserver`                                                                                                                    |
-| `routerObservers()`         | When the router is built, before startup.dart's `routerObservers`                             | A `NavigatorObserver` (a new one on each call: an observer belongs to one navigator)                                                    |
-| `wrap(root)`                | Around the root widget, outside the `ProviderScope` and the splash too                        | `SentryWidget`, `PostHogWidget`                                                                                                         |
-| `attach(router, container)` | Once per router (since 0.11.0), after the router is made and the app's `ProviderScope` exists | Subscribing to something that outlives a screen (a notification tap, a shortcut) with `container.listen`. Do not navigate synchronously |
+| Member                      | When it runs                                                                                                   | What it is for                                                                                                                          |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `zone(body)`                | Around **all** of `main()`, outside startup.dart's `zone()`; before the binding exists                         | An SDK that wraps the app (`SentryFlutter.init(..., appRunner: body)`). Call `body` once                                                |
+| `beforeRun()`               | In `main()` after `WidgetsFlutterBinding.ensureInitialized()`, before `runApp`                                 | Installing a telemetry sink (`FespalierTelemetry.add`), opening a store. Return `null` for nothing to wait for                          |
+| `overrides()`               | Once, after `startup()` succeeded, **before** `startup()`'s own overrides                                      | `dataCacheStorage`, `reconnectSignal`, a flag source                                                                                    |
+| `providerObservers()`       | With `startup()`'s `providerObservers`, the adapters' first                                                    | A `ProviderObserver`                                                                                                                    |
+| `routerObservers()`         | When the router is built, before startup.dart's `routerObservers`                                              | A `NavigatorObserver` (a new one on each call: an observer belongs to one navigator)                                                    |
+| `wrap(root)`                | Around the root widget, outside the `ProviderScope` and the splash too                                         | `SentryWidget`, `PostHogWidget`                                                                                                         |
+| `attach(router, container)` | Once per router (since 0.11.0), after the first frame that shows the router (the app's `ProviderScope` exists) | Subscribing to something that outlives a screen (a notification tap, a shortcut) with `container.listen`. Do not navigate synchronously |
 
 Write adapters with `extends FespalierAdapter`, never `implements`: a member added later (`attach` is
 one, since 0.11.0) has a default for a subclass and breaks a class that implements all of them.
@@ -121,7 +121,7 @@ Without `adapters:` none of these lines is written, and `app.g.dart` is what it 
   Riverpod's "Tried to override a provider twice" in debug.
 
 **`attach` (since 0.11.0).** The generated main passes `AppRoutes.attach` to the `StartupGate`, which calls it
-right after it makes the router, with the router and the `ProviderContainer` of the app's `ProviderScope`.
+after the first frame that shows the router (an adapter may change a provider there), with the router and the `ProviderContainer` of the app's `ProviderScope`.
 `AppRoutes.attach(router)` without a container (what `AppRoutes.router()` does) only follows the router for
 DevTools, observe.dart and telemetry. Each adapter is attached once per router, in the pubspec's order, and
 one that throws is reported with `FlutterError.reportError` while the others still run. `pumpRouter` does not
@@ -170,6 +170,8 @@ Future<void> main() => AppAdapters.zone(() async {
 });
 ```
 
+- Moving from `main: auto` to `manual`: delete `lib/app.main.g.dart`; `fsp` no longer writes or updates it.
+- Each adapter's top-level `adapter` is read once, at the first `AppAdapters` call.
 - Call `AppRoutes.attach(router, container)` once, after both exist. Without it the adapters' `attach` never
   runs; calling it twice is safe.
 - An app that mounts the tree in a `GoRouter` of its own (`AppRoutes.mount`) calls the same line with that

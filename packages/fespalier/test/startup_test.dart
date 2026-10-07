@@ -390,6 +390,32 @@ void main() {
     },
   );
 
+  testWidgets('an attach that writes a provider reports no error', (
+    tester,
+  ) async {
+    final counter = NotifierProvider<_Counter, int>(_Counter.new);
+    await tester.pumpWidget(
+      StartupGate(
+        attach: (router, container) =>
+            container.read(counter.notifier).increment(),
+        router: () => GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => Consumer(
+                builder: (_, ref, _) => Text('count: ${ref.watch(counter)}'),
+              ),
+            ),
+          ],
+        ),
+        app: app,
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('count: 1'), findsOneWidget);
+  });
+
   testWidgets('an attach that throws is reported and the app still shows', (
     tester,
   ) async {
@@ -454,4 +480,11 @@ void main() {
       findsOneWidget,
     );
   });
+}
+
+class _Counter extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void increment() => state++;
 }

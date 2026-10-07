@@ -142,6 +142,36 @@ void main() {
     });
 
     test(
+      'a Future first, then null adapters: they run after it, no timer',
+      () async {
+        final gate = Completer<void>();
+        final all = FespalierAdapters([
+          _Recording('a', ready: gate.future),
+          _Recording('b'),
+          _Recording('c'),
+        ]);
+        var timers = 0;
+        final done = runZoned(
+          () => all.beforeRun(),
+          zoneSpecification: ZoneSpecification(
+            createTimer: (self, parent, zone, d, f) {
+              timers++;
+              return parent.createTimer(zone, d, f);
+            },
+          ),
+        );
+        expect(done, isA<Future<void>>());
+        await pumpEventQueue();
+        expect(log, ['a before']);
+
+        gate.complete();
+        await done;
+        expect(log, ['a before', 'b before', 'c before']);
+        expect(timers, 0);
+      },
+    );
+
+    test(
       'a Future in the middle keeps the order: the next waits for it',
       () async {
         final gate = Completer<void>();

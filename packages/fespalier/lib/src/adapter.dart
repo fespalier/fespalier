@@ -49,8 +49,9 @@ abstract class FespalierAdapter {
   /// (`SentryWidget`, `PostHogWidget`).
   Widget wrap(Widget root) => root;
 
-  /// Called once per router, after the router is made and the app's `ProviderScope` exists (since
-  /// 0.11.0): the generated `AppRoutes.attach` calls it, and the generated `main()` calls that.
+  /// Called once per router, after the first frame that shows the router (since 0.11.0), when the
+  /// app's `ProviderScope` exists: the generated `AppRoutes.attach` calls it, and the generated
+  /// `main()` calls that. Changing a provider here is allowed.
   /// Subscribe here (a notification tap, a shortcut). Do not navigate synchronously. Hold what you
   /// subscribe in a provider of [container] (`container.listen`), so it goes with the
   /// `ProviderScope`. No timer. An adapter that throws here is reported and the app still runs.

@@ -170,15 +170,15 @@ class MyToolsAdapter extends FespalierAdapter {
 }
 ```
 
-| Member                      | Runs                                                                                    | Notes                                                                                                                                                                  |
-| --------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zone(body)`                | around **all** of `main()`, outside startup.dart's `zone()`                             | `Future<void>`; call `body` once. Before the binding exists                                                                                                            |
-| `beforeRun()`               | after `ensureInitialized()`, before `runApp`                                            | `Future<void>?`: return `null` for nothing to wait for (not awaited: no `Future`, no microtask). A `Future` delays the first frame, so a local read, never the network |
-| `overrides()`               | once, after `startup()` succeeded, **before** `startup()`'s own overrides               | Overriding a provider `startup()` also overrides is Riverpod's "Tried to override a provider twice" in debug                                                           |
-| `providerObservers()`       | with `providerObservers` of startup.dart, the adapters' first                           |                                                                                                                                                                        |
-| `routerObservers()`         | when the router is built, before startup.dart's `routerObservers`                       | A new observer on each call: an observer belongs to one navigator                                                                                                      |
-| `wrap(root)`                | around the root widget, outside the `ProviderScope` and the splash                      | `SentryWidget`, `PostHogWidget`                                                                                                                                        |
-| `attach(router, container)` | once per router (since 0.11.0), after the router is made and the `ProviderScope` exists | Subscribe with `container.listen` (a notification tap, a shortcut); do not navigate synchronously. An adapter that throws here is reported and the others still run    |
+| Member                      | Runs                                                                                                     | Notes                                                                                                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zone(body)`                | around **all** of `main()`, outside startup.dart's `zone()`                                              | `Future<void>`; call `body` once. Before the binding exists                                                                                                            |
+| `beforeRun()`               | after `ensureInitialized()`, before `runApp`                                                             | `Future<void>?`: return `null` for nothing to wait for (not awaited: no `Future`, no microtask). A `Future` delays the first frame, so a local read, never the network |
+| `overrides()`               | once, after `startup()` succeeded, **before** `startup()`'s own overrides                                | Overriding a provider `startup()` also overrides is Riverpod's "Tried to override a provider twice" in debug                                                           |
+| `providerObservers()`       | with `providerObservers` of startup.dart, the adapters' first                                            |                                                                                                                                                                        |
+| `routerObservers()`         | when the router is built, before startup.dart's `routerObservers`                                        | A new observer on each call: an observer belongs to one navigator                                                                                                      |
+| `wrap(root)`                | around the root widget, outside the `ProviderScope` and the splash                                       | `SentryWidget`, `PostHogWidget`                                                                                                                                        |
+| `attach(router, container)` | once per router (since 0.11.0), after the first frame that shows the router (the `ProviderScope` exists) | Subscribe with `container.listen` (a notification tap, a shortcut); do not navigate synchronously. An adapter that throws here is reported and the others still run    |
 
 Each default adds nothing. The rules are fespalier's own: no timer, sync stays sync, nothing touches a platform
 plugin until it is used (so `AppMain.root()` boots in a widget test).
@@ -190,12 +190,12 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
 - **`extends`, never `implements`** `FespalierAdapter`: a member added later (`attach`, since 0.11.0) has a default
   for a subclass only.
 - **`attach` (since 0.11.0).** The generated main passes `AppRoutes.attach` to the `StartupGate`, which calls it
-  after making the router with the app's `ProviderContainer`. `AppRoutes.attach(router)` with no container (what
+  after the first frame that shows the router, with the app's `ProviderContainer` (so an adapter may change a provider there). `AppRoutes.attach(router)` with no container (what
   `AppRoutes.router()` calls) skips the adapters. `pumpRouter` never attaches them.
 - **No per-adapter keys.** Deploy-time options come from `--dart-define`; anything custom stays in `startup.dart`.
 - **Not every companion is an adapter** (since 0.10.0): `fespalier_tolgee` and `fespalier_cratestack` ship **no**
   `fespalier_adapter.dart` (the setup is app code, which `startup()` already is), so `adapters: [fespalier_tolgee]` makes the
-  generated `lib/app.main.g.dart` import a file that does not exist (`Target of URI doesn't exist`). Wire them in `startup()`
+  generated `lib/app.g.dart` import a file that does not exist (`Target of URI doesn't exist`). Wire them in `startup()`
   ([`fespalier-i18n`](../../fespalier-i18n/SKILL.md), [`fespalier-cratestack`](../../fespalier-cratestack/SKILL.md)).
 - **Tests.** `pumpRouter(tester, router, app: AppMain.app)` and `fsp test` never see the adapters; `AppMain.root()`
   is the app as it runs, adapters included.
@@ -205,9 +205,14 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
 `adapters:` with `main: manual` writes no `app.main.g.dart`, but `lib/app.g.dart` defines **`AppAdapters`**
 (`zone`, `beforeRun`, `overrides`, `providerObservers`, `routerObservers`, `wrap`, each forwarding to
 `FespalierAdapters` from `package:fespalier/startup.dart`) and your own `main()` calls it, in the same order as
-the generated one: `AppAdapters.zone(() async { ensureInitialized; await beforeRun; a ProviderContainer with
-`AppAdapters.overrides()`and`providerObservers()`; `AppRoutes.router(observers: [...AppAdapters.routerObservers()])`;
-**`AppRoutes.attach(router, container)`**; `runApp(AppAdapters.wrap(UncontrolledProviderScope(...)))` })`.
+the generated one, all inside `AppAdapters.zone(() async { ... })`:
+
+1. `WidgetsFlutterBinding.ensureInitialized()`, then `await AppAdapters.beforeRun()`.
+2. A `ProviderContainer` with `AppAdapters.overrides()` and `AppAdapters.providerObservers()`.
+3. `AppRoutes.router(observers: [...AppAdapters.routerObservers()])`.
+4. **`AppRoutes.attach(router, container)`**.
+5. `runApp(AppAdapters.wrap(UncontrolledProviderScope(...)))`.
+
 Forgetting `AppRoutes.attach(router, container)` means no adapter's `attach` runs (calling it twice is safe).
 Full example: `docs/adapters.md`, "With main: manual: AppAdapters".
 

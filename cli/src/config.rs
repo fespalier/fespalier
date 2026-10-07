@@ -1167,7 +1167,7 @@ impl Pubspec {
 }
 
 /// `adapters:`, checked: each a Dart package name, none twice, none `fespalier` itself, and each
-/// under `dependencies:` (the generated `main()` imports `package:<name>/fespalier_adapter.dart`).
+/// under `dependencies:` (the generated `app.g.dart` imports `package:<name>/fespalier_adapter.dart`).
 fn adapters(names: Vec<String>, dependencies: &Option<Value>) -> Result<Vec<String>> {
     let mut out: Vec<String> = vec![];
     for name in names {

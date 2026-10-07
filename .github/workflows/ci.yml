@@ -207,7 +207,7 @@ jobs:
   scaffold:
     name: Scaffolded files compile
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
     steps:

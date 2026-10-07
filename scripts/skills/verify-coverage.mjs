@@ -28,7 +28,7 @@
 //    `AGENTS.md` identifies nothing.
 //
 // 2. THE DOCUMENTATION SURFACE IS NOT A PAGE TREE. fespalier has one long
-//    README, not a docs/ page tree (docs/images holds README screenshots; docs/i18n-tolgee.md is one page of its own), so "one page per feature" does not exist.
+//    README plus a few long pages under docs/ (docs/cratestack.md, docs/offline-first.md, docs/i18n-tolgee.md; docs/images holds README screenshots), so "one page per feature" does not exist.
 //    What is machine-enumerable, and what a new feature has to touch, is:
 //
 //      README.md headings        every `##`..`####` outside a code fence is a

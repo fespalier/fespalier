@@ -162,3 +162,12 @@ The API is an in-process server, so it runs and is tested with no network. To ru
 `--dart-define=OIDC_ISSUER=...` and the realm in `examples/auth/keycloak/`. With
 `--dart-define=OIDC_ISSUER=demo --dart-define=DPOP=true` it signs in against the demo server's own
 provider with device-bound tokens (DPoP), and its tests check every proof the way a server does.
+
+## plugins
+
+`examples/plugins` (since 0.13.0) is the companion packages that plug in through `fespalier: adapters:`, starting with [`fespalier_push`](../packages/fespalier_push):
+
+- `telemetry: true` and `adapters: [fespalier_push]`; `main.dart` calls `FespalierPush.configure(...)` before `AppMain.run()`;
+- a `FakePushSource` in place of Firebase Messaging, and debug buttons on the home page that simulate a tap on a notification;
+- an order page, a page behind a session guard and a login page that sends the person back;
+- tests through `AppMain.root()`: a cold start from a notification, a tap while the app runs, a guard on a tapped page, a foreign link refused, a tap delivered twice and the token callback, with `source=notification` read from `RecordingTelemetry`.

@@ -30,6 +30,18 @@ with `adapters:` was refused; since 0.11.0 it is fine (the message is gone, `App
 | warning ``app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there`` | app.dart's `router()` does not mention `routerObservers`: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there                                                                                   |
 | warning ``app.dart's router() builds the router itself, so the adapters' launch is not used: pass `launch: AppMain.launch` to `AppRoutes.router(...)` there`` (since 0.11.0)            | app.dart's `router()` does not mention `launch`, so what the adapters' `launch()` answered (a notification that opened the app) never reaches the router: pass `launch: AppMain.launch` to `AppRoutes.router(...)` there |
 
+### An adapter that needs your code, at run time (since 0.13.0)
+
+Not an `fsp` diagnostic: a `FlutterError` printed once when the app runs. An adapter configured by a static call
+(`docs/adapters.md`, "Adapters that need your code") reports the missing call and does nothing; it never throws out of
+`launch()` or `attach()`.
+
+- ``fespalier_push is listed under `fespalier: adapters:` but was never configured: call FespalierPush.configure(source: ..., route: ...) in main() before AppMain.run()``:
+  `fespalier_push` is an adapter but `main()` never called `FespalierPush.configure`, or called it after `AppMain.run()`
+  started (`launch()` has run by then), or a widget test boots `AppMain.root()` (which runs no `main()`) without calling
+  it. Taps then open the app and navigate nowhere, and `pushSource` throws `pushSource: no PushSource`. Fix: call it
+  first thing in `main()` (with `main: manual`, before `AppAdapters.zone`), or in the test's `setUp`.
+
 ## Root files
 
 | Message                                                                                                                                                          | Cause and fix                                                                                              |

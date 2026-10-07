@@ -1,0 +1,36 @@
+name: plugins
+description: fespalier example — the plugin packages through adapters. Notification taps open typed routes (fespalier_push), with fakes and widget tests.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+  # Notification taps (since 0.13.0): listed under `fespalier: adapters:` below, configured in main().
+  fespalier_push:
+    path: ../../packages/fespalier_push
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# fespalier_push depends on fespalier by git, as an app does; here both are the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+
+flutter:
+  uses-material-design: true
+
+# Read by the `fsp` generator. `adapters` makes app.g.dart call each package's
+# `fespalier_adapter.dart` (cold start through launch(), taps through attach()); `telemetry` makes
+# the navigation a tap opens report `source=notification`.
+fespalier:
+  telemetry: true
+  adapters: [fespalier_push]

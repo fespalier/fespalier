@@ -157,6 +157,14 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier_tolgee/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_tolgee/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier/extension/devtools/config.yaml"
         },
         {

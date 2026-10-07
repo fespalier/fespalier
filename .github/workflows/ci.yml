@@ -89,6 +89,7 @@ jobs:
           - packages/fespalier_image
           - packages/fespalier_dio
           - packages/fespalier_sentry
+          - packages/fespalier_tolgee
           - examples/shop
           - examples/features
           - examples/tabs
@@ -159,6 +160,7 @@ jobs:
           - packages/fespalier_connectivity
           - packages/fespalier_dio
           - packages/fespalier_sentry
+          - packages/fespalier_tolgee
           - examples/minimal
     defaults:
       run:

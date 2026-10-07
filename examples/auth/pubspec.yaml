@@ -17,6 +17,9 @@ dependencies:
     path: ../../packages/fespalier
   fespalier_auth:
     path: ../../packages/fespalier_auth
+  # The sign-in form: sign-in/action.dart has a form(), which needs this package since 0.11.0.
+  fespalier_forms:
+    path: ../../packages/fespalier_forms
   # DPoP (--dart-define=DPOP=true): proofs signed by a device key, and verifyDpopProof, which the
   # demo server checks them with.
   fespalier_sign_keypair:

@@ -25,6 +25,20 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.11.0
+
+- **Forms moved to the `fespalier_forms` package** ([Forms](forms.md)). `form()` and `useForm` need the
+  `fespalier_forms` package. Add `fespalier_forms` under `dependencies:`, at the same git `url` and `ref` as
+  `fespalier`, and run `fsp gen`: `app.g.dart` now imports `package:fespalier_forms/fespalier_forms.dart`
+  (only in an app with a `form()`), and `fsp` reports an error at each `form()` until the dependency is there.
+  Code that names `ActionForm`, `ActionField`, `ActionTextField`, `ActionFormFields`, `FieldCodec`,
+  `ActionFormMessages`, `ActionFormValidation` or `useActionForm` imports
+  `package:fespalier_forms/fespalier_forms.dart`: `package:fespalier` no longer exports them. The names and
+  the behaviour are the same, and so is a page that only calls the generated `useForm`.
+  `FieldErrors`, `validate()` and `optimistic()` stay in `fespalier` ([`validate()` and
+  `FieldErrors`](actions.md#validate-and-fielderrors)): an app with no form changes nothing. In a repository
+  checkout, `examples/features` and `examples/auth` show the dependency.
+
 ### 0.9.x
 
 - **Page names** ([Transitions](layouts.md#transitions)). Every `pageBuilder:` the generated file writes

@@ -439,6 +439,7 @@ fn analyze_tree(
         diags,
     );
     manifest::check(&app, cfg, diags);
+    forms::check_dependency(&app, cfg, diags);
     let code = emit::emit(&app, cfg, diags);
     let main = entry::emit(tree, &app, cfg, &adapters::hooks(&cfg.adapters), diags);
     (code, main, app)

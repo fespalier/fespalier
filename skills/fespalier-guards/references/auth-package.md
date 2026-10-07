@@ -187,6 +187,9 @@ import 'package:fespalier_auth/fespalier_auth.dart';
 GuardResult guard(Ref ref, {String? from}) => redirectIfSignedIn(ref, from: from);
 ```
 
+The sign-in page is a form, so the app also lists `fespalier_forms` (since 0.11.0) under `dependencies:`, at the same
+`url` and `ref` ([`fespalier-data`](../../fespalier-data/references/forms.md)).
+
 ```dart
 // lib/app/sign-in/action.dart
 import 'package:fespalier/fespalier.dart';

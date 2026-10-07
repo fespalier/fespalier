@@ -24,6 +24,7 @@ packages/fespalier_image/   responsive CDN images (ResponsiveImage, the URL buil
 packages/fespalier_dio/   Dio and package:http: requests cancelled with their page, server field errors, writes never retried
 packages/fespalier_sentry/   Sentry: errors tagged with the route and the file, page breadcrumbs, optional screen-load transactions
 packages/fespalier_tolgee/   translations from Tolgee's CDN with a bundled fallback and route locales (since 0.10.0)
+packages/fespalier_forms/   the form of an action.dart: ActionForm, typed fields, useActionForm (since 0.11.0)
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed

@@ -1,4 +1,4 @@
-# Actions and forms
+# Actions
 
 ## `action.dart`: typed writes
 
@@ -26,7 +26,7 @@ if (refund.state.value case final done?) Text('Refunded ${done.amount}'),
 final Refund done = await RefundRoute.submit(ref, id: 1, input: input);
 ```
 
-Since 0.5.0. `state` plus `invalidates` covers most pages; forms and optimistic updates (since 0.8.1) are in the two subsections below.
+Since 0.5.0. `state` plus `invalidates` covers most pages; `validate()` and optimistic updates (since 0.8.1) are in the two subsections below, and forms (the `fespalier_forms` package, since 0.11.0) are on [their own page](forms.md).
 
 - **Parameters.** Segments and query parameters bind exactly as in [`data.dart`](data.md#datadart-a-function-a-selector-or-a-provider): same names, types and errors. The one other parameter is `input`: **named, `required`**, of any type (`RefundInput`, `String`, a record, a `List`, `Object?`). Its type is read from the source like a typed [`extra`](navigation.md#typed-extra)'s, so the generated `submit` is typed. A `Ref ref` comes first, positional.
 - **Return type.** `Future<T>`, `FutureOr<T>` or a plain `T` (`Future<void>` is fine), spelled out. **The helpers keep what the function is**: a sync action's `submit` returns its value at once (no `Future`, no extra frame), a `FutureOr<T>` one's returns what the function returned, and a `Future<T>` one's returns a `Future<T>`. A `Stream` is an error: a write has one result.
@@ -40,7 +40,7 @@ Since 0.5.0. `state` plus `invalidates` covers most pages; forms and optimistic 
   A helper can't be named like a member of the route (`go`, `refresh`, `watch`, `data`, …), a segment or query parameter of it, or another action's helper (a function called `submit` next to `action`): the generator says which.
 
 - **The provider** is a generated `Notifier` family, `XRoute.action(id)` (`XRoute.action` with no keys). Its state is `AsyncValue<T?>`: `AsyncData(null)` while idle, then `AsyncLoading`, then `AsyncError` or `AsyncData` of the result. It works without a widget (`container.read(RefundRoute.action(1).notifier).call(input)`, which is what a test can do). Each key has its own state; an `autoDispose` provider is dropped when nothing watches it, except while a write is in flight.
-- **`useAction`** takes the keys and returns a handle: `state` (the same `AsyncValue<T?>`), `isPending`, `hasError`, `fieldErrors` (the [`FieldErrors`](#forms-form-and-validate) the last run failed with, since 0.8.1, or null), `reset()` and `call(input)`.
+- **`useAction`** takes the keys and returns a handle: `state` (the same `AsyncValue<T?>`), `isPending`, `hasError`, `fieldErrors` (the [`FieldErrors`](#validate-and-fielderrors) the last run failed with, since 0.8.1, or null), `reset()` and `call(input)`.
   - `call` runs the action and completes with the result, or with `null` when it failed (the error is in `state`), so `onPressed: () => refund.call(input)` can't leave an unhandled error behind.
   - `submit` is the other way: it throws what the action threw, for code that wants to handle it (the error is in `state` too).
   - Neither navigates, and neither is for `build`'s own body: call them from an event handler. `useAction` is a hook by name only: it needs a `WidgetRef`, not hooks, and works in any `ConsumerWidget`.
@@ -83,22 +83,17 @@ A listed route's `data.dart` is keyed by something, and the action has to take t
 - a parameter that is neither a segment, a query parameter nor `input`, a missing return type, a `Stream`, a `Future` with no type argument;
 - an `invalidates` that is not a `const` list literal of names, a name that is neither a typed route nor a section handle or has no `data.dart`, and a key of the data it invalidates that the action doesn't take;
 - helper names that collide;
-- since 0.8.1, a `form()`, `validate()` or `optimistic()` that doesn't fit its action (see below).
+- since 0.8.1, a `form()`, `validate()` or `optimistic()` that doesn't fit its action (see below and [Forms](forms.md)).
 
-### Forms: `form()` and `validate()`
+### `validate()` and `FieldErrors`
 
-Since 0.8.1. A form is the UI of one write, so it is not a file kind: `form()`, `validate()` and `optimistic()` are _companion functions_ in the `action.dart` of the action they belong to, found by name. For the action called `action` the companion is the role itself; for any other action, say `approve`, it is `approveForm`, `approveValidate` and `approveOptimistic`. A companion is never read as an action, even when it takes a `Ref` (that is an error).
+Since 0.8.1. `validate()`, `optimistic()` and, with the [`fespalier_forms`](forms.md) package, `form()` are _companion functions_ in the `action.dart` of the action they belong to, found by name. For the action called `action` the companion is the role itself; for any other action, say `approve`, it is `approveValidate`, `approveOptimistic` and `approveForm`. A companion is never read as an action, even when it takes a `Ref` (that is an error). `validate()` and `optimistic()` need nothing but `fespalier`; `form()` needs the package, and is on [its own page](forms.md).
 
 ```dart
 // lib/app/(account)/nickname/action.dart
-/// The input of the action, and so the fields of its form: a record with named fields.
 typedef NicknameFields = ({String nickname, int? age, bool newsletter});
 
-/// The form starts from the data the page passes (the profile it shows).
-NicknameFields form(Profile profile) =>
-    (nickname: profile.nickname, age: profile.age, newsletter: profile.newsletter);
-
-/// Checked on the device before the action runs, and live in the form after a first submit.
+/// Checked on the device before the action runs, and live in a form after a first submit.
 FieldErrors? validate(NicknameFields input) => FieldErrors({
   if (input.nickname.trim().isEmpty) 'nickname': 'Enter a nickname',
   if (input.age case final age? when age < 13) 'age': 'You must be 13 or older',
@@ -108,37 +103,10 @@ FieldErrors? validate(NicknameFields input) => FieldErrors({
 Future<Profile> action(Ref ref, {required NicknameFields input}) => …;
 ```
 
-```dart
-// the page: a HookConsumerWidget, because useForm is a real hook
-final form = NicknameRoute.useForm(ref, data: profile);
-final f = form.fields;                         // a record of typed fields
-TextField(
-  controller: f.nickname.controller,
-  decoration: InputDecoration(errorText: f.nickname.error),
-),
-CheckboxListTile(value: f.newsletter.value, onChanged: f.newsletter.didChange, …),
-if (form.error case final e?) Text('$e'),      // what is not one field's
-FilledButton(onPressed: form.onSubmit, child: …),  // null while the action runs: disabled
-TextButton(onPressed: form.isDirty ? form.reset : null, child: …),
-```
-
-- **The input is a record with named fields**, written inline (`required ({int amount, String
-note}) input`) or as a `typedef` declared in the same `action.dart`; the generator reads the field names and types from there and nowhere else. `form()` returns exactly the input's type (as written) and takes no `Ref`: it takes the data the form starts from, or nothing.
-- **`useForm`** is the generated member (`useApproveForm` for `approve`). **It is a real hook**: call it from a `HookConsumerWidget`'s `build` (`useAction` is not one).
-  - It takes the action's keys, `data:` (only when `form()` takes a parameter; then required and of that type), and `validation:`, `resetOnSuccess:` and `messages:`. A key of the action can't be called `data`, `validation`, `resetOnSuccess` or `messages`.
-  - It returns an `ActionForm` with `fields`, `state`, `isPending`, `isDirty`, `isValid`, `error`, `onSubmit`, `submit()` and `reset()`.
-- **Fields** are typed by the record's field types.
-  - `String`, `int`, `double`, `num` and their nullable forms are text fields with a `controller` that the form owns and disposes. An empty nullable one is `null`, an empty non-nullable number is `Required`, a bad number is `Enter a whole number` or `Enter a number` (pass `messages: ActionFormMessages(...)` to translate them).
-  - Any other type (`bool`, an enum, a `DateTime`, a list) is a value field: bind it with `value` and `didChange(v)`, which ignores `null` for a non-nullable type so it fits `Checkbox.onChanged`.
-- **Submit.** `onSubmit` (or `submit()`) reads the text fields, then asks `validate()`. If anything is wrong it stops there and **the action is not called**; otherwise it runs the action with the record the fields make. A sync action stays sync: `submit()` returns its value at once. `onSubmit` is `null` while the action runs, so `FilledButton(onPressed: form.onSubmit)` disables itself.
-- **Errors per field.** A field shows, in this order: its own parse error, the `FieldErrors` the action threw for its name (until that field is edited), and what `validate()` says of it.
-  - `validation: ActionFormValidation.afterSubmit` (the default) shows nothing before the first submit and every field as it changes after; `onChange` shows a field once the user has changed it.
-  - `form.error` is what is not one field's: `FieldErrors.message`, the messages of keys that are no field, or the error of an action that failed otherwise.
-- **`validate()`** is `FieldErrors? validate(Input input)`. It takes no `Ref` (a check the device can make) and does not need a record input. It also runs **inside the action's provider, before the action**, so `submit`, `useAction`'s `call` and a test through the provider are refused the same way: the write never starts, there is no loading state, and the `FieldErrors` is in `state` and `fieldErrors`. A check that needs the server belongs in the action, which throws `FieldErrors({'nickname': 'That nickname is taken'})` (the [HTTP package](http.md) maps a server's validation answer to it).
-- **Initial values and new data.** The form starts from `form(data)`.
-  - When the page gets another data object (the action invalidated the data, or it was refreshed), the fields the user has not changed follow it, and the changed ones keep what was typed.
-  - While the form's own action is running the data is not read again: during an optimistic write the page gets the patched value, and a rollback would otherwise wipe what was typed.
-  - `reset()` goes back to the data the form was last given and clears the errors and the action's state. After a success the fields become the new baseline (`isDirty` is false); `resetOnSuccess: true` restarts them from `form(data)` instead.
+- **`validate()`** is `FieldErrors? validate(Input input)`. It takes no `Ref` (a check the device can make) and does not need a record input. It runs **inside the action's provider, before the action**, so `submit`, `useAction`'s `call` and a test through the provider are refused the same way: the write never starts, there is no loading state, and the `FieldErrors` is in `state` and `fieldErrors`. It returns `null` (or an empty `FieldErrors`) for a valid input.
+- **`FieldErrors`** is what an action, or `validate()`, throws or returns to say which fields of its input are wrong: `FieldErrors({'nickname': 'That nickname is taken'}, message: 'Could not save')`. The keys are the names of the input's fields; `message` is what is wrong with the input as a whole. `useAction`'s `fieldErrors` is the one the last run failed with, or `null`.
+- **A check that needs the server** belongs in the action, which throws a `FieldErrors`. The [HTTP package](http.md) maps a server's validation answer to one.
+- **A form** (`form()`, `useForm`, typed fields, a pending state) shows each message under its field. It moved to the `fespalier_forms` package in 0.11.0: see [Forms](forms.md).
 
 ### Optimistic updates: `optimistic()`
 

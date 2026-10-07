@@ -75,6 +75,8 @@ struct FileCx {
     /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
     /// (`_keep`) that tells a parameter left out from one passed as `null`.
     copy_with: bool,
+    /// Some action has a `form()`: the file imports `package:fespalier_forms` (since 0.11.0).
+    forms: bool,
     /// `AppMenu`, when some folder has a nav.dart (since 0.8.1).
     menu: Option<MenuCx>,
     /// Some page has observe.dart hooks: `AppRoutes.attach` runs them, through `_observeAt`.
@@ -667,6 +669,10 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         devtools_tree: dart_str(&devtools::compact(app, cfg)),
         devtools_providers: devtools_providers(app),
         case_sensitive: app.routes[0].case_sensitive,
+        forms: app
+            .routes
+            .iter()
+            .any(|r| r.actions.iter().any(|a| a.form.is_some())),
         observe: has_observe,
         telemetry: cfg.telemetry,
         attach: has_observe || cfg.telemetry || !cfg.adapters.is_empty(),

@@ -1,10 +1,10 @@
-name: fespalier_dio
-description: Dio and package:http for fespalier — requests cancelled with their page, server validation errors on fespalier_forms forms, and writes that are never retried.
+name: fespalier_forms
+description: "Forms for fespalier: the form of an action.dart, with typed fields, validation, server errors under their fields and a pending state."
 version: 0.10.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
-repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_dio
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_forms
 issue_tracker: https://github.com/fespalier/fespalier/issues
 
 environment:
@@ -12,29 +12,26 @@ environment:
   flutter: ">=3.32.0"
 
 dependencies:
-  # Pure Dart, both: an app pays only for the library it imports (fespalier_dio.dart or http.dart).
-  # 5.7.0: the lowest the floor job can test. The tests run WriteGuard against dio_smart_retry,
-  # whose own constraint is `dio: ^5.7.0`, so `flutter pub downgrade` cannot resolve anything
-  # lower; a constraint no run exercises is not claimed (the library alone compiles on 5.4.0).
-  dio: ^5.7.0
   flutter:
+    sdk: flutter
+  # Only package:fespalier_forms/testing.dart imports it. Apps already have it as a dev dependency,
+  # so this adds nothing to a release build.
+  flutter_test:
     sdk: flutter
   # The same repository dependency an app writes (same url, path and ref), so the two resolve to
   # one package: a path dependency would resolve "at <sha>" and conflict with the app's tag.
+  # Hooks, Riverpod and go_router come through it.
   fespalier:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.10.0 # x-release-please-version
-  # 1.5.0: Abortable requests.
-  http: ^1.5.0
 
 dev_dependencies:
-  # The tests run WriteGuard against the retry interceptor apps actually use, with zero delays.
-  dio_smart_retry: ^7.0.1
   flutter_lints: ^6.0.0
-  flutter_test:
-    sdk: flutter
+  # Flutter's own flutter_test pins the version (3.0.9 on Flutter 3.32, the floor), so the constraint
+  # must admit that one.
+  leak_tracker_flutter_testing: ^3.0.9
 
 # In this repository the package is built against the fespalier beside it. A dependency's
 # overrides are ignored, so apps never see this.

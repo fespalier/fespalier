@@ -11,6 +11,9 @@ dependencies:
     sdk: flutter
   fespalier:
     path: ../../packages/fespalier
+  # The form of (account)/nickname/action.dart: form() needs it since 0.11.0.
+  fespalier_forms:
+    path: ../../packages/fespalier_forms
   # Feature flags (since 0.9.0): /labs is behind one (lib/flags.dart).
   fespalier_flags:
     path: ../../packages/fespalier_flags

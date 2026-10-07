@@ -242,6 +242,9 @@ pub struct Form {
     pub fields: Vec<FormField>,
     /// The type of the value it takes (the `data:` the page passes), when it takes one.
     pub data: Option<ExtraType>,
+    /// The file it is in, relative to the app folder, and the function there: for diagnostics.
+    pub file: String,
+    pub span: Span,
 }
 
 /// One field of the input record of an action with a form.
@@ -3181,6 +3184,8 @@ impl Resolver<'_> {
                 })
                 .collect(),
             data,
+            file: file.to_string(),
+            span: g.span.clone(),
         })
     }
 

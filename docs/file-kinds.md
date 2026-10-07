@@ -73,7 +73,7 @@ Each view file exports one widget class, of any kind (`StatelessWidget`, `Consum
 
 **What `route.dart` can hold.** Each constant is optional: `caseSensitive`, `paths`, `nest`, `linkable`, `remount`, `deferred` and `freshness`. [Configuration](configuration.md#per-folder-settings-routedart) lists each one with its rules.
 
-Since 0.8.1 an `action.dart` may also hold the companions of an action: its [`form()`, `validate()`](actions.md#forms-form-and-validate) and [`optimistic()`](actions.md#optimistic-updates-optimistic). They are functions in that file, not a file kind.
+Since 0.8.1 an `action.dart` may also hold the companions of an action: its [`validate()`](actions.md#validate-and-fielderrors), its [`optimistic()`](actions.md#optimistic-updates-optimistic) and, with the `fespalier_forms` package (since 0.11.0), its [`form()`](forms.md). They are functions in that file, not a file kind.
 
 ## Function views
 

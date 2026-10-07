@@ -37,6 +37,11 @@ that again and need a rule for which action it submits.
 - The thing a `form.dart` would invite, a form with no write (search filters), is what URL state
   (`copyWith`) is for.
 
+Since 0.11.0 the form itself (`useForm`, the typed fields) is the `fespalier_forms` package, so an app with
+no forms ships none of it. The error contract stays in `fespalier`: `FieldErrors` and `validate()` belong to the
+action, which works without a form, and the HTTP, auth, CrateStack and Sentry packages use `FieldErrors` without
+one. See [Forms](forms.md).
+
 ### Why `copyWith` is a getter of a function type
 
 `route.copyWith(page: null)` has to mean "clear the page" and `route.copyWith()` "keep it", so `null`

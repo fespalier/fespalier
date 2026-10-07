@@ -1,6 +1,6 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 its forms: form(), validate() and optimistic()), and since 0.9.0 fespalier_dio, which ties Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice), and since 0.10.0 offline-first reads and queued writes (fespalier_cratestack: see fespalier-offline and fespalier-cratestack). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 validate() with FieldErrors and optimistic(), and its forms: form() and useForm, which are the fespalier_forms package since 0.11.0 and a breaking move out of fespalier), and since 0.9.0 fespalier_dio, which ties Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice), and since 0.10.0 offline-first reads and queued writes (fespalier_cratestack: see fespalier-offline and fespalier-cratestack). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
@@ -164,11 +164,14 @@ await RefundRoute.submit(ref, id: 1, input: input);  // a callback or a test: th
 [`references/actions.md`](references/actions.md) has the rules, the generated members,
 what is invalidated and a test that compiles.
 
-## Forms and optimistic updates (since 0.8.1)
+## Forms and optimistic updates (since 0.8.1; forms are `fespalier_forms` since 0.11.0)
 
 Not a file kind: `form()`, `validate()` and `optimistic()` are _companion functions_ in the
 `action.dart` of their action (`approveForm`, `approveValidate`, `approveOptimistic` beside
-`approve`), and never actions themselves.
+`approve`), and never actions themselves. **`form()` needs the `fespalier_forms` package** (since
+0.11.0): list it under `dependencies:` at the same git `url` and `ref` as `fespalier`, or `fsp`
+reports an error at the `form()`; the generated file imports it only in an app with a form.
+`FieldErrors`, `validate()` and `optimistic()` stay in `fespalier`.
 
 ```dart
 typedef NicknameFields = ({String nickname, bool newsletter});   // the input: a record, named fields
@@ -191,8 +194,10 @@ Profile optimistic(Profile current, NicknameFields input) => Profile(input.nickn
   `read` and `refresh` stay the server's value.
 - Fields the user has not changed follow new data; changed ones keep what was typed.
 
-[`references/forms-and-optimistic.md`](references/forms-and-optimistic.md) has every rule and a
-sample that compiles, with its test.
+[`references/forms.md`](references/forms.md) (the package, `form()` and `useForm`, fields, submit and
+errors, a sample that compiles with its test) and
+[`references/optimistic.md`](references/optimistic.md) (`validate()`, `FieldErrors` and `optimistic()`)
+have every rule.
 
 ## HTTP clients: `fespalier_dio` (since 0.9.0)
 

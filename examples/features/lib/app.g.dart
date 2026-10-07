@@ -71,6 +71,7 @@
 
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/nav.dart';
+import 'package:fespalier_forms/fespalier_forms.dart';
 import 'package:flutter/widgets.dart';
 
 import 'app/page.dart' as _i0;

@@ -6,7 +6,8 @@ import 'problem.dart';
 /// Server validation errors as an action's [FieldErrors] (since 0.9.0).
 extension FespalierDioFieldErrors<T> on Future<T> {
   /// Completes like this future, except that a [DioException] whose response has a status in
-  /// [statuses] and a body [decoder] recognises is thrown as those [FieldErrors], so the form shows
+  /// [statuses] and a body [decoder] recognises is thrown as those [FieldErrors], so the form
+  /// (see https://github.com/fespalier/fespalier/blob/main/docs/forms.md, `fespalier_forms`) shows
   /// each message under its field. Any other error is rethrown as it was: the very same object.
   ///
   /// It is not an interceptor on purpose: an interceptor can only reject with a `DioException`, and

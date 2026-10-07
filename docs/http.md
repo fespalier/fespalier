@@ -2,7 +2,7 @@
 
 Since 0.9.0. `package:fespalier_dio` helps the two clients most apps use,
 [Dio](https://pub.dev/packages/dio) and [`package:http`](https://pub.dev/packages/http), keep three of
-fespalier's promises: **a load whose page is gone stops**, **a server's validation error lands under its form
+fespalier's promises: **a load whose page is gone stops**, **a server's validation error lands under its [form](forms.md)
 field**, and **a write is never sent twice**.
 
 The package starts no timer and no listener.
@@ -76,7 +76,7 @@ provider that started this request was disposed`. `package:http`: `RequestAborte
 
 ## Server validation errors on forms
 
-A form shows the [`FieldErrors`](actions.md#forms-form-and-validate) its action threw under the field of the same
+A [form](forms.md) shows the [`FieldErrors`](actions.md#validate-and-fielderrors) its action threw under the field of the same
 name, and `form.error` shows `FieldErrors.message` and the messages of keys that are no field. `withFieldErrors()`
 on the action's own `Future` turns the server's answer into that exception, in whichever shape the server sends it:
 

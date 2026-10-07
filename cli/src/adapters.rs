@@ -71,5 +71,6 @@ pub fn hooks(adapters: &[String]) -> MainHooks {
         .push("AppAdapters.routerObservers()".into());
     hooks.root_wrappers.push("AppAdapters.wrap".into());
     hooks.attach = true;
+    hooks.launch = true;
     hooks
 }

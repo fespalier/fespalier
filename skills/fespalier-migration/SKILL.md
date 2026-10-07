@@ -73,7 +73,12 @@ gets nothing from this part. An app with `adapters:` regenerates two files:**
    **`implements`** `FespalierAdapter` (not `extends`) stops compiling: extend it.
 5. `FespalierAdapter` also has `launch()` and `onEnter(InboundNavigation)` (empty defaults), and the runtime has `InboundLaunch`
    and `launchRouter`: a platform link is marked `NavigationSource.link` in telemetry when `launchRouter(links: true)` builds the
-   router (the generated wiring follows in this release). Nothing changes for an app that calls neither.
+   router. The generated wiring is there too: `AppRoutes.router` takes `launch:` and passes `links: true` with telemetry or
+   adapters, and with adapters there is an `AppRoutes.onEnter` (passed to `GoRouter(onEnter:)`) and `AppAdapters.launch()`, which
+   the generated main asks once and hands to the router as `AppMain.launch`. Every app's `app.g.dart` changes (the router is built
+   inside `launchRouter`: run `fsp gen`). An app.dart `router()` passes `launch: AppMain.launch` on (`fsp` warns otherwise); a
+   `main: manual` app calls `AppAdapters.launch()` itself. Any `onEnter` makes go_router parse every navigation asynchronously and
+   apply its redirect limit, so it is generated only with adapters.
 6. Moving from `main: auto` to `manual`: delete `lib/app.main.g.dart`. Each adapter's top-level `adapter` is read once, at the first `AppAdapters` call. `attach` runs after the first frame that shows the router.
 
 ### Telemetry (0.11.0)

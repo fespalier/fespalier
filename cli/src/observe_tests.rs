@@ -88,7 +88,7 @@ fn a_hook_binds_the_segments_above_its_folder_and_the_typed_route() {
             "RouteHooks('items/\\$id/observe.dart', onEnter: (ref) => _i3.onEnter(ref, id: o2.id), onLeave: (ref) => _i3.onLeave(ref, id: o2.id), onFocus: (_) => _i3.onFocus(id: o2.id)),",
             "({int id}) _observe2(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
             "static List<RouteHooks> _observeAt(Uri uri) => observeRoutes(uri, base, _matchers);",
-            "static void attach(GoRouter router) {",
+            "static void attach(GoRouter router, [ProviderContainer? container]) {",
             "observeAttach(router, _observeAt);",
             "attach(router);",
         ],
@@ -159,7 +159,7 @@ fn an_app_without_an_observe_file_emits_nothing_of_it() {
     assert!(!c.contains("RouteHooks"), "{c}");
     assert!(!c.contains("static void attach"), "{c}");
     assert!(
-        c.contains("    if (kFespalierDevTools) devToolsAttach(router);\n    return router;\n"),
+        c.contains("      if (kFespalierDevTools) devToolsAttach(router);\n      return router;\n"),
         "{c}"
     );
 }

@@ -202,7 +202,7 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   the pub cache or `pub get`, so `fsp check` is the same before and after. Since 0.11.0 the calls go through
   `AppAdapters`, which `app.g.dart` defines (a `FespalierAdapters` from `packages/fespalier/lib/src/adapters.dart`
   holds the order), whatever `main:` says, so `main: manual` apps call it from their own `main()`, and
-  `AppRoutes.attach(router, container)` runs each adapter's `attach` once per router. Each page builder the generator
+  `AppRoutes.attach(router, container)` runs each adapter's `attach` once per router. `AppRoutes.router(launch:)` builds the router inside `launchRouter` (`links: true` with telemetry or adapters; the generated main passes it `AppAdapters.launch()`'s answer), and `AppRoutes.onEnter` exists **only with adapters**: any `onEnter` makes go_router parse every navigation asynchronously and apply its redirect limit, so an app without adapters keeps go_router's simplest code path (**every app's `app.g.dart` changed** in 0.11.0 for the `launchRouter` wrapper). Each page builder the generator
   writes is wrapped in `namedPage('<pattern>', () => ...)`, so **every app's `app.g.dart` changed** in
   0.9.0 (two lines per page builder): never hand-edit them, and a new place that builds a `Page` reads
   `Transitions.pageName`.

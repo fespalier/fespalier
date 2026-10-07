@@ -21,6 +21,15 @@ import '{{ i.path }}' as {{ i.alias }};
 /// The app under {{ app_dir }}/, from main() on: startup.dart, splash.dart and app.dart around
 /// [AppRoutes.router].
 abstract final class AppMain {
+{% if launch %}
+  static InboundLaunch? _launch;
+
+  /// Where the app was opened from, asked of the adapters once before the router is built
+  /// (since 0.11.0): `AppRoutes.router(launch: AppMain.launch)`. Null until [run] has asked,
+  /// and on the web.
+  static InboundLaunch? get launch => _launch;
+
+{% endif %}
   /// What lib/main.dart calls: {{ zone_note }}the binding,
   /// {{ "the code of the deferred routes (loaded before the first frame, off the web), " if deferred }}then [root].
   static Future<void> run() => {{ run }};
@@ -33,6 +42,10 @@ abstract final class AppMain {
 {% for s in before_run %}
     {{ s }}
 {% endfor %}
+{% if launch %}
+    final launch = AppAdapters.launch();
+    _launch = launch is Future<InboundLaunch?> ? await launch : launch;
+{% endif %}
     runApp(root());
   }
 

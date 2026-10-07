@@ -144,23 +144,24 @@ Next: [Installation and setup](docs/getting-started.md) (CI, committing `app.g.d
 `fsp` and the Dart package `fespalier` are what you need. Every other package is optional and is a git
 dependency at the same release tag ([Companion packages](docs/getting-started.md#companion-packages)).
 
-| Package                  | What it adds                                                             | Docs                                                                               |
-| ------------------------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `fsp`                    | the generator and the commands around it                                 | [CLI reference](docs/cli.md)                                                       |
-| `fespalier`              | the runtime `app.g.dart` imports, and `testing.dart`                     | [File kinds](docs/file-kinds.md)                                                   |
-| `fespalier_otel`         | OpenTelemetry spans for navigations, guards, data and actions            | [Observability](docs/observability.md#telemetry)                                   |
-| `fespalier_sentry`       | Sentry errors tagged with the route and the file                         | [Sentry](docs/observability.md#sentry-fespalier_sentry)                            |
-| `fespalier_auth`         | signed-in routes: session, guards, refresh, OpenID Connect               | [Authentication](docs/auth.md)                                                     |
-| `fespalier_sign_keypair` | device-bound tokens (DPoP) for `fespalier_auth`                          | [DPoP](docs/auth.md#device-bound-tokens-dpop-with-fespalier_sign_keypair)          |
-| `fespalier_flags`        | feature flags that guards watch                                          | [Feature flags](docs/guards.md#feature-flags-fespalier_flags)                      |
-| `fespalier_storage`      | a `dataCache` on shared_preferences or Hive                              | [A cache on disk](docs/data.md#a-cache-on-disk-fespalier_storage)                  |
-| `fespalier_connectivity` | a reconnect signal and a `hasNetwork` provider                           | [Reconnects](docs/data.md#reconnects-fespalier_connectivity)                       |
-| `fespalier_adaptive`     | menus as a bar, a rail or a drawer by window width                       | [Adaptive navigation](docs/layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive) |
-| `fespalier_image`        | responsive CDN images                                                    | [Images](docs/responsive-images.md)                                                |
-| `fespalier_dio`          | Dio and `package:http`: cancellation, field errors, writes never retried | [HTTP clients](docs/http.md)                                                       |
-| `fespalier_tolgee`       | translations from Tolgee or your own server, offline-safe (since 0.10.0) | [Translations](docs/i18n-tolgee.md)                                                |
-| DevTools extension       | routes, guards, data and actions in Flutter DevTools                     | [DevTools extension](docs/devtools.md)                                             |
-| Editor plugins           | `fsp` diagnostics in VS Code and IntelliJ                                | [Editor plugins](docs/cli.md#editor-plugins)                                       |
+| Package                  | What it adds                                                                           | Docs                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `fsp`                    | the generator and the commands around it                                               | [CLI reference](docs/cli.md)                                                       |
+| `fespalier`              | the runtime `app.g.dart` imports, and `testing.dart`                                   | [File kinds](docs/file-kinds.md)                                                   |
+| `fespalier_otel`         | OpenTelemetry spans for navigations, guards, data and actions                          | [Observability](docs/observability.md#telemetry)                                   |
+| `fespalier_sentry`       | Sentry errors tagged with the route and the file                                       | [Sentry](docs/observability.md#sentry-fespalier_sentry)                            |
+| `fespalier_auth`         | signed-in routes: session, guards, refresh, OpenID Connect                             | [Authentication](docs/auth.md)                                                     |
+| `fespalier_sign_keypair` | device-bound tokens (DPoP) for `fespalier_auth`                                        | [DPoP](docs/auth.md#device-bound-tokens-dpop-with-fespalier_sign_keypair)          |
+| `fespalier_flags`        | feature flags that guards watch                                                        | [Feature flags](docs/guards.md#feature-flags-fespalier_flags)                      |
+| `fespalier_storage`      | a `dataCache` on shared_preferences or Hive                                            | [A cache on disk](docs/data.md#a-cache-on-disk-fespalier_storage)                  |
+| `fespalier_connectivity` | a reconnect signal and a `hasNetwork` provider                                         | [Reconnects](docs/data.md#reconnects-fespalier_connectivity)                       |
+| `fespalier_adaptive`     | menus as a bar, a rail or a drawer by window width                                     | [Adaptive navigation](docs/layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive) |
+| `fespalier_image`        | responsive CDN images                                                                  | [Images](docs/responsive-images.md)                                                |
+| `fespalier_dio`          | Dio and `package:http`: cancellation, field errors, writes never retried               | [HTTP clients](docs/http.md)                                                       |
+| `fespalier_cratestack`   | a CrateStack client behind `data.dart` and `action.dart`, offline-first (since 0.10.0) | [CrateStack](docs/cratestack.md), [Offline-first](docs/offline-first.md)           |
+| `fespalier_tolgee`       | translations from Tolgee or your own server, offline-safe (since 0.10.0)               | [Translations](docs/i18n-tolgee.md)                                                |
+| DevTools extension       | routes, guards, data and actions in Flutter DevTools                                   | [DevTools extension](docs/devtools.md)                                             |
+| Editor plugins           | `fsp` diagnostics in VS Code and IntelliJ                                              | [Editor plugins](docs/cli.md#editor-plugins)                                       |
 
 ## Documentation
 
@@ -191,6 +192,8 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 - <a name="authentication"></a><a name="installing-fespalier_auth"></a><a name="the-session"></a><a name="restoring-at-startup"></a><a name="guarding-signed-in-routes"></a><a name="signing-in-and-out"></a><a name="calling-your-api"></a><a name="openid-connect-and-keycloak"></a><a name="firebase-supabase-and-your-own-api"></a><a name="device-bound-tokens-dpop-with-fespalier_sign_keypair"></a><a name="testing-signed-in-routes"></a>[Authentication](docs/auth.md)
 - <a name="images"></a><a name="installing-fespalier_image"></a><a name="the-image-cdn-imagecdnprovider"></a><a name="buckets-the-widths-an-image-is-fetched-at"></a><a name="responsiveimage"></a><a name="url-builders"></a><a name="imgproxy-and-emgr"></a><a name="cloudinary"></a><a name="imgix"></a><a name="thumbor"></a><a name="a-url-template"></a><a name="already-sized-a-srcset"></a><a name="signed-image-urls"></a><a name="precaching-an-image-behind-a-link"></a><a name="images-in-heroes"></a><a name="images-on-the-web"></a><a name="caching-images"></a><a name="testing-images"></a><a name="image-loads-in-telemetry"></a><a name="what-images-cost"></a>[Images](docs/responsive-images.md)
 - [Translations](docs/i18n-tolgee.md)
+- [Offline-first](docs/offline-first.md)
+- [CrateStack](docs/cratestack.md)
 
 **Observability**
 

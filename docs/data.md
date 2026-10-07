@@ -234,6 +234,8 @@ ProviderScope(
 - `MemoryDataStorage` keeps values while the app runs: a page that is disposed and opened again shows its last value at once. For the web, examples and tests; it does not survive a restart.
 - A `Storage<String, String>` on disk survives one. `fespalier_storage` (since 0.9.0, [below](#a-cache-on-disk-fespalier_storage)) is a tested one on shared_preferences or Hive, with a size budget; `riverpod_sqflite`'s `JsonSqFliteStorage` plugs in as it is. To write your own, import `package:fespalier/persist.dart` (it re-exports `Storage`, `PersistedData`, `StorageOptions` and `StorageCacheTime`); `read` returns a `PersistedData<String>?`.
 
+For an app that keeps working without a network (reads that say how current they are, writes that wait, rows synced later), see [Offline-first](offline-first.md) and [CrateStack with fespalier](cratestack.md).
+
 A storage whose `read` is synchronous gives the saved value on the first frame. A `Future<Storage>` is fine too: there is one `loading.dart` frame, then the saved value.
 
 **What happens.**

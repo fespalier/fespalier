@@ -418,6 +418,10 @@ LeaveResult leaveWithParams<V>(
 ///    awaited. The `refresh` a guard asks for in that time is let through (and nothing else
 ///    is, so a pop made now still asks): a sign-out whose session a guard watches ends at the
 ///    login page without a question.
+///    The pass a refresh took is kept until the router commits what it set going (an async
+///    redirect on the way may take as long as it likes), or until the route information changes
+///    to something else, so an unrelated navigation ends it; a guard that never answers holds
+///    it until then.
 /// 3. If [navigate] requested a navigation the router has not committed by then, that one is
 ///    let through too, while the route information is still the one it left (an identity
 ///    ticket), until the router's first commit: a one-shot listener, no timer. A request that
@@ -449,11 +453,11 @@ Future<void> leaveWithoutAsking(
   bypass.waiting++;
   // A refresh a guard asks for in the window is let through, and the pass is held to the end
   // of it: an asynchronous guard is evaluated again by the router before it answers `onExit`.
-  var held = 0;
-  guardRefreshHooks[router] = (refresh) {
+  guardRefreshHooks[router] ??= (refresh) {
     bypass.during++;
-    held++;
+    bypass.held++;
     refresh();
+    bypass.heldValue = router.routeInformationProvider.value;
   };
 
   final navigated = Completer<bool>();
@@ -501,15 +505,19 @@ Future<void> leaveWithoutAsking(
         if (idle == null) break;
         await idle;
       }
-      // What a refresh set going (the router evaluates an async guard again) answers within a
-      // few microtask turns, and commits.
-      for (var i = 0; held > 0 && !committed && i < 8; i++) {
-        await Future<void>.value();
-      }
     } finally {
-      bypass.during -= held;
       bypass.waiting--;
-      if (bypass.waiting == 0) guardRefreshHooks[router] = null;
+      if (bypass.waiting == 0) {
+        guardRefreshHooks[router] = null;
+        // The pass a refresh took is kept until the router commits what it set going (it may
+        // evaluate an asynchronous redirect first, however long that takes), or until the route
+        // information changes to something else: an unrelated navigation ends it.
+        if (committed) {
+          bypass.releaseHeld();
+        } else {
+          bypass.armRelease(router);
+        }
+      }
       if (committed || !requested) {
         router.routerDelegate.removeListener(onCommit);
       } else {
@@ -536,6 +544,41 @@ final class _Bypass {
 
   /// Windows still waiting for the guards.
   int waiting = 0;
+
+  /// The passes taken by guard refreshes in a window, still kept (they are part of [during]).
+  int held = 0;
+
+  /// The route information the last refresh left, which only something else changes.
+  Object? heldValue;
+
+  VoidCallback? _release;
+
+  /// Gives the held passes back at the router's next commit, or when the route information
+  /// becomes something other than [heldValue].
+  void armRelease(GoRouter router) {
+    if (held == 0 || _release != null) return;
+    void onCommit() => releaseHeld();
+    void onValue() {
+      if (!identical(router.routeInformationProvider.value, heldValue)) {
+        releaseHeld();
+      }
+    }
+
+    router.routerDelegate.addListener(onCommit);
+    router.routeInformationProvider.addListener(onValue);
+    _release = () {
+      router.routerDelegate.removeListener(onCommit);
+      router.routeInformationProvider.removeListener(onValue);
+    };
+  }
+
+  /// Gives the held passes back now.
+  void releaseHeld() {
+    _release?.call();
+    _release = null;
+    during -= held;
+    held = 0;
+  }
 
   /// The route information of each navigation a window requested that is not committed yet.
   final tickets = <Object>[];

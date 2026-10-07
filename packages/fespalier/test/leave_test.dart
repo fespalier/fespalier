@@ -244,6 +244,33 @@ GoRouter router({String initial = '/a', String? Function(Uri uri)? redirect}) {
             }),
       ),
       plain('/login', 'login'),
+      // Redirect-only destinations that answer later than the guards fespalier counts.
+      GoRoute(
+        path: '/login2',
+        redirect: (context, state) => refRedirect(context, (ref) async {
+          for (var i = 0; i < 25; i++) {
+            await Future<void>.value();
+          }
+          return '/login';
+        }),
+      ),
+      GoRoute(
+        path: '/login3',
+        redirect: (context, state) => refRedirect(context, (ref) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return '/login';
+        }),
+      ),
+      for (final (path, to) in [('/inbox3', '/login2'), ('/inbox4', '/login3')])
+        leaving(
+          path,
+          path.substring(1),
+          redirect: (context, state) => refGuard(
+            context,
+            'g@$path',
+            (ref) => ref.watch(session) ? null : to,
+          ),
+        ),
       ShellRoute(
         parentNavigatorKey: rootKey,
         builder: (context, state, child) => child,
@@ -1181,6 +1208,61 @@ void main() {
         );
       }
     }
+
+    for (final inbox in ['inbox3', 'inbox4']) {
+      testWidgets(
+        'a sign-out whose destination redirects late (/$inbox) is not asked',
+        (tester) async {
+          final r = await boot(tester, initial: '/$inbox');
+          answer = (_, _) => false;
+          final container = ProviderScope.containerOf(
+            tester.element(find.text(inbox)),
+          );
+          final done = leaveWithoutAsking(r, () {
+            container.read(session.notifier).signedIn = false;
+          });
+          await settle(tester);
+          await done;
+          await settle(tester);
+          expect(asked, isEmpty);
+          expect(where(r), '/login');
+          // The pass is gone with the commit: the next navigation asks again.
+          r.go('/x');
+          await settle(tester);
+          r.go('/y');
+          await settle(tester);
+          expect(asked, ['x']);
+        },
+      );
+    }
+
+    testWidgets('overlapping windows give every pass back', (tester) async {
+      final r = await boot(tester, initial: '/inbox2');
+      answer = (_, _) => false;
+      final container = ProviderScope.containerOf(
+        tester.element(find.text('inbox2')),
+      );
+      final gate = Completer<void>();
+      final first = leaveWithoutAsking(r, () async {
+        await gate.future;
+        container.read(session.notifier).signedIn = false;
+      });
+      final second = leaveWithoutAsking(r, () {});
+      await settle(tester);
+      await second;
+      gate.complete();
+      await settle(tester);
+      await first;
+      await settle(tester);
+      expect(asked, isEmpty);
+      expect(where(r), '/login');
+      r.go('/x');
+      await settle(tester);
+      r.go('/y');
+      await settle(tester);
+      expect(asked, ['x']);
+      expect(find.text('x'), findsOneWidget);
+    });
 
     testWidgets('the same sign-out without leaveWithoutAsking asks', (
       tester,

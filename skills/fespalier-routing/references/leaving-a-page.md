@@ -73,12 +73,12 @@ skips the leaf's `leave()` (fixed in 17.4.0).
 
 1. `await leaveWithoutAsking(router, () => navigate())` (navigate may be async; it always returns a `Future`) lets pages go
    while it runs and its `Future` is pending, then waits for fespalier's guards to settle (container `pump`, async guards)
-   and lets their `refresh` through, plus one requested commit not yet applied (an identity ticket and a one-shot
+   and lets their `refresh` through (kept until the router commits it, or until another navigation; a guard that never answers holds it until then), plus one requested commit not yet applied (an identity ticket and a one-shot
    listener); it never covers a pop after the window, a `navigate` that requests nothing or a request that commits
    nothing (a failed sign-out asks again). Wrap
    sign-out in it, or check auth in `leave()`.
 2. A tab switch goes through without calling `leave()`, unless a route it reaches that the page is not already
-   under has a `redirect:` (a guard of that tab's own folder): that may take the navigation out of the shell, so it asks. A guard of the tabs' folder or above runs on the tab shell (since 0.11.0), so it never does. A hand-written
+   under has a `redirect:` (a guard of that tab's own folder): that may take the navigation out of the shell, so it asks. A guard of the tabs' folder or above runs on the tab shell (since 0.11.0), so it never does: if its answer changes at the switch itself and it redirects out of the tab layout, the page goes without being asked. A hand-written
    top-level `redirect:` cannot be seen.
 3. One prompt at a time: a second ask of the same page instance waits for the first and answers `true` only if the
    page is still there afterwards (a double pop completes once; a back joining a `go`'s prompt never closes the app; a

@@ -118,7 +118,7 @@ class Conventions(unittest.TestCase):
     def test_the_conventions_are_read_from_the_dart_file(self):
         c = self.conventions
         self.assertEqual(
-            ["navigate", "guard", "redirect", "data", "action", "deferred", "auth", "image"],
+            ["navigate", "guard", "redirect", "data", "action", "deferred", "auth", "image", "custom"],
             c.attrs["fespalier.operation"],
         )
         # fespalier_auth's attributes (since 0.9.0): the prefixed constants are values of their own

@@ -2,6 +2,7 @@
 // deferred load become in Sentry, from a hand-built router that calls the runtime helpers the way
 // a generated app.g.dart does, on a real Sentry hub with a recording transport.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -366,6 +367,43 @@ void main() {
       );
       // The image load started after the navigation ended: no navigation to be a child of.
       expect(spans.where((s) => s['op'] == 'fespalier.image'), isEmpty);
+    });
+
+    testWidgets('a custom operation is a span of the open screen: its name and '
+        'result, never its attributes (since 0.11.0)', (tester) async {
+      final answer = Completer<String>();
+      load = (_) => answer.future;
+      final rig = Rig(tracing: true);
+      final r = await rig.boot(tester);
+      r.go('/items/5');
+      await tester.pumpAndSettle();
+      final op = FespalierTelemetry.begin(
+        const TelemetryStart(
+          TelemetryOp.custom,
+          name: 'fespalier.push.open',
+          attributes: {'fespalier.push.token': 'secret-token-123'},
+        ),
+      );
+      FespalierTelemetry.finish(
+        op,
+        const TelemetryEnd(
+          TelemetryOutcome.ok,
+          attributes: {'fespalier.push.payload': 'secret-payload-456'},
+        ),
+      );
+      answer.complete('x');
+      await tester.pumpAndSettle();
+      final tx = only(await rig.sent(tester));
+      final spans = (tx['spans']! as List).map(map).toList();
+      final span = spans.singleWhere((s) => s['op'] == 'fespalier.custom');
+      expect(span['description'], 'fespalier.push.open');
+      final data = map(span['data']);
+      expect(data, containsPair('fespalier.operation', 'custom'));
+      expect(data, containsPair('fespalier.custom.result', 'ok'));
+      final everything = jsonEncode(tx);
+      expect(everything, isNot(contains('secret-token-123')));
+      expect(everything, isNot(contains('secret-payload-456')));
+      expect(everything, isNot(contains('fespalier.push.token')));
     });
   });
 }

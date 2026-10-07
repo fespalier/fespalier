@@ -108,6 +108,12 @@ void main() {
     );
   });
 
+  test('the custom operation (since 0.11.0)', () {
+    expect(FespalierConventions.opCustom, 'custom');
+    expect(FespalierConventions.customName, 'fespalier.custom.name');
+    expect(FespalierConventions.customResult, 'fespalier.custom.result');
+  });
+
   test('the image attributes (since 0.9.0)', () {
     expect(FespalierConventions.imageCdn, 'fespalier.image.cdn');
     expect(FespalierConventions.imageWidth, 'fespalier.image.width');

@@ -44,9 +44,16 @@ void remember() {
     // The spans of an HTTP client the tests simulate are not fespalier's.
     if (span.instrumentationScope.name != 'fespalier') continue;
     // A span's name is its operation, then what it is about (a route, a file).
-    seenSpans.add(span.name.split(' ').first);
+    // A custom span is named by its package (`fespalier.push.open`), and its own
+    // `fespalier.push.*` keys are that package's contract, not version 1's.
+    final custom = span.name.startsWith('fespalier.');
+    seenSpans.add(custom ? 'custom' : span.name.split(' ').first);
     if (span.name == 'navigate (not found)') seenSpans.add(span.name);
-    seenKeys.addAll(span.attributes.keys);
+    seenKeys.addAll(
+      span.attributes.keys.where(
+        (k) => !custom || !k.startsWith('fespalier.push.'),
+      ),
+    );
     for (final event in span.spanEvents ?? const <SpanEvent>[]) {
       seenEvents.add(event.name);
       seenEventKeys.addAll(event.attributes?.keys ?? const <String>[]);
@@ -697,6 +704,85 @@ void main() {
     });
   });
 
+  group('a custom span (a package\'s own operation, since 0.11.0)', () {
+    test('the name, the start and end attributes and the result', () {
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(
+          TelemetryOp.custom,
+          name: 'fespalier.push.open',
+          attributes: {'fespalier.push.kind': 'alert', 'fespalier.push.n': 2},
+        ),
+      );
+      FespalierTelemetry.finish(
+        token,
+        const TelemetryEnd(
+          TelemetryOutcome.ok,
+          isAsync: true,
+          attributes: {
+            'fespalier.push.ratio': 0.5,
+            'fespalier.push.fresh': true,
+          },
+        ),
+      );
+      final span = only('fespalier.push.open');
+      final attrs = span.attributes;
+      expect(attrs.getString('fespalier.operation'), 'custom');
+      expect(attrs.getString('fespalier.custom.name'), 'fespalier.push.open');
+      expect(attrs.getString('fespalier.custom.result'), 'ok');
+      expect(attrs.getString('fespalier.push.kind'), 'alert');
+      expect(attrs.getInt('fespalier.push.n'), 2);
+      expect(attrs.getDouble('fespalier.push.ratio'), 0.5);
+      expect(attrs.getBool('fespalier.push.fresh'), true);
+      expect(span.status, SpanStatusCode.Unset);
+    });
+
+    test('a convention key wins over the package\'s, and an end key outside '
+        'the package prefix is dropped', () {
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(
+          TelemetryOp.custom,
+          name: 'fespalier.push.open',
+          attributes: {'fespalier.push.kind': 'alert'},
+        ),
+      );
+      FespalierTelemetry.finish(
+        token,
+        const TelemetryEnd(
+          TelemetryOutcome.cancelled,
+          attributes: {
+            'fespalier.push.ok': 1,
+            'fespalier.custom.result': 'forged',
+            'fespalier.image.cdn': 'x',
+          },
+        ),
+      );
+      final attrs = only('fespalier.push.open').attributes;
+      expect(attrs.getString('fespalier.custom.result'), 'cancelled');
+      expect(attrs.getInt('fespalier.push.ok'), 1);
+      expect(attrs.getString('fespalier.image.cdn'), isNull);
+    });
+
+    test('an error object is never exported, only its class', () {
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.custom, name: 'fespalier.push.open'),
+      );
+      FespalierTelemetry.finish(
+        token,
+        TelemetryEnd(
+          TelemetryOutcome.error,
+          error: const FormatException('https://push.example.com/token/abc'),
+          stackTrace: StackTrace.current,
+        ),
+      );
+      final span = only('fespalier.push.open');
+      expect(span.status, SpanStatusCode.Error);
+      expect(span.statusDescription, isNull);
+      expect(span.spanEvents, isNull);
+      expect(a(span, 'fespalier.custom.result'), 'error');
+      expect(a(span, 'error.type'), 'FormatException');
+    });
+  });
+
   group('an image span (fespalier_image, since 0.9.0)', () {
     test(
       'a load: the builder, the bucket and whether a precache started it',
@@ -836,6 +922,7 @@ void main() {
       'deferred',
       'auth',
       'image',
+      'custom',
     });
     expect(seenKeys, {
       'fespalier.operation',
@@ -868,6 +955,8 @@ void main() {
       'fespalier.image.preload',
       'fespalier.image.result',
       'fespalier.image.status',
+      'fespalier.custom.name',
+      'fespalier.custom.result',
     });
     expect(seenEvents, {
       'fespalier.page.enter',

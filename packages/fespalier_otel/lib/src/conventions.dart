@@ -51,6 +51,9 @@ abstract final class FespalierConventions {
   /// An image loaded from the network (`package:fespalier_image`, since 0.9.0).
   static const String opImage = 'image';
 
+  /// A package's own operation (since 0.11.0): `fespalier.custom.name` says which.
+  static const String opCustom = 'custom';
+
   // Span names: the operation, then what it is about.
 
   /// A navigation that matched no route is named `navigate (not found)`.
@@ -201,8 +204,8 @@ abstract final class FespalierConventions {
   /// How the load ended.
   static const String deferredResult = 'fespalier.deferred.result';
 
-  // The values of `fespalier.action.result`, `fespalier.deferred.result` and
-  // `fespalier.image.result`.
+  // The values of `fespalier.action.result`, `fespalier.deferred.result`,
+  // `fespalier.image.result` and `fespalier.custom.result`.
 
   /// It worked.
   static const String resultOk = 'ok';
@@ -291,6 +294,16 @@ abstract final class FespalierConventions {
 
   /// The HTTP status of a failed load, when known.
   static const String imageStatus = 'fespalier.image.status';
+
+  // Attributes of a `custom` span (since 0.11.0). A package's own `fespalier.<pkg>.*` attributes
+  // on it are that package's contract, not contract version 1's.
+
+  /// The operation's name, `fespalier.<pkg>.<op>` (`fespalier.push.open`).
+  static const String customName = 'fespalier.custom.name';
+
+  /// How the operation ended: the `TelemetryOutcome` the package finished with, usually `ok` or
+  /// `error` (`cancelled`, `disposed` and `rejected` are possible).
+  static const String customResult = 'fespalier.custom.result';
 
   // Events on the `navigate` span.
 

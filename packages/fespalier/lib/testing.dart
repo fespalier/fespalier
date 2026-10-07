@@ -28,6 +28,9 @@ import 'src/telemetry.dart';
 /// here.
 export 'package:hooks_riverpod/misc.dart' show Override;
 
+/// A `RouteScope` for a test of an `observe.dart` hook that takes one (since 0.11.0).
+export 'src/route_scope.dart' show TestRouteScope;
+
 Duration? _noRetry(int retryCount, Object error) => null;
 
 /// Disposes [router] unless the test already did: a second `dispose` is an error.

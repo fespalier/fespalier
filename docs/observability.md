@@ -21,7 +21,7 @@ void onLeave(Ref ref, {required int id}) => ref.read(log).info('left product $id
 
 **The functions.** Any of `onEnter`, `onLeave` and `onFocus`, at least one, each a public top-level function that returns `void` (written out). Other functions in the file are helpers and are ignored.
 
-**The parameters.** An optional positional `Ref ref` first, then named parameters bound like a [guard's](guards.md): the folder's segments and those above it, typed (`required int id`); query parameters, optional and nullable (the folder route's when it has a `page.dart`, else the hook's alone); `Uri uri`, the page's location (mount prefix included); and `TypedLocation route`, the typed route of the page the hook runs for (`ProductRoute(id: 3)`).
+**The parameters.** An optional positional `Ref ref` first, then named parameters bound like a [guard's](guards.md): the folder's segments and those above it, typed (`required int id`); query parameters, optional and nullable (the folder route's when it has a `page.dart`, else the hook's alone); `Uri uri`, the page's location (mount prefix included); and `TypedLocation route`, the typed route of the page the hook runs for (`ProductRoute(id: 3)`); and, in `onEnter` only, `RouteScope scope`, the page instance's scope ([below](#the-pages-scope-routescope)).
 
 `extra`, `ProviderContainer` and `WidgetRef` are errors. The `Ref` is a throwaway provider's, closed when the hook returns: `ref.read` works, and so does changing another provider (`ref.read(views.notifier).add(...)`); `ref.watch` watches nothing that lasts.
 
@@ -35,23 +35,62 @@ void onLeave(Ref ref, {required int id}) => ref.read(log).info('left product $id
 
 `onEnter` and `onLeave` come in pairs, and `onFocus` falls between them. On one frame the `onLeave`s run first, newest first, then the `onEnter` or `onFocus` of the page on top.
 
-| Navigation                             | Events                                                               |
-| -------------------------------------- | -------------------------------------------------------------------- |
-| boot at `/a`                           | enter `/a`                                                           |
-| `go('/a/1')`, a nested page            | enter `/a/:id`; `/a` is covered, not left                            |
-| `go('/a/2')` from there                | leave `/a/1`, enter `/a/2`                                           |
-| `refresh()`, a rebuild, a query change | nothing                                                              |
-| switch to another tab, and back        | enter its page (the first tab's page is parked), then focus          |
-| `push('/x')`, then `pop()`             | enter `/x`; then leave `/x`, focus the page below                    |
-| `replace('/y')` on a pushed page       | leave the old, enter the new                                         |
-| a `go` that a guard redirects          | only the final location's events: the redirected-from one never ran  |
-| a `go` out of a tab layout             | leave every entered page of every tab, newest first, then enter      |
-| a deep link to `/products/1`           | enter `/products/1` only; `/products` enters the first time it shows |
-| a location with no route               | no hooks; the previous page leaves                                   |
+| Navigation                             | Events                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| boot at `/a`                           | enter `/a`                                                                                        |
+| `go('/a/1')`, a nested page            | enter `/a/:id`; `/a` is covered, not left                                                         |
+| `go('/a/2')` from there                | leave `/a/1`, enter `/a/2`                                                                        |
+| `refresh()`, a rebuild, a query change | nothing                                                                                           |
+| switch to another tab, and back        | enter its page (the first tab's page is parked), then focus                                       |
+| `push('/x')`, then `pop()`             | enter `/x`; then leave `/x`, focus the page below                                                 |
+| `replace('/y')` on a pushed page       | leave the old, enter the new                                                                      |
+| `replace()` on a tree page             | the same page key: a query-only replace is no transition; another segment value leaves and enters |
+| `pushReplacement('/y')`                | leave the page, enter `/y`                                                                        |
+| a `go` that a guard redirects          | only the final location's events: the redirected-from one never ran                               |
+| a `go` out of a tab layout             | leave every entered page of every tab, newest first, then enter                                   |
+| a deep link to `/products/1`           | enter `/products/1` only; `/products` enters the first time it shows                              |
+| a location with no route               | no hooks; the previous page leaves                                                                |
 
 **Errors.** A hook that throws is caught and reported with `FlutterError.reportError` (library `fespalier`, context `while running onEnter of products/$id/observe.dart`, the hook and the file filled in), and the hooks after it still run. In a widget test that fails the test.
 
 **Other rules:** hooks fire after the frame, not at `context.go()` (a test pumps first: `await tester.pump()`); none runs when the router is disposed or the app is killed; layouts and sections have none; a hook may navigate (it is looked at at the end of the next frame; to redirect, use a [guard](guards.md)); `fsp new 'orders/[id]' --observe` writes the file. An `observe.dart` with no `page.dart` at or below its folder is a warning, and one with none of the three functions an error.
+
+### The page's scope: `RouteScope`
+
+Since 0.11.0, `onEnter` may take `{required RouteScope scope}`: the scope of the page instance that entered, from the end of the frame that first shows it to the end of the frame it is gone from every navigator. It is how a hook ties something to the page's life without a widget:
+
+```dart
+// lib/app/orders/$id/observe.dart
+void onEnter(Ref ref, {required int id, required RouteScope scope}) {
+  scope.hold(OrderRoute.data(id));          // loaded for as long as this page is on a navigator
+  final sub = ref.read(orderSocket).subscribe(id);
+  scope.onLeave(sub.cancel);                // runs when this page instance is gone
+}
+```
+
+- `scope.hold(provider)` keeps a provider listened in the app's container until the page leaves, so an `autoDispose` provider (a route's `data`) stays loaded while the page is parked in a tab or covered by another page. It throws a `StateError` once the page has left.
+- `scope.onLeave(callback)` runs `callback` when the page leaves, newest first. It has no `Ref`: the hook's is closed by then, so capture what the callback needs. It throws a `StateError` once the page has left.
+- `scope.id` is the page instance's identity (`pageInstanceId(state)` for the page's `GoRouterState`), `scope.uri` the location it entered with and `scope.isActive` false once it left.
+
+The scope is the lifecycle's own instance, so it lives exactly as long as the events above say:
+
+| Case                                            | Scope                                                                                |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------ |
+| a page parked in another tab                    | stays (parked is not gone)                                                           |
+| back to that tab                                | the same scope (`onFocus`)                                                           |
+| `/c/1` to `/c/2`                                | the old one ends, a new one starts                                                   |
+| a query change, or `remount: onLocation` on one | the same scope (remount rebuilds the widget, not the instance)                       |
+| a page pushed twice                             | two scopes                                                                           |
+| a page covered by a pushed one                  | stays                                                                                |
+| a deferred page                                 | starts at enter, while the code loads: hold nothing declared in the deferred library |
+
+All the `observe.dart` files of a page share one scope. At leave, for one page instance: the `onLeave` hooks run first, innermost folder first (they can still read what is held), then the `scope.onLeave` callbacks, newest first, each caught and reported with `FlutterError.reportError` (context `while running a RouteScope.onLeave callback of <id>`), then the held providers are released. When the router is disposed no leave runs, as for the hooks. A scope also ends when its container is disposed (a `pumpRouter` test ends, the app is torn down): its `onLeave` callbacks run then, newest first, so a socket or timer a callback cancels does not outlive a widget test. The scope does this with a provider of its own that it listens to on the first `hold` or `onLeave`: Riverpod's `ref.onDispose` ends it, and fespalier adds no listener, timer or microtask.
+
+Hooks run in the container `AppRoutes.attach(router, container)` was given: the generated `main()` passes the app's root container to `attach` in an app with an `observe.dart` (since 0.11.0), so every hook runs there, not in a nested `ProviderScope` (a provider overridden only in a nested scope reads its default in a hook). Without a container (`AppRoutes.router()` alone, a router you attach yourself) they run in the one above the root navigator. A scope is a plain object made when the page's first `onEnter` runs, with no subscription until a hook calls `hold` or `onLeave`, and no timer, microtask or listener of its own. `hold` keeps a provider active while its page is parked in a tab: Riverpod would otherwise pause one whose only listeners are in a hidden tab, so a held stream keeps running. `keep_previous` is not affected: holding `XRoute.data(id)` only keeps it out of `autoDispose` while the page is on a navigator.
+
+`onEnter` here is neither go_router's top-level `onEnter` (its router-level hook) nor `FespalierAdapter.onEnter(InboundNavigation)` (an adapter's hook for a platform link): `observe.dart`'s runs after the navigation, for one page. The generated `RouteHooks.onEnter` takes `(ref, scope)` since 0.11.0. A widget test of a hook that takes a scope uses `TestRouteScope(container)` from `package:fespalier/testing.dart` and calls `scope.leave()`.
+
+The page instance's id (`scope.id`) is `'<pageKey>#<matchedLocation>'` when go_router's page key is a route's path template and `'<pageKey>@<path>'` when it is a random one (`push`, `pushReplacement`). `replace` keeps the key of the page it replaces, so `replace('/c/1?q=2')` on the tree page `/c/1` is the same instance, as the table says. An error page (a location with no route) is told apart by its whole location, query included, and `pageInstanceId` of its state is not that id.
 
 ## Telemetry
 

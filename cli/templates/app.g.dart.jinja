@@ -312,9 +312,9 @@ abstract final class AppRoutes {
 
   /// Lets {{ attach_what }} follow [router]: [router] calls it, and an app that mounts the
   /// tree in a GoRouter of its own calls it once with that router.
-{% if adapters %}
+{% if container_param %}
   ///
-  /// With [container], also each adapter's `attach` (since 0.11.0), once per router. [router]
+  /// With [container] (since 0.11.0){% if adapters %}, each adapter's `attach` runs once per router{% endif %}{% if observe %}{{ ", and" if adapters else "," }} the observe.dart hooks run in it{% endif %}. [router]
   /// calls it without one; the generated main() calls it again with the app's container once
   /// the ProviderScope exists, and an app that builds its own router or main() calls
   /// `AppRoutes.attach(router, container)` itself.
@@ -322,7 +322,7 @@ abstract final class AppRoutes {
   static void attach(GoRouter router, [ProviderContainer? container]) {
     if (kFespalierDevTools) devToolsAttach(router);
 {% if observe %}
-    observeAttach(router, _observeAt);
+    observeAttach(router, _observeAt, container: container);
 {% endif %}
 {% if telemetry %}
     telemetryAttach(router, base: () => _base);

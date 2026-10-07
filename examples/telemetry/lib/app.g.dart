@@ -74,9 +74,14 @@ abstract final class AppRoutes {
 
   /// Lets DevTools, the observe.dart hooks and telemetry follow [router]: [router] calls it, and an app that mounts the
   /// tree in a GoRouter of its own calls it once with that router.
+  ///
+  /// With [container] (since 0.11.0), the observe.dart hooks run in it. [router]
+  /// calls it without one; the generated main() calls it again with the app's container once
+  /// the ProviderScope exists, and an app that builds its own router or main() calls
+  /// `AppRoutes.attach(router, container)` itself.
   static void attach(GoRouter router, [ProviderContainer? container]) {
     if (kFespalierDevTools) devToolsAttach(router);
-    observeAttach(router, _observeAt);
+    observeAttach(router, _observeAt, container: container);
     telemetryAttach(router, base: () => _base);
   }
 
@@ -169,22 +174,22 @@ abstract final class AppRoutes {
   static final List<RouteMatcher> _matchers = [
     RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const []), observe: (s, m) {
       return [
-      RouteHooks('observe.dart', onEnter: (ref) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
+      RouteHooks('observe.dart', onEnter: (ref, scope) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
       ];
     }),
     RouteMatcher(['orders'], (s) => UrlMatch(s.uri, const OrdersRoute(), const {}, const []), observe: (s, m) {
       return [
-      RouteHooks('observe.dart', onEnter: (ref) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
+      RouteHooks('observe.dart', onEnter: (ref, scope) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
       ];
     }),
     RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), const {}, const []), observe: (s, m) {
       return [
-      RouteHooks('observe.dart', onEnter: (ref) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
+      RouteHooks('observe.dart', onEnter: (ref, scope) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
       ];
     }),
     RouteMatcher(['login'], (s) => UrlMatch(s.uri, const LoginRoute(), const {}, const []), observe: (s, m) {
       return [
-      RouteHooks('observe.dart', onEnter: (ref) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
+      RouteHooks('observe.dart', onEnter: (ref, scope) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
       ];
     }),
     RouteMatcher(['orders', ':id'], (s) {
@@ -193,8 +198,8 @@ abstract final class AppRoutes {
     }, observe: (s, m) {
       final o4 = _observe4(s);
       return [
-      RouteHooks('observe.dart', onEnter: (ref) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
-      RouteHooks('(tabs)/orders/\$id/observe.dart', onEnter: (ref) => _i8.onEnter(ref, id: o4.id), onLeave: (ref) => _i8.onLeave(ref, id: o4.id), onFocus: (ref) => _i8.onFocus(ref, id: o4.id)),
+      RouteHooks('observe.dart', onEnter: (ref, scope) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
+      RouteHooks('(tabs)/orders/\$id/observe.dart', onEnter: (ref, scope) => _i8.onEnter(ref, id: o4.id, scope: scope), onLeave: (ref) => _i8.onLeave(ref, id: o4.id), onFocus: (ref) => _i8.onFocus(ref, id: o4.id)),
       ];
     }),
   ];

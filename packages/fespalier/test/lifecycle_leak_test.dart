@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:leak_tracker_flutter_testing/leak_tracker_flutter_testing.dart';
 
+final held = Provider.autoDispose<int>((ref) => 1);
+
 void main() {
   LeakTesting.enable();
 
@@ -25,7 +27,12 @@ void main() {
         (uri) => [
           RouteHooks(
             'observe.dart',
-            onEnter: (_) => seen.add('enter ${uri.path}'),
+            onEnter: (_, scope) {
+              seen.add('enter ${uri.path}');
+              // A held subscription and a callback, both gone with the page.
+              scope.hold(held);
+              scope.onLeave(() => seen.add('scope left ${uri.path}'));
+            },
             onLeave: (_) => seen.add('leave ${uri.path}'),
           ),
         ],
@@ -34,7 +41,7 @@ void main() {
       router.go('/other');
       await tester.pumpAndSettle();
       expect(find.text('other'), findsOneWidget);
-      expect(seen, ['enter /', 'leave /', 'enter /other']);
+      expect(seen, ['enter /', 'leave /', 'scope left /', 'enter /other']);
     },
   );
 }

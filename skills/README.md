@@ -17,21 +17,22 @@ point at a checkout of this repository.
 
 ## The skills
 
-| Skill                                                     | Load it when                                                                                                                                                                 |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`fespalier`](fespalier/)                                 | Anything. Orientation, the file kinds, install, the golden rules, the map                                                                                                    |
-| [`fespalier-routing`](fespalier-routing/)                 | Folders, segments, enums, typed routes, `route.dart` (incl. `nest`), `extra`, the manifest                                                                                   |
-| [`fespalier-data`](fespalier-data/)                       | `data.dart`, loading and error views, retries, sections, prefetch, `dataAt`                                                                                                  |
-| [`fespalier-layouts`](fespalier-layouts/)                 | `layout.dart`, tabs, transitions, dialogs, restoration, adaptive layouts                                                                                                     |
-| [`fespalier-guards`](fespalier-guards/)                   | `guard.dart`, `redirect.dart`, `returnTo`, sign-in and refresh on auth change                                                                                                |
-| [`fespalier-testing`](fespalier-testing/)                 | `pumpRouter`, deep links, data states, and the traps that hang a test                                                                                                        |
-| [`fespalier-observability`](fespalier-observability/)     | `observe.dart` hooks (analytics, titles), telemetry, OpenTelemetry with `otel_zone`, Sentry (errors first, since 0.9.0), the telemetry conventions                           |
-| [`fespalier-images`](fespalier-images/)                   | Network images: `ResponsiveImage`, an image CDN (imgproxy, EmgR, Cloudinary, imgix, Thumbor), signed URLs without a key in the app, image heroes, `FakeImages` (since 0.9.0) |
-| [`fespalier-i18n`](fespalier-i18n/)                       | Translated texts, the language from the URL, Tolgee, bundled ARB, a language menu, `fakeTranslations` (`fespalier_tolgee`, since 0.10.0)                                     |
-| [`fespalier-offline`](fespalier-offline/)                 | A screen or a write that works offline: `ref.serve`, intents, owned rows, sync, `autoSync`, testing offline (`fespalier_cratestack`'s core, since 0.10.0)                    |
-| [`fespalier-cratestack`](fespalier-cratestack/)           | Wiring a CrateStack client: the two seams, its Dio, idempotency, the server's contract, embedded mode (since 0.10.0)                                                         |
-| [`fespalier-troubleshooting`](fespalier-troubleshooting/) | **An `fsp` error, a stale `app.g.dart`, a URL that shows the wrong page**                                                                                                    |
-| [`fespalier-migration`](fespalier-migration/)             | Upgrading between releases, or adopting fespalier in a go_router app                                                                                                         |
+| Skill                                                     | Load it when                                                                                                                                                                           |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`fespalier`](fespalier/)                                 | Anything. Orientation, the file kinds, install, the golden rules, the map                                                                                                              |
+| [`fespalier-routing`](fespalier-routing/)                 | Folders, segments, enums, typed routes, `route.dart` (incl. `nest`), `extra`, the manifest                                                                                             |
+| [`fespalier-data`](fespalier-data/)                       | `data.dart`, loading and error views, retries, sections, prefetch, `dataAt`                                                                                                            |
+| [`fespalier-layouts`](fespalier-layouts/)                 | `layout.dart`, tabs, transitions, dialogs, restoration, adaptive layouts                                                                                                               |
+| [`fespalier-guards`](fespalier-guards/)                   | `guard.dart`, `redirect.dart`, `returnTo`, sign-in and refresh on auth change                                                                                                          |
+| [`fespalier-testing`](fespalier-testing/)                 | `pumpRouter`, deep links, data states, and the traps that hang a test                                                                                                                  |
+| [`fespalier-observability`](fespalier-observability/)     | `observe.dart` hooks (analytics, titles), telemetry, OpenTelemetry with `otel_zone`, Sentry (errors first, since 0.9.0), the telemetry conventions                                     |
+| [`fespalier-images`](fespalier-images/)                   | Network images: `ResponsiveImage`, an image CDN (imgproxy, EmgR, Cloudinary, imgix, Thumbor), signed URLs without a key in the app, image heroes, `FakeImages` (since 0.9.0)           |
+| [`fespalier-i18n`](fespalier-i18n/)                       | Translated texts, the language from the URL, Tolgee, bundled ARB, a language menu, `fakeTranslations` (`fespalier_tolgee`, since 0.10.0)                                               |
+| [`fespalier-offline`](fespalier-offline/)                 | A screen or a write that works offline: `ref.serve`, intents, owned rows, sync, `autoSync`, testing offline (`fespalier_cratestack`'s core, since 0.10.0)                              |
+| [`fespalier-cratestack`](fespalier-cratestack/)           | Wiring a CrateStack client: the two seams, its Dio, idempotency, the server's contract, embedded mode (since 0.10.0)                                                                   |
+| [`fespalier-maps`](fespalier-maps/)                       | A place picked on a map: `PinPicker`, the `Geocoder` you implement, the position source, `MapLibreSurface`, a name shown as a guess, `FakeMapSurface` (`fespalier_maps`, since 0.13.0) |
+| [`fespalier-troubleshooting`](fespalier-troubleshooting/) | **An `fsp` error, a stale `app.g.dart`, a URL that shows the wrong page**                                                                                                              |
+| [`fespalier-migration`](fespalier-migration/)             | Upgrading between releases, or adopting fespalier in a go_router app                                                                                                                   |
 
 Start with `fespalier`: it is the orientation skill and it routes to the rest. If
 something is not working, read
@@ -158,12 +159,12 @@ skills/<name>/
 
 `name:` must equal the directory; `description:` is the only thing an agent reads when
 deciding whether to load the skill, so say what it covers **and** when to reach for it.
-Keep `SKILL.md` readable in one sitting and push detail into `references/`. Thirteen skills
+Keep `SKILL.md` readable in one sitting and push detail into `references/`. Fourteen skills
 is already a routing decision; fold new material into the owning skill rather than adding
 one. The three added with 0.10.0 are separate because each has its own trigger and its own reader:
 translations (`fespalier-i18n`), offline-first behaviour that does not depend on any backend
 (`fespalier-offline`), and wiring one backend (`fespalier-cratestack`, which defers to the second for
-the API). Folding them into `fespalier-data` would have made its description a list of everything.
+the API). Folding them into `fespalier-data` would have made its description a list of everything. `fespalier-maps` (0.13.0) is separate for the same reason: a map is a platform view and a geocoder is an app-owned network call, which no other skill teaches.
 
 **A new file kind, config key, command or docs section** fails the gate by name until a
 skill claims it:

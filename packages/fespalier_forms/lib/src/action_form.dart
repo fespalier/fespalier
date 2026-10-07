@@ -9,6 +9,8 @@ import 'package:flutter/widgets.dart';
 import 'draft_store.dart';
 import 'drafts.dart';
 
+part 'form_flow.dart';
+
 /// The messages a form shows for text it cannot read as its field's type (since 0.8.1). Pass your
 /// own, translated, to the generated `useForm`.
 final class ActionFormMessages {
@@ -547,7 +549,7 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier
         !_disposed &&
         drafts.hasStorage &&
         drafts.generation == draftClearGeneration &&
-        _draftFields().isNotEmpty;
+        (_draftFields().isNotEmpty || _draftSteps().isNotEmpty);
   }
 
   /// Saves what the form holds as its draft, and completes when it is written, including a write
@@ -580,6 +582,22 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier
         f.name: f._draftValue(),
   };
 
+  /// What a draft keeps besides the fields: the names of the steps done, for a multi-page form;
+  /// nothing for a form of one page.
+  List<String> _draftSteps() => const [];
+
+  /// Takes the steps a draft kept (a multi-page form).
+  void _restoreSteps(List<String> saved) {}
+
+  /// Whether leaving the form keeps a draft: it has changed, or (a multi-page form) steps are done.
+  bool get _worthKeeping => isDirty;
+
+  /// The widget that owns the form has started it, at [context].
+  void _attached(BuildContext context) {}
+
+  /// The widget that owns the form is going.
+  void _detached() {}
+
   /// Writes the draft of what the form holds now, or deletes it when nothing of it changed.
   ///
   /// Returns what completes when it is written: a `Future` only when the storage answers later.
@@ -587,12 +605,13 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier
     final drafts = _drafts;
     if (drafts == null) return null;
     final fields = _draftFields();
-    if (fields.isEmpty) {
+    final steps = _draftSteps();
+    if (fields.isEmpty && steps.isEmpty) {
       if (drafts.stored) _clearDraft();
       return null;
     }
     if (drafts.generation != draftClearGeneration) return null;
-    final text = jsonEncode(fields);
+    final text = jsonEncode(steps.isEmpty ? fields : [fields, steps]);
     if (text == drafts.lastSaved) return drafts.pending;
     // What is known of the storage changes now, whenever the storage answers.
     drafts
@@ -606,6 +625,7 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier
         drafts.config.maxAge,
         fields,
         generation: drafts.generation,
+        steps: steps.isEmpty ? null : steps,
       ),
     );
   }
@@ -651,34 +671,48 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier
       return true;
     }());
     drafts.use((storage, {required deferred}) {
-      void apply(Map<String, Object?>? saved, {required bool deferred}) {
-        if (saved == null || _disposed || _discarded || isPending) return;
-        for (final f in _all) {
-          if (!f._drafted || f._changed) continue;
-          if (drafts.config.exclude.contains(f.name)) continue;
-          if (!saved.containsKey(f.name)) continue;
-          try {
-            f._restoreDraft(saved[f.name]);
-          } on Object catch (error) {
-            if (kDebugMode) {
-              debugPrint('fespalier_forms: draft of ${f.name} dropped: $error');
-            }
-          }
-        }
-        drafts
-          ..stored = true
-          ..lastSaved = jsonEncode(_draftFields());
-        _checked = null; // validate() said it of the values from before
-        if (deferred) notifyListeners();
-      }
-
-      final loaded = loadDraft(storage, drafts.key, drafts.shape);
-      if (loaded is Future<Map<String, Object?>?>) {
-        unawaited(loaded.then((saved) => apply(saved, deferred: true)));
+      final loaded = loadDraftEntry(storage, drafts.key, drafts.shape);
+      if (loaded is Future<DraftEntry?>) {
+        unawaited(loaded.then((saved) => _applyDraft(saved, deferred: true)));
       } else {
-        apply(loaded, deferred: deferred);
+        _applyDraft(loaded, deferred: deferred);
       }
     });
+  }
+
+  /// Takes the fields (and steps) of a draft that was read, into the fields the user has not
+  /// touched; tells the page when [deferred], because it is built already.
+  void _applyDraft(DraftEntry? entry, {required bool deferred}) {
+    final drafts = _drafts;
+    if (drafts == null ||
+        entry == null ||
+        _disposed ||
+        _discarded ||
+        isPending) {
+      return;
+    }
+    final saved = entry.fields;
+    for (final f in _all) {
+      if (!f._drafted || f._changed) continue;
+      if (drafts.config.exclude.contains(f.name)) continue;
+      if (!saved.containsKey(f.name)) continue;
+      try {
+        f._restoreDraft(saved[f.name]);
+      } on Object catch (error) {
+        if (kDebugMode) {
+          debugPrint('fespalier_forms: draft of ${f.name} dropped: $error');
+        }
+      }
+    }
+    _restoreSteps(entry.steps);
+    final steps = _draftSteps();
+    drafts
+      ..stored = true
+      ..lastSaved = jsonEncode(
+        steps.isEmpty ? _draftFields() : [_draftFields(), steps],
+      );
+    _checked = null; // validate() said it of the values from before
+    if (deferred) notifyListeners();
   }
 
   void _restart(I input, {required bool keepDirty}) {
@@ -749,7 +783,7 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier
   void dispose() {
     if (!_disposed && _drafts != null && !_discarded) {
       // A form that was left alone keeps nothing; one that changed keeps what changed.
-      if (isDirty) {
+      if (_worthKeeping) {
         _let(_saveDraft());
       } else if (_drafts!.stored) {
         _clearDraft();
@@ -834,6 +868,7 @@ final class _ActionFormHook<I, T, F extends Record>
     this.resetOnSuccess,
     this.messages,
     this.drafts, {
+    this.create,
     super.keys,
   });
 
@@ -849,22 +884,27 @@ final class _ActionFormHook<I, T, F extends Record>
   final ActionFormMessages messages;
   final _Drafts Function()? drafts;
 
+  /// Makes the form, when it is not a plain [ActionForm]: a multi-page form (since 0.11.0).
+  final ActionForm<I, T, F> Function(_ActionFormHook<I, T, F> hook)? create;
+
   @override
   _ActionFormState<I, T, F> createState() => _ActionFormState<I, T, F>();
 }
 
 final class _ActionFormState<I, T, F extends Record>
     extends HookState<ActionForm<I, T, F>, _ActionFormHook<I, T, F>> {
-  late final ActionForm<I, T, F> _form = ActionForm<I, T, F>._(
-    hook.action,
-    hook.initial,
-    hook.fields,
-    hook.input,
-    hook.validate,
-    hook.messages,
-    hook.validation,
-    hook.resetOnSuccess,
-  );
+  late final ActionForm<I, T, F> _form =
+      hook.create?.call(hook) ??
+      ActionForm<I, T, F>._(
+        hook.action,
+        hook.initial,
+        hook.fields,
+        hook.input,
+        hook.validate,
+        hook.messages,
+        hook.validation,
+        hook.resetOnSuccess,
+      );
 
   /// The data the fields last started from.
   late Object? _data = hook.data;
@@ -877,6 +917,7 @@ final class _ActionFormState<I, T, F extends Record>
     _form
       .._state = hook.state
       ..addListener(_changed);
+    _form._attached(context);
     // A page with a leave.dart asks its forms before it goes (since 0.11.0).
     _unregister = LeaveScope.maybeOf(context)?.register(_form);
     if (hook.drafts case final make?) {
@@ -920,6 +961,7 @@ final class _ActionFormState<I, T, F extends Record>
   void dispose() {
     _unregister?.call();
     _lifecycle?.dispose();
+    _form._detached();
     _form.dispose();
   }
 }

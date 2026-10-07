@@ -182,6 +182,138 @@ leavePrompt.overrideWithValue((context, page) async {
 
 **What it does not cover.** Everything [`leave.dart` does not ask about](navigation.md#leaving-a-page-leavedart): a tab switch (the page is parked, not gone), a parked tab's pages when the whole layout leaves, a process kill. A form still writes its draft when it is disposed and when the app goes to the background, so drafts cover what the question does not.
 
+## Multi-page forms
+
+A form that is too long for one screen is a **flow** (since 0.11.0): the steps are pages, they share **one form and one draft**, and the question about unsaved changes is asked **once**, when the user leaves the flow. A flow is the section fespalier already has, a folder with a `layout.dart` and no `page.dart`, with an `action.dart` whose `form()` gains one companion, `const steps`. Each step is a child folder with a `page.dart`, so every step is a typed route with a URL: deep links, guards, transitions, `fsp routes` and the generated tests work as for any other page. The layout outlives the changes of step (a `ShellRoute` keeps its page), so it owns the form.
+
+```text
+lib/app/signup/
+  layout.dart       SignupLayout({required Widget child})   // holds the flow, shows the progress
+  action.dart       form(), steps, skip(), validate(), action()
+  guard.dart        resume at the first step not done
+  leave.dart        asked once, when leaving the flow
+  name/page.dart      SignupNamePage()      -> /signup/name
+  company/page.dart   SignupCompanyPage()   -> /signup/company   (skipped for individuals)
+  contact/page.dart   SignupContactPage()   -> /signup/contact
+  review/page.dart    SignupReviewPage()    -> /signup/review
+```
+
+### Declaring the steps
+
+```dart
+// signup/action.dart
+typedef SignupFields = ({String name, bool business, String? company, String email, String? phone});
+
+SignupFields form() => (name: '', business: false, company: null, email: '', phone: null);
+
+/// Which step asks for which fields, in order; a step with none (the review) is just a page.
+const steps = {
+  'name': ['name', 'business'],
+  'company': ['company'],
+  'contact': ['email', 'phone'],
+  'review': <String>[],
+};
+
+/// Optional: a step that is left out for this input.
+bool skip(SignupStep step, SignupFields input) => step == SignupStep.company && !input.business;
+
+FieldErrors? validate(SignupFields input) => FieldErrors({if (input.name.isEmpty) 'name': 'Enter your name'});
+
+Future<Account> action(Ref ref, {required SignupFields input}) => ref.read(api).signUp(input);
+```
+
+- **`steps`** is a `const` map literal from a step folder's name to the fields of the input it asks for. The order is the order of the flow. Every field belongs to exactly one step, and every step is a **direct** child folder with a `page.dart` (nested flows are not supported). For an action called `approve` the names are `approveSteps` and `approveSkip`.
+- **The generated file** declares `enum SignupStep { name, company, contact, review }` (a folder `contact_info` is `contactInfo`) and gives the section's handle `useFlow` (for the layout), `flowOf` (for a step page) and `resume` (for a guard), in place of `useForm`. For another action they are `use<Action>Flow`, `<action>FlowOf` and `<action>Resume`.
+- **`skip(step, input)`** is optional and decides from the input as it is now, so it follows the user's own answers: it is read for the progress, for `next` and `back`, and by `resume`.
+- **A flow sits at a path with no dynamic segment** for now: its steps are `go`ne to by typed routes the section holds. Its `form()` takes no value (`resume` runs in a guard, before any data is loaded).
+- A key called `draft`, `messages` or `validation` is reserved, as for `useForm`. A `const` map literal called `steps` (or `<action>Steps`) beside a `form()` is a flow; a `steps` of any other shape (a number, a list) is yours and is left alone.
+
+The layout makes the flow and shares it with the pages below:
+
+```dart
+class SignupLayout extends HookConsumerWidget {
+  const SignupLayout({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final flow = SignupSection.useFlow(ref);
+    return FormFlowScope(
+      flow: flow,
+      child: Column(children: [
+        LinearProgressIndicator(value: flow.progress),
+        Expanded(child: child),
+      ]),
+    );
+  }
+}
+
+// a step page
+final flow = SignupSection.flowOf(context);
+final f = flow.fields; // the fields of every step, typed as in `useForm`
+TextField(controller: f.email.controller, decoration: InputDecoration(errorText: f.email.error));
+FilledButton(onPressed: flow.isPending ? null : () => flow.next(context), child: const Text('Next'));
+```
+
+`useFlow` takes the action's keys, `validation:`, `messages:` and `draft:` (see below), and returns a `FormFlow`, which is an `ActionForm`: `fields`, `isDirty`, `isPending`, `error`, `reset()`, `submit()` and the rest of [`form()` and `useForm`](#form-and-useform) work as they do for one page. `flowOf` rebuilds the page when the flow changes.
+
+### Moving between steps
+
+- **`next(context)`** checks the **current step's fields only**: what each reads as (an age of `abc`) and what `validate()` says of **those** fields; the errors of the other steps are not shown yet. When they are fine it marks the step done, keeps the draft and `go`es to the next step shown. It returns `false` (with the errors under the fields) when a field is wrong. On the last step shown it runs the action, as `submit()` does.
+- **`back(context)`** goes to the previous step shown (false on the first). Nothing is lost: the form lives in the layout.
+- **`goTo(context, step)`** opens a step to edit it (from a review), when `canGoTo(step)` allows it: the step is shown and every step shown before it is done.
+- **Enter a flow with `go`** (`SignupRoute`'s first step `.go(context)`, or a link). `next`, `back` and `goTo` use `go` too, so a flow that was `push`ed loses the page under it on the first step change; the flow is a place, not a modal stack.
+- Steps are real navigation (`go`), so each is a history entry on the web: the browser's back reaches the previous step's URL. The Android back, on a step that is not the first, goes to the previous step instead of leaving the flow (see Leaving the flow).
+
+### Validation and the server's errors
+
+- Each field shows its errors once its step was tried with `next`, or after `submit()`; `validation: ActionFormValidation.onChange` still shows a changed field at once.
+- **`submit()`** checks every field. A field that is wrong takes the flow to the **first step that asks for it**, with the error shown. Then it runs the action with all the fields.
+- **The server's `FieldErrors`** are mapped by the steps: the flow goes to the first step that owns an erroring field, and the message is under the field. What belongs to no field (the `message`, a key that is none of the form's) is in `flow.error`, on the page you call `submit()` from, usually the review.
+- On success the draft is deleted, the steps done are forgotten and the fields are the new baseline.
+
+### Drafts and deep links
+
+- **The draft is on by default** in a flow (`useFlow(ref, draft: const FormDraft())`; pass `draft: null` to keep none, or `FormDraft(exclude: {'password'})`): surviving back, forward and a restart is the point of a flow. It is the [route-level draft](#drafts) of the action, and it keeps the **steps done** with the fields (`{"v":1,"fields":{...},"steps":["name"]}`).
+- **When it is written:** on `next`, `back` and `goTo` (a step change is an event, not a timer), when the app goes to the background and when the layout is disposed. **When it is restored:** when the layout mounts, so a deep link or a restart finds the form as it was.
+- **`resume`** is what a guard in the section returns, so that a link into the middle opens where the user had got to:
+
+```dart
+// signup/guard.dart
+GuardResult guard(Ref ref, {required Uri uri}) => SignupSection.resume(ref, uri: uri);
+```
+
+`resume` returns the location of the first step shown that is not done when `uri` is a step past it, else `null`. What is done comes from the flow on screen when there is one (so it works with no draft), else from the draft; with neither, only the first step opens. The flow on screen is found by its draft key (action, family key and `formDraftScope`) in a registry shared by the whole process, not per `ProviderContainer`: two containers of one app (a test that boots twice) see the last layout mounted. A storage that answers later makes the guard a `Future`. A link to a step that is skipped goes to the first step not done. A link that is no step's is left alone.
+
+### Leaving the flow
+
+The flow's `leave.dart` goes beside the `layout.dart`, with no `page.dart`: this is the one page-less folder that may have one. `leaveIfClean` works unchanged, with "Keep as draft":
+
+```dart
+// signup/leave.dart
+LeaveResult leave(BuildContext context, Ref ref, {required PageLeave page}) =>
+    leaveIfClean(context, ref, page);
+```
+
+- The generator applies it to **every step's `GoRoute`** with `within:` the section's path, so a navigation that stays inside the section (a step to the next, `back`, `goTo`, the browser's back) is **not asked**, and leaving it is, once. A pop is judged by where it lands (the location without the exiting step).
+- `page.isDirty` is the flow's: the flow registers in each step page's `LeaveScope`.
+- **The system back:** on a step that is not the first, Android's back calls `flow.back()` instead of popping (a back handler on the page's `LeaveScope`); on the first step it leaves the flow, which asks. While a step has a handler the iOS edge swipe is off.
+- What [`leave.dart` does not ask about](navigation.md#leaving-a-page-leavedart) holds for a flow too, and the flow's `leave()` takes no segment, query parameter or `extra`.
+
+### Progress
+
+`flow.step` (from the current location), `flow.steps` (the steps shown, in order), `flow.index` (0-based, among the steps shown), `flow.count`, `flow.progress` (`(index + 1) / count`, so it starts at `1 / count`, not 0; for a `LinearProgressIndicator(value:)`), `flow.isFirst`, `flow.isLast`, `flow.isComplete(step)` and `flow.canGoTo(step)`. `skip()` changes `steps` and `count` as the user answers.
+
+### Testing a flow
+
+`package:fespalier_forms/testing.dart` adds, for a flow:
+
+- `expectStep(tester, SignupStep.contact)` expects the router to be at that step (the last segment of the location is the step's name; give `route: const SignupContactRoute()` to compare the whole location);
+- `seedFormDraft(container, id:, shape:, fields:, steps: {SignupStep.name})` writes the draft of "the app was closed after the first step", and `readFormDraftSteps(container, id:, shape:)` reads the steps a draft has done;
+- `LeavePrompts.answer(LeaveChoice.keep)` answers the question at once.
+
+A test boots at a step, types, taps "Next" and `expectStep`s; a restart is a second `pumpRouter` over the same `MemoryDataStorage`; a deep link is `initialLocation: '/signup/review'` with a seeded draft. `examples/features` has `lib/app/signup/` and `test/flow_test.dart`: next checking only its own fields, a skipped step, `goTo` from the review, a server error that goes to the step that owns it, the draft surviving a restart, a deep link resumed, the leave asked once and the Android back.
+
 ## Testing
 
 A form is tested through its page: `pumpRouter` boots the app at the location (see [Testing](testing.md)), `enterText` and `tap` drive it, and the pending write is held on a `Completer`, so no timer and no `runAsync` is needed.

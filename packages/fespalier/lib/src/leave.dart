@@ -13,6 +13,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -101,11 +102,14 @@ final class LeaveScope {
   /// that returns true has handled it, so the page is not popped and `leave()` is not asked.
   /// Without one that handles it, the back is turned into `GoRouter.pop` as usual.
   ///
-  /// It is consulted where the page's `PopScope` is: on a page whose route can pop (a pushed
-  /// page, or any page above the first of its navigator), by Android's back and by
-  /// `Navigator.maybePop`. On the first page of a navigator, go_router's own fallback asks
-  /// `leave()` and the handlers are not consulted. While a handler is registered the page's
-  /// `PopScope` blocks, so the iOS edge swipe is off (there is no back to hand to a handler).
+  /// It is consulted by Android's back and by `Navigator.maybePop`, through the page's
+  /// `PopScope`, which blocks while a handler is registered, so the iOS edge swipe is off (there
+  /// is no back to hand to a handler). That holds on the first page of a navigator too (a step
+  /// of a flow is the only page of its shell's navigator): register a handler there only while
+  /// it can handle the back: when every handler declines, the back pops the page through
+  /// go_router (which asks `leave()`) if the router can pop, and otherwise ends the app with
+  /// `SystemNavigator.pop` without asking. Without a handler, go_router's own fallback asks
+  /// `leave()` on the first page.
   VoidCallback onBack(bool Function() handler) {
     _backs.add(handler);
     _owner._sourcesChanged();
@@ -248,9 +252,11 @@ final class _LeaveScopeState extends State<_LeaveScopeWidget> {
   Widget build(BuildContext context) {
     final sources = _scope._sources;
     final routeCanPop = ModalRoute.of(context)?.canPop == true;
+    // A back handler blocks the pop wherever the page is: on the first page of a navigator too,
+    // where `Navigator.maybePop` asks the handlers only of a `PopScope` that blocks.
     final canPop =
-        !routeCanPop ||
-        (_scope._backs.isEmpty && sources.isNotEmpty && !_anyDirty(sources));
+        _scope._backs.isEmpty &&
+        (!routeCanPop || (sources.isNotEmpty && !_anyDirty(sources)));
     return _LeaveScopeInherited(
       scope: _scope,
       child: PopScope<Object?>(
@@ -260,7 +266,15 @@ final class _LeaveScopeState extends State<_LeaveScopeWidget> {
           for (final handler in _scope._backs.reversed.toList()) {
             if (handler()) return;
           }
-          GoRouter.of(context).pop(result);
+          // Every handler declined: the back is the page's own. A page above another pops
+          // through go_router (which asks `leave()`); on a first page, a router that can pop
+          // (a pushed flow's shell) does, and one that cannot is the end of the app.
+          final router = GoRouter.of(context);
+          if (ModalRoute.of(context)?.canPop == true || router.canPop()) {
+            router.pop(result);
+          } else {
+            SystemNavigator.pop();
+          }
         },
         child: widget.child,
       ),
@@ -291,13 +305,21 @@ final class _LeaveScopeState extends State<_LeaveScopeWidget> {
 ///    (context `while running leave() of <file>`) and the page goes: a broken `leave()` never
 ///    traps the user.
 ///
+/// With [within] (the mount-relative pattern of a flow section, `joinLocation(at, '/signup')`,
+/// since 0.11.0), a navigation whose destination is still inside that section goes through
+/// without asking: the pages of one multi-page form share one `leave()`, asked once, when the
+/// navigation leaves the section. The destination is the route information provider's `uri`
+/// for a `go`, `replace` and `pushReplacement`, the target match list of a `restore`, and, for
+/// a pop (nothing new was requested), the current configuration without the exiting match.
+///
 /// A synchronous answer stays synchronous, with no `Future` and no microtask.
 LeaveResult leaveExit(
   BuildContext context,
   GoRouterState state,
   String file,
-  LeaveResult Function(Ref ref, PageLeave page) leave,
-) {
+  LeaveResult Function(Ref ref, PageLeave page) leave, {
+  String? within,
+}) {
   final GoRouter? router;
   final ProviderContainer container;
   try {
@@ -306,6 +328,7 @@ LeaveResult leaveExit(
       if (_bypass[router]?.allows(router) ?? false) return true;
       if (_isTabSwitch(router, state)) return true;
       if (_isQueryOnlyReplace(router, state)) return true;
+      if (within != null && _staysWithin(router, state, within)) return true;
     }
     container =
         (router == null ? null : RouterWatch.peek(router)?.container) ??
@@ -714,4 +737,66 @@ bool _isQueryOnlyReplace(GoRouter router, GoRouterState state) {
   return top is ImperativeRouteMatch &&
       top.pageKey == state.pageKey &&
       value.uri.path == state.uri.path;
+}
+
+/// Whether the navigation go_router is asking about ends inside [within], the path of a flow
+/// section: `/signup` holds `/signup` and `/signup/contact`, not `/signup-x`.
+///
+/// The destination is read as [_targetOf] reads it for a tab switch, except that a `push` (which
+/// never exits a page), and a navigation whose target cannot be told, are not "within". A pop is
+/// what the provider shows no new request for: its destination is where the match list ends once
+/// the exiting match is removed.
+bool _staysWithin(GoRouter router, GoRouterState state, String within) {
+  final value = router.routeInformationProvider.value;
+  final info = value.state;
+  final config = router.routerDelegate.currentConfiguration;
+  final Uri? target;
+  if (info is RouteInformationState) {
+    switch (info.type) {
+      case NavigatingType.restore:
+        target = info.baseRouteMatchList?.uri;
+      case NavigatingType.go ||
+          NavigatingType.replace ||
+          NavigatingType.pushReplacement:
+        target = value.uri;
+      case NavigatingType.push:
+        target = null;
+    }
+  } else {
+    target = value.uri;
+  }
+  if (target == null) return false;
+  if (_samePath(target, config.uri)) {
+    // Nothing new was requested: a pop. Its destination is the list without the exiting match.
+    final exiting = _matchWithKey(config.matches, state.pageKey);
+    if (exiting == null) return false;
+    final rest = config.remove(exiting);
+    return rest.matches.isNotEmpty && _isWithin(rest.uri, within);
+  }
+  return _isWithin(target, within);
+}
+
+bool _samePath(Uri a, Uri b) => a.path == b.path;
+
+bool _isWithin(Uri uri, String within) {
+  final base = within.endsWith('/') && within.length > 1
+      ? within.substring(0, within.length - 1)
+      : within;
+  return uri.path == base || uri.path.startsWith('$base/');
+}
+
+/// The match of [matches] (into shells) whose page key is [pageKey].
+RouteMatchBase? _matchWithKey(
+  List<RouteMatchBase> matches,
+  ValueKey<String> pageKey,
+) {
+  for (final m in matches) {
+    if (m is ShellRouteMatch) {
+      final found = _matchWithKey(m.matches, pageKey);
+      if (found != null) return found;
+    } else if (m is RouteMatch && m.pageKey == pageKey) {
+      return m;
+    }
+  }
+  return null;
 }

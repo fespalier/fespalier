@@ -260,6 +260,8 @@ LeaveResult leave(BuildContext context, Ref ref, {required int id, required Page
 
 The folder needs a `page.dart`: a layout's shell has no `onExit` in go_router, so a `leave.dart` beside a `layout.dart` alone is an error (put one beside each page that needs it), and so is one in a `redirect.dart` folder, which never stays on screen.
 
+**The one page-less exception: a flow section** (since 0.11.0). A section whose `action.dart` has `const steps` is a [multi-page form](forms.md#multi-page-forms), and its `leave.dart` goes beside the `layout.dart` with no `page.dart`: it is the `onExit` of **each step's** `GoRoute`, so the question is asked once for the whole flow. The generated `leaveExit` gets `within:` (the section's path), and a navigation whose destination is still inside that section (a step to the next, back, `goTo`, the browser's back) passes without calling `leave()`; leaving the section asks. Such a `leave()` takes no segment, query parameter or `extra` (it is asked on every step), but `Uri uri` and `PageLeave page`. A page-less folder that is no flow keeps the error.
+
 **What is asked.** (`leave.dart` is imported eagerly, never `deferred`, so whatever it imports, a deferred page's own library included, is part of the main chunk: keep it to what the question needs.)
 
 - **Asked:**
@@ -320,7 +322,7 @@ final unregister = LeaveScope.maybeOf(context)?.register(source); // null in a p
 
 Core knows nothing of forms: it is the `fespalier_forms` package that makes its forms sources (since 0.11.0): a `useForm` under a page with a `leave.dart` registers its form, and `leaveIfClean(context, ref, page)` is the whole `leave()` that asks in a bottom sheet and keeps or drops the draft (see [Leaving with unsaved changes](forms.md#leaving-with-unsaved-changes)). Anything else that holds input registers its own, as `examples/features` does for its new-doc page.
 
-A source with somewhere to go back to inside the page (a step of a multi-page form) can take the system back itself: `LeaveScope.maybeOf(context)?.onBack(() => handled)` registers a handler that runs, newest first, on Android's back and `Navigator.maybePop`; the first that returns `true` has handled it, and the page is not popped and `leave()` is not asked. It is consulted where the page's `PopScope` is, so not on the first page of a navigator (go_router's own fallback asks `leave()` there). While a handler is registered the iOS swipe is off.
+A source with somewhere to go back to inside the page (a step of a multi-page form) can take the system back itself: `LeaveScope.maybeOf(context)?.onBack(() => handled)` registers a handler that runs, newest first, on Android's back and `Navigator.maybePop`; the first that returns `true` has handled it, and the page is not popped and `leave()` is not asked. It is consulted through the page's `PopScope`, which blocks while a handler is registered, so the iOS swipe is off (since 0.11.0 that holds on the first page of a navigator too, which is where a step of a flow is: the only page of its shell's navigator). Register a handler on such a page only while it can handle the back: when every handler declines, the back pops the page through go_router (which asks `leave()`) if the router can pop, and otherwise ends the app with `SystemNavigator.pop`, without asking. With none registered, go_router's own fallback asks `leave()` on the first page.
 
 **Diagnostics and the scaffold.**
 

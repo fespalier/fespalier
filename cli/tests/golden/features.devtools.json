@@ -556,6 +556,76 @@
               "children": []
             },
             {
+              "type": "shell",
+              "file": "signup/layout.dart",
+              "folder": "signup",
+              "markers": [
+                "guard"
+              ],
+              "items": [
+                {
+                  "type": "route",
+                  "pattern": "/signup/company",
+                  "route": "SignupCompanyRoute",
+                  "file": "signup/company/page.dart",
+                  "folder": "signup/company",
+                  "markers": [
+                    "guard",
+                    "leave",
+                    "flow"
+                  ],
+                  "params": [],
+                  "redirect": false,
+                  "children": []
+                },
+                {
+                  "type": "route",
+                  "pattern": "/signup/contact",
+                  "route": "SignupContactRoute",
+                  "file": "signup/contact/page.dart",
+                  "folder": "signup/contact",
+                  "markers": [
+                    "guard",
+                    "leave",
+                    "flow"
+                  ],
+                  "params": [],
+                  "redirect": false,
+                  "children": []
+                },
+                {
+                  "type": "route",
+                  "pattern": "/signup/name",
+                  "route": "SignupNameRoute",
+                  "file": "signup/name/page.dart",
+                  "folder": "signup/name",
+                  "markers": [
+                    "guard",
+                    "leave",
+                    "flow"
+                  ],
+                  "params": [],
+                  "redirect": false,
+                  "children": []
+                },
+                {
+                  "type": "route",
+                  "pattern": "/signup/review",
+                  "route": "SignupReviewRoute",
+                  "file": "signup/review/page.dart",
+                  "folder": "signup/review",
+                  "markers": [
+                    "guard",
+                    "leave",
+                    "flow"
+                  ],
+                  "params": [],
+                  "redirect": false,
+                  "children": []
+                }
+              ]
+            },
+            {
               "type": "route",
               "pattern": "/ticks",
               "route": "TicksRoute",
@@ -1033,7 +1103,13 @@
       "name": "action",
       "route": "RefundRoute"
     },
-    "a67_0": {
+    "a66_0": {
+      "kind": "action",
+      "file": "signup/action.dart",
+      "name": "action",
+      "route": null
+    },
+    "a72_0": {
       "kind": "action",
       "file": "teams/$teamId/action.dart",
       "name": "addMember",
@@ -1123,28 +1199,28 @@
       "section": null,
       "traced": true
     },
-    "d67": {
+    "d72": {
       "kind": "data",
       "file": "teams/$teamId/data.dart",
       "route": null,
       "section": "teams/$teamId",
       "traced": true
     },
-    "d69": {
+    "d74": {
       "kind": "data",
       "file": "teams/$teamId/members/$member/data.dart",
       "route": "MemberRoute",
       "section": null,
       "traced": true
     },
-    "d71": {
+    "d76": {
       "kind": "data",
       "file": "ticks/data.dart",
       "route": "TicksRoute",
       "section": null,
       "traced": true
     },
-    "d74": {
+    "d79": {
       "kind": "data",
       "file": "wiki/$$article/data.dart",
       "route": "WikiRoute",
@@ -1181,6 +1257,30 @@
       "route": "ShopRoute",
       "pattern": "/shops/:shop"
     },
+    "g66@67": {
+      "kind": "guard",
+      "file": "signup/guard.dart",
+      "route": "SignupCompanyRoute",
+      "pattern": "/signup/company"
+    },
+    "g66@68": {
+      "kind": "guard",
+      "file": "signup/guard.dart",
+      "route": "SignupContactRoute",
+      "pattern": "/signup/contact"
+    },
+    "g66@69": {
+      "kind": "guard",
+      "file": "signup/guard.dart",
+      "route": "SignupNameRoute",
+      "pattern": "/signup/name"
+    },
+    "g66@70": {
+      "kind": "guard",
+      "file": "signup/guard.dart",
+      "route": "SignupReviewRoute",
+      "pattern": "/signup/review"
+    },
     "g6@7": {
       "kind": "guard",
       "file": "(members)/guard.dart",
@@ -1193,7 +1293,7 @@
       "route": "InboxRoute",
       "pattern": "/inbox"
     },
-    "g72@72": {
+    "g77@77": {
       "kind": "guard",
       "file": "vault/guard.dart",
       "route": "VaultRoute",

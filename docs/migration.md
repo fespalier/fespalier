@@ -49,6 +49,12 @@ What changed between releases, newest first, each with a link to the reference s
   "Keep as draft" for a form with a `draft:`), and a `useForm` under a page with a `leave.dart` is the page's
   `LeaveSource` by itself. Nothing changes for an app that has no `leave.dart` (and `app.g.dart` is the same). Flutter's
   `MaterialLocalizations` are needed by the sheet: on material_ui's `MaterialApp`, override `leavePrompt`.
+- **Multi-page forms** ([Multi-page forms](forms.md#multi-page-forms)). A section's `action.dart` with a `const steps`
+  map is a form over several pages that share one form and one draft. It is new and opt-in: no app changes unless it
+  adds one. Only a `const` map literal called `steps` (or `<action>Steps`) in an `action.dart` with a `form()` is read as one;
+  a `steps` of another shape (a number, a list) is left alone. A page-less section may now
+  have a `leave.dart` when it is a flow, `leaveExit` gets a `within:` there, and a `LeaveScope.onBack` handler now
+  blocks the pop on the first page of a navigator too (a step of a flow is the only page of its shell's navigator).
 
 - **A guard above a tab layout runs once, on the tab shell** (`StatefulShellRoute.redirect`), instead of being copied into each tab's route. What it decides is the same (it still runs for every location under the tabs, before the tab's own guards), but its telemetry and DevTools site is now one, named after the tab folder (`g<guard>@<tab folder>`: the `fespalier.route` of its spans is the folder's pattern, `/` for a group, not each tab's), so a dashboard that groups guard outcomes by `fespalier.route` sees the tabs merged. Run `fsp gen`; an app with no guard above its tabs changes nothing.
 

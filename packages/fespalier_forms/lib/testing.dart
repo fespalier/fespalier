@@ -3,8 +3,9 @@ library;
 
 import 'dart:async';
 
-import 'package:fespalier/fespalier.dart' show FieldErrors, ProviderContainer;
-import 'package:fespalier/testing.dart' show Override;
+import 'package:fespalier/fespalier.dart'
+    show FieldErrors, ProviderContainer, TypedLocation;
+import 'package:fespalier/testing.dart' show Override, currentLocation;
 import 'package:fespalier/persist.dart' show Storage;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,23 +36,32 @@ Matcher isFieldErrors(Map<String, String> fields, {String? message}) =>
 /// what the draft keeps: the raw text of a text field, `DraftCodec.encode`'s JSON for another.
 /// Under the container's `formDraftScope`, unless [scope] says another. Does nothing when there is
 /// no storage.
+///
+/// For the draft of a multi-page form, [steps] are the steps it had done (since 0.11.0):
+/// `steps: {SignupStep.name}`.
 FutureOr<void> seedFormDraft(
   ProviderContainer container, {
   required String id,
   List<Object?> key = const [],
   required String shape,
   required Map<String, Object?> fields,
+  Set<Enum> steps = const {},
   Duration maxAge = const Duration(days: 7),
   String? scope,
 }) {
   final key0 = draftKey(id, key, scope ?? container.read(formDraftScope));
   final storage = container.read(formDraftStorage);
+  final done = steps.isEmpty ? null : [for (final s in steps) s.name];
   if (storage is Future<Storage<String, String>?>) {
     return storage.then((s) {
-      if (s != null) return saveDraft(s, key0, shape, maxAge, fields);
+      if (s != null) {
+        return saveDraft(s, key0, shape, maxAge, fields, steps: done);
+      }
     });
   }
-  if (storage != null) return saveDraft(storage, key0, shape, maxAge, fields);
+  if (storage != null) {
+    return saveDraft(storage, key0, shape, maxAge, fields, steps: done);
+  }
 }
 
 /// The fields of the draft a form kept, as [seedFormDraft] writes them, or null when there is
@@ -70,6 +80,58 @@ FutureOr<Map<String, Object?>?> readFormDraft(
     return storage.then((s) => s == null ? null : loadDraft(s, key0, shape));
   }
   return storage == null ? null : loadDraft(storage, key0, shape);
+}
+
+/// The names of the steps the draft of a multi-page form has done (since 0.11.0), as
+/// [seedFormDraft]'s `steps` writes them; null when there is no draft, an empty list when it holds
+/// none.
+FutureOr<List<String>?> readFormDraftSteps(
+  ProviderContainer container, {
+  required String id,
+  List<Object?> key = const [],
+  required String shape,
+  String? scope,
+}) {
+  final key0 = draftKey(id, key, scope ?? container.read(formDraftScope));
+  final storage = container.read(formDraftStorage);
+  List<String>? steps(DraftEntry? entry) => entry?.steps;
+  if (storage is Future<Storage<String, String>?>) {
+    return storage.then((s) async {
+      if (s == null) return null;
+      return steps(await loadDraftEntry(s, key0, shape));
+    });
+  }
+  if (storage == null) return null;
+  final loaded = loadDraftEntry(storage, key0, shape);
+  return loaded is Future<DraftEntry?> ? loaded.then(steps) : steps(loaded);
+}
+
+/// Expects the router to be at [step] of a multi-page form (since 0.11.0): the last segment of the
+/// current location is the step's name (`contact_info` and `contact-info` are `contactInfo`). Give
+/// the step's typed [route] to compare the whole location instead:
+///
+/// ```dart
+/// expectStep(tester, SignupStep.contact);
+/// expectStep(tester, SignupStep.contact, route: const SignupContactRoute());
+/// ```
+void expectStep(WidgetTester tester, Enum step, {TypedLocation? route}) {
+  final location = currentLocation(tester);
+  final path = Uri.parse(location).path;
+  if (route != null) {
+    expect(
+      path,
+      Uri.parse(route.location).path,
+      reason: 'the router is at $location, not at step ${step.name}',
+    );
+    return;
+  }
+  String plain(String s) => s.replaceAll(RegExp('[-_]'), '').toLowerCase();
+  final last = Uri.parse(location).pathSegments.where((s) => s.isNotEmpty);
+  expect(
+    plain(last.isEmpty ? '' : last.last),
+    plain(step.name),
+    reason: 'the router is at $location, not at step ${step.name}',
+  );
 }
 
 /// Answers the question a `leave.dart` puts about unsaved changes, for a test (since 0.11.0).

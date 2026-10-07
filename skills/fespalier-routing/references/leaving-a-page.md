@@ -33,7 +33,11 @@ LeaveResult leave(BuildContext context, Ref ref, {required int id, required Page
 - **One folder, one page.** It is **not inherited**: go_router already asks a parent's `onExit` when the parent's own
   match exits (`/orders/1/edit` to `/orders/1` asks `edit` only; to `/home` asks `edit`, then `$id`). A `nest = false`
   sibling exits its parent's match, so the parent's `leave.dart` is asked. The folder needs a `page.dart` (a
-  layout's shell has no `onExit` in go_router) and must not be a `redirect.dart` route.
+  layout's shell has no `onExit` in go_router) and must not be a `redirect.dart` route. **One exception, a flow
+  section** (since 0.11.0): a section whose `action.dart` has `const steps` (a multi-page form,
+  `fespalier-data`, `references/flows.md`) may have its `leave.dart` beside the `layout.dart`, with no page: it is the
+  `onExit` of each step, with `within:` the section's path, so it is asked once, when the navigation leaves the
+  section. It takes no segment, query parameter or `extra`; `Uri uri` and `PageLeave page` are fine.
 
 ## `PageLeave`, `LeaveSource`, `LeaveScope`
 
@@ -47,7 +51,7 @@ LeaveResult leave(BuildContext context, Ref ref, {required int id, required Page
   A source that turns dirty or clean must notify.
 - `LeaveScope.maybeOf(context)?.onBack(() => handled)` lets a source take the system back itself (a step of a
   multi-page form): handlers run newest first on Android's back and `Navigator.maybePop`, the first that returns true
-  stops the pop and `leave()`. Not consulted on the first page of a navigator; while one is registered the iOS swipe is off.
+  stops the pop and `leave()`. While one is registered the page's `PopScope` blocks, so the iOS swipe is off, on the first page of a navigator too (since 0.11.0; a flow's step is the only page of its shell's navigator): register one only while it can handle the back, because when every handler declines the back pops through go_router (asking `leave()`) if the router can pop, else ends the app with `SystemNavigator.pop` without asking. Without one, go_router's fallback asks `leave()` there.
 - `LeaveScope.maybeOf(context)?.register(source)` (null in a page without a `leave.dart`) registers a source and returns
   what unregisters it; it is safe during `build`.
 - The registry is keyed by `pageInstanceId(state)`, never by the remount key, so a `remount` page keeps asking about the

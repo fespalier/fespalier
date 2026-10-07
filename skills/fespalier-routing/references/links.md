@@ -228,6 +228,35 @@ gesture.removePointer)`. To enter again, move off it and `pump` first.
   (`package:url_launcher/link.dart`); semantics are `tester.getSemantics(...)`
   with `ensureSemantics()`.
 
+## Platform links end to end (since 0.12.0)
+
+Not `RouteLink`: a link the **platform** opens. `docs/navigation.md` has the page, "Platform links end to end" and
+"With a deep-link plugin (app_links, Branch)"; `docs/cli.md` has `fsp links`.
+
+1. `links:` (`domains`, `scheme`, `android_package` + `android_sha256`, `ios_app_id`, and `android_manifest:` /
+   `ios_entitlements:` to let `fsp links` edit the platform files), then `fsp links`, and `fsp links --check` in CI.
+2. Serve `web/.well-known/assetlinks.json` and `apple-app-site-association` at `https://<domain>/.well-known/`, as JSON,
+   with no redirect.
+3. On a device: `adb shell am start -a android.intent.action.VIEW -d "https://shop.example.com/orders/42" com.example.shop`
+   (`adb shell pm get-app-links <package>` lists each domain's verification), `xcrun simctl openurl booted <url>`.
+4. In a widget test, `await sendPlatformLink(tester, Uri.parse('https://shop.example.com/orders/42'))` after `pumpRouter`
+   (`package:fespalier/testing.dart`): a warm link through `flutter/navigation`, pumped until idle. Cold start:
+   `tester.binding.platformDispatcher.defaultRouteNameTestValue` before `pumpRouter`. `source=link` and `onEnter` need a
+   router made with `links: true` (an app with telemetry or adapters); the page opens either way. It cannot prove a
+   domain is verified.
+
+`fsp links` warns, and does not fail `--check`, when Flutter's switch is off: `flutter_deeplinking_enabled is false in
+{manifest}: Flutter will not hand links to the router` (`<meta-data android:name="flutter_deeplinking_enabled"
+android:value="false" />`), and `FlutterDeepLinkingEnabled is false in ios/Runner/Info.plist` (`<false/>`). Both files are
+only read. Right when a plugin owns the links; otherwise delete the key.
+
+**With a deep-link plugin** (`app_links`, Branch): the plugin needs the switch off, so go_router gets no link and nothing is
+marked `link`. Write an adapter in a small path package (the app cannot list itself in `adapters:`): `launch()` returns
+`InboundLaunch(location, source: NavigationSource.link)` from the plugin's initial link (a deferred deep link from an
+attribution SDK is the same call); `attach(router, container)` reads a `Provider.family<void, GoRouter>` that listens to
+the plugin's stream, calls `navigateFrom(NavigationSource.link, () => router.go(location))`, and cancels in
+`ref.onDispose`. `locationOf(uri)` is yours and answers null for a link that is not the app's.
+
 ## Not built
 
 - No external links (use `Link`), no `target` (a new tab is the browser's

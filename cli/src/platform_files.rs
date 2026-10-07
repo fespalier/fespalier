@@ -521,6 +521,56 @@ pub fn foreign_filters(path: &str, text: &str, cfg: &Links) -> Vec<String> {
     out
 }
 
+// --- Flutter's deep linking switch ------------------------------------------------------
+
+/// What follows the name of the warning in both files.
+const DEEPLINKING_OFF: &str = "Flutter will not hand links to the router (intended with a deep-link plugin: see docs/navigation.md, \"With a deep-link plugin\")";
+
+/// Where `flutter create` writes the manifest.
+const DEFAULT_MANIFEST: &str = "android/app/src/main/AndroidManifest.xml";
+
+/// The `Info.plist` of the Runner target, read for [`ios_deeplinking_off`].
+pub const INFO_PLIST: &str = "ios/Runner/Info.plist";
+
+/// The warning when the manifest turns Flutter's deep linking off, with
+/// `<meta-data android:name="flutter_deeplinking_enabled" android:value="false" />`. Read only:
+/// `fsp links` never edits that tag.
+#[must_use]
+pub fn android_deeplinking_off(path: &str, text: &str) -> Option<String> {
+    let scan = scan(text)?;
+    let off = scan.tags.iter().any(|t| {
+        t.name == "meta-data"
+            && !t.close
+            && t.attrs
+                .iter()
+                .any(|(k, v)| k == "android:name" && v == "flutter_deeplinking_enabled")
+            && t.attrs
+                .iter()
+                .any(|(k, v)| k == "android:value" && v.trim().eq_ignore_ascii_case("false"))
+    });
+    off.then(|| format!("flutter_deeplinking_enabled is false in {path}: {DEEPLINKING_OFF}"))
+}
+
+/// The warning when `Info.plist` has `FlutterDeepLinkingEnabled` set to `<false/>`. Read only.
+#[must_use]
+pub fn ios_deeplinking_off(path: &str, text: &str) -> Option<String> {
+    let mut plain = String::new();
+    let mut rest = text;
+    while let Some(i) = rest.find("<!--") {
+        plain.push_str(&rest[..i]);
+        // An unterminated comment runs to the end of the file.
+        let close = rest[i..].find("-->").map_or(rest.len(), |j| i + j + 3);
+        rest = &rest[close..];
+    }
+    plain.push_str(rest);
+    let key = "<key>FlutterDeepLinkingEnabled</key>";
+    let after = plain[plain.find(key)? + key.len()..].trim_start();
+    let off = after
+        .strip_prefix("<false")
+        .is_some_and(|r| r.trim_start().starts_with('/') || r.starts_with('>'));
+    off.then(|| format!("FlutterDeepLinkingEnabled is false in {path}: {DEEPLINKING_OFF}"))
+}
+
 // --- .entitlements -----------------------------------------------------------------
 
 fn not_a_plist(path: &str) -> anyhow::Error {
@@ -798,6 +848,7 @@ pub fn plan(project: &Path, cfg: &Links, filters: &str) -> Result<(Vec<Planned>,
         };
         let current = utf8(path, bytes)?;
         warnings.extend(foreign_filters(path, &current, cfg));
+        warnings.extend(android_deeplinking_off(path, &current));
         let (text, was) = edit_manifest(path, &current, filters)?;
         let stale = match was {
             Was::Current => None,
@@ -853,6 +904,20 @@ pub fn plan(project: &Path, cfg: &Links, filters: &str) -> Result<(Vec<Planned>,
                 }
             }
         });
+    }
+    // Flutter's own switch, read where `flutter create` puts it, whether or not `fsp links` edits
+    // the file: the manifest only when `android_manifest:` did not name it already.
+    let text_of = |path: &str| read(path).and_then(|b| String::from_utf8(b).ok());
+    if cfg.android_manifest.is_none()
+        && !cfg.apps_android.is_empty()
+        && let Some(text) = text_of(DEFAULT_MANIFEST)
+    {
+        warnings.extend(android_deeplinking_off(DEFAULT_MANIFEST, &text));
+    }
+    if !cfg.apps_ios.is_empty()
+        && let Some(text) = text_of(INFO_PLIST)
+    {
+        warnings.extend(ios_deeplinking_off(INFO_PLIST, &text));
     }
     Ok((files, warnings))
 }

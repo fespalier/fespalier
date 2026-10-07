@@ -453,6 +453,111 @@ Without adapters there is no `AppRoutes.onEnter`, and go_router keeps its simple
 included, makes go_router parse every navigation asynchronously and apply its redirect limit to all of them**, so an app
 with adapters that has none with an `onEnter` to offer pays that for nothing: leave `adapters:` for the packages you use.
 
+### Platform links end to end
+
+_Since 0.12.0._ No fespalier package carries platform links: Flutter does (deep linking is on by default since Flutter 3.27,
+and fespalier supports 3.32 and later), and the generated router already marks each link `NavigationSource.link`. What
+you do is four steps, each with one check:
+
+1. **Say where the app lives.** `links:` in the pubspec lists the `domains` (and a `scheme`, if you have one); see
+   [Deep links and a sitemap](cli.md#deep-links-and-a-sitemap-fsp-links).
+2. **Let `fsp links` write the files.** `fsp links` writes `assetlinks.json`, `apple-app-site-association` and the
+   sitemap, and with `android_manifest:` and `ios_entitlements:` it edits the intent filters and the `applinks:`
+   entries too. `fsp links --check` is the CI check that they are current.
+3. **Serve `.well-known`.** `https://<domain>/.well-known/assetlinks.json` and `.../apple-app-site-association` have to
+   answer with no redirect. Android verifies a domain when the app is installed, iOS when the app is installed and again
+   from time to time, so a wrong file shows up on a device, not in a build.
+4. **Open a link on a device.** The platforms' own tools open a link the way a user's tap does:
+
+   ```text
+   adb shell am start -a android.intent.action.VIEW -d "https://shop.example.com/orders/42" com.example.shop
+   xcrun simctl openurl booted "https://shop.example.com/orders/42"
+   ```
+
+   Pass the application id so Android does not show a chooser. A link that opens a browser instead means the domain was
+   not verified (`adb shell pm get-app-links com.example.shop` lists each domain's state).
+
+**In a widget test**, `sendPlatformLink` (in `package:fespalier/testing.dart`) sends the message the engine sends when a
+link arrives while the app runs, which is what the device does after step 4:
+
+```dart
+testWidgets('a link opens the order', (tester) async {
+  await pumpRouter(tester, AppRoutes.router());
+  await sendPlatformLink(tester, Uri.parse('https://shop.example.com/orders/42'));
+  expect(currentLocation(tester), contains('/orders/42'));
+});
+```
+
+It pumps until nothing is scheduled. It is a warm link: for a cold start, set
+`tester.binding.platformDispatcher.defaultRouteNameTestValue` before `pumpRouter`. The router has to come from a
+`launchRouter` with `links: true` (an app with telemetry or adapters) for `onEnter` and telemetry to see
+`source=link`; the page opens either way. A widget test cannot say whether a platform verified the domain: only step 4
+does.
+
+**`fsp links` warns when Flutter's switch is off.** With `<meta-data android:name="flutter_deeplinking_enabled"
+android:value="false" />` in `AndroidManifest.xml`, or `FlutterDeepLinkingEnabled` set to `<false/>` in
+`ios/Runner/Info.plist`, Flutter does not hand links to the router, and no intent filter or association file makes a
+link open a page. `fsp links` and `fsp links --check` say so (`flutter_deeplinking_enabled is false in {manifest}:
+Flutter will not hand links to the router`, and the same for `FlutterDeepLinkingEnabled`). It is a warning: both files
+are only read, and `--check` does not fail on it, because the switch is off on purpose with a deep-link plugin (below).
+
+### With a deep-link plugin (app_links, Branch)
+
+_Since 0.12.0._ A plugin that reads links itself (`app_links`, or an attribution SDK such as Branch) asks you to turn
+Flutter's switch off, so that the engine and the plugin do not both open the link. With the switch off fespalier sees
+no platform link: go_router gets none, `onEnter` is never called for one and nothing is marked `link`. The plugin hands
+them over instead, and the seams to forward them already exist: an adapter of your own (a `fespalier_adapter.dart`
+in a small package of the repository that the app lists as a path dependency and under `adapters:`; the app itself cannot
+be one; see [Adapters that need your code](adapters.md#adapters-that-need-your-code)):
+
+- **The cold start is a `launch()`.** Ask the plugin for the link that opened the app (`getInitialLink()` in
+  `app_links`) and answer `InboundLaunch(location, source: NavigationSource.link)`. The router starts there and the first
+  navigation is marked `link`.
+- **A warm link is `navigateFrom`.** In `attach(router, container)`, forward each link the plugin delivers with
+  `navigateFrom(NavigationSource.link, () => router.go(location))`, and hold the subscription in a provider of the
+  container (`ref.onDispose` cancels it) so it dies with the `ProviderScope`.
+- **A deferred deep link** (a link from an install that the attribution SDK gives the app on its first launch) is a
+  `launch()` too: it is the first thing the app opens.
+
+```dart
+// packages/my_links/lib/fespalier_adapter.dart (`adapters: [my_links]` in the app's pubspec)
+const adapter = _Links();
+
+/// Forwards the plugin's warm links to [router]; it lives as long as the container.
+final _forwardLinks = Provider.family<void, GoRouter>((ref, router) {
+  final sub = AppLinks().uriLinkStream.listen((uri) {
+    final location = locationOf(uri);
+    if (location != null) {
+      navigateFrom(NavigationSource.link, () => router.go(location));
+    }
+  });
+  ref.onDispose(sub.cancel);
+});
+
+final class _Links extends FespalierAdapter {
+  const _Links();
+
+  @override
+  FutureOr<InboundLaunch?> launch() async {
+    final uri = await AppLinks().getInitialLink();
+    final location = uri == null ? null : locationOf(uri);
+    return location == null
+        ? null
+        : InboundLaunch(location, source: NavigationSource.link);
+  }
+
+  @override
+  void attach(GoRouter router, ProviderContainer container) =>
+      container.read(_forwardLinks(router));
+}
+```
+
+`locationOf` is yours: it maps the plugin's URI to a location of the app, with the mount prefix, and answers null for a
+link that is not the app's. The `fsp links` files are still the ones to deploy (the plugin reads the same intent filters
+and association files), and the warning above is then expected: leave it, or keep the switch on and let fespalier handle
+links without the plugin. In a test, the plugin's own fake replaces `sendPlatformLink`, which goes through Flutter's
+channel and so needs the switch on.
+
 ## Deferred routes: a page's code on demand
 
 _Since 0.7.0._ A Flutter web app is one JavaScript bundle: every page's code is downloaded before the first frame. Dart can split it: a library imported `deferred as` is compiled to a file of its own that the browser fetches when `loadLibrary()` is called. fespalier does that for a route's `page.dart`, and loads the code the way it loads data: when the page is built, or ahead of time (see [Preloading](#preloading-the-data-behind-a-link)).

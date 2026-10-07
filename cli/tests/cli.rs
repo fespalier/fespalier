@@ -3291,3 +3291,90 @@ fn links_edits_the_platform_files_and_check_follows_them() {
         "{err}"
     );
 }
+
+/// Flutter's own deep linking switch turned off is a warning of `fsp links`, in both files, and
+/// neither file is touched by it.
+#[test]
+fn links_warns_when_flutter_deep_linking_is_off() {
+    let dir = project();
+    let root = dir.path();
+    let pubspec = root.join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    let manifest_path = "android/app/src/main/AndroidManifest.xml";
+    let plist_path = "ios/Runner/Runner.entitlements";
+    fs::write(
+        &pubspec,
+        format!(
+            "{base}{LINKS}    android_manifest: {manifest_path}\n    ios_entitlements: {plist_path}\n"
+        ),
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("android/app/src/main")).unwrap();
+    fs::create_dir_all(root.join("ios/Runner")).unwrap();
+    let template = include_str!("fixtures/links/AndroidManifest.xml");
+    fs::write(root.join(manifest_path), template).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        ok && !err.contains("eeplinking") && !err.contains("eepLinking"),
+        "{err}"
+    );
+
+    // Off in the manifest and in Info.plist: two warnings, `--check` still passes.
+    let off = fs::read_to_string(root.join(manifest_path)).unwrap().replacen(
+        "<intent-filter>\n                <action android:name=\"android.intent.action.MAIN\"/>",
+        "<meta-data android:name=\"flutter_deeplinking_enabled\" android:value=\"false\" />\n            <intent-filter>\n                <action android:name=\"android.intent.action.MAIN\"/>",
+        1,
+    );
+    fs::write(root.join(manifest_path), &off).unwrap();
+    let info = "<plist version=\"1.0\">\n<dict>\n\t<key>FlutterDeepLinkingEnabled</key>\n\t<false/>\n</dict>\n</plist>\n";
+    fs::write(root.join("ios/Runner/Info.plist"), info).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        ok && err.contains(&format!(
+            "warning: flutter_deeplinking_enabled is false in {manifest_path}: Flutter will not hand links to the router"
+        )) && err.contains(
+            "warning: FlutterDeepLinkingEnabled is false in ios/Runner/Info.plist: Flutter will not hand links to the router"
+        ),
+        "{err}"
+    );
+    assert_eq!(fs::read_to_string(root.join(manifest_path)).unwrap(), off);
+    assert_eq!(
+        fs::read_to_string(root.join("ios/Runner/Info.plist")).unwrap(),
+        info
+    );
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        ok && err.contains("warning: flutter_deeplinking_enabled is false"),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("ios/Runner/Info.plist")).unwrap(),
+        info
+    );
+}
+
+/// Without `android_manifest:` the manifest is still read, at the path `flutter create` uses,
+/// and never written.
+#[test]
+fn links_reads_the_default_manifest_for_flutter_deep_linking() {
+    let dir = project();
+    let root = dir.path();
+    let pubspec = root.join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    fs::write(&pubspec, format!("{base}{LINKS}")).unwrap();
+    let manifest_path = "android/app/src/main/AndroidManifest.xml";
+    fs::create_dir_all(root.join("android/app/src/main")).unwrap();
+    let manifest = "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n  <application>\n    <activity android:name=\".MainActivity\">\n      <meta-data android:name=\"flutter_deeplinking_enabled\" android:value=\"false\" />\n    </activity>\n  </application>\n</manifest>\n";
+    fs::write(root.join(manifest_path), manifest).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        ok && err.contains(&format!(
+            "warning: flutter_deeplinking_enabled is false in {manifest_path}: Flutter will not hand links to the router"
+        )),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join(manifest_path)).unwrap(),
+        manifest
+    );
+}

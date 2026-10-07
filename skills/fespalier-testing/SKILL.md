@@ -11,7 +11,7 @@ description: "Testing an app built with fespalier — package:fespalier/testing.
 > your app pins another fespalier, trust that release's code over this page. See
 > [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
-`package:fespalier/testing.dart` has two helpers. It is a **separate library**, so
+`package:fespalier/testing.dart` has two helpers (and, since 0.12.0, `sendPlatformLink(tester, Uri)`: a warm platform link, as the engine sends it, pumped until idle; see the platform links section of the `fespalier-routing` skill). It is a **separate library**, so
 `package:fespalier/fespalier.dart` never imports `flutter_test`; the package lists
 `flutter_test` (an SDK package) as a dependency, which your app already has as a dev
 dependency.

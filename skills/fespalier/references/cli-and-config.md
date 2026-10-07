@@ -105,9 +105,11 @@ fespalier:
     ios_app_id: ABCDE12345.com.example.shop  # Team ID, a dot, the bundle id: the iOS files
     scheme_host: true                      # since 0.11.0; false: myshop:///orders/2, no host (needs scheme)
     paths: [/, /orders/*]                  # since 0.11.0; default: every linkable route
-    # flavors:                             # since 0.11.0, instead of the three platform keys
-    #   prod:  {android_package: ..., android_sha256: [...], ios_app_id: ...}
-    #   debug: {android_package: ..., android_sha256: [...], ios_app_id: ...}
+    android_manifest: android/app/src/main/AndroidManifest.xml  # since 0.11.0; opt in: fsp edits it
+    ios_entitlements: ios/Runner/Runner.entitlements            # since 0.11.0; opt in: fsp edits its applinks: entries
+    # flavors:                             # since 0.11.0, instead of the keys for one app
+    #   prod:  {android_package: ..., android_sha256: [...], ios_app_id: ..., ios_entitlements: ios/Runner/RunnerProd.entitlements}
+    #   debug: {android_package: ..., android_sha256: [...], ios_app_id: ..., ios_entitlements: ios/Runner/RunnerDebug.entitlements}
     out: links                             # default; relative to the project, no `..`
 ```
 
@@ -118,11 +120,26 @@ It writes, below `out` (commit it, like `app.g.dart`): `android/intent-filters.x
 and, with `scheme`, `ios/info-url-types.xml` (iOS, when `ios_app_id` is set); and always
 `web/sitemap.xml`.
 
-- **It never edits** `AndroidManifest.xml`, `Runner.entitlements` or `Info.plist`: paste the
+- **Platform files (since 0.11.0): opt in, or paste.** Without `android_manifest:` and
+  `ios_entitlements:` it edits no file outside `out`, and never `Info.plist`: paste the
   intent filters into the `<activity>` that has the `MAIN`/`LAUNCHER` filter, add the
   `applinks:` lines to `Runner.entitlements`, and copy `web/` into the Flutter project's
   `web/` (or serve it from the domain). Android verifies only an `assetlinks.json` served
   over HTTPS at `/.well-known/assetlinks.json` with no redirect.
+- **`android_manifest:` (since 0.11.0)** is the path of an `AndroidManifest.xml` under `android/`
+  (needs `android_package`). The filters go between `<!-- fsp links: begin. ... -->` and
+  `<!-- fsp links: end -->` in the one `<activity>` with the `MAIN` action (not an
+  `<activity-alias>`, not a comment): the first run inserts the block before its `</activity>`,
+  later runs replace only what is between the markers (idempotent, line endings kept). With
+  several launcher activities, write `<!-- fsp links: begin -->` and `<!-- fsp links: end -->` on
+  two lines of their own in the right one. The file must exist. A filter of yours for a domain
+  outside the markers is a warning.
+- **`ios_entitlements:` (since 0.11.0)** is a `.entitlements` file under `ios/`, flat or per
+  flavour (needs `ios_app_id`). `fsp` owns the `applinks:` strings of
+  `com.apple.developer.associated-domains`: other entries stay first, ours follow; no key gets
+  one at the end of the top-level `<dict>`; a missing file is written whole. A value that is not
+  an `<array>`, or a file that is not a plist with a `<dict>`, is an error. It warns when
+  `ios/Runner.xcodeproj/project.pbxproj` has no `CODE_SIGN_ENTITLEMENTS` naming the file.
 - **Flavours (since 0.11.0).** `flavors:` maps a name (letters, digits, `_`, starting lower-case: `prod`, `devStaging`) to
   `android_package` (with `android_sha256`) and/or `ios_app_id`, instead of the flat keys (both
   is an error; the flat keys stay valid as one unnamed app and give the output they always did).
@@ -153,7 +170,10 @@ and, with `scheme`, `ios/info-url-types.xml` (iOS, when `ios_app_id` is set); an
   the canonical path) from `route.dart` `paths`. Guards are not looked at.
 - **`--check`** exits 1 and names each file that is missing, out of date, or not wanted by
   the config any more (`fsp links` deletes those); it is byte-exact because the output has a fixed
-  order and no dates. Run it in CI.
+  order and no dates. It also follows the platform files it edits (`... has no fsp links markers
+yet`, `... the intent filters between the fsp links markers are out of date`, `... the applinks:
+entries ... are out of date`, `... is missing`); warnings never fail it. Run it in CI next to
+  `fsp check`: `dart run fespalier check && dart run fespalier links --check`.
 - The config values are checked only by `fsp links` (a mistake there never stops `gen`);
   the messages are in `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`.
 

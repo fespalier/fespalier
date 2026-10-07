@@ -257,7 +257,9 @@ fespalier:
     android_package: com.example.shop # with android_sha256: the Android files
     android_sha256: ["AB:CD:...:EF"] # the signing certificates' fingerprints, 32 hex pairs each
     ios_app_id: ABCDE12345.com.example.shop # Team ID, a dot, the bundle id: the iOS files
-    # flavors: ...                    # since 0.11.0: instead of the three keys above (see Flavours)
+    android_manifest: android/app/src/main/AndroidManifest.xml # since 0.11.0; opt in: `fsp links` edits it (see below)
+    ios_entitlements: ios/Runner/Runner.entitlements # since 0.11.0; opt in: `fsp links` edits its applinks: entries
+    # flavors: ...                    # since 0.11.0: instead of the keys for one app above (see Flavours)
     out: links # default: where the files go, relative to the project
 ```
 
@@ -293,15 +295,15 @@ links/
 - **The sitemap lists static routes only.** Dynamic routes and catch-alls have no URL to write down without data fespalier doesn't have. Guards aren't looked at: a route behind a guard is listed, so mark it `linkable = false` if a crawler shouldn't see it.
 - **Mounting.** The paths are the routes' own: an app that mounts its routes under a prefix (`AppRoutes.mount(at: '/shop')`) has to put the prefix in front itself.
 
-**Using the files.** `fsp links` never edits `AndroidManifest.xml`, `Runner.entitlements` or `Info.plist`. Copy the output in yourself:
+**Using the files.** Since 0.11.0 `fsp links` can edit `AndroidManifest.xml` and the `.entitlements` files itself, when you [ask it to](#editing-androidmanifestxml-and-the-entitlements). It never edits `Info.plist`, and without those keys it edits nothing: copy the output in yourself.
 
-1. Paste `android/intent-filters.xml` into the `<activity>` of `android/app/src/main/AndroidManifest.xml` that has the `MAIN`/`LAUNCHER` filter (replace what you pasted last time).
-2. Add the `applinks:` lines of `ios/associated-domains.entitlements` to `ios/Runner/Runner.entitlements`, and the entry of `ios/info-url-types.xml` to `Info.plist`. With [flavours](#flavours), do it in each flavour's own `.entitlements` and `Info.plist`.
+1. Paste `android/intent-filters.xml` into the `<activity>` of `android/app/src/main/AndroidManifest.xml` that has the `MAIN`/`LAUNCHER` filter (replace what you pasted last time), or set `android_manifest:`.
+2. Add the `applinks:` lines of `ios/associated-domains.entitlements` to `ios/Runner/Runner.entitlements`, or set `ios_entitlements:`. Add the entry of `ios/info-url-types.xml` to `Info.plist`. With [flavours](#flavours), do it in each flavour's own `.entitlements` and `Info.plist`.
 3. Copy `links/web/` into your Flutter project's `web/` folder (`flutter build web` ships `.well-known/` as it ships the rest), or serve it from wherever the domain's server keeps its files.
 
 Android only verifies a domain when `assetlinks.json` is served over HTTPS at `/.well-known/assetlinks.json` with no redirect.
 
-**Staying current.** The output is a function of the tree and the pubspec (a fixed order, no dates). `fsp links --check` writes nothing and exits non-zero when a file is missing, out of date or no longer wanted, and names it; run it in CI next to `fsp check`.
+**Staying current.** The output is a function of the tree and the pubspec (a fixed order, no dates). `fsp links --check` writes nothing and exits non-zero when a file is missing, out of date or no longer wanted, and names it; run it in CI next to `fsp check` ([Links in CI](#links-in-ci)).
 
 ### Flavours
 
@@ -317,15 +319,17 @@ fespalier:
         android_package: com.example.shop
         android_sha256: ["AB:CD:...:EF"]
         ios_app_id: ABCDE12345.com.example.shop
+        ios_entitlements: ios/Runner/RunnerProd.entitlements # since 0.11.0, see below
       debug:
         android_package: com.example.shop.debug
         android_sha256: ["12:34:...:56"]
         ios_app_id: ABCDE12345.com.example.shop.debug
+        ios_entitlements: ios/Runner/RunnerDebug.entitlements
 ```
 
-- **Each flavour is an app.** Name it as Gradle does (`prod`, `devStaging`): letters, digits and `_`, starting with a lower-case letter. An empty `flavors:` or a name listed twice is an error. It sets `android_package` (with `android_sha256`), `ios_app_id` or both. Two flavours can't share a package or an app id.
+- **Each flavour is an app.** Name it as Gradle does (`prod`, `devStaging`): letters, digits and `_`, starting with a lower-case letter. An empty `flavors:` or a name listed twice is an error. It sets `android_package` (with `android_sha256`), `ios_app_id` (with an optional `ios_entitlements`, the file of that flavour) or both. Two flavours can't share a package or an app id.
 - **`assetlinks.json`** has one statement per package, in the order the pubspec lists them. **The association file** has one `details` entry whose `appIDs` holds every app id, with the same `components`.
-- **The flat keys still work**, as one app with no name: a config with no `flavors:` writes exactly what it wrote before. Setting both is an error.
+- **The flat keys still work**, as one app with no name (`android_package`, `android_sha256`, `ios_app_id` and `ios_entitlements`): a config with no `flavors:` writes exactly what it wrote before. Setting any of them beside `flavors:` is an error.
 - **Domains and the scheme are shared.** A flavour with its own `domains:` is an `invalid pubspec.yaml` error.
 - **`info-url-types.xml`** uses the bundle id of the first iOS app.
 
@@ -346,6 +350,57 @@ Since 0.11.0.
 `fsp links` warns, without failing (`--check` doesn't either), where `paths:` and the routes disagree: a linkable route no entry covers (``add `/orders/*`, or `const linkable = false;` in its route.dart``: the entry it suggests is the exact path for a static route, `/orders/*` below a dynamic segment, and both `/files` and `/files/*` for an optional catch-all), and an entry no linkable route matches. An empty list is an error: leave `paths:` out to list every route.
 
 **Maestro and `paths:`.** `fsp maestro` writes a flow for every route, whatever `paths:` lists. With the default `https://` or `scheme://<domain>` link, a flow for a route that `paths:` leaves out can't open on a device (a host-less scheme filter has no paths, so it can). Give those routes no flow with `const linkable = false;`, or ignore them.
+
+### Editing AndroidManifest.xml and the entitlements
+
+Since 0.11.0. Two keys of `links:` make `fsp links` edit the platform files, so the filters and the associated domains are never pasted by hand. Both are opt-in: without them `fsp links` writes only the files below `out`.
+
+```yaml
+fespalier:
+  links:
+    android_manifest: android/app/src/main/AndroidManifest.xml # needs android_package
+    ios_entitlements: ios/Runner/Runner.entitlements # needs ios_app_id; per flavour with `flavors:`
+```
+
+`android_manifest` is a path to a file called `AndroidManifest.xml` under `android/`, and `ios_entitlements` a `.entitlements` file under `ios/`, both relative to the project. Each flavour names its own `ios_entitlements` (two may name the same file). The domains are the same in every flavour, so each file gets the same entries.
+
+**The manifest.** The intent filters go between two comment markers, in the one `<activity>` that has the `MAIN` intent filter:
+
+```xml
+            <!-- fsp links: begin. Written from lib/app by `fsp links`; change links: in pubspec.yaml, not these lines. -->
+            <intent-filter android:autoVerify="true">
+                ...
+            </intent-filter>
+            <!-- fsp links: end -->
+        </activity>
+```
+
+- **The first run** has no markers to go by. It finds the activity with the `MAIN` action (an `<activity-alias>` and anything in a comment don't count) and inserts the block before its `</activity>`, indented four spaces deeper than that line. The file must have exactly one such activity, and the file must exist: `fsp` doesn't create a manifest (`flutter create --platforms android .` does).
+- **Later runs** replace only what is between the markers, so a second run changes no byte, and nothing outside them is touched: your other filters, your comments, the file's line endings.
+- **By hand.** A manifest with several launcher activities, or a flavour manifest of its own, gets the markers where you want them: write `<!-- fsp links: begin -->` and `<!-- fsp links: end -->` on two lines of their own inside the activity that opens links, and run `fsp links`. Those marker lines stay as you wrote them.
+- **A filter of your own** for one of the `domains` (or for the `scheme`, with `scheme_host: false`) outside the markers is a warning, with its line: remove it, `fsp links` writes that filter now.
+
+**An entitlements file.** `fsp links` owns the `<string>applinks:...</string>` entries of the `com.apple.developer.associated-domains` array, one per domain, and nothing else in the file:
+
+- With the key there, the other entries (`webcredentials:`, `activitycontinuation:`) stay where they are, and the `applinks:` ones follow them, in domain order. An empty `<array/>` is filled. A key whose value isn't an `<array>` is an error: fix it by hand.
+- Without the key, the entry goes in before the end of the top-level `<dict>`.
+- A file that doesn't exist is written whole (a property list with that one entry). A file that isn't a property list with a `<dict>` at the top is an error.
+- The edit leaves Xcode's layout alone: toggling the Associated Domains capability rewrites the file, and the next run splices into what Xcode wrote.
+- A file that no `CODE_SIGN_ENTITLEMENTS` in `ios/Runner.xcodeproj/project.pbxproj` names is a warning: no build uses it. Add the Associated Domains capability in Xcode, or point the build setting (per flavour configuration) at the file.
+
+`Info.plist` stays by hand, for the `CFBundleURLTypes` entry of `ios/info-url-types.xml`.
+
+**`--check`.** `fsp links --check` works out each platform file's edited text, compares it with the disk, writes nothing, and exits non-zero when one is stale. It says `{path} has no fsp links markers yet` for a manifest the first run hasn't reached, `{path}: the intent filters between the fsp links markers are out of date`, `{path}: the applinks: entries of com.apple.developer.associated-domains are out of date` or `{path} is missing`. A missing manifest is an error rather than a stale file, and the warnings don't fail it. When all is current it prints `✓ links: 5 files in links are up to date, and 2 platform files`.
+
+### Links in CI
+
+Since 0.11.0. Run `fsp links --check` next to `fsp check`, so a new route or a changed domain can't ship with a manifest, an entitlement or an association file that still says the old thing:
+
+```yaml
+- run: dart run fespalier check && dart run fespalier links --check
+```
+
+With the platform files opted in, the same step also fails when someone changed a route and forgot to run `fsp links`, or hand-edited the lines between the markers. The fix is the one command locally: `dart run fespalier links`, and commit the result. Warnings (a filter outside the markers, an entitlements file no build uses, a `paths:` entry no route matches) print but don't fail the step.
 
 ## Checking string paths
 

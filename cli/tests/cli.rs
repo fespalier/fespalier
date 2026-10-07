@@ -3125,3 +3125,151 @@ fn adapters_write_the_main_and_main_manual_keeps_them() {
         (true, "✓ 1 route, no errors\n".into())
     );
 }
+
+#[test]
+fn links_edits_the_platform_files_and_check_follows_them() {
+    let dir = project();
+    let root = dir.path();
+    let pubspec = root.join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    let manifest_path = "android/app/src/main/AndroidManifest.xml";
+    let plist_path = "ios/Runner/Runner.entitlements";
+    let keys = format!(
+        "{LINKS}    android_manifest: {manifest_path}\n    ios_entitlements: {plist_path}\n"
+    );
+    fs::write(&pubspec, format!("{base}{keys}")).unwrap();
+
+    // The manifest has to exist: `fsp` edits it, it does not create it.
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        !ok && err.contains(&format!(
+            "{manifest_path} not found (`fespalier.links.android_manifest`); run `flutter create --platforms android .`, or fix the path"
+        )),
+        "{err}"
+    );
+    assert!(!root.join("links").exists(), "an error writes nothing");
+
+    fs::create_dir_all(root.join("android/app/src/main")).unwrap();
+    let template = include_str!("fixtures/links/AndroidManifest.xml");
+    fs::write(root.join(manifest_path), template).unwrap();
+    fs::create_dir_all(root.join("ios/Runner.xcodeproj")).unwrap();
+    fs::write(
+        root.join("ios/Runner.xcodeproj/project.pbxproj"),
+        "CODE_SIGN_ENTITLEMENTS = Runner/Other.entitlements;\n",
+    )
+    .unwrap();
+
+    // `--check` names what is missing and writes nothing.
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(!ok, "{err}");
+    assert!(
+        err.contains(&format!("{manifest_path} has no fsp links markers yet")),
+        "{err}"
+    );
+    assert!(err.contains(&format!("{plist_path} is missing")), "{err}");
+    assert!(
+        err.contains("7 file(s) out of date; run `fsp links`"),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join(manifest_path)).unwrap(),
+        template
+    );
+    assert!(!root.join(plist_path).exists());
+
+    // `fsp links` edits and writes them, and says the Xcode project doesn't use the file.
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(ok, "{err}");
+    assert!(err.contains(&format!("  edited {manifest_path}")), "{err}");
+    assert!(err.contains(&format!("  wrote {plist_path}")), "{err}");
+    assert!(
+        err.contains(&format!(
+            "warning: {plist_path} is not set as CODE_SIGN_ENTITLEMENTS in ios/Runner.xcodeproj/project.pbxproj, so no build uses it: add the Associated Domains capability in Xcode, or point the build setting at this file"
+        )),
+        "{err}"
+    );
+    assert!(
+        err.contains("and 2 platform files (2 edited, 0 unchanged)"),
+        "{err}"
+    );
+    let manifest = fs::read_to_string(root.join(manifest_path)).unwrap();
+    assert!(manifest.contains("<!-- fsp links: begin. "), "{manifest}");
+    assert!(
+        manifest.contains("<data android:host=\"shop.example.com\" />"),
+        "{manifest}"
+    );
+    assert!(
+        fs::read_to_string(root.join(plist_path))
+            .unwrap()
+            .contains("<string>applinks:shop.example.com</string>")
+    );
+
+    // Pointing the build setting at it quiets the warning; everything is up to date.
+    fs::write(
+        root.join("ios/Runner.xcodeproj/project.pbxproj"),
+        "CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;\n",
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        ok && err.contains("✓ links: 5 files in links are up to date, and 2 platform files")
+            && !err.contains("warning"),
+        "{err}"
+    );
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        ok && !err.contains("  edited ") && err.contains("(0 edited, 2 unchanged)"),
+        "{err}"
+    );
+
+    // A new route makes the manifest stale: `--check` names it, `fsp links` fixes it.
+    fs::create_dir_all(root.join("lib/app/about")).unwrap();
+    fs::write(root.join("lib/app/about/page.dart"), page("AboutPage")).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        !ok && err.contains(&format!(
+            "{manifest_path}: the intent filters between the fsp links markers are out of date"
+        )),
+        "{err}"
+    );
+    let stale = fs::read_to_string(root.join(manifest_path)).unwrap();
+    assert_eq!(stale, manifest, "--check writes nothing");
+    assert!(fsp_full(root, &["links"], &[]).0);
+    assert!(fsp_full(root, &["links", "--check"], &[]).0);
+
+    // A changed domain makes the entitlements stale.
+    let moved = keys.replace("shop.example.com]", "shop.example.com, www.example.com]");
+    fs::write(&pubspec, format!("{base}{moved}")).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        !ok && err.contains(&format!(
+            "{plist_path}: the applinks: entries of com.apple.developer.associated-domains are out of date"
+        )),
+        "{err}"
+    );
+    assert!(fsp_full(root, &["links"], &[]).0);
+    assert!(
+        fs::read_to_string(root.join(plist_path))
+            .unwrap()
+            .contains("applinks:www.example.com")
+    );
+    assert!(fsp_full(root, &["links", "--check"], &[]).0);
+
+    // A filter of the app's own outside the markers is a warning, not a failure.
+    let with_own = fs::read_to_string(root.join(manifest_path))
+        .unwrap()
+        .replacen(
+            "        </activity>\n",
+            "            <intent-filter>\n                <action android:name=\"android.intent.action.VIEW\"/>\n                <data android:scheme=\"https\" android:host=\"shop.example.com\"/>\n            </intent-filter>\n        </activity>\n",
+            1,
+        );
+    fs::write(root.join(manifest_path), with_own).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        ok && err.contains(&format!("warning: {manifest_path}:"))
+            && err.contains(
+                "an <intent-filter> for `shop.example.com` outside the fsp links markers"
+            ),
+        "{err}"
+    );
+}

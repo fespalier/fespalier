@@ -27,6 +27,8 @@
 //!     android_package: com.example.shop
 //!     android_sha256: ["AB:CD:..."]
 //!     ios_app_id: TEAMID.com.example.shop   # or `flavors:` (since 0.11.0), one app per flavour
+//!     android_manifest: android/app/src/main/AndroidManifest.xml # since 0.11.0; `fsp links` edits it between markers
+//!     ios_entitlements: ios/Runner/Runner.entitlements           # since 0.11.0; `fsp links` edits its applinks: entries
 //!     out: links            # default
 //!   lints:                  # one level per lint (see `lint.rs`)
 //!     unknown_path: warning # default; `error` fails `gen` and `check`, `off` skips the check
@@ -70,7 +72,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 use serde_yaml_ng::Value;
 
@@ -365,6 +367,8 @@ pub struct LinksConfig {
     android_package: Option<String>,
     android_sha256: Option<Vec<String>>,
     ios_app_id: Option<String>,
+    ios_entitlements: Option<String>,
+    android_manifest: Option<String>,
     flavors: Option<Flavors>,
     out: Option<String>,
 }
@@ -376,6 +380,7 @@ pub struct FlavorConfig {
     android_package: Option<String>,
     android_sha256: Option<Vec<String>>,
     ios_app_id: Option<String>,
+    ios_entitlements: Option<String>,
 }
 
 /// `links: flavors:` in the order the pubspec writes it (a map would sort it).
@@ -423,6 +428,9 @@ pub struct IosApp {
     pub flavor: Option<String>,
     /// `TEAMID.com.example.shop`.
     pub app_id: String,
+    /// The `.entitlements` file `fsp links` edits for this app (since 0.11.0), normalized,
+    /// relative to the project root and under `ios/`.
+    pub entitlements: Option<String>,
 }
 
 /// One entry of `links: paths:`: what a platform opens, instead of every linkable route.
@@ -450,6 +458,9 @@ pub struct Links {
     pub apps_android: Vec<AndroidApp>,
     /// The iOS apps, in the order the pubspec has them; the association file lists all.
     pub apps_ios: Vec<IosApp>,
+    /// The `AndroidManifest.xml` `fsp links` edits (since 0.11.0), normalized, relative to the
+    /// project root and under `android/`.
+    pub android_manifest: Option<String>,
     /// Normalized, `/`-separated, no trailing slash, relative to the project root; empty for
     /// the root itself.
     pub out: String,
@@ -503,6 +514,14 @@ fn link_path(raw: &str) -> Result<LinkPath, PathError> {
     })
 }
 
+/// A file of one platform's folder (`prefix`, like `ios/`) as the pubspec names it: normalized,
+/// with a last segment `name_ok` accepts; `None` for anything else.
+fn platform_file(raw: &str, prefix: &str, name_ok: impl Fn(&str) -> bool) -> Option<String> {
+    let path = project_path(raw)?;
+    let name = path.rsplit('/').next()?;
+    (path.starts_with(prefix) && name_ok(name)).then_some(path)
+}
+
 /// The fingerprints of `key`, upper-case, each once.
 fn fingerprints(key: &str, raw: Option<&[String]>) -> Result<Vec<String>> {
     let mut out: Vec<String> = vec![];
@@ -552,8 +571,32 @@ fn android_app(
 }
 
 /// The iOS app of one set of keys, if any.
-fn ios_app(key: &str, flavor: Option<&str>, id: Option<&str>) -> Result<Option<IosApp>> {
-    let Some(id) = id else { return Ok(None) };
+fn ios_app(
+    key: &str,
+    flavor: Option<&str>,
+    id: Option<&str>,
+    entitlements: Option<&str>,
+) -> Result<Option<IosApp>> {
+    let entitlements = entitlements
+        .map(|raw| {
+            platform_file(raw, "ios/", |name| {
+                name.ends_with(".entitlements") && name != ".entitlements"
+            })
+            .ok_or_else(|| {
+                anyhow!(
+                    "`{key}.ios_entitlements` must be a `.entitlements` file under ios/, relative to the project, got `{raw}`"
+                )
+            })
+        })
+        .transpose()?;
+    let Some(id) = id else {
+        if entitlements.is_some() {
+            bail!(
+                "`{key}.ios_entitlements` needs `ios_app_id`: the entitlement is for the iOS app"
+            );
+        }
+        return Ok(None);
+    };
     if !is_app_id(id) {
         bail!(
             "`{key}.ios_app_id` must be the Team ID, a dot and the bundle id, like `ABCDE12345.com.example.shop` (the Team ID is 10 upper-case letters and digits), got `{id}`"
@@ -562,6 +605,7 @@ fn ios_app(key: &str, flavor: Option<&str>, id: Option<&str>) -> Result<Option<I
     Ok(Some(IosApp {
         flavor: flavor.map(str::to_string),
         app_id: id.to_string(),
+        entitlements,
     }))
 }
 
@@ -607,15 +651,17 @@ impl LinksConfig {
                     "fespalier.links",
                     None,
                     self.ios_app_id.as_deref(),
+                    self.ios_entitlements.as_deref(),
                 )?);
             }
             Some(Flavors(list)) => {
                 if self.android_package.is_some()
                     || self.android_sha256.is_some()
                     || self.ios_app_id.is_some()
+                    || self.ios_entitlements.is_some()
                 {
                     bail!(
-                        "`fespalier.links` takes `android_package`, `android_sha256` and `ios_app_id` for one app, or `flavors:` for several, not both"
+                        "`fespalier.links` takes `android_package`, `android_sha256`, `ios_app_id` and `ios_entitlements` for one app, or `flavors:` for several, not both"
                     );
                 }
                 for (i, (name, f)) in list.iter().enumerate() {
@@ -651,7 +697,12 @@ impl LinksConfig {
                         }
                         apps_android.push(a);
                     }
-                    if let Some(a) = ios_app(&key, Some(name), f.ios_app_id.as_deref())? {
+                    if let Some(a) = ios_app(
+                        &key,
+                        Some(name),
+                        f.ios_app_id.as_deref(),
+                        f.ios_entitlements.as_deref(),
+                    )? {
                         if let Some(other) = apps_ios.iter().find(|o| o.app_id == a.app_id) {
                             bail!(
                                 "`fespalier.links.flavors`: `{}` is the `ios_app_id` of both `{}` and `{name}`",
@@ -663,6 +714,25 @@ impl LinksConfig {
                     }
                 }
             }
+        }
+
+        let android_manifest = self
+            .android_manifest
+            .as_deref()
+            .map(|raw| {
+                platform_file(raw, "android/", |name| name == "AndroidManifest.xml").ok_or_else(
+                    || {
+                        anyhow!(
+                            "`fespalier.links.android_manifest` must be an `AndroidManifest.xml` under android/, relative to the project, got `{raw}`"
+                        )
+                    },
+                )
+            })
+            .transpose()?;
+        if android_manifest.is_some() && apps_android.is_empty() {
+            bail!(
+                "`fespalier.links.android_manifest` needs `android_package` (with `android_sha256`): the intent filters are for the Android app"
+            );
         }
 
         if let Some(scheme) = &self.scheme {
@@ -714,6 +784,7 @@ impl LinksConfig {
             paths,
             apps_android,
             apps_ios,
+            android_manifest,
             out,
         })
     }

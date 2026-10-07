@@ -166,7 +166,7 @@ base class RouteScopeImpl implements RouteScope {
       }
     } finally {
       // A container that is being disposed has closed them already.
-      for (final sub in [...subscriptions, if (lifetime != null) lifetime]) {
+      for (final sub in [...subscriptions, ?lifetime]) {
         try {
           sub.close();
         } catch (_) {}

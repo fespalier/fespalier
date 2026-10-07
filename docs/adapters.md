@@ -31,7 +31,7 @@ class MyToolsAdapter extends FespalierAdapter {
 ```
 
 The adapters on the [roadmap](../ROADMAP.md) (error reporting, analytics, notification and shortcut
-launches, ...) are packages of this kind. `FespalierAdapter` has seven members, each with a default that
+launches, ...) are packages of this kind. `FespalierAdapter` has nine members, each with a default that
 adds nothing, so an adapter overrides what it needs:
 
 | Member                      | When it runs                                                                                                   | What it is for                                                                                                                                     |
@@ -133,7 +133,7 @@ attach adapters, so a widget test of a page never runs them.
 first non-null answer (an `InboundLaunch`) wins; it is `null` on the web and sync unless an adapter answers with a
 `Future`. `FespalierAdapters.onEnter` (what the generated `AppRoutes.onEnter` forwards to) composes the adapters'
 answers: the first `Block` wins, the `Allow.then` callbacks run in order as one, and no say is `Allow()`. Blocking
-the initial navigation is refused (it is allowed, and reported in debug): answer `launch()` instead. See
+the initial navigation is refused: it is allowed, reported with `FlutterError.reportError` in every mode, and the block's `then` still runs; answer `launch()` instead. `InboundNavigation.initial` is true when go_router has no route yet (it hands the same state as current and next). A `Block.then` for a platform link keeps the link's mark: the `go` inside it is reported with `source=link`. See
 [Opening the app](navigation.md#opening-the-app-launches-and-platform-links).
 
 **Two things to check.**

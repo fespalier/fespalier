@@ -7,6 +7,7 @@ import 'package:hooks_riverpod/misc.dart' show Override;
 
 import 'adapter.dart';
 import 'inbound.dart';
+import 'telemetry.dart' show navigateFrom;
 
 /// The adapters of `fespalier: adapters:`, in the pubspec's order, as one (since 0.11.0). What
 /// the generated `AppAdapters` (in `lib/app.g.dart`) forwards to, whatever `fespalier: main:` says:
@@ -132,9 +133,6 @@ final class FespalierAdapters {
     return found;
   }
 
-  /// Routers `onEnter` has seen: the first navigation of each is the initial one.
-  final Expando<bool> _entered = Expando<bool>('FespalierAdapters.onEnter');
-
   /// go_router's `onEnter` (`AppRoutes.onEnter`): each adapter's `onEnter`, in order. The first
   /// `Block` wins and is returned as it is (the `then`s of the `Allow`s before it are dropped: the
   /// navigation did not happen); otherwise the `Allow.then` callbacks are run in order as one
@@ -148,15 +146,15 @@ final class FespalierAdapters {
     GoRouterState next,
     GoRouter router,
   ) {
-    final initial = !(_entered[router] ?? false);
-    _entered[router] = true;
+    // go_router hands the very same state as current and next when the router has no route yet.
+    final initial = identical(current, next);
     final navigation = InboundNavigation(
       context: context,
       current: current,
       next: next,
       router: router,
       initial: initial,
-      source: takePlatformLink(next.uri),
+      source: takePlatformLink(next.uri, router),
     );
     return _enter(navigation, 0, const []);
   }
@@ -179,7 +177,8 @@ final class FespalierAdapters {
       if (answer is Future<OnEnterResult>) {
         final next = i + 1;
         return answer.then<OnEnterResult>(
-          (result) {
+          (raw) {
+            final result = _withSource(navigation, raw);
             final done = _take(navigation, result, thens);
             return done ?? _enter(navigation, next, [...thens, ?result.then]);
           },
@@ -189,9 +188,10 @@ final class FespalierAdapters {
           },
         );
       }
-      final done = _take(navigation, answer, thens);
+      final result = _withSource(navigation, answer);
+      final done = _take(navigation, result, thens);
       if (done != null) return done;
-      if (answer.then != null) thens = [...thens, answer.then!];
+      if (result.then != null) thens = [...thens, result.then!];
     }
     return thens.isEmpty ? const Allow() : Allow(then: _runAll(thens));
   }
@@ -205,19 +205,29 @@ final class FespalierAdapters {
   ) {
     if (result is! Block) return null;
     if (!navigation.initial) return result;
-    assert(() {
-      _report(
-        StateError(
-          'an adapter blocked the initial navigation, which go_router answers '
-          "with its error page; fespalier allowed it. Answer the adapter's "
-          'launch() instead',
-        ),
-        StackTrace.current,
-        'in onEnter',
-      );
-      return true;
-    }());
+    // Reported in every mode (no timer, no microtask): a release build should hear of it too.
+    _report(
+      StateError(
+        'an adapter blocked the initial navigation, which go_router answers '
+        "with its error page; fespalier allowed it (the block's then still "
+        "runs). Answer the adapter's launch() instead",
+      ),
+      StackTrace.current,
+      'in onEnter',
+    );
     return null;
+  }
+
+  /// A `Block.then` for a platform link keeps the link's mark: the `go` inside it (a rewritten
+  /// custom-scheme link) starts a navigation that telemetry reports with `source=link`.
+  OnEnterResult _withSource(
+    InboundNavigation navigation,
+    OnEnterResult result,
+  ) {
+    final source = navigation.source;
+    final then = result.then;
+    if (source == null || then == null || result is! Block) return result;
+    return Block.then(() => navigateFrom<FutureOr<void>>(source, then));
   }
 
   /// One callback that runs [thens] in order, each reported (not thrown) when it fails: sync

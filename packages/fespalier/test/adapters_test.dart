@@ -77,7 +77,7 @@ class _Recording extends FespalierAdapter {
   }
 }
 
-typedef Enter = FutureOr<OnEnterResult> Function();
+typedef Enter = FutureOr<OnEnterResult> Function({bool initial});
 
 void muteErrors() {
   final old = FlutterError.onError;
@@ -373,8 +373,11 @@ void main() {
       addTearDown(router.dispose);
       await tester.pumpWidget(MaterialApp.router(routerConfig: router));
       final state = router.state;
+      final other = _State(Uri.parse('/other'));
       final cx = tester.element(find.byType(SizedBox));
-      return () => all.onEnter(cx, state, state, router);
+      // go_router passes one state as both when the router has no route yet: the initial one.
+      return ({bool initial = false}) =>
+          all.onEnter(cx, state, initial ? state : other, router);
     }
 
     testWidgets('no say from anyone: a plain Allow, synchronously', (
@@ -395,9 +398,6 @@ void main() {
         _Recording('b', enter: (_) => const Block.stop()),
         _Recording('c', enter: (_) => const Block.then(_noop)),
       ]);
-      muteErrors();
-      enter(); // the initial navigation: a block is refused (see below)
-      log.clear();
       final result = enter();
       expect(result, isA<Block>());
       expect((result as Block).isStop, isTrue);
@@ -444,13 +444,11 @@ void main() {
         _Recording('a', enter: (_) => done.future),
         _Recording('b', enter: (_) => const Block.stop()),
       ]);
-      muteErrors();
       final result = enter();
       expect(result, isA<Future<OnEnterResult>>());
       expect(log, ['a onEnter']);
       done.complete(const Allow());
-      // The initial navigation: b's block is refused, so it is allowed.
-      expect(await result, isA<Allow>());
+      expect(await result, isA<Block>());
       expect(log, ['a onEnter', 'b onEnter']);
     });
 
@@ -464,7 +462,7 @@ void main() {
       final enter = await enterWith(tester, [
         _Recording('a', enter: (_) => const Block.stop()),
       ]);
-      expect(enter(), isA<Allow>());
+      expect(enter(initial: true), isA<Allow>());
       expect(errors, hasLength(1));
       expect(
         errors.single.exception.toString(),
@@ -472,6 +470,19 @@ void main() {
       );
       // The next one may be blocked.
       expect(enter(), isA<Block>());
+    });
+
+    testWidgets('a refused initial Block.then still runs its callback', (
+      tester,
+    ) async {
+      muteErrors();
+      final enter = await enterWith(tester, [
+        _Recording('a', enter: (_) => Block.then(() => log.add('then'))),
+      ]);
+      final result = enter(initial: true) as Allow;
+      log.clear();
+      result.then!();
+      expect(log, ['then']);
     });
   });
 }
@@ -481,3 +492,13 @@ class _Plain extends FespalierAdapter {
 }
 
 void _noop() {}
+
+class _State implements GoRouterState {
+  _State(this.uri);
+
+  @override
+  final Uri uri;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}

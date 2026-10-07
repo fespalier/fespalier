@@ -4,7 +4,8 @@
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier/src/inbound.dart' show debugInboundWeb;
+import 'package:fespalier/src/inbound.dart'
+    show debugInboundWeb, debugResetPlatformLinks;
 import 'package:fespalier/startup.dart'
     show FespalierAdapter, FespalierAdapters;
 import 'package:fespalier/testing.dart';
@@ -21,7 +22,7 @@ GoRouter make({
   InboundLaunch? launch,
   bool links = true,
   OnEnter? onEnter,
-}) => launchRouter(launch, () {
+}) => launchRouter(launch, (launch) {
   final r = GoRouter(
     initialLocation: launch?.location ?? initial,
     initialExtra: launch?.extra,
@@ -39,6 +40,15 @@ GoRouter make({
   telemetryAttach(r, base: () => '/');
   return r;
 }, links: links);
+
+Future<void> legacyPush(WidgetTester tester, String location) async {
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    'flutter/navigation',
+    const JSONMethodCodec().encodeMethodCall(MethodCall('pushRoute', location)),
+    (_) {},
+  );
+  await tester.pumpAndSettle();
+}
 
 Future<void> platformPush(WidgetTester tester, String location) async {
   await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
@@ -67,6 +77,7 @@ void main() {
   tearDown(() {
     FespalierTelemetry.install(null);
     debugInboundWeb = null;
+    debugResetPlatformLinks();
   });
 
   test('InboundLaunch.to takes the typed location, and asserts the source', () {
@@ -182,6 +193,87 @@ void main() {
     await pumpRouter(tester, r);
     expect(seen, [('/settings', true, 'link')]);
   });
+
+  testWidgets('a launch does not stop later platform links being tagged', (
+    tester,
+  ) async {
+    final seen = <(String, bool, String?)>[];
+    final r = make(
+      launch: InboundLaunch('/orders/42', source: NavigationSource.shortcut),
+      onEnter: FespalierAdapters([_Spy(seen)]).onEnter,
+    );
+    await pumpRouter(tester, r);
+    rec.log.clear();
+    await platformPush(tester, '/settings');
+    expect(starts(), ['#2 start navigate /settings source=link']);
+    expect(seen.last, ('/settings', false, 'link'));
+  });
+
+  for (final payload in [
+    'https://example.com/orders/7',
+    'https://example.com/orders/7/',
+    'vaam://app/orders/7',
+    'orders/7',
+  ]) {
+    testWidgets('a platform payload of $payload is tagged and seen as link', (
+      tester,
+    ) async {
+      final seen = <(String, bool, String?)>[];
+      final r = make(onEnter: FespalierAdapters([_Spy(seen)]).onEnter);
+      await pumpRouter(tester, r);
+      rec.log.clear();
+      await platformPush(tester, payload);
+      expect(starts().single, endsWith('source=link'));
+      expect(seen.last.$3, 'link');
+    });
+  }
+
+  testWidgets('the legacy pushRoute is a link too', (tester) async {
+    final r = make();
+    await pumpRouter(tester, r);
+    rec.log.clear();
+    await legacyPush(tester, '/orders/7');
+    expect(starts(), ['#2 start navigate /orders/7 source=link']);
+  });
+
+  testWidgets(
+    'a router made with links off is never tagged, whatever ran before',
+    (tester) async {
+      make().dispose(); // registers the observer
+      final r = make(links: false);
+      await pumpRouter(tester, r);
+      rec.log.clear();
+      await platformPush(tester, '/orders/7');
+      expect(starts().single, endsWith('start navigate /orders/7'));
+    },
+  );
+
+  testWidgets('a Block.then rewrite keeps the link mark', (tester) async {
+    final r = make(onEnter: FespalierAdapters([_Rewrite()]).onEnter);
+    await pumpRouter(tester, r);
+    rec.log.clear();
+    await platformPush(tester, 'vaam://app/custom');
+    expect(find.text('order 9'), findsOneWidget);
+    expect(starts(), [
+      '#2 start navigate vaam://app/custom source=link',
+      '#3 start navigate /orders/9 source=link',
+    ]);
+  });
+
+  testWidgets('a launch is not passed to make on the web', (tester) async {
+    debugInboundWeb = true;
+    InboundLaunch? got = InboundLaunch('/x', source: NavigationSource.link);
+    // The debug assert says a launch is not used on the web; the router still gets none.
+    try {
+      launchRouter(null, (l) {
+        got = l;
+        return make();
+      });
+    } finally {
+      debugInboundWeb = null;
+    }
+    expect(got, isNull);
+  });
 }
 
 class _Route extends TypedLocation {
@@ -200,5 +292,13 @@ class _Spy extends FespalierAdapter {
   FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
     seen.add((navigation.next.uri.path, navigation.initial, navigation.source));
     return null;
+  }
+}
+
+class _Rewrite extends FespalierAdapter {
+  @override
+  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
+    if (navigation.next.uri.path != '/custom') return null;
+    return Block.then(() => navigation.router.go('/orders/9'));
   }
 }

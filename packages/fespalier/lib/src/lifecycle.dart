@@ -261,8 +261,8 @@ final class RouterWatch {
 
   /// What marks a navigation to [uri]: `navigateFrom`'s source, else `link` for a platform link
   /// (since 0.11.0; a peek, `onEnter` uses the link up, and the commit forgets it).
-  static String? _sourceOf(Uri uri) =>
-      takeNavigationSource() ?? platformLinkSource(uri);
+  String? _sourceOf(Uri uri) =>
+      takeNavigationSource() ?? platformLinkSource(uri, router);
 
   void _committed() {
     clearPlatformLink();

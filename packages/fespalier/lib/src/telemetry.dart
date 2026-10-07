@@ -450,8 +450,9 @@ String? _source;
 /// );
 /// ```
 ///
-/// fespalier never calls it by itself: a platform deep link and the browser's back button look
-/// the same to it as any other navigation. The bridge that knows (a notification handler) does.
+/// fespalier calls it by itself only for a platform link (since 0.11.0, `launchRouter` with
+/// `links: true`: `link`, never on the web). The browser's back button looks the same to it as
+/// any other navigation, and the bridge that knows (a notification handler) calls it.
 T navigateFrom<T>(String source, T Function() navigate) {
   assert(
     NavigationSource.values.contains(source),

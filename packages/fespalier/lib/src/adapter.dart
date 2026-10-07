@@ -69,10 +69,14 @@ abstract class FespalierAdapter {
   FutureOr<InboundLaunch?> launch() => null;
 
   /// A navigation is about to be parsed (go_router's `onEnter`, since 0.11.0): null to have no
-  /// say, `Allow(then: ...)` to run something after it commits, `Block.then(...)` to stop it
-  /// (rewriting a custom-scheme link: `Block.then(() => router.go('/orders/42'))`). The first
-  /// adapter to block wins. Never block [InboundNavigation.initial]: go_router shows its error
-  /// page for it, so answer [launch] instead (fespalier allows it and, in debug, reports it).
-  /// Keep it fast and synchronous when you can: sync stays sync.
+  /// say, `Allow(then: ...)` to run something after it, `Block.then(...)` to stop it (rewriting a
+  /// custom-scheme link: `Block.then(() => router.go('/orders/42'))`, which keeps the link's
+  /// `source`). The first adapter to block wins. Never block [InboundNavigation.initial]
+  /// (go_router has no route yet and shows an error page): fespalier allows it, reports it with
+  /// `FlutterError.reportError`, and still runs the block's `then`; answer [launch] instead.
+  ///
+  /// A `then` runs after the navigation commits on go_router 17.2 and later; on 17.0 and 17.1
+  /// (what Flutter 3.32 resolves) it runs inside the parse, before the commit, and may be lost.
+  /// Any `onEnter` makes go_router parse every navigation asynchronously.
   FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) => null;
 }

@@ -107,10 +107,10 @@ not a provider, such as its image at the size it shows it (`ResponsiveImage.prec
 ## Opening the app: launches and platform links (since 0.11.0)
 
 An adapter's `launch()` answers an `InboundLaunch(location, source: NavigationSource.notification)` (or
-`InboundLaunch.to(route, source: ...)`); `launchRouter(launch, () => GoRouter(...), links: true)` builds the router at
+`InboundLaunch.to(route, source: ...)`); `launchRouter(launch, (launch) => GoRouter(...), links: true)` builds the router at
 that location over the platform's initial route and marks the first navigation with the source. With `links: true`
 (telemetry or adapters) a platform deep link, at cold start or while running, is marked `NavigationSource.link`; an
-in-app `go` is not. Never on the web, where a launch is not used. An adapter's `onEnter` sees it as
+in-app `go` is not. A launch does not stop later links being marked. Android hands a cold-start link over as the initial route; iOS delivers it after the first frame, as a warm link. `make` receives the launch (null on the web). Never on the web. An adapter's `onEnter` sees it as
 `InboundNavigation.source`, and must not block `InboundNavigation.initial`. Details: `docs/navigation.md`, "Opening the app: launches and platform links".
 
 ## Not-found views

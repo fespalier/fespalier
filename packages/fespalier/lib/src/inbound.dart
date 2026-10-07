@@ -81,45 +81,72 @@ bool get inboundIsWeb => debugInboundWeb ?? kIsWeb;
 
 /// Builds the router of the generated `AppRoutes.router` (generated code calls it), since 0.11.0.
 ///
-/// With [launch], [make] is expected to start the router at `launch.location`
-/// (`overridePlatformDefaultLocation`), over the platform's initial route, and the first navigation
-/// is marked with `launch.source`. Without one, a platform deep link at cold start is marked
-/// `NavigationSource.link` when [links] is set (an app with telemetry or adapters), and so is each
-/// platform link the running app receives afterwards. Never on the web. [make] runs once,
-/// synchronously, and what it builds is returned. With [links] off, no listener is added.
+/// [make] builds the `GoRouter` and receives the launch that applies: [launch], or null on the
+/// web, where the address bar is the launch and a launch is never used. With a launch, [make] is
+/// expected to start the router at `launch.location` (`overridePlatformDefaultLocation`), over
+/// the platform's initial route, and the first navigation is marked with `launch.source`.
+///
+/// With [links] set (an app with telemetry or adapters) every platform link is marked
+/// `NavigationSource.link`, launch or not: each one the running app receives, and, without a
+/// launch, a deep link in the platform's initial route (Android hands it over there; iOS delivers
+/// it after the first frame, as a link received while running). Never on the web. [make] runs
+/// once, synchronously, and what it builds is returned. With [links] off, no listener is added
+/// and nothing is marked.
 GoRouter launchRouter(
   InboundLaunch? launch,
-  GoRouter Function() make, {
+  GoRouter Function(InboundLaunch? launch) make, {
   bool links = false,
 }) {
+  final web = inboundIsWeb;
+  final effective = web ? null : launch;
   assert(
-    launch == null || !inboundIsWeb,
+    launch == null || !web,
     'launchRouter: a launch is not used on the web (the address bar is the '
     'launch); FespalierAdapters.launch() answers null there',
   );
-  if (inboundIsWeb) return make();
-  if (launch != null) return navigateFrom(launch.source, make);
-  if (!links) return make();
+  GoRouter build() => effective == null
+      ? make(null)
+      : navigateFrom(effective.source, () => make(effective));
+  if (web || !links) return build();
   final binding = WidgetsBinding.instance;
   // Before make(): go_router's provider registers itself with the binding on its first listener,
   // and a binding observer added first hears a platform link first.
   _links.register(binding);
-  final platform = Uri.parse(binding.platformDispatcher.defaultRouteName);
-  if (platform.path.isEmpty || (platform.path == '/' && !platform.hasQuery)) {
-    return make();
+  _links.making = true;
+  try {
+    final router = effective != null ? build() : _coldStart(binding, make);
+    _links.add(router);
+    return router;
+  } finally {
+    _links.making = false;
   }
+}
+
+GoRouter _coldStart(
+  WidgetsBinding binding,
+  GoRouter Function(InboundLaunch? launch) make,
+) {
+  final platform = Uri.parse(binding.platformDispatcher.defaultRouteName);
+  // go_router's own test: an empty path is the root, and only the string `/` is not a link.
+  final root = (platform.hasEmptyPath ? platform.replace(path: '/') : platform)
+      .toString();
+  if (root == '/') return make(null);
   _links.record(platform);
-  return navigateFrom(NavigationSource.link, make);
+  return navigateFrom(NavigationSource.link, () => make(null));
 }
 
 /// `NavigationSource.link` when the platform handed the router [uri] and nothing consumed it yet
-/// (a peek: telemetry's navigation start asks, then `onEnter`); null otherwise.
-String? platformLinkSource(Uri uri) =>
-    _links.matches(uri) ? NavigationSource.link : null;
+/// (a peek: telemetry's navigation start asks, then `onEnter`); null otherwise, and always null
+/// for a router `launchRouter` did not make with `links: true`. [router] is null while the router
+/// is being made.
+String? platformLinkSource(Uri uri, GoRouter? router) {
+  if (!_links.linked(router)) return null;
+  return _links.matches(uri) ? NavigationSource.link : null;
+}
 
 /// Like [platformLinkSource], and the platform link is used up: what `onEnter` calls.
-String? takePlatformLink(Uri uri) {
-  final source = platformLinkSource(uri);
+String? takePlatformLink(Uri uri, GoRouter router) {
+  final source = platformLinkSource(uri, router);
   if (source != null) _links.clear();
   return source;
 }
@@ -127,17 +154,44 @@ String? takePlatformLink(Uri uri) {
 /// Forgets a platform link no navigation took (the router committed, or went nowhere).
 void clearPlatformLink() => _links.clear();
 
+/// Removes the binding observer and forgets everything: a test's tear down (the observer and
+/// the last link are global, like the binding).
+@visibleForTesting
+void debugResetPlatformLinks() => _links.reset();
+
 final _PlatformLinks _links = _PlatformLinks();
 
 /// Records the location of the last platform link. A binding observer, not a listener on the
 /// router: it only stores a `Uri`, schedules nothing and answers synchronously.
 final class _PlatformLinks with WidgetsBindingObserver {
   Uri? _link;
+  WidgetsBinding? _binding;
+
+  /// True while `launchRouter` runs `make`: the router does not exist yet.
+  bool making = false;
+
+  /// Routers made by `launchRouter(links: true)`.
+  final Expando<bool> _routers = Expando<bool>('fespalier platform links');
+
+  void add(GoRouter router) => _routers[router] = true;
 
   void register(WidgetsBinding binding) {
+    _binding?.removeObserver(this);
     binding.removeObserver(this);
     binding.addObserver(this);
+    _binding = binding;
   }
+
+  void reset() {
+    _binding?.removeObserver(this);
+    _binding = null;
+    _link = null;
+    making = false;
+  }
+
+  /// Whether [router] was made with links on (null: the one being made).
+  bool linked(GoRouter? router) =>
+      making || (router != null && (_routers[router] ?? false));
 
   void record(Uri uri) => _link = uri;
 
@@ -146,8 +200,18 @@ final class _PlatformLinks with WidgetsBindingObserver {
   bool matches(Uri uri) {
     final link = _link;
     if (link == null) return false;
-    String path(Uri u) => u.path.isEmpty ? '/' : u.path;
-    return path(link) == path(uri) && link.query == uri.query;
+    return _path(link) == _path(uri) && link.query == uri.query;
+  }
+
+  /// go_router's own normalisation, `RouteConfiguration.normalizeUri`: a leading `/`, no trailing
+  /// one. The platform sends a full URL; go_router parses it the same way.
+  static String _path(Uri uri) {
+    var path = uri.path;
+    if (!path.startsWith('/')) path = '/$path';
+    if (path.length > 1 && path.endsWith('/')) {
+      path = path.substring(0, path.length - 1);
+    }
+    return path;
   }
 
   @override

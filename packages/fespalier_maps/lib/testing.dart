@@ -1,5 +1,5 @@
 /// Fakes for testing a pin picker with no map, no network and no platform channel (since 0.13.0):
-/// `FakeMapSurface`, `FakeGeocoder` and `FakePositionSource`. The MapLibre and geolocator classes
+/// `FakeMapSurface`, `FakeGeocoder`, `FakePositionSource` and `FakeOfflineTiles`. The MapLibre and geolocator classes
 /// (`maplibre.dart`, `geolocator.dart`) are constructed only by the app, never by a test.
 library;
 
@@ -8,6 +8,8 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import 'fespalier_maps.dart';
+
+export 'src/offline/fake.dart';
 
 /// The key of the box a [FakeMapSurface] builds.
 const Key fakeMapKey = ValueKey<String>('fespalier_maps.fake_map');

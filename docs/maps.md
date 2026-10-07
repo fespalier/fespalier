@@ -3,7 +3,9 @@
 `fespalier_maps` (since 0.13.0) gives an app a pin picker that returns a place: the pin is fixed at the centre, the map
 moves under it, a search field sits at the bottom, and a name for the point under the pin is shown as a **guess**.
 Confirming pops a `PickedPlace` to the page that asked for it. The map is [MapLibre](https://maplibre.org) through
-`maplibre_gl`, the device position is `geolocator`, and the geocoder is yours.
+`maplibre_gl`, the device position is `geolocator`, and the geocoder is yours. The same package downloads **offline
+region packs** (a rectangle, a style and a zoom range stored in MapLibre's database) with progress, pause, resume,
+deletion and a storage report.
 
 fespalier itself has no map feature: no file kind, no `fespalier:` key, no `fsp` command, and `app.g.dart` is the same
 bytes. The package is a companion, installed like `fespalier_flags`. It cannot add a route (`fsp` scans your `lib/app/`):
@@ -20,7 +22,8 @@ if (place != null) {
 ```
 
 Contents: [Install](#install), [Picking a place](#picking-a-place), [Search and guesses](#search-and-guesses),
-[Where the device is](#where-the-device-is), [The map](#the-map), [Telemetry](#telemetry), [Testing](#testing),
+[Where the device is](#where-the-device-is), [The map](#the-map), [Offline packs](#offline-packs),
+[Downloading a region](#downloading-a-region), [Storage](#storage), [Telemetry](#telemetry), [Testing](#testing),
 [Rules and what it costs](#rules-and-what-it-costs), [Not built yet](#not-built-yet).
 
 ## Install
@@ -162,18 +165,94 @@ MapLibre's demo style, for trying things out; an app uses its own tiles and foll
 A map is a platform view: it **cannot render in a widget test**, and no CI job of this repository draws one. A page that
 holds a `PinPicker` is tested with `FakeMapSurface` (below), and a device run is what shows that the map is right.
 
+## Offline packs
+
+A pack is a MapLibre **region**: the tiles, glyphs and sprites a style needs for a rectangle and a zoom range, stored in
+MapLibre's offline database so the map draws with no network (since 0.13.0). Three pieces, and only the last imports
+MapLibre:
+
+- `RegionPackRequest`: the `key` you name the pack by, the `GeoBounds`, the `styleUrl`, `minZoom` and `maxZoom`.
+  `estimatedTiles` is the number of Web Mercator tiles under it (`tileCount`), to show the size of a choice before
+  anything is fetched; `isValid` is false for an empty key or style, a zoom range out of order or above 22, an inverted
+  rectangle and one that crosses the antimeridian (split it in two).
+- `TilePacks`, the notifier behind the `tilePacks` provider: `start`, `pause`, `resume`, `remove`, `refresh`, `storage`.
+  Its state is a `Map<String, PackStatus>`; `tilePackStatus(key)` is one pack's, `Absent` while there is none.
+- `OfflineTiles`, the port over the database. `offlineTiles` is the provider that holds it and has **no default**: the app
+  overrides it with `MapLibreOfflineTiles()` from `package:fespalier_maps/maplibre.dart`, and a test with
+  `FakeOfflineTiles`.
+
+```dart
+// the app's ProviderScope
+ProviderScope(
+  overrides: [offlineTiles.overrideWithValue(const MapLibreOfflineTiles())],
+  child: const MyApp(),
+)
+```
+
+The `PackStatus` values are `Absent`, `Downloading` (`progress` 0 to 1, resource counts, `bytes`), `Paused`, `Complete`
+(`bytes`), `Interrupted` and `Failed` (a `PackFailure`: `unsupported`, `invalidRegion`, `limitExceeded`, `other`; never the
+platform's text). MapLibre counts **resources** (tiles, glyph ranges, sprites, the style), not tiles, and the numbers here
+are its own. Offline downloads exist on Android and iOS only: on the web a download ends in `Failed(unsupported)`.
+
+**A MapLibre download does not resume across an app restart.** While the app stays alive, `pause` and `resume` continue
+the same download. If the app is closed while a region downloads, MapLibre keeps what it stored but the download is gone:
+the next session finds the region in the database, and `refresh()` reports it as `Interrupted`. `resume` of an
+`Interrupted` (or `Failed`) pack **starts the same definition again** as a new region and deletes the old region when the
+new one completes; whether MapLibre reuses the resources already stored or fetches them again was not checked on a device.
+Android's native side also answers "Region is no longer actively tracked" to a `resume` it has lost, which `TilePacks`
+turns into `Interrupted` as well. A download that resumes from a byte offset needs a file the package controls: the PMTiles
+file packs of a later release are that (HTTP Range).
+
+## Downloading a region
+
+```dart
+final packs = ref.read(tilePacks.notifier);
+await packs.refresh();         // once, when the page opens: learns the packs of earlier sessions
+await packs.start(doualaPack); // returns when MapLibre has the region; the end is Complete or Failed in the state
+final status = ref.watch(tilePackStatus('douala'));
+```
+
+- **Nothing is read at startup.** `refresh()` lists the database: a complete region becomes `Complete`, an unfinished one
+  `Interrupted`, one deleted behind your back leaves the state, and a region another tool made (without this package's
+  key in its metadata) is ignored. A pack that downloads in this session is never overwritten by it.
+- **Progress is the state.** MapLibre reports a download through a callback that `TilePacks` hands the port, and the app
+  watches the provider: no stream, no subscription and no timer in the package. `start` of a key that is `Downloading` or
+  `Paused` does nothing; of a `Complete` one downloads it again and removes the old region at the end.
+- **`pause`, `resume` and `remove` never leave the state lying.** A `pause` that MapLibre refuses leaves `Downloading`;
+  `resume` of a `Paused` pack whose download was lost makes it `Interrupted`; `remove` stops a running download (its late
+  events are dropped), frees what only that pack needed, and, if the database refuses, marks the pack `Failed` and throws.
+- **The key is yours and stays in the database.** It is stored in the region's metadata under `fespalier_maps.key`, and
+  never sent to telemetry.
+- **The `maplibre_gl` range matters on iOS.** 0.26.0 reads a region's bounds back with casts that fail for whole-degree
+  coordinates on iOS (the JSON has no `60.0`); 0.27.x fixed it. Use 0.27 where you can, or fractional bounds.
+
+## Storage
+
+`await ref.read(tilePacks.notifier).storage()` answers a `StorageUse`: `perPack` (the bytes each pack's resources take,
+from the statuses), `packSum`, and `onDisk` (the size of the database file). **The per-pack bytes overlap**: a glyph range
+or an edge tile that two packs share is counted in each, so `packSum` can be more than the file, and the file also holds
+MapLibre's ambient cache (the tiles the map cached while it was browsed). Show each row's bytes and `onDisk` as the total;
+do not add the rows up as if they were the file.
+
+`onDisk` comes from `MapLibreOfflineTiles(onDiskBytes: ...)`, a callback the app writes, because `maplibre_gl` 0.27 can
+name the file (`getOfflineDatabasePath`) and 0.26 cannot, and this package builds on both. Without it `onDisk` is null.
+The recipe is in the skill's `offline-packs.md`.
+
 ## Telemetry
 
-With a sink installed, the picker reports three `TelemetryOp.custom` operations (since 0.13.0). Their names are this
+With a sink installed, the picker and the packs report four `TelemetryOp.custom` operations (since 0.13.0). Their names are this
 package's own contract, pinned by `test/telemetry_test.dart`: a name is added, never renamed.
 
-| Operation                | Attributes                                                              | Ends with                                                           |
-| ------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `fespalier.maps.geocode` | `fespalier.maps.direction`: `search` or `reverse`                       | `fespalier.maps.result`: `found`, `empty`, `error`, `stale`         |
-| `fespalier.maps.locate`  | none                                                                    | `fespalier.maps.result`: `fixed`, `off`, `denied`, `error`, `stale` |
-| `fespalier.maps.pick`    | `fespalier.maps.guessed`: whether a guess came with the confirmed place | (starts and ends in the same call)                                  |
+| Operation                 | Attributes                                                              | Ends with                                                           |
+| ------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `fespalier.maps.geocode`  | `fespalier.maps.direction`: `search` or `reverse`                       | `fespalier.maps.result`: `found`, `empty`, `error`, `stale`         |
+| `fespalier.maps.locate`   | none                                                                    | `fespalier.maps.result`: `fixed`, `off`, `denied`, `error`, `stale` |
+| `fespalier.maps.pick`     | `fespalier.maps.guessed`: whether a guess came with the confirmed place | (starts and ends in the same call)                                  |
+| `fespalier.maps.download` | `fespalier.maps.kind`: `region`                                         | `fespalier.maps.result`: `complete`, `failed`, `cancelled`          |
 
-A dropped answer ends with outcome `superseded` and result `stale`. **A value is never a coordinate, a label, a query,
+A dropped answer ends with outcome `superseded` and result `stale`. A download is one operation from `start` (or the restart
+that `resume` makes) to its end: a pause leaves it open, `remove` or the end of the provider's life ends it as `cancelled`
+(outcome `superseded`), and a failure ends it with outcome `error`. It never carries the pack's key, bounds, style or progress. **A value is never a coordinate, a label, a query,
 an address or an error's text**: the attributes are constants and a boolean, and the test asserts that none of the strings
 it feeds the picker appears in what a sink hears. With no sink installed, nothing is started.
 
@@ -190,6 +269,12 @@ channel:
   `reverseCalls` until the test completes or fails it, which is how to order two answers and see the stale one dropped;
   `error` makes every call throw.
 - `FakePositionSource(fix, {hold})`: answers with `answer`, counts `calls`, and with `hold` waits for `release()`.
+- `FakeOfflineTiles({holdDownloads, databaseSize})`: the offline database in memory; override `offlineTiles` with it. The
+  test plays MapLibre with `progress(key, fraction, ...)`, `finish(key)` and `fail(key, reason)`; `seed(request, complete:)`
+  puts a region there as an earlier session left it, `restart()` plays the app being reopened (old downloads are no longer
+  tracked, so `resume` of one throws as MapLibre's does), `holdDownloads` with `releaseDownloads()` puts events before the
+  download call's answer, and `pauseError`, `resumeError`, `deleteError`, `downloadError` and `regionsError` make a call
+  throw. `pauses`, `resumes`, `deleted` and `downloads` say what the packs asked for.
 
 ```dart
 // the page that asked: a real push<PickedPlace> on pumpRouter, the map played by the test
@@ -213,7 +298,10 @@ arithmetic, `tileCount(bounds, minZoom:, maxZoom:)`, is tested against values wo
   greps `lib/` for timers, delays, `.listen(`, `addListener(`, frame callbacks and `DateTime.now()`.
 - **A geocoder error, a query, a label and a coordinate never leave the picker** through telemetry, and an error's text is
   never kept.
-- **No offline maps yet, no HTTP, no `path_provider`, no secret.** The package takes no API key; a style URL with a key in
+- **Downloads add no timer, no listener and no stream of their own.** MapLibre's download callback is the only source of
+  progress, `TilePacks` writes it into provider state, and a stale event (of a pack removed or started again) is dropped by
+  a generation number.
+- **No HTTP, no `path_provider`, no secret.** The package takes no API key; a style URL with a key in
   it is public once it is in a build.
 - **It links two plugins into every app that depends on it**, and a MapLibre native library with them. An app that wants a
   map but not this picker can use `maplibre_gl` directly; an app that wants this picker's model on another map writes a
@@ -221,8 +309,8 @@ arithmetic, `tileCount(bounds, minZoom:, maxZoom:)`, is tested against values wo
 
 ## Not built yet
 
-Offline region packs (download, progress, pause, resume, storage) and PMTiles file packs (resumable over HTTP Range) are
-planned as separate releases of this package; this one has only the seam they will use: the map is a `MapSurface` with a
-style string and a `MapBinding`, and `tileCount` sizes a region before anything is fetched. Also not built: markers, routes and other
-overlays, clustering, search-as-you-type, a geocoder of the package's own, and a web-specific surface (`maplibre_gl`
-has a web implementation, but nothing here has run on it).
+PMTiles file packs (one file per pack, resumable over HTTP Range, verified and moved into place only when complete) are
+planned as a separate release of this package; they are how a download will survive an app restart. Also not built:
+markers, routes and other overlays, clustering, search-as-you-type, a geocoder of the package's own, a download that
+continues in the background when the app is closed, and a web-specific surface (`maplibre_gl` has a web implementation,
+but nothing here has run on it, and it has no offline regions).

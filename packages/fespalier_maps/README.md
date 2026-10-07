@@ -4,7 +4,8 @@ Maps for [fespalier](https://github.com/fespalier/fespalier) (since 0.13.0): a p
 fixed at the centre and the map moves under it, a search field sits at the bottom, a name for the point under the pin is
 shown as a **guess**, and confirming pops a `PickedPlace` to the page that pushed the route. The map is
 [MapLibre](https://maplibre.org) (`maplibre_gl`), the device position is `geolocator`, and the geocoder is an interface
-you implement (the skill has recipes for Nominatim, Photon and your own backend).
+you implement (the skill has recipes for Nominatim, Photon and your own backend). It also downloads offline MapLibre
+region packs, with progress, pause, resume and a storage report.
 
 fespalier itself has no map feature: no file kind, no `fespalier:` key, no `fsp` command, and the generated code is the
 same bytes. The package cannot add a route (`fsp` scans your `lib/app/`): you write `lib/app/pick-place/page.dart`, and its
@@ -74,6 +75,18 @@ final place = await PickPlaceRoute().push<PickedPlace>(context);
 
 `place.point` is the truth; `place.guess` is a courtesy label. The picker opens no dialog, menu or sheet.
 
+## Offline packs
+
+`TilePacks` (the `tilePacks` provider) downloads MapLibre **region packs**: `start(RegionPackRequest(key:, bounds:,
+styleUrl:, minZoom:, maxZoom:))`, `pause`, `resume`, `remove`, `refresh` and `storage`, with one `PackStatus` per key
+(`Absent`, `Downloading`, `Paused`, `Complete`, `Interrupted`, `Failed`) that the app watches with
+`ref.watch(tilePackStatus(key))`. `request.estimatedTiles` sizes a choice before anything is fetched. Override the database
+once: `offlineTiles.overrideWithValue(const MapLibreOfflineTiles())` (from `maplibre.dart`; `FakeOfflineTiles` in tests).
+
+**A MapLibre download does not resume across an app restart**: pause and resume work while the app stays alive; after a
+restart the region is `Interrupted` and `resume` downloads it again. PMTiles file packs (a later release) are the
+resumable kind. See [docs/maps.md](https://github.com/fespalier/fespalier/blob/main/docs/maps.md#offline-packs).
+
 ## Test it
 
 ```dart
@@ -91,4 +104,6 @@ and `FakePositionSource`. The picker's state is a plain class, `PinPickerModel`,
   snack bar: `test/no_timers_test.dart` greps `lib/`.
 - **Telemetry carries kinds and results, never a place**: `fespalier.maps.geocode`, `fespalier.maps.locate` and
   `fespalier.maps.pick`, constants and a boolean only, pinned by `test/telemetry_test.dart`.
-- Not built yet: offline region packs and PMTiles file packs (later releases), markers and overlays, search as you type.
+- `fespalier.maps.download` reports a pack's download as one operation (`region`, then `complete`, `failed` or `cancelled`),
+  never its key or rectangle.
+- Not built yet: PMTiles file packs (a later release), markers and overlays, search as you type.

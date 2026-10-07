@@ -23,6 +23,16 @@ abstract final class MapsTelemetry {
   /// The person confirmed a place: [guessed] says whether a guess came with it.
   static const String pick = 'fespalier.maps.pick';
 
+  /// An offline pack download, from its start to how it ended (since 0.13.0): [kind] says what
+  /// kind of pack, [result] how it ended. Never the pack's key, bounds, style or name.
+  static const String download = 'fespalier.maps.download';
+
+  /// Attribute of [download]: the kind of pack, [kindRegion].
+  static const String kind = 'fespalier.maps.kind';
+
+  /// A MapLibre region pack (the only kind in this release).
+  static const String kindRegion = 'region';
+
   /// Attribute of [geocode]: [directionSearch] or [directionReverse].
   static const String direction = 'fespalier.maps.direction';
 
@@ -55,6 +65,15 @@ abstract final class MapsTelemetry {
 
   /// [locate]: the permission was refused.
   static const String resultDenied = 'denied';
+
+  /// [download]: every resource arrived and the pack is complete.
+  static const String resultComplete = 'complete';
+
+  /// [download]: it failed (the pack's status says why, as a value).
+  static const String resultFailed = 'failed';
+
+  /// [download]: the pack was removed, or the owner of the download went away, before the end.
+  static const String resultCancelled = 'cancelled';
 
   /// Attribute of [pick]: whether the confirmed place carries a guess.
   static const String guessed = 'fespalier.maps.guessed';

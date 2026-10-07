@@ -149,6 +149,14 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier_cratestack/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_cratestack/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier_sentry/pubspec.yaml"
         },
         {

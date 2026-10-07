@@ -901,7 +901,7 @@ fn flavour_and_path_mistakes_name_the_key() {
     ]);
     assert_eq!(
         flat_and_flavors,
-        "`fespalier.links` takes `android_package`, `android_sha256` and `ios_app_id` for one app, or `flavors:` for several, not both"
+        "`fespalier.links` takes `android_package`, `android_sha256`, `ios_app_id` and `ios_entitlements` for one app, or `flavors:` for several, not both"
     );
     for bad in ["Prod", "1x", "pro-d", "x y"] {
         assert_eq!(
@@ -1029,6 +1029,133 @@ fn flavour_and_path_mistakes_name_the_key() {
             "{bad}"
         );
     }
+}
+
+#[test]
+fn the_platform_file_keys_are_checked_and_normalized() {
+    let d = "domains: [shop.example.com]";
+    let sha = format!("android_sha256: [\"{FINGERPRINT}\"]");
+    let ios = "ios_app_id: ABCDE12345.com.example.shop";
+    let android = ["android_package: com.example.shop", sha.as_str()];
+    // The flat key is the one unnamed app's, and is normalized.
+    let l = links_cfg(&[
+        d,
+        ios,
+        "ios_entitlements: ./ios//Runner/Runner.entitlements",
+        "android_package: com.example.shop",
+        &sha,
+        "android_manifest: android/app/src/main/AndroidManifest.xml",
+    ])
+    .unwrap();
+    assert_eq!(
+        l.apps_ios[0].entitlements.as_deref(),
+        Some("ios/Runner/Runner.entitlements")
+    );
+    assert_eq!(
+        l.android_manifest.as_deref(),
+        Some("android/app/src/main/AndroidManifest.xml")
+    );
+    // Each flavour names its own file, and two may share one.
+    let l = links_cfg(&[
+        d,
+        "flavors:",
+        "  prod:",
+        "    ios_app_id: ABCDE12345.com.example.shop",
+        "    ios_entitlements: ios/Runner/RunnerProd.entitlements",
+        "  debug:",
+        "    ios_app_id: ABCDE12345.com.example.debug",
+    ])
+    .unwrap();
+    assert_eq!(
+        l.apps_ios
+            .iter()
+            .map(|a| a.entitlements.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("ios/Runner/RunnerProd.entitlements"), None]
+    );
+
+    for bad in [
+        "Runner/Runner.entitlements",
+        "ios/Runner/Runner.plist",
+        "ios/Runner/.entitlements",
+        "ios/Runner/",
+        "ios",
+        "/ios/Runner.entitlements",
+        "ios/../android/x.entitlements",
+        "android/Runner.entitlements",
+    ] {
+        assert_eq!(
+            error_of(&[d, ios, &format!("ios_entitlements: '{bad}'")]),
+            format!(
+                "`fespalier.links.ios_entitlements` must be a `.entitlements` file under ios/, relative to the project, got `{bad}`"
+            ),
+            "{bad}"
+        );
+    }
+    assert_eq!(
+        error_of(&[
+            d,
+            "flavors:",
+            "  prod:",
+            "    ios_app_id: ABCDE12345.com.example.shop",
+            "    ios_entitlements: Runner.entitlements",
+        ]),
+        "`fespalier.links.flavors.prod.ios_entitlements` must be a `.entitlements` file under ios/, relative to the project, got `Runner.entitlements`"
+    );
+    for bad in [
+        "AndroidManifest.xml",
+        "android/app/src/main/Manifest.xml",
+        "ios/AndroidManifest.xml",
+        "../android/AndroidManifest.xml",
+        "android/app/androidmanifest.xml",
+    ] {
+        let mut lines = vec![d];
+        lines.extend(android);
+        let key = format!("android_manifest: '{bad}'");
+        lines.push(&key);
+        let e = error_of(&lines);
+        assert_eq!(
+            e,
+            format!(
+                "`fespalier.links.android_manifest` must be an `AndroidManifest.xml` under android/, relative to the project, got `{bad}`"
+            ),
+            "{bad}"
+        );
+    }
+
+    assert_eq!(
+        error_of(&[d, "ios_entitlements: ios/Runner/Runner.entitlements"]),
+        "`fespalier.links.ios_entitlements` needs `ios_app_id`: the entitlement is for the iOS app"
+    );
+    assert_eq!(
+        error_of(&[
+            d,
+            ios,
+            "android_manifest: android/app/src/main/AndroidManifest.xml"
+        ]),
+        "`fespalier.links.android_manifest` needs `android_package` (with `android_sha256`): the intent filters are for the Android app"
+    );
+    // A flavour that sets only the file has no app for it.
+    assert_eq!(
+        error_of(&[
+            d,
+            "flavors:",
+            "  prod:",
+            "    ios_entitlements: ios/Runner/Runner.entitlements"
+        ]),
+        "`fespalier.links.flavors.prod` sets neither `android_package` nor `ios_app_id`"
+    );
+    // The flat key mixed with `flavors:` is message 1 too.
+    assert!(
+        error_of(&[
+            d,
+            "ios_entitlements: ios/Runner/Runner.entitlements",
+            "flavors:",
+            "  prod:",
+            "    ios_app_id: ABCDE12345.com.example.shop",
+        ])
+        .starts_with("`fespalier.links` takes `android_package`")
+    );
 }
 
 #[test]

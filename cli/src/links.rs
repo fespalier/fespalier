@@ -4,10 +4,16 @@
 //! from them instead of kept by hand:
 //!
 //! - **Android**: `<intent-filter android:autoVerify="true">` elements (one per domain, and one
-//!   for a custom scheme) to paste into the main activity of `AndroidManifest.xml`, which `fsp`
-//!   never edits, and `assetlinks.json` (a statement per app).
+//!   for a custom scheme) to paste into the main activity of `AndroidManifest.xml`, and
+//!   `assetlinks.json` (a statement per app).
 //! - **iOS**: `apple-app-site-association` (`components`, every app id in `appIDs`), the
 //!   `applinks:` entitlement entries and, for a custom scheme, the `CFBundleURLTypes` entry.
+//!
+//! Two files are edited, not just written, and only when the config opts in (since 0.11.0):
+//! the manifest (`android_manifest:`, the filters between two comment markers) and the
+//! `.entitlements` files (`ios_entitlements:`, the `applinks:` entries). That is
+//! [`platform_files`]; `--check` compares what it would write with the disk too. `Info.plist`
+//! is never edited.
 //!
 //! - **Web**: `sitemap.xml` with every static route as an absolute URL on the first domain, and
 //!   `hreflang` alternates from the locale spellings of a [localized](crate::locale) path.
@@ -35,6 +41,7 @@ use serde_json::json;
 
 use crate::config::{AndroidApp, Config, IosApp, LinkPath, Links};
 use crate::locale::{self, Localized};
+use crate::platform_files;
 use crate::resolve::App;
 use crate::scan::Seg;
 use crate::{analyze, diag};
@@ -209,7 +216,7 @@ pub fn android_paths(path: &[Piece]) -> Vec<AndroidPath> {
 }
 
 /// The text of an XML attribute value.
-fn xml_attr(s: &str) -> String {
+pub(crate) fn xml_attr(s: &str) -> String {
     let mut out = String::new();
     for c in s.chars() {
         match c {
@@ -250,14 +257,11 @@ fn android_data(links: &[Link], cfg: &Links) -> Vec<AndroidPath> {
     out
 }
 
-fn android_filters(links: &[Link], cfg: &Links) -> String {
+/// The intent filters, one element per line, with no comment: what goes between the markers of
+/// `AndroidManifest.xml`.
+pub(crate) fn android_filters_body(links: &[Link], cfg: &Links) -> String {
     let data = android_data(links, cfg);
     let mut out = String::new();
-    out.push_str(
-        "<!-- Written by `fsp links` from lib/app: don't edit it, run `fsp links` again.\n\
-         \x20    Paste these elements into the <activity> of android/app/src/main/AndroidManifest.xml\n\
-         \x20    that has the MAIN/LAUNCHER intent filter, replacing the ones pasted before. -->\n",
-    );
     let filter = |out: &mut String,
                   verify: bool,
                   schemes: &[&str],
@@ -301,6 +305,23 @@ fn android_filters(links: &[Link], cfg: &Links) -> String {
         }
     }
     out
+}
+
+/// `android/intent-filters.xml`: the filters under a comment that says where to paste them, or
+/// that `fsp links` puts them there itself.
+fn android_filters(links: &[Link], cfg: &Links) -> String {
+    let comment = match &cfg.android_manifest {
+        Some(manifest) => format!(
+            "<!-- Written by `fsp links` from lib/app: don't edit it, run `fsp links` again.\n\
+             \x20    `fsp links` puts these elements into {manifest} itself (android_manifest:):\n\
+             \x20    this file is a copy to read, don't paste it. -->\n"
+        ),
+        None => "<!-- Written by `fsp links` from lib/app: don't edit it, run `fsp links` again.\n\
+             \x20    Paste these elements into the <activity> of android/app/src/main/AndroidManifest.xml\n\
+             \x20    that has the MAIN/LAUNCHER intent filter, replacing the ones pasted before. -->\n"
+            .to_string(),
+    };
+    format!("{comment}{}", android_filters_body(links, cfg))
 }
 
 fn asset_links(apps: &[AndroidApp]) -> String {
@@ -423,11 +444,14 @@ fn aasa(links: &[Link], cfg: &Links, apps: &[IosApp]) -> String {
 const PLIST_HEAD: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
 <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n";
 
-fn entitlements(domains: &[String]) -> String {
+/// An entitlements plist with the `applinks:` entries of `domains`; `comment` adds the line that
+/// says where the entries go (the paste file's), and leaves it out of a file `fsp` owns.
+pub(crate) fn entitlements(domains: &[String], comment: Option<&str>) -> String {
     let mut out = String::from(PLIST_HEAD);
-    out.push_str(
-        "<!-- Written by `fsp links`: add these entries to ios/Runner/Runner.entitlements. -->\n",
-    );
+    if let Some(comment) = comment {
+        out.push_str(comment);
+        out.push('\n');
+    }
     out.push_str("<plist version=\"1.0\">\n<dict>\n");
     out.push_str("\t<key>com.apple.developer.associated-domains</key>\n\t<array>\n");
     for d in domains {
@@ -435,6 +459,24 @@ fn entitlements(domains: &[String]) -> String {
     }
     out.push_str("\t</array>\n</dict>\n</plist>\n");
     out
+}
+
+/// The comment of `ios/associated-domains.entitlements`.
+fn entitlements_comment(cfg: &Links) -> String {
+    let managed: Vec<&str> = cfg
+        .apps_ios
+        .iter()
+        .filter_map(|a| a.entitlements.as_deref())
+        .collect();
+    if managed.is_empty() {
+        "<!-- Written by `fsp links`: add these entries to ios/Runner/Runner.entitlements. -->"
+            .to_string()
+    } else {
+        format!(
+            "<!-- Written by `fsp links`: `fsp links` adds these entries to {} itself (ios_entitlements:); this file is a copy to read, don't paste it. -->",
+            managed.join(", ")
+        )
+    }
 }
 
 fn url_types(scheme: &str, app_id: &str) -> String {
@@ -681,7 +723,10 @@ pub fn files(app: &App, cfg: &Links) -> Result<Vec<OutFile>> {
             android.map(|_| android_filters(&links, cfg)),
         ),
         file(ASSET_LINKS, android.map(|a| asset_links(a))),
-        file(IOS_ENTITLEMENTS, ios.map(|_| entitlements(&cfg.domains))),
+        file(
+            IOS_ENTITLEMENTS,
+            ios.map(|_| entitlements(&cfg.domains, Some(&entitlements_comment(cfg)))),
+        ),
         file(
             IOS_URL_TYPES,
             ios.zip(cfg.scheme.as_deref())
@@ -690,6 +735,20 @@ pub fn files(app: &App, cfg: &Links) -> Result<Vec<OutFile>> {
         file(AASA, ios.map(|_| aasa(&links, cfg, &cfg.apps_ios))),
         file(SITEMAP, Some(sitemap(&links, &cfg.domains[0]))),
     ])
+}
+
+/// Writes `text` to `path` through a temporary file next to it and a rename, so an interrupted
+/// run leaves the old file, not an empty one. The file's permissions are kept.
+fn write_atomic(path: &Path, text: &str) -> Result<()> {
+    let name = path
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let tmp = path.with_file_name(format!(".{name}.fsp-tmp"));
+    fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
+    if let Ok(meta) = fs::metadata(path) {
+        let _ = fs::set_permissions(&tmp, meta.permissions());
+    }
+    fs::rename(&tmp, path).with_context(|| format!("writing {}", path.display()))
 }
 
 /// `fsp links` (write) and `fsp links --check` (compare, change nothing, fail when stale).
@@ -722,7 +781,12 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
         }
     };
     let outputs = files(&app, &links)?;
-    for w in warnings(&app, &links) {
+    let (platform, platform_warnings) = platform_files::plan(
+        project,
+        &links,
+        &android_filters_body(&collect(&app), &links),
+    )?;
+    for w in warnings(&app, &links).into_iter().chain(platform_warnings) {
         eprintln!("warning: {w}");
     }
     let count = outputs.iter().filter(|f| f.text.is_some()).count();
@@ -753,9 +817,39 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
             eprintln!("  removed {}", shown(f));
         }
     }
+    let (mut edited, mut created, mut platform_stale) = (0, 0, vec![]);
+    for f in platform.iter().filter(|f| f.stale.is_some()) {
+        platform_stale.extend(f.stale.clone());
+        if check {
+            continue;
+        }
+        write_atomic(&project.join(&f.path), &f.text)?;
+        eprintln!(
+            "  {} {}",
+            if f.created { "wrote" } else { "edited" },
+            f.path
+        );
+        if f.created {
+            created += 1;
+        } else {
+            edited += 1;
+        }
+    }
+    let platform_count = platform.len();
+    let and_platform = |detail: String| {
+        if platform_count == 0 {
+            String::new()
+        } else {
+            format!(", and {platform_count} platform files{detail}")
+        }
+    };
+    stale.extend(platform_stale);
     if check {
         if stale.is_empty() {
-            eprintln!("✓ links: {count} files in {folder} are up to date");
+            eprintln!(
+                "✓ links: {count} files in {folder} are up to date{}",
+                and_platform(String::new())
+            );
             return Ok(());
         }
         for s in &stale {
@@ -764,8 +858,12 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
         bail!("{} file(s) out of date; run `fsp links`", stale.len());
     }
     eprintln!(
-        "✓ links: {count} files in {folder} ({written} written, {} unchanged)",
-        count - written
+        "✓ links: {count} files in {folder} ({written} written, {} unchanged){}",
+        count - written,
+        and_platform(format!(
+            " ({created} written, {edited} edited, {} unchanged)",
+            platform_count - edited - created
+        ))
     );
     Ok(())
 }

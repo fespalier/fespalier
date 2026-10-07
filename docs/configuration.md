@@ -33,7 +33,9 @@ fespalier:
   #   android_package: com.example.shop
   #   android_sha256: ["AB:CD:..."]
   #   ios_app_id: TEAMID.com.example.shop
-  #   flavors: {prod: {android_package: ..., android_sha256: [...], ios_app_id: ...}}   # since 0.11.0, instead of the three above
+  #   android_manifest: android/app/src/main/AndroidManifest.xml   # since 0.11.0; `fsp links` edits it
+  #   ios_entitlements: ios/Runner/Runner.entitlements            # since 0.11.0; `fsp links` edits it
+  #   flavors: {prod: {android_package: ..., android_sha256: [...], ios_app_id: ..., ios_entitlements: ...}}   # since 0.11.0, instead of the keys for one app above
   #   out: links                  # default
   semantics_ids: false # `true` (since 0.7.0): every page wears `Semantics(identifier: 'route:/...')`, for Maestro
   scroll_restoration: false # `true` (since 0.8.1): the browser's back and forward bring a page's scroll offsets back
@@ -149,6 +151,9 @@ address bar (and in the browser's history) as `go` does, and back pops it.
 `links:` is what [`fsp links`](cli.md#deep-links-and-a-sitemap-fsp-links) reads; only that command checks its values.
 Since 0.11.0 it also takes `flavors:` (one app per build flavour, [Flavours](cli.md#flavours)), `scheme_host`
 and `paths:` ([Host-less schemes and path patterns](cli.md#host-less-schemes-and-path-patterns)).
+`android_manifest` (top level only) and `ios_entitlements` (per flavour, or flat for one app) make `fsp links` edit those files
+([Editing AndroidManifest.xml and the entitlements](cli.md#editing-androidmanifestxml-and-the-entitlements));
+`fsp links --check` in CI is [Links in CI](cli.md#links-in-ci).
 
 ### lints
 

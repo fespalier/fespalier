@@ -23,6 +23,7 @@ mod manifest;
 mod menu;
 mod osc8;
 mod parse_cache;
+mod platform_files;
 mod procs;
 mod resolve;
 mod routes;
@@ -518,6 +519,8 @@ mod observe_tests;
 mod page_name_tests;
 #[cfg(test)]
 mod paths_tests;
+#[cfg(test)]
+mod platform_files_tests;
 #[cfg(test)]
 mod procs_tests;
 #[cfg(test)]

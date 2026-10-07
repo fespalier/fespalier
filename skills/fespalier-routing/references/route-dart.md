@@ -401,6 +401,9 @@ effect on routing, `fsp gen` or the manifest.
   too).
 - `fespalier: links: paths:` (since 0.11.0) lists what the platforms open **instead of** the route-derived entries; a
   linkable route no entry covers is a warning from `fsp links` that suggests the entry or `const linkable = false;`.
+- `fespalier: links: android_manifest:` and `ios_entitlements:` (since 0.11.0) make `fsp links` edit
+  `AndroidManifest.xml` and the entitlements itself instead of leaving them to paste
+  (`fespalier`, `references/cli-and-config.md`).
 - If nothing is linkable, `fsp links` fails with ``no route can be linked: the app has no page, or
 every folder says `const linkable = false;` ``.
 

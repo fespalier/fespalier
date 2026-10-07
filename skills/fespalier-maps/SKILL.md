@@ -39,7 +39,7 @@ dependencies:
 with a real tag in an app, but never in these pages, where `cli/tests/versions.rs` would read it as fespalier's own
 version. The package's own
 [install block](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_maps/README.md#install) is the one
-release-please keeps current.) The package brings `maplibre_gl` (`>=0.26.0 <0.28.0`) and `geolocator`
+release-please keeps current.) The package brings `maplibre_gl` (`>=0.27.1 <0.28.0`) and `geolocator`
 (`>=14.0.0 <15.0.0`), which are platform plugins: the location permission strings (`NSLocationWhenInUseUsageDescription`
 in `Info.plist`, `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` in the manifest) and a map **style** you may use are
 the app's. Nothing in CI draws a map or builds Android with `maplibre_gl`: a device run is the check.
@@ -117,7 +117,7 @@ page, the wiring and a test are compiled in [`references/offline-packs.md`](refe
 
 - **A MapLibre download does not resume across an app restart.** Pause and resume continue the same download while the app
   stays alive. After a restart `refresh()` finds the region `Interrupted`, and `resume` starts the same definition **again**
-  as a new region, deleting the old one when the new one completes (whether stored resources are reused: not checked on a
+  (MapLibre replaces the old region when that download begins; whether stored resources are reused: not checked on a
   device). Say so in the UI ("Download again", not "Resume"). The PMTiles file packs of a later release are the resumable kind.
 - **Call `refresh()` once** (a packs page opening, or startup): nothing is read before, so a pack from an earlier session is
   `Absent` until then.
@@ -126,13 +126,16 @@ page, the wiring and a test are compiled in [`references/offline-packs.md`](refe
 - **`estimatedTiles` is tiles, not bytes**, and `isValid` is false for an antimeridian rectangle or zoom above 22: such a
   `start` ends `Failed(invalidRegion)` without reaching MapLibre.
 - **Per-pack bytes overlap** (shared glyphs and edge tiles are counted in each pack) and `StorageUse.onDisk` is the file,
-  which also holds the ambient cache: do not add the rows up. `onDisk` is null unless the app passes
-  `MapLibreOfflineTiles(onDiskBytes:)` (0.27 has `getOfflineDatabasePath`, 0.26 does not).
+  which also holds the ambient cache: do not add the rows up. `onDisk` is the file `getOfflineDatabasePath` names (null on
+  the web).
 - **`pause` and `resume` never throw**; `remove` throws only when the database refuses (and the pack is then `Failed`).
   A failure is a `PackFailure` value, never platform text. The web has no offline regions: `Failed(unsupported)`.
 - **Telemetry**: `fespalier.maps.download` (`kind=region`; `complete`, `failed` or `cancelled`), never the key, the rectangle
   or the style.
-- **On `maplibre_gl` 0.26.0 an iOS region with whole-degree bounds cannot be read back**; 0.27.x can.
+- **One definition is one region** (`maplibre_gl` 0.27): a download deletes the region that already has the same style,
+  rectangle and zoom range, at its start (on iOS the new one takes the old id). A re-download that fails has lost the
+  pack, and two keys with one definition are refused (`Failed(duplicateRegion)`): give each pack its own rectangle.
+- **`refresh()` keeps the complete region of a key** whatever the ids and deletes the others.
 
 ## What it does not do
 

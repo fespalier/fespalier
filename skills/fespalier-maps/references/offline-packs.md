@@ -6,8 +6,8 @@ into MapLibre's offline database and drawn from it when the network is gone. `Ti
 the database, `MapLibreOfflineTiles` the real one and `FakeOfflineTiles` the test one.
 
 **A MapLibre download does not resume across an app restart.** Pause and resume work while the app stays alive. After a
-restart a half-done region is `Interrupted`; `resume` then downloads the same definition again, as a new region, and
-deletes the old one when the new one completes (resources it already stored may or may not be reused: not verified on a
+restart a half-done region is `Interrupted`; `resume` then downloads the same definition again (MapLibre replaces the
+old region when that download begins; resources it already stored may or may not be reused: not verified on a
 device). PMTiles file packs, resumable over HTTP Range, are the later release that fixes this.
 
 ## Choose a region and size it
@@ -34,31 +34,15 @@ const doualaPack = RegionPackRequest(
 ## Wire the database
 
 `offlineTiles` has no default: override it with the MapLibre one, once, in the `ProviderScope`. The size of the database
-file is the app's to measure (`maplibre_gl` 0.27 has `getOfflineDatabasePath`, 0.26 does not, and this package builds on
-both), so `onDiskBytes` is a callback; leave it out and `StorageUse.onDisk` is null.
-
-```yaml
-# pubspec.yaml dependencies
-  maplibre_gl: ^0.27.0
-```
+file is read through `getOfflineDatabasePath` (the file only; null on the web), so there is nothing to pass.
+`MapLibreOfflineTiles` is `const` and takes no arguments.
 
 ```dart
 // lib/offline/overrides.dart
-import 'dart:io';
-
 import 'package:fespalier_maps/maplibre.dart';
-import 'package:maplibre_gl/maplibre_gl.dart';
-
-/// The size of MapLibre's offline database file, or null where it cannot be known.
-Future<int?> databaseFileBytes() async {
-  final path = await getOfflineDatabasePath();
-  if (path == null) return null;
-  final file = File(path);
-  return await file.exists() ? file.length() : null;
-}
 
 /// The app's offline database: `offlineTiles.overrideWithValue(offlineDatabase)` in its ProviderScope.
-const offlineDatabase = MapLibreOfflineTiles(onDiskBytes: databaseFileBytes);
+const offlineDatabase = MapLibreOfflineTiles();
 ```
 
 ## The page
@@ -129,13 +113,13 @@ class OfflineMapsPage extends HookConsumerWidget {
 }
 ```
 
-A `PackFailure` is a value, never platform text: `unsupported` (the web, or no plugin), `invalidRegion`, `limitExceeded`
+A `PackFailure` is a value, never platform text: `unsupported` (the web, or no plugin), `invalidRegion`, `limitExceeded`, `duplicateRegion` (another key has the same style, rectangle and zoom range: MapLibre would delete its region), `replaced`
 (MapLibre's tile limit; on Android it also deletes the region) and `other`.
 
 ## Storage
 
 `ref.read(tilePacks.notifier).storage()` answers a `StorageUse`: `perPack` (bytes by key, from the statuses, which
-`refresh` fills for packs of earlier sessions), `packSum`, and `onDisk` (the file, from `onDiskBytes`). **The per-pack
+`refresh` fills for packs of earlier sessions), `packSum`, and `onDisk` (the database file). **The per-pack
 bytes overlap**: a glyph range or an edge tile two packs share is counted in each, so `packSum` can exceed `onDisk`, and
 `onDisk` also holds MapLibre's ambient cache. Show `perPack` per row and `onDisk` as the total; do not add the rows up as
 if they were the file.

@@ -32,12 +32,12 @@ Add the package next to fespalier with the **same `url` and the same `ref`**: pu
 then. The tag must be a release that contains the package (0.13.0 or later). The install block, with the version
 release-please keeps current, is in [the package's README](../packages/fespalier_maps/README.md#install).
 
-The package depends on `maplibre_gl` (`>=0.26.0 <0.28.0`) and `geolocator` (`>=14.0.0 <15.0.0`), and so does every app
+The package depends on `maplibre_gl` (`>=0.27.1 <0.28.0`) and `geolocator` (`>=14.0.0 <15.0.0`), and so does every app
 that lists it: each is imported by one library only (`maplibre.dart`, `geolocator.dart`), but a platform plugin is linked
 whether or not it is imported. Both ranges resolve on Flutter 3.32, fespalier's floor, with the lowest versions they
 allow (CI's `floor` job runs `flutter pub downgrade`, `flutter analyze` and `flutter test` on the package). Two things
 are **not** checked by any CI job here and need a device or a build of your app: that the map draws, and that your
-Android toolchain builds `maplibre_gl` (its 0.26.0 changelog lists a Gradle, Kotlin and Android Gradle Plugin update).
+Android toolchain builds `maplibre_gl` (its 0.26.0 changelog lists a Gradle, Kotlin and Android Gradle Plugin update, and 0.27.1 needs Flutter 3.29, which the 3.32 floor satisfies).
 
 The platform setup is the plugins' own: `geolocator` needs the location permission strings in `Info.plist`
 (`NSLocationWhenInUseUsageDescription`) and the manifest (`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`), and
@@ -190,15 +190,18 @@ ProviderScope(
 ```
 
 The `PackStatus` values are `Absent`, `Downloading` (`progress` 0 to 1, resource counts, `bytes`), `Paused`, `Complete`
-(`bytes`), `Interrupted` and `Failed` (a `PackFailure`: `unsupported`, `invalidRegion`, `limitExceeded`, `other`; never the
+(`bytes`), `Interrupted` and `Failed` (a `PackFailure`: `unsupported`, `invalidRegion`, `limitExceeded`, `duplicateRegion`, `replaced`, `other`; never the
 platform's text). MapLibre counts **resources** (tiles, glyph ranges, sprites, the style), not tiles, and the numbers here
 are its own. Offline downloads exist on Android and iOS only: on the web a download ends in `Failed(unsupported)`.
 
 **A MapLibre download does not resume across an app restart.** While the app stays alive, `pause` and `resume` continue
 the same download. If the app is closed while a region downloads, MapLibre keeps what it stored but the download is gone:
 the next session finds the region in the database, and `refresh()` reports it as `Interrupted`. `resume` of an
-`Interrupted` (or `Failed`) pack **starts the same definition again** as a new region and deletes the old region when the
-new one completes; whether MapLibre reuses the resources already stored or fetches them again was not checked on a device.
+`Interrupted` (or `Failed`) pack **starts the same definition again**; whether MapLibre reuses the resources already
+stored or fetches them again was not checked on a device. On iOS the plugin's sources suggest an unfinished pack can go on
+by itself after a restart, silently, since there is no event channel to Dart for it: `refresh()` then shows it
+`Interrupted` or `Complete` depending on when you ask, and a `resume` of an `Interrupted` one restarts a download that may
+already be running (also not verified on a device).
 Android's native side also answers "Region is no longer actively tracked" to a `resume` it has lost, which `TilePacks`
 turns into `Interrupted` as well. A download that resumes from a byte offset needs a file the package controls: the PMTiles
 file packs of a later release are that (HTTP Range).
@@ -217,14 +220,21 @@ final status = ref.watch(tilePackStatus('douala'));
   key in its metadata) is ignored. A pack that downloads in this session is never overwritten by it.
 - **Progress is the state.** MapLibre reports a download through a callback that `TilePacks` hands the port, and the app
   watches the provider: no stream, no subscription and no timer in the package. `start` of a key that is `Downloading` or
-  `Paused` does nothing; of a `Complete` one downloads it again and removes the old region at the end.
+  `Paused` does nothing; of a `Complete` one downloads it again (see the next point).
 - **`pause`, `resume` and `remove` never leave the state lying.** A `pause` that MapLibre refuses leaves `Downloading`;
   `resume` of a `Paused` pack whose download was lost makes it `Interrupted`; `remove` stops a running download (its late
   events are dropped), frees what only that pack needed, and, if the database refuses, marks the pack `Failed` and throws.
 - **The key is yours and stays in the database.** It is stored in the region's metadata under `fespalier_maps.key`, and
   never sent to telemetry.
-- **The `maplibre_gl` range matters on iOS.** 0.26.0 reads a region's bounds back with casts that fail for whole-degree
-  coordinates on iOS (the JSON has no `60.0`); 0.27.x fixed it. Use 0.27 where you can, or fractional bounds.
+- **MapLibre treats two regions with the same style, rectangle and zoom range as one** (`maplibre_gl` 0.27). Downloading
+  a definition deletes the region that already has it, **at the start of the download**, and on iOS the new region takes the
+  old one's id. So a re-download of a `Complete` pack (or a `resume` of an `Interrupted` or `Failed` one) replaces the old
+  region at once, and **a re-download that then fails has lost the pack**; `TilePacks` shows it as `Failed`, not as a stale
+  `Complete`. It also never deletes the region a download just made, whatever the id. And two keys cannot share a
+  definition: starting the second ends in `Failed(duplicateRegion)` and reaches nothing (starting it would delete the
+  first's region). Give each pack its own rectangle, zoom range or style.
+- **`refresh()` keeps the complete region** of a key whatever the ids (iOS ids are not ordered) and deletes its other
+  regions; with none complete it keeps the highest id, and a `resume` replaces them.
 
 ## Storage
 
@@ -234,9 +244,9 @@ or an edge tile that two packs share is counted in each, so `packSum` can be mor
 MapLibre's ambient cache (the tiles the map cached while it was browsed). Show each row's bytes and `onDisk` as the total;
 do not add the rows up as if they were the file.
 
-`onDisk` comes from `MapLibreOfflineTiles(onDiskBytes: ...)`, a callback the app writes, because `maplibre_gl` 0.27 can
-name the file (`getOfflineDatabasePath`) and 0.26 cannot, and this package builds on both. Without it `onDisk` is null.
-The recipe is in the skill's `offline-packs.md`.
+`onDisk` is the size of the file `getOfflineDatabasePath` names (the file only, not the journal beside it); it is null on
+the web and wherever the plugin does not know the path. The `dart:io` part sits behind a conditional import, so a web build
+does not compile it.
 
 ## Telemetry
 

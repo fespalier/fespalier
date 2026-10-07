@@ -22,10 +22,11 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.12.0 # x-release-please-version
-  # The MapLibre binding: lib/maplibre.dart is the only file that imports it. 0.26.0 is the first
-  # release with the offline-region calls the later packs use (Dart 3.7, Flutter 3.22); 0.27.x asks
-  # for Flutter 3.29. Both resolve on Flutter 3.32.
-  maplibre_gl: ">=0.26.0 <0.28.0"
+  # The MapLibre binding: lib/maplibre.dart is the only file that imports it. 0.27.1 is the
+  # first release whose offline-region calls this package relies on (the database path, region
+  # metadata that may be null, whole-degree bounds read back on iOS); it asks for Flutter 3.29,
+  # which the 3.32 floor satisfies.
+  maplibre_gl: ">=0.27.1 <0.28.0"
   # The device position: lib/geolocator.dart is the only file that imports it.
   geolocator: ">=14.0.0 <15.0.0"
 

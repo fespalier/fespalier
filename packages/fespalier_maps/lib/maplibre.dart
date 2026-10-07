@@ -7,12 +7,14 @@
 /// `package:fespalier_maps/testing.dart`.
 library;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/widgets.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 
 import 'fespalier_maps.dart';
+import 'src/offline/file_size_stub.dart'
+    if (dart.library.io) 'src/offline/file_size_io.dart';
 
 /// A [MapSurface] over `MapLibreMap`: configuration only, with value equality.
 ///
@@ -177,7 +179,7 @@ class _MapLibreHostState extends State<_MapLibreHost> {
 const String _keyField = 'fespalier_maps.key';
 
 /// An [OfflineTiles] over MapLibre's offline database (`downloadOfflineRegion` and its siblings
-/// of `maplibre_gl`, 0.26.0 and 0.27.x alike). Install it for `TilePacks`:
+/// of `maplibre_gl` 0.27). Install it for `TilePacks`:
 ///
 /// ```dart
 /// ProviderScope(
@@ -186,7 +188,7 @@ const String _keyField = 'fespalier_maps.key';
 /// )
 /// ```
 ///
-/// Android and iOS only: on the web every download throws an [UnsupportedError], which the packs
+/// Android and iOS only: on the web every call throws an [UnsupportedError], which the packs
 /// report as [PackFailure.unsupported], and the list of regions is empty. A pack is a region of
 /// MapLibre's database with the pack's key in its metadata; a region something else made has no
 /// key and is not listed. It listens to nothing: the plugin's download events reach the callback
@@ -194,14 +196,8 @@ const String _keyField = 'fespalier_maps.key';
 ///
 /// A platform channel needs a device: a widget test uses `FakeOfflineTiles`.
 final class MapLibreOfflineTiles implements OfflineTiles {
-  /// The offline database of this app. [onDiskBytes] answers [databaseBytes]: `maplibre_gl`
-  /// 0.27 can say where the file is (`getOfflineDatabasePath`) and 0.26 cannot, so this package,
-  /// which builds on both, leaves the size of the file to the app (a recipe in the skill reads
-  /// it with `dart:io`).
-  const MapLibreOfflineTiles({this.onDiskBytes});
-
-  /// How the app measures the offline database file, or null for "unknown".
-  final Future<int?> Function()? onDiskBytes;
+  /// The offline database of this app.
+  const MapLibreOfflineTiles();
 
   @override
   Future<List<StoredRegion>> regions() async {
@@ -214,9 +210,7 @@ final class MapLibreOfflineTiles implements OfflineTiles {
     RegionPackRequest request,
     void Function(DownloadEvent event) onEvent,
   ) async {
-    if (kIsWeb) {
-      throw UnsupportedError('Offline regions are not available on the web.');
-    }
+    _noWeb();
     final region = await ml.downloadOfflineRegion(
       ml.OfflineRegionDefinition(
         bounds: ml.LatLngBounds(
@@ -234,41 +228,65 @@ final class MapLibreOfflineTiles implements OfflineTiles {
         maxZoom: request.maxZoom,
       ),
       metadata: <String, dynamic>{_keyField: request.key},
-      onEvent: (ml.DownloadRegionStatus event) => onEvent(_event(event)),
+      onEvent: (ml.DownloadRegionStatus event) =>
+          onEvent(downloadEventOf(event)),
     );
     return _stored(region);
   }
 
   @override
-  Future<void> pause(int id) => ml.pauseOfflineRegionDownload(id);
+  Future<void> pause(int id) {
+    _noWeb();
+    return ml.pauseOfflineRegionDownload(id);
+  }
 
   @override
-  Future<void> resume(int id) => ml.resumeOfflineRegionDownload(id);
+  Future<void> resume(int id) {
+    _noWeb();
+    return ml.resumeOfflineRegionDownload(id);
+  }
 
   @override
   Future<void> delete(int id) async {
+    _noWeb();
     await ml.deleteOfflineRegion(id);
   }
 
   @override
   Future<RegionStatus> status(int id) async {
-    final status = await ml.getOfflineRegionStatus(id);
-    return RegionStatus(
-      progress: status.downloadProgress,
-      completedResources: status.completedResourceCount,
-      requiredResources: status.requiredResourceCount,
-      bytes: status.completedResourceSize,
-      isComplete: status.isComplete,
-    );
+    _noWeb();
+    return regionStatusOf(await ml.getOfflineRegionStatus(id));
   }
 
+  /// The size of the offline database file (`getOfflineDatabasePath`); the file only, not the
+  /// journal beside it. Null on the web, and where the plugin does not know the path.
   @override
-  Future<int?> databaseBytes() async => onDiskBytes?.call();
+  Future<int?> databaseBytes() async {
+    if (kIsWeb) return null;
+    final path = await ml.getOfflineDatabasePath();
+    return path == null ? null : fileBytes(path);
+  }
+
+  static void _noWeb() {
+    if (kIsWeb) {
+      throw UnsupportedError('Offline regions are not available on the web.');
+    }
+  }
 }
 
-DownloadEvent _event(ml.DownloadRegionStatus event) => switch (event) {
+/// MapLibre reports progress as a **percentage**: both native sides compute
+/// `100.0 * completedResources / requiredResources` (Android `OfflineManagerUtils.java`, iOS
+/// `OfflineManagerUtils.swift`), in the download events and in `getOfflineRegionStatus` alike.
+/// The port speaks a fraction, so divide by 100 and keep it in 0 to 1.
+@visibleForTesting
+double progressFraction(double percent) =>
+    percent.isNaN ? 0 : (percent / 100).clamp(0.0, 1.0);
+
+/// The port's event for one of the plugin's download events (see [progressFraction]).
+@visibleForTesting
+DownloadEvent downloadEventOf(ml.DownloadRegionStatus event) => switch (event) {
   ml.InProgress() => DownloadProgress(
-    progress: event.progress,
+    progress: progressFraction(event.progress),
     completedResources: event.completedResourceCount,
     requiredResources: event.requiredResourceCount,
     bytes: event.completedResourceSize,
@@ -278,11 +296,18 @@ DownloadEvent _event(ml.DownloadRegionStatus event) => switch (event) {
   _ => const DownloadFailed(PackFailure.other),
 };
 
+/// The port's status for the plugin's (see [progressFraction]).
+@visibleForTesting
+RegionStatus regionStatusOf(ml.OfflineRegionStatus status) => RegionStatus(
+  progress: progressFraction(status.downloadProgress),
+  completedResources: status.completedResourceCount,
+  requiredResources: status.requiredResourceCount,
+  bytes: status.completedResourceSize,
+  isComplete: status.isComplete,
+);
+
 StoredRegion _stored(ml.OfflineRegion region) {
-  // 0.26.0 hands a region made elsewhere a null here, in a field typed non-null.
-  // ignore: unnecessary_nullable_for_final_variable_declarations
-  final Object? metadata = region.metadata;
-  final key = metadata is Map ? metadata[_keyField] : null;
+  final key = region.metadata[_keyField];
   if (key is! String || key.isEmpty) return StoredRegion(id: region.id);
   final definition = region.definition;
   return StoredRegion(

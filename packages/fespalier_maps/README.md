@@ -37,7 +37,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-It depends on `maplibre_gl` (`>=0.26.0 <0.28.0`) and `geolocator` (`>=14.0.0 <15.0.0`), which resolve on Flutter 3.32 and
+It depends on `maplibre_gl` (`>=0.27.1 <0.28.0`) and `geolocator` (`>=14.0.0 <15.0.0`), which resolve on Flutter 3.32 and
 on the pinned Flutter. Their platform setup is theirs: the location permission strings in `Info.plist` and the manifest,
 and a map style you may use. **Not checked by any CI job here:** that the map draws (a platform view needs a device), and
 that your app's Android toolchain builds `maplibre_gl` (its 0.26.0 changelog lists a Gradle, Kotlin and Android Gradle
@@ -84,7 +84,9 @@ styleUrl:, minZoom:, maxZoom:))`, `pause`, `resume`, `remove`, `refresh` and `st
 once: `offlineTiles.overrideWithValue(const MapLibreOfflineTiles())` (from `maplibre.dart`; `FakeOfflineTiles` in tests).
 
 **A MapLibre download does not resume across an app restart**: pause and resume work while the app stays alive; after a
-restart the region is `Interrupted` and `resume` downloads it again. PMTiles file packs (a later release) are the
+restart the region is `Interrupted` and `resume` downloads it again. MapLibre also treats two regions with one definition
+as one, so two keys cannot share a rectangle, style and zoom range (`Failed(duplicateRegion)`), and a re-download replaces
+the old region when it begins. PMTiles file packs (a later release) are the
 resumable kind. See [docs/maps.md](https://github.com/fespalier/fespalier/blob/main/docs/maps.md#offline-packs).
 
 ## Test it

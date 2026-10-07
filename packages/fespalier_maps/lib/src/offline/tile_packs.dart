@@ -31,7 +31,7 @@ final NotifierProvider<TilePacks, Map<String, PackStatus>> tilePacks =
 
 /// The status of one pack: [Absent] while there is none. It rebuilds only when that pack's
 /// status changes.
-final tilePackStatus = Provider.family<PackStatus, String>(
+final tilePackStatus = Provider.autoDispose.family<PackStatus, String>(
   (ref, key) => ref.watch(tilePacks)[key] ?? const Absent(),
 );
 
@@ -63,9 +63,15 @@ final class StorageUse {
 ///
 /// **A download does not survive the app's end.** MapLibre keeps the tiles it stored, but the
 /// download itself stops, and the next session finds the region [Interrupted]; [resume] of an
-/// interrupted pack starts the same definition again (it may fetch resources it already has) and
-/// removes the old region once the new one completes. Pause and resume of a running download
-/// work within the session only.
+/// interrupted pack starts the same definition again (it may fetch resources it already has).
+/// Pause and resume of a running download work within the session only.
+///
+/// **MapLibre treats two regions with the same style, rectangle and zoom range as one**
+/// (`maplibre_gl` 0.27): downloading a definition deletes the region that already has it, at the
+/// start, and on iOS the new region takes the old one's id. So starting a pack again (a resume
+/// of an interrupted or failed one, or a `start` of a complete one) removes the old region when
+/// the download begins, and a download that then fails has lost the old pack. And two keys
+/// cannot share a definition: [start] refuses the second with [PackFailure.duplicateRegion].
 class TilePacks extends Notifier<Map<String, PackStatus>> {
   late OfflineTiles _tiles;
 
@@ -73,21 +79,21 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
   final Map<String, int> _ids = {};
   // Per key: ids of older regions of the same key, deleted when a newer download completes.
   final Map<String, Set<int>> _older = {};
-  // Per key: the definition, for starting it again.
+  // Per key: the definition, for starting it again and for refusing a duplicate.
   final Map<String, RegionPackRequest> _requests = {};
-  // Per key: bumped by every start and removal, so an event of a download that is over is dropped.
+  // Per key: bumped by every start and removal and never reset, so an event or an answer of a
+  // download that is over is dropped.
   final Map<String, int> _generation = {};
+  // Keys with a started pack that is not being removed.
+  final Set<String> _live = {};
   // Per key: the telemetry operation of the running download.
   final Map<String, Object?> _spans = {};
 
   @override
   Map<String, PackStatus> build() {
-    _tiles = ref.watch(offlineTiles);
-    _ids.clear();
-    _older.clear();
-    _requests.clear();
-    _generation.clear();
-    _spans.clear();
+    // Read, not watched: the database is the app's one, and a rebuild would forget the ids of
+    // downloads that go on in the platform.
+    _tiles = ref.read(offlineTiles);
     ref.onDispose(() {
       for (final token in _spans.values) {
         mapsFinish(
@@ -111,24 +117,35 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
     state = {...state}..remove(key);
   }
 
+  int _bump(String key) => _generation[key] = (_generation[key] ?? 0) + 1;
+
   bool _current(String key, int generation) =>
       ref.mounted && _generation[key] == generation;
+
+  bool _isActive(PackStatus? status) =>
+      status is Downloading || status is Paused;
 
   void _endSpan(String key, String result, {String? outcome}) {
     final token = _spans.remove(key);
     mapsFinish(token, result, outcome: outcome ?? TelemetryOutcome.ok);
   }
 
+  static bool _sameDefinition(RegionPackRequest a, RegionPackRequest b) =>
+      a.bounds == b.bounds &&
+      a.styleUrl == b.styleUrl &&
+      a.minZoom == b.minZoom &&
+      a.maxZoom == b.maxZoom;
+
   /// Downloads [request]. Does nothing while a download of the same key is running or paused;
-  /// a complete pack is downloaded again (remove it first to keep the old one out). A request
-  /// that is not [RegionPackRequest.isValid] ends in [Failed] with
-  /// [PackFailure.invalidRegion], and nothing reaches MapLibre.
+  /// a complete pack is downloaded again, which replaces its region (see the class comment).
+  /// A request that is not [RegionPackRequest.isValid] ends in [Failed] with
+  /// [PackFailure.invalidRegion], and one whose definition another key already has ends in
+  /// [PackFailure.duplicateRegion]; nothing reaches MapLibre in either case.
   ///
   /// Completes when MapLibre has accepted the region, not when the download ends: the end is
   /// [Complete] or [Failed] in [state].
   Future<void> start(RegionPackRequest request) async {
-    final current = state[request.key];
-    if (current is Downloading || current is Paused) return;
+    if (_isActive(state[request.key])) return;
     await _begin(request);
   }
 
@@ -138,8 +155,16 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
       if (key.isNotEmpty) _set(key, const Failed(PackFailure.invalidRegion));
       return;
     }
-    final generation = (_generation[key] ?? 0) + 1;
-    _generation[key] = generation;
+    for (final entry in _requests.entries) {
+      if (entry.key != key &&
+          state.containsKey(entry.key) &&
+          _sameDefinition(entry.value, request)) {
+        _set(key, const Failed(PackFailure.duplicateRegion));
+        return;
+      }
+    }
+    final generation = _bump(key);
+    _live.add(key);
     final previous = _ids.remove(key);
     if (previous != null) (_older[key] ??= {}).add(previous);
     _requests[key] = request;
@@ -169,10 +194,14 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
       return;
     }
     if (!_current(key, generation)) {
-      // Removed (or started again) while MapLibre made the region: nobody owns it.
-      await _tryDelete(region.id);
+      // Removed meanwhile: nobody owns the region just made. Started again meanwhile: the newer
+      // download owns the key, and on iOS may even hold this very id.
+      if (!_live.contains(key)) await _tryDelete(region.id);
       return;
     }
+    // On iOS the new region takes the id of the one it replaced; on Android the plugin deleted
+    // the old one before downloading. Either way it is not an older region to delete later.
+    _older[key]?.remove(region.id);
     _ids[key] = region.id;
     if (state[key] is Complete) unawaited(_settle(key, generation));
   }
@@ -193,7 +222,7 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
           ),
         );
       case DownloadFinished():
-        if (status is! Downloading && status is! Paused) return;
+        if (!_isActive(status)) return;
         final bytes = switch (status) {
           Downloading(:final bytes) => bytes,
           Paused(:final bytes) => bytes,
@@ -203,7 +232,7 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
         _endSpan(key, MapsTelemetry.resultComplete);
         if (_ids.containsKey(key)) unawaited(_settle(key, generation));
       case DownloadFailed():
-        if (status is! Downloading && status is! Paused) return;
+        if (!_isActive(status)) return;
         _endSpan(
           key,
           MapsTelemetry.resultFailed,
@@ -213,7 +242,8 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
     }
   }
 
-  /// After a pack completed: read its final size, and delete the older regions of the same key.
+  /// After a pack completed: read its final size, and delete the older regions of the same key
+  /// (never the one that just completed).
   Future<void> _settle(String key, int generation) async {
     final id = _ids[key];
     if (id == null) return;
@@ -229,7 +259,7 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
     final older = _older.remove(key);
     if (older == null) return;
     for (final old in older) {
-      await _tryDelete(old);
+      if (old != id) await _tryDelete(old);
     }
   }
 
@@ -237,7 +267,7 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
     try {
       await _tiles.delete(id);
     } catch (_) {
-      // A region that is already gone (MapLibre removes one that hit its tile limit).
+      // A region that is already gone (MapLibre deletes the one a new download replaces).
     }
   }
 
@@ -264,10 +294,10 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
   ///
   /// - [Paused]: MapLibre continues the download in this session. If the native side has lost it
   ///   (it was restarted) the pack becomes [Interrupted] instead, and a second call restarts it.
-  /// - [Interrupted] or [Failed]: the definition is downloaded **again** as a new region; the old
-  ///   one is deleted when the new one completes. Resources MapLibre already stored may be
-  ///   reused or fetched again (not verified on a device). This is the restart, not a resume
-  ///   from a byte offset.
+  /// - [Interrupted] or [Failed]: the definition is downloaded **again**. MapLibre replaces the
+  ///   old region at the start of that download (see the class comment); resources it already
+  ///   stored may be reused or fetched again (not verified on a device). This is the restart, not
+  ///   a resume from a byte offset.
   ///
   /// Anything else does nothing. Never throws.
   Future<void> resume(String key) async {
@@ -305,10 +335,11 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
 
   /// Deletes a pack, stopping its download if it runs, and forgets it. Resources only this pack
   /// needed are freed by MapLibre. When MapLibre refuses, the pack becomes [Failed] with
-  /// [PackFailure.other] and the error is rethrown.
+  /// [PackFailure.other] and the error is rethrown. A [start] of the same key while this runs
+  /// takes the key over: this call then cleans up nothing it does not own.
   Future<void> remove(String key) async {
-    final generation = (_generation[key] ?? 0) + 1;
-    _generation[key] = generation;
+    final generation = _bump(key);
+    _live.remove(key);
     final ids = <int>{...?_older[key]};
     final current = _ids[key];
     if (current != null) ids.add(current);
@@ -321,12 +352,15 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
     for (final id in ids) {
       try {
         await _tiles.delete(id);
-        _older[key]?.remove(id);
-        if (_ids[key] == id) _ids.remove(key);
+        if (_generation[key] == generation) {
+          _older[key]?.remove(id);
+          if (_ids[key] == id) _ids.remove(key);
+        }
       } catch (error) {
         failure ??= error;
       }
     }
+    if (_generation[key] != generation) return;
     if (failure != null) {
       _set(key, const Failed(PackFailure.other));
       throw failure;
@@ -338,7 +372,10 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
 
   /// Reads the database and updates every pack this session is not downloading: a complete
   /// region becomes [Complete], an unfinished one [Interrupted], and a pack that is gone leaves
-  /// the state. Regions another tool made (without this package's key) are ignored.
+  /// the state. When a key has several regions (a download that began again beside the old
+  /// one), the **complete** one wins whatever the ids (iOS ids are not ordered) and the others
+  /// are deleted; with none complete the highest id is kept. Regions another tool made (without
+  /// this package's key) are ignored.
   Future<void> refresh() async {
     final List<StoredRegion> regions;
     try {
@@ -346,43 +383,77 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
     } catch (_) {
       return;
     }
-    final newest = <String, StoredRegion>{};
-    final all = <String, Set<int>>{};
+    final byKey = <String, List<StoredRegion>>{};
     for (final region in regions) {
       final request = region.request;
       if (request == null) continue;
-      (all[request.key] ??= {}).add(region.id);
-      final seen = newest[request.key];
-      if (seen == null || region.id > seen.id) newest[request.key] = region;
+      (byKey[request.key] ??= []).add(region);
     }
-    final found = <String, PackStatus>{};
-    for (final entry in newest.entries) {
-      final active = state[entry.key];
-      if (active is Downloading || active is Paused) continue;
-      try {
-        final s = await _tiles.status(entry.value.id);
-        found[entry.key] = s.isComplete
-            ? Complete(bytes: s.bytes)
-            : Interrupted(progress: s.progress, bytes: s.bytes);
-      } catch (_) {
-        found[entry.key] = const Interrupted();
+    final generations = {
+      for (final key in byKey.keys) key: _generation[key] ?? 0,
+    };
+    final chosen = <String, ({StoredRegion region, PackStatus status})>{};
+    final spare = <String, List<int>>{};
+    for (final entry in byKey.entries) {
+      final key = entry.key;
+      if (_isActive(state[key])) continue;
+      final statuses = <int, RegionStatus?>{};
+      for (final region in entry.value) {
+        try {
+          statuses[region.id] = await _tiles.status(region.id);
+        } catch (_) {
+          statuses[region.id] = null;
+        }
       }
+      StoredRegion? best;
+      for (final region in entry.value) {
+        final done = statuses[region.id]?.isComplete ?? false;
+        final bestDone = best == null
+            ? false
+            : (statuses[best.id]?.isComplete ?? false);
+        if (best == null ||
+            (done && !bestDone) ||
+            (done == bestDone && region.id > best.id)) {
+          best = region;
+        }
+      }
+      final status = statuses[best!.id];
+      chosen[key] = (
+        region: best,
+        status: status == null
+            ? const Interrupted()
+            : status.isComplete
+            ? Complete(bytes: status.bytes)
+            : Interrupted(progress: status.progress, bytes: status.bytes),
+      );
+      spare[key] = [
+        for (final region in entry.value)
+          if (region.id != best.id) region.id,
+      ];
     }
     if (!ref.mounted) return;
-    // One synchronous pass over the state as it is now: a pack that started while the statuses
-    // were read keeps its download.
+    // One synchronous pass over the state as it is now: a pack that started (or was removed)
+    // while the statuses were read is left to that call.
     final next = {...state};
-    for (final entry in found.entries) {
-      final current = state[entry.key];
-      if (current is Downloading || current is Paused) continue;
-      next[entry.key] = entry.value;
-      final region = newest[entry.key]!;
-      _ids[entry.key] = region.id;
-      _older[entry.key] = {...all[entry.key]!}..remove(region.id);
-      _requests[entry.key] = region.request!;
+    final toDelete = <int>[];
+    for (final entry in chosen.entries) {
+      final key = entry.key;
+      if (_isActive(state[key]) ||
+          (_generation[key] ?? 0) != generations[key]) {
+        continue;
+      }
+      next[key] = entry.value.status;
+      _ids[key] = entry.value.region.id;
+      _requests[key] = entry.value.region.request!;
+      if (entry.value.status is Complete) {
+        _older.remove(key);
+        toDelete.addAll(spare[key]!);
+      } else {
+        _older[key] = {...spare[key]!};
+      }
     }
     for (final key in state.keys) {
-      if (newest.containsKey(key)) continue;
+      if (byKey.containsKey(key)) continue;
       final current = state[key];
       // A pack with no region is gone, unless a download is making one or has just failed.
       if (current is Complete || current is Interrupted) {
@@ -393,6 +464,9 @@ class TilePacks extends Notifier<Map<String, PackStatus>> {
       }
     }
     state = next;
+    for (final id in toDelete) {
+      await _tryDelete(id);
+    }
   }
 
   /// What the packs take: the bytes of each (from the state, which [refresh] fills for packs of

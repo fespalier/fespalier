@@ -798,6 +798,8 @@
         "packages/fespalier_maps/lib/maplibre.dart",
         "packages/fespalier_maps/lib/src/geo.dart",
         "packages/fespalier_maps/lib/src/offline/fake.dart",
+        "packages/fespalier_maps/lib/src/offline/file_size_io.dart",
+        "packages/fespalier_maps/lib/src/offline/file_size_stub.dart",
         "packages/fespalier_maps/lib/src/offline/port.dart",
         "packages/fespalier_maps/lib/src/offline/request.dart",
         "packages/fespalier_maps/lib/src/offline/status.dart",

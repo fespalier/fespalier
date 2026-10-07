@@ -4,6 +4,21 @@ import 'port.dart';
 import 'request.dart';
 import 'status.dart';
 
+/// What [FakeOfflineTiles.download] does with a region that already has the new one's style,
+/// rectangle and zoom range, whatever its key: `maplibre_gl` 0.27 treats the two as one region.
+enum FakeDuplicates {
+  /// Android: the old region is deleted before the new one is created (it gets a new id), and an
+  /// old download still running hears `RegionReplaced` (a [DownloadFailed] with
+  /// [PackFailure.replaced]).
+  deleteAtDownload,
+
+  /// iOS: the new region takes the old one's id, and the old download hears the same error.
+  reuseId,
+
+  /// Not the plugin's behaviour: both regions stay. For a test that wants two.
+  keep,
+}
+
 /// One region a [FakeOfflineTiles] holds.
 final class FakeRegion {
   FakeRegion._(this.id, this.request);
@@ -40,15 +55,28 @@ final class FakeRegion {
 /// network. A test starts a download through `TilePacks`, then plays MapLibre with [progress],
 /// [finish] and [fail] (by the pack's key), and checks [paused], [deleted] and the regions.
 ///
+/// Like the plugin it models, it deletes a region with the same definition when another is
+/// downloaded ([duplicates]), tells a download whose region is deleted or replaced
+/// ([PackFailure.replaced]), and throws when it is asked to delete or resume what is not there.
+/// Progress at this port is a fraction from 0 to 1; the 0 to 100 of the native side is converted
+/// in `maplibre.dart`, which has its own test.
+///
 /// [restart] plays the app being closed and opened again: the regions stay, nothing tracks their
 /// downloads, so [resume] of an old one throws the way MapLibre's does.
 class FakeOfflineTiles implements OfflineTiles {
   /// An empty database. With [holdDownloads] the future of [download] waits for
   /// [releaseDownloads], while events can already be played (the order MapLibre has).
-  FakeOfflineTiles({this.holdDownloads = false, this.databaseSize});
+  FakeOfflineTiles({
+    this.holdDownloads = false,
+    this.databaseSize,
+    this.duplicates = FakeDuplicates.deleteAtDownload,
+  });
 
   /// Whether [download] waits for [releaseDownloads].
   final bool holdDownloads;
+
+  /// What a download of an existing definition does.
+  final FakeDuplicates duplicates;
 
   /// What [databaseBytes] answers.
   int? databaseSize;
@@ -194,7 +222,17 @@ class FakeOfflineTiles implements OfflineTiles {
     downloads.add(request);
     final error = downloadError;
     if (error != null) throw error;
-    final region = FakeRegion._(_nextId++, request).._onEvent = onEvent;
+    var id = _nextId++;
+    for (final old in List.of(_regions)) {
+      if (duplicates == FakeDuplicates.keep ||
+          !_sameDefinition(old.request, request)) {
+        continue;
+      }
+      _tell(old, const DownloadFailed(PackFailure.replaced));
+      _regions.remove(old);
+      if (duplicates == FakeDuplicates.reuseId) id = old.id;
+    }
+    final region = FakeRegion._(id, request).._onEvent = onEvent;
     _regions.add(region);
     if (holdDownloads) {
       final completer = Completer<void>();
@@ -202,6 +240,18 @@ class FakeOfflineTiles implements OfflineTiles {
       await completer.future;
     }
     return StoredRegion(id: region.id, request: request);
+  }
+
+  static bool _sameDefinition(RegionPackRequest a, RegionPackRequest b) =>
+      a.bounds == b.bounds &&
+      a.styleUrl == b.styleUrl &&
+      a.minZoom == b.minZoom &&
+      a.maxZoom == b.maxZoom;
+
+  void _tell(FakeRegion region, DownloadEvent event) {
+    final listener = region._onEvent;
+    region._onEvent = null;
+    listener?.call(event);
   }
 
   FakeRegion? _byId(int id) {
@@ -236,7 +286,10 @@ class FakeOfflineTiles implements OfflineTiles {
     deleted.add(id);
     final error = deleteError;
     if (error != null) throw error;
-    _regions.removeWhere((region) => region.id == id);
+    final region = _byId(id);
+    if (region == null) throw StateError('No such region.');
+    _tell(region, const DownloadFailed(PackFailure.replaced));
+    _regions.remove(region);
   }
 
   @override

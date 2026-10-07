@@ -15,6 +15,14 @@ enum PackFailure {
   /// MapLibre refused to go on: the region needs more tiles than its limit.
   limitExceeded,
 
+  /// Another pack of the app has the same style, rectangle and zoom range. MapLibre treats the two
+  /// as one region (starting one deletes the other's), so `TilePacks` refuses the second.
+  duplicateRegion,
+
+  /// MapLibre removed the region under the download: another download of the same area replaced
+  /// it, it was deleted, or the database was reset.
+  replaced,
+
   /// Anything else.
   other;
 
@@ -28,6 +36,7 @@ enum PackFailure {
       return switch (error.code) {
         'tileCountLimitExceeded' => limitExceeded,
         'invalidRegionDefinition' => invalidRegion,
+        'RegionReplaced' || 'RegionDeleted' || 'DatabaseReset' => replaced,
         _ => other,
       };
     }

@@ -23,17 +23,17 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.11.0
+      ref: v0.12.0
   fespalier_dio:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
-      ref: v0.11.0
+      ref: v0.12.0
   fespalier_cratestack:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_cratestack
-      ref: v0.11.0
+      ref: v0.12.0
 ```
 
 <!-- x-release-please-end -->

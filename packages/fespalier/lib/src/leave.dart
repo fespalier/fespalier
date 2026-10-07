@@ -13,6 +13,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -105,9 +106,10 @@ final class LeaveScope {
   /// `PopScope`, which blocks while a handler is registered, so the iOS edge swipe is off (there
   /// is no back to hand to a handler). That holds on the first page of a navigator too (a step
   /// of a flow is the only page of its shell's navigator): register a handler there only while
-  /// it can handle the back, because a handler that declines has no pop to fall back to, and
-  /// the back stays on the page. Without a handler, go_router's own fallback asks `leave()` on
-  /// the first page.
+  /// it can handle the back: when every handler declines, the back pops the page through
+  /// go_router (which asks `leave()`) if the router can pop, and otherwise ends the app with
+  /// `SystemNavigator.pop` without asking. Without a handler, go_router's own fallback asks
+  /// `leave()` on the first page.
   VoidCallback onBack(bool Function() handler) {
     _backs.add(handler);
     _owner._sourcesChanged();
@@ -264,10 +266,15 @@ final class _LeaveScopeState extends State<_LeaveScopeWidget> {
           for (final handler in _scope._backs.reversed.toList()) {
             if (handler()) return;
           }
-          // The first page of a navigator has nothing to pop: a handler that declines there has
-          // nothing to fall back to, and the back stays on the page.
-          if (ModalRoute.of(context)?.canPop != true) return;
-          GoRouter.of(context).pop(result);
+          // Every handler declined: the back is the page's own. A page above another pops
+          // through go_router (which asks `leave()`); on a first page, a router that can pop
+          // (a pushed flow's shell) does, and one that cannot is the end of the app.
+          final router = GoRouter.of(context);
+          if (ModalRoute.of(context)?.canPop == true || router.canPop()) {
+            router.pop(result);
+          } else {
+            SystemNavigator.pop();
+          }
         },
         child: widget.child,
       ),

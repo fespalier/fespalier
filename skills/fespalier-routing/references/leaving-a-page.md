@@ -51,7 +51,7 @@ LeaveResult leave(BuildContext context, Ref ref, {required int id, required Page
   A source that turns dirty or clean must notify.
 - `LeaveScope.maybeOf(context)?.onBack(() => handled)` lets a source take the system back itself (a step of a
   multi-page form): handlers run newest first on Android's back and `Navigator.maybePop`, the first that returns true
-  stops the pop and `leave()`. While one is registered the page's `PopScope` blocks, so the iOS swipe is off, on the first page of a navigator too (since 0.11.0; a flow's step is the only page of its shell's navigator): register one only while it can handle the back, because a handler that declines on a first page has nothing to pop. Without one, go_router's fallback asks `leave()` there.
+  stops the pop and `leave()`. While one is registered the page's `PopScope` blocks, so the iOS swipe is off, on the first page of a navigator too (since 0.11.0; a flow's step is the only page of its shell's navigator): register one only while it can handle the back, because when every handler declines the back pops through go_router (asking `leave()`) if the router can pop, else ends the app with `SystemNavigator.pop` without asking. Without one, go_router's fallback asks `leave()` there.
 - `LeaveScope.maybeOf(context)?.register(source)` (null in a page without a `leave.dart`) registers a source and returns
   what unregisters it; it is safe during `build`.
 - The registry is keyed by `pageInstanceId(state)`, never by the remount key, so a `remount` page keeps asking about the

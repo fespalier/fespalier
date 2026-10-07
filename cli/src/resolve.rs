@@ -3178,7 +3178,7 @@ impl Resolver<'_> {
         let steps =
             at.m.variables
                 .iter()
-                .find(|v| v.name == forms::steps_name(&f.name));
+                .find(|v| v.name == forms::steps_name(&f.name) && forms::is_steps(v));
         match (find(Companion::Form), steps) {
             (Some(g), steps) => {
                 a.form = self.form(at, f, g, input, a, steps.is_some());
@@ -3631,7 +3631,7 @@ impl Resolver<'_> {
             });
             if let Some((_, outer)) = outer {
                 let msg = format!(
-                    "a flow can't sit inside another flow: this section is below the steps of {}action.dart; a step is a page, and its folder holds no flow of its own",
+                    "a flow can't sit inside another flow: this section is below the flow of {}action.dart; flows are one level, and a step is a page that holds no flow of its own",
                     folder_prefix(&outer.dir)
                 );
                 self.diags.error(&file, Some(&flow.span), msg);
@@ -3651,6 +3651,14 @@ impl Resolver<'_> {
                     .copied()
                     .find(|&c| self.app.routes[c].dir == step_dir);
                 if let Some(c) = child {
+                    if self.app.routes[c].leave.is_some() {
+                        let own = format!("{}leave.dart", folder_prefix(&step_dir));
+                        let msg = format!(
+                            "a step of a flow is asked by the section's leave.dart: remove this one (a navigation inside {} is never asked, and leaving it is asked once, by the section's leave.dart)",
+                            if dir.is_empty() { "the app" } else { &dir }
+                        );
+                        self.diags.error(&own, None, msg);
+                    }
                     self.app.routes[c].step_of = Some(rid);
                     self.app.routes[c].leave = leave.clone();
                 }

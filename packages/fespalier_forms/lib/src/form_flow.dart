@@ -370,12 +370,10 @@ final class FormFlow<I, T, S extends Enum, F extends Record>
 
   @override
   void _restoreSteps(List<String> saved) {
-    _done
-      ..clear()
-      ..addAll([
-        for (final s in _steps)
-          if (saved.contains(s.name)) s,
-      ]);
+    _done.addAll([
+      for (final s in _steps)
+        if (saved.contains(s.name)) s,
+    ]);
   }
 
   @override

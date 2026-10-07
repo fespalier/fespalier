@@ -179,7 +179,9 @@ fn each_step_is_asked_by_the_sections_leave_with_within() {
 #[test]
 fn a_flow_with_no_leave_has_no_on_exit_and_no_scope() {
     let c = flow_code(&all(), &[]);
-    lacks(&c, &["leaveExit", "leaveScope", "within:", "flowStep"]);
+    lacks(&c, &["leaveExit", "onExit", "within:"]);
+    // Every step still has the flow in its page scope, so the system back goes to the previous step.
+    assert_eq!(c.matches("leaveScope(state, flowStep(").count(), 4, "{c}");
     // The guard of the section is the app's own: `resume` is what it calls.
     let c = flow_code(&all(), &[("signup/guard.dart", GUARD)]);
     has(&c, &["static GuardResult resume("]);
@@ -270,7 +272,6 @@ fn the_package_is_required_like_any_form() {
 fn steps_must_be_a_const_map_of_lists() {
     let msg = "`steps` must be a `const` map literal from a step folder's name to the list of the input's fields it asks for, in order";
     for steps in [
-        "const steps = ['name'];\n",
         "final steps = {'name': ['name']};\n",
         "const steps = {'name': 'name'};\n",
         "const steps = {};\n",
@@ -278,6 +279,33 @@ fn steps_must_be_a_const_map_of_lists() {
     ] {
         action_error(&action_file(&[FIELDS, FORM, steps, ACTION]), msg);
     }
+}
+
+#[test]
+fn a_steps_that_is_no_map_is_the_apps_own() {
+    for steps in [
+        "const steps = 3;\n",
+        "const steps = ['name'];\n",
+        "final steps = <String>[];\n",
+    ] {
+        let c = flow_code(&action_file(&[FIELDS, FORM, steps, ACTION]), &[]);
+        lacks(&c, &["FlowSpec", "enum SignupStep"]);
+        has(&c, &["static final useForm = "]);
+    }
+}
+
+#[test]
+fn a_step_has_no_leave_of_its_own() {
+    let leave_step = ("signup/name/leave.dart", LEAVE);
+    let files = signup(&all(), &[("signup/leave.dart", LEAVE), leave_step]);
+    let e = error(&files);
+    assert_eq!(
+        e,
+        "✗ signup/name/leave.dart  a step of a flow is asked by the section's leave.dart: remove this one (a navigation inside signup is never asked, and leaving it is asked once, by the section's leave.dart)"
+    );
+    // Also when the section has none: the step's would be dropped.
+    let files = signup(&all(), &[leave_step]);
+    assert!(error(&files).starts_with("✗ signup/name/leave.dart  a step of a flow"));
 }
 
 #[test]
@@ -444,7 +472,7 @@ fn a_flow_does_not_sit_inside_another() {
     ));
     let e = errors(&refs(&files));
     assert!(
-        e.contains("a flow can't sit inside another flow: this section is below the steps of signup/action.dart; a step is a page, and its folder holds no flow of its own"),
+        e.contains("a flow can't sit inside another flow: this section is below the flow of signup/action.dart; flows are one level, and a step is a page that holds no flow of its own"),
         "{e}"
     );
 }

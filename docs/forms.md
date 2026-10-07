@@ -226,7 +226,7 @@ Future<Account> action(Ref ref, {required SignupFields input}) => ref.read(api).
 - **The generated file** declares `enum SignupStep { name, company, contact, review }` (a folder `contact_info` is `contactInfo`) and gives the section's handle `useFlow` (for the layout), `flowOf` (for a step page) and `resume` (for a guard), in place of `useForm`. For another action they are `use<Action>Flow`, `<action>FlowOf` and `<action>Resume`.
 - **`skip(step, input)`** is optional and decides from the input as it is now, so it follows the user's own answers: it is read for the progress, for `next` and `back`, and by `resume`.
 - **A flow sits at a path with no dynamic segment** for now: its steps are `go`ne to by typed routes the section holds. Its `form()` takes no value (`resume` runs in a guard, before any data is loaded).
-- A key called `draft`, `messages` or `validation` is reserved, as for `useForm`. A `steps` constant in an `action.dart` always means a flow.
+- A key called `draft`, `messages` or `validation` is reserved, as for `useForm`. A `const` map literal called `steps` (or `<action>Steps`) beside a `form()` is a flow; a `steps` of any other shape (a number, a list) is yours and is left alone.
 
 The layout makes the flow and shares it with the pages below:
 
@@ -262,6 +262,7 @@ FilledButton(onPressed: flow.isPending ? null : () => flow.next(context), child:
 - **`next(context)`** checks the **current step's fields only**: what each reads as (an age of `abc`) and what `validate()` says of **those** fields; the errors of the other steps are not shown yet. When they are fine it marks the step done, keeps the draft and `go`es to the next step shown. It returns `false` (with the errors under the fields) when a field is wrong. On the last step shown it runs the action, as `submit()` does.
 - **`back(context)`** goes to the previous step shown (false on the first). Nothing is lost: the form lives in the layout.
 - **`goTo(context, step)`** opens a step to edit it (from a review), when `canGoTo(step)` allows it: the step is shown and every step shown before it is done.
+- **Enter a flow with `go`** (`SignupRoute`'s first step `.go(context)`, or a link). `next`, `back` and `goTo` use `go` too, so a flow that was `push`ed loses the page under it on the first step change; the flow is a place, not a modal stack.
 - Steps are real navigation (`go`), so each is a history entry on the web: the browser's back reaches the previous step's URL. The Android back, on a step that is not the first, goes to the previous step instead of leaving the flow (see Leaving the flow).
 
 ### Validation and the server's errors
@@ -282,7 +283,7 @@ FilledButton(onPressed: flow.isPending ? null : () => flow.next(context), child:
 GuardResult guard(Ref ref, {required Uri uri}) => SignupSection.resume(ref, uri: uri);
 ```
 
-`resume` returns the location of the first step shown that is not done when `uri` is a step past it, else `null`. What is done comes from the flow on screen when there is one (so it works with no draft), else from the draft; with neither, only the first step opens. A storage that answers later makes the guard a `Future`. A link to a step that is skipped goes to the first step not done. A link that is no step's is left alone.
+`resume` returns the location of the first step shown that is not done when `uri` is a step past it, else `null`. What is done comes from the flow on screen when there is one (so it works with no draft), else from the draft; with neither, only the first step opens. The flow on screen is found by its draft key (action, family key and `formDraftScope`) in a registry shared by the whole process, not per `ProviderContainer`: two containers of one app (a test that boots twice) see the last layout mounted. A storage that answers later makes the guard a `Future`. A link to a step that is skipped goes to the first step not done. A link that is no step's is left alone.
 
 ### Leaving the flow
 
@@ -301,7 +302,7 @@ LeaveResult leave(BuildContext context, Ref ref, {required PageLeave page}) =>
 
 ### Progress
 
-`flow.step` (from the current location), `flow.steps` (the steps shown, in order), `flow.index` (0-based, among the steps shown), `flow.count`, `flow.progress` (`(index + 1) / count`, for a `LinearProgressIndicator(value:)`), `flow.isFirst`, `flow.isLast`, `flow.isComplete(step)` and `flow.canGoTo(step)`. `skip()` changes `steps` and `count` as the user answers.
+`flow.step` (from the current location), `flow.steps` (the steps shown, in order), `flow.index` (0-based, among the steps shown), `flow.count`, `flow.progress` (`(index + 1) / count`, so it starts at `1 / count`, not 0; for a `LinearProgressIndicator(value:)`), `flow.isFirst`, `flow.isLast`, `flow.isComplete(step)` and `flow.canGoTo(step)`. `skip()` changes `steps` and `count` as the user answers.
 
 ### Testing a flow
 

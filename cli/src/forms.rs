@@ -84,14 +84,24 @@ pub fn steps_name(action: &str) -> String {
     }
 }
 
-/// Whether a module declares the steps of some action in it: a `steps` variable, or `<name>Steps`
-/// beside a function `<name>`.
+/// Whether `v` is meant as the steps of a flow (since 0.11.0): a map literal, well formed or not.
+/// Any other `steps` (a number, a list) is the app's own and is left alone.
+pub fn is_steps(v: &crate::dart::Variable) -> bool {
+    v.lists.is_some()
+        || v.value
+            .as_deref()
+            .is_some_and(|t| t.starts_with('{') || t.starts_with("const{"))
+}
+
+/// Whether a module declares the steps of some action in it: a `steps` map, or `<name>Steps` beside
+/// a function `<name>`.
 pub fn has_steps(m: &crate::dart::Module) -> bool {
     m.variables.iter().any(|v| {
-        v.name == "steps"
-            || v.name
-                .strip_suffix("Steps")
-                .is_some_and(|a| m.functions.iter().any(|f| f.name == a))
+        is_steps(v)
+            && (v.name == "steps"
+                || v.name
+                    .strip_suffix("Steps")
+                    .is_some_and(|a| m.functions.iter().any(|f| f.name == a)))
     })
 }
 

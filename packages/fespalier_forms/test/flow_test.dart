@@ -303,6 +303,9 @@ class ReviewPage extends StatelessWidget {
 
 /// A step's `GoRoute`, as the generator writes it: the section's guard (`resume`), its `leave()`
 /// as `onExit` with `within:`, and the page in `leaveScope` and `flowStep`.
+/// Set by a test: whether the section has a leave.dart.
+bool withLeave = true;
+
 GoRoute step(String path, Widget page) => GoRoute(
   path: path,
   redirect: (context, state) => refGuard(
@@ -310,12 +313,14 @@ GoRoute step(String path, Widget page) => GoRoute(
     'signup/guard.dart',
     (ref) => SignupSection.resume(ref, uri: state.uri),
   ),
-  onExit: (context, state) =>
-      leaveExit(context, state, 'signup/leave.dart', (ref, pageLeave) {
-        final result = leaveIfClean(context, ref, pageLeave);
-        asked.add(result);
-        return result;
-      }, within: '/signup'),
+  onExit: !withLeave
+      ? null
+      : (context, state) =>
+            leaveExit(context, state, 'signup/leave.dart', (ref, pageLeave) {
+              final result = leaveIfClean(context, ref, pageLeave);
+              asked.add(result);
+              return result;
+            }, within: '/signup'),
   pageBuilder: (context, state) => MaterialPage<void>(
     key: state.pageKey,
     child: leaveScope(state, flowStep(page)),
@@ -412,6 +417,7 @@ void main() {
   setUp(() {
     storage = MemoryDataStorage();
     draftOf = const FormDraft();
+    withLeave = true;
     sent.clear();
     asked.clear();
     serverErrors = null;
@@ -970,6 +976,18 @@ void main() {
             .text,
         'Ann',
       );
+    });
+
+    testWidgets('goes to the previous step in a flow with no leave.dart', (
+      tester,
+    ) async {
+      withLeave = false;
+      await boot(tester);
+      await typeInto(tester, 'name', 'Ann');
+      await tapText(tester, 'Next');
+      expectStep(tester, SignupStep.contact);
+      await systemBack(tester);
+      expectStep(tester, SignupStep.name);
     });
 
     testWidgets('on the first step it leaves the flow: asked, once', (

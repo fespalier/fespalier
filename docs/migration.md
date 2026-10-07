@@ -51,8 +51,8 @@ What changed between releases, newest first, each with a link to the reference s
   `MaterialLocalizations` are needed by the sheet: on material_ui's `MaterialApp`, override `leavePrompt`.
 - **Multi-page forms** ([Multi-page forms](forms.md#multi-page-forms)). A section's `action.dart` with a `const steps`
   map is a form over several pages that share one form and one draft. It is new and opt-in: no app changes unless it
-  adds one. An `action.dart` that already has a variable called `steps` (or `<action>Steps`) is read as one, and
-  `fsp` reports it unless it is a `const` map from step folders to the input's fields. A page-less section may now
+  adds one. Only a `const` map literal called `steps` (or `<action>Steps`) in an `action.dart` with a `form()` is read as one;
+  a `steps` of another shape (a number, a list) is left alone. A page-less section may now
   have a `leave.dart` when it is a flow, `leaveExit` gets a `within:` there, and a `LeaveScope.onBack` handler now
   blocks the pop on the first page of a navigator too (a step of a flow is the only page of its shell's navigator).
 

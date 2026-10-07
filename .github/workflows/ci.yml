@@ -92,6 +92,7 @@ jobs:
           - packages/fespalier_sentry
           - packages/fespalier_tolgee
           - packages/fespalier_forms
+          - packages/fespalier_maps
           - examples/shop
           - examples/features
           - examples/tabs
@@ -165,6 +166,7 @@ jobs:
           - packages/fespalier_sentry
           - packages/fespalier_tolgee
           - packages/fespalier_forms
+          - packages/fespalier_maps
           - examples/minimal
     defaults:
       run:

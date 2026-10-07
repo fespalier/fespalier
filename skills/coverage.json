@@ -757,6 +757,30 @@
         "packages/fespalier_cratestack/lib/src/dio/failures.dart",
         "packages/fespalier_cratestack/lib/src/dio/portal.dart"
       ]
+    },
+    "fespalier-maps": {
+      "covers": [
+        "docs/maps.md",
+        "docs/maps.md#Install",
+        "docs/maps.md#Picking a place",
+        "docs/maps.md#Search and guesses",
+        "docs/maps.md#Where the device is",
+        "docs/maps.md#The map",
+        "docs/maps.md#Telemetry",
+        "docs/maps.md#Testing",
+        "docs/maps.md#Rules and what it costs",
+        "docs/maps.md#Not built yet",
+        "packages/fespalier_maps/README.md",
+        "packages/fespalier_maps/lib/fespalier_maps.dart",
+        "packages/fespalier_maps/lib/geolocator.dart",
+        "packages/fespalier_maps/lib/maplibre.dart",
+        "packages/fespalier_maps/lib/src/geo.dart",
+        "packages/fespalier_maps/lib/src/pin_model.dart",
+        "packages/fespalier_maps/lib/src/pin_picker.dart",
+        "packages/fespalier_maps/lib/src/ports.dart",
+        "packages/fespalier_maps/lib/src/telemetry.dart",
+        "packages/fespalier_maps/lib/src/tiles.dart"
+      ]
     }
   },
   "exempt": [

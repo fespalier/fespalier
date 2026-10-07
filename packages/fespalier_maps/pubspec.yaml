@@ -1,0 +1,44 @@
+name: fespalier_maps
+description: "Maps for fespalier: a pin picker that returns a place, over MapLibre, with a geocoder interface and a position source."
+version: 0.11.0 # x-release-please-version
+# Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
+publish_to: 'none'
+homepage: https://github.com/fespalier/fespalier
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_maps
+issue_tracker: https://github.com/fespalier/fespalier/issues
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # The same repository dependency an app writes (same url, path and ref), so the two resolve to
+  # one package: a path dependency would resolve "at <sha>" and conflict with the app's tag.
+  # Hooks, Riverpod and go_router come through it.
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.11.0 # x-release-please-version
+  # The MapLibre binding: lib/maplibre.dart is the only file that imports it. 0.26.0 is the first
+  # release with the offline-region calls the later packs use (Dart 3.7, Flutter 3.22); 0.27.x asks
+  # for Flutter 3.29. Both resolve on Flutter 3.32.
+  maplibre_gl: ">=0.26.0 <0.28.0"
+  # The device position: lib/geolocator.dart is the only file that imports it.
+  geolocator: ">=14.0.0 <15.0.0"
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  # Flutter's own flutter_test pins the version (3.0.9 on Flutter 3.32, the floor), so the constraint
+  # must admit that one.
+  leak_tracker_flutter_testing: ^3.0.9
+
+# In this repository the package is built against the fespalier beside it. A dependency's
+# overrides are ignored, so apps never see this.
+dependency_overrides:
+  fespalier:
+    path: ../fespalier

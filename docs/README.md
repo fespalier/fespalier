@@ -21,6 +21,7 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 | [Authentication](auth.md)                                          | Signed-in routes with `fespalier_auth`, OpenID Connect, DPoP                                          |
 | [Images](responsive-images.md)                                     | Responsive CDN images with `fespalier_image`                                                          |
 | [Translations](i18n-tolgee.md)                                     | Tolgee texts with `fespalier_tolgee`: offline, over the air, language from the URL                    |
+| [Maps](maps.md)                                                    | A pin picker that returns a place with `fespalier_maps`: MapLibre, geocoder, position                 |
 | [Observability](observability.md)                                  | Lifecycle hooks, telemetry, OpenTelemetry, Sentry, Crashlytics                                        |
 | [Telemetry conventions](telemetry-conventions.md)                  | Span, event and attribute names: contract version 1                                                   |
 | [Dashboards on your computer](telemetry-dashboards.md)             | `fsp telemetry`: OpenObserve and Grafana                                                              |

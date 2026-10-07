@@ -42,6 +42,10 @@ Flutter 3.32, with the lowest dependencies it allows.
   - `fespalier_dio`, the rest: composed with `fespalier_auth` (DPoP and refresh under a retry
     layer) and OpenTelemetry trace headers on each request.
   - `fespalier_analytics`: screen views and time on screen, named from `meta.dart`, with consent.
+- **`fespalier_maps`, the rest.** The pin picker ships in 0.12.0 (docs/maps.md). Still to come:
+  offline region packs (download with progress, pause, resume, storage) and PMTiles file packs
+  (resumable over HTTP Range, checked, written atomically); MapLibre's own downloads cannot resume
+  after an app restart, which is why the file packs exist.
 - **Instrumentation the app doesn't have to write.** With `telemetry: true` and an `app.dart`, the
   generated `main()` installs `FespalierOtel` and its zone itself.
 - **The four telemetry attributes documented as not emitted**: `fespalier.data.attempt`,

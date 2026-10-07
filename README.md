@@ -158,6 +158,7 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 | `fespalier_adaptive`     | menus as a bar, a rail or a drawer by window width                                     | [Adaptive navigation](docs/layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive) |
 | `fespalier_image`        | responsive CDN images                                                                  | [Images](docs/responsive-images.md)                                                |
 | `fespalier_forms`        | the form of an `action.dart`: typed fields, validation, server errors (since 0.11.0)   | [Forms](docs/forms.md)                                                             |
+| `fespalier_maps`         | a MapLibre pin picker that returns a place (since 0.12.0)                              | [Maps](docs/maps.md)                                                               |
 | `fespalier_dio`          | Dio and `package:http`: cancellation, field errors, writes never retried               | [HTTP clients](docs/http.md)                                                       |
 | `fespalier_cratestack`   | a CrateStack client behind `data.dart` and `action.dart`, offline-first (since 0.10.0) | [CrateStack](docs/cratestack.md), [Offline-first](docs/offline-first.md)           |
 | `fespalier_tolgee`       | translations from Tolgee or your own server, offline-safe (since 0.10.0)               | [Translations](docs/i18n-tolgee.md)                                                |
@@ -197,6 +198,7 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 - <a name="authentication"></a><a name="installing-fespalier_auth"></a><a name="the-session"></a><a name="restoring-at-startup"></a><a name="guarding-signed-in-routes"></a><a name="signing-in-and-out"></a><a name="calling-your-api"></a><a name="openid-connect-and-keycloak"></a><a name="firebase-supabase-and-your-own-api"></a><a name="device-bound-tokens-dpop-with-fespalier_sign_keypair"></a><a name="testing-signed-in-routes"></a>[Authentication](docs/auth.md)
 - <a name="images"></a><a name="installing-fespalier_image"></a><a name="the-image-cdn-imagecdnprovider"></a><a name="buckets-the-widths-an-image-is-fetched-at"></a><a name="responsiveimage"></a><a name="url-builders"></a><a name="imgproxy-and-emgr"></a><a name="cloudinary"></a><a name="imgix"></a><a name="thumbor"></a><a name="a-url-template"></a><a name="already-sized-a-srcset"></a><a name="signed-image-urls"></a><a name="precaching-an-image-behind-a-link"></a><a name="images-in-heroes"></a><a name="images-on-the-web"></a><a name="caching-images"></a><a name="testing-images"></a><a name="image-loads-in-telemetry"></a><a name="what-images-cost"></a>[Images](docs/responsive-images.md)
 - [Translations](docs/i18n-tolgee.md)
+- [Maps](docs/maps.md)
 - [Offline-first](docs/offline-first.md)
 - [CrateStack](docs/cratestack.md)
 

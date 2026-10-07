@@ -92,6 +92,9 @@ abstract final class SentryKeys {
   /// The HTTP status of a failed image load.
   static const String imageStatus = 'fespalier.image.status';
 
+  /// The name of a package's own (custom) operation, `fespalier.<pkg>.<op>` (since 0.11.0).
+  static const String customName = 'fespalier.custom.name';
+
   /// How a package's own (custom) operation ended (since 0.11.0).
   static const String customResult = 'fespalier.custom.result';
 

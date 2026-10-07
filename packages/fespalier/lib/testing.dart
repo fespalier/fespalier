@@ -222,7 +222,9 @@ final class RecordingTelemetry extends FespalierTelemetry {
         if (end.location != null) 'at=${end.location}',
       ],
       if (end.imageStatus != null) 'status=${end.imageStatus}',
-      if (op == TelemetryOp.custom && end.attributes != null)
+      if (op == TelemetryOp.custom &&
+          end.attributes != null &&
+          end.attributes!.isNotEmpty)
         _sorted(end.attributes!),
       if (end.error != null) 'error=${end.error}',
     ];
@@ -255,7 +257,7 @@ String _sorted(Map<String, Object> attributes) {
 }
 
 String _custom(String? name, Map<String, Object>? attributes) =>
-    '$name${attributes == null || attributes.isEmpty ? '' : ' ${_sorted(attributes)}'}';
+    '${name ?? 'custom'}${attributes == null || attributes.isEmpty ? '' : ' ${_sorted(attributes)}'}';
 
 /// The page of the route whose pattern is [pattern] (`/products/:id`), found by the
 /// `Semantics(identifier: 'route:<pattern>')` that `semantics_ids: true` gives it. Needs no

@@ -736,6 +736,32 @@ void main() {
       expect(span.status, SpanStatusCode.Unset);
     });
 
+    test('a convention key wins over the package\'s, and an end key outside '
+        'the package prefix is dropped', () {
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(
+          TelemetryOp.custom,
+          name: 'fespalier.push.open',
+          attributes: {'fespalier.push.kind': 'alert'},
+        ),
+      );
+      FespalierTelemetry.finish(
+        token,
+        const TelemetryEnd(
+          TelemetryOutcome.cancelled,
+          attributes: {
+            'fespalier.push.ok': 1,
+            'fespalier.custom.result': 'forged',
+            'fespalier.image.cdn': 'x',
+          },
+        ),
+      );
+      final attrs = only('fespalier.push.open').attributes;
+      expect(attrs.getString('fespalier.custom.result'), 'cancelled');
+      expect(attrs.getInt('fespalier.push.ok'), 1);
+      expect(attrs.getString('fespalier.image.cdn'), isNull);
+    });
+
     test('an error object is never exported, only its class', () {
       final token = FespalierTelemetry.begin(
         const TelemetryStart(TelemetryOp.custom, name: 'fespalier.push.open'),

@@ -114,10 +114,10 @@ attributes only add):
 
 **On a `custom` span** (since 0.11.0; a package's own operation, `TelemetryOp.custom`; no new contract version, as a new operation and its attributes only add):
 
-| Key                       | Type   | Values and meaning                                                       |
-| ------------------------- | ------ | ------------------------------------------------------------------------ |
-| `fespalier.custom.name`   | string | the operation's name, `fespalier.<pkg>.<op>`, e.g. `fespalier.push.open` |
-| `fespalier.custom.result` | string | `ok` or `error`                                                          |
+| Key                       | Type   | Values and meaning                                                                                                |
+| ------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| `fespalier.custom.name`   | string | the operation's name, `fespalier.<pkg>.<op>`, e.g. `fespalier.push.open`                                          |
+| `fespalier.custom.result` | string | the outcome the package ended with, usually `ok` or `error` (`cancelled`, `disposed` and `rejected` are possible) |
 
 A package's own `fespalier.<pkg>.*` attributes also sit on the span; they are that package's contract, not version 1's.
 

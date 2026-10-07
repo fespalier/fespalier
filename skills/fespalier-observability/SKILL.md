@@ -67,10 +67,18 @@ Since 0.9.0, three more things, all in that page:
   telemetry reports `fespalier.navigation.source` (`notification`, `shortcut`, `widget`, `link`). fespalier
   never sets it by itself.
 
-Since 0.10.0 (`fespalier_tolgee`, `fespalier_cratestack`): **no new `TelemetryOp` and no new convention**, so an exhaustive
-sink still compiles. A read through `ref.serve` and an action that calls `intentQueue.submit` run inside the existing
-data and action spans. `fespalier_tolgee` has no telemetry in v1, and no sync span exists yet (a `TelemetryOp.sync` is
-planned and additive; nothing from an intent, a row, a subject, a translation key or a server message would ever be sent).
+Since 0.10.0 (`fespalier_tolgee`, `fespalier_cratestack`): **no new `TelemetryOp` and no new convention** (0.11.0 adds
+`TelemetryOp.custom`, below), so an exhaustive sink still compiled on 0.10. A read through `ref.serve` and an action that calls `intentQueue.submit` run inside the existing
+data and action spans. `fespalier_tolgee` has no telemetry in v1, and no sync span exists yet (it would be a custom op, `fespalier.cratestack.sync`: a new
+`TelemetryOp` value breaks an exhaustive sink, as `custom` did; nothing from an intent, a row, a subject, a translation key or a server message would ever be sent).
+
+Since 0.11.0: **`TelemetryOp.custom`** is a package's own operation, `FespalierTelemetry.begin` and `finish` with
+`TelemetryStart(TelemetryOp.custom, name: 'fespalier.<pkg>.<op>', attributes: {...})` (see
+[`references/telemetry.md`](references/telemetry.md)). A sink of your own with an exhaustive `switch` on `TelemetryOp` needs a
+`custom` case. **`FespalierOtel` exports the name and the attributes verbatim**, so they must hold no user value (segment,
+query, input, result, token) and the name must be a constant (`fespalier.push.open`, never `fespalier.push.order_42`).
+`FespalierSentry` sends neither the attributes nor, by default, a failure as an event (a breadcrumb with the class only;
+`capture:` opts in).
 
 [`references/conventions.md`](references/conventions.md) is **contract version 1**: every span, event and
 attribute name, for anyone building a dashboard or an alert. Adding is allowed within version 1; renaming

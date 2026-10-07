@@ -48,7 +48,7 @@ image (since 0.9.0)     fespalier.image.cdn (the URL builder's name: imgproxy, e
                         fespalier.image.result = ok | error
                         fespalier.image.status (int: the HTTP status of a failed load, when known)
 custom (since 0.11.0)   fespalier.custom.name (the operation's name, fespalier.<pkg>.<op>)
-                        fespalier.custom.result = ok | error
+                        fespalier.custom.result = the outcome the package ended with, usually ok | error
                         plus the package's own fespalier.<pkg>.* attributes (its contract, not version 1's)
 leave event             fespalier.route, fespalier.page.duration_ms (int)
 enter, focus events     fespalier.route

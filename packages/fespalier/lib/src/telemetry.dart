@@ -102,7 +102,8 @@ abstract class FespalierTelemetry {
   /// the navigation that is in progress, if there is one (`fespalier_image` does: an image that
   /// starts loading while a page is being reached is part of that navigation).
   static Object? begin(TelemetryStart start, {bool underNavigation = false}) {
-    assert(_checkCustom(start));
+    // Only with a sink installed: with telemetry off a package's mistake is not the app's to hear.
+    assert(FespalierTelemetry._current == null || _checkCustom(start));
     final navigation = _pendingNavigation;
     return telemetryBegin(
       underNavigation && start.parent == null && navigation != null
@@ -113,8 +114,10 @@ abstract class FespalierTelemetry {
 
   /// Ends the operation [token] came from (what [begin] returned), for an adapter package
   /// (since 0.9.0). Does nothing without a sink; a sink that throws is printed once and dropped.
-  static void finish(Object? token, TelemetryEnd end) =>
-      telemetryFinish(token, end);
+  static void finish(Object? token, TelemetryEnd end) {
+    assert(FespalierTelemetry._current == null || _checkCustomEnd(end));
+    telemetryFinish(token, end);
+  }
 
   /// An operation started. Returns a token that fespalier hands back to [end] (and, for a
   /// navigation, to [page] and as [TelemetryStart.parent] of what runs during it); null is fine.
@@ -345,6 +348,51 @@ final RegExp _customName = RegExp(
   r'^fespalier\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$',
 );
 
+/// Package segments a custom operation may not use: they are the namespaces of fespalier's own
+/// attributes (`fespalier.custom.name`, `fespalier.image.cdn`, `fespalier.operation`, ...).
+const Set<String> _reservedPackages = {
+  'custom',
+  'operation',
+  'route',
+  'file',
+  'action',
+  'data',
+  'guard',
+  'redirect',
+  'navigate',
+  'navigation',
+  'page',
+  'deferred',
+  'auth',
+  'image',
+  'async',
+  'keyed',
+  'error',
+};
+
+/// Debug check of the result attributes of a custom operation (since 0.11.0): each key is
+/// `fespalier.<pkg>.<name>` and each value a `String`, `int`, `double` or `bool`. The prefix is the
+/// start's; a sink drops a key outside it. Always true, so it can sit in an `assert`.
+bool _checkCustomEnd(TelemetryEnd end) {
+  for (final MapEntry(:key, :value) in (end.attributes ?? const {}).entries) {
+    if (!RegExp(r'^fespalier\.[a-z][a-z0-9_]*\.').hasMatch(key)) {
+      throw AssertionError(
+        'TelemetryEnd attribute "$key" must start with fespalier.<pkg>.',
+      );
+    }
+    if (value is! String &&
+        value is! int &&
+        value is! double &&
+        value is! bool) {
+      throw AssertionError(
+        'TelemetryEnd attribute "$key" must be a String, int, double or bool, '
+        'got ${value.runtimeType}',
+      );
+    }
+  }
+  return true;
+}
+
 /// Debug check of a [TelemetryOp.custom] start (since 0.11.0): the name's shape, the keys' prefix
 /// and the value types. Always true, so it can sit in an `assert`.
 bool _checkCustom(TelemetryStart start) {
@@ -355,7 +403,14 @@ bool _checkCustom(TelemetryStart start) {
       'TelemetryOp.custom needs a name like fespalier.<pkg>.<op>, got $name',
     );
   }
-  final prefix = '${name.split('.').take(2).join('.')}.';
+  final pkg = name.split('.')[1];
+  if (_reservedPackages.contains(pkg)) {
+    throw AssertionError(
+      'TelemetryOp.custom name "$name": "$pkg" is one of fespalier\'s own attribute '
+      'namespaces, pick another package segment',
+    );
+  }
+  final prefix = 'fespalier.$pkg.';
   for (final MapEntry(:key, :value) in (start.attributes ?? const {}).entries) {
     if (!key.startsWith(prefix)) {
       throw AssertionError(
@@ -520,8 +575,10 @@ final class TelemetryEnd {
   /// image (since 0.9.0): the HTTP status of a failed load, when the error carries one.
   final int? imageStatus;
 
-  /// custom (since 0.11.0): the operation's own result attributes, with the same rules as
-  /// [TelemetryStart.attributes].
+  /// custom (since 0.11.0): the operation's own result attributes. Values are `String`, `int`,
+  /// `double` or `bool`; each key starts with the prefix of the start's [TelemetryStart.name]
+  /// (`fespalier.<pkg>.`). `begin`'s sibling [FespalierTelemetry.finish] asserts the shape in
+  /// debug, and a sink drops a key outside the start's prefix.
   final Map<String, Object>? attributes;
 }
 

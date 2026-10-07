@@ -361,29 +361,35 @@ final class _Drafts {
   /// Whether a draft is known to be in the storage.
   bool stored = false;
 
+  /// Whether there is a storage to keep a draft in (one that opens later counts).
+  bool get hasStorage => storage != null;
+
   /// Runs [body] with the storage, at once when it is there and when it is ready otherwise
-  /// (`deferred` is then true). A storage that is null, or fails to open, keeps nothing.
-  void use(
-    void Function(Storage<String, String> storage, {required bool deferred})
+  /// (`deferred` is then true). A storage that is null, or fails to open, keeps nothing. Returns
+  /// what [body] returns, or a `Future` of it when the storage opens later: a caller that must
+  /// know the draft is written (`keep()`) waits for it, the others let it be.
+  FutureOr<void> use(
+    FutureOr<void> Function(
+      Storage<String, String> storage, {
+      required bool deferred,
+    })
     body,
   ) {
     final s = storage;
     if (s is Future<Storage<String, String>?>) {
-      unawaited(
-        s.then(
-          (opened) {
-            if (opened != null) body(opened, deferred: true);
-          },
-          onError: (Object error, StackTrace _) {
-            if (kDebugMode) {
-              debugPrint('fespalier_forms: draft storage: $error');
-            }
-          },
-        ),
+      return s.then<void>(
+        (opened) {
+          if (opened != null) return body(opened, deferred: true);
+        },
+        onError: (Object error, StackTrace _) {
+          if (kDebugMode) {
+            debugPrint('fespalier_forms: draft storage: $error');
+          }
+        },
       );
-    } else if (s != null) {
-      body(s, deferred: false);
     }
+    if (s != null) return body(s, deferred: false);
+    return null;
   }
 }
 
@@ -397,7 +403,8 @@ void _let(FutureOr<void> done) {
 ///
 /// The generated `useForm` makes one for a page and disposes it with the page; it is a
 /// [ChangeNotifier] that the page rebuilds on.
-final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
+final class ActionForm<I, T, F extends Record> extends ChangeNotifier
+    implements LeaveSource {
   ActionForm._(
     this._action,
     this._initial,
@@ -430,6 +437,10 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
   bool _disposed = false;
   _Drafts? _drafts;
 
+  /// Set by [discard]: the form writes no draft when it is disposed, until the user changes
+  /// something again.
+  bool _discarded = false;
+
   /// The state of the action, as `useAction`'s `state`.
   AsyncValue<T?> get state => _state;
 
@@ -437,6 +448,7 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
   bool get isPending => _state.isLoading;
 
   /// Whether a field differs from what the form started from.
+  @override
   bool get isDirty => _all.any((f) => f.isDirty);
 
   /// Whether every field reads as its type and `validate()` has nothing to say of the input.
@@ -520,6 +532,31 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- leaving ---------------------------------------------------------------------------
+
+  /// Whether [keep] writes a draft: the form was given a `draft:` and there is a storage.
+  @override
+  bool get canKeep => _drafts?.hasStorage ?? false;
+
+  /// Saves what the form holds as its draft, and completes when it is written. What `leave()`
+  /// asks through `PageLeave.keep` when the user chooses to keep the changes (since 0.11.0).
+  @override
+  FutureOr<void> keep() {
+    if (_disposed) return null;
+    _discarded = false;
+    return _saveDraft();
+  }
+
+  /// Drops the draft, and the form writes none when the page goes (since 0.11.0): the user
+  /// chose to lose what they typed. The fields are left as they are (the page is going); typing
+  /// again keeps the form as it was.
+  @override
+  void discard() {
+    if (_disposed) return;
+    _discarded = true;
+    _clearDraft();
+  }
+
   // ---- drafts ------------------------------------------------------------------------------
 
   /// What a draft keeps: the fields that changed, that a draft can keep and that are not excluded,
@@ -531,33 +568,33 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
   };
 
   /// Writes the draft of what the form holds now, or deletes it when nothing of it changed.
-  void _saveDraft() {
+  ///
+  /// Returns what completes when it is written: a `Future` only when the storage answers later.
+  FutureOr<void> _saveDraft() {
     final drafts = _drafts;
-    if (drafts == null) return;
+    if (drafts == null) return null;
     final fields = _draftFields();
     if (fields.isEmpty) {
       if (drafts.stored) _clearDraft();
-      return;
+      return null;
     }
-    if (drafts.generation != draftClearGeneration) return;
+    if (drafts.generation != draftClearGeneration) return null;
     final text = jsonEncode(fields);
-    if (text == drafts.lastSaved) return;
+    if (text == drafts.lastSaved) return null;
     // What is known of the storage changes now, whenever the storage answers.
     drafts
       ..lastSaved = text
       ..stored = true;
-    drafts.use((storage, {required deferred}) {
-      _let(
-        saveDraft(
-          storage,
-          drafts.key,
-          drafts.shape,
-          drafts.config.maxAge,
-          fields,
-          generation: drafts.generation,
-        ),
-      );
-    });
+    return drafts.use(
+      (storage, {required deferred}) => saveDraft(
+        storage,
+        drafts.key,
+        drafts.shape,
+        drafts.config.maxAge,
+        fields,
+        generation: drafts.generation,
+      ),
+    );
   }
 
   void _clearDraft() {
@@ -565,8 +602,10 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
     if (drafts == null) return;
     drafts.lastSaved = null;
     drafts.stored = false;
-    drafts.use(
-      (storage, {required deferred}) => _let(removeDraft(storage, drafts.key)),
+    _let(
+      drafts.use(
+        (storage, {required deferred}) => removeDraft(storage, drafts.key),
+      ),
     );
   }
 
@@ -600,7 +639,7 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
     }());
     drafts.use((storage, {required deferred}) {
       void apply(Map<String, Object?>? saved, {required bool deferred}) {
-        if (saved == null || _disposed || isPending) return;
+        if (saved == null || _disposed || _discarded || isPending) return;
         for (final f in _all) {
           if (!f._drafted || f._changed) continue;
           if (drafts.config.exclude.contains(f.name)) continue;
@@ -670,6 +709,7 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
 
   void _fieldChanged(ActionField<Object?> field) {
     _checked = null;
+    _discarded = false;
     if (_fromAction.containsKey(field.name)) {
       _fromAction = {..._fromAction}..remove(field.name);
     }
@@ -694,10 +734,10 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
 
   @override
   void dispose() {
-    if (!_disposed && _drafts != null) {
+    if (!_disposed && _drafts != null && !_discarded) {
       // A form that was left alone keeps nothing; one that changed keeps what changed.
       if (isDirty) {
-        _saveDraft();
+        _let(_saveDraft());
       } else if (_drafts!.stored) {
         _clearDraft();
       }
@@ -817,12 +857,15 @@ final class _ActionFormState<I, T, F extends Record>
   late Object? _data = hook.data;
 
   AppLifecycleListener? _lifecycle;
+  VoidCallback? _unregister;
 
   @override
   void initHook() {
     _form
       .._state = hook.state
       ..addListener(_changed);
+    // A page with a leave.dart asks its forms before it goes (since 0.11.0).
+    _unregister = LeaveScope.maybeOf(context)?.register(_form);
     if (hook.drafts case final make?) {
       _form._drafts = make();
       _form._restoreDraft();
@@ -833,7 +876,7 @@ final class _ActionFormState<I, T, F extends Record>
               case AppLifecycleState.paused ||
                   AppLifecycleState.hidden ||
                   AppLifecycleState.detached) {
-            _form._saveDraft();
+            _let(_form._saveDraft());
           }
         },
       );
@@ -862,6 +905,7 @@ final class _ActionFormState<I, T, F extends Record>
 
   @override
   void dispose() {
+    _unregister?.call();
     _lifecycle?.dispose();
     _form.dispose();
   }

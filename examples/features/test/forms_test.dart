@@ -236,7 +236,9 @@ void main() {
       await tester.enterText(field('Age'), 'abc');
       await tester.pump();
 
-      router.go('/');
+      // The page's leave.dart would ask (see leave_nickname_test.dart): this one is about the
+      // draft a page that goes, however it goes, keeps.
+      await leaveWithoutAsking(router, () => router.go('/'));
       await tester.pumpAndSettle();
       expect(find.byType(TextField), findsNothing);
       // The raw text, whatever it is: an age that is no number survives too.

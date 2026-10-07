@@ -296,6 +296,45 @@ what must not reach the disk in `FormDraft(exclude: {'password'})` (`maxAge` is 
   strings in `app.g.dart`); `handleAppLifecycleStateChanged(AppLifecycleState.paused)` writes a
   draft, and `resumed` must follow before the next `pump`.
 
+## Leaving with unsaved changes (since 0.11.0)
+
+The question is the page's [`leave.dart`](../../fespalier-routing/references/leaving-a-page.md); the form
+is a `LeaveSource` that `useActionForm` registers with `LeaveScope.maybeOf(context)` when the page is
+below a `leaveScope` (a folder with a `leave.dart`), and unregisters with the page. Nothing in the page
+changes. `page.isDirty` is "a form on the page differs from where it started" (a success makes the
+fields the new baseline), `page.canKeep` is "a form has a `draft:` and a storage".
+
+```dart
+// lib/app/(account)/nickname/leave.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_forms/fespalier_forms.dart';
+import 'package:flutter/widgets.dart';
+
+LeaveResult leave(BuildContext context, Ref ref, {required PageLeave page}) =>
+    leaveIfClean(context, ref, page);
+```
+
+- **`leaveIfClean(context, ref, page, {ask})`** returns a synchronous `true` for a clean page (no
+  `Future`, no microtask). Otherwise it asks `ask ?? ref.read(leavePrompt)`, a
+  `FutureOr<LeaveChoice> Function(BuildContext, PageLeave)`: `stay` gives `false`; `discard` calls
+  `page.discard()` and gives `true`; `keep` awaits `page.keep()` and gives `true`.
+- **`discard()`** on a form deletes its draft and **prevents the draft write at dispose** (until the
+  user changes a field again, so a discard whose page stayed does not silence the form for good). **`keep()`**
+  writes the draft through the same serialized, generation-checked path as dispose, and completes when the
+  storage has it (a storage that answers later is awaited).
+- **The sheet**: `askToLeaveSheet({LeaveSheetMessages messages})`, the default of `leavePrompt`, is
+  Flutter's `showModalBottomSheet` on the root navigator: "Keep editing", "Discard" and, when
+  `page.canKeep`, "Keep as draft"; a dismissed sheet is `stay`. Translate it with
+  `LeaveSheetMessages(title:, body:, stay:, discard:, keep:)`, via
+  `leavePrompt.overrideWithValue(askToLeaveSheet(messages: ...))` or `leaveIfClean(..., ask: ...)`.
+- **material_ui**: its `MaterialApp` lacks Flutter's `MaterialLocalizations`, which the sheet needs: override
+  `leavePrompt` with that library's own sheet (the recipe is in `docs/forms.md`, "Leaving with unsaved changes").
+- **The back gestures** are the page's `PopScope` (see the routing skill): the iOS swipe works while every form
+  is clean and is off while one has changed. A page with a `leave.dart` and no form has no source, so its swipe is off.
+- **Tests**: `LeavePrompts.answer(LeaveChoice.discard)` in `overrides` answers with no sheet; or drive the sheet
+  (`tap(find.text('Keep editing'))`, `'Discard'`, `'Keep as draft'`) and check `readFormDraft`.
+  `examples/features/test/leave_nickname_test.dart` is the sample.
+
 ## Testing a form
 
 Hold the save on a `Completer` and `pump()`; no timer, no `runAsync` (the `// test/` sample above).

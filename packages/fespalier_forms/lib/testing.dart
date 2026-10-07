@@ -4,11 +4,13 @@ library;
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart' show FieldErrors, ProviderContainer;
+import 'package:fespalier/testing.dart' show Override;
 import 'package:fespalier/persist.dart' show Storage;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'src/draft_store.dart';
 import 'src/drafts.dart';
+import 'src/leave.dart';
 
 /// Matches a [FieldErrors] with exactly these [fields] (by field name) and, when given, this
 /// [message].
@@ -68,4 +70,19 @@ FutureOr<Map<String, Object?>?> readFormDraft(
     return storage.then((s) => s == null ? null : loadDraft(s, key0, shape));
   }
   return storage == null ? null : loadDraft(storage, key0, shape);
+}
+
+/// Answers the question a `leave.dart` puts about unsaved changes, for a test (since 0.11.0).
+///
+/// ```dart
+/// await pumpRouter(
+///   tester,
+///   AppRoutes.router(initialLocation: '/nickname'),
+///   overrides: [LeavePrompts.answer(LeaveChoice.discard)],
+/// );
+/// ```
+abstract final class LeavePrompts {
+  /// A `leavePrompt` override that answers [choice] at once, without opening a sheet.
+  static Override answer(LeaveChoice choice) =>
+      leavePrompt.overrideWithValue((context, page) => choice);
 }

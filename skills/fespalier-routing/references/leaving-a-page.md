@@ -41,8 +41,10 @@ LeaveResult leave(BuildContext context, Ref ref, {required int id, required Page
   can save a draft), `keep()` (each source saves its draft), `discard()` (each drops it). A page with nothing registered
   is clean and cannot keep.
 - `LeaveSource` (a `Listenable`): `isDirty`, `canKeep`, `keep()`, `discard()`. Core knows nothing of forms:
-  `fespalier_forms` makes its forms sources in a later release, so until then register your own (nothing registers
-  one by itself, and a page with none is always clean). A source that turns dirty or clean must notify.
+  a `useForm` of `fespalier_forms` registers its form by itself (since 0.11.0; `leaveIfClean(context, ref, page)` is
+  the whole `leave()` that asks in a bottom sheet: `fespalier-data`, `references/forms.md`, "Leaving with unsaved
+  changes"); register your own for anything else (nothing else registers one, and a page with none is always clean).
+  A source that turns dirty or clean must notify.
 - `LeaveScope.maybeOf(context)?.onBack(() => handled)` lets a source take the system back itself (a step of a
   multi-page form): handlers run newest first on Android's back and `Navigator.maybePop`, the first that returns true
   stops the pop and `leave()`. Not consulted on the first page of a navigator; while one is registered the iOS swipe is off.

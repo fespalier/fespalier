@@ -449,6 +449,9 @@ A form's draft (since 0.11.0) is tested with a shared `MemoryDataStorage` as `fo
 `seedFormDraft(container, id:, key:, shape:, fields:)` and `readFormDraft(...)` from the same library (the `id` and
 `shape` are the strings in `app.g.dart`); `tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused)`
 writes the draft, and `resumed` has to follow before the next `pump`.
+A form's leave question (since 0.11.0) is answered with `LeavePrompts.answer(LeaveChoice.discard)` (or `.stay`,
+`.keep`) in `overrides`, which skips the sheet; to test the sheet, change a field, navigate away and tap "Keep editing",
+"Discard" or "Keep as draft" (`examples/features/test/leave_nickname_test.dart`).
 
 ```dart
 final api = ProfileApi()..gate = Completer<void>();           // the fake backend holds the save

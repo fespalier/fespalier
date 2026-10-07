@@ -66,9 +66,24 @@ successful submit or `reset()`. It is opt-in for each form (`FormDraft(exclude: 
 to `formDraftStorage` (your `dataCacheStorage` by default) and is scoped by `formDraftScope`; call `clearFormDrafts` at
 sign-out. See [Drafts](https://github.com/fespalier/fespalier/blob/main/docs/forms.md#drafts) in the guide.
 
+## Leaving with unsaved changes
+
+A form registers itself with the page's `leave.dart`, and `leaveIfClean` is the whole `leave()` that asks, in a bottom
+sheet, before a changed form goes: "Keep editing", "Discard" and, for a form with a `draft:`, "Keep as draft".
+
+```dart
+LeaveResult leave(BuildContext context, Ref ref, {required PageLeave page}) =>
+    leaveIfClean(context, ref, page);
+```
+
+The sheet is Flutter's (`showModalBottomSheet`); `leavePrompt` is the app's question, to translate with
+`LeaveSheetMessages` or to override with a sheet of your own (an app on material_ui's `MaterialApp` has to). See
+[Leaving with unsaved changes](https://github.com/fespalier/fespalier/blob/main/docs/forms.md#leaving-with-unsaved-changes).
+
 ## Testing
 
-`package:fespalier_forms/testing.dart` has `isFieldErrors`, a matcher for the `FieldErrors` an action throws, and
+`package:fespalier_forms/testing.dart` has `isFieldErrors`, a matcher for the `FieldErrors` an action throws,
+`LeavePrompts.answer(LeaveChoice)` to answer the leave question without a sheet, and
 `seedFormDraft` and `readFormDraft` for a form's draft. A form is tested through the page with `pumpRouter` (see the
 guide).
 

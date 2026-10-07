@@ -33,12 +33,12 @@ Contents: [Install](#install), [Locales and the URL](#locales-and-the-url), [Bun
 The package uses the Tolgee **platform** (Content Delivery files, ICU messages, the REST API, the CLI's pulls), not the
 **SDK**. The official `tolgee` package on pub.dev (1.2.0 when this was written) is marked beta, and:
 
-| Fact | Consequence |
-| --- | --- |
-| It imports `dart:io`; pub.dev lists Android, iOS, Linux, macOS and Windows, not the web. | fespalier is web-first (path URLs): the SDK would break those builds. |
-| Its API is one static singleton: `Tolgee.setCurrentLocale` is global and returns a `Future`. | A URL-driven locale must be a synchronous value per route and per `ProviderContainer`; a global leaks between tests. |
-| `Tolgee.init` is a `Future` that, with `apiUrl` or `cdnUrl`, can put the network before `runApp`. | The adapter and startup rules say "a local read, never the network". |
-| In-context editing runs on the same `init(apiKey:)` as production. | A key could end up in a release build. Tolgee's own docs say never to ship one. |
+| Fact                                                                                              | Consequence                                                                                                          |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| It imports `dart:io`; pub.dev lists Android, iOS, Linux, macOS and Windows, not the web.          | fespalier is web-first (path URLs): the SDK would break those builds.                                                |
+| Its API is one static singleton: `Tolgee.setCurrentLocale` is global and returns a `Future`.      | A URL-driven locale must be a synchronous value per route and per `ProviderContainer`; a global leaks between tests. |
+| `Tolgee.init` is a `Future` that, with `apiUrl` or `cdnUrl`, can put the network before `runApp`. | The adapter and startup rules say "a local read, never the network".                                                 |
+| In-context editing runs on the same `init(apiKey:)` as production.                                | A key could end up in a release build. Tolgee's own docs say never to ship one.                                      |
 
 So fespalier_tolgee reads Tolgee's public Content Delivery files itself (about 60 lines of `package:http`), formats the
 ICU messages itself, and keeps a `TranslationSource` interface for anything else.

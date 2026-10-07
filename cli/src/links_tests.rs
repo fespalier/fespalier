@@ -1277,7 +1277,7 @@ fn the_out_key_is_a_folder_or_false() {
     );
     // A list is neither: the error says what `out:` takes.
     let yaml = "name: demo\nfespalier:\n  links:\n    domains: [shop.example.com]\n    out: [a]\n";
-    let e = format!("{:#}", Pubspec::parse(yaml).err().expect("an error"));
+    let e = format!("{:#}", Pubspec::parse(yaml).expect_err("an error"));
     assert!(e.contains("a folder name, or `false`"), "{e}");
     assert!(!e.contains("untagged"), "{e}");
 }

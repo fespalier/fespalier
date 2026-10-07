@@ -92,7 +92,7 @@ final class _Choice extends IcuNode {
     List<IcuNode>? chosen;
     var inner = hash;
     if (kind == 'select') {
-      chosen = cases['$value'] ?? cases['other'];
+      chosen = cases[value is Enum ? value.name : '$value'] ?? cases['other'];
     } else {
       final n = value is num ? value : num.tryParse('$value') ?? 0;
       inner = n - offset;
@@ -113,6 +113,7 @@ final class _Choice extends IcuNode {
     few: cases.containsKey('few') ? 'few' : null,
     many: cases.containsKey('many') ? 'many' : null,
     other: 'other',
+    useExplicitNumberCases: false,
     locale: locale.replaceAll('-', '_'),
   );
 }
@@ -246,7 +247,7 @@ final class _Parser {
     final kind = _word();
     _space();
     if (i < s.length && s[i] == '}') {
-      if (kind == 'plural' || kind == 'selectordinal' || kind == 'select') {
+      if (kind == 'plural' || kind == 'select') {
         throw IcuException('A $kind needs cases', i);
       }
       // {n, number}: a typed argument, shown as it is.
@@ -255,7 +256,11 @@ final class _Parser {
     }
     if (i >= s.length || s[i] != ',') throw IcuException('Expected ","', i);
     i++;
-    if (kind != 'plural' && kind != 'selectordinal' && kind != 'select') {
+    if (kind == 'selectordinal') {
+      // intl has no ordinal rules: better shown as written than with cardinal ones.
+      throw IcuException('selectordinal is not supported', i);
+    }
+    if (kind != 'plural' && kind != 'select') {
       // {d, date, short} and the like: shown as they are.
       while (i < s.length && s[i] != '}') {
         i++;

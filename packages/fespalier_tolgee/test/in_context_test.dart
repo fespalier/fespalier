@@ -70,6 +70,8 @@ void main() {
     'an enabled scope lists the keys and a save shows the edited text at once',
     (tester) async {
       final editor = RecordingEditor();
+      TranslationScope.debugInContext = true;
+      addTearDown(() => TranslationScope.debugInContext = false);
       await tester.pumpWidget(
         host(
           overrides: [
@@ -82,7 +84,6 @@ void main() {
           ],
           home: TranslationScope(
             locale: 'en',
-            inContext: true,
             child: Builder(builder: (context) => Text(context.tr('a'))),
           ),
         ),

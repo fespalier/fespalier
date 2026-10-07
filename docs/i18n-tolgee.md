@@ -45,19 +45,12 @@ ICU messages itself, and keeps a `TranslationSource` interface for anything else
 
 ## Install
 
-Same `url` and same `ref` as fespalier: pub resolves the two to one package only then.
+Add the package next to fespalier with the **same `url` and the same `ref`**: pub resolves the two to one package only
+then. The tag must be a release that contains the package (0.10.0 or later). The install block, with the version
+release-please keeps current, is in [the package's README](../packages/fespalier_tolgee/README.md#install).
 
-```yaml
-dependencies:
-  flutter_localizations: { sdk: flutter }
-  fespalier:         { git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier,         ref: v0.9.1 } }
-  fespalier_tolgee:  { git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier_tolgee,  ref: v0.9.1 } }
-  fespalier_storage: { git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier_storage, ref: v0.9.1 } } # optional: the cache survives restarts
-flutter:
-  assets: [assets/i18n/]
-```
-
-(Use the release tag that has the package, 0.10.0 or later; the snippet shows the tag of the other companions.)
+You also need `flutter_localizations` in your dependencies and `assets: [assets/i18n/]` under `flutter:`; for a cache that
+survives restarts, `fespalier_storage` (`PrefsDataStorage`).
 
 ## Locales and the URL
 
@@ -78,26 +71,33 @@ locale is then the previous one, or the device's.
 
 ### The scope
 
-Put `TranslationScope.router` in `MaterialApp.router`'s `builder`, so pages on the root navigator (dialogs, `present.dart`)
-are under it too:
+Give `MaterialApp.router` the config `TranslationScope.routerConfig` makes from your router, instead of the router itself.
+It is go_router's own config with the root Navigator wrapped in the scope, built inside the Router's own build, so the very
+first frame is in the route's language (a redirect included), a location change updates it in the same frame, and pages on
+the root navigator (dialogs, `present.dart`) are under it too. It adds no listener of its own.
 
 ```dart
 MaterialApp.router(
-  routerConfig: router,
-  supportedLocales: config.supportedLocales.map(localeFromTag), // from translationsConfig
-  localizationsDelegates: GlobalMaterialLocalizations.delegates,
-  builder: (context, child) => TranslationScope.router(
-    router: router,
+  routerConfig: TranslationScope.routerConfig(
+    router,
     localeOf: localeSegment(), // or firstLocaleOf([localeSegment(), localeSpelling(AppManifest.all)])
-    child: child!,
   ),
+  supportedLocales: config.supportedLocales.map(localeFromTag), // from translationsConfig
+  localizationsDelegates: GlobalMaterialLocalizations.delegates, // required, see below
 )
 ```
 
 On each location change the locale is `localeOf(uri)` resolved against what you bundled (`fr-CA` becomes `fr`), else the
 previous one, else `preferredLocale`. The scope also sets `Localizations.override`, so Material strings and the text
-direction follow: an `ar` route is right to left. Pass `supportedLocales` as above, or Flutter prints a warning for a
-bundled locale a delegate does not support.
+direction follow: an `ar` route is right to left.
+
+**`localizationsDelegates: GlobalMaterialLocalizations.delegates` is required** (and `flutter_localizations` in the
+pubspec). Without it, a route in a language the app has no `MaterialLocalizations` for makes an `AppBar` or a `BackButton`
+throw "No MaterialLocalizations found". `supportedLocales` has no effect on the override, but keep it right for the
+platform.
+
+`localeSpelling(AppManifest.all)` and `relocate(..., routes: AppManifest.all)` read the generated route manifest
+(`AppManifest`, written into `app.g.dart` or into the library `output_manifest` names): import the one that has it.
 
 ### Reading it
 
@@ -127,10 +127,21 @@ the retry. Fill the folder with `tolgee pull` or a manual export from Tolgee, op
 entry in the pubspec.
 
 The supported messages are the ARB subset of ICU: `{name}`, `plural` (with `=0`, `zero`, `one`, `two`, `few`, `many`,
-`other`, `offset:` and `#`), `select`, `selectordinal` (read like plural) and `'` quoting. Plural categories come from
-`intl`, so French treats 0 as `one`. Tolgee's ARB export does not replace `#`, so it repeats the placeholder
-(`{count, plural, one {{count} dog} other {{count} dogs}}`): both forms work. A malformed message is shown as written and
-reported once in debug.
+`other`, `offset:` and `#`), `select` and `'` quoting. Plural categories come from `intl`, so French treats 0 as `one`
+and English `zero {..}` is not used for 0 (only `=0` is). `selectordinal` is **not supported** (`intl` has no ordinal
+rules): such a message is shown as written, and reported once in debug. Tolgee's ARB export does not replace `#`, so it
+repeats the placeholder (`{count, plural, one {{count} dog} other {{count} dogs}}`): both forms work.
+
+Things that differ from what you may expect:
+
+- **Apostrophes are ICU quotes.** `l''{app}` writes `l'` followed by the value, but `l'{app}` quotes the brace: it renders
+  `l{app}`. Files written for `gen-l10n` (whose default is no escaping) may need their apostrophes before `{` or `}`
+  doubled. A `'` that is not followed by `{`, `}` (or `#` in a plural) is a plain apostrophe.
+- **Numbers are not locale-formatted.** `#`, `{n}` and `{n, number}` print the number as Dart does (`1000`, not `1 000`);
+  format it yourself and pass the string if you need that.
+- **Fractions** pick the plural category the way `intl` reads the number: in French, 1.5 is `other`.
+- **A `select` given an enum** matches on its `name`.
+- A malformed message is shown as written and reported once in debug.
 
 ## Over the air
 
@@ -148,6 +159,8 @@ or `<namespace>/<locale>.json`; `file:` overrides the name) when a locale is fir
 - Never on a timer. `Translations(refreshOnResume: true)` asks again when the app resumes, `refreshOnReconnect` (on by
   default) once the network is back **after a failed fetch**, both through fespalier's `appResumeSignal` and
   `reconnectSignal` (`fespalier_connectivity` fires the second).
+- Only the locale a route uses is fetched (its resolved tag), not the language or base links of its chain: those
+  answer from bundled text, or from the cache if that locale was fetched or cached before.
 - The web needs the CDN to answer with CORS headers. If it does not, a web app keeps working on bundled and cached texts.
 
 ## Cache and the offline fallback chain
@@ -168,7 +181,7 @@ bundled text. A first launch offline shows bundled text, with no error and no pe
 
 ## In-context editing (debug only)
 
-Click a text in the running app, edit it, and see it at once. It is compiled in only when both hold: a debug build, and
+Edit a translation in the running app and see it at once. It is compiled in only when both hold: a debug build, and
 `--dart-define=fespalier_tolgee.in_context=true` (`kTolgeeInContext` in `package:fespalier_tolgee/in_context.dart`).
 
 ```
@@ -177,8 +190,8 @@ flutter run --dart-define-from-file=tolgee.local.json
 
 `tolgee.local.json` is gitignored and holds `{"fespalier_tolgee.in_context": "true", "TOLGEE_API_KEY": "tgpak_..."}`. Give
 the key only the scopes you need (translations.edit). **Never pass the key to `flutter build`:** a key in a build is
-public. Release builds pass only `TOLGEE_CDN_URL`; in release and profile builds `kTolgeeInContext` is a `const false`, so the
-panel, the editor and the key's `String.fromEnvironment` are compiled out.
+public. Release builds pass only `TOLGEE_CDN_URL`; in release and profile builds `kTolgeeInContext` is a `const false` (and the scope's only other
+condition is behind `kDebugMode`), so the panel, the editor and the key's `String.fromEnvironment` are compiled out.
 
 A small handle opens a panel with the keys read on the current screen, their value and their origin. A save calls
 `PUT /v2/projects/translations` with `X-API-Key` and puts the text into the edited layer at once, so you do not wait for
@@ -186,10 +199,14 @@ the CDN. Everyone else sees it when Tolgee publishes. Without a key the panel is
 
 ## Testing
 
+`pumpRouter`'s default app is a bare `MaterialApp.router`, with no scope, so pass your app: `app: (router) => App(router: router)`
+(or the generated `AppMain.app`), the one that uses `TranslationScope.routerConfig`.
+
 ```dart
 await pumpRouter(
   tester,
   AppRoutes.router(initialLocation: '/fr/products'),
+  app: (router) => App(router: router),
   overrides: fakeTranslations(
     bundled: {'en': {'title': 'Products'}, 'fr': {'title': 'Produits'}},
     remote: FakeTranslations.strict(), // a key nobody has fails the test
@@ -200,17 +217,20 @@ await pumpRouter(
 - `FakeTranslations` is an in-memory source with no delay: `set(locale, messages)`, `offline()`, `notModified()`,
   `fetchCount(locale)`. A fetch lands on the next `pump`.
 - A restart: share one `MemoryDataStorage` (`dataCacheStorage.overrideWithValue`) between two `pumpRouter` calls.
-- `fsp test` and `test/routes/setup.dart`: return `fakeTranslations(...)` from `overrides(pattern)`.
+- `fsp test` and `test/routes/setup.dart` need the same two things: return `fakeTranslations(...)` from `overrides(pattern)`,
+  and run the app's own `app` (a smoke test through the default app has no scope, and `context.tr` throws).
 - `RecordingEditor` records what the in-context panel saves.
 
 ## Rules and what it costs
 
 - Every read is synchronous and from memory; a translator is never an `AsyncValue`.
-- No timer, no polling, no listener: `test/no_timers_test.dart` greps `lib/`.
+- No timer, no polling, no microtask, and no listener of its own (the Router's is forwarded to go_router's delegate):
+  `test/no_timers_test.dart` greps `lib/`.
 - No API key in a release build, and `TolgeeCdn` has no parameter for one: `test/no_secrets_test.dart` greps `lib/`.
 - No telemetry in v1. A future `TelemetryOp` would go through `FespalierTelemetry.begin` and `finish` and never carry keys,
   texts or the CDN URL.
-- It adds `http` and `intl` and nothing else beyond fespalier. It is in the Flutter 3.32 `floor` job.
+- It adds `http`, `intl` and `clock` (the cache's age is read from it, so a test's fake clock ages it) and nothing else
+  beyond fespalier. It is in the Flutter 3.32 `floor` job.
 
 ## Not built
 

@@ -18,6 +18,10 @@ const forbidden = <String, String>{
   '.timeout(':
       "Future.timeout starts a timer: let the caller's client time out",
   'scheduleMicrotask': 'work nobody asked for',
+  'Future.microtask':
+      'work nobody asked for: the router scope is built inside the Router',
+  '.addListener(':
+      'a listener outlives the call that made it: forward the Router\'s own',
   'DateTime.now()': 'read clock.now(), so a test can move time',
   '.listen(': 'a listener outlives the call that made it',
   'addPostFrameCallback': 'a frame callback schedules a frame',
@@ -66,6 +70,8 @@ void main() {
       'Stream.periodic(d);',
       'x.timeout(d);',
       'scheduleMicrotask(f);',
+      'Future.microtask(f);',
+      'delegate.addListener(f);',
       'final now = DateTime.now();',
       'stream.listen(print);',
       'binding.addPostFrameCallback((_) {});',

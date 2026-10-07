@@ -110,6 +110,25 @@ final class Translator {
   /// The ICU message under [key] as written, before formatting; null when no catalog has it.
   String? messageOf(String key) => _find(key)?.catalog.messages[key];
 
+  /// Whether [other] answers for the same locale from the very same catalogs, in the same order.
+  bool sameLayersAs(Translator other) {
+    if (locale != other.locale ||
+        _onMissing != other._onMissing ||
+        _layers.length != other._layers.length) {
+      return false;
+    }
+    for (var i = 0; i < _layers.length; i++) {
+      if (_layers[i].origin != other._layers[i].origin ||
+          !identical(
+            _layers[i].catalog.messages,
+            other._layers[i].catalog.messages,
+          )) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /// Whether any catalog in the chain has [key].
   bool has(String key) => _find(key) != null;
 

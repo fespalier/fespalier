@@ -218,4 +218,75 @@ void main() {
     expect(errors, isNotEmpty);
     expect(errors.first.library, 'fespalier_tolgee');
   });
+
+  testWidgets(
+    'a reconnect while the first fetch runs is not lost if it then fails',
+    (tester) async {
+      final source = GatedSource();
+      final container = ProviderContainer(
+        overrides: [
+          translationsConfig.overrideWithValue(
+            config(bundled: bundled, remote: source),
+          ),
+          reconnectSignal.overrideWith(RefetchSignal.new),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        host(container: container, home: const Probe('fr', 'hello')),
+      );
+      expect(source.calls, ['fr']);
+      // The network is back while the first request is still waiting.
+      container.read(reconnectSignal.notifier).fire();
+      await tester.pump();
+      expect(source.calls, ['fr']);
+      source.fail('fr');
+      // The retry needs a gate of its own.
+      source.rearm('fr');
+      await tester.pump();
+      await tester.pump();
+      expect(source.calls, ['fr', 'fr']);
+      source.complete('fr', {'hello': 'Retry'});
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Retry'), findsOneWidget);
+    },
+  );
+
+  testWidgets('a resume that fetched nothing new rebuilds no reader', (
+    tester,
+  ) async {
+    final remote = FakeTranslations()..notModified();
+    var builds = 0;
+    final container = ProviderContainer(
+      overrides: [
+        translationsConfig.overrideWithValue(
+          config(bundled: bundled, remote: remote, refreshOnResume: true),
+        ),
+        appResumeSignal.overrideWith(RefetchSignal.new),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      host(
+        container: container,
+        home: Consumer(
+          builder: (context, ref, _) {
+            builds++;
+            return Text(
+              ref.watch(translator('fr')).tr('hello'),
+              textDirection: TextDirection.ltr,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    final before = builds;
+    container.read(appResumeSignal.notifier).fire();
+    await tester.pump();
+    await tester.pump();
+    expect(remote.fetchCount('fr'), 2);
+    expect(builds, before);
+  });
 }

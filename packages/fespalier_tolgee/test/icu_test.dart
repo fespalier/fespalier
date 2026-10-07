@@ -6,7 +6,33 @@ import 'package:flutter_test/flutter_test.dart';
 String f(String m, [Map<String, Object?> a = const {}, String l = 'en']) =>
     formatIcu(m, a, l);
 
+enum Gender { female, male }
+
 void main() {
+  test('select reads an enum by its name', () {
+    const m = '{g, select, female {She} other {They}}';
+    expect(f(m, {'g': Gender.female}), 'She');
+    expect(f(m, {'g': Gender.male}), 'They');
+  });
+
+  test('a zero case is for languages that have it: English 0 is other', () {
+    const m = '{n, plural, zero {none} one {one} other {many}}';
+    expect(f(m, {'n': 0}), 'many');
+    expect(f(m, {'n': 0}, 'ar'), 'none');
+  });
+
+  test('selectordinal is not supported, so it is shown as written', () {
+    expect(
+      () => parseIcu('{n, selectordinal, one {#st} other {#th}}'),
+      throwsA(isA<IcuException>()),
+    );
+  });
+
+  test('fractions use the plural rules of the number as intl reads it', () {
+    const m = '{n, plural, one {one} other {other}}';
+    expect(f(m, {'n': 1.5}), 'other');
+  });
+
   test('placeholders', () {
     expect(f('Hello {name}!', {'name': 'Ada'}), 'Hello Ada!');
     expect(f('{ name }', {'name': 3}), '3');

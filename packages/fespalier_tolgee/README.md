@@ -57,12 +57,15 @@ Future<List<Override>> startup() async => [
   dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
 ];
 
-// lib/app/app.dart: MaterialApp.router(..., builder:)
-builder: (context, child) => TranslationScope.router(
-  router: router,
-  localeOf: localeSegment(), // the `$lang` folder: /fr/products
-  child: child!,
-),
+// lib/app/app.dart
+MaterialApp.router(
+  routerConfig: TranslationScope.routerConfig(
+    router,
+    localeOf: localeSegment(), // the `$lang` folder: /fr/products
+  ),
+  supportedLocales: config.supportedLocales.map(localeFromTag),
+  localizationsDelegates: GlobalMaterialLocalizations.delegates, // required
+)
 
 // anywhere below it
 TrText('product.title', args: {'name': product.name})
@@ -78,10 +81,12 @@ Text(context.tr('product.stock', {'count': product.stock})) // ICU plural
 await pumpRouter(
   tester,
   AppRoutes.router(initialLocation: '/fr/products'),
+  app: (router) => App(router: router), // the default app has no TranslationScope
   overrides: fakeTranslations(bundled: {'en': {...}, 'fr': {...}}, remote: FakeTranslations.strict()),
 );
 ```
 
+`fsp test` and `test/routes/setup.dart` need the same `fakeTranslations` overrides and the app's own `app`.
 `package:fespalier_tolgee/testing.dart` has `fakeTranslations`, `FakeTranslations` (`set`, `offline`, `notModified`,
 `fetchCount`; `.strict()` fails on a missing key), `RecordingEditor` and `MemoryDataStorage`.
 
@@ -89,7 +94,8 @@ await pumpRouter(
 
 - **Every read is synchronous and from memory.** A translator is never an `AsyncValue`; the first frame is bundled text
   (or the cache, with a synchronous storage). Nothing here puts the network before `runApp`.
-- **No timer, no polling, no listener.** A locale is fetched once per `ProviderContainer`, and again on resume or
+- **No timer, no polling, no microtask, no listener of its own** (`TranslationScope.routerConfig` forwards the Router's own to
+  go_router's delegate). A locale is fetched once per `ProviderContainer`, and again on resume or
   reconnect only when `Translations` asks for it. `test/no_timers_test.dart` greps `lib/`.
 - **No Tolgee API key in a release build.** `TolgeeCdn` has no parameter for a key. In-context editing is behind
   `kTolgeeInContext` (false in release and profile builds), reads `TOLGEE_API_KEY` from a `--dart-define` in one place and

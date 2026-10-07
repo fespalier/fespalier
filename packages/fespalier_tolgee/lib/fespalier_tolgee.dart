@@ -1,7 +1,7 @@
 /// Translations for fespalier (since 0.10.0): bundled catalogs that show on the first frame and
 /// offline, Tolgee's Content Delivery (or any `TranslationSource`) over the air, a cache in
 /// fespalier's `dataCacheStorage`, and the locale of the route (`$lang` segments and `paths`
-/// spellings) provided below `MaterialApp.router`'s builder by `TranslationScope.router`.
+/// spellings) provided inside the Router by `TranslationScope.routerConfig`.
 ///
 /// Every read is synchronous and from memory; nothing here starts a timer or polls. It does not
 /// depend on the `tolgee` SDK. In-context editing is `package:fespalier_tolgee/in_context.dart`,

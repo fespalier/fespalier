@@ -1,5 +1,5 @@
 import 'package:fespalier/fespalier.dart';
-import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
+import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
 import 'package:flutter/widgets.dart';
 
 import 'in_context/editor.dart' show kTolgeeInContext;
@@ -33,7 +33,7 @@ _ScopeData _dataOf(BuildContext context) {
         'TranslationScope, and ${context.widget.runtimeType} has none above it.',
       ),
       ErrorHint(
-        'Put `TranslationScope.router(...)` in `MaterialApp.router`\'s `builder:`, or wrap the '
+        'Give `MaterialApp.router` `routerConfig: TranslationScope.routerConfig(router, ...)`, or wrap the '
         'subtree in `TranslationScope(locale: ..., child: ...)`.',
       ),
     ]);
@@ -43,51 +43,55 @@ _ScopeData _dataOf(BuildContext context) {
 
 /// Provides the `Translator` for [locale] below it, and `Localizations.override(locale:)` so
 /// Material strings and text direction (RTL) follow it (since 0.10.0).
+///
+/// The app needs `localizationsDelegates: GlobalMaterialLocalizations.delegates` (and
+/// `supportedLocales`) on its `MaterialApp`: without them a locale such as `fr` has no
+/// `MaterialLocalizations` and an `AppBar` throws.
 class TranslationScope extends ConsumerStatefulWidget {
   /// A fixed locale (tests, a subtree in another language).
-  ///
-  /// [inContext] is for this package's tests: it defaults to `kTolgeeInContext`, which is false
-  /// in a release build and unless the app asked for it.
-  const TranslationScope({
-    super.key,
-    required this.locale,
-    required this.child,
-    @visibleForTesting this.inContext = kTolgeeInContext,
-  }) : _epoch = null;
+  const TranslationScope({super.key, required this.locale, required this.child})
+    : _epoch = null;
 
   const TranslationScope._({
     required this.locale,
     required this.child,
-    required this.inContext,
     required Object? epoch,
   }) : _epoch = epoch;
 
-  /// Follows [router]: on each location change the locale is `localeOf(uri)` resolved against
-  /// `translationsConfig`, else the previous one, else `preferredLocale`. Put it in
-  /// `MaterialApp.router`'s `builder`, so root-navigator pages (dialogs, `present.dart`) are under
-  /// it too. It listens to the router delegate and stops with the widget.
-  static Widget router({
-    Key? key,
-    required GoRouter router,
+  /// The config to give `MaterialApp.router(routerConfig: ...)` in place of [router] itself:
+  /// go_router's own, with the root Navigator wrapped in a scope whose locale is
+  /// `localeOf(uri)` resolved against `translationsConfig`, else the previous one, else
+  /// `preferredLocale` (since 0.10.0).
+  ///
+  /// The scope is built inside the Router's own build, so the first frame has the route's
+  /// locale (a redirect included), a location change updates it in the same frame, and root
+  /// navigator pages (dialogs, `present.dart`) are under it. This package adds no listener: the
+  /// Router's own is forwarded to go_router's delegate. One config is made per [router].
+  static RouterConfig<RouteMatchList> routerConfig(
+    GoRouter router, {
     required LocaleOfUri localeOf,
-    required Widget child,
-    @visibleForTesting bool inContext = kTolgeeInContext,
-  }) => _RouterScope(
-    key: key,
-    router: router,
-    localeOf: localeOf,
-    inContext: inContext,
-    child: child,
+  }) => _configs[router] ??= RouterConfig<RouteMatchList>(
+    routeInformationProvider: router.routeInformationProvider,
+    routeInformationParser: router.routeInformationParser,
+    backButtonDispatcher: router.backButtonDispatcher,
+    routerDelegate: _TranslatedDelegate(router.routerDelegate, localeOf),
   );
+
+  static final _configs = Expando<RouterConfig<RouteMatchList>>(
+    'fespalier_tolgee',
+  );
+
+  /// For this package's tests: builds the in-context handle and panel in a debug build without
+  /// `--dart-define=fespalier_tolgee.in_context=true`. Read only under `kDebugMode`, so a release
+  /// build never builds the panel whatever this holds.
+  @visibleForTesting
+  static bool debugInContext = false;
 
   /// The locale shown.
   final String locale;
 
   /// The subtree.
   final Widget child;
-
-  /// Whether the in-context handle and panel are built (debug builds with the define only).
-  final bool inContext;
 
   final Object? _epoch;
 
@@ -116,7 +120,10 @@ class _TranslationScopeState extends ConsumerState<TranslationScope> {
   @override
   Widget build(BuildContext context) {
     final translator = ref.watch(translatorProvider(widget.locale));
-    final recorder = widget.inContext ? (_recorder ??= KeyRecorder()) : null;
+    // Both operands are consts in release, so the panel and the editor fold away.
+    final inContext =
+        kTolgeeInContext || (kDebugMode && TranslationScope.debugInContext);
+    final recorder = inContext ? (_recorder ??= KeyRecorder()) : null;
     Widget child = widget.child;
     if (recorder != null) {
       child = InContextHost(
@@ -144,73 +151,78 @@ class _TranslationScopeState extends ConsumerState<TranslationScope> {
   }
 }
 
-class _RouterScope extends ConsumerStatefulWidget {
-  const _RouterScope({
-    super.key,
-    required this.router,
+/// go_router's delegate with the scope built inside its `build`.
+final class _TranslatedDelegate extends RouterDelegate<RouteMatchList> {
+  _TranslatedDelegate(this.inner, this.localeOf);
+
+  final GoRouterDelegate inner;
+  final LocaleOfUri localeOf;
+
+  // The Router's own listener, forwarded: this package adds none.
+  @override
+  void addListener(VoidCallback listener) {
+    // A tear-off: the Router's listener goes to go_router's delegate, this package adds none.
+    final add = inner.addListener;
+    add(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) => inner.removeListener(listener);
+
+  @override
+  RouteMatchList get currentConfiguration => inner.currentConfiguration;
+
+  @override
+  Future<bool> popRoute() => inner.popRoute();
+
+  @override
+  Future<void> setNewRoutePath(RouteMatchList configuration) =>
+      inner.setNewRoutePath(configuration);
+
+  @override
+  Future<void> setInitialRoutePath(RouteMatchList configuration) =>
+      inner.setInitialRoutePath(configuration);
+
+  @override
+  Future<void> setRestoredRoutePath(RouteMatchList configuration) =>
+      inner.setRestoredRoutePath(configuration);
+
+  @override
+  Widget build(BuildContext context) => _RouteLocale(
+    uri: inner.currentConfiguration.uri,
+    localeOf: localeOf,
+    child: inner.build(context),
+  );
+}
+
+/// Resolves the locale of [uri], remembering the last one that resolved.
+class _RouteLocale extends ConsumerStatefulWidget {
+  const _RouteLocale({
+    required this.uri,
     required this.localeOf,
-    required this.inContext,
     required this.child,
   });
 
-  final GoRouter router;
+  final Uri uri;
   final LocaleOfUri localeOf;
-  final bool inContext;
   final Widget child;
 
   @override
-  ConsumerState<_RouterScope> createState() => _RouterScopeState();
+  ConsumerState<_RouteLocale> createState() => _RouteLocaleState();
 }
 
-class _RouterScopeState extends ConsumerState<_RouterScope> {
+class _RouteLocaleState extends ConsumerState<_RouteLocale> {
   String? _last;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.router.routerDelegate.addListener(_locationChanged);
-  }
-
-  @override
-  void didUpdateWidget(_RouterScope oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.router != widget.router) {
-      oldWidget.router.routerDelegate.removeListener(_locationChanged);
-      widget.router.routerDelegate.addListener(_locationChanged);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.router.routerDelegate.removeListener(_locationChanged);
-    super.dispose();
-  }
-
-  /// go_router can notify while the Router itself is being built (parsing a location), when a
-  /// `setState` is not allowed: that one case is handled right after the build.
-  void _locationChanged() {
-    if (!mounted) return;
-    if (SchedulerBinding.instance.schedulerPhase ==
-        SchedulerPhase.persistentCallbacks) {
-      Future<void>.microtask(() {
-        if (mounted) setState(() {});
-      });
-    } else {
-      setState(() {});
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final config = ref.watch(translationsConfig);
     final preferred = ref.watch(preferredLocale);
-    final uri = widget.router.routerDelegate.currentConfiguration.uri;
-    final resolved = config.resolve(widget.localeOf(uri));
+    final resolved = config.resolve(widget.localeOf(widget.uri));
     if (resolved != null) _last = resolved;
     return TranslationScope._(
       locale: resolved ?? _last ?? preferred,
-      inContext: widget.inContext,
-      epoch: uri.toString(),
+      epoch: widget.uri.toString(),
       child: widget.child,
     );
   }

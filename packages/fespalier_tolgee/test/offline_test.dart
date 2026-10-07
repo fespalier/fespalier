@@ -97,4 +97,51 @@ void main() {
       expect(find.text('Bonjour'), findsOneWidget);
     });
   });
+
+  testWidgets(
+    'a 304 writes the cache entry again, so its age runs from the check',
+    (tester) async {
+      final storage = MemoryDataStorage();
+      final start = DateTime.utc(2030, 1, 1);
+      Widget app(TranslationSource source) => host(
+        overrides: [
+          translationsConfig.overrideWithValue(
+            config(
+              bundled: bundled,
+              remote: source,
+              cacheMaxAge: const Duration(days: 10),
+            ),
+          ),
+          dataCacheStorage.overrideWithValue(storage),
+        ],
+        home: const Probe('fr', 'hello'),
+      );
+      await withClock(Clock.fixed(start), () async {
+        await tester.pumpWidget(
+          app(FakeTranslations()..set('fr', {'hello': 'Salut (CDN)'})),
+        );
+        await tester.pump();
+        await tester.pump();
+      });
+      await tester.pumpWidget(const SizedBox());
+      // Day 8: the source answers "not modified" (it is sent the cached ETag).
+      await withClock(
+        Clock.fixed(start.add(const Duration(days: 8))),
+        () async {
+          await tester.pumpWidget(app(FakeTranslations()..notModified()));
+          await tester.pump();
+          await tester.pump();
+        },
+      );
+      await tester.pumpWidget(const SizedBox());
+      // Day 15 is past the first write's 10 days, but not the refreshed one's.
+      await withClock(
+        Clock.fixed(start.add(const Duration(days: 15))),
+        () async {
+          await tester.pumpWidget(app(FakeTranslations()..offline()));
+          expect(find.text('Salut (CDN)'), findsOneWidget);
+        },
+      );
+    },
+  );
 }

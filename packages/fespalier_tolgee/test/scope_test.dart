@@ -1,5 +1,6 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:fespalier_tolgee/testing.dart' show FakeTranslations;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,21 +57,85 @@ GoRouter _router(String initial) => GoRouter(
   ],
 );
 
-Widget _app(GoRouter router) => ProviderScope(
-  overrides: [translationsConfig.overrideWithValue(config(bundled: _bundled))],
+Widget _app(GoRouter router, {TranslationSource? remote}) => ProviderScope(
+  overrides: [
+    translationsConfig.overrideWithValue(
+      config(bundled: _bundled, remote: remote),
+    ),
+  ],
   child: MaterialApp.router(
-    routerConfig: router,
+    routerConfig: TranslationScope.routerConfig(
+      router,
+      localeOf: localeSegment(),
+    ),
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     supportedLocales: const [Locale('en'), Locale('fr'), Locale('ar')],
-    builder: (context, child) => TranslationScope.router(
-      router: router,
-      localeOf: localeSegment(),
-      child: child!,
-    ),
   ),
 );
 
 void main() {
+  testWidgets(
+    'the first frame is already in the route\'s language, and en is never fetched',
+    (tester) async {
+      final remote = FakeTranslations();
+      final router = _router('/fr/x');
+      addTearDown(router.dispose);
+      await tester.pumpWidget(_app(router, remote: remote));
+      // No settle: one frame after pumpWidget.
+      expect(find.text('Produits'), findsOneWidget);
+      expect(find.text('Products'), findsNothing);
+      await tester.pumpAndSettle();
+      expect(remote.fetchCount('fr'), 1);
+      expect(remote.fetchCount('en'), 0);
+    },
+  );
+
+  testWidgets('a redirect lands in the redirected locale on the first frame', (
+    tester,
+  ) async {
+    final router = GoRouter(
+      initialLocation: '/',
+      redirect: (_, state) => state.uri.path == '/' ? '/fr/x' : null,
+      routes: [
+        GoRoute(path: '/:lang/x', builder: (context, _) => TrText('title')),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(_app(router));
+    expect(find.text('Produits'), findsOneWidget);
+  });
+
+  testWidgets('GoRouter.of still works below the scope', (tester) async {
+    late final GoRouter router;
+    router = GoRouter(
+      initialLocation: '/fr/x',
+      routes: [
+        GoRoute(
+          path: '/:lang/x',
+          builder: (context, _) =>
+              Text('same:${identical(GoRouter.of(context), router)}'),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(_app(router));
+    expect(find.text('same:true'), findsOneWidget);
+  });
+
+  testWidgets('one config per router: a rebuild does not swap delegates', (
+    tester,
+  ) async {
+    final router = _router('/fr/x');
+    addTearDown(router.dispose);
+    expect(
+      identical(
+        TranslationScope.routerConfig(router, localeOf: localeSegment()),
+        TranslationScope.routerConfig(router, localeOf: localeSegment()),
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('/fr/x is French, and Localizations follow', (tester) async {
     final router = _router('/fr/x');
     addTearDown(router.dispose);

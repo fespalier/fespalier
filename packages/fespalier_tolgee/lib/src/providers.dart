@@ -9,6 +9,7 @@ import 'package:fespalier/persist.dart'
 import 'package:flutter/widgets.dart';
 
 import 'catalog.dart';
+import 'source.dart';
 import 'translations.dart';
 import 'translator.dart';
 
@@ -128,17 +129,24 @@ final class Fetcher {
     }
   }
 
+  bool _moved(String tag, int resume, int reconnect) =>
+      resume > (_lastResume[tag] ?? 0) ||
+      (_failed.contains(tag) && reconnect > (_lastReconnect[tag] ?? 0));
+
   /// Starts a fetch for [tag] when it is the first, or when [resume] went up, or when [reconnect]
-  /// went up after a failure. Never starts a second one while one is in flight.
+  /// went up after a failure. Never starts a second one while one is in flight: a signal that
+  /// moves meanwhile is looked at again when that fetch ends.
   void ensure(String tag, {required int resume, required int reconnect}) {
     final first = _asked.add(tag);
-    final again =
-        resume > (_lastResume[tag] ?? 0) ||
-        (_failed.contains(tag) && reconnect > (_lastReconnect[tag] ?? 0));
-    _lastResume[tag] = resume;
-    _lastReconnect[tag] = reconnect;
-    if ((first || again) && !_inFlight.contains(tag)) {
+    if (_inFlight.contains(tag)) return;
+    if (first || _moved(tag, resume, reconnect)) {
+      _lastResume[tag] = resume;
+      _lastReconnect[tag] = reconnect;
       unawaited(_run(tag));
+    } else {
+      _lastResume[tag] = resume;
+      // A reconnect while nothing failed is used up; one that comes after a failure is not.
+      if (!_failed.contains(tag)) _lastReconnect[tag] = reconnect;
     }
   }
 
@@ -148,21 +156,57 @@ final class Fetcher {
     if (remote == null) return;
     _inFlight.add(tag);
     try {
-      var held = _ref.read(remoteStore)[tag] ?? cached(tag);
-      final storage = _ref.read(dataCacheStorage);
-      if (held == null && storage is Future) {
-        final ready = await storage;
-        if (ready != null) {
-          held = _decode(tag, await ready.read(_cacheKey(tag)));
-        }
+      // A second pass at most: a resume or a reconnect that came while the first was running.
+      for (var pass = 0; pass < 2; pass++) {
+        await _once(tag, config, remote);
         if (!_ref.mounted) return;
-        if (held != null) _ref.read(remoteStore.notifier).put(tag, held);
+        final resume = config.refreshOnResume ? _ref.read(appResumeSignal) : 0;
+        final reconnect = config.refreshOnReconnect
+            ? _ref.read(reconnectSignal)
+            : 0;
+        if (!_moved(tag, resume, reconnect)) break;
+        _lastResume[tag] = resume;
+        _lastReconnect[tag] = reconnect;
       }
+    } finally {
+      _inFlight.remove(tag);
+    }
+  }
+
+  Future<void> _once(
+    String tag,
+    Translations config,
+    TranslationSource remote,
+  ) async {
+    var held = _ref.read(remoteStore)[tag] ?? cached(tag);
+    if (held == null) {
+      try {
+        final storage = _ref.read(dataCacheStorage);
+        if (storage is Future) {
+          final ready = await storage;
+          if (ready != null) {
+            held = _decode(tag, await ready.read(_cacheKey(tag)));
+          }
+          if (!_ref.mounted) return;
+          if (held != null) _ref.read(remoteStore.notifier).put(tag, held);
+        }
+      } on Object {
+        // A storage that cannot be read: the network is still asked.
+        held = null;
+      }
+    }
+    try {
       fetches[tag] = (fetches[tag] ?? 0) + 1;
       final fresh = await remote.fetch(tag, etag: held?.etag);
       if (!_ref.mounted) return;
       _failed.remove(tag);
-      if (fresh == null) return;
+      if (fresh == null) {
+        // Not changed since the validator we sent (a 304): the entry is as new as this check.
+        if (held != null && held.etag != null) {
+          await _write(tag, held, config.cacheMaxAge);
+        }
+        return;
+      }
       final next = HeldCatalog(
         Catalog(tag, fresh.catalog.messages),
         fresh.etag,
@@ -173,9 +217,17 @@ final class Fetcher {
     } on Object {
       // The app keeps what it has: the cache, then the bundled text.
       _failed.add(tag);
-    } finally {
-      _inFlight.remove(tag);
     }
+  }
+
+  final _translators = <String, Translator>{};
+
+  /// [next], or the translator made earlier for [key] when it reads the very same catalogs, so
+  /// a resume signal that fetched nothing rebuilds no `tr` reader.
+  Translator reuse(String key, Translator next) {
+    final previous = _translators[key];
+    if (previous != null && previous.sameLayersAs(next)) return previous;
+    return _translators[key] = next;
   }
 
   Future<void> _write(String tag, HeldCatalog held, Duration maxAge) async {
@@ -223,19 +275,25 @@ final translatorProvider = Provider.family<Translator, String>((ref, locale) {
   final reconnect = remote != null && config.refreshOnReconnect
       ? ref.watch(reconnectSignal)
       : 0;
-  final held = ref.watch(remoteStore);
-  final edits = ref.watch(translationEdits);
-  final loader = ref.read(fetcher);
-  if (remote != null && tag.isNotEmpty) {
-    loader.ensure(tag, resume: resume, reconnect: reconnect);
-  }
   final language = tag.split(RegExp('[-_]')).first;
   final chain = <String>[
     for (final t in {tag, language, base})
       if (t.isNotEmpty && (t == tag || config.bundled[t] != null)) t,
   ];
+  // Only the chain's own entries: a fetch for another locale rebuilds nobody here.
+  final held = ref
+      .watch(
+        remoteStore.select((all) => _Slice([for (final t in chain) all[t]])),
+      )
+      .entries;
+  final edits = ref.watch(translationEdits);
+  final loader = ref.read(fetcher);
+  if (remote != null && tag.isNotEmpty) {
+    loader.ensure(tag, resume: resume, reconnect: reconnect);
+  }
   final layers = <TranslatorLayer>[];
-  for (final t in chain) {
+  for (var n = 0; n < chain.length; n++) {
+    final t = chain[n];
     final edited = edits[t];
     if (edited != null && edited.isNotEmpty) {
       layers.add((
@@ -243,7 +301,7 @@ final translatorProvider = Provider.family<Translator, String>((ref, locale) {
         catalog: Catalog(t, edited),
       ));
     }
-    final remoteHeld = held[t] ?? loader.cached(t);
+    final remoteHeld = held[n] ?? loader.cached(t);
     if (remoteHeld != null) {
       layers.add((origin: remoteHeld.origin, catalog: remoteHeld.catalog));
     }
@@ -252,7 +310,10 @@ final translatorProvider = Provider.family<Translator, String>((ref, locale) {
       layers.add((origin: TranslationOrigin.bundled, catalog: bundled));
     }
   }
-  return Translator(tag, layers, onMissing: config.onMissing);
+  return loader.reuse(
+    locale,
+    Translator(tag, layers, onMissing: config.onMissing),
+  );
 }, name: 'fespalier_tolgee.translator');
 
 /// The translator for [locale] (resolved with `Translations.resolve`, else the base). Its value
@@ -282,3 +343,25 @@ final preferredLocale = Provider<String>((ref) {
   }
   return config.baseLocale;
 }, name: 'preferredLocale');
+
+/// The held catalogs of one translator's chain, equal when they are the same objects.
+@immutable
+final class _Slice {
+  const _Slice(this.entries);
+
+  final List<HeldCatalog?> entries;
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! _Slice || other.entries.length != entries.length) {
+      return false;
+    }
+    for (var i = 0; i < entries.length; i++) {
+      if (!identical(entries[i], other.entries[i])) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(entries.map(identityHashCode));
+}

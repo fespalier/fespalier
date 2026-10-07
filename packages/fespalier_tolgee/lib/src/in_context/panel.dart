@@ -156,7 +156,7 @@ class _Panel extends ConsumerWidget {
                 padding: const EdgeInsets.all(8),
                 children: [
                   if (editor == null)
-                    const Text('Read only: no TOLGEE_API_KEY was defined.'),
+                    const Text('Read only: no Tolgee API key was defined.'),
                   for (final key in keys)
                     _KeyRow(
                       locale: locale,

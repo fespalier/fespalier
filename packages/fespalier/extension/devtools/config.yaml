@@ -1,5 +1,5 @@
 name: fespalier
 issueTracker: https://github.com/fespalier/fespalier/issues
-version: 0.10.0 # x-release-please-version
+version: 0.11.0 # x-release-please-version
 materialIconCodePoint: "0xe044" # Icons.account_tree
 requiresConnection: true

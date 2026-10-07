@@ -1,6 +1,6 @@
 name: fespalier_cratestack
 description: Offline-first CrateStack clients for fespalier — reads that say how current they are, mutations queued with idempotency keys, owned rows merged field by field, and the sync triggers.
-version: 0.10.0 # x-release-please-version
+version: 0.11.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -24,12 +24,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.10.0 # x-release-please-version
+      ref: v0.11.0 # x-release-please-version
   fespalier_dio:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
-      ref: v0.10.0 # x-release-please-version
+      ref: v0.11.0 # x-release-please-version
   # Only hive.dart imports it. Pure Dart: the floor fespalier_storage already proves on Flutter 3.32.
   hive_ce: ^2.16.0
 
@@ -39,7 +39,7 @@ dev_dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_connectivity
-      ref: v0.10.0 # x-release-please-version
+      ref: v0.11.0 # x-release-please-version
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter

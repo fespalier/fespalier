@@ -158,7 +158,7 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 | `fespalier_adaptive`     | menus as a bar, a rail or a drawer by window width                                     | [Adaptive navigation](docs/layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive) |
 | `fespalier_image`        | responsive CDN images                                                                  | [Images](docs/responsive-images.md)                                                |
 | `fespalier_forms`        | the form of an `action.dart`: typed fields, validation, server errors (since 0.11.0)   | [Forms](docs/forms.md)                                                             |
-| `fespalier_maps`         | a MapLibre pin picker that returns a place (since 0.12.0)                              | [Maps](docs/maps.md)                                                               |
+| `fespalier_maps`         | a MapLibre pin picker that returns a place (since 0.13.0)                              | [Maps](docs/maps.md)                                                               |
 | `fespalier_dio`          | Dio and `package:http`: cancellation, field errors, writes never retried               | [HTTP clients](docs/http.md)                                                       |
 | `fespalier_cratestack`   | a CrateStack client behind `data.dart` and `action.dart`, offline-first (since 0.10.0) | [CrateStack](docs/cratestack.md), [Offline-first](docs/offline-first.md)           |
 | `fespalier_tolgee`       | translations from Tolgee or your own server, offline-safe (since 0.10.0)               | [Translations](docs/i18n-tolgee.md)                                                |

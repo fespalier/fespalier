@@ -1,4 +1,4 @@
-/// Fakes for testing a pin picker with no map, no network and no platform channel (since 0.12.0):
+/// Fakes for testing a pin picker with no map, no network and no platform channel (since 0.13.0):
 /// `FakeMapSurface`, `FakeGeocoder` and `FakePositionSource`. The MapLibre and geolocator classes
 /// (`maplibre.dart`, `geolocator.dart`) are constructed only by the app, never by a test.
 library;

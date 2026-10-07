@@ -1,6 +1,6 @@
 # fespalier_maps
 
-Maps for [fespalier](https://github.com/fespalier/fespalier) (since 0.12.0): a pin picker that returns a place. The pin is
+Maps for [fespalier](https://github.com/fespalier/fespalier) (since 0.13.0): a pin picker that returns a place. The pin is
 fixed at the centre and the map moves under it, a search field sits at the bottom, a name for the point under the pin is
 shown as a **guess**, and confirming pops a `PickedPlace` to the page that pushed the route. The map is
 [MapLibre](https://maplibre.org) (`maplibre_gl`), the device position is `geolocator`, and the geocoder is an interface
@@ -26,12 +26,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.11.0
+      ref: v0.12.0
   fespalier_maps:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_maps
-      ref: v0.11.0
+      ref: v0.12.0
 ```
 
 <!-- x-release-please-end -->

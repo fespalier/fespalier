@@ -1,4 +1,4 @@
-/// The device position for the pin picker (since 0.12.0): the one library of this package that
+/// The device position for the pin picker (since 0.13.0): the one library of this package that
 /// imports `geolocator`.
 ///
 /// Nothing here runs in a widget test (it reaches a platform channel): tests use

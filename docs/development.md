@@ -25,7 +25,7 @@ packages/fespalier_dio/   Dio and package:http: requests cancelled with their pa
 packages/fespalier_sentry/   Sentry: errors tagged with the route and the file, page breadcrumbs, optional screen-load transactions
 packages/fespalier_tolgee/   translations from Tolgee's CDN with a bundled fallback and route locales (since 0.10.0)
 packages/fespalier_forms/   the form of an action.dart: ActionForm, typed fields, useActionForm (since 0.11.0)
-packages/fespalier_maps/   a MapLibre pin picker that returns a place, with Geocoder and PositionSource seams (since 0.12.0)
+packages/fespalier_maps/   a MapLibre pin picker that returns a place, with Geocoder and PositionSource seams (since 0.13.0)
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed

@@ -30,7 +30,7 @@ point at a checkout of this repository.
 | [`fespalier-i18n`](fespalier-i18n/)                       | Translated texts, the language from the URL, Tolgee, bundled ARB, a language menu, `fakeTranslations` (`fespalier_tolgee`, since 0.10.0)                                               |
 | [`fespalier-offline`](fespalier-offline/)                 | A screen or a write that works offline: `ref.serve`, intents, owned rows, sync, `autoSync`, testing offline (`fespalier_cratestack`'s core, since 0.10.0)                              |
 | [`fespalier-cratestack`](fespalier-cratestack/)           | Wiring a CrateStack client: the two seams, its Dio, idempotency, the server's contract, embedded mode (since 0.10.0)                                                                   |
-| [`fespalier-maps`](fespalier-maps/)                       | A place picked on a map: `PinPicker`, the `Geocoder` you implement, the position source, `MapLibreSurface`, a name shown as a guess, `FakeMapSurface` (`fespalier_maps`, since 0.12.0) |
+| [`fespalier-maps`](fespalier-maps/)                       | A place picked on a map: `PinPicker`, the `Geocoder` you implement, the position source, `MapLibreSurface`, a name shown as a guess, `FakeMapSurface` (`fespalier_maps`, since 0.13.0) |
 | [`fespalier-troubleshooting`](fespalier-troubleshooting/) | **An `fsp` error, a stale `app.g.dart`, a URL that shows the wrong page**                                                                                                              |
 | [`fespalier-migration`](fespalier-migration/)             | Upgrading between releases, or adopting fespalier in a go_router app                                                                                                                   |
 
@@ -164,7 +164,7 @@ is already a routing decision; fold new material into the owning skill rather th
 one. The three added with 0.10.0 are separate because each has its own trigger and its own reader:
 translations (`fespalier-i18n`), offline-first behaviour that does not depend on any backend
 (`fespalier-offline`), and wiring one backend (`fespalier-cratestack`, which defers to the second for
-the API). Folding them into `fespalier-data` would have made its description a list of everything. `fespalier-maps` (0.12.0) is separate for the same reason: a map is a platform view and a geocoder is an app-owned network call, which no other skill teaches.
+the API). Folding them into `fespalier-data` would have made its description a list of everything. `fespalier-maps` (0.13.0) is separate for the same reason: a map is a platform view and a geocoder is an app-owned network call, which no other skill teaches.
 
 **A new file kind, config key, command or docs section** fails the gate by name until a
 skill claims it:

@@ -1,4 +1,4 @@
-/// The MapLibre surface of the pin picker (since 0.12.0): the one library of this package that
+/// The MapLibre surface of the pin picker (since 0.13.0): the one library of this package that
 /// imports `maplibre_gl`, so an app that only uses the pure model never links a map.
 ///
 /// Nothing here runs in a widget test (a platform view cannot render there): tests use

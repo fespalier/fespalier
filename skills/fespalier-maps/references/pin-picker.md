@@ -1,6 +1,6 @@
 # A pin picker, end to end
 
-Since 0.12.0 (`package:fespalier_maps`). The page is yours, so the route is a folder you add; the three widgets in it
+Since 0.13.0 (`package:fespalier_maps`). The page is yours, so the route is a folder you add; the three widgets in it
 (the guess card, the search field, the confirm button) are yours, so the picker looks like the rest of the app. The model
 behind them is `PinPickerModel`; the widget only lays the pieces out.
 

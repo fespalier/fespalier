@@ -1,4 +1,4 @@
-/// Maps for fespalier (since 0.12.0): a pin picker that returns a place.
+/// Maps for fespalier (since 0.13.0): a pin picker that returns a place.
 ///
 /// The pin is fixed at the centre and the map moves under it. This library has no MapLibre and no
 /// geolocator in it: the map is a [MapSurface] (`package:fespalier_maps/maplibre.dart`), the

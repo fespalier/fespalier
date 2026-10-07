@@ -6,7 +6,7 @@ import 'package:fespalier/fespalier.dart'
         TelemetryOutcome,
         TelemetryStart;
 
-/// The names this package reports to a `FespalierTelemetry` sink (since 0.12.0), as
+/// The names this package reports to a `FespalierTelemetry` sink (since 0.13.0), as
 /// `TelemetryOp.custom` operations. They are this package's own contract, pinned by
 /// `test/telemetry_test.dart`: add one, never rename one.
 ///

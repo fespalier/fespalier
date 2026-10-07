@@ -1,22 +1,22 @@
 ---
 name: fespalier-maps
-description: "A place picked on a map in a fespalier app with fespalier_maps (since 0.12.0) — a PinPicker body for a page you write (the pin fixed at the centre, the map moving under it), the Geocoder you implement (recipes for Nominatim, Photon and your own backend), the position source over geolocator, MapLibreSurface over maplibre_gl, a name shown as a guess and never as fact, forward search in a field docked at the bottom, a PickedPlace returned through push<PickedPlace>, the fespalier.maps telemetry that never carries a place, and FakeMapSurface, FakeGeocoder and FakePositionSource in tests. Load before adding a place or address picker, a map, geolocation or a geocoder, or when a picker shows no pin, never asks for the position, confirms nothing or a test cannot render the map."
+description: "A place picked on a map in a fespalier app with fespalier_maps (since 0.13.0) — a PinPicker body for a page you write (the pin fixed at the centre, the map moving under it), the Geocoder you implement (recipes for Nominatim, Photon and your own backend), the position source over geolocator, MapLibreSurface over maplibre_gl, a name shown as a guess and never as fact, forward search in a field docked at the bottom, a PickedPlace returned through push<PickedPlace>, the fespalier.maps telemetry that never carries a place, and FakeMapSurface, FakeGeocoder and FakePositionSource in tests. Load before adding a place or address picker, a map, geolocation or a geocoder, or when a picker shows no pin, never asks for the position, confirms nothing or a test cannot render the map."
 ---
 
 # fespalier-maps
 
-> **Verified against fespalier `6be5e0f2` (2026-10-07), release v0.11.0.**
+> **Verified against fespalier `f9311dcc` (2026-10-07), release v0.12.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
 > [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
-**Since 0.12.0.** `package:fespalier_maps` is a pin picker that returns a place: the pin is fixed at the centre and the
+**Since 0.13.0.** `package:fespalier_maps` is a pin picker that returns a place: the pin is fixed at the centre and the
 map moves under it, a search field you place at the bottom finds places, the geocoder's name for the point under the pin
 is shown as a **guess**, and confirming pops a `PickedPlace` (the **point is the truth**, the label a courtesy) to the
 page that did `await PickPlaceRoute().push<PickedPlace>(context)`. It adds no file kind, no `fespalier:` key and no `fsp`
 command, and `app.g.dart` is the same bytes. It cannot add a route (`fsp` scans your `lib/app/`): **you write
-`lib/app/pick-place/page.dart`**, whose body is `PinPicker`. A release that predates 0.12.0 has no such package.
+`lib/app/pick-place/page.dart`**, whose body is `PinPicker`. A release that predates 0.13.0 has no such package.
 
 ## Install
 
@@ -35,7 +35,7 @@ dependencies:
       ref: <the same tag>
 ```
 
-(A fragment: pub resolves the pair only at a release tag that contains the package, 0.12.0 or later. Write `ref: v…`
+(A fragment: pub resolves the pair only at a release tag that contains the package, 0.13.0 or later. Write `ref: v…`
 with a real tag in an app, but never in these pages, where `cli/tests/versions.rs` would read it as fespalier's own
 version. The package's own
 [install block](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_maps/README.md#install) is the one

@@ -1,6 +1,6 @@
 name: fespalier_maps
 description: "Maps for fespalier: a pin picker that returns a place, over MapLibre, with a geocoder interface and a position source."
-version: 0.11.0 # x-release-please-version
+version: 0.12.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -21,7 +21,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.11.0 # x-release-please-version
+      ref: v0.12.0 # x-release-please-version
   # The MapLibre binding: lib/maplibre.dart is the only file that imports it. 0.26.0 is the first
   # release with the offline-region calls the later packs use (Dart 3.7, Flutter 3.22); 0.27.x asks
   # for Flutter 3.29. Both resolve on Flutter 3.32.

@@ -27,6 +27,9 @@ point at a checkout of this repository.
 | [`fespalier-testing`](fespalier-testing/)                 | `pumpRouter`, deep links, data states, and the traps that hang a test                                                                                                        |
 | [`fespalier-observability`](fespalier-observability/)     | `observe.dart` hooks (analytics, titles), telemetry, OpenTelemetry with `otel_zone`, Sentry (errors first, since 0.9.0), the telemetry conventions                           |
 | [`fespalier-images`](fespalier-images/)                   | Network images: `ResponsiveImage`, an image CDN (imgproxy, EmgR, Cloudinary, imgix, Thumbor), signed URLs without a key in the app, image heroes, `FakeImages` (since 0.9.0) |
+| [`fespalier-i18n`](fespalier-i18n/)                       | Translated texts, the language from the URL, Tolgee, bundled ARB, a language menu, `fakeTranslations` (`fespalier_tolgee`, since 0.10.0)                                     |
+| [`fespalier-offline`](fespalier-offline/)                 | A screen or a write that works offline: `ref.serve`, intents, owned rows, sync, `autoSync`, testing offline (`fespalier_cratestack`'s core, since 0.10.0)                    |
+| [`fespalier-cratestack`](fespalier-cratestack/)           | Wiring a CrateStack client: the two seams, its Dio, idempotency, the server's contract, embedded mode (since 0.10.0)                                                         |
 | [`fespalier-troubleshooting`](fespalier-troubleshooting/) | **An `fsp` error, a stale `app.g.dart`, a URL that shows the wrong page**                                                                                                    |
 | [`fespalier-migration`](fespalier-migration/)             | Upgrading between releases, or adopting fespalier in a go_router app                                                                                                         |
 
@@ -155,9 +158,12 @@ skills/<name>/
 
 `name:` must equal the directory; `description:` is the only thing an agent reads when
 deciding whether to load the skill, so say what it covers **and** when to reach for it.
-Keep `SKILL.md` readable in one sitting and push detail into `references/`. Nine skills
+Keep `SKILL.md` readable in one sitting and push detail into `references/`. Thirteen skills
 is already a routing decision; fold new material into the owning skill rather than adding
-one.
+one. The three added with 0.10.0 are separate because each has its own trigger and its own reader:
+translations (`fespalier-i18n`), offline-first behaviour that does not depend on any backend
+(`fespalier-offline`), and wiring one backend (`fespalier-cratestack`, which defers to the second for
+the API). Folding them into `fespalier-data` would have made its description a list of everything.
 
 **A new file kind, config key, command or docs section** fails the gate by name until a
 skill claims it:

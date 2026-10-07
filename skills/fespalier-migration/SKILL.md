@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -29,6 +29,34 @@ flutter analyze && flutter test
 `fsp --version` must print the package's version (`ref: vX.Y.Z` needs `fsp X.Y.Z`); an `fsp` of another
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
+
+## 0.9 to 0.10: what to check
+
+Bump the `ref:` to the 0.10.0 tag, run the matching `fsp gen` as always, and expect **`lib/app.g.dart` unchanged**. This was
+checked as of `bfbbf87f` (after 0.9.1): nothing the emitter writes, no runtime file of `package:fespalier` and no template
+that `fsp new` or `fsp init` writes into an app changed behaviour since 0.9.1, only comments and the documentation pointers
+of a few messages. Re-run `fsp gen` and `git diff lib/app.g.dart` on the release itself to confirm; a diff there is a bug to
+report, not something to accept.
+
+1. **The documentation moved.** The long README is now a short one, and the reference is one-topic pages under `docs/`
+   (`docs/routing.md`, `docs/data.md`, `docs/i18n-tolgee.md`, ...). The old README anchors still work (the README keeps one
+   per old heading, and `docs/README.md` maps them). **Some `fsp` messages cite a page now**, where 0.9 cited the README:
+   `fsp init`'s pointer (`see docs/app-startup.md`), the `fsp run` and `tasks:` messages (`docs/cli.md, "Tasks: commands
+around `flutter run`"`) and the warning `⚠ this app sends no fespalier spans yet ... (docs/observability.md,
+"Telemetry")`. A CI step or a script that greps for the old `(README, "...")` text must follow; the message's meaning is
+   the same.
+2. **Two new, opt-in companion packages** with **no generator change** (no file kind, `fespalier:` key or `fsp` command):
+   `fespalier_tolgee` (translated texts, the language from the URL: [`fespalier-i18n`](../fespalier-i18n/SKILL.md)) and
+   `fespalier_cratestack` (offline-first reads, queued writes and sync, with a CrateStack client:
+   [`fespalier-offline`](../fespalier-offline/SKILL.md), [`fespalier-cratestack`](../fespalier-cratestack/SKILL.md)). Like
+   every companion, they take **the same `url` and the same `ref` as `fespalier`** (and `fespalier_cratestack` needs
+   `fespalier_dio` at the same tag too). An app that does not depend on them is byte for byte what it was. **Neither ships a
+   `fespalier_adapter.dart`**, so they go in `startup()`, not in `adapters:`.
+3. **Adopting translations from `gen-l10n` or from the `tolgee` SDK** is not a mechanical change (keys become strings, the
+   locale comes from the route, apostrophes before a brace are doubled): the steps are in
+   [`fespalier-i18n`](../fespalier-i18n/SKILL.md) (its `messages-and-catalogs.md` page).
+4. **Nothing to do for telemetry sinks**: 0.10.0 adds no `TelemetryOp` and no convention (contract version 1), so an
+   exhaustive sink still compiles. Reads through `serve` and `submit` run inside the existing data and action spans.
 
 ## 0.8 to 0.9: what to check
 

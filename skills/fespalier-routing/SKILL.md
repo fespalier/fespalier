@@ -1,6 +1,6 @@
 ---
 name: fespalier-routing
-description: "How a fespalier folder tree becomes URLs and typed routes — static, dynamic ($id), catch-all ($$rest, $$$rest) and (group) folders, _private folders, typed and enum segments, query parameters, sibling order and unreachable routes, not_found.dart, route.dart (caseSensitive, localized paths, nest = false for a sibling with a compound path, linkable = false to keep a folder out of fsp links, remount to start a page again when its URL changes, and deferred to load a page's code on demand on the web), navigator.dart and present.dart for the root navigator, the generated typed routes (.go, .push, .location, locationFor), RouteLink (a typed link that is a real anchor on the web and can preload its page's data), typed extra with extra_codec.dart, and the route manifest with meta.dart. Load before adding or renaming a route folder, changing a segment's type, writing a link between pages (RouteLink), or when a URL shows not_found.dart instead of its page."
+description: "How a fespalier folder tree becomes URLs and typed routes — static, dynamic ($id), catch-all ($$rest, $$$rest) and (group) folders, _private folders, typed and enum segments, query parameters, sibling order and unreachable routes, not_found.dart, route.dart (caseSensitive, localized paths, nest = false for a sibling with a compound path, linkable = false to keep a folder out of fsp links, remount to start a page again when its URL changes, and deferred to load a page's code on demand on the web), navigator.dart and present.dart for the root navigator, the generated typed routes (.go, .push, .location, locationFor), RouteLink (a typed link that is a real anchor on the web and can preload its page's data), typed extra with extra_codec.dart, and the route manifest with meta.dart. The texts in the route's language, with a $lang folder and a language menu, are fespalier-i18n (since 0.10.0). Load before adding or renaming a route folder, changing a segment's type, writing a link between pages (RouteLink), or when a URL shows not_found.dart instead of its page."
 ---
 
 # fespalier-routing
@@ -128,6 +128,7 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
 | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Paths match in any case, or one folder stays exact                           | `route.dart` with `caseSensitive`: [`references/route-dart.md`](references/route-dart.md)                  |
 | `/produits` and `/produkte` for `/products`, one route                       | `route.dart` with `paths`, `locationFor`, `locale:`: same reference                                        |
+| Texts in the URL's language, a language menu (`fespalier_tolgee`, 0.10.0)    | [`fespalier-i18n`](../fespalier-i18n/SKILL.md)                                                             |
 | A page must start again (fresh state) when its URL changes, not keep it      | `route.dart` with `const remount = Remount.onSegments;` or the pubspec's `remount` (0.6.0): same reference |
 | A page's code must be a chunk of its own on the web, loaded on demand        | `route.dart` with `const deferred = true;` or the pubspec's `deferred` (0.7.0): same reference             |
 | A deep link must not build the page above (`refund` under `refund/confirm`)  | `route.dart` with `const nest = false;` (0.4.0): a sibling with a compound path, same reference            |
@@ -167,6 +168,9 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
 - **Localized paths** are one `GoRoute` with an alternation, not one route per
   locale, so nested routes, page keys and restoration ids see one route. Read
   the route's `paths` through `RouteInfo`, never `pathParameters` (`_l0`).
+  Since 0.10.0 `fespalier_tolgee` reads these spellings (`localeSpelling(AppManifest.all)`,
+  `relocate`) and takes the locale from the route (a `$lang` enum segment, or the spellings); the
+  texts are [`fespalier-i18n`](../fespalier-i18n/SKILL.md).
 - **A page on a tab's first route cannot have a `:segment`** in its own path
   (go_router refuses): give the tab a `tabOptions` `initialLocation`
   (`fespalier-layouts`).

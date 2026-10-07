@@ -187,6 +187,10 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
   not a package name, a duplicate, `fespalier` itself, a name not under `dependencies:`, and `main: manual` with
   `adapters:` (a generated `main()` is what calls them).
 - **No per-adapter keys.** Deploy-time options come from `--dart-define`; anything custom stays in `startup.dart`.
+- **Not every companion is an adapter** (since 0.10.0): `fespalier_tolgee` and `fespalier_cratestack` ship **no**
+  `fespalier_adapter.dart` (the setup is app code, which `startup()` already is), so `adapters: [fespalier_tolgee]` makes the
+  generated `lib/app.main.g.dart` import a file that does not exist (`Target of URI doesn't exist`). Wire them in `startup()`
+  ([`fespalier-i18n`](../../fespalier-i18n/SKILL.md), [`fespalier-cratestack`](../../fespalier-cratestack/SKILL.md)).
 - **Tests.** `pumpRouter(tester, router, app: AppMain.app)` and `fsp test` never see the adapters; `AppMain.root()`
   is the app as it runs, adapters included.
 

@@ -150,6 +150,18 @@ router.routerDelegate.currentConfiguration.last.matchedLocation   // '/products/
   runs `/products`' `data.dart` underneath. If your fakes delay, pump long enough
   for both, or `pumpAndSettle`.
 
+## Translations and offline fakes (since 0.10.0)
+
+- **The strict translation fake fails the test with `No translation for "<key>" in <locale> or its fallbacks`**
+  (`FakeTranslations.strict()`, or `fakeTranslations(strict: true)`): a typo, or a key the test's `bundled` maps lack. A
+  malformed ICU message fails it too (`Malformed message for "<key>": <reason>`). See
+  [`fespalier-i18n`](../../fespalier-i18n/references/testing.md).
+- **`FakeCrateStackTransport: nothing scripted for "<op>" (use on())`** is a `StateError` from a call nobody scripted
+  (`transport.on('<op>', (input) => ...)`; a REST call is named `METHOD path`).
+- **The CrateStack and translation fakes are all `Future.value`s**, so they leave no timer pending: a pending timer at the
+  end of an offline test is **your own ticker** (an un-overridden `ForegroundTicker`). Override `syncTicker` with
+  `ManualSyncTicker`. See [`fespalier-offline`](../../fespalier-offline/references/testing.md).
+
 ## Aging data and the cache (since 0.8.1)
 
 - `await tester.pump(const Duration(minutes: 6))` makes data with a `freshness` stale: `clock.now()` is

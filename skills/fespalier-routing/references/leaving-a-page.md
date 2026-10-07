@@ -40,8 +40,12 @@ LeaveResult leave(BuildContext context, Ref ref, {required int id, required Page
 - `PageLeave`: `state` (the route's `GoRouterState`), `isDirty` (any registered source is dirty), `canKeep` (some source
   can save a draft), `keep()` (each source saves its draft), `discard()` (each drops it). A page with nothing registered
   is clean and cannot keep.
-- `LeaveSource` (a `Listenable`): `isDirty`, `canKeep`, `keep()`, `discard()`. Implemented by `fespalier_forms`' forms;
-  core knows nothing of forms. A source that turns dirty or clean must notify.
+- `LeaveSource` (a `Listenable`): `isDirty`, `canKeep`, `keep()`, `discard()`. Core knows nothing of forms:
+  `fespalier_forms` makes its forms sources in a later release, so until then register your own (nothing registers
+  one by itself, and a page with none is always clean). A source that turns dirty or clean must notify.
+- `LeaveScope.maybeOf(context)?.onBack(() => handled)` lets a source take the system back itself (a step of a
+  multi-page form): handlers run newest first on Android's back and `Navigator.maybePop`, the first that returns true
+  stops the pop and `leave()`. Not consulted on the first page of a navigator or by the iOS swipe.
 - `LeaveScope.maybeOf(context)?.register(source)` (null in a page without a `leave.dart`) registers a source and returns
   what unregisters it; it is safe during `build`.
 - The registry is keyed by `pageInstanceId(state)`, never by the remount key, so a `remount` page keeps asking about the
@@ -56,21 +60,28 @@ redirect, **including a sign-out redirect**; leaving a tab layout, for the **act
 `onEnter` and guards run first at parse time; `onExit` runs after.
 
 **Not asked:** a tab switch (fespalier parks; go_router would ask); a parked tab's pages when the whole layout leaves (use
-drafts); a query-only change; a dialog or sheet (a pageless route) on top; `refresh()` with the same match list; a
+drafts); a query-only change (also `replace` of a pushed page with itself at another query); a dialog or sheet (a pageless route) on top; `refresh()` with the same match list; a
 `redirect.dart` route; layouts; an imperative `Navigator.push` or replace outside go_router; process kill, hot restart,
 `router.dispose()`; the page's own `PopScope(canPop: false)`, which wins for system back. `/c/1` to `/c/2` is asked,
-whatever `remount` says.
+whatever `remount` says. `leave.dart` is imported eagerly (never `deferred`), so what it imports leaves the deferred
+chunk. While an async-guarded `go` is parsing, a pop is judged against that destination.
 
 **Known gap:** on go_router 17.0 to 17.3 (Flutter below 3.38) popping a whole `ShellRoute` page off the root navigator
 skips the leaf's `leave()` (fixed in 17.4.0).
 
 ## How it answers
 
-1. `leaveWithoutAsking(router, () => navigate())` lets a navigation through, now or when what it started settles later,
-   while the router's route information is still the one `navigate()` left; the next navigation expires it. Wrap
+1. `await leaveWithoutAsking(router, () => navigate())` (navigate may be async) lets pages go while it runs and its
+   `Future` is pending, plus the one commit it requested that was not applied yet (a one-shot listener); it never
+   covers a pop after `navigate` returns or a `navigate` that requests nothing (a failed sign-out asks again). Wrap
    sign-out in it, or check auth in `leave()`.
-2. A tab switch goes through without calling `leave()`.
-3. One prompt at a time: a second ask of the same page instance gets the first's answer.
+2. A tab switch goes through without calling `leave()`, unless a route it reaches that the page is not already
+   under has a `redirect:` (a guard): that may take the navigation out of the shell, so it asks. A hand-written
+   top-level `redirect:` cannot be seen.
+3. One prompt at a time: a second ask of the same page instance waits for the first and answers `true` only if the
+   page is still there afterwards (a double pop completes once; a back joining a `go`'s prompt never closes the app). A
+   `leave()` whose `Future` never completes holds every later ask. `leave()` must `read`, not `watch`: its first
+   answer stands.
 4. `leave()` runs with its `Ref` and the page's `PageLeave`. A throw, sync or async, is reported with
    `FlutterError.reportError` (context `while running leave() of <file>`) and the page goes: a broken `leave()` never traps
    the user. A segment that does not parse lets the page go (it shows not-found).

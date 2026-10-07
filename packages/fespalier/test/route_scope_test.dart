@@ -25,13 +25,19 @@ final List<String> builtX = [];
 int builds = 0;
 int disposes = 0;
 
+/// How many log lines there were when `held` was disposed.
+int? disposedAfter;
+
 /// The container of the last `boot`.
 ProviderContainer? bootContainer;
 
 final held = Provider.autoDispose<int>((ref) {
   builds++;
   ref.onCancel(() => log.add('cancel'));
-  ref.onDispose(() => disposes++);
+  ref.onDispose(() {
+    disposes++;
+    disposedAfter = log.length;
+  });
   return 1;
 });
 
@@ -409,13 +415,18 @@ void main() {
     log.clear();
     container.dispose();
     expect(scopes.single.isActive, isFalse);
-    // Whether `held` sees its last listener go (`cancel`) or is disposed first depends on the
-    // order Riverpod disposes the container's providers in, which is not fixed: the callbacks
-    // are what the scope promises.
-    expect(log.where((line) => line != 'cancel'), [
-      'callback 2 /a',
-      'callback 1 /a',
-    ]);
+    // Whether `held` sees its last listener go (`cancel`, last) or is disposed first depends on
+    // the order Riverpod disposes the container's providers in, which is not fixed. The callbacks
+    // run first, newest first, either way.
+    expect(
+      log,
+      anyOf(
+        equals(['callback 2 /a', 'callback 1 /a', 'cancel']),
+        equals(['callback 2 /a', 'callback 1 /a']),
+      ),
+    );
+    // `held` was disposed before the callbacks (0 lines logged) or after them.
+    expect(disposedAfter, anyOf(0, log.length));
   });
 
   test('a scope that ends adds no microtask and no timer of its own', () {

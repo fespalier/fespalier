@@ -1,17 +1,33 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
 
-/// What the new-doc page has typed and not saved. `docs/new/leave.dart` asks while it is not empty.
-class NewDocDraft extends Notifier<String> {
-  @override
-  String build() => '';
+/// What the new-doc page holds that would be lost: the text typed and not saved. The page
+/// registers it in its `LeaveScope`, so `docs/new/leave.dart` can ask `page.isDirty`.
+class NewDocSource extends ChangeNotifier implements LeaveSource {
+  String _text = '';
 
   /// The text as it is now.
-  void write(String text) => state = text;
-}
+  String get text => _text;
 
-/// The draft of the new doc, in the app's container: `leave()` reads it through its `Ref`.
-final newDocDraft = NotifierProvider<NewDocDraft, String>(NewDocDraft.new);
+  /// The user typed, or [discard]ed.
+  void write(String text) {
+    if (text == _text) return;
+    _text = text;
+    notifyListeners();
+  }
+
+  @override
+  bool get isDirty => _text.isNotEmpty;
+
+  @override
+  bool get canKeep => false;
+
+  @override
+  void keep() {}
+
+  @override
+  void discard() => write('');
+}
 
 /// A question in a bottom sheet (not a dialog), the way an app asks before something is lost:
 /// true when the user chose to discard it.

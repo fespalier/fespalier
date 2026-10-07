@@ -5,5 +5,5 @@ import 'package:flutter/widgets.dart';
 /// Asked before {{ pattern }} goes: popped, replaced or navigated away from (a tab switch
 /// that parks it is not asked). Return true to let it go, false to stay; ask however the app
 /// does, e.g. `showModalBottomSheet<bool>(context: context, ...)`. `page.isDirty` says whether
-/// a form on the page has unsaved changes.
+/// anything the page registered as a `LeaveSource` would be lost.
 {{ func("LeaveResult leave", ["BuildContext context", "Ref ref"], leave_params, "", "true") }}

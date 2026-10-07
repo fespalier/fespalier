@@ -87,6 +87,42 @@ class _RegistrarState extends State<Registrar> {
 /// The sources the pages register, by page label; a test sets them up.
 final Map<String, FakeSource> sources = {};
 
+/// The system-back handlers the pages register in their scope, by page label.
+final Map<String, bool Function()> backs = {};
+
+/// Whether the guarded tab's route redirects out of the shell.
+bool guardOn = false;
+
+/// Registers [handler] with the page's `LeaveScope.onBack`.
+class BackRegistrar extends StatefulWidget {
+  const BackRegistrar(this.handler, {super.key, required this.child});
+
+  final bool Function() handler;
+  final Widget child;
+
+  @override
+  State<BackRegistrar> createState() => _BackRegistrarState();
+}
+
+class _BackRegistrarState extends State<BackRegistrar> {
+  VoidCallback? _unregister;
+
+  @override
+  void initState() {
+    super.initState();
+    _unregister = LeaveScope.maybeOf(context)?.onBack(widget.handler);
+  }
+
+  @override
+  void dispose() {
+    _unregister?.call();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 Widget page(String label) => Scaffold(body: Center(child: Text(label)));
 
 /// What the generator writes for a folder with a leave.dart: `onExit` and the page wrapper.
@@ -113,6 +149,8 @@ GoRoute leaving(
       var body = page(l);
       final source = sources[l];
       if (source != null) body = Registrar(source, child: body);
+      final back = backs[l];
+      if (back != null) body = BackRegistrar(back, child: body);
       return MaterialPage<void>(
         key: state.pageKey,
         child: leaveScope(state, body),
@@ -153,6 +191,16 @@ GoRouter router({String initial = '/a', String? Function(Uri uri)? redirect}) {
             ],
           ),
           StatefulShellBranch(routes: [leaving('/b', 'b')]),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/g',
+                redirect: (context, state) => guardOn ? '/y' : null,
+                pageBuilder: (context, state) =>
+                    MaterialPage<void>(key: state.pageKey, child: page('g')),
+              ),
+            ],
+          ),
         ],
       ),
       leaving('/x', 'x'),
@@ -209,6 +257,8 @@ Future<GoRouter> boot(
 }) async {
   asked.clear();
   sources.clear();
+  backs.clear();
+  guardOn = false;
   answer = (_, _) => true;
   final r = router(initial: initial, redirect: redirect);
   await pumpRouter(tester, r);
@@ -1043,6 +1093,186 @@ void main() {
     });
   });
 
+  group('review fixes', () {
+    testWidgets(
+      'a switch to a guarded tab is asked: its redirect may leave the shell',
+      (tester) async {
+        final r = await boot(tester);
+        answer = (_, _) => false;
+        guardOn = true;
+        StatefulNavigationShell.of(tester.element(find.text('a'))).goBranch(2);
+        await settle(tester);
+        expect(asked, ['a']);
+        expect(find.text('a'), findsOneWidget);
+        r.go('/g');
+        await settle(tester);
+        expect(asked, ['a', 'a']);
+        expect(where(r), '/a');
+        // A tab without a guard of its own is still parked without asking.
+        r.go('/b');
+        await settle(tester);
+        expect(asked, ['a', 'a']);
+        expect(find.text('b'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a double pop of a page awaiting its prompt completes it once',
+      (tester) async {
+        final r = await boot(tester, initial: '/y');
+        await push(tester, r, '/x');
+        final prompt = Completer<bool>();
+        answer = (_, _) => prompt.future;
+        r.pop();
+        r.pop();
+        await settle(tester);
+        expect(asked, ['x']);
+        prompt.complete(true);
+        await settle(tester);
+        expect(tester.takeException(), isNull);
+        expect(find.text('y'), findsOneWidget);
+        expect(where(r), '/y');
+      },
+    );
+
+    testWidgets('a back that joins the prompt of a go does not close the app', (
+      tester,
+    ) async {
+      final closed = recordSystemNavigator(tester);
+      final r = await boot(tester, initial: '/x');
+      final prompt = Completer<bool>();
+      answer = (_, _) => prompt.future;
+      r.go('/y');
+      await settle(tester);
+      // The back stays pending while the prompt is open, so it is not awaited.
+      unawaited(
+        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+          'flutter/navigation',
+          const JSONMethodCodec().encodeMethodCall(
+            const MethodCall('popRoute'),
+          ),
+          (_) {},
+        ),
+      );
+      await settle(tester);
+      expect(asked, ['x']);
+      prompt.complete(true);
+      await settle(tester);
+      expect(find.text('y'), findsOneWidget);
+      expect(closed, isEmpty);
+    });
+
+    testWidgets(
+      'leaveWithoutAsking with nothing to navigate covers no later pop',
+      (tester) async {
+        final r = await boot(tester, initial: '/y');
+        await push(tester, r, '/x');
+        answer = (_, _) => false;
+        leaveWithoutAsking(r, () {});
+        r.pop();
+        await settle(tester);
+        expect(asked, ['x']);
+        expect(find.text('x'), findsOneWidget);
+      },
+    );
+
+    testWidgets('a sign-out that fails leaves the pages asking', (
+      tester,
+    ) async {
+      final r = await boot(tester, initial: '/y');
+      await push(tester, r, '/x');
+      answer = (_, _) => false;
+      final failed = leaveWithoutAsking(r, () async {
+        throw StateError('offline');
+      });
+      await expectLater(Future<void>.value(failed), throwsStateError);
+      r.pop();
+      await settle(tester);
+      expect(asked, ['x']);
+      expect(find.text('x'), findsOneWidget);
+    });
+
+    testWidgets(
+      'leaveWithoutAsking covers a pending Future, and then no more',
+      (tester) async {
+        final r = await boot(tester, initial: '/y');
+        await push(tester, r, '/x');
+        answer = (_, _) => false;
+        final gate = Completer<void>();
+        final pending = leaveWithoutAsking(r, () => gate.future);
+        r.pop();
+        await settle(tester);
+        expect(asked, isEmpty);
+        expect(find.text('y'), findsOneWidget);
+        gate.complete();
+        await pending;
+        await push(tester, r, '/x');
+        r.pop();
+        await settle(tester);
+        expect(asked, ['x']);
+      },
+    );
+
+    testWidgets('a watch inside leave() does not run it again', (tester) async {
+      final r = await boot(tester, initial: '/x');
+      final bump = NotifierProvider<_Bump, int>(_Bump.new);
+      final context = tester.element(find.text('x'));
+      final state = r.routerDelegate.state;
+      final container = ProviderScope.containerOf(context);
+      final gate = Completer<bool>();
+      var runs = 0;
+      final done = leaveExit(context, state, 'x/leave.dart', (ref, page) {
+        runs++;
+        ref.watch(bump);
+        return gate.future;
+      });
+      container.read(bump.notifier).value = 1;
+      await tester.pump();
+      gate.complete(false);
+      expect(await (done as Future<bool>), isFalse);
+      expect(runs, 1);
+    });
+
+    testWidgets(
+      'replacing a pushed page with itself at another query is not asked',
+      (tester) async {
+        final r = await boot(tester, initial: '/y');
+        await push(tester, r, '/x');
+        answer = (_, _) => false;
+        unawaited(r.replace<void>('/x?q=2'));
+        await settle(tester);
+        expect(asked, isEmpty);
+        expect(find.text('x'), findsOneWidget);
+        unawaited(r.replace<void>('/z'));
+        await settle(tester);
+        expect(asked, ['x']);
+      },
+    );
+
+    testWidgets(
+      'onBack handles the system back inside the page, or lets it pop',
+      (tester) async {
+        final r = await boot(tester, initial: '/y');
+        var handled = 0;
+        var consume = true;
+        backs['x'] = () {
+          handled++;
+          return consume;
+        };
+        await push(tester, r, '/x');
+        await systemBack(tester);
+        expect(handled, 1);
+        expect(asked, isEmpty);
+        expect(find.text('x'), findsOneWidget);
+        consume = false;
+        await systemBack(tester);
+        expect(handled, 2);
+        expect(asked, ['x']);
+        expect(find.text('y'), findsOneWidget);
+      },
+    );
+  });
+
   group('a whole ShellRoute page on the root navigator', () {
     // go_router fixed `onExit` of a GoRoute inside a ShellRoute being skipped by a pop in 17.4.0
     // (CHANGELOG: "Fixes onExit ignored for GoRoute nested inside ShellRoute"); 17.0 to 17.3,
@@ -1071,4 +1301,11 @@ void main() {
       expect(find.text('s'), findsOneWidget);
     });
   });
+}
+
+class _Bump extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  set value(int v) => state = v;
 }

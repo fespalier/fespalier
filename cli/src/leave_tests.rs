@@ -77,13 +77,20 @@ fn a_leave_is_the_on_exit_of_its_route_and_wraps_its_page() {
         &[
             "GoRoute( path: 'items/:id',",
             "onExit: (context, state) => leaveExit(context, state, 'items/\\$id/leave.dart', (ref, page) => leaveWithParams(() => _leave2(state), (v) => _i2.leave(context, ref, id: v.id, page: page))),",
-            "builder: (context, state) => leaveScope(state, buildWithParams(",
+            "builder: (context, state) => buildWithParams(",
+            "(v) => leaveScope(state, _i1.ItemPage(id: v.id)),",
             "({int id}) _leave2(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
         ],
     );
     // The home page has no leave.dart, so it is built as before.
     assert_eq!(c.matches("leaveExit(").count(), 1, "{c}");
     assert_eq!(c.matches("leaveScope(").count(), 1, "{c}");
+    // Only the page that parsed is wrapped: not-found is not a page that asks.
+    assert!(flat(&c).contains("() => notFound(state.uri), )"), "{c}");
+    assert!(
+        !flat(&c).contains("leaveScope(state, buildWithParams"),
+        "{c}"
+    );
 }
 
 #[test]
@@ -209,9 +216,7 @@ fn leave_wraps_inside_a_transition_and_a_remount() {
     // The wrapper is innermost: remountPage holds the page, the page holds leaveScope.
     has(
         &c,
-        &[
-            "remountPage( context, state, remountKey(state, Remount.onLocation), leaveScope(state, buildWithParams(",
-        ],
+        &["remountPage( context, state, remountKey(state, Remount.onLocation), buildWithParams("],
     );
 }
 

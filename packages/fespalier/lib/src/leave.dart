@@ -92,6 +92,29 @@ final class LeaveScope {
 
   final _LeaveScopeState _owner;
   final List<LeaveSource> _sources = [];
+  final List<bool Function()> _backs = [];
+
+  /// Registers [handler] for the system back on this page and returns what unregisters it
+  /// (since 0.11.0). A source that has somewhere to go back to inside the page (a step of a
+  /// flow) uses it to go there itself: the handlers run newest first on a back, and the first
+  /// that returns true has handled it, so the page is not popped and `leave()` is not asked.
+  /// Without one that handles it, the back is turned into `GoRouter.pop` as usual.
+  ///
+  /// It is consulted where the page's `PopScope` is: on a page whose route can pop (a pushed
+  /// page, or any page above the first of its navigator), by Android's back and by
+  /// `Navigator.maybePop`. On the first page of a navigator, go_router's own fallback asks
+  /// `leave()` and the handlers are not consulted; the iOS edge swipe pops without them too.
+  VoidCallback onBack(bool Function() handler) {
+    _backs.add(handler);
+    _owner._sourcesChanged();
+    var done = false;
+    return () {
+      if (done) return;
+      done = true;
+      _backs.remove(handler);
+      _owner._sourcesChanged();
+    };
+  }
 
   /// The scope of the page [context] is in; null in a page without a `leave.dart`.
   static LeaveScope? maybeOf(BuildContext context) =>
@@ -223,13 +246,18 @@ final class _LeaveScopeState extends State<_LeaveScopeWidget> {
   Widget build(BuildContext context) {
     final sources = _scope._sources;
     final routeCanPop = ModalRoute.of(context)?.canPop == true;
-    final canPop = !routeCanPop || (sources.isNotEmpty && !_anyDirty(sources));
+    final canPop =
+        !routeCanPop ||
+        (_scope._backs.isEmpty && sources.isNotEmpty && !_anyDirty(sources));
     return _LeaveScopeInherited(
       scope: _scope,
       child: PopScope<Object?>(
         canPop: canPop,
         onPopInvokedWithResult: (didPop, result) {
           if (didPop) return;
+          for (final handler in _scope._backs.reversed.toList()) {
+            if (handler()) return;
+          }
           GoRouter.of(context).pop(result);
         },
         child: widget.child,
@@ -248,8 +276,12 @@ final class _LeaveScopeState extends State<_LeaveScopeWidget> {
 ///
 /// 1. A navigation started inside [leaveWithoutAsking] goes through without asking.
 /// 2. A tab switch goes through: fespalier parks the page, it is not gone. Leaving the tab
-///    layout asks the active tab's pages only.
-/// 3. A prompt already open for this page instance is the answer of a second ask.
+///    layout asks the active tab's pages only. A switch to a tab with a route that has a
+///    `redirect:` (a guard) the page is not already under is asked, since that redirect may
+///    take the navigation out of the shell; a top-level `redirect:` of the router cannot be seen
+///    and is not asked about.
+/// 3. A prompt already open for this page instance is shared by a second ask, which answers
+///    `true` only if the page is still there when the first has acted on it.
 /// 4. [leave] runs with a `Ref` of a throwaway provider, kept open until the answer is in, and
 ///    the [PageLeave] of what the page registered.
 /// 5. A `leave()` that throws, now or later, is reported with `FlutterError.reportError`
@@ -270,6 +302,7 @@ LeaveResult leaveExit(
     if (router != null) {
       if (_bypass[router]?.allows(router) ?? false) return true;
       if (_isTabSwitch(router, state)) return true;
+      if (_isQueryOnlyReplace(router, state)) return true;
     }
     container =
         (router == null ? null : RouterWatch.peek(router)?.container) ??
@@ -283,14 +316,34 @@ LeaveResult leaveExit(
       ? null
       : (_asking[router] ??= <String, Future<bool>>{});
   final running = asking?[id];
-  if (running != null) return running;
+  if (running != null) {
+    // A second ask shares the open prompt, but only the first to see it answered may act on a
+    // `true`: by the time this one runs, the first has taken the page away, and a second pop
+    // (or a back that joined a `go`'s prompt) must not complete the match again or close the app.
+    return running.then<bool>(
+      (ok) =>
+          ok &&
+          router != null &&
+          _shellsAround(
+                router.routerDelegate.currentConfiguration.matches,
+                state.pageKey,
+                const [],
+              ) !=
+              null,
+    );
+  }
 
   final page = PageLeave(state, _sourcesOf(router, id));
+  // A provider body runs again when something it watched changes; a prompt must not be asked
+  // twice, so the first answer is the answer (and `leave()` should `read`, not `watch`).
+  LeaveResult? first;
   final provider = Provider.autoDispose<LeaveResult>((ref) {
+    final earlier = first;
+    if (earlier != null) return earlier;
     try {
       final result = leave(ref, page);
-      if (result is! Future<bool>) return result;
-      return result.then<bool>(
+      if (result is! Future<bool>) return first = result;
+      return first = result.then<bool>(
         (answer) => answer,
         onError: (Object error, StackTrace stack) {
           _report(file, error, stack);
@@ -299,7 +352,7 @@ LeaveResult leaveExit(
       );
     } catch (error, stack) {
       _report(file, error, stack);
-      return true;
+      return first = true;
     }
   }, retry: _noRetry);
   final ProviderSubscription<LeaveResult> sub;
@@ -348,21 +401,62 @@ LeaveResult leaveWithParams<V>(
 /// already decided, such as signing out:
 ///
 /// ```dart
-/// leaveWithoutAsking(router, () => ref.read(auth).signOut());
+/// await leaveWithoutAsking(router, () => ref.read(auth).signOut());
 /// ```
 ///
-/// Whatever the navigation asks of the pages that go, now or later (a guard's redirect after
-/// the sign-out finishes), is let through while the router's route information is still the one
-/// [navigate] left behind; the next navigation makes a new one, and the pages ask again.
-void leaveWithoutAsking(GoRouter router, void Function() navigate) {
+/// No page asks while [navigate] runs, nor while the `Future` it returns is pending. If it
+/// requested a navigation that has not been applied by then (a guard's redirect that settles
+/// later), that one commit is let through too; the window closes at the router's first commit
+/// after the request, with a one-shot listener (no timer). It never covers a pop after
+/// [navigate] returns, or a `navigate` that requests nothing: a sign-out that fails leaves every
+/// page asking again.
+///
+/// Returns what [navigate] returns, so a caller can await it.
+FutureOr<void> leaveWithoutAsking(
+  GoRouter router,
+  FutureOr<void> Function() navigate,
+) {
   final bypass = _bypass[router] ??= _Bypass();
+  final start = router.routeInformationProvider.value;
+  var committed = false;
+  var armed = false;
+  late final VoidCallback onCommit;
+  onCommit = () {
+    committed = true;
+    router.routerDelegate.removeListener(onCommit);
+    if (armed) {
+      armed = false;
+      bypass.armed--;
+    }
+  };
+  router.routerDelegate.addListener(onCommit);
   bypass.during++;
-  try {
-    navigate();
-  } finally {
+  void settle() {
     bypass.during--;
-    bypass.ticket = router.routeInformationProvider.value;
+    final requested = !identical(start, router.routeInformationProvider.value);
+    if (committed || !requested) {
+      router.routerDelegate.removeListener(onCommit);
+    } else {
+      armed = true;
+      bypass.armed++;
+    }
   }
+
+  final FutureOr<void> result;
+  try {
+    result = navigate();
+  } catch (_) {
+    settle();
+    rethrow;
+  }
+  // The window closes at the end of this microtask turn, after the ones go_router queued for a
+  // `pop` that `navigate` made (it answers `onExit` in a microtask), and before anything that
+  // runs later.
+  if (result is Future<void>) {
+    return result.whenComplete(() => scheduleMicrotask(settle));
+  }
+  scheduleMicrotask(settle);
+  return null;
 }
 
 final _bypass = Expando<_Bypass>('fespalier leaveWithoutAsking');
@@ -371,16 +465,13 @@ final _bypass = Expando<_Bypass>('fespalier leaveWithoutAsking');
 final _asking = Expando<Map<String, Future<bool>>>('fespalier leave asking');
 
 final class _Bypass {
-  /// Inside `navigate()` of `leaveWithoutAsking`: how deep.
+  /// Inside `navigate()` of `leaveWithoutAsking`, or while its `Future` is pending.
   int during = 0;
 
-  /// The route information the navigation left behind (by identity).
-  Object? ticket;
+  /// Navigations it requested that the router has not committed yet.
+  int armed = 0;
 
-  bool allows(GoRouter router) =>
-      during > 0 ||
-      (ticket != null &&
-          identical(ticket, router.routeInformationProvider.value));
+  bool allows(GoRouter router) => during > 0 || armed > 0;
 }
 
 Duration? _noRetry(int retryCount, Object error) => null;
@@ -410,6 +501,12 @@ bool _isTabSwitch(GoRouter router, GoRouterState state) {
   if (shells == null || shells.isEmpty) return false;
   final target = _targetOf(router);
   if (target == null) return false;
+  // The target is read before any redirect: a route the page is not already under, with a
+  // `redirect:` of its own (a guard), may send the navigation somewhere else, out of the shell
+  // too. Then nothing says the page is only parked, so it is asked.
+  final known = <RouteBase>{};
+  _routesIn(config.matches, known);
+  if (_redirectsAbove(target.matches, known)) return false;
   final branches = <ValueKey<String>, Object>{};
   _branchesIn(target.matches, branches);
   return shells.any((s) {
@@ -470,4 +567,37 @@ RouteMatchList? _targetOf(GoRouter router) {
   }
   final list = router.configuration.findMatch(value.uri);
   return list.isEmpty ? null : list;
+}
+
+/// Every route of [matches], shells included.
+void _routesIn(List<RouteMatchBase> matches, Set<RouteBase> out) {
+  for (final m in matches) {
+    out.add(m.route);
+    if (m is ShellRouteMatch) _routesIn(m.matches, out);
+  }
+}
+
+/// Whether a route of [matches] that is not in [known] has a `redirect:`.
+bool _redirectsAbove(List<RouteMatchBase> matches, Set<RouteBase> known) {
+  for (final m in matches) {
+    if (!known.contains(m.route) && m.route.redirect != null) return true;
+    if (m is ShellRouteMatch && _redirectsAbove(m.matches, known)) return true;
+  }
+  return false;
+}
+
+/// Whether the navigation go_router is asking about replaces the pushed page [state] with the
+/// same page at another query (`replace('/x?q=2')` on a pushed `/x`): the same instance, as it
+/// is for a page of the tree, so nothing leaves. `replace` keeps the page's key.
+bool _isQueryOnlyReplace(GoRouter router, GoRouterState state) {
+  if (state.pageKey.value.startsWith('/')) return false;
+  final value = router.routeInformationProvider.value;
+  final info = value.state;
+  if (info is! RouteInformationState || info.type != NavigatingType.replace) {
+    return false;
+  }
+  final top = info.baseRouteMatchList?.lastOrNull;
+  return top is ImperativeRouteMatch &&
+      top.pageKey == state.pageKey &&
+      value.uri.path == state.uri.path;
 }

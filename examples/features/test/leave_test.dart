@@ -1,11 +1,12 @@
 // leave.dart (since 0.11.0): docs/new/leave.dart is asked before the new-doc page goes, whatever
-// takes it away, and a bottom sheet is how it asks.
+// takes it away, and a bottom sheet is how it asks. The page registers what it holds as a
+// LeaveSource, so `page.isDirty` is the text typed, end to end.
 import 'dart:async' show unawaited;
 
 import 'package:features/app.g.dart';
-import 'package:features/new_doc.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -39,36 +40,55 @@ void main() {
   });
 
   testWidgets(
-      'what is typed is asked about in a sheet, and false keeps the page', (
+    'what is typed is asked about in a sheet, and false keeps the page',
+    (tester) async {
+      final router = await boot(tester, '/docs/new');
+      await tester.enterText(find.byType(TextField), 'draft');
+      router.go('/docs');
+      await tester.pumpAndSettle();
+      expect(find.text('Discard this doc?'), findsOneWidget);
+      expect(find.text('New doc'), findsOneWidget);
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      expect(find.text('Discard this doc?'), findsNothing);
+      expect(find.text('New doc'), findsOneWidget);
+
+      router.go('/docs');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(find.text('Docs index'), findsOneWidget);
+    },
+  );
+
+  testWidgets('a discarded doc leaves nothing behind for the next visit', (
     tester,
   ) async {
     final router = await boot(tester, '/docs/new');
-    await tester.tap(find.text('Type'));
-    await tester.pump();
-    router.go('/docs');
-    await tester.pumpAndSettle();
-    expect(find.text('Discard this doc?'), findsOneWidget);
-    expect(find.text('New doc'), findsOneWidget);
-    await tester.tap(find.text('Keep editing'));
-    await tester.pumpAndSettle();
-    expect(find.text('Discard this doc?'), findsNothing);
-    expect(find.text('New doc'), findsOneWidget);
-
+    await tester.enterText(find.byType(TextField), 'draft');
     router.go('/docs');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Discard'));
     await tester.pumpAndSettle();
+    router.go('/docs/new');
+    await tester.pumpAndSettle();
+    expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text, '');
+    router.go('/docs');
+    await tester.pumpAndSettle();
+    expect(find.text('Discard this doc?'), findsNothing);
     expect(find.text('Docs index'), findsOneWidget);
   });
 
-  testWidgets('saving clears the draft, so the page goes at once again', (
+  testWidgets('saving empties the page, so it goes at once again', (
     tester,
   ) async {
     final router = await boot(tester, '/docs/new');
-    await tester.tap(find.text('Type'));
-    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'draft');
     await tester.tap(find.text('Save'));
     await tester.pump();
+    expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text, '');
     router.go('/docs');
     await tester.pumpAndSettle();
     expect(find.text('Docs index'), findsOneWidget);
@@ -80,8 +100,7 @@ void main() {
     final router = await boot(tester, '/docs');
     unawaited(router.push<void>('/docs/new'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Type'));
-    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'draft');
     await systemBack(tester);
     expect(find.text('Discard this doc?'), findsOneWidget);
     await tester.tap(find.text('Keep editing'));
@@ -97,8 +116,7 @@ void main() {
     tester,
   ) async {
     await boot(tester, '/docs/new');
-    await tester.tap(find.text('Type'));
-    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'draft');
     await systemBack(tester);
     expect(find.text('Discard this doc?'), findsOneWidget);
     await tester.tap(find.text('Keep editing'));
@@ -108,10 +126,6 @@ void main() {
 
   testWidgets('the catch-all beside it is not asked', (tester) async {
     final router = await boot(tester, '/docs/guide');
-    final container = ProviderScope.containerOf(
-      tester.element(find.text('Doc guide')),
-    );
-    container.read(newDocDraft.notifier).write('typed');
     router.go('/docs');
     await tester.pumpAndSettle();
     expect(find.text('Discard this doc?'), findsNothing);

@@ -164,10 +164,8 @@ GoRoute(
   onExit: (context, state) => {{ r.leave | indent(2) }},
 {% endif %}
 {% if r.page %}
-{% set page = with_segments(r.seg_fn, view(r), r.not_found) if r.seg_fn else view(r) %}
-{% if r.leave %}
-{% set page = leave_scope(page) %}
-{% endif %}
+{% set body = leave_scope(view(r)) if r.leave else view(r) %}
+{% set page = with_segments(r.seg_fn, body, r.not_found) if r.seg_fn else body %}
 {% if scroll_restoration %}
 {% set page = scroll_memory(page) %}
 {% endif %}

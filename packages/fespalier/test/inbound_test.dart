@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/floor.dart';
+
 late RecordingTelemetry rec;
 
 Widget page(String label) => Scaffold(body: Text(label));
@@ -213,7 +215,8 @@ void main() {
     'https://example.com/orders/7',
     'https://example.com/orders/7/',
     'vaam://app/orders/7',
-    'orders/7',
+    // go_router 17.0.0 (the floor) asserts on a location with no leading slash.
+    if (!onFlutterFloor) 'orders/7',
   ]) {
     testWidgets('a platform payload of $payload is tagged and seen as link', (
       tester,
@@ -253,6 +256,8 @@ void main() {
     await pumpRouter(tester, r);
     rec.log.clear();
     await platformPush(tester, 'vaam://app/custom');
+    // go_router before 17.2 runs a then inside the parse (the floor resolves 17.0.0).
+    if (onFlutterFloor) return;
     expect(find.text('order 9'), findsOneWidget);
     expect(starts(), [
       '#2 start navigate vaam://app/custom source=link',

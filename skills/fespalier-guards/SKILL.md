@@ -1,6 +1,6 @@
 ---
 name: fespalier-guards
-description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Since 0.9.0 also the fespalier_auth package: a session provider, restoreAuth in startup.dart, requireSignedIn, requireRole and redirectIfSignedIn guards, token storage, lazy single-flight refresh, an authenticated HTTP client (http and dio), OpenID Connect with PKCE and Keycloak, recipes for Firebase, Supabase and your own API, device-bound tokens (DPoP, fespalier_sign_keypair) and a fake backend for tests, and the fespalier_flags package for feature flags (flagGuard in a guard.dart, menus that follow a flag, a synchronous flag provider, vendor sources, FakeFlags). Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
+description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Since 0.9.0 also the fespalier_auth package: a session provider, restoreAuth in startup.dart, requireSignedIn, requireRole and redirectIfSignedIn guards, token storage, lazy single-flight refresh, an authenticated HTTP client (http and dio), OpenID Connect with PKCE and Keycloak, recipes for Firebase, Supabase and your own API, device-bound tokens (DPoP, fespalier_sign_keypair) and a fake backend for tests, and the fespalier_flags package for feature flags (flagGuard in a guard.dart, menus that follow a flag, a synchronous flag provider, vendor sources, FakeFlags). Since 0.13.0 also the fespalier_biometrics package: a biometric unlock guard that never prompts (requireUnlocked redirects to the app's unlock page), a single-flight unlock(), withBiometrics for actions, relock on resume, local_auth as a recipe (2.x and 3.x) and FakeBiometricPrompt. Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
 ---
 
 # fespalier-guards
@@ -222,16 +222,39 @@ bridges as compiled recipes (Firebase Remote Config, LaunchDarkly, PostHog, Grow
 messages are in [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its
 `diagnostics-flags-storage-network.md` page).
 
+## Biometric unlock (since 0.13.0)
+
+`package:fespalier_biometrics` puts a route behind a fingerprint or a face. **A guard never prompts**: a guard runs again
+whenever something it watches changes, and one that showed the platform's sheet would show it again each time.
+`requireUnlocked(ref, uri, unlock: (from) => UnlockRoute(from: from), maxAge:)` reads the unlock state and redirects,
+synchronously; the unlock page beside the guarded folder calls `ref.read(biometricUnlock.notifier).unlock(reason)`
+(single-flight, never throws) and goes to `returnTo(from)`; `withBiometrics(ref, reason, action, maxAge:)` makes an
+action ask again and throws `BiometricDeclined`. The app gives a `BiometricPrompt` in `startup()`
+(`biometricPrompt.overrideWithValue(...)`); `local_auth` is a recipe, not a dependency, because its 2.x and 3.x cannot
+share one source. The state relocks when the app comes back from the background (core's `appShowSignal`, not a notification shade or
+the platform's sheet) at least `BiometricPolicy.resumeGrace` after the unlock, with no timer and no listener; the
+default 10 s grace is a security trade-off the reference states; `maxAge` is checked at the next navigation, never by
+itself. Telemetry is `fespalier.biometrics.prompt` with `fespalier.biometrics.result`. Never call `unlock()`
+from `build` or a guard; never put a guard on the unlock page.
+
+[`references/biometrics.md`](references/biometrics.md) has the package in full and a compiled starter;
+[`references/biometric-prompts.md`](references/biometric-prompts.md) (`local_auth` 3.x) and
+[`references/biometric-prompts-local-auth-2.md`](references/biometric-prompts-local-auth-2.md) (2.x, with
+`useErrorDialogs: false`) are the prompt recipes. The tests use `FakeBiometricPrompt` from
+`package:fespalier_biometrics/testing.dart` ([`fespalier-testing`](../fespalier-testing/SKILL.md)).
+
 ## Where to read more
 
-| Need                                                                         | Reference                                                                  |
-| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Every guard and redirect rule, compiled samples, `returnTo` details          | [`references/guards-and-redirects.md`](references/guards-and-redirects.md) |
-| Session provider, sign-in/out, guards that re-run, async guards              | [`references/auth-patterns.md`](references/auth-patterns.md)               |
-| `fespalier_auth` (since 0.9.0): restore, guards, refresh, HTTP, tests        | [`references/auth-package.md`](references/auth-package.md)                 |
-| OpenID Connect, Keycloak, Firebase, Supabase, your own API, dio              | [`references/auth-backends.md`](references/auth-backends.md)               |
-| Device-bound tokens: DPoP, `fespalier_sign_keypair`, proofs in tests         | [`references/auth-dpop.md`](references/auth-dpop.md)                       |
-| Feature flags (since 0.9.0): `flagGuard`, flag providers, `FakeFlags`        | [`references/feature-flags.md`](references/feature-flags.md)               |
-| Flag sources (since 0.9.0): Remote Config, LaunchDarkly, PostHog, GrowthBook | [`references/flag-sources.md`](references/flag-sources.md)                 |
-| Testing a guarded route                                                      | `fespalier-testing`                                                        |
-| An `fsp` error on a guard or redirect                                        | `fespalier-troubleshooting`                                                |
+| Need                                                                                     | Reference                                                                                                                                                            |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Every guard and redirect rule, compiled samples, `returnTo` details                      | [`references/guards-and-redirects.md`](references/guards-and-redirects.md)                                                                                           |
+| Session provider, sign-in/out, guards that re-run, async guards                          | [`references/auth-patterns.md`](references/auth-patterns.md)                                                                                                         |
+| `fespalier_auth` (since 0.9.0): restore, guards, refresh, HTTP, tests                    | [`references/auth-package.md`](references/auth-package.md)                                                                                                           |
+| OpenID Connect, Keycloak, Firebase, Supabase, your own API, dio                          | [`references/auth-backends.md`](references/auth-backends.md)                                                                                                         |
+| Device-bound tokens: DPoP, `fespalier_sign_keypair`, proofs in tests                     | [`references/auth-dpop.md`](references/auth-dpop.md)                                                                                                                 |
+| Feature flags (since 0.9.0): `flagGuard`, flag providers, `FakeFlags`                    | [`references/feature-flags.md`](references/feature-flags.md)                                                                                                         |
+| Flag sources (since 0.9.0): Remote Config, LaunchDarkly, PostHog, GrowthBook             | [`references/flag-sources.md`](references/flag-sources.md)                                                                                                           |
+| Biometric unlock (since 0.13.0): `requireUnlocked`, `unlock()`, `withBiometrics`, relock | [`references/biometrics.md`](references/biometrics.md)                                                                                                               |
+| `local_auth` as a `BiometricPrompt` (3.x, and 2.x for Flutter before 3.38)               | [`references/biometric-prompts.md`](references/biometric-prompts.md), [`references/biometric-prompts-local-auth-2.md`](references/biometric-prompts-local-auth-2.md) |
+| Testing a guarded route                                                                  | `fespalier-testing`                                                                                                                                                  |
+| An `fsp` error on a guard or redirect                                                    | `fespalier-troubleshooting`                                                                                                                                          |

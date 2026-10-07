@@ -196,3 +196,111 @@ List<Override> overrides(String pattern) => [
 - **`FakeFlags.strict({...})`** throws a `StateError` for a key it lacks or a value of another type, and reports it to `FlutterError.reportError`, so a typo in a key fails a `testWidgets` instead of reading the fallback.
 - **`listenerCount`** is how many listen to its changes: `0` once nothing watches a flag.
 - Without an override, every flag is its fallback, so existing tests of an app that adds a flag see the flag off.
+
+## Biometric unlock: fespalier_biometrics
+
+Since 0.13.0. A route behind a fingerprint or a face (an orders list, a wallet, a secret) is a guard with one rule that is easy to break: **a guard never prompts.** A guard runs again whenever something it watches changes, on every navigation and on a cold deep link, so a guard that showed the platform's sheet would show it again each time. `package:fespalier_biometrics` splits the job in three: a state (`biometricUnlock`: `Locked`, `Unlocking`, `Unlocked(at)`), a guard (`requireUnlocked`) that reads the state and redirects to the app's unlock page, and one function that prompts, `unlock()`, which the unlock page or an action calls and which is single-flight. It depends on fespalier and `package:clock`, starts no timer and adds no listener.
+
+Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.12.0
+  fespalier_biometrics:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_biometrics
+      ref: v0.12.0
+```
+
+<!-- x-release-please-end -->
+
+The platform check is **not** in the package. `local_auth` 2.x and 3.x cannot share one source (2.x takes `AuthenticationOptions` and defaults `useErrorDialogs` to native dialogs, 3.x takes named parameters, throws `LocalAuthException` and needs Flutter 3.38 or newer), so the package defines a `BiometricPrompt` (`isAvailable()` and `authenticate(reason)`, returning a `BiometricOutcome`: `success`, `cancelled`, `failed`, `unavailable`, `lockedOut`) and each `local_auth` is a recipe of about 25 lines in the fespalier-guards skill (`biometric-prompts.md` for 3.x, `biometric-prompts-local-auth-2.md` for 2.x). It shows the platform's own sheet and never a Flutter dialog. The app gives its prompt in `startup()`:
+
+```dart
+// lib/app/startup.dart
+Future<List<Override>> startup() async => [
+  biometricPrompt.overrideWithValue(const LocalAuthPrompt()), // your BiometricPrompt
+];
+```
+
+Until it does, reading `biometricPrompt` throws a `StateError` that names the override.
+
+### The unlock page
+
+```dart
+// lib/app/vault/guard.dart: guards /vault and everything below it
+GuardResult guard(Ref ref, {required Uri uri}) =>
+    requireUnlocked(ref, uri, unlock: (from) => UnlockRoute(from: from));
+```
+
+`requireUnlocked` returns `null` while the app is unlocked and the unlock page's location (with `from`, the `uri` it was going to) otherwise. It is synchronous, so a cold deep link shows the unlock page in its first frame. The unlock page sits **beside** the guarded folder (a guard on it would redirect to itself), asks, and goes back:
+
+```dart
+// lib/app/unlock/page.dart
+FilledButton(
+  onPressed: () async {
+    final outcome = await ref.read(biometricUnlock.notifier).unlock('Unlock your vault');
+    if (outcome == BiometricOutcome.success && context.mounted) context.go(returnTo(from));
+  },
+  child: const Text('Unlock'),
+)
+```
+
+- **`unlock(reason)` is single-flight and never throws.** While a sheet is up, a second call (a double tap, two buttons) gets the same `Future`. A prompt that throws is `BiometricOutcome.failed`. Anything but a success leaves the state as it was before the call.
+- **The guard watches only whether the app is unlocked.** A prompt coming and going (`Unlocking`) and a second `Unlocked` stamp do not run it again, so a re-run is never a re-prompt; a `lock()` or a relock does run it, and the router leaves the page. A prompt over an unlocked page (an action's) does not send the page away: `Unlocking` carries whether the app was unlocked, and the guard keeps its answer.
+- **`maxAge:`** also requires the unlock to be younger than that by `package:clock`. It is evaluated when the guard runs or when `isFresh(maxAge:)` is asked, that is at the next navigation (or any re-run of the guard), never by itself: there is no timer, so a page left open stays open.
+- **`biometricAvailable`** is a `FutureProvider<bool>` for the unlock page, which can offer "Use your passcode" instead of a button that cannot work.
+
+### Actions that ask again
+
+```dart
+// lib/app/vault/reveal/action.dart
+Future<String> action(Ref ref, {required String input}) =>
+    withBiometrics(ref, 'Show the card number', () => loadCardNumber(ref));
+```
+
+`withBiometrics(ref, reason, action, {maxAge})` is for the write or the read that must not run on a borrowed phone. It prompts unless the unlock is younger than `maxAge` (the default, `Duration.zero`, asks every time), runs `action` after a success, and throws `BiometricDeclined(outcome)` otherwise, which an [action](actions.md)'s state shows like any failure. A success also counts as an unlock for the guards.
+
+### Relock when the app comes back
+
+`BiometricUnlock` watches core's `appShowSignal` (since 0.13.0: `AppLifecycleListener.onShow`, the app is visible again **after it was hidden**), so a return from the background runs its `build` again, and it goes back to `Locked` when that return is at least `BiometricPolicy.resumeGrace` after the unlock. The guard then sends the person to the unlock page. It adds no listener of its own and no timer (`appShowSignal` is core's one `AppLifecycleListener`, kept alive while the notifier is). It is not `appResumeSignal`: an iOS notification shade or Control Center, a call banner and the platform's own biometric sheet make the app inactive and back, and none of them is a return from the background.
+
+```dart
+// lib/app/startup.dart: every return from the background locks
+biometricPolicy.overrideWithValue(const BiometricPolicy(resumeGrace: Duration.zero)),
+```
+
+**The default grace is 10 seconds, and that is a trade-off.** The platform's sheet and some system overlays can hide the app and show it just after the sheet's answer, so with `Duration.zero` the sheet could undo its own unlock. The price is a window of 10 seconds after each unlock in which putting the app in the background and bringing it back asks nothing: on a borrowed phone, that is the time someone has. An app that guards something worth more sets a shorter grace, or zero, and checks on a device that the platform's sheet does not lock it. Switching apps through the iOS app switcher without the app being hidden is not a return either. A return while a sheet is up never drops the prompt, and one past the grace still relocks when the sheet ends without a success (`persistAcrossBackgrounding`). A clock set back counts as expired, so winding the clock back does not keep an unlock. Locking does not clear the data providers that loaded a secret; invalidate them when `biometricUnlock` goes to `Locked` if that matters.
+
+Each prompt is reported as one `fespalier.biometrics.prompt` operation with `fespalier.biometrics.result` set to the outcome's name, to an installed [telemetry](observability.md#telemetry) sink. Never the reason text.
+
+### Testing an unlock
+
+`package:fespalier_biometrics/testing.dart` has `FakeBiometricPrompt` (outcomes from a queue, a `prompts` count, `reasons`, `hold()` and `release()` for a sheet that is up) and `biometricTestOverrides(prompt, policy:)`, the overrides for `pumpRouter` or a `ProviderContainer`:
+
+```dart
+testWidgets('locked: the vault sends the person to unlock, and nothing is prompted', (tester) async {
+  final prompt = FakeBiometricPrompt();
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: '/vault'),
+    overrides: biometricTestOverrides(prompt),
+  );
+  expect(currentLocation(tester), startsWith('/unlock'));
+  expect(prompt.prompts, 0);
+
+  await tester.tap(find.text('Unlock'));
+  await tester.pumpAndSettle();
+  expect(currentLocation(tester), '/vault');
+  expect(prompt.prompts, 1);
+});
+```
+
+Move time with `withClock(Clock.fixed(...))` for `maxAge` and the grace, and fire a return from the background with `container.read(appShowSignal.notifier).fire()` (the real signal needs a `WidgetsBinding`, which `biometricTestOverrides` swaps for a plain one; with a binding, `handleAppLifecycleStateChanged` through `hidden` and back is the real thing).

@@ -459,7 +459,15 @@
         "docs/guards.md#Feature flags: fespalier_flags",
         "docs/guards.md#Where flag values come from",
         "packages/fespalier_flags/README.md",
-        "packages/fespalier_flags/lib/fespalier_flags.dart"
+        "packages/fespalier_flags/lib/fespalier_flags.dart",
+        "docs/guards.md#Biometric unlock: fespalier_biometrics",
+        "docs/guards.md#The unlock page",
+        "docs/guards.md#Actions that ask again",
+        "docs/guards.md#Relock when the app comes back",
+        "docs/guards.md#Testing an unlock",
+        "packages/fespalier_biometrics/lib/testing.dart",
+        "packages/fespalier_biometrics/README.md",
+        "packages/fespalier_biometrics/lib/fespalier_biometrics.dart"
       ]
     },
     "fespalier-testing": {

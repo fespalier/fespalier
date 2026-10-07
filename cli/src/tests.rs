@@ -2413,7 +2413,7 @@ fn a_hook_that_takes_a_widget_ref_is_told_to_take_a_ref() {
 
 #[test]
 fn a_view_file_may_hold_other_public_classes_if_one_is_a_widget() {
-    // The README says "one public widget class": a class that isn't a widget beside it is fine,
+    // The docs (docs/file-kinds.md) say "one public widget class": a class that isn't a widget beside it is fine,
     // and only an ambiguous file is an error.
     let c = code(&[(
         "a/page.dart",

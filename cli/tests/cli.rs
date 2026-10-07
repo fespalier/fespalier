@@ -118,7 +118,7 @@ fn gen_and_check_report_success() {
 }
 
 /// `check` writes and compares nothing, so it passes while the committed output is stale; the
-/// README says so, and tells CI to run `gen` and then fail on a diff to catch that.
+/// docs/getting-started.md says so, and tells CI to run `gen` and then fail on a diff to catch that.
 #[test]
 fn check_passes_while_the_committed_output_is_stale() {
     let dir = project();
@@ -2095,7 +2095,7 @@ fn telemetry_report_names_the_exit_code_when_the_report_fails() {
     assert_eq!(err, "the report failed (exit 1); the lines above say why\n");
 }
 
-const TELEMETRY_W1: &str = "⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (README, \"Telemetry\")\n";
+const TELEMETRY_W1: &str = "⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (docs/observability.md, \"Telemetry\")\n";
 
 #[cfg(unix)]
 #[test]
@@ -2906,7 +2906,7 @@ fn run_says_what_is_wrong_with_the_name() {
     assert_eq!(code, Some(1));
     assert_eq!(
         err,
-        "no task `nope` in `fespalier: tasks:` of pubspec.yaml; there are none yet (README, \"Tasks: commands around `flutter run`\")\n"
+        "no task `nope` in `fespalier: tasks:` of pubspec.yaml; there are none yet (docs/cli.md, \"Tasks: commands around `flutter run`\")\n"
     );
     let (code, _, err) = fsp_task(dir.path(), &["run", "dev"], &[]);
     assert_eq!(code, Some(1));

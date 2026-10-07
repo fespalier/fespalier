@@ -5,8 +5,8 @@ provider, guards for `guard.dart`, token storage, lazy single-flight refresh and
 HTTP client, behind one `AuthBackend` interface. fespalier's core has no auth; this package is the
 pattern the guards documentation describes, packaged.
 
-The main README documents all of it:
-[Authentication](https://github.com/fespalier/fespalier#authentication) (the session, restoring at
+The docs cover all of it:
+[Authentication](https://github.com/fespalier/fespalier/blob/main/docs/auth.md) (the session, restoring at
 start-up, guarding routes, signing in and out, calling your API, testing, telemetry). This page is
 the short version.
 

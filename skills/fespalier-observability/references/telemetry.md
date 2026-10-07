@@ -1,6 +1,6 @@
 # Telemetry and OpenTelemetry
 
-Since 0.8.1. The README's [Telemetry](https://github.com/fespalier/fespalier#telemetry) section is the user
+Since 0.8.1. The docs' [Telemetry](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#telemetry) section is the user
 documentation; this page is what an agent needs to set it up and to say why nothing shows.
 
 Under `fsp dev` (since 0.9.0) the key `t` starts `fsp telemetry` in a pane of its own, and `before: fsp telemetry`

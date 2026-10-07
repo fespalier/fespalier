@@ -8,7 +8,7 @@ seed and `rates()` each percentage tile, which the smoke test (smoke.py) compare
     python3 scripts/telemetry/seed.py [--endpoint http://localhost:4318] [--service shop] [--expected]
 
 `--showcase` sends a second, hand-shaped session instead (a service called telemetry-example with
-amber and red spots, for the README screenshots; scripts/telemetry/screenshots.mjs). With
+amber and red spots, for the docs screenshots; scripts/telemetry/screenshots.mjs). With
 `--drip-minutes N` it sends a batch every 15 seconds for N minutes, stamped with the time it is
 sent, because Grafana's span metrics are stamped when the collector receives a span.
 """
@@ -390,7 +390,7 @@ def lognormal(rng, median_ms, sigma):
 
 
 class Showcase(Seed):
-    """The example app, with its slow and failing spots: what the README screenshots show.
+    """The example app, with its slow and failing spots: what the docs screenshots show.
 
     A visit is a few navigations a few seconds apart. The middle third of the time has a slow
     spell, so that a time series has a story. Deterministic for a seed (1), like Seed.
@@ -686,7 +686,7 @@ def main(argv=None):
     parser.add_argument("--endpoint", default="http://localhost:4318")
     parser.add_argument("--service", default=SERVICE)
     parser.add_argument("--expected", action="store_true", help="print the expected counts, send nothing")
-    parser.add_argument("--showcase", action="store_true", help="send the README screenshots' session instead")
+    parser.add_argument("--showcase", action="store_true", help="send the docs screenshots' session instead")
     parser.add_argument("--minutes", type=float, default=6, help="--showcase: how long a session lasts")
     parser.add_argument("--drip-minutes", type=float, help="--showcase: send a batch every 15 s for N minutes")
     args = parser.parse_args(argv)

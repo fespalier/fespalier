@@ -58,8 +58,8 @@ final class ImageCdn {
   /// webHtmlElementStrategy)`. Plug a disk cache in here (`CachedNetworkImageProvider.new`).
   final ImageProviderFactory? providerFactory;
 
-  /// On the web, whether a failed fetch falls back to an `<img>` element (README, "Images on the
-  /// web").
+  /// On the web, whether a failed fetch falls back to an `<img>` element (docs/responsive-images.md,
+  /// "Images on the web").
   final WebHtmlElementStrategy webHtmlElementStrategy;
 
   /// What shows while an image loads; null: a box in the theme's `surfaceContainerHighest`.

@@ -1,7 +1,8 @@
 //! Every place that spells out the release version must agree with
 //! `cli/Cargo.toml`: the Dart package, the release-please manifest, the `ref:` that `fsp init`
-//! prints, the install instructions in the READMEs, and the `dart run fespalier` launcher
-//! (which must read the version from the package, not spell it out).
+//! prints, the install instructions in the READMEs and the docs pages (`docs/*.md`), and the
+//! `dart run fespalier` launcher (which must read the version from the package, not spell it
+//! out).
 //!
 //! release-please owns the version. The lines that carry it are annotated (`# ...` in TOML and
 //! YAML, `// ...` in Rust, an HTML comment in markdown, or a start/end block around a fenced
@@ -35,6 +36,24 @@ fn root() -> PathBuf {
 fn read(rel: &str) -> String {
     let path = root().join(rel);
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()))
+}
+
+/// The documentation pages under `docs/` (`docs/*.md`, as repo-relative paths, sorted), so a
+/// page added later is read by the README checks below without anyone listing it.
+fn doc_pages() -> Vec<String> {
+    let mut pages: Vec<String> = fs::read_dir(root().join("docs"))
+        .expect("docs/ exists")
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .filter(|name| {
+            Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+        })
+        .map(|name| format!("docs/{name}"))
+        .collect();
+    pages.sort();
+    assert!(!pages.is_empty(), "docs/ holds no pages");
+    pages
 }
 
 /// The value of a top-level `version:` line, without quotes or a trailing `# comment` (the
@@ -380,7 +399,7 @@ fn fsp_init_prints_a_ref_for_this_version() {
 #[test]
 fn the_readmes_pin_this_version() {
     let cargo = env!("CARGO_PKG_VERSION");
-    for file in [
+    let mut files: Vec<String> = [
         "README.md",
         "packages/fespalier/README.md",
         "packages/fespalier_otel/README.md",
@@ -395,7 +414,11 @@ fn the_readmes_pin_this_version() {
         "packages/fespalier_cratestack/README.md",
         "packages/fespalier_sentry/README.md",
         "packages/fespalier_tolgee/README.md",
-    ] {
+    ]
+    .map(String::from)
+    .to_vec();
+    files.extend(doc_pages());
+    for file in &files {
         let text = read(file);
         for marker in MARKERS {
             for (line, v) in versions_after(&text, marker) {
@@ -418,7 +441,7 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
     // A version on a line release-please does not rewrite simply never moves, and nothing
     // reports it (org releasing.md, trap 3). The tests above would catch it, but only on the
     // release PR, after the fact; this names the cause.
-    for file in [
+    let mut files: Vec<String> = [
         "cli/src/init.rs",
         "README.md",
         "packages/fespalier/README.md",
@@ -449,7 +472,11 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         // the agent skills' install pins (skills/README.md, "Versions")
         "skills/fespalier/SKILL.md",
         "skills/fespalier-migration/references/go-router-adoption.md",
-    ] {
+    ]
+    .map(String::from)
+    .to_vec();
+    files.extend(doc_pages());
+    for file in &files {
         let text = read(file);
         let annotated = annotated_lines(&text);
         for marker in MARKERS {

@@ -46,5 +46,5 @@ fespalier:
   # `optionURLReflectsImperativeAPIs`); the other examples keep the default, off.
   push_updates_url: true
   # Each page gets a PageStorage per history entry: the browser's back and forward bring a
-  # keyed scrollable back to where it was (README, "Scroll restoration"); a `go` starts at the top.
+  # keyed scrollable back to where it was (docs/layouts.md, "Scroll restoration"); a `go` starts at the top.
   scroll_restoration: true

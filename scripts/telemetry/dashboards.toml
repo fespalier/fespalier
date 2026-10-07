@@ -5,7 +5,7 @@
 #
 # The dashboards are written for an app developer who has never read a metrics book: every title is a
 # question, every panel says what it shows, what good looks like and what to do, and the colours come
-# from the one [thresholds] table below (README, "Reading the colours").
+# from the one [thresholds] table below (docs/telemetry-dashboards.md, "Reading the colours").
 #
 # Every panel has a `sql` (OpenObserve, over the `traces` or `logs` stream) and a `promql` list
 # (Grafana, over the metrics the collector derives from fespalier's spans). Counts agree between the
@@ -71,7 +71,7 @@ no_data = "Not enough data yet"
 
 # One table per kind of measurement. `good_below` and the bad limit `bad_from` split the values into
 # good (below good_below), needs attention (from good_below up to bad_from) and bad (bad_from and
-# up); equal numbers leave out "needs attention". The reasons are the README's "Reading the colours".
+# up); equal numbers leave out "needs attention". The reasons are the "Reading the colours" section of docs/telemetry-dashboards.md.
 [thresholds.screen_open]
 unit = "ms"
 good_below = 300

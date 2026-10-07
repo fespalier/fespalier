@@ -1,6 +1,6 @@
 # Sentry: `fespalier_sentry`
 
-Since 0.9.0. The README's [Sentry](https://github.com/fespalier/fespalier#sentry-fespalier_sentry) section is the
+Since 0.9.0. The docs' [Sentry](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#sentry-fespalier_sentry) section is the
 user documentation; this page is what an agent needs to set it up, to say what Sentry will show, and to say why
 something is missing. The package is **errors first**: by default it sends errors, crashes and breadcrumbs, and
 no transaction. Performance (`tracing: true`) is the opt-in, for a team that has only Sentry.
@@ -153,7 +153,7 @@ routeTag = true, recordLocations = false, capture = FespalierSentry.unexpected, 
 step); a failure of the same operation, file and exception type inside `repeatWindow` (read from
 `package:clock`) is a breadcrumb `... again`, since Riverpod retries a failing `data()` up to ten times.
 `FespalierSentry.configure(options, {dsn, tracing = false, tracesSampleRate, propagateTraceTo = [],
-recordQueries = false, observerBreadcrumbs = false})`: see the README's defaults table. `tracesSampleRate`
+recordQueries = false, observerBreadcrumbs = false})`: see the defaults table in [`docs/observability.md`](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#sentry-fespalier_sentry). `tracesSampleRate`
 throws `Invalid argument (tracesSampleRate): must be between 0 and 1: 1.5` outside 0..1.
 
 ## Testing

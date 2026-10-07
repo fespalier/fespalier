@@ -6,7 +6,7 @@ navigations, guards and redirects, data loads, actions and deferred loads, on th
 itself has no OpenTelemetry dependency: it tells a `FespalierTelemetry` sink what happened, and
 this package is the sink that turns it into spans.
 
-The main README documents all of it: [Telemetry](https://github.com/fespalier/fespalier#telemetry)
+The docs cover all of it: [Telemetry](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#telemetry)
 (turning it on, the install, the conventions every span and attribute follows, testing, what it
 costs). This page is the short version.
 
@@ -91,16 +91,16 @@ deferred spans under its own navigation span.
 `FespalierOtel` makes a data span and an action span the **current** span while `data()` or the action runs
 (`Context.current.withSpan(span).runSync`), so the spans that `otel_http` and `otel_dio` make inside them,
 after an `await` too, are their children. A navigation that `navigateFrom` marked (a notification, a
-shortcut, a widget, a link) carries `fespalier.navigation.source`. The README's
-[Spans around data() and actions](https://github.com/fespalier/fespalier#spans-around-data-and-actions) and
-[Where a navigation came from](https://github.com/fespalier/fespalier#where-a-navigation-came-from-navigatefrom)
+shortcut, a widget, a link) carries `fespalier.navigation.source`. The docs'
+[Spans around data() and actions](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#spans-around-data-and-actions) and
+[Where a navigation came from](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#where-a-navigation-came-from-navigatefrom)
 have the details.
 
 ### See what it sends
 
 `fsp telemetry` (since 0.8.1) starts OpenObserve with four dashboards that answer plain questions ("Do screens
 open quickly?") in green, amber or red, and `fsp telemetry --report` says the same in the terminal. The
-README's section "Dashboards on your computer" has the details.
+[Dashboards on your computer](https://github.com/fespalier/fespalier/blob/main/docs/telemetry-dashboards.md) page has the details.
 
 ![fespalier's App health dashboard in OpenObserve: eight tiles answer whether screens open and load quickly and whether loads, actions or the app fail, coloured green, amber or red, above a table of verdicts in words.](../../docs/images/telemetry/openobserve-app-health.png)
 

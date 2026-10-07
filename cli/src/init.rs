@@ -96,7 +96,7 @@ pub fn run(project: &Path) -> Result<()> {
             "\n   import 'package:{package}/{main_in_lib}';\n\n   Future<void> main() => AppMain.run();"
         );
         eprintln!(
-            "\n   The app around the router (theme, title) is {dir}/app.dart; work to do before it starts goes\n   in {dir}/startup.dart (see the README, \"main(): app.dart, startup.dart and splash.dart\").\n   Already have a GoRouter? Mount the tree inside it instead, and set `main: manual`:\n\n   GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])",
+            "\n   The app around the router (theme, title) is {dir}/app.dart; work to do before it starts goes\n   in {dir}/startup.dart (see docs/app-startup.md).\n   Already have a GoRouter? Mount the tree inside it instead, and set `main: manual`:\n\n   GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])",
             dir = cfg.app_dir
         );
     }
@@ -121,7 +121,7 @@ fn tasks_example(project: &Path) -> Result<()> {
         eprintln!("  skip  pubspec.yaml tasks example (exists)");
     } else if text.lines().any(|l| l.starts_with("fespalier:")) {
         eprintln!(
-            "  skip  pubspec.yaml tasks example (fespalier: is already there; README, \"Tasks: commands around `flutter run`\")"
+            "  skip  pubspec.yaml tasks example (fespalier: is already there; docs/cli.md, \"Tasks: commands around `flutter run`\")"
         );
     } else {
         if !text.ends_with('\n') {

@@ -18,8 +18,8 @@ enum ImgproxySourceEncoding {
 /// imgproxy's URL grammar (since 0.9.0), and EmgR's with [ImgproxyUrlBuilder.emgr].
 ///
 /// `{baseUrl}/{signature}/{options}/{source}`. Unsigned by default (see [signer]): a server that
-/// accepts that must also limit what it fetches and the options it takes (README, "Signed image
-/// URLs").
+/// accepts that must also limit what it fetches and the options it takes (docs/responsive-images.md,
+/// "Signed image URLs").
 final class ImgproxyUrlBuilder extends ImageUrlBuilder {
   /// imgproxy at [baseUrl]: unsigned URLs say `insecure`.
   const ImgproxyUrlBuilder({

@@ -105,7 +105,7 @@ confirmed by running `fsp` on a tree that triggers it.
    path and which are query, and every tag (`data`, `action`, `guard`, `observe`, `layout`, `transition`,
    `present`, `root`, `redirect`, `sibling` for a `nest = false` route, `remount`, and `deferred` for a
    page whose code loads on demand).
-3. Open the **`.rs` or `.dart`** before the README when they disagree:
+3. Open the **`.rs` or `.dart`** before the docs when they disagree:
    `known-wrong-docs.md` lists the ones that have bitten, and the version that fixed them.
 
 **Grep narrows; read confirms.** A missing message does not mean a rule does not exist:

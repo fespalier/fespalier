@@ -1,4 +1,4 @@
-// The model, rule by rule (README, "A bar, a rail or a drawer"): NavItems are built by hand, and a
+// The model, rule by rule (docs/layouts.md, "A bar, a rail or a drawer"): NavItems are built by hand, and a
 // real StatefulShellRoute router is there where a shell is needed.
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/nav.dart';

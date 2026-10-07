@@ -11,7 +11,7 @@ dependencies:
     sdk: flutter
   fespalier:
     path: ../../packages/fespalier
-  # Product photos at the size their layout needs, from an image CDN (README, "Images").
+  # Product photos at the size their layout needs, from an image CDN (docs/responsive-images.md, "Images").
   fespalier_image:
     path: ../../packages/fespalier_image
 
@@ -37,7 +37,7 @@ fespalier:
   lints:
     unknown_path: error
   # Every page wears Semantics(identifier: 'route:<pattern>') and AppRoutes.mount() turns the
-  # semantics tree on on the web: what Maestro reads (README, "Maestro flows (`fsp maestro`)").
+  # semantics tree on on the web: what Maestro reads (docs/cli.md, "Maestro flows (`fsp maestro`)").
   semantics_ids: true
   # `fsp maestro` writes .maestro/routes/ from the routes. Serve the web build on port 8080
   # (`flutter run -d web-server --web-port 8080`), then `maestro test .maestro/routes`.
@@ -48,7 +48,7 @@ fespalier:
       greet/$name: Ada
       products/$id: 1
   # `fsp size` reads build/web after `flutter build web`; `just web-chunks` checks these budgets
-  # (README, "Web chunk sizes (`fsp size`)"). The measured sizes are 2.38 MB, 5,266 B and 6,028 B (fespalier_image
+  # (docs/cli.md, "Web chunk sizes (`fsp size`)"). The measured sizes are 2.38 MB, 5,266 B and 6,028 B (fespalier_image
   # is in the first: the product list is eager, and its photos with it).
   size:
     main: 3 MB

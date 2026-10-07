@@ -104,7 +104,7 @@ Since 0.8.1. A tile is **green** when the answer is good, **amber** when it need
 | `fsp telemetry --dir <DIR>` | Uses `<DIR>` instead of `~/.fespalier/telemetry` (or `FSP_TELEMETRY_DIR`).                                                                                                       |
 | `fsp telemetry --no-start`  | Writes the files and prints the command that starts them; does not run Docker.                                                                                                   |
 
-Run from inside an app (or with `--project`), a start also checks that app: when its `fespalier:` section has `telemetry` off, which is the default, `fsp telemetry` prints ``⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (README, "Telemetry")`` after the import and before the summary, and still exits 0. It says nothing outside a project, and not for `--no-start`, `--stop` or `--reset`.
+Run from inside an app (or with `--project`), a start also checks that app: when its `fespalier:` section has `telemetry` off, which is the default, `fsp telemetry` prints ``⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (docs/observability.md, "Telemetry")`` after the import and before the summary, and still exits 0. It says nothing outside a project, and not for `--no-start`, `--stop` or `--reset`.
 
 The files go to one folder per user, `~/.fespalier/telemetry` (`%USERPROFILE%` on Windows), not into the app: `flutter clean` cannot delete them, and the Docker project name is fixed (`fespalier-telemetry`), so every app on your computer shares one stack. Running `fsp telemetry` again rewrites any file that differs (an upgrade of `fsp` upgrades the stack) and never touches `.env`.
 
@@ -146,7 +146,7 @@ fespalier · telemetry-example · last hour
 The mark and the word are the colour, in words. The SQL is read from the generated App health dashboard, so the report and the dashboard cannot disagree, and the limits are [the same](#reading-the-colours). `none` stands for a count of zero, and with nothing failed the "Fails most" line is `Nothing failed.`. Three messages:
 
 - ``fsp telemetry --report needs the stack running: start it with `fsp telemetry` `` when OpenObserve is not running.
-- `no fespalier spans in the last hour: is the app running, with telemetry: true and FespalierOtel installed? (README, "Telemetry")` when no app sent a span (exit code 0).
+- `no fespalier spans in the last hour: is the app running, with telemetry: true and FespalierOtel installed? (docs/observability.md, "Telemetry")` when no app sent a span (exit code 0).
 - `fespalier: the report's query failed: HTTP <status>: <body>` when OpenObserve answered with an error (exit code 1), and `the report failed (exit <n>); the lines above say why` when the report stopped for another reason.
 
 ## The web and `otel_zone`

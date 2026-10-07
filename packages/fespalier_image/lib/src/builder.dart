@@ -4,7 +4,7 @@ import 'request.dart';
 ///
 /// Called synchronously while a widget builds: it must return at once. It must never hold a CDN
 /// secret in an app: a key in an app binary or in `main.dart.js` is public, and with it anyone
-/// signs any URL (README, "Signed image URLs"). Look a signature up instead, or let the backend
+/// signs any URL (docs/responsive-images.md, "Signed image URLs"). Look a signature up instead, or let the backend
 /// send signed URLs (a srcset, `SrcsetUrlBuilder`).
 typedef ImageSigner = String Function(String payload);
 

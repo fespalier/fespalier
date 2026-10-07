@@ -20,7 +20,7 @@ dependencies:
       ref: <the same tag>
 ```
 
-(That block is a fragment, not a sample: pub resolves the pair only at a release tag. The root README has the
+(That block is a fragment, not a sample: pub resolves the pair only at a release tag. `docs/guards.md` has the
 annotated one.) A mismatch fails like the one for `fespalier_auth`: give both the same `url` (no `.git`) and `ref`.
 
 ## What it is made of

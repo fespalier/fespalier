@@ -32,8 +32,8 @@ dependencies:
 Needs Dart 3.8 and Flutter 3.32 or newer (go_router 18 needs Flutter 3.44). Works with
 go_router 17 and 18. You also need the `fsp` CLI: install it, or run it without installing as
 `dart run fespalier <command>` (it downloads the release that matches this package's version
-on first use). The main README's
-[Getting started](https://github.com/fespalier/fespalier#getting-started) covers both, plus
+on first use). The docs'
+[Installation and setup](https://github.com/fespalier/fespalier/blob/main/docs/getting-started.md) cover both, plus
 `fsp init`, `main.dart`, CI and web notes.
 
 ## Learn more
@@ -41,48 +41,48 @@ on first use). The main README's
 See the [main README](https://github.com/fespalier/fespalier#readme) for the
 file conventions, the `fsp` CLI and full examples.
 
-The package carries fespalier's [DevTools extension](https://github.com/fespalier/fespalier#devtools-extension)
+The package carries fespalier's [DevTools extension](https://github.com/fespalier/fespalier/blob/main/docs/devtools.md)
 (since 0.7.0): a `fespalier` tab with the route tree, the router's location, stack and history. It is not
 compiled into release builds.
 
-Since 0.8.1 an [`observe.dart`](https://github.com/fespalier/fespalier#route-lifecycle-observedart)
+Since 0.8.1 an [`observe.dart`](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#route-lifecycle-observedart)
 runs hooks when a page is entered, focused and left, and `fespalier: telemetry: true` makes the app
 report its navigations, guards, data loads, actions and deferred loads to a
-[`FespalierTelemetry`](https://github.com/fespalier/fespalier#telemetry) sink. `package:fespalier_otel`
+[`FespalierTelemetry`](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#telemetry) sink. `package:fespalier_otel`
 turns them into OpenTelemetry spans on the SDK that `otel_zone` starts. Off, the generated code and the
 release build are unchanged.
 
 Since 0.9.0 `package:fespalier_auth` sits next to it, a repository dependency at the same release tag:
-[signed-in routes](https://github.com/fespalier/fespalier#authentication), with a session provider,
+[signed-in routes](https://github.com/fespalier/fespalier/blob/main/docs/auth.md), with a session provider,
 guards, token storage, lazy single-flight refresh and an authenticated HTTP client. It changes neither the
 generated code nor a release build that does not use it.
-`package:fespalier_sign_keypair` adds [device-bound tokens](https://github.com/fespalier/fespalier#device-bound-tokens-dpop-with-fespalier_sign_keypair) (DPoP, signed by a key in the Secure Enclave or the AndroidKeyStore) to it.
+`package:fespalier_sign_keypair` adds [device-bound tokens](https://github.com/fespalier/fespalier/blob/main/docs/auth.md#device-bound-tokens-dpop-with-fespalier_sign_keypair) (DPoP, signed by a key in the Secure Enclave or the AndroidKeyStore) to it.
 
-Since 0.9.0 `package:fespalier_flags` is [feature flags](https://github.com/fespalier/fespalier#feature-flags-fespalier_flags),
+Since 0.9.0 `package:fespalier_flags` is [feature flags](https://github.com/fespalier/fespalier/blob/main/docs/guards.md#feature-flags-fespalier_flags),
 another repository dependency at the same release tag: synchronous `flag()` providers that a `guard.dart` watches
 (`flagGuard`), so a route behind a flag and its menu entry follow the flag. It adds no dependency beyond fespalier and
 changes neither the generated code nor a release build that does not use it.
 
-Since 0.9.0 `package:fespalier_storage` gives the [`dataCache`](https://github.com/fespalier/fespalier#a-cache-on-disk-fespalier_storage)
+Since 0.9.0 `package:fespalier_storage` gives the [`dataCache`](https://github.com/fespalier/fespalier/blob/main/docs/data.md#a-cache-on-disk-fespalier_storage)
 a storage on disk: `PrefsDataStorage` (shared_preferences) and `HiveDataStorage` (hive_ce), with a size budget, so a route's
 saved value is on the first frame of the next start. It is one more repository dependency at the same release tag, and
 changes neither the generated code nor a release build that does not use it.
 
-Since 0.9.0 `package:fespalier_connectivity` is [the reconnect signal](https://github.com/fespalier/fespalier#reconnects-fespalier_connectivity)
+Since 0.9.0 `package:fespalier_connectivity` is [the reconnect signal](https://github.com/fespalier/fespalier/blob/main/docs/data.md#reconnects-fespalier_connectivity)
 `Freshness(refetchOnReconnect: true)` waits for, from `connectivity_plus`, and a `hasNetwork` provider for offline banners
 (one line in `startup()`: `reconnectSignal.overrideWith(ConnectivitySignal.new)`). Another repository dependency at the same
 release tag; it changes neither the generated code nor a release build that does not use it.
 
-Since 0.9.0 `package:fespalier_adaptive` draws the `nav.dart` menu as a [navigation bar, a rail or a drawer](https://github.com/fespalier/fespalier#a-bar-a-rail-or-a-drawer-fespalier_adaptive)
+Since 0.9.0 `package:fespalier_adaptive` draws the `nav.dart` menu as a [navigation bar, a rail or a drawer](https://github.com/fespalier/fespalier/blob/main/docs/layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive)
 by window width, around a tab layout or a plain one, with no third-party dependency. It changes neither the generated
 code nor a release build that does not use it.
 
-Since 0.9.0 `package:fespalier_dio` puts [Dio and `package:http`](https://github.com/fespalier/fespalier#http-clients-fespalier_dio)
+Since 0.9.0 `package:fespalier_dio` puts [Dio and `package:http`](https://github.com/fespalier/fespalier/blob/main/docs/http.md)
 under a data load and a write: a request is cancelled with the page that made it, a server's validation
 error is the `FieldErrors` of an `action.dart` form, and a write is never sent twice by a retrier. It changes
 neither the generated code nor a release build that does not use it.
 
-Since 0.9.0 `package:fespalier_sentry` is the telemetry sink for [Sentry](https://github.com/fespalier/fespalier#sentry-fespalier_sentry),
+Since 0.9.0 `package:fespalier_sentry` is the telemetry sink for [Sentry](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#sentry-fespalier_sentry),
 errors first: every error and crash tagged with the route pattern, the app file and the action, a breadcrumb per
 page change, and, next to `fespalier_otel`, the OpenTelemetry trace each event belongs to; screen-load transactions
 are opt-in. It changes neither the generated code nor a release build that does not use it.

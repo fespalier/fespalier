@@ -22,7 +22,7 @@ layout's `Scaffold` is not their nearest `Material`. Give the page a surface of 
 Material(type: MaterialType.transparency, child: ListView(children: [...]))
 ```
 
-The README's "Things to know" lists this, and the project's own `products/page.dart`
+`docs/troubleshooting.md`, "Things to know" lists this, and the project's own `products/page.dart`
 example does it. It shows under `pumpAndSettle` in tests too, as a thrown assertion.
 (Since 0.4.0 the `fsp init` starter `layout.dart` wraps `child` in a transparent
 `Material`, so a new app does not hit it; the 0.3.0 starter does not, and `fsp init` never

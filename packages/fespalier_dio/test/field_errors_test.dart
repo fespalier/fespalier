@@ -1,4 +1,4 @@
-// Server validation errors as FieldErrors: every shape of the README table, the renaming, the
+// Server validation errors as FieldErrors: every shape of the table in docs/http.md, the renaming, the
 // statuses, the 422 message-only rule, and the two withFieldErrors() (Dio and package:http).
 import 'dart:convert';
 
@@ -28,7 +28,7 @@ import 'package:http/http.dart' as http;
 }
 
 void main() {
-  group('the shapes (README, "Server validation errors on forms")', () {
+  group('the shapes (docs/http.md, "Server validation errors on forms")', () {
     test(
       'RFC 9457 errors with pointers, in the fragment and the string form',
       () {

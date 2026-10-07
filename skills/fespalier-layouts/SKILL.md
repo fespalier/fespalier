@@ -62,7 +62,7 @@ ColoredBox`. Give the page a surface of its own:
 Material(type: MaterialType.transparency, child: ListView(children: [...]))
 ```
 
-This is a documented gotcha of the project (the README's "Things to know"), and
+This is a documented gotcha of the project (`docs/troubleshooting.md`, "Things to know"), and
 it is reproduced and fixed this way in a test against v0.3.0.
 
 ## Tabs

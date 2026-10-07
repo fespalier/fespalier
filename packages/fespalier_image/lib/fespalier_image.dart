@@ -3,7 +3,7 @@
 /// `ResponsiveImage` asks the app's `ImageCdn` (`imageCdnProvider`) for an image at the width its
 /// box needs, rounded up to one of a few buckets; the URL builders write the URL for imgproxy and
 /// EmgR, Cloudinary, imgix, Thumbor, a template or a srcset. The package takes no signing key:
-/// read "Signed image URLs" in the README before putting a CDN in front of an app.
+/// read "Signed image URLs" in docs/responsive-images.md before putting a CDN in front of an app.
 library;
 
 export 'src/buckets.dart';

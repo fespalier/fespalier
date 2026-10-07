@@ -70,7 +70,7 @@ Future<List<Override>> startup() async => [
 Without an override the provider holds `const ImageCdn()`, which is no CDN: a source is a URL and is fetched
 as it is, decoded at the width the box needs (`ResizeImage`, off the web). A source that is not a URL (it has
 no scheme) then prints `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it
-is fetched as it is. Override imageCdnProvider in startup() (README, "Images").` once in a debug build.
+is fetched as it is. Override imageCdnProvider in startup() (docs/responsive-images.md, "Images").` once in a debug build.
 
 | `ImageCdn` field         | What it is                                                                                                                        |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |

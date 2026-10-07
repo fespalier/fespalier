@@ -84,7 +84,7 @@ void _print(String what, Object error) {
 }
 
 /// Whether a network interface is up (since 0.9.0): false only once the device has said `[none]`; true before the
-/// first answer, so nothing flashes "offline" at start. Not whether the internet answers (README).
+/// first answer, so nothing flashes "offline" at start. Not whether the internet answers (docs/data.md, "Reconnects: fespalier_connectivity").
 final hasNetwork = Provider.autoDispose<bool>(
   (ref) =>
       !(ref.watch(networkConnectivity)?.contains(ConnectivityResult.none) ??

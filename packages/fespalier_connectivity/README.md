@@ -10,8 +10,8 @@ it "only gives you the radio status"). A captive portal, a router with no uplink
 `hasNetwork == false` is reliable ("no network at all"); `true` promises nothing, so a banner should say "No network" and a
 failed load should show its own error.
 
-The main README documents all of it:
-[Reconnects](https://github.com/fespalier/fespalier#reconnects-fespalier_connectivity) (what fires and what does not, the
+The docs cover all of it:
+[Reconnects](https://github.com/fespalier/fespalier/blob/main/docs/data.md#reconnects-fespalier_connectivity) (what fires and what does not, the
 banner, connectivity versus reachability, iOS and the web, testing). This page is the short version.
 
 ## Install

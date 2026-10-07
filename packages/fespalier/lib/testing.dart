@@ -75,7 +75,7 @@ void _dispose(GoRouter router) {
 ///
 /// The default app is Flutter's `MaterialApp`. With go_router 18, which looks for
 /// `package:material_ui`'s instead, routes without a `transition.dart` don't
-/// animate in tests, and go_router's own error screen is unstyled (see the README).
+/// animate in tests, and go_router's own error screen is unstyled (see docs/getting-started.md, "go_router 18 and Material").
 Future<ProviderContainer> pumpRouter(
   WidgetTester tester,
   GoRouter router, {

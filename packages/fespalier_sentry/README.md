@@ -13,7 +13,7 @@ package is the sink that turns it into Sentry's events, breadcrumbs and, on requ
 `SentryFlutter.init` still starts the SDK, which owns crash capture, sessions, native integrations and the
 transport.
 
-The main README documents all of it: [Sentry](https://github.com/fespalier/fespalier#sentry-fespalier_sentry)
+The docs cover all of it: [Sentry](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#sentry-fespalier_sentry)
 (what Sentry gets, the wiring, tracing, defaults and privacy, testing). This page is the short version.
 
 ## Install

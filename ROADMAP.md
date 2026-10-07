@@ -2,7 +2,7 @@
 
 What fespalier doesn't do yet, roughly in the order it is likely to land. Released features are
 in CHANGELOG.md, and one-time maintainer steps (Homebrew tap, Scoop bucket, Marketplace) are in
-README's "Releasing". Ideas and bugs go in GitHub issues; an item here moves to the changelog when
+docs/releasing.md, "Releasing". Ideas and bugs go in GitHub issues; an item here moves to the changelog when
 it ships.
 
 ## In progress (0.9.0)
@@ -62,7 +62,7 @@ Flutter 3.32, with the lowest dependencies it allows.
 ## Later
 
 - **Types resolved, not compared by spelling.** The generator reads a syntax tree, so a `typedef`
-  and the type it names count as different types (see README's "Status"). Resolving them needs the
+  and the type it names count as different types (see docs/troubleshooting.md, "Known limitations"). Resolving them needs the
   Dart analyzer, as a sidecar or through the analysis server.
 - **Dashboards beyond the local stack.** The same dashboard spec rendered for hosted OpenObserve
   and Grafana Cloud.

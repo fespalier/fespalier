@@ -181,7 +181,7 @@ void main() {
   empty one (`tags: const []`). `extra` and the locale are not parameters:
   pass them to `go(context, extra:, locale:)`.
 - It works by a **getter of a function type** with a private `const` sentinel
-  behind it (see the README's Design notes): nothing is `dynamic`, constructors
+  behind it (see `docs/faq.md`, "Design notes"): nothing is `dynamic`, constructors
   stay `const`. In `app.g.dart` it looks like `SearchRoute Function({String? q,
 int? page}) get copyWith => _copyWith;`; never edit it.
 - **`go`, `push` and `replace` and the address bar** (web).

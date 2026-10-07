@@ -185,6 +185,34 @@
         },
         {
           "type": "generic",
+          "path": "docs/layouts.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/guards.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/data.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/http.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/auth.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/observability.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/responsive-images.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier/README.md"
         },
         {

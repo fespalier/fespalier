@@ -75,7 +75,7 @@ test/app_test.dart              widget tests
    | [`app/items/$id/loading.dart`](lib/app/items/$id/loading.dart) | Shown while `data.dart` runs.                                                                                                                      |
    | [`app/items/$id/error.dart`](lib/app/items/$id/error.dart)     | Shown when `data.dart` throws, with a **Retry** button (`retry`).                                                                                  |
    | [`app/not_found.dart`](lib/app/not_found.dart)                 | Shown for a URL nothing matches. It is optional; without it you get a plain "Nothing at /path".                                                    |
-   | [`app/transition.dart`](lib/app/transition.dart)               | `fsp init` wrote it: every route animates with Material's transition (see [the note](../../README.md#getting-started) on go_router 18).            |
+   | [`app/transition.dart`](lib/app/transition.dart)               | `fsp init` wrote it: every route animates with Material's transition (see [the note](../../docs/getting-started.md#go_router-18-and-material) on go_router 18).            |
    | [`pubspec.yaml`](pubspec.yaml)                                 | The `fespalier:` section is optional config for `fsp`. Here: `format: true` and `data_retry: none`.                                                |
 
 6. **Generate.** `fsp gen` reads the tree and writes [`lib/app.g.dart`](lib/app.g.dart),
@@ -111,17 +111,17 @@ flutter test
 to boot the generated router at any location. It covers tapping through the layout, a deep
 link with a segment and a query parameter, not-found for an unknown path and an unparsable
 segment, `loading.dart` then the data, `error.dart`, and a typed `ItemRoute(...).go(context)`.
-See [Testing](../../README.md#testing).
+See [Testing](../../docs/testing.md).
 
 ## Where to read more
 
-- [Getting started](../../README.md#getting-started): installing `fsp`, `fsp init`, the config keys.
-- [File kinds](../../README.md#file-kinds): every file name the generator understands.
-- [Function views](../../README.md#function-views): pages written as functions.
-- [How parameters are filled](../../README.md#how-parameters-are-filled) and
-  [Segment types](../../README.md#segment-types): how `id`, `qty` and `item` found their values.
-- [Query parameters](../../README.md#query-parameters).
-- [`data.dart`](../../README.md#datadart-a-function-a-selector-or-a-provider) and
-  [Retries and reloads](../../README.md#retries-and-reloads): what `data_retry` does.
-- [Not-found views](../../README.md#not-found-views) and [Transitions](../../README.md#transitions).
-- [The generator](../../README.md#the-generator): `gen`, `check`, `watch` and `new`.
+- [Getting started](../../README.md#getting-started): installing `fsp`, `fsp init`; [Configuration](../../docs/configuration.md): the config keys.
+- [File kinds](../../docs/file-kinds.md): every file name the generator understands.
+- [Function views](../../docs/file-kinds.md#function-views): pages written as functions.
+- [How parameters are filled](../../docs/file-kinds.md#how-parameters-are-filled) and
+  [Segment types](../../docs/routing.md#segment-types): how `id`, `qty` and `item` found their values.
+- [Query parameters](../../docs/routing.md#query-parameters).
+- [`data.dart`](../../docs/data.md#datadart-a-function-a-selector-or-a-provider) and
+  [Retries and reloads](../../docs/data.md#retries-and-reloads): what `data_retry` does.
+- [Not-found views](../../docs/routing.md#not-found-views) and [Transitions](../../docs/layouts.md#transitions).
+- [The generator](../../docs/cli.md#the-generator): `gen`, `check`, `watch` and `new`.

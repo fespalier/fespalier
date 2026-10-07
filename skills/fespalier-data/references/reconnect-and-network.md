@@ -20,7 +20,7 @@ dependencies:
       ref: <the same tag>
 ```
 
-(A fragment, not a sample: pub resolves the pair only at a release tag. The root README has the annotated block.) It takes
+(A fragment, not a sample: pub resolves the pair only at a release tag. `docs/data.md` has the annotated block.) It takes
 `connectivity_plus` `>=6.0.1 <8.0.0` (6.0 made a change a `List<ConnectivityResult>`).
 
 ## Wire it

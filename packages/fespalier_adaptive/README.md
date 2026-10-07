@@ -7,8 +7,8 @@ phone, a `NavigationRail` on a tablet and a `NavigationDrawer` on a wide window,
 keeps its state when the window changes size. It has no third-party dependency, and fespalier itself is
 unchanged: no `fsp` change, no `fespalier:` key, and the same `app.g.dart`.
 
-The main README documents it in context:
-[A bar, a rail or a drawer](https://github.com/fespalier/fespalier#a-bar-a-rail-or-a-drawer-fespalier_adaptive).
+The docs cover it in context:
+[A bar, a rail or a drawer](https://github.com/fespalier/fespalier/blob/main/docs/layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive).
 This page is the short version.
 
 ## Install
@@ -38,8 +38,7 @@ Needs Dart 3.8 and Flutter 3.32 or newer.
 
 ## Wire it
 
-A `nav.dart` in each tab's folder says what the tab is called and what its icon is (README, "Menus and
-breadcrumbs"). The tab layout then hands the menu to the scaffold:
+A `nav.dart` in each tab's folder says what the tab is called and what its icon is ([Menus and breadcrumbs](https://github.com/fespalier/fespalier/blob/main/docs/layouts.md#menus-and-breadcrumbs-navdart)). The tab layout then hands the menu to the scaffold:
 
 ```dart
 // lib/app/(tabs)/layout.dart

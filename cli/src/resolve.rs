@@ -251,8 +251,14 @@ pub struct Form {
 #[derive(Debug, Clone)]
 pub struct FormField {
     pub name: String,
+    /// The type as written in the input record: `int?`.
+    pub ty: String,
     /// The `FieldCodec` of a text field (`text`, `optionalInteger`...), `None` for a value field.
     pub codec: Option<&'static str>,
+    /// How a draft keeps a value field, as the generated file spells it (`DraftCodec.boolean`,
+    /// `DraftCodec.enumOf(_i3.Mood.values)`), since 0.11.0. `None` for a text field (a draft keeps
+    /// its text) and for a value field of a type a draft cannot keep.
+    pub draft: Option<String>,
 }
 
 /// The `optimistic()` beside an action: `Profile optimistic(Profile current, Input input)`.
@@ -279,7 +285,7 @@ struct Companions<'a> {
 
 /// The named parameters of a form hook that are not an action's keys: a key can't take their
 /// names.
-const FORM_HOOK_PARAMS: [&str; 4] = ["data", "validation", "resetOnSuccess", "messages"];
+const FORM_HOOK_PARAMS: [&str; 5] = ["data", "validation", "resetOnSuccess", "messages", "draft"];
 
 /// Whether the function takes `Ref` as its first, positional, parameter.
 fn first_is_ref(f: &Function) -> bool {
@@ -3174,19 +3180,53 @@ impl Resolver<'_> {
             self.diags.error(file, Some(&f.span), msg);
             ok = false;
         }
-        ok.then(|| Form {
-            function: name.clone(),
-            fields: fields
-                .into_iter()
-                .map(|(name, ty)| FormField {
+        if !ok {
+            return None;
+        }
+        let fields = fields
+            .into_iter()
+            .map(|(name, ty)| {
+                let codec = forms::codec(&ty);
+                let draft = if codec.is_some() {
+                    None
+                } else {
+                    self.draft_codec(file, &format!("f{}_{action}_{name}", at.id), &ty)
+                };
+                FormField {
                     name,
-                    codec: forms::codec(&ty),
-                })
-                .collect(),
+                    ty,
+                    codec,
+                    draft,
+                }
+            })
+            .collect();
+        Some(Form {
+            function: name.clone(),
+            fields,
             data,
             file: file.to_string(),
             span: g.span.clone(),
         })
+    }
+
+    /// The `DraftCodec` a value field of type `ty` is kept with in a draft: one for `bool` and
+    /// `DateTime`, and `enumOf` for an enum fsp can find and name. `None` for any other type.
+    fn draft_codec(&mut self, file: &str, tag: &str, ty: &str) -> Option<String> {
+        if let Some(c) = forms::draft_codec(ty) {
+            return Some(format!("DraftCodec.{c}"));
+        }
+        let (base, optional) = match ty.strip_suffix('?') {
+            Some(base) => (base, true),
+            None => (ty, false),
+        };
+        if !enums::is_candidate(base) {
+            return None;
+        }
+        let typed = self.enum_typed(base, ty, file, tag, None)?;
+        self.use_type(&typed);
+        let spelled = enums::enum_base(&typed.spelled)?;
+        let call = if optional { "optionalEnumOf" } else { "enumOf" };
+        Some(format!("DraftCodec.{call}({spelled}.values)"))
     }
 
     /// `FieldErrors? validate(Input input)`.

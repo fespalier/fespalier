@@ -103,6 +103,19 @@ pub fn codec(ty: &str) -> Option<&'static str> {
     })
 }
 
+/// The `DraftCodec` that keeps a value field of this exact type in a draft (since 0.11.0), for a
+/// `bool` and a `DateTime`; enums are found by the resolver. `None` for any other type: it is not
+/// drafted.
+pub fn draft_codec(ty: &str) -> Option<&'static str> {
+    Some(match ty {
+        "bool" => "boolean",
+        "bool?" => "optionalBoolean",
+        "DateTime" => "dateTime",
+        "DateTime?" => "optionalDateTime",
+        _ => return None,
+    })
+}
+
 /// Why an input is not a record a form can read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordError {

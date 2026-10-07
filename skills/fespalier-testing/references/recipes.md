@@ -445,6 +445,10 @@ The page and its `action.dart` are in `fespalier-data`, `references/forms.md` (t
 `fespalier_forms` package since 0.11.0), which has this test as a compiling sample.
 `package:fespalier_forms/testing.dart` has `isFieldErrors(fields, message:)`, a matcher for the
 `FieldErrors` an action throws: `throwsA(isFieldErrors({'nickname': 'Taken'}))`.
+A form's draft (since 0.11.0) is tested with a shared `MemoryDataStorage` as `formDraftStorage`, or with
+`seedFormDraft(container, id:, key:, shape:, fields:)` and `readFormDraft(...)` from the same library (the `id` and
+`shape` are the strings in `app.g.dart`); `tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused)`
+writes the draft, and `resumed` has to follow before the next `pump`.
 
 ```dart
 final api = ProfileApi()..gate = Completer<void>();           // the fake backend holds the save

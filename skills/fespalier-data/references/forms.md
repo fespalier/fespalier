@@ -236,10 +236,10 @@ String note}) input`) or as a `typedef` **declared in the same `action.dart`**: 
   one positional, required, **typed** parameter: the value the form starts from.
 - **`useForm`** (`useApproveForm` for `approve`) is generated on the route class or the section
   handle. It takes the action's keys, `data:` (only when `form()` takes a parameter; then required,
-  typed as that parameter) and `validation:`, `resetOnSuccess:`, `messages:`. **`data:` is what the
-  page got**: pass the page's own `profile`, which is the data with the optimistic patch while a
-  write is in flight. A key of the action named `data`, `validation`, `resetOnSuccess` or
-  `messages` is an error.
+  typed as that parameter) and `validation:`, `resetOnSuccess:`, `messages:`, `draft:` (since
+  0.11.0, see "Drafts" below). **`data:` is what the page got**: pass the page's own `profile`,
+  which is the data with the optimistic patch while a write is in flight. A key of the action
+  named `data`, `validation`, `resetOnSuccess`, `messages` or `draft` is an error.
 - **A real hook.** Call it in a `HookConsumerWidget`'s `build`; outside a `HookWidget`
   `flutter_hooks` asserts. (`useAction` only needs a `WidgetRef`.) A different action key (another
   `id`) is a new form.
@@ -265,6 +265,36 @@ String note}) input`) or as a `typedef` **declared in the same `action.dart`**: 
   `resetOnSuccess: true` restarts every field from `form(data)` after a success.
 - **Not built** (0.11.0): async per-field validators, a control tree, custom text codecs for dates and
   enums (use a picker and a value field), an `fsp new --form` scaffold.
+
+## Drafts: what the user typed, kept per route (since 0.11.0)
+
+`NicknameRoute.useForm(ref, data: p, draft: const FormDraft())` keeps what the user changed and
+puts it back when the route is opened again. **Opt-in for each form, never a default**: list
+what must not reach the disk in `FormDraft(exclude: {'password'})` (`maxAge` is 7 days).
+
+- **Storage and key.** `formDraftStorage` (a `FutureOr<Storage<String, String>?>` provider that
+  defaults to `dataCacheStorage`; null keeps nothing) under
+  `fespalier_forms.draft:<action file>#<action>:<family key as JSON>[:<formDraftScope>]`. Two
+  `/orders/:id/edit` pages have two drafts. Give `formDraftScope` (a `String?` provider) the
+  account id, and call `clearFormDrafts(ref)` (`clearFormDraftsOf(ref)` from a provider) at
+  sign-out: it deletes every draft through the index `fespalier_forms.drafts`.
+- **Kept**: only the fields that changed. A text field keeps its raw text (`abc` in an `int?`
+  field survives); a `bool`, `DateTime` or enum value field is kept through the `DraftCodec` the
+  generator picks (`boolean`, `optionalBoolean`, `dateTime`, `optionalDateTime`, `enumOf`,
+  `optionalEnumOf`); any other type is not drafted.
+- **Written** when the form is disposed with changes and when the app is `hidden`, `paused` or
+  `detached` (an `AppLifecycleListener` the hook owns and disposes); never per keystroke, no timer.
+  **Restored** when the form starts: before the first build for a storage whose `read` is sync,
+  when it answers otherwise, and then only into fields the user has not touched (skipped, not retried,
+  while the action runs). **Deleted** by a successful submit, `reset()` and `clearFormDrafts`, and when it is
+  expired or was written for another `shape` (the generated `nickname:String,age:int?,...`: change
+  a field and the old drafts go).
+- A draft is read once at start; storage failures are printed in debug and never reach the page; a
+  budgeted storage (`fespalier_storage`) may evict a draft.
+- **Tests**: share a `MemoryDataStorage`, or `seedFormDraft(container, id:, key:, shape:, fields:)`
+  and `readFormDraft(...)` from `package:fespalier_forms/testing.dart` (the `id` and `shape` are the
+  strings in `app.g.dart`); `handleAppLifecycleStateChanged(AppLifecycleState.paused)` writes a
+  draft, and `resumed` must follow before the next `pump`.
 
 ## Testing a form
 

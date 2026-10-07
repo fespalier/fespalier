@@ -1,7 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/persist.dart' show Storage;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+
+import 'draft_store.dart';
+import 'drafts.dart';
 
 /// The messages a form shows for text it cannot read as its field's type (since 0.8.1). Pass your
 /// own, translated, to the generated `useForm`.
@@ -125,7 +131,7 @@ enum ActionFormValidation {
 /// it [isDirty]. A field of another type than text binds through [value] and [didChange]
 /// (`Checkbox(value: f.express.value, onChanged: f.express.didChange)`).
 base class ActionField<V> {
-  ActionField._(this._form, this.name, this._get, V initial)
+  ActionField._(this._form, this.name, this._get, V initial, [this._draft])
     : _initial = initial,
       _value = initial;
 
@@ -133,6 +139,9 @@ base class ActionField<V> {
 
   /// Reads this field's value out of an input: how the form starts it again from new data.
   final V Function(Object? input) _get;
+
+  /// How a draft keeps this field's value; null: a field of this type is not drafted.
+  final DraftCodec<V>? _draft;
 
   /// The name of the field in the action's input, which is the key of its [FieldErrors].
   final String name;
@@ -163,6 +172,18 @@ base class ActionField<V> {
   String? get error => _form._errorOf(this);
 
   String? get _parseError => null;
+
+  /// Whether a draft keeps this field.
+  bool get _drafted => _draft != null;
+
+  /// What a draft writes for this field.
+  Object? _draftValue() => _draft!.encode(_value);
+
+  /// Takes the value a draft kept, without telling anyone: the form says so once it is done.
+  void _restoreDraft(Object? saved) {
+    _value = _draft!.decode(saved);
+    _changed = isDirty;
+  }
 
   void _restart(Object? input, {required bool keepDirty}) =>
       _reset(_get(input), keepDirty: keepDirty);
@@ -230,6 +251,28 @@ final class ActionTextField<V> extends ActionField<V> {
     super.didChange(value);
   }
 
+  @override
+  bool get _drafted => true;
+
+  @override
+  Object? _draftValue() => controller.text;
+
+  @override
+  void _restoreDraft(Object? saved) {
+    final text = saved! as String;
+    _quiet = true;
+    try {
+      controller.text = text;
+    } finally {
+      _quiet = false;
+    }
+    _text = text;
+    final parsed = _codec.parse(text, _form._messages);
+    _parse = parsed.error;
+    if (parsed.error == null) _value = parsed.value as V;
+    _changed = isDirty;
+  }
+
   void _show(V value) {
     final text = _codec.format(value);
     _parse = null;
@@ -281,10 +324,72 @@ final class ActionFormFields<I> {
     ),
   );
 
-  /// A field of any other type: [get] reads its initial value from the input.
-  ActionField<V> value<V>(String name, V Function(I input) get) => _form._add(
-    ActionField<V>._(_form, name, (input) => get(input as I), get(_initial)),
+  /// A field of any other type: [get] reads its initial value from the input, and [draft] says how
+  /// a draft keeps it (a field with none is not drafted).
+  ActionField<V> value<V>(
+    String name,
+    V Function(I input) get, {
+    DraftCodec<V>? draft,
+  }) => _form._add(
+    ActionField<V>._(
+      _form,
+      name,
+      (input) => get(input as I),
+      get(_initial),
+      draft,
+    ),
   );
+}
+
+/// Where one form's draft is kept and what is known of it.
+final class _Drafts {
+  _Drafts(this.storage, this.key, this.shape, this.config)
+    : generation = draftClearGeneration;
+
+  final FutureOr<Storage<String, String>?> storage;
+  final String key;
+  final String shape;
+  final FormDraft config;
+
+  /// The number of clears of every draft when the form started: after another one it writes
+  /// nothing (`clearFormDrafts` at sign-out is final for the page that is still open).
+  final int generation;
+
+  /// What was last written, to write nothing twice.
+  String? lastSaved;
+
+  /// Whether a draft is known to be in the storage.
+  bool stored = false;
+
+  /// Runs [body] with the storage, at once when it is there and when it is ready otherwise
+  /// (`deferred` is then true). A storage that is null, or fails to open, keeps nothing.
+  void use(
+    void Function(Storage<String, String> storage, {required bool deferred})
+    body,
+  ) {
+    final s = storage;
+    if (s is Future<Storage<String, String>?>) {
+      unawaited(
+        s.then(
+          (opened) {
+            if (opened != null) body(opened, deferred: true);
+          },
+          onError: (Object error, StackTrace _) {
+            if (kDebugMode) {
+              debugPrint('fespalier_forms: draft storage: $error');
+            }
+          },
+        ),
+      );
+    } else if (s != null) {
+      body(s, deferred: false);
+    }
+  }
+}
+
+void _let(FutureOr<void> done) {
+  // The store reports what fails; nobody waits for a draft.
+  if (done is Future<void>) unawaited(done);
 }
 
 /// The form of an action (since 0.8.1): typed [fields] that start from the route's data, the errors
@@ -323,6 +428,7 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
   bool _submitted = false;
   Map<String, String> _fromAction = const {};
   bool _disposed = false;
+  _Drafts? _drafts;
 
   /// The state of the action, as `useAction`'s `state`.
   AsyncValue<T?> get state => _state;
@@ -410,7 +516,117 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
     _submitted = false;
     _fromAction = const {};
     _action().reset();
+    _clearDraft();
     notifyListeners();
+  }
+
+  // ---- drafts ------------------------------------------------------------------------------
+
+  /// What a draft keeps: the fields that changed, that a draft can keep and that are not excluded,
+  /// by name. Text is the raw text, so text that does not parse survives.
+  Map<String, Object?> _draftFields() => {
+    for (final f in _all)
+      if (f._drafted && f.isDirty && !_drafts!.config.exclude.contains(f.name))
+        f.name: f._draftValue(),
+  };
+
+  /// Writes the draft of what the form holds now, or deletes it when nothing of it changed.
+  void _saveDraft() {
+    final drafts = _drafts;
+    if (drafts == null) return;
+    final fields = _draftFields();
+    if (fields.isEmpty) {
+      if (drafts.stored) _clearDraft();
+      return;
+    }
+    if (drafts.generation != draftClearGeneration) return;
+    final text = jsonEncode(fields);
+    if (text == drafts.lastSaved) return;
+    // What is known of the storage changes now, whenever the storage answers.
+    drafts
+      ..lastSaved = text
+      ..stored = true;
+    drafts.use((storage, {required deferred}) {
+      _let(
+        saveDraft(
+          storage,
+          drafts.key,
+          drafts.shape,
+          drafts.config.maxAge,
+          fields,
+          generation: drafts.generation,
+        ),
+      );
+    });
+  }
+
+  void _clearDraft() {
+    final drafts = _drafts;
+    if (drafts == null) return;
+    drafts.lastSaved = null;
+    drafts.stored = false;
+    drafts.use(
+      (storage, {required deferred}) => _let(removeDraft(storage, drafts.key)),
+    );
+  }
+
+  /// Puts what a draft kept into the fields the user has not touched. Silent when the storage
+  /// answers at once (the page is building); the page is told when it answers later. A draft that
+  /// arrives while the action runs is skipped, not kept for later.
+  void _restoreDraft() {
+    final drafts = _drafts!;
+    assert(() {
+      final names = {for (final f in _all) f.name};
+      final unknown = drafts.config.exclude.difference(names);
+      if (unknown.isNotEmpty) {
+        throw FlutterError(
+          'FormDraft(exclude: $unknown) names no field of the form (its fields are '
+          '${names.join(', ')}): a field that is misspelled here is written to the draft.',
+        );
+      }
+      for (final name in names) {
+        if (RegExp(
+              'password|passcode|secret|cvv|^pin|^otp',
+              caseSensitive: false,
+            ).hasMatch(name) &&
+            !drafts.config.exclude.contains(name)) {
+          debugPrint(
+            'fespalier_forms: the field `$name` is kept in the draft; add it to '
+            'FormDraft(exclude:) if it must not reach the disk.',
+          );
+        }
+      }
+      return true;
+    }());
+    drafts.use((storage, {required deferred}) {
+      void apply(Map<String, Object?>? saved, {required bool deferred}) {
+        if (saved == null || _disposed || isPending) return;
+        for (final f in _all) {
+          if (!f._drafted || f._changed) continue;
+          if (drafts.config.exclude.contains(f.name)) continue;
+          if (!saved.containsKey(f.name)) continue;
+          try {
+            f._restoreDraft(saved[f.name]);
+          } on Object catch (error) {
+            if (kDebugMode) {
+              debugPrint('fespalier_forms: draft of ${f.name} dropped: $error');
+            }
+          }
+        }
+        drafts
+          ..stored = true
+          ..lastSaved = jsonEncode(_draftFields());
+        _checked = null; // validate() said it of the values from before
+        if (deferred) notifyListeners();
+      }
+
+      final loaded = loadDraft(storage, drafts.key, drafts.shape);
+      if (loaded is Future<Map<String, Object?>?>) {
+        unawaited(loaded.then((saved) => apply(saved, deferred: true)));
+      } else {
+        apply(loaded, deferred: deferred);
+      }
+    });
   }
 
   void _restart(I input, {required bool keepDirty}) {
@@ -427,6 +643,8 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
       _validate?.call(input) as FieldErrors? ?? const FieldErrors({});
 
   void _succeeded() {
+    // Even when the page is gone: what was kept has been sent.
+    _clearDraft();
     if (_disposed) return;
     _submitted = false;
     if (_resetOnSuccess) {
@@ -476,6 +694,14 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (!_disposed && _drafts != null) {
+      // A form that was left alone keeps nothing; one that changed keeps what changed.
+      if (isDirty) {
+        _saveDraft();
+      } else if (_drafts!.stored) {
+        _clearDraft();
+      }
+    }
     _disposed = true;
     for (final f in _all) {
       f._dispose();
@@ -488,6 +714,11 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier {
 /// widget (a `HookConsumerWidget`), rebuilt when it changes. When [data] is another object than at
 /// the last build (the route's data loaded again), the fields the user has not changed take their
 /// values from it.
+///
+/// With a [draft], what the user changed is kept in `formDraftStorage` under [id] (the action's
+/// file and name), [key] (its family key) and the `formDraftScope`, and put back when the form is
+/// built again (since 0.11.0); [shape] is the form's fields and types, so a form that changed drops
+/// the drafts of the old one. The draft, like the storage, is read once, when the form starts.
 ActionForm<I, T, F> useActionForm<I, T, F extends Record>(
   WidgetRef ref,
   ActionProvider<I, T> action, {
@@ -499,7 +730,25 @@ ActionForm<I, T, F> useActionForm<I, T, F extends Record>(
   ActionFormValidation validation = ActionFormValidation.afterSubmit,
   bool resetOnSuccess = false,
   ActionFormMessages messages = const ActionFormMessages(),
+  String id = '',
+  List<Object?> key = const [],
+  String shape = '',
+  FormDraft? draft,
 }) {
+  assert(
+    draft == null || id.isNotEmpty,
+    'a form with a draft needs an `id` (the generated useForm passes the action file and name): '
+    'without one every such form shares one draft',
+  );
+  // Built once, when the form starts: the key, the storage and the scope are not read again.
+  final _Drafts Function()? drafts = draft == null
+      ? null
+      : () => _Drafts(
+          ref.read(formDraftStorage),
+          draftKey(id, key, ref.read(formDraftScope)),
+          shape,
+          draft,
+        );
   return use(
     _ActionFormHook<I, T, F>(
       () => ref.read(action.notifier),
@@ -512,6 +761,7 @@ ActionForm<I, T, F> useActionForm<I, T, F extends Record>(
       validation,
       resetOnSuccess,
       messages,
+      drafts,
       keys: [action],
     ),
   );
@@ -529,7 +779,8 @@ final class _ActionFormHook<I, T, F extends Record>
     this.validate,
     this.validation,
     this.resetOnSuccess,
-    this.messages, {
+    this.messages,
+    this.drafts, {
     super.keys,
   });
 
@@ -543,6 +794,7 @@ final class _ActionFormHook<I, T, F extends Record>
   final ActionFormValidation validation;
   final bool resetOnSuccess;
   final ActionFormMessages messages;
+  final _Drafts Function()? drafts;
 
   @override
   _ActionFormState<I, T, F> createState() => _ActionFormState<I, T, F>();
@@ -564,11 +816,28 @@ final class _ActionFormState<I, T, F extends Record>
   /// The data the fields last started from.
   late Object? _data = hook.data;
 
+  AppLifecycleListener? _lifecycle;
+
   @override
   void initHook() {
     _form
       .._state = hook.state
       ..addListener(_changed);
+    if (hook.drafts case final make?) {
+      _form._drafts = make();
+      _form._restoreDraft();
+      // A draft is also kept when the app goes to the background: it may never come back.
+      _lifecycle = AppLifecycleListener(
+        onStateChange: (state) {
+          if (state
+              case AppLifecycleState.paused ||
+                  AppLifecycleState.hidden ||
+                  AppLifecycleState.detached) {
+            _form._saveDraft();
+          }
+        },
+      );
+    }
   }
 
   void _changed() => setState(() {});
@@ -592,5 +861,8 @@ final class _ActionFormState<I, T, F extends Record>
   ActionForm<I, T, F> build(BuildContext context) => _form;
 
   @override
-  void dispose() => _form.dispose();
+  void dispose() {
+    _lifecycle?.dispose();
+    _form.dispose();
+  }
 }

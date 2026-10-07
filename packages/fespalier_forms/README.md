@@ -58,10 +58,19 @@ TextField(controller: f.nickname.controller, decoration: InputDecoration(errorTe
 FilledButton(onPressed: form.onSubmit, child: const Text('Save')),
 ```
 
+## Drafts
+
+Pass `draft: const FormDraft()` to a `useForm` to keep what the user typed per route and restore it when the route is
+opened again: written when the page goes and when the app goes to the background, never per keystroke, deleted by a
+successful submit or `reset()`. It is opt-in for each form (`FormDraft(exclude: {'password'})` keeps a field out), goes
+to `formDraftStorage` (your `dataCacheStorage` by default) and is scoped by `formDraftScope`; call `clearFormDrafts` at
+sign-out. See [Drafts](https://github.com/fespalier/fespalier/blob/main/docs/forms.md#drafts) in the guide.
+
 ## Testing
 
-`package:fespalier_forms/testing.dart` has `isFieldErrors`, a matcher for the `FieldErrors` an action throws. A form
-is tested through the page with `pumpRouter` (see the guide).
+`package:fespalier_forms/testing.dart` has `isFieldErrors`, a matcher for the `FieldErrors` an action throws, and
+`seedFormDraft` and `readFormDraft` for a form's draft. A form is tested through the page with `pumpRouter` (see the
+guide).
 
 ## Coming from before 0.11.0
 

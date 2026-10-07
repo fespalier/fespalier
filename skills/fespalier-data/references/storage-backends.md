@@ -238,6 +238,13 @@ void main() {
 - **Not for secrets.** A `dataCache` is not encrypted; tokens go in `fespalier_auth`'s secure store.
 - **A value is not shown after a `version` change, or after `maxAge`**: by design (deleted, not decoded). `maxAge` defaults to
   two days.
+- **Other packages share this storage** (since 0.10.0). `fespalier_tolgee` saves the remote translation catalogs it fetches
+  in `dataCacheStorage` under `fespalier_tolgee:<tag>` (a synchronous storage gives them on the first frame; Hive's a frame
+  later), so they share the size budget: the storage may evict an entry written long ago, which is harmless, because the
+  chain falls back to the bundled text ([`fespalier-i18n`](../../fespalier-i18n/references/over-the-air-and-cache.md)).
+  `fespalier_cratestack`'s `ReadCache.storage(prefs, index: store)` may sit on a `PrefsDataStorage` too, but **intents,
+  owned rows and sync cursors live in a `LocalStore` that never evicts**: they are not on this storage, and a budgeted
+  storage must never hold them ([`fespalier-offline`](../../fespalier-offline/SKILL.md)).
 - **Not built:** a storage-wide version key, a byte-exact size, multi-isolate safety, encryption (open your own Hive box with a
   cipher and pass it in).
 

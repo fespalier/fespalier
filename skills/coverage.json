@@ -224,19 +224,6 @@
         "docs/routing.md#Typed catch-alls",
         "docs/routing.md#Case and trailing slashes",
         "docs/routing.md#Localized paths",
-        "docs/i18n-tolgee.md",
-        "docs/i18n-tolgee.md#What it is, and why not the `tolgee` SDK",
-        "docs/i18n-tolgee.md#Install",
-        "docs/i18n-tolgee.md#Locales and the URL",
-        "docs/i18n-tolgee.md#The scope",
-        "docs/i18n-tolgee.md#Reading it",
-        "docs/i18n-tolgee.md#Bundled translations",
-        "docs/i18n-tolgee.md#Over the air",
-        "docs/i18n-tolgee.md#Cache and the offline fallback chain",
-        "docs/i18n-tolgee.md#In-context editing (debug only)",
-        "docs/i18n-tolgee.md#Testing",
-        "docs/i18n-tolgee.md#Rules and what it costs",
-        "docs/i18n-tolgee.md#Not built",
         "docs/routing.md#Non-ASCII spellings",
         "docs/routing.md#`(group)` folders",
         "docs/routing.md#Not-found views",
@@ -298,7 +285,8 @@
         "docs/faq.md#Is there a build_runner step?",
         "docs/faq.md#Is it on pub.dev?",
         "docs/faq.md#What does it cost in a release build?",
-        "docs/navigation.md#Typed navigation at a glance"
+        "docs/navigation.md#Typed navigation at a glance",
+        "docs/i18n-tolgee.md#Locales and the URL"
       ]
     },
     "fespalier-data": {
@@ -310,29 +298,6 @@
         "docs/data.md#Typed helpers on the route",
         "docs/data.md#From a location to its data",
         "docs/data.md#Section data",
-        "docs/cratestack.md",
-        "docs/cratestack.md#What it is, and what it is not",
-        "docs/cratestack.md#1. Generate the client",
-        "docs/cratestack.md#2. Wire it once, in `startup.dart`",
-        "docs/cratestack.md#3. The Dio the client uses",
-        "docs/cratestack.md#4. Reads in `data.dart`",
-        "docs/cratestack.md#5. Actions",
-        "docs/cratestack.md#6. Retries: one layer",
-        "docs/cratestack.md#7. Offline rows and sync",
-        "docs/cratestack.md#8. Where CrateStack's embedded mode fits",
-        "docs/cratestack.md#9. Test it",
-        "docs/cratestack.md#10. Debug messages",
-        "docs/cratestack.md#11. Not built",
-        "docs/offline-first.md",
-        "docs/offline-first.md#Two kinds of writes",
-        "docs/offline-first.md#Reads",
-        "docs/offline-first.md#Intents",
-        "docs/offline-first.md#Owned rows",
-        "docs/offline-first.md#Sync",
-        "docs/offline-first.md#Triggers",
-        "docs/offline-first.md#Freshness in the UI",
-        "docs/offline-first.md#Testing offline",
-        "docs/offline-first.md#Limits",
         "docs/navigation.md#Preloading the data behind a link",
         "docs/navigation.md#Deferred routes: a page's code on demand",
         "docs/actions.md#`action.dart`: typed writes",
@@ -381,7 +346,8 @@
         "docs/faq.md#Short answers",
         "docs/faq.md#Is there a build_runner step?",
         "docs/faq.md#Is it on pub.dev?",
-        "docs/faq.md#What does it cost in a release build?"
+        "docs/faq.md#What does it cost in a release build?",
+        "docs/offline-first.md#Reads"
       ]
     },
     "fespalier-layouts": {
@@ -493,7 +459,12 @@
         "docs/testing.md#The app around the router",
         "docs/testing.md#Deferred routes in tests",
         "docs/testing.md#Importing from a $segment folder",
-        "docs/testing.md#Testing each package"
+        "docs/testing.md#Testing each package",
+        "docs/i18n-tolgee.md#Testing",
+        "docs/cratestack.md#9. Test it",
+        "docs/offline-first.md#Testing offline",
+        "packages/fespalier_tolgee/lib/testing.dart",
+        "packages/fespalier_cratestack/lib/testing.dart"
       ]
     },
     "fespalier-troubleshooting": {
@@ -528,7 +499,8 @@
         "docs/devtools.md#Protocol for tool authors",
         "docs/troubleshooting.md#Things to know",
         "docs/troubleshooting.md#Known limitations",
-        "docs/troubleshooting.md#Symptoms"
+        "docs/troubleshooting.md#Symptoms",
+        "docs/cratestack.md#10. Debug messages"
       ]
     },
     "fespalier-migration": {
@@ -647,6 +619,96 @@
         "packages/fespalier_image/lib/src/builders/srcset.dart",
         "packages/fespalier_image/lib/src/builders/template.dart",
         "packages/fespalier_image/lib/src/builders/thumbor.dart"
+      ]
+    },
+    "fespalier-i18n": {
+      "covers": [
+        "docs/i18n-tolgee.md",
+        "docs/i18n-tolgee.md#What it is, and why not the `tolgee` SDK",
+        "docs/i18n-tolgee.md#Install",
+        "docs/i18n-tolgee.md#Locales and the URL",
+        "docs/i18n-tolgee.md#The scope",
+        "docs/i18n-tolgee.md#Reading it",
+        "docs/i18n-tolgee.md#Bundled translations",
+        "docs/i18n-tolgee.md#Over the air",
+        "docs/i18n-tolgee.md#Cache and the offline fallback chain",
+        "docs/i18n-tolgee.md#In-context editing (debug only)",
+        "docs/i18n-tolgee.md#Testing",
+        "docs/i18n-tolgee.md#Rules and what it costs",
+        "docs/i18n-tolgee.md#Not built",
+        "packages/fespalier_tolgee/README.md",
+        "packages/fespalier_tolgee/lib/fespalier_tolgee.dart",
+        "packages/fespalier_tolgee/lib/in_context.dart",
+        "packages/fespalier_tolgee/lib/src/bundled.dart",
+        "packages/fespalier_tolgee/lib/src/catalog.dart",
+        "packages/fespalier_tolgee/lib/src/icu.dart",
+        "packages/fespalier_tolgee/lib/src/in_context/editor.dart",
+        "packages/fespalier_tolgee/lib/src/in_context/panel.dart",
+        "packages/fespalier_tolgee/lib/src/locale.dart",
+        "packages/fespalier_tolgee/lib/src/providers.dart",
+        "packages/fespalier_tolgee/lib/src/report.dart",
+        "packages/fespalier_tolgee/lib/src/scope.dart",
+        "packages/fespalier_tolgee/lib/src/source.dart",
+        "packages/fespalier_tolgee/lib/src/tolgee_cdn.dart",
+        "packages/fespalier_tolgee/lib/src/translations.dart",
+        "packages/fespalier_tolgee/lib/src/translator.dart"
+      ]
+    },
+    "fespalier-offline": {
+      "covers": [
+        "docs/offline-first.md",
+        "docs/offline-first.md#Two kinds of writes",
+        "docs/offline-first.md#Reads",
+        "docs/offline-first.md#Intents",
+        "docs/offline-first.md#Owned rows",
+        "docs/offline-first.md#Sync",
+        "docs/offline-first.md#Triggers",
+        "docs/offline-first.md#Freshness in the UI",
+        "docs/offline-first.md#Testing offline",
+        "docs/offline-first.md#Limits",
+        "packages/fespalier_cratestack/lib/fespalier_cratestack.dart",
+        "packages/fespalier_cratestack/lib/hive.dart",
+        "packages/fespalier_cratestack/lib/src/auto_sync.dart",
+        "packages/fespalier_cratestack/lib/src/errors.dart",
+        "packages/fespalier_cratestack/lib/src/field_errors.dart",
+        "packages/fespalier_cratestack/lib/src/future_or.dart",
+        "packages/fespalier_cratestack/lib/src/hive_store.dart",
+        "packages/fespalier_cratestack/lib/src/hlc.dart",
+        "packages/fespalier_cratestack/lib/src/ids.dart",
+        "packages/fespalier_cratestack/lib/src/intent.dart",
+        "packages/fespalier_cratestack/lib/src/intent_queue.dart",
+        "packages/fespalier_cratestack/lib/src/local_store.dart",
+        "packages/fespalier_cratestack/lib/src/lww.dart",
+        "packages/fespalier_cratestack/lib/src/owned_rows.dart",
+        "packages/fespalier_cratestack/lib/src/read_cache.dart",
+        "packages/fespalier_cratestack/lib/src/revision.dart",
+        "packages/fespalier_cratestack/lib/src/row_sync.dart",
+        "packages/fespalier_cratestack/lib/src/scope.dart",
+        "packages/fespalier_cratestack/lib/src/served.dart",
+        "packages/fespalier_cratestack/lib/src/sync_engine.dart",
+        "packages/fespalier_cratestack/lib/src/transport.dart"
+      ]
+    },
+    "fespalier-cratestack": {
+      "covers": [
+        "docs/cratestack.md",
+        "docs/cratestack.md#What it is, and what it is not",
+        "docs/cratestack.md#1. Generate the client",
+        "docs/cratestack.md#2. Wire it once, in `startup.dart`",
+        "docs/cratestack.md#3. The Dio the client uses",
+        "docs/cratestack.md#4. Reads in `data.dart`",
+        "docs/cratestack.md#5. Actions",
+        "docs/cratestack.md#6. Retries: one layer",
+        "docs/cratestack.md#7. Offline rows and sync",
+        "docs/cratestack.md#8. Where CrateStack's embedded mode fits",
+        "docs/cratestack.md#9. Test it",
+        "docs/cratestack.md#10. Debug messages",
+        "docs/cratestack.md#11. Not built",
+        "packages/fespalier_cratestack/README.md",
+        "packages/fespalier_cratestack/lib/dio.dart",
+        "packages/fespalier_cratestack/lib/src/dio/cancel.dart",
+        "packages/fespalier_cratestack/lib/src/dio/failures.dart",
+        "packages/fespalier_cratestack/lib/src/dio/portal.dart"
       ]
     }
   },

@@ -44,6 +44,7 @@ only the HTTP status to go on.
 Future<List<Override>> startup() async {
   final dir = await getApplicationSupportDirectory();
   final store = await HiveLocalStore.open(directory: dir.path);
+  final prefs = await PrefsDataStorage.open(); // null when shared preferences could not open
   return [
     // the generated client, on a Dio you configure (section 3)
     shopAdapterProvider.overrideWith((ref) => CratestackDioAdapter(dio: ref.watch(dio))),
@@ -57,7 +58,7 @@ Future<List<Override>> startup() async {
     localStore.overrideWithValue(store),
     // optional: keep saved reads in the storage your dataCache already uses, with its key list in
     // the durable store, so a sign-out can wipe them and nothing evicts the list
-    readCache.overrideWithValue(ReadCache.storage(await PrefsDataStorage.open(), index: store)),
+    if (prefs != null) readCache.overrideWithValue(ReadCache.storage(prefs, index: store)),
 
     // the triggers
     reconnectSignal.overrideWith(ConnectivitySignal.new), // fespalier_connectivity
@@ -117,7 +118,7 @@ final dio = Provider<Dio>((ref) {
 `CrateStackPortalInterceptor` rejects a `text/html` response as an error that `DioFailures.read` reads as
 offline: Dio does not throw on a `200`, so without it a captive portal's page reaches the generated client,
 which cannot decode it, and no reader knows what it threw.
-`WriteGuard` (from `fespalier_dio`, see "HTTP clients" in the [main README](../README.md)) keeps a retrier from
+`WriteGuard` (from `fespalier_dio`, see [HTTP clients](http.md)) keeps a retrier from
 sending a write twice. The generated RPC reads are POSTs, so `WriteGuard` counts them as writes and a Dio retry
 policy never repeats them. That is what you want: see section 6.
 
@@ -299,8 +300,8 @@ the server's key to your form's field.
 
 ## 6. Retries: one layer
 
-Riverpod's data retry is the one retry layer for reads. A Dio retrier on top multiplies it (the main README's
-"Two retry layers multiply"), and generated RPC reads are POSTs that `WriteGuard` refuses to repeat anyway. An
+Riverpod's data retry is the one retry layer for reads. A Dio retrier on top multiplies it ([Two retry layers
+multiply](http.md)), and generated RPC reads are POSTs that `WriteGuard` refuses to repeat anyway. An
 intent has its own, slower retry: the next sync. Nothing here sleeps or backs off with a timer.
 
 ## 7. Offline rows and sync

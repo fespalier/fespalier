@@ -70,6 +70,13 @@ that records what the router tells the platform (`SystemChannels.navigation`).
    `optionURLReflectsImperativeAPIs` is off by default); 0.6.0 adds the `push_updates_url`
    pubspec key, and `router()` now assigns that go_router flag on every call.
 
+## Wrong in the 0.10.0 docs
+
+1. **`ReadCache.storage(await PrefsDataStorage.open(), index: store)`** (`docs/cratestack.md`, section 2, as first
+   written for 0.10.0). `PrefsDataStorage.open()` returns a `Future<PrefsDataStorage?>` (null when shared preferences
+   could not open), and `ReadCache.storage` takes a non-null storage, so the line did not compile. The page now keeps the
+   storage in a variable and writes `if (prefs != null) readCache.overrideWithValue(ReadCache.storage(prefs, index: store))`.
+
 ## Things the docs leave out
 
 As of v0.4.0:

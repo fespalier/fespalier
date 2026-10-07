@@ -173,6 +173,12 @@ class ShopPage extends StatelessWidget {
   reports it (G4, `fespalier-troubleshooting`) and says to move the enum to a file of its own,
   as `lib/models/category.dart` above. An enum declared in a page that is not deferred is
   fine for a deferred child.
+- **A language folder is this pattern** (since 0.10.0): `lib/app/$lang/products/page.dart` with
+  `enum Lang { en, fr, de }` makes `/xx/products` not found, **but only if some file of the folder asks for
+  `required Lang lang`**. A segment's type comes from the parameters that ask for it, so with no such parameter `$lang`
+  is a `String` and `/xx/products` matches. `fespalier_tolgee` reads the segment as the locale
+  ([`fespalier-i18n`](../../fespalier-i18n/references/locales-and-the-url.md)); a tag that is not an identifier
+  (`pt-BR`) cannot be an enum name, so use a `String` segment there.
 
 ## Catch-all segments
 

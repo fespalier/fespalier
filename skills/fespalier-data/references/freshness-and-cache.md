@@ -219,6 +219,14 @@ final connectivityOverride = reconnectSignal.overrideWith(
   `fespalier: dataCache of <name> could not save: <error>`.
 - **Do not write an optimistic value with `state =`** on this provider's notifier: every `AsyncData` it sets is saved.
 
+## `freshness` and `ref.serve` (since 0.10.0)
+
+`freshness` says **when** a read runs again (stale after `staleTime`, on a resume, on a reconnect); `ref.serve` from
+`fespalier_cratestack` says **where** its answer comes from (the network, or the account's saved copy when the network is
+away) and returns a `Served<T>` with `fetchedAt`. They compose in one `data.dart`, but **do not put `dataCache` over a
+`serve`**: it keeps its own copy, per account, and a sign-out wipes it
+([`fespalier-offline`](../../fespalier-offline/references/reads.md)).
+
 ## Tests
 
 `testWidgets` runs in fake async and `clock.now()` is its clock, so aging data costs no time and starts no timer. Nothing

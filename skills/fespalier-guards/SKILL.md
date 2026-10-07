@@ -157,6 +157,9 @@ FutureOr<List<Override>> startup() => restoreAuth(authSetup());
   `pumpRouter`; see [`fespalier-testing`](../fespalier-testing/SKILL.md).
 - Never log or put a token, an id or an e-mail in an error or a telemetry attribute: the package's own
   `toString`s hide them.
+- **With `fespalier_cratestack`** (since 0.10.0): `crateStackScope.overrideWith((ref) => ref.watch(authUserId))`, and a
+  sign-out calls `ref.read(crateStackAccount).clear()` **before** `signOut()`, whose state flips synchronously (or
+  `clear(scope: id)` after). A `401` keeps a queued intent's key ([`fespalier-offline`](../fespalier-offline/SKILL.md)).
 
 - **OpenID Connect and Keycloak are in the package** (`package:fespalier_auth/oidc.dart`, `OidcBackend`: code flow
   with PKCE for a public client, Keycloak's endpoints and roles, refresh-token rotation). Firebase and Supabase

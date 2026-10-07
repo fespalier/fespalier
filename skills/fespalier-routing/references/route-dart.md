@@ -171,6 +171,9 @@ exact tag wins over its language. A level with no spelling for the locale keeps
 its canonical one, each level on its own. Every route has `locationFor` (a route
 with no localized segment answers `location`), and query parameters are kept.
 There is **no global locale** on purpose: the app owns its locale and passes it.
+Since 0.10.0 `fespalier_tolgee` is one way to own it: its `TranslationScope` takes the locale from the URL (a `$lang`
+segment or these spellings), `context.routeLocale` reads it, and `relocate(uri, to: 'de', routes: AppManifest.all, segment: 0)`
+respells the current location for a language menu ([`fespalier-i18n`](../../fespalier-i18n/references/locales-and-the-url.md)).
 To get it everywhere, wrap it once:
 `extension on TypedLocation { void goHere(BuildContext c) => go(c, locale: currentLocaleTag()); }`.
 

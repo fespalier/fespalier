@@ -499,6 +499,22 @@ void main() {
 }
 ```
 
+## With `fespalier_cratestack` (since 0.10.0)
+
+`fespalier_cratestack/dio.dart` adds three things to a Dio that a **generated** CrateStack client uses, and they sit
+beside this page's, not in place of them:
+
+- `ref.cancellable(() => client.models.order.list())` is `ref.cancelToken()` for a client whose generated options carry no
+  cancel token: the token travels in a **zone value** that `CrateStackCancelInterceptor` picks up. Call it before the first
+  `await`, with a body that is only the client call; a provider built inside it takes this provider's token and is cancelled
+  with it. Use `ref.cancelToken()` as above for a Dio you call yourself.
+- `CrateStackPortalInterceptor` rejects a `text/html` response (a captive portal, a gateway) as an error that
+  `DioFailures.read` classifies as offline, which Dio does not do for a `200`.
+- **`WriteGuard.install(dio)` still goes last** (it is placed first), and it counts the generated RPC reads as writes,
+  because they are POSTs: no retrier repeats them, which is what you want, since Riverpod's data retry is the one layer.
+
+[`fespalier-cratestack`](../../fespalier-cratestack/SKILL.md) has the whole Dio.
+
 ## What it does not do
 
 No retry policy of its own (a backoff needs a timer; `RetryInterceptor` and `RetryClient` are yours). No logging. No

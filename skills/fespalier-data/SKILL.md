@@ -1,6 +1,6 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 its forms: form(), validate() and optimistic()), and since 0.9.0 fespalier_dio, which ties Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 its forms: form(), validate() and optimistic()), and since 0.9.0 fespalier_dio, which ties Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice), and since 0.10.0 offline-first reads and queued writes (fespalier_cratestack: see fespalier-offline and fespalier-cratestack). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
@@ -232,6 +232,26 @@ WriteGuard.install(dio);                                // the last call on the 
 [`fespalier-testing`](../fespalier-testing/SKILL.md) (its `http.md`), its messages in
 [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its `diagnostics-errors-and-http.md`).
 
+## Offline-first and CrateStack (since 0.10.0)
+
+`package:fespalier_cratestack` (a repository dependency next to fespalier, **same `url` and `ref`**) adds a second way to
+make a read survive without a network, and a queue for writes. It changes no generated code, file kind, key or
+command. It is two skills of its own: [`fespalier-offline`](../fespalier-offline/SKILL.md) (the ideas and the API) and
+[`fespalier-cratestack`](../fespalier-cratestack/SKILL.md) (wiring a CrateStack client).
+
+- **`dataCache` or `ref.serve`, never both.** `dataCache` (since 0.8.1) saves **a route's value** under its key and shows
+  it while the network is slow or away; `ref.serve(key:, codec:, fetch:)` saves **an account's answer** and returns a
+  `Served<T>` that says where the value came from (`network` or `local`) and when (`fetchedAt`), so the page can write
+  "offline copy, as of 10:42". `serve` keeps its own copy, per account, in a `LocalStore` or a `ReadCache`: do not put
+  `dataCache` over it. `freshness` still decides **when** a read runs again; `serve` decides **where** the answer comes
+  from.
+- **The page type is `Served<T>`**, spelled exactly as `data()` returns it (`FutureOr<Served<List<Order>>>` is matched as
+  `Served<List<Order>>`): `fsp` matches by type, syntactically.
+- **Only a connection failure falls back to the device**; a refusal goes to `error.dart` like any error. A single row with
+  nothing saved is `CrateStackNoLocalData`; a list says `neverFetched`.
+- **A write that is the server's decision is an intent** (`ref.read(intentQueue).submit(...)` in an `action.dart`): it
+  returns `Accepted` or `Queued`, never a success the server has not given.
+
 ## Seeing it in DevTools (since 0.7.0)
 
 The `fespalier` tab's **Data** tab lists each provider fespalier makes from a `data.dart`: its state
@@ -265,4 +285,7 @@ visible (`fespalier-troubleshooting`, its DevTools page).
 | A request outlives its page (0.9.0)                            | `fespalier_dio`: the token was asked after an `await`, or not given to the request (`references/http.md`)                                                                       |
 | A 422 is not under its field (0.9.0)                           | `fespalier_dio`: `withFieldErrors()` is missing or found no field: statuses, decoder, names (`references/http.md`)                                                              |
 | A write is retried, or `WriteNotRetried` (0.9.0)               | `WriteGuard` is not first (`WriteGuard.install(dio)` last), or the retrier has no `readsOnly` (`references/http.md`)                                                            |
+| Another account's data shows offline (0.10.0)                  | Impossible by design: every `serve` answer, intent and row is keyed by `crateStackScope`. A copy that did show means the scope is not the signed-in user (`fespalier-offline`)  |
+| A queued write never sends (0.10.0)                            | `fespalier_cratestack`: nothing watches `autoSync`, no trigger runs, or the intent is another account's (`fespalier-troubleshooting`, its `diagnostics-cratestack.md`)          |
+| A CrateStack read is cancelled with another page (0.10.0)      | A provider is built inside `ref.cancellable(...)`: read and watch others before it, and keep the body to the client call (`fespalier-cratestack`)                               |
 | An fsp error on `data.dart` or `action.dart`                   | `fespalier-troubleshooting`                                                                                                                                                     |

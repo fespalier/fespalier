@@ -427,6 +427,14 @@ void main() {
 - **User data and persistence.** A `data.dart` whose data belongs to the user should
   `ref.watch(authUserId)`; a `dataCache` (since 0.8.1) keeps the previous user's data until it loads again, so
   clear the cache storage on sign-out.
+- **With `fespalier_cratestack` (since 0.10.0), the account is `authUserId`.** Set
+  `crateStackScope.overrideWith((ref) => ref.watch(authUserId))`: every intent, owned row and saved read is keyed by it, so
+  one account's offline data never reaches another. **Wipe before the sign-out**: `await
+ref.read(crateStackAccount).clear()` and then `ref.read(authSession.notifier).signOut()`. `signOut()` sets `SignedOut`
+  before its first `await`, so `crateStackScope` is already `null` afterwards and a late `clear()` finds no account; after
+  it, name the account you left, `clear(scope: leavingId)`. A queued call answered `401` keeps its idempotency key (the
+  session is being renewed, and the refresh being lazy is why a server that namespaces keys by the
+  `Authorization` header can run a call twice: `fespalier-cratestack`, `references/server-contract.md`).
 - **One isolate.** The single flight is per `ProviderContainer`. A second isolate or a second web tab that
   refreshes the same rotating token gets `invalid_grant` and signs the user out: refresh in one place, or do
   not turn rotation on.

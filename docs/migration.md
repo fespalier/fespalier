@@ -25,6 +25,15 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.12.0
+
+- **`ready()` and `attach()` in startup.dart** ([`main()`](app-startup.md)). Opt-in, and an app that exports
+  neither regenerates to the same `lib/app.main.g.dart` and the same `StartupGate`. `ready(ProviderContainer)`
+  runs on the app's own container after `startup()` and before the router; `attach(GoRouter, ProviderContainer)`
+  runs after the first frame that shows the router, after the adapters'. They are what a `main: manual` app
+  that builds its own `ProviderContainer` writes in its `main()`; moving to the generated `main()` is moving
+  that code into them. Run `fsp gen` after adding either. **`ready` and `attach` are reserved names in startup.dart now**: a helper of that name with another shape is an `fsp` error (`ready` takes one `ProviderContainer`, optional or nullable allowed, and returns `void`, `Future<void>` or `FutureOr<void>`; `attach` takes `GoRouter` and `ProviderContainer`, returns `void` and is not `async`): rename it or make it private.
+
 ### 0.11.0
 
 - **Forms moved to the `fespalier_forms` package** ([Forms](forms.md)). `form()` and `useForm` need the

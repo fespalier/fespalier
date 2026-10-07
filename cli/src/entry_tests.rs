@@ -343,8 +343,114 @@ fn no_observers_or_retry_means_none_of_their_lines() {
     ]);
     has_not(
         &main,
-        &["observers:", "_providerObservers", "retry:", "_router"],
+        &[
+            "observers:",
+            "_providerObservers",
+            "retry:",
+            "_router",
+            "ready:",
+            "appAttach:",
+        ],
     );
+}
+
+#[test]
+fn ready_and_attach_reach_the_gate_independently() {
+    let both = main_of(&[
+        ("page.dart", HOME),
+        (
+            "startup.dart",
+            "Future<void> startup() async {}\nFutureOr<void> ready(ProviderContainer container) {}\nvoid attach(GoRouter router, ProviderContainer container) {}",
+        ),
+    ]);
+    has(
+        &both,
+        &[
+            "startup: _i0.startup,",
+            "ready: _i0.ready,",
+            "appAttach: _i0.attach,",
+        ],
+    );
+    let only_ready = main_of(&[
+        ("page.dart", HOME),
+        (
+            "startup.dart",
+            "Future<void> ready(ProviderContainer container) async {}",
+        ),
+    ]);
+    has(&only_ready, &["ready: _i0.ready,"]);
+    has_not(&only_ready, &["appAttach:", "startup:"]);
+    let only_attach = main_of(&[
+        ("page.dart", HOME),
+        (
+            "startup.dart",
+            "void attach(GoRouter router, ProviderContainer container) {}",
+        ),
+    ]);
+    has(&only_attach, &["appAttach: _i0.attach,"]);
+    has_not(&only_attach, &["ready:"]);
+}
+
+#[test]
+fn a_splash_is_shown_for_ready_alone() {
+    let g = run_gen(&[
+        ("page.dart", HOME),
+        ("splash.dart", SPLASH),
+        (
+            "startup.dart",
+            "Future<void> ready(ProviderContainer container) async {}",
+        ),
+    ]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+}
+
+#[test]
+fn ready_has_a_fixed_shape() {
+    for bad in [
+        "Future<void> ready() async {}",
+        "Future<void> ready(ProviderContainer c, int x) async {}",
+        "Future<void> ready(WidgetRef ref) async {}",
+        "Future<void> ready({required ProviderContainer container}) async {}",
+        "Future<int> ready(ProviderContainer container) async => 1;",
+    ] {
+        let d = errors(&[("page.dart", HOME), ("startup.dart", bad)]);
+        assert_eq!(d.len(), 1, "{bad}: {d:?}");
+        assert!(
+            d[0].ends_with("ready() runs on the app's ProviderContainer before the first route: declare it `FutureOr<void> ready(ProviderContainer container)` (or `Future<void>` / `void`)"),
+            "{bad}: {d:?}"
+        );
+    }
+}
+
+#[test]
+fn attach_has_a_fixed_shape() {
+    for bad in [
+        "void attach(GoRouter router) {}",
+        "void attach(ProviderContainer container, GoRouter router) {}",
+        "Future<void> attach(GoRouter router, ProviderContainer container) async {}",
+        "void attach({required GoRouter router, required ProviderContainer container}) {}",
+    ] {
+        let d = errors(&[("page.dart", HOME), ("startup.dart", bad)]);
+        assert_eq!(d.len(), 1, "{bad}: {d:?}");
+        assert!(
+            d[0].ends_with("attach() is called once with the router and the app's container, after the first frame: declare it `void attach(GoRouter router, ProviderContainer container)`"),
+            "{bad}: {d:?}"
+        );
+    }
+}
+
+#[test]
+fn ready_and_attach_work_with_an_app_dart_router() {
+    let app = format!("{APP}\nGoRouter router() => AppRoutes.router();");
+    let main = main_of(&[
+        ("page.dart", HOME),
+        ("app.dart", &app),
+        (
+            "startup.dart",
+            "void ready(ProviderContainer container) {}\nvoid attach(GoRouter router, ProviderContainer container) {}",
+        ),
+    ]);
+    has(&main, &["ready: _i1.ready,", "appAttach: _i1.attach,"]);
 }
 
 #[test]
@@ -625,7 +731,7 @@ fn startup_dart_must_export_something() {
     assert_eq!(
         errors(&[("page.dart", HOME), ("startup.dart", "const x = 1;")]),
         [
-            "✗ startup.dart  startup.dart exports none of `startup()`, `zone()`, `providerObservers`, `routerObservers` or `retry()`; add one, or delete the file"
+            "✗ startup.dart  startup.dart exports none of `startup()`, `ready()`, `attach()`, `zone()`, `providerObservers`, `routerObservers` or `retry()`; add one, or delete the file"
         ]
     );
 }
@@ -763,7 +869,7 @@ fn a_splash_with_nothing_to_show_it_for_is_a_warning() {
     assert_eq!(
         g.diags,
         [
-            "! splash.dart  splash.dart is shown while startup() runs and when it fails, and startup.dart has no startup(), so it is never shown"
+            "! splash.dart  splash.dart is shown while startup() or ready() runs and when either fails, and startup.dart has neither, so it is never shown"
         ]
     );
     assert!(g.main.is_some());
@@ -1366,4 +1472,24 @@ fn adapters_with_each_root_file_combination() {
             "List<ProviderObserver> _providerObservers() => [...AppAdapters.providerObservers(), ..._i0.providerObservers];",
         ],
     );
+}
+
+#[test]
+fn an_async_attach_is_an_error_and_a_nullable_container_is_fine() {
+    for bad in [
+        "void attach(GoRouter router, ProviderContainer container) async {}",
+        "void attach(GoRouter router, ProviderContainer container) async => null;",
+    ] {
+        let d = errors(&[("page.dart", HOME), ("startup.dart", bad)]);
+        assert_eq!(d.len(), 1, "{bad}: {d:?}");
+        assert!(d[0].contains("attach() cannot be `async`"), "{bad}: {d:?}");
+    }
+    let main = main_of(&[
+        ("page.dart", HOME),
+        (
+            "startup.dart",
+            "void ready([ProviderContainer? container]) {}",
+        ),
+    ]);
+    has(&main, &["ready: _i0.ready,"]);
 }

@@ -14,8 +14,8 @@ Future<void> main() => AppMain.run();
 ```text
 lib/app/
   app.dart       the widget around the router: MaterialApp.router, theme, title, locales
-  startup.dart   what runs before the app: startup(), zone(), providerObservers, routerObservers, retry()
-  splash.dart    shown while an async startup() runs, and when it fails
+  startup.dart   what runs before the app: startup(), ready(), attach(), zone(), providerObservers, routerObservers, retry()
+  splash.dart    shown while an async startup() or ready() runs, and when either fails
 ```
 
 All three are optional. With none of them, `main: auto` (the default) writes nothing and your own `main()` keeps working. Any one of them makes `fsp` write `lib/app.main.g.dart`, and so does an [`adapters:`](adapters.md) list (since 0.9.0). `app.g.dart` is the same bytes whether or not they exist.
@@ -52,13 +52,15 @@ has any. Without an `app.dart` (with `main: generated`) the app is `MaterialApp.
 
 **`startup.dart`** exports, by name, any of:
 
-| Export                                | What it is                                                                                                                                                              |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `startup()`                           | No parameters. Returns `void`, `Future<void>` or `FutureOr<void>`; or the providers to override: `List<Override>`, `Future<List<Override>>`, `FutureOr<List<Override>>` |
-| `zone(Future<void> Function() body)`  | Wraps **all** of `main()`: the binding, `startup()` and `runApp` run inside `body`. Returns `Future<void>` or `FutureOr<void>`; call `body()` in it                     |
-| `providerObservers`                   | A list (a variable or a getter) of `ProviderObserver`s for the `ProviderScope`; read after `startup()`                                                                  |
-| `routerObservers`                     | A list of `NavigatorObserver`s for the router; read after `startup()`. Not with a `router()` in app.dart: pass them there                                               |
-| `retry(int retryCount, Object error)` | `Duration?`: the `ProviderScope`'s retry policy                                                                                                                         |
+| Export                                                 | What it is                                                                                                                                                              |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `startup()`                                            | No parameters. Returns `void`, `Future<void>` or `FutureOr<void>`; or the providers to override: `List<Override>`, `Future<List<Override>>`, `FutureOr<List<Override>>` |
+| `zone(Future<void> Function() body)`                   | Wraps **all** of `main()`: the binding, `startup()` and `runApp` run inside `body`. Returns `Future<void>` or `FutureOr<void>`; call `body()` in it                     |
+| `providerObservers`                                    | A list (a variable or a getter) of `ProviderObserver`s for the `ProviderScope`; read after `startup()`                                                                  |
+| `routerObservers`                                      | A list of `NavigatorObserver`s for the router; read after `startup()`. Not with a `router()` in app.dart: pass them there                                               |
+| `retry(int retryCount, Object error)`                  | `Duration?`: the `ProviderScope`'s retry policy                                                                                                                         |
+| `ready(ProviderContainer container)`                   | Since 0.12.0. `FutureOr<void>` (or `Future<void>`, `void`): runs on the app's own container, after `startup()`, before the router exists                                |
+| `attach(GoRouter router, ProviderContainer container)` | Since 0.12.0. `void`: called once with the router and that container, after the first frame that shows the router                                                       |
 
 ```dart
 // lib/app/startup.dart
@@ -88,11 +90,72 @@ Duration? retry(int retryCount, Object error) => null;
 
 `startup.dart` needs at least one of these exports. `startup()` runs **before the router exists**: the router is built once, after `startup()`, and disposed with the app. That is also why `usePathUrlStrategy()` belongs in `startup()`.
 
+**`ready()` and `attach()` (since 0.12.0): work on the app's own container.** `startup()` runs before any `ProviderContainer` exists, so it can only return overrides. An app that must `await container.read(storeProvider.future)` before the first route (a native init, a store to open, a session to restore), read providers eagerly, or install a `container.listen` that lives as long as the app, exports `ready()`; one that needs the router as well (a notification tap, a post-frame step) exports `attach()`. Each is optional and independent of the other, and of `startup()`:
+
+```dart
+// lib/app/startup.dart
+Future<List<Override>> startup() async => [prefsProvider.overrideWithValue(await SharedPreferences.getInstance())];
+
+/// The container the app runs in: the overrides, observers and retry above are already on it.
+Future<void> ready(ProviderContainer container) async {
+  // keepAlive providers (or held with container.listen): an auto-dispose one nobody listens to is gone
+  // before the first route, see below.
+  await container.read(databaseProvider.future); // the first route renders with the store open
+  container.read(analyticsProvider); // eager
+  container.listen(sessionProvider, (_, next) => syncPushToken(next));
+}
+
+/// After the first frame that shows the router; the adapters' attach has run before it.
+void attach(GoRouter router, ProviderContainer container) {
+  container.listen(sessionProvider, (_, next) {
+    if (next is SignedOut) router.go('/sign-in');
+  });
+}
+```
+
+The order is **`zone()` → `startup()` → the container → `ready()` → the router → `attach()`**:
+
+1. `startup()` runs as before (no container yet, no change in what it may do). Its overrides, the adapters' overrides and `providerObservers` are read once, after it succeeded.
+2. The gate makes the `ProviderContainer` itself, with those overrides and observers and `retry()`, and runs `ready(container)` on it. The container is then hosted with an `UncontrolledProviderScope`, so it is the one `ProviderScope.containerOf(context)` and every `ref` see. Without `ready()` the gate builds a plain `ProviderScope` exactly as before.
+3. The router is built (once, after `ready()`), so a `ready()` that is still running means no route has been matched, no guard has run and no `data()` has been read.
+4. After the frame that shows the router, `AppRoutes.attach` runs each adapter's `attach`, then startup.dart's `attach(router, container)`. An error from either is reported with `FlutterError.reportError` (library `fespalier`, "while running attach() in startup.dart"), does not stop the other, and the app still shows. Do not navigate synchronously from it.
+
+`ready()` follows the rules of `startup()`. **Sync stays sync**: one that returns no `Future` is done before the first frame. An async one shows `splash.dart` meanwhile, or, without one, defers the first frame like an async `startup()` (still no timer, and the gate follows the `Future` with `then`). One that throws is reported ("while running ready() in startup.dart") and shown with `retry`; `retry` **disposes the failed container, makes a fresh one with the same overrides and runs `ready()` again**. It does not run `startup()` again: that had succeeded, and its overrides are kept. A failing `startup()` is retried whole, `ready()` after it. So `ready()` may be tried more than once, on a new container each time, and should not keep state of its own between tries.
+
+**Providers `ready()` reads must not be auto-dispose, or must be held.** The container is not mounted until `ready()` is done, and Riverpod disposes an auto-dispose provider that nothing listens to on the next timer tick. A `@riverpod` provider (auto-dispose by default) that `ready()` only reads or awaits is therefore gone before the first route, and the route builds it again. Make it `@Riverpod(keepAlive: true)`, or hold it for the app's life with `container.listen(provider, (_, _) {})` in `ready()` (the listener lives as long as the container).
+
+The gate disposes its container with the app. `ready()` and `attach()` name `ProviderContainer` and `GoRouter`, which `package:fespalier/fespalier.dart` exports. Declare them as shown: a different parameter list or return type is an error with the signature in its message. `pumpRouter` and a test that pumps a page do not run them; `AppMain.root()` does.
+
+**With `main: manual`** the files are not read, so you own the container and call both yourself, in the same order. `ready` goes after the container exists and before `runApp`, `attach` after the router and the container exist (next to `AppRoutes.attach`, which runs the adapters', so the order is the same as the generated one's). `AppRoutes.attach` exists only when your `app.g.dart` has it (adapters, observe.dart or telemetry); drop that line otherwise. With `adapters:` the rest of the adapters' calls (`zone`, `wrap`, `overrides`, `launch`) are in [With `main: manual`](adapters.md#with-main-manual-appadapters):
+
+```dart
+// lib/main.dart, with `fespalier: {main: manual}`
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance(); // what startup() was
+  final container = ProviderContainer(overrides: [prefsProvider.overrideWithValue(prefs)]);
+  await ready(container); // what ready() was: await the store, read eagerly, listen
+  final router = AppRoutes.router();
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp.router(routerConfig: router),
+    ),
+  );
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    AppRoutes.attach(router, container); // the adapters', once; only when app.g.dart has it
+    attach(router, container); // the app's
+  });
+}
+```
+
+Moving to the generated `main()` is then moving `prefs`/`overrides` into `startup()`, the body that follows the container into `ready()` and the post-frame lines into `attach()` (a manual app is untouched by all of this until it does).
+
 **`splash.dart`** is a view file too (a class or `Widget splash({...})`), built **before** the app:
 there is no `Theme`, `Localizations` or `ProviderScope` above it, only a text direction (from the
 platform locale), so use plain widgets. It can ask for `error`, `stackTrace` and `retry`, by name. Each
-is nullable: they are null while `startup()` runs and set only after a failure (`retry` runs
-`startup()` again):
+is nullable: they are null while `startup()` (or, since 0.12.0, `ready()`) runs and set only after a failure (`retry` runs
+`startup()` again, or only `ready()` when `startup()` had succeeded):
 
 ```dart
 // lib/app/splash.dart
@@ -143,7 +206,7 @@ Future<void> zone(Future<void> Function() body) => kIsWeb ? body() : observabili
   off the web, as `AppRoutes.loadDeferred()` does in a hand-written `main()`), then `runApp(root())`.
 - `AppMain.root({router})`: the widget `runApp` gets, a `StartupGate` from `package:fespalier/startup.dart`:
   `startup()`, `splash.dart`, then a `ProviderScope` with the overrides, observers and retry around
-  `app.dart`. `router` builds the router (default: app.dart's `router()`, else `AppRoutes.router`).
+  `app.dart` (with a `ready()`, a container the gate makes and hosts instead, see above). `router` builds the router (default: app.dart's `router()`, else `AppRoutes.router`).
 - `AppMain.app(router)`: `app.dart`'s widget around a router, for tests (see [Testing](testing.md)).
 
 **From a 0.7 app.** Nothing changes until you opt in. To move the code of a hand-written `main()` (the full upgrade notes are in [Migration](migration.md#081)):

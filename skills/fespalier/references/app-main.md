@@ -65,13 +65,15 @@ after `startup()`; it has to return `AppRoutes.router(...)`. Without it the rout
 
 Exports read by name; at least one is required.
 
-| Export                                | Shape                                                                                                                                    |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `startup()`                           | No parameters. `void`, `Future<void>`, `FutureOr<void>`; or **the overrides**: `List<Override>`, `Future<List<Override>>`, `FutureOr<…>` |
-| `zone(Future<void> Function() body)`  | Wraps all of `main()`. Returns `Future<void>` or `FutureOr<void>`; call `body()`                                                         |
-| `providerObservers`                   | A list (variable or getter) of `ProviderObserver`s; read after `startup()`                                                               |
-| `routerObservers`                     | A list of `NavigatorObserver`s; read after `startup()`; an error when app.dart has `router()`                                            |
-| `retry(int retryCount, Object error)` | `Duration?`: the `ProviderScope`'s retry                                                                                                 |
+| Export                                                 | Shape                                                                                                                                    |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `startup()`                                            | No parameters. `void`, `Future<void>`, `FutureOr<void>`; or **the overrides**: `List<Override>`, `Future<List<Override>>`, `FutureOr<…>` |
+| `zone(Future<void> Function() body)`                   | Wraps all of `main()`. Returns `Future<void>` or `FutureOr<void>`; call `body()`                                                         |
+| `providerObservers`                                    | A list (variable or getter) of `ProviderObserver`s; read after `startup()`                                                               |
+| `routerObservers`                                      | A list of `NavigatorObserver`s; read after `startup()`; an error when app.dart has `router()`                                            |
+| `retry(int retryCount, Object error)`                  | `Duration?`: the `ProviderScope`'s retry                                                                                                 |
+| `ready(ProviderContainer container)`                   | Since 0.12.0. `FutureOr<void>` (`Future<void>`, `void`): runs on the app's own container, after `startup()`, before the router           |
+| `attach(GoRouter router, ProviderContainer container)` | Since 0.12.0. `void`: once, after the first frame that shows the router, after the adapters' `attach`                                    |
 
 ```dart
 // lib/app/startup.dart
@@ -89,12 +91,37 @@ List<ProviderObserver> get providerObservers => [];
 scope overrides. `zone()` runs outermost: the binding, the deferred routes' code (off the web),
 `startup()` and `runApp` are inside `body`. A `zone()` has to work on the web too (see below).
 
+### `ready()` and `attach()` (since 0.12.0)
+
+`startup()` has no container (it returns overrides). Work that needs the app's container (`await container.read(x.future)`
+before the first route, an eager read, a `container.listen` that lives as long as the app) is `ready(container)`; a
+step that also needs the router (a post-frame one) is `attach(router, container)`. Each is optional and independent.
+With a `ready()` the gate builds the `ProviderContainer` itself (same overrides, observers and `retry()` as the plain
+`ProviderScope` it builds without one), runs `ready` on it, then hosts it in an `UncontrolledProviderScope`. Without a
+`ready()` the output and the runtime path are what they were. The order: `zone()`, `startup()` (overrides and observers
+read once after it succeeded), the container, `ready()`, the router, `attach()` after the frame (the adapters' first, then
+the app's; an error in one is reported, "while running attach() in startup.dart", and does not stop the other).
+
+**Providers `ready()` reads must be `keepAlive`, or held**: the container is not mounted until `ready()` is done, and
+Riverpod disposes an unlistened auto-dispose provider (a `@riverpod` one) on the next timer tick, so one that `ready()` only
+reads or awaits is gone before the first route. Use `@Riverpod(keepAlive: true)`, or `container.listen(p, (_, _) {})` in `ready()`.
+
+`ready()` is sync-stays-sync like `startup()`: a sync one is done before the first frame, an async one shows `splash.dart`
+(or defers the first frame without one), a throw is reported ("while running ready() in startup.dart") and shown with
+`retry`, which **disposes the container, makes a fresh one and runs `ready()` again, without running `startup()`
+again**. So `ready()` can run more than once and must keep no state of its own between tries. No timer, microtask or listener
+of the gate's own. `pumpRouter` runs neither; `AppMain.root()` does. A `main: manual` app owns its container and calls
+its own `ready(container)` after creating it, and `attach(router, container)` in a post-frame callback beside
+`AppRoutes.attach(router, container)` (which exists only when `app.g.dart` has it: adapters, observe.dart or telemetry; with
+`adapters:` see "With `main: manual`: `AppAdapters`" below) (`docs/app-startup.md`).
+
 ### The order, and what stays sync
 
 - `zone()` is entered; inside it `AppMain.run()` initializes the binding, loads the deferred
   routes' code (`!kIsWeb`), and calls `runApp(root())`.
 - `startup()` is called when the first frame is built (inside the zone: the root is attached in a
-  timer the zone owns), then `providerObservers` is read, then the router is made.
+  timer the zone owns), then `providerObservers` is read, then (since 0.12.0, with a `ready()`) the container is made and
+  `ready()` runs, then the router is made.
 - **Sync stays sync.** A `startup()` that returns no `Future` is done before the first frame; the first frame is the app.
   A `Future` costs a frame: `splash.dart` shows meanwhile, or, without one, the first frame is
   deferred so the native splash stays. No timer.
@@ -105,7 +132,7 @@ scope overrides. `zone()` runs outermost: the binding, the deferred routes' code
 
 A view file built **before** the app: no `Theme`, `Localizations` or `ProviderScope` above it, only a
 text direction. It can ask for `error` (`Object?`), `stackTrace` (`StackTrace?`) and `retry`
-(`VoidCallback?`), by name; each **must be nullable**, because all three are null while `startup()`
+(`VoidCallback?`), by name; each **must be nullable**, because all three are null while `startup()` (or `ready()`)
 runs. Any other required parameter is an error. With no async `startup()` it is never shown (a warning).
 
 ```dart
@@ -240,7 +267,9 @@ Full example: `docs/adapters.md`, "With main: manual: AppAdapters".
 - **An app.dart `router()` must pass `observers: AppMain.routerObservers()` and `launch: AppMain.launch`** to
   `AppRoutes.router(...)`, or the adapters' router observers are not added and their launch is not used (a warning from `fsp` for each,
   quoted in `fespalier-troubleshooting`).
-- **A `startup()` failure fails a widget test** until `tester.takeException()` takes it.
+- **A `startup()` failure fails a widget test** until `tester.takeException()` takes it (a `ready()` failure too).
+- **`ready()` runs on a container that is thrown away when it fails** (since 0.12.0): a retry makes a new one, so
+  a listener or a read made in the failed run is gone with it.
 - **A root file that is something else** (a helper that happens to be `lib/app/app.dart`): rename it
   into `_components/`, or set `main: manual`.
 - **`startup()` is not run by `pumpRouter`:** pass what it would override as `overrides`.

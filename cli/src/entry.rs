@@ -147,8 +147,16 @@ pub fn emit(
     let has_startup_fn = startup_file
         .as_ref()
         .is_some_and(|m| function(m, "startup").is_some());
-    if splash_file.is_some() && startup.startup.is_none() && !has_startup_fn {
-        let msg = "splash.dart is shown while startup() runs and when it fails, and startup.dart has no startup(), so it is never shown";
+    let has_ready_fn = startup_file
+        .as_ref()
+        .is_some_and(|m| function(m, "ready").is_some());
+    if splash_file.is_some()
+        && startup.startup.is_none()
+        && !has_startup_fn
+        && !startup.ready
+        && !has_ready_fn
+    {
+        let msg = "splash.dart is shown while startup() or ready() runs and when either fails, and startup.dart has neither, so it is never shown";
         diags.warn(&root.rel(Kind::Splash), None, msg);
     }
 
@@ -255,6 +263,8 @@ pub fn emit(
         splash: splash.as_deref(),
         provider_observers,
         retry: startup.retry.then(|| format!("{sx}.retry")),
+        ready: startup.ready.then(|| format!("{sx}.ready")),
+        app_attach: startup.attach.then(|| format!("{sx}.attach")),
         router_fn,
         app_body: app_widget
             .unwrap_or_else(|| "MaterialApp.router(routerConfig: router)".to_string()),
@@ -303,6 +313,10 @@ struct FileCx<'a> {
     /// The expression of `ProviderScope(observers:)`, when there are any.
     provider_observers: Option<String>,
     retry: Option<String>,
+    /// startup.dart's `ready(container)`: `StartupGate(ready:)` (since 0.12.0).
+    ready: Option<String>,
+    /// startup.dart's `attach(router, container)`: `StartupGate(appAttach:)` (since 0.12.0).
+    app_attach: Option<String>,
     /// How the app's router is made, when it is not `AppRoutes.router()`.
     router_fn: Option<String>,
     /// `AppMain.app`'s body.
@@ -317,6 +331,10 @@ struct StartupExports {
     provider_observers: bool,
     router_observers: bool,
     retry: bool,
+    /// `FutureOr<void> ready(ProviderContainer container)`.
+    ready: bool,
+    /// `void attach(GoRouter router, ProviderContainer container)`.
+    attach: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -356,6 +374,11 @@ fn plain(ty: &str) -> String {
 
 fn bare(ty: &Option<crate::dart::Ty>) -> Option<String> {
     ty.as_ref().map(|t| plain(&t.text))
+}
+
+/// A parameter typed exactly `GoRouter` (or untyped).
+fn router_typed_strict(p: &Param) -> bool {
+    p.ty.as_ref().is_none_or(|t| plain(&t.text) == "GoRouter")
 }
 
 fn function<'m>(m: &'m Module, name: &str) -> Option<&'m Function> {
@@ -528,8 +551,57 @@ fn read_startup(root: &Node, m: &Module, own_router: bool, diags: &mut Diags) ->
         }
     }
 
+    if let Some(f) = function(m, "ready") {
+        found = true;
+        let shape_ok = f.params.len() == 1
+            && !f.params[0].named
+            && matches!(
+                bare(&f.params[0].ty).as_deref(),
+                None | Some("ProviderContainer" | "ProviderContainer?")
+            )
+            && matches!(
+                bare(&f.ret).as_deref(),
+                None | Some("void" | "Future<void>" | "FutureOr<void>")
+            );
+        if shape_ok {
+            out.ready = true;
+        } else {
+            let msg = "ready() runs on the app's ProviderContainer before the first route: declare it `FutureOr<void> ready(ProviderContainer container)` (or `Future<void>` / `void`)";
+            diags.error(&file, Some(&f.span), msg);
+        }
+    }
+
+    if let Some(f) = function(m, "attach") {
+        found = true;
+        let shape_ok = f.params.len() == 2
+            && f.params.iter().all(|p| !p.named)
+            && router_typed_strict(&f.params[0])
+            && matches!(
+                bare(&f.params[1].ty).as_deref(),
+                None | Some("ProviderContainer")
+            )
+            && matches!(bare(&f.ret).as_deref(), None | Some("void"));
+        let is_async = root
+            .files
+            .get(&Kind::Startup)
+            .and_then(|src| src.get(f.extent.clone()))
+            .is_some_and(|text| {
+                let head = text.find(['{', '=']).map_or(text, |i| &text[..i]);
+                head.trim_end().ends_with("async")
+            });
+        if shape_ok && is_async {
+            let msg = "attach() cannot be `async`: nothing awaits it, so an error would escape the gate's reporting; make it a plain `void attach(...)` and start async work with `.then(..., onError: ...)`";
+            diags.error(&file, Some(&f.span), msg);
+        } else if shape_ok {
+            out.attach = true;
+        } else {
+            let msg = "attach() is called once with the router and the app's container, after the first frame: declare it `void attach(GoRouter router, ProviderContainer container)`";
+            diags.error(&file, Some(&f.span), msg);
+        }
+    }
+
     if !found {
-        let msg = "startup.dart exports none of `startup()`, `zone()`, `providerObservers`, `routerObservers` or `retry()`; add one, or delete the file";
+        let msg = "startup.dart exports none of `startup()`, `ready()`, `attach()`, `zone()`, `providerObservers`, `routerObservers` or `retry()`; add one, or delete the file";
         diags.error(&file, None, msg);
     }
     out

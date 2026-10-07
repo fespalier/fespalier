@@ -569,3 +569,31 @@ fn an_info_plist_with_deep_linking_on_or_unset_is_quiet() {
         .replace("<false/>", "<false/> -->");
     assert_eq!(pf::ios_deeplinking_off("p", &commented), None);
 }
+
+#[test]
+fn any_value_but_true_turns_the_manifest_switch_off_and_only_under_an_activity() {
+    let zero = MANIFEST_OFF.replace("\"false\"", "\"0\"");
+    assert!(pf::android_deeplinking_off(PATH, &zero).is_some());
+    let upper = MANIFEST_OFF.replace("\"false\"", "\"TRUE\"");
+    assert_eq!(pf::android_deeplinking_off(PATH, &upper), None);
+    // Under <application>, Flutter does not read it.
+    let app = "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n    <application>\n        <meta-data android:name=\"flutter_deeplinking_enabled\" android:value=\"false\" />\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>\n";
+    assert_eq!(pf::android_deeplinking_off(PATH, app), None);
+}
+
+#[test]
+fn an_info_plist_string_or_integer_can_turn_the_switch_off() {
+    for off in [
+        "<string>NO</string>",
+        "<string>false</string>",
+        "<string>0</string>",
+        "<integer>0</integer>",
+    ] {
+        let info = INFO.replace("<false/>", off);
+        assert!(pf::ios_deeplinking_off("p", &info).is_some(), "{off}");
+    }
+    for on in ["<string>YES</string>", "<integer>1</integer>", "<true/>"] {
+        let info = INFO.replace("<false/>", on);
+        assert_eq!(pf::ios_deeplinking_off("p", &info), None, "{on}");
+    }
+}

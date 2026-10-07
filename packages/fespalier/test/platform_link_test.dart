@@ -1,6 +1,7 @@
 // sendPlatformLink and telemetryFollows (since 0.12.0).
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/src/inbound.dart' show debugResetPlatformLinks;
+import 'package:fespalier/src/lifecycle.dart' show RouterWatch;
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -76,9 +77,44 @@ void main() {
   testWidgets('telemetryFollows makes no watch of its own', (tester) async {
     final plain = make();
     addTearDown(plain.dispose);
+    expect(RouterWatch.peek(plain), isNull, reason: 'launchRouter makes none');
     expect(telemetryFollows(plain), isFalse);
     expect(telemetryFollows(plain), isFalse);
+    expect(RouterWatch.peek(plain), isNull);
     telemetryAttach(plain, base: () => '/');
     expect(telemetryFollows(plain), isTrue);
+  });
+
+  testWidgets('a router without launchRouter still opens the page', (
+    tester,
+  ) async {
+    final r = GoRouter(
+      initialLocation: '/home',
+      routes: [
+        GoRoute(path: '/home', builder: (_, _) => page('home')),
+        GoRoute(
+          path: '/orders/:id',
+          builder: (_, s) => page('order ${s.pathParameters['id']}'),
+        ),
+      ],
+    );
+    await pumpRouter(tester, r);
+    await sendPlatformLink(
+      tester,
+      Uri.parse('https://shop.example.com/orders/5'),
+    );
+    expect(find.text('order 5'), findsOneWidget);
+  });
+
+  testWidgets('settle: false leaves the frames to the test', (tester) async {
+    await pumpRouter(tester, make());
+    await sendPlatformLink(
+      tester,
+      Uri.parse('https://shop.example.com/orders/3'),
+      settle: false,
+    );
+    expect(find.text('order 3'), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.text('order 3'), findsOneWidget);
   });
 }

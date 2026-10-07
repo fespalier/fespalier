@@ -37,7 +37,8 @@ export 'src/route_scope.dart' show TestRouteScope;
 /// message on the `flutter/navigation` channel, which Flutter hands to the router, so go_router
 /// parses it and, in an app generated with `telemetry: true` or `adapters:` (the router is built
 /// with `links: true`), `onEnter` of each adapter sees it with `source` `link` and telemetry
-/// reports `fespalier.navigation.source=link`. Then it pumps until nothing is scheduled.
+/// reports `fespalier.navigation.source=link`. Then, unless [settle] is false, it pumps until nothing
+/// is scheduled (turn it off to look at a loading view, as with `pumpRouter`).
 ///
 /// ```dart
 /// await pumpRouter(tester, AppRoutes.router());
@@ -48,7 +49,11 @@ export 'src/route_scope.dart' show TestRouteScope;
 /// A warm link only: a cold start is `tester.binding.platformDispatcher.defaultRouteNameTestValue`
 /// set before `pumpRouter`. A link whose host the manifest does not list reaches the router all
 /// the same: the platform's association check is not part of a widget test.
-Future<void> sendPlatformLink(WidgetTester tester, Uri link) async {
+Future<void> sendPlatformLink(
+  WidgetTester tester,
+  Uri link, {
+  bool settle = true,
+}) async {
   await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
     'flutter/navigation',
     const JSONMethodCodec().encodeMethodCall(
@@ -56,7 +61,7 @@ Future<void> sendPlatformLink(WidgetTester tester, Uri link) async {
     ),
     (_) {},
   );
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
 }
 
 Duration? _noRetry(int retryCount, Object error) => null;

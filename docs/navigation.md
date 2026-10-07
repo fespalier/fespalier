@@ -495,8 +495,8 @@ It pumps until nothing is scheduled. It is a warm link: for a cold start, set
 does.
 
 **`fsp links` warns when Flutter's switch is off.** With `<meta-data android:name="flutter_deeplinking_enabled"
-android:value="false" />` in `AndroidManifest.xml`, or `FlutterDeepLinkingEnabled` set to `<false/>` in
-`ios/Runner/Info.plist`, Flutter does not hand links to the router, and no intent filter or association file makes a
+android:value="false" />` (any value but `true`) inside the `<activity>` of `AndroidManifest.xml`, or
+`FlutterDeepLinkingEnabled` set to `<false/>` (or `NO`, `0`) in `ios/Runner/Info.plist`, Flutter does not hand links to the router, and no intent filter or association file makes a
 link open a page. `fsp links` and `fsp links --check` say so (`flutter_deeplinking_enabled is false in {manifest}:
 Flutter will not hand links to the router`, and the same for `FlutterDeepLinkingEnabled`). It is a warning: both files
 are only read, and `--check` does not fail on it, because the switch is off on purpose with a deep-link plugin (below).
@@ -514,49 +514,62 @@ be one; see [Adapters that need your code](adapters.md#adapters-that-need-your-c
   `app_links`) and answer `InboundLaunch(location, source: NavigationSource.link)`. The router starts there and the first
   navigation is marked `link`.
 - **A warm link is `navigateFrom`.** In `attach(router, container)`, forward each link the plugin delivers with
-  `navigateFrom(NavigationSource.link, () => router.go(location))`, and hold the subscription in a provider of the
-  container (`ref.onDispose` cancels it) so it dies with the `ProviderScope`.
-- **A deferred deep link** (a link from an install that the attribution SDK gives the app on its first launch) is a
-  `launch()` too: it is the first thing the app opens.
+  `navigateFrom(NavigationSource.link, () => router.go(location))`. Let Riverpod own the subscription: a `StreamProvider`
+  over the plugin's stream, and a `container.listen` in `attach`, which dies with the `ProviderScope`.
+- **`app_links`' stream also delivers the initial link.** Taking it in `launch()` and again from the stream would open
+  the cold link twice. The recipe remembers the URI `launch()` used and skips the first stream event equal to it (or
+  take the cold start from the stream alone, and let `launch()` answer null).
+- **A deferred deep link** (a link an attribution SDK gives the app on its first launch) is a `launch()` only when it is
+  already cached on the device: `launch()` is asked before the first frame, so a `Future` there delays it, and it must
+  stay a local read, never the network. One the SDK resolves over the network arrives later, and `attach` forwards it
+  with `navigateFrom(NavigationSource.link, ...)` like a warm link.
 
 ```dart
 // packages/my_links/lib/fespalier_adapter.dart (`adapters: [my_links]` in the app's pubspec)
 const adapter = _Links();
 
-/// Forwards the plugin's warm links to [router]; it lives as long as the container.
-final _forwardLinks = Provider.family<void, GoRouter>((ref, router) {
-  final sub = AppLinks().uriLinkStream.listen((uri) {
-    final location = locationOf(uri);
-    if (location != null) {
-      navigateFrom(NavigationSource.link, () => router.go(location));
-    }
-  });
-  ref.onDispose(sub.cancel);
-});
+/// The plugin's links, owned by the container: Riverpod subscribes and cancels.
+final _links = StreamProvider<Uri>((ref) => AppLinks().uriLinkStream);
+
+/// What `launch()` opened, so that the stream's copy of it is skipped once.
+Uri? _opened;
 
 final class _Links extends FespalierAdapter {
   const _Links();
 
   @override
   FutureOr<InboundLaunch?> launch() async {
-    final uri = await AppLinks().getInitialLink();
+    final uri = await AppLinks().getInitialLink(); // a local read
     final location = uri == null ? null : locationOf(uri);
-    return location == null
-        ? null
-        : InboundLaunch(location, source: NavigationSource.link);
+    if (uri == null || location == null) return null;
+    _opened = uri;
+    return InboundLaunch(location, source: NavigationSource.link);
   }
 
   @override
-  void attach(GoRouter router, ProviderContainer container) =>
-      container.read(_forwardLinks(router));
+  void attach(GoRouter router, ProviderContainer container) {
+    container.listen(_links, (_, next) {
+      final uri = next.value;
+      if (uri == null) return;
+      if (uri == _opened) {
+        _opened = null; // the cold link launch() already opened
+        return;
+      }
+      final location = locationOf(uri);
+      if (location != null) {
+        navigateFrom(NavigationSource.link, () => router.go(location));
+      }
+    });
+  }
 }
 ```
 
-`locationOf` is yours: it maps the plugin's URI to a location of the app, with the mount prefix, and answers null for a
+`attach` runs once per router: an app that builds a second router over the same container adds a second listener, and
+both would navigate their own router. `locationOf` is yours: it maps the plugin's URI to a location of the app, with the mount prefix, and answers null for a
 link that is not the app's. The `fsp links` files are still the ones to deploy (the plugin reads the same intent filters
 and association files), and the warning above is then expected: leave it, or keep the switch on and let fespalier handle
-links without the plugin. In a test, the plugin's own fake replaces `sendPlatformLink`, which goes through Flutter's
-channel and so needs the switch on.
+links without the plugin. In a test, the plugin's own fake replaces `sendPlatformLink`: that helper goes through Flutter's
+channel, which delivers a link to the router only while the switch is on.
 
 ## Deferred routes: a page's code on demand
 

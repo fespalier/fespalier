@@ -532,26 +532,26 @@ const DEFAULT_MANIFEST: &str = "android/app/src/main/AndroidManifest.xml";
 /// The `Info.plist` of the Runner target, read for [`ios_deeplinking_off`].
 pub const INFO_PLIST: &str = "ios/Runner/Info.plist";
 
-/// The warning when the manifest turns Flutter's deep linking off, with
-/// `<meta-data android:name="flutter_deeplinking_enabled" android:value="false" />`. Read only:
+/// The warning when the manifest turns Flutter's deep linking off: a
+/// `<meta-data android:name="flutter_deeplinking_enabled" android:value="..." />` inside an
+/// `<activity>` (Flutter reads it nowhere else) whose value is anything but `true`. Read only:
 /// `fsp links` never edits that tag.
 #[must_use]
 pub fn android_deeplinking_off(path: &str, text: &str) -> Option<String> {
     let scan = scan(text)?;
-    let off = scan.tags.iter().any(|t| {
-        t.name == "meta-data"
-            && !t.close
-            && t.attrs
-                .iter()
-                .any(|(k, v)| k == "android:name" && v == "flutter_deeplinking_enabled")
-            && t.attrs
-                .iter()
-                .any(|(k, v)| k == "android:value" && v.trim().eq_ignore_ascii_case("false"))
+    let (nodes, _) = tree(&scan)?;
+    let off = nodes.iter().any(|n| {
+        n.name == "meta-data"
+            && n.attr("android:name") == Some("flutter_deeplinking_enabled")
+            && n.attr("android:value")
+                .is_some_and(|v| !v.trim().eq_ignore_ascii_case("true"))
+            && n.parent.is_some_and(|p| nodes[p].name == "activity")
     });
     off.then(|| format!("flutter_deeplinking_enabled is false in {path}: {DEEPLINKING_OFF}"))
 }
 
-/// The warning when `Info.plist` has `FlutterDeepLinkingEnabled` set to `<false/>`. Read only.
+/// The warning when `Info.plist` sets `FlutterDeepLinkingEnabled` to false: `<false/>`,
+/// `<string>NO</string>` (also `false`, `0`), or `<integer>0</integer>`. Read only.
 #[must_use]
 pub fn ios_deeplinking_off(path: &str, text: &str) -> Option<String> {
     let mut plain = String::new();
@@ -565,9 +565,18 @@ pub fn ios_deeplinking_off(path: &str, text: &str) -> Option<String> {
     plain.push_str(rest);
     let key = "<key>FlutterDeepLinkingEnabled</key>";
     let after = plain[plain.find(key)? + key.len()..].trim_start();
-    let off = after
-        .strip_prefix("<false")
-        .is_some_and(|r| r.trim_start().starts_with('/') || r.starts_with('>'));
+    let off = if let Some(r) = after.strip_prefix("<false") {
+        r.trim_start().starts_with('/') || r.starts_with('>')
+    } else if let Some(r) = after.strip_prefix("<string>") {
+        r.split_once("</string>").is_some_and(|(v, _)| {
+            ["no", "false", "0"].contains(&v.trim().to_ascii_lowercase().as_str())
+        })
+    } else if let Some(r) = after.strip_prefix("<integer>") {
+        r.split_once("</integer>")
+            .is_some_and(|(v, _)| v.trim() == "0")
+    } else {
+        false
+    };
     off.then(|| format!("FlutterDeepLinkingEnabled is false in {path}: {DEEPLINKING_OFF}"))
 }
 

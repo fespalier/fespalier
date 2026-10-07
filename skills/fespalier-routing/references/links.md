@@ -247,15 +247,18 @@ Not `RouteLink`: a link the **platform** opens. `docs/navigation.md` has the pag
 
 `fsp links` warns, and does not fail `--check`, when Flutter's switch is off: `flutter_deeplinking_enabled is false in
 {manifest}: Flutter will not hand links to the router` (`<meta-data android:name="flutter_deeplinking_enabled"
-android:value="false" />`), and `FlutterDeepLinkingEnabled is false in ios/Runner/Info.plist` (`<false/>`). Both files are
-only read. Right when a plugin owns the links; otherwise delete the key.
+android:value="false" />`), and `FlutterDeepLinkingEnabled is false in ios/Runner/Info.plist` (`<false/>`, or any value other than true: `"0"`, `<string>NO</string>`, `<integer>0</integer>`; the manifest tag counts
+under an `<activity>`). Both files are only read. Right when a plugin owns the links; otherwise delete the key.
 
 **With a deep-link plugin** (`app_links`, Branch): the plugin needs the switch off, so go_router gets no link and nothing is
 marked `link`. Write an adapter in a small path package (the app cannot list itself in `adapters:`): `launch()` returns
-`InboundLaunch(location, source: NavigationSource.link)` from the plugin's initial link (a deferred deep link from an
-attribution SDK is the same call); `attach(router, container)` reads a `Provider.family<void, GoRouter>` that listens to
-the plugin's stream, calls `navigateFrom(NavigationSource.link, () => router.go(location))`, and cancels in
-`ref.onDispose`. `locationOf(uri)` is yours and answers null for a link that is not the app's.
+`InboundLaunch(location, source: NavigationSource.link)` from the plugin's initial link, a local read (remember the URI);
+`attach(router, container)` does `container.listen` on a `StreamProvider<Uri>` over the plugin's stream and calls
+`navigateFrom(NavigationSource.link, () => router.go(location))`, **skipping the first event equal to the URI `launch()`
+used** (`app_links`' stream also delivers the initial link, so it would open twice). A deferred deep link is a `launch()`
+only when already cached on the device (`launch()` must not wait on the network); one resolved over the network is
+forwarded from `attach` like a warm link. A second router over the same container adds a second listener.
+`locationOf(uri)` is yours and answers null for a link that is not the app's.
 
 ## Not built
 

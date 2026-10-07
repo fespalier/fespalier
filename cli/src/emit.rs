@@ -2075,7 +2075,7 @@ fn devtools_providers(app: &App) -> Vec<DevToolsProviderCx> {
 }
 
 /// The `useForm` hook of an action: a typed field for each field of its input record.
-fn form_cx(a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx {
+fn form_cx(r: &Route, a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx {
     let input_ty = &a.input.ty;
     let mut params: Vec<String> = keys.to_vec();
     if let Some(d) = &f.data {
@@ -2086,6 +2086,7 @@ fn form_cx(a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx
             "ActionFormValidation validation = ActionFormValidation.afterSubmit",
             "bool resetOnSuccess = false",
             "ActionFormMessages messages = const ActionFormMessages()",
+            "FormDraft? draft",
         ]
         .map(String::from),
     );
@@ -2094,9 +2095,14 @@ fn form_cx(a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx
         .iter()
         .map(|field| {
             let n = &field.name;
-            match field.codec {
-                Some(codec) => format!("{n}: f.text('{n}', (v) => v.{n}, FieldCodec.{codec})"),
-                None => format!("{n}: f.value('{n}', (v) => v.{n})"),
+            match (field.codec, &field.draft) {
+                (Some(codec), _) => {
+                    format!("{n}: f.text('{n}', (v) => v.{n}, FieldCodec.{codec})")
+                }
+                (None, Some(draft)) => {
+                    format!("{n}: f.value('{n}', (v) => v.{n}, draft: {draft})")
+                }
+                (None, None) => format!("{n}: f.value('{n}', (v) => v.{n})"),
             }
         })
         .collect();
@@ -2130,6 +2136,22 @@ fn form_cx(a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx
         ]
         .map(String::from),
     );
+    // Where a draft of this form is kept: the action, its family key, and the fields it holds
+    // (so that a form that changed drops the drafts of the old one).
+    args.push(format!(
+        "id: {}",
+        dart_str(&format!("{}#{}", rel(r, Kind::Action), a.name))
+    ));
+    if !a.keys.is_empty() {
+        args.push(format!("key: [{}]", a.keys.join(", ")));
+    }
+    let shape: Vec<String> = f
+        .fields
+        .iter()
+        .map(|f| format!("{}:{}", f.name, f.ty))
+        .collect();
+    args.push(format!("shape: {}", dart_str(&shape.join(","))));
+    args.push("draft: draft".to_string());
     FormCx {
         hook: hook.to_string(),
         function: f.function.clone(),
@@ -2389,7 +2411,7 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
                 call: format!("_i{}.{}({})", a.import, a.name, call_args.join(", ")),
                 validate: a.validate.as_ref().map(|v| format!("_i{}.{v}", a.import)),
                 optimistic,
-                form: a.form.as_ref().map(|f| form_cx(a, f, &names.form_hook, &hook_keys_list)),
+                form: a.form.as_ref().map(|f| form_cx(r, a, f, &names.form_hook, &hook_keys_list)),
                 key_param: key_ty,
                 invalidates: if invalidates.is_empty() {
                     format!("const <{list}>[]")

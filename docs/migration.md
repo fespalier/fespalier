@@ -38,6 +38,12 @@ What changed between releases, newest first, each with a link to the reference s
   `FieldErrors`, `validate()` and `optimistic()` stay in `fespalier` ([`validate()` and
   `FieldErrors`](actions.md#validate-and-fielderrors)): an app with no form changes nothing. In a repository
   checkout, `examples/features` and `examples/auth` show the dependency.
+- **Drafts** ([Drafts](forms.md#drafts)). A form can keep what the user typed per route and restore it on return:
+  `NicknameRoute.useForm(ref, data: p, draft: const FormDraft())`. It is opt-in, so no form changes behaviour, but
+  every app with a `form()` regenerates `app.g.dart`: `useForm` takes a `FormDraft? draft` and passes the action's
+  file and name, its keys and the form's field types to `useActionForm`, and a `bool`, `DateTime` or enum field gets a
+  `DraftCodec`. A key of an action with a form can no longer be called `draft`. Drafts go to `formDraftStorage`, which
+  is your `dataCacheStorage` unless you override it; call `clearFormDrafts` when somebody signs out.
 
 ### 0.9.x
 

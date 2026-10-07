@@ -12,6 +12,8 @@ environment:
   flutter: ">=3.32.0"
 
 dependencies:
+  # What a draft's age is read from (since 0.11.0), so a test's fake clock ages it. Flutter's SDK pins 1.1.2.
+  clock: ^1.1.1
   flutter:
     sdk: flutter
   # Only package:fespalier_forms/testing.dart imports it. Apps already have it as a dev dependency,

@@ -59,7 +59,7 @@ fn companions_are_not_actions() {
     has(
         &c,
         &[
-            "static final useForm = (WidgetRef ref, {required Profile data, ActionFormValidation validation = ActionFormValidation.afterSubmit, bool resetOnSuccess = false, ActionFormMessages messages = const ActionFormMessages()}) => useActionForm(ref, action, data: data, initial: () => _i2.form(data), fields: (ActionFormFields<_i2.NicknameFields> f) => (nickname: f.text('nickname', (v) => v.nickname, FieldCodec.text), age: f.text('age', (v) => v.age, FieldCodec.optionalInteger), newsletter: f.value('newsletter', (v) => v.newsletter)), input: (f) => (nickname: f.nickname.value, age: f.age.value, newsletter: f.newsletter.value), validate: _i2.validate, validation: validation, resetOnSuccess: resetOnSuccess, messages: messages);\n}\n",
+            "static final useForm = (WidgetRef ref, {required Profile data, ActionFormValidation validation = ActionFormValidation.afterSubmit, bool resetOnSuccess = false, ActionFormMessages messages = const ActionFormMessages(), FormDraft? draft}) => useActionForm(ref, action, data: data, initial: () => _i2.form(data), fields: (ActionFormFields<_i2.NicknameFields> f) => (nickname: f.text('nickname', (v) => v.nickname, FieldCodec.text), age: f.text('age', (v) => v.age, FieldCodec.optionalInteger), newsletter: f.value('newsletter', (v) => v.newsletter, draft: DraftCodec.boolean)), input: (f) => (nickname: f.nickname.value, age: f.age.value, newsletter: f.newsletter.value), validate: _i2.validate, validation: validation, resetOnSuccess: resetOnSuccess, messages: messages, id: 'nickname/action.dart#action', shape: 'nickname:String,age:int?,newsletter:bool', draft: draft);\n}\n",
             "final _optimistic1 = optimisticLayer(_data1);",
             "/// What reads of nickname/data.dart show while a write that patches it is in flight (`optimistic()` of nickname/action.dart). Since 0.8.1.",
             "final _action1_0 = actionProvider(\n  (Ref ref, _i2.NicknameFields input) => _i2.action(ref, input: input),\n  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_data1],\n  validate: _i2.validate,\n  optimistic: () => _optimistic1.patch(_i2.optimistic),\n  site: 'a1_0',\n);",
@@ -119,7 +119,7 @@ fn a_form_alone_changes_the_provider_not_at_all() {
 fn form_reads_inline_record_and_typedef() {
     let input = "({String a, String? b, int c, int? d, double e, num? f, bool g, Color h})";
     let body = "(a: '', b: null, c: 1, d: null, e: 1.0, f: null, g: true, h: x)";
-    let fields = "(a: f.text('a', (v) => v.a, FieldCodec.text), b: f.text('b', (v) => v.b, FieldCodec.optionalText), c: f.text('c', (v) => v.c, FieldCodec.integer), d: f.text('d', (v) => v.d, FieldCodec.optionalInteger), e: f.text('e', (v) => v.e, FieldCodec.decimal), f: f.text('f', (v) => v.f, FieldCodec.optionalNumber), g: f.value('g', (v) => v.g), h: f.value('h', (v) => v.h))";
+    let fields = "(a: f.text('a', (v) => v.a, FieldCodec.text), b: f.text('b', (v) => v.b, FieldCodec.optionalText), c: f.text('c', (v) => v.c, FieldCodec.integer), d: f.text('d', (v) => v.d, FieldCodec.optionalInteger), e: f.text('e', (v) => v.e, FieldCodec.decimal), f: f.text('f', (v) => v.f, FieldCodec.optionalNumber), g: f.value('g', (v) => v.g, draft: DraftCodec.boolean), h: f.value('h', (v) => v.h))";
     let inline = format!(
         "{input} form() => {body};\nFuture<void> action(Ref ref, {{required {input} input}}) async {{}}\n"
     );
@@ -198,8 +198,64 @@ fn form_hook_of_a_keyed_action_takes_the_keys() {
         &[
             "static final useForm = (WidgetRef ref, {required int id, ActionFormValidation validation",
             "useActionForm(ref, action(id), data: null,",
+            // A draft is kept under the action, its family key and the shape of the form.
+            "id: 'orders/\\$id/action.dart#action', key: [id], shape: 'note:String', draft: draft);",
         ],
     );
+}
+
+#[test]
+fn a_form_draft_is_one_parameter_and_names_where_it_is_kept() {
+    let c = code(&nickname(&all()));
+    has(
+        &c,
+        &[
+            "ActionFormMessages messages = const ActionFormMessages(), FormDraft? draft}) =>",
+            "messages: messages, id: 'nickname/action.dart#action', shape: 'nickname:String,age:int?,newsletter:bool', draft: draft);",
+        ],
+    );
+    // No keys, no key: argument.
+    lacks(&c, &[" key: ["]);
+}
+
+#[test]
+fn a_draft_keeps_bool_date_time_and_enum_value_fields() {
+    let c = code(&nickname(
+        "enum Mood { calm, loud }\n\
+         typedef F = ({String nickname, bool a, bool? b, DateTime c, DateTime? d, Mood e, Mood? f, List<int> g, Object h});\n\
+         F form() => (nickname: '', a: false, b: null, c: DateTime(2026), d: null, e: Mood.calm, f: null, g: [], h: 0);\n\
+         Future<void> action(Ref ref, {required F input}) async {}\n",
+    ));
+    has(
+        &c,
+        &[
+            "a: f.value('a', (v) => v.a, draft: DraftCodec.boolean)",
+            "b: f.value('b', (v) => v.b, draft: DraftCodec.optionalBoolean)",
+            "c: f.value('c', (v) => v.c, draft: DraftCodec.dateTime)",
+            "d: f.value('d', (v) => v.d, draft: DraftCodec.optionalDateTime)",
+            "e: f.value('e', (v) => v.e, draft: DraftCodec.enumOf(_i2.Mood.values))",
+            "f: f.value('f', (v) => v.f, draft: DraftCodec.optionalEnumOf(_i2.Mood.values))",
+            // A type a draft cannot keep is a plain value field: not drafted.
+            "g: f.value('g', (v) => v.g)",
+            "h: f.value('h', (v) => v.h)",
+            "shape: 'nickname:String,a:bool,b:bool?,c:DateTime,d:DateTime?,e:Mood,f:Mood?,g:List<int>,h:Object'",
+        ],
+    );
+}
+
+#[test]
+fn a_draft_finds_an_enum_declared_in_a_file_the_action_imports() {
+    let c = code(&[
+        ("page.dart", HOME),
+        ("nickname/page.dart", PROFILE_PAGE),
+        ("nickname/data.dart", PROFILE_DATA),
+        ("mood.dart", "enum Mood { calm, loud }\n"),
+        (
+            "nickname/action.dart",
+            "import '../mood.dart';\ntypedef F = ({Mood mood});\nF form() => (mood: Mood.calm);\nFuture<void> action(Ref ref, {required F input}) async {}\n",
+        ),
+    ]);
+    has(&c, &["draft: DraftCodec.enumOf(Mood.values)"]);
 }
 
 #[test]
@@ -435,6 +491,25 @@ fn a_key_cannot_take_the_name_of_a_form_hook_parameter() {
     assert_eq!(
         e,
         "✗ x/$messages/action.dart:3  `messages` can't be a key of an action with a form: its hook, `useForm`, takes a parameter called `messages`; rename it"
+    );
+}
+
+#[test]
+fn a_key_cannot_be_called_draft_since_the_hook_takes_one() {
+    let e = error(&[
+        ("page.dart", HOME),
+        (
+            "x/$draft/page.dart",
+            "class XPage extends StatelessWidget { const XPage({super.key, required this.draft}); final String draft; }",
+        ),
+        (
+            "x/$draft/action.dart",
+            "typedef F = ({String note});\nF form() => (note: '');\nFuture<void> action(Ref ref, {required String draft, required F input}) async {}\n",
+        ),
+    ]);
+    assert_eq!(
+        e,
+        "✗ x/$draft/action.dart:3  `draft` can't be a key of an action with a form: its hook, `useForm`, takes a parameter called `draft`; rename it"
     );
 }
 

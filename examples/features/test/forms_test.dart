@@ -7,6 +7,8 @@ import 'package:features/app.g.dart';
 import 'package:features/nicknames.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
+import 'package:fespalier_forms/fespalier_forms.dart';
+import 'package:fespalier_forms/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -209,6 +211,80 @@ void main() {
         tester.widget<TextField>(field('Nickname')).controller!.text,
         'Bob',
       );
+    });
+  });
+
+  group('drafts', () {
+    // The id and shape the generated `useForm` writes (app.g.dart).
+    const id = '(account)/nickname/action.dart#action';
+    const shape = 'nickname:String,age:int?,newsletter:bool';
+
+    testWidgets(
+        'what was typed is kept when the page is left and put back on return',
+        (tester) async {
+      final storage = MemoryDataStorage();
+      final router = AppRoutes.router(initialLocation: '/nickname');
+      final container = await pumpRouter(
+        tester,
+        router,
+        overrides: [
+          profileServerProvider.overrideWithValue(server),
+          formDraftStorage.overrideWithValue(storage),
+        ],
+      );
+      await tester.enterText(field('Nickname'), 'Bob');
+      await tester.enterText(field('Age'), 'abc');
+      await tester.pump();
+
+      router.go('/');
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+      // The raw text, whatever it is: an age that is no number survives too.
+      expect(
+        await readFormDraft(container, id: id, shape: shape),
+        {'nickname': 'Bob', 'age': 'abc'},
+      );
+
+      router.go('/nickname');
+      await tester.pumpAndSettle();
+      expect(
+          tester.widget<TextField>(field('Nickname')).controller!.text, 'Bob');
+      expect(tester.widget<TextField>(field('Age')).controller!.text, 'abc');
+      // The field nobody changed still follows the data.
+      expect(find.text('Hello Ann'), findsOneWidget);
+      expect(reset(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('a draft that was seeded is restored, a saved form clears it', (
+      tester,
+    ) async {
+      final storage = MemoryDataStorage();
+      final container = ProviderContainer(
+        overrides: [formDraftStorage.overrideWithValue(storage)],
+      );
+      addTearDown(container.dispose);
+      await seedFormDraft(
+        container,
+        id: id,
+        shape: shape,
+        fields: {'nickname': 'Cy'},
+      );
+      await pumpRouter(
+        tester,
+        AppRoutes.router(initialLocation: '/nickname'),
+        overrides: [
+          profileServerProvider.overrideWithValue(server),
+          formDraftStorage.overrideWithValue(storage),
+        ],
+      );
+      expect(
+          tester.widget<TextField>(field('Nickname')).controller!.text, 'Cy');
+
+      await tester.tap(find.text('Save'));
+      await tester.pump();
+      await tester.pump();
+      expect(server.saves, 1);
+      expect(await readFormDraft(container, id: id, shape: shape), isNull);
     });
   });
 }

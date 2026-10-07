@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/src/inbound.dart' show debugInboundWeb;
 import 'package:fespalier/startup.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,8 @@ class _Recording extends FespalierAdapter {
     this.navigator,
     this.attachError,
     this.provider,
+    this.launchAnswer,
+    this.enter,
   });
 
   final String name;
@@ -26,6 +29,20 @@ class _Recording extends FespalierAdapter {
   final NavigatorObserver? navigator;
   final Object? attachError;
   final Provider<String>? provider;
+  final FutureOr<InboundLaunch?> Function()? launchAnswer;
+  final FutureOr<OnEnterResult>? Function(InboundNavigation)? enter;
+
+  @override
+  FutureOr<InboundLaunch?> launch() {
+    log.add('$name launch');
+    return launchAnswer?.call();
+  }
+
+  @override
+  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
+    log.add('$name onEnter');
+    return enter?.call(navigation);
+  }
 
   @override
   Future<void> zone(Future<void> Function() body) async {
@@ -58,6 +75,14 @@ class _Recording extends FespalierAdapter {
     log.add('$name attach');
     if (attachError != null) throw attachError!;
   }
+}
+
+typedef Enter = FutureOr<OnEnterResult> Function();
+
+void muteErrors() {
+  final old = FlutterError.onError;
+  FlutterError.onError = (_) {};
+  addTearDown(() => FlutterError.onError = old);
 }
 
 base class _Observer extends ProviderObserver {}
@@ -270,8 +295,189 @@ void main() {
       const _Plain().attach(router, container);
     });
   });
+  group('launch', () {
+    InboundLaunch at(String l) =>
+        InboundLaunch(l, source: NavigationSource.notification);
+
+    test('every adapter is asked, in order, and the first answer wins', () {
+      final all = FespalierAdapters([
+        _Recording('a', launchAnswer: () => null),
+        _Recording('b', launchAnswer: () => at('/b')),
+        _Recording('c', launchAnswer: () => at('/c')),
+      ]);
+      final launch = all.launch();
+      expect(launch, isA<InboundLaunch>());
+      expect((launch as InboundLaunch).location, '/b');
+      expect(log, ['a launch', 'b launch', 'c launch']);
+    });
+
+    test('sync stays sync, and nobody has one: null', () {
+      expect(
+        FespalierAdapters([_Recording('a'), _Recording('b')]).launch(),
+        isNull,
+      );
+      expect(FespalierAdapters(const []).launch(), isNull);
+    });
+
+    test(
+      'a Future in the middle keeps the order and the first answer',
+      () async {
+        final done = Completer<InboundLaunch?>();
+        final all = FespalierAdapters([
+          _Recording('a', launchAnswer: () => done.future),
+          _Recording('b', launchAnswer: () => at('/b')),
+        ]);
+        final answer = all.launch();
+        expect(answer, isA<Future<InboundLaunch?>>());
+        expect(log, ['a launch']);
+        done.complete(at('/a'));
+        expect((await answer)!.location, '/a');
+        expect(log, ['a launch', 'b launch']);
+      },
+    );
+
+    test('the web is never asked', () {
+      debugInboundWeb = true;
+      addTearDown(() => debugInboundWeb = null);
+      final all = FespalierAdapters([
+        _Recording('a', launchAnswer: () => at('/a')),
+      ]);
+      expect(all.launch(), isNull);
+      expect(log, isEmpty);
+    });
+
+    test('an adapter that throws is reported and the others still answer', () {
+      final errors = <FlutterErrorDetails>[];
+      final old = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = old);
+      final all = FespalierAdapters([
+        _Recording('a', launchAnswer: () => throw StateError('boom')),
+        _Recording('b', launchAnswer: () => at('/b')),
+      ]);
+      expect((all.launch() as InboundLaunch).location, '/b');
+      expect(errors, hasLength(1));
+    });
+  });
+
+  group('onEnter', () {
+    /// A router, and `onEnter` of [adapters] applied to the state it shows.
+    Future<Enter> enterWith(
+      WidgetTester tester,
+      List<FespalierAdapter> adapters,
+    ) async {
+      final all = FespalierAdapters(adapters);
+      final router = GoRouter(
+        routes: [GoRoute(path: '/', builder: (_, _) => const SizedBox())],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      final state = router.state;
+      final cx = tester.element(find.byType(SizedBox));
+      return () => all.onEnter(cx, state, state, router);
+    }
+
+    testWidgets('no say from anyone: a plain Allow, synchronously', (
+      tester,
+    ) async {
+      final enter = await enterWith(tester, [_Recording('a'), _Recording('b')]);
+      final result = enter();
+      expect(result, isA<Allow>());
+      expect((result as Allow).then, isNull);
+      expect(log, ['a onEnter', 'b onEnter']);
+    });
+
+    testWidgets('the first Block wins, and the later adapters are not asked', (
+      tester,
+    ) async {
+      final enter = await enterWith(tester, [
+        _Recording('a', enter: (_) => const Allow()),
+        _Recording('b', enter: (_) => const Block.stop()),
+        _Recording('c', enter: (_) => const Block.then(_noop)),
+      ]);
+      muteErrors();
+      enter(); // the initial navigation: a block is refused (see below)
+      log.clear();
+      final result = enter();
+      expect(result, isA<Block>());
+      expect((result as Block).isStop, isTrue);
+      expect(log, ['a onEnter', 'b onEnter']);
+    });
+
+    testWidgets('the thens of the Allows are merged, in order, sync', (
+      tester,
+    ) async {
+      final enter = await enterWith(tester, [
+        _Recording('a', enter: (_) => Allow(then: () => log.add('then a'))),
+        _Recording('b'),
+        _Recording('c', enter: (_) => Allow(then: () => log.add('then c'))),
+      ]);
+      final result = enter() as Allow;
+      log.clear();
+      expect(result.then!(), isNull);
+      expect(log, ['then a', 'then c']);
+    });
+
+    testWidgets('a then that throws is reported and the next still runs', (
+      tester,
+    ) async {
+      final errors = <FlutterErrorDetails>[];
+      final old = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = old);
+      final enter = await enterWith(tester, [
+        _Recording('a', enter: (_) => Allow(then: () => throw StateError('x'))),
+        _Recording('b', enter: (_) => Allow(then: () => log.add('then b'))),
+      ]);
+      final result = enter() as Allow;
+      log.clear();
+      result.then!();
+      expect(log, ['then b']);
+      expect(errors, hasLength(1));
+    });
+
+    testWidgets('a Future answer is awaited and the order is kept', (
+      tester,
+    ) async {
+      final done = Completer<OnEnterResult>();
+      final enter = await enterWith(tester, [
+        _Recording('a', enter: (_) => done.future),
+        _Recording('b', enter: (_) => const Block.stop()),
+      ]);
+      muteErrors();
+      final result = enter();
+      expect(result, isA<Future<OnEnterResult>>());
+      expect(log, ['a onEnter']);
+      done.complete(const Allow());
+      // The initial navigation: b's block is refused, so it is allowed.
+      expect(await result, isA<Allow>());
+      expect(log, ['a onEnter', 'b onEnter']);
+    });
+
+    testWidgets('blocking the initial navigation is refused and reported', (
+      tester,
+    ) async {
+      final errors = <FlutterErrorDetails>[];
+      final old = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = old);
+      final enter = await enterWith(tester, [
+        _Recording('a', enter: (_) => const Block.stop()),
+      ]);
+      expect(enter(), isA<Allow>());
+      expect(errors, hasLength(1));
+      expect(
+        errors.single.exception.toString(),
+        contains('blocked the initial navigation'),
+      );
+      // The next one may be blocked.
+      expect(enter(), isA<Block>());
+    });
+  });
 }
 
 class _Plain extends FespalierAdapter {
   const _Plain();
 }
+
+void _noop() {}

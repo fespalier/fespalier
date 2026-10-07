@@ -187,6 +187,10 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
 - **Errors, all from `fsp`** (quoted in `fespalier-troubleshooting`, its app-main diagnostics page): a name that is
   not a package name, a duplicate, `fespalier` itself, and a name not under `dependencies:`. `main: manual` with
   `adapters:` was an error up to 0.10.0 and is fine since 0.11.0 (below).
+- **`launch` and `onEnter` (since 0.11.0).** `launch()` returns an `InboundLaunch` (or `null`) once, after `beforeRun()`,
+  never on the web; the first adapter's answer wins. `onEnter(InboundNavigation)` returns `null`, `Allow(then:)` or `Block.then(...)`;
+  the first `Block` wins and the `then`s of the `Allow`s run in order. Never block `navigation.initial` (it is allowed and
+  reported in debug). `launchRouter` and the platform-link marks are in `fespalier-routing`.
 - **`extends`, never `implements`** `FespalierAdapter`: a member added later (`attach`, since 0.11.0) has a default
   for a subclass only.
 - **`attach` (since 0.11.0).** The generated main passes `AppRoutes.attach` to the `StartupGate`, which calls it

@@ -66,7 +66,10 @@ gets nothing from this part. An app with `adapters:` regenerates two files:**
    `AppRoutes.attach(router, container)` once both exist (`fespalier`, app-main page).
 4. `FespalierAdapter` has a new member, `attach(router, container)`, with an empty default. An adapter that
    **`implements`** `FespalierAdapter` (not `extends`) stops compiling: extend it.
-5. Moving from `main: auto` to `manual`: delete `lib/app.main.g.dart`. Each adapter's top-level `adapter` is read once, at the first `AppAdapters` call. `attach` runs after the first frame that shows the router.
+5. `FespalierAdapter` also has `launch()` and `onEnter(InboundNavigation)` (empty defaults), and the runtime has `InboundLaunch`
+   and `launchRouter`: a platform link is marked `NavigationSource.link` in telemetry when `launchRouter(links: true)` builds the
+   router (the generated wiring follows in this release). Nothing changes for an app that calls neither.
+6. Moving from `main: auto` to `manual`: delete `lib/app.main.g.dart`. Each adapter's top-level `adapter` is read once, at the first `AppAdapters` call. `attach` runs after the first frame that shows the router.
 
 ### Telemetry (0.11.0)
 

@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show Override;
+
+import 'inbound.dart';
 
 /// What a package plugs into the generated `main()` when an app lists it under
 /// `fespalier: adapters:` (since 0.9.0). The package exports one, a top-level named `adapter`,
@@ -56,4 +60,19 @@ abstract class FespalierAdapter {
   /// subscribe in a provider of [container] (`container.listen`), so it goes with the
   /// `ProviderScope`. No timer. An adapter that throws here is reported and the app still runs.
   void attach(GoRouter router, ProviderContainer container) {}
+
+  /// Where the app was opened from (since 0.11.0), asked once after [beforeRun] and before the
+  /// router is built, never on the web: a notification tap that cold-started the app, a
+  /// home-screen shortcut. Null (sync) when this adapter did not open it; every adapter is asked,
+  /// in the pubspec's order, so each can clear its pending state, and the first answer wins. A
+  /// `Future` delays the first frame like [beforeRun], so keep it to a local read.
+  FutureOr<InboundLaunch?> launch() => null;
+
+  /// A navigation is about to be parsed (go_router's `onEnter`, since 0.11.0): null to have no
+  /// say, `Allow(then: ...)` to run something after it commits, `Block.then(...)` to stop it
+  /// (rewriting a custom-scheme link: `Block.then(() => router.go('/orders/42'))`). The first
+  /// adapter to block wins. Never block [InboundNavigation.initial]: go_router shows its error
+  /// page for it, so answer [launch] instead (fespalier allows it and, in debug, reports it).
+  /// Keep it fast and synchronous when you can: sync stays sync.
+  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) => null;
 }

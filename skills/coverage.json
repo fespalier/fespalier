@@ -262,6 +262,8 @@
         "packages/fespalier/lib/src/location.dart",
         "packages/fespalier/lib/src/route_link.dart",
         "docs/navigation.md#Links: `RouteLink`",
+        "packages/fespalier/lib/src/inbound.dart",
+        "docs/navigation.md#Opening the app: launches and platform links",
         "packages/fespalier/lib/src/not_found.dart",
         "packages/fespalier/lib/src/route_info.dart",
         "packages/fespalier/lib/src/route_navigator.dart",

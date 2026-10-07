@@ -212,7 +212,7 @@ final router = navigateFrom(
 `NavigationSource` has `notification`, `shortcut`, `widget` and `link`. Telemetry reports the mark as `TelemetryStart.source` and, in `FespalierOtel`, as the attribute `fespalier.navigation.source` of the `navigate` span; a navigation the app's own code started has none. Guards run as for any link, and `fespalier.navigation.kind` still says how the stack changed (a cold start is `initial`, a warm one `go` or `push`).
 
 The closure runs once, synchronously, and what it returns is returned. The **first** navigation it starts takes the mark, which is dropped when the closure returns, so it cannot reach a later one; a closure that starts no navigation leaves nothing behind.
-fespalier never sets it itself: a platform deep link and the browser's back button look like any other navigation. The bridge that knows (a notification handler) calls `navigateFrom`.
+Since 0.11.0, with `launchRouter(..., links: true)` (an app with telemetry or adapters), fespalier marks a platform link `NavigationSource.link` by itself, at cold start and while running (never on the web); see [Opening the app](navigation.md#opening-the-app-launches-and-platform-links). Anything else (the browser's back button, a notification tap) looks like any other navigation: the bridge that knows calls `navigateFrom`, and an adapter's `launch()` covers the cold start.
 
 - A source that is not one of the four values is an `AssertionError` in debug: ``navigateFrom: `banner`
 is not a NavigationSource value (notification, shortcut, widget or link)``.

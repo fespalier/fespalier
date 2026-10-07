@@ -157,6 +157,7 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 | `fespalier_connectivity` | a reconnect signal and a `hasNetwork` provider                                         | [Reconnects](docs/data.md#reconnects-fespalier_connectivity)                       |
 | `fespalier_adaptive`     | menus as a bar, a rail or a drawer by window width                                     | [Adaptive navigation](docs/layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive) |
 | `fespalier_image`        | responsive CDN images                                                                  | [Images](docs/responsive-images.md)                                                |
+| `fespalier_forms`        | the form of an `action.dart`: typed fields, validation, server errors (since 0.11.0)   | [Forms](docs/forms.md)                                                             |
 | `fespalier_dio`          | Dio and `package:http`: cancellation, field errors, writes never retried               | [HTTP clients](docs/http.md)                                                       |
 | `fespalier_cratestack`   | a CrateStack client behind `data.dart` and `action.dart`, offline-first (since 0.10.0) | [CrateStack](docs/cratestack.md), [Offline-first](docs/offline-first.md)           |
 | `fespalier_tolgee`       | translations from Tolgee or your own server, offline-safe (since 0.10.0)               | [Translations](docs/i18n-tolgee.md)                                                |
@@ -182,7 +183,8 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 **Data and writes**
 
 - <a name="datadart-a-function-a-selector-or-a-provider"></a><a name="retries-and-reloads"></a><a name="freshness-staletime-resume-and-reconnect"></a><a name="reconnects-fespalier_connectivity"></a><a name="a-cache-that-survives-a-restart-datacache"></a><a name="a-cache-on-disk-fespalier_storage"></a><a name="typed-helpers-on-the-route"></a><a name="from-a-location-to-its-data"></a><a name="section-data"></a>[Data](docs/data.md)
-- <a name="actiondart-typed-writes"></a><a name="forms-form-and-validate"></a><a name="optimistic-updates-optimistic"></a>[Actions and forms](docs/actions.md)
+- <a name="actiondart-typed-writes"></a><a name="optimistic-updates-optimistic"></a>[Actions](docs/actions.md)
+- <a name="forms-form-and-validate"></a>[Forms](docs/forms.md)
 - <a name="http-clients-fespalier_dio"></a><a name="cancelling-a-load-whose-page-is-gone"></a><a name="server-validation-errors-on-forms"></a><a name="writes-are-never-retried-over-http-too"></a>[HTTP clients](docs/http.md)
 
 **App**

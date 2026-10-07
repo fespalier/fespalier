@@ -13,7 +13,8 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 | [Layouts](layouts.md)                                              | Tab layouts, menus, adaptive navigation, transitions, state and scroll restoration                    |
 | [Guards](guards.md)                                                | `guard.dart`, `redirect.dart`, feature flags                                                          |
 | [Data](data.md)                                                    | `data.dart`, retries, freshness, caches, section data, typed helpers                                  |
-| [Actions and forms](actions.md)                                    | `action.dart`, `form()`, `validate()`, optimistic updates                                             |
+| [Actions](actions.md)                                              | `action.dart`, `validate()`, `FieldErrors`, optimistic updates                                        |
+| [Forms](forms.md)                                                  | `form()` and `useForm` with `fespalier_forms`: typed fields, validation, server errors                |
 | [HTTP clients](http.md)                                            | Dio and `package:http`: cancelling, field errors, writes never retried                                |
 | [`main()`, app.dart, startup.dart and splash.dart](app-startup.md) | The generated `main()` and the root files                                                             |
 | [Adapters](adapters.md)                                            | Packages that plug into the generated `main()`                                                        |
@@ -46,7 +47,8 @@ An older link such as `github.com/fespalier/fespalier#telemetry`, or a message t
 - [observability.md](observability.md): Route lifecycle: `observe.dart` · Telemetry · Turning it on · OpenTelemetry with otel_zone · Sentry: fespalier_sentry · What Sentry gets from fespalier · Wiring Sentry · One transaction per screen · Sentry defaults and privacy · Testing with Sentry · Crashlytics · Several sinks: combine and add · Spans around data() and actions · Where a navigation came from: navigateFrom · Testing telemetry · What it costs
 - [navigation.md](navigation.md): The root navigator (`navigator.dart`) · `present.dart`: a page of your own · The URL as state: `of` and `copyWith` · Remounting a page: `remount` · Typed `extra` · Restoring `extra` on the web · Links: `RouteLink` · Preloading the data behind a link · Deferred routes: a page's code on demand
 - [data.md](data.md): `data.dart`: a function, a selector or a provider · Retries and reloads · Freshness: `staleTime`, resume and reconnect · Reconnects: fespalier_connectivity · A cache that survives a restart: `dataCache` · A cache on disk: fespalier_storage · Typed helpers on the route · From a location to its data · Section data
-- [actions.md](actions.md): `action.dart`: typed writes · Forms: `form()` and `validate()` · Optimistic updates: `optimistic()`
+- [actions.md](actions.md): `action.dart`: typed writes · `validate()` and `FieldErrors` · Optimistic updates: `optimistic()`
+- [forms.md](forms.md): Forms: fespalier_forms · Install · `form()` and `useForm` · Fields · Submit and errors · Testing (the old "Forms: `form()` and `validate()`" section of actions.md, since 0.11.0)
 - [http.md](http.md): HTTP clients: fespalier_dio · Cancelling a load whose page is gone · Server validation errors on forms · Writes are never retried, over HTTP too
 - [app-startup.md](app-startup.md): `main()`: app.dart, startup.dart and splash.dart
 - [adapters.md](adapters.md): Adapters in the generated `main()`

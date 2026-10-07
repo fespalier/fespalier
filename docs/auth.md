@@ -113,7 +113,7 @@ GuardResult guard(Ref ref, {String? from}) => redirectIfSignedIn(ref, from: from
 
 ## Signing in and out
 
-The sign-in page is a [form on an action](actions.md#forms-form-and-validate), and the backend throws `FieldErrors` for wrong credentials, which the form shows under its field:
+The sign-in page is a [form on an action](forms.md) (`fespalier_forms`), and the backend throws `FieldErrors` for wrong credentials, which the form shows under its field:
 
 ```dart
 // lib/app/sign-in/action.dart

@@ -1,16 +1,36 @@
-# Forms and optimistic updates on `action.dart`
+# Forms: `fespalier_forms` (since 0.11.0)
 
-Since 0.8.1 (`cli/src/forms.rs` for the names, `packages/fespalier/lib/src/action_form.dart` and
-`optimistic.dart` for the runtime). There is **no `form.dart`**: `form()`, `validate()` and
-`optimistic()` are _companion functions_ in the `action.dart` of the action they belong to.
-An app on 0.7.0 or earlier has none of this; one that writes no companion generates exactly what
-0.7.0 did.
+The form of an `action.dart` is the `fespalier_forms` package. Until 0.10.0 it was part of
+`fespalier`; an app on 0.10.0 or earlier imports nothing for it and has no `fespalier_forms` in its
+pubspec (see `fespalier-migration`, "0.10 to 0.11"). Runtime:
+`packages/fespalier_forms/lib/src/action_form.dart`; the names the generator reads are in
+`cli/src/forms.rs`, and the dependency check is `check_dependency` there.
 
-**The names.** For the action called `action` a companion is the role itself (`form`,
-`validate`, `optimistic`). For any other action, `approve` say, it is `approveForm`,
-`approveValidate`, `approveOptimistic`, and the form hook is `useApproveForm`. A companion is
-**never an action**, even when it takes a `Ref` (that is an error, below): an app on 0.7.0 that
-had an _action_ called `form` beside `action` must rename it.
+There is **no `form.dart`**: `form()` is a _companion function_ in the `action.dart` of the action
+it belongs to, found by name beside `validate()` and `optimistic()`
+([`optimistic.md`](optimistic.md)). For the action called `action` it is `form`; for `approve` it is
+`approveForm`, and the hook is `useApproveForm`. A companion is **never an action**, even when it
+takes a `Ref` (that is an error).
+
+## Install
+
+Add `fespalier_forms` under `dependencies:`, **at the same git `url` and `ref` as `fespalier`**
+(pub resolves the two to one package only then; the block to copy is
+`packages/fespalier_forms/README.md`), and run `fsp gen`:
+
+- `app.g.dart` imports `package:fespalier_forms/fespalier_forms.dart` **only when some `action.dart`
+  has a `form()`**. An app with no form imports nothing and pays nothing.
+- With a `form()` and no `fespalier_forms` under `dependencies:`, `fsp` reports an error at the
+  `form()` (the message is in `fespalier-troubleshooting`, `diagnostics-data-and-hooks.md`). The
+  output depends on the pubspec alone, never on `pub get`.
+- A page that only calls `XRoute.useForm(...)` needs no import (the types are inferred). Code that
+  names `ActionForm`, `ActionField`, `ActionTextField`, `ActionFormFields`, `FieldCodec`,
+  `ActionFormMessages`, `ActionFormValidation` or `useActionForm` imports
+  `package:fespalier_forms/fespalier_forms.dart`; `package:fespalier` no longer exports them.
+- **`FieldErrors`, `validate()` and `optimistic()` stay in `fespalier`.** They are the error contract
+  of actions and work without a form.
+- `package:fespalier_forms/testing.dart` has `isFieldErrors(fields, message:)`, a matcher for the
+  `FieldErrors` an action throws.
 
 The samples share a tiny backend. The server spells the nickname its own way (trimmed, lower
 case), which is what shows that the page ends on the server's value, not the guess.
@@ -135,7 +155,9 @@ class NicknamePage extends HookConsumerWidget {
 // test/nickname_test.dart
 import 'dart:async';
 
+import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
+import 'package:fespalier_forms/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_app/app.g.dart';
@@ -187,6 +209,19 @@ void main() {
     expect(find.text('That nickname is taken'), findsOneWidget);
     expect(find.text('Hello Ann'), findsOneWidget);
   });
+
+  test('validate() refuses an empty nickname before the write starts', () {
+    final container = ProviderContainer(
+      overrides: [profileApiProvider.overrideWithValue(ProfileApi())],
+    );
+    addTearDown(container.dispose);
+    expect(
+      () => container
+          .read(NicknameRoute.action.notifier)
+          .call((nickname: ' ', newsletter: false)),
+      throwsA(isFieldErrors({'nickname': 'Enter a nickname'})),
+    );
+  });
 }
 ```
 
@@ -228,45 +263,8 @@ String note}) input`) or as a `typedef` **declared in the same `action.dart`**: 
   form's own action is running the data is not read again. After a success the fields become the
   new baseline (`isDirty` false). `reset()` goes back to the last data and idles the action;
   `resetOnSuccess: true` restarts every field from `form(data)` after a success.
-- **Not built**: async per-field validators, a control tree, custom text codecs for dates and
+- **Not built** (0.11.0): async per-field validators, a control tree, custom text codecs for dates and
   enums (use a picker and a value field), an `fsp new --form` scaffold.
-
-## `validate()`: the same check in every path
-
-`FieldErrors? validate(Input input)`: one positional typed parameter (the action's input as
-written), no `Ref`, no record needed. It runs in the form, live, **and inside the action's
-provider before the action**: `submit`, `useAction`'s `call` and `container.read(...notifier).call`
-all go through it. A refused input never starts the write: no loading state, the `FieldErrors` is
-thrown synchronously (`call` of the handle returns `null`; `submit` throws), and `state` and
-`ActionHandle.fieldErrors` hold it. A check that needs the server belongs in the action:
-`throw const FieldErrors({'nickname': 'That nickname is taken'})`. The keys are the record's field
-names; `FieldErrors(fields, message:)` also takes a form-level `message`.
-
-## `optimistic()`: the page before the server answers
-
-`T optimistic(T current, Input input)`: two positional typed parameters, returning the first's
-type, no `Ref`. It patches **one `data.dart` the action invalidates**, found by the type `T`.
-
-- **The target is searched among what the action invalidates**: this folder's own data first, then
-  the sections above it (innermost first), then the rest of `invalidates` in the order listed.
-  Nothing of type `T` there is an error (O3a, O3b). So `const invalidates = <Object>[]` beside an
-  `optimistic()` is an error, and a custom `invalidates` must list the target. Only the target is
-  patched.
-- **The sequence.** The patch shows from the start of the write. A failure removes it (the
-  rollback). A success keeps it **over the old value until the invalidated data has loaded again**,
-  so no frame shows the old value, with `keep_previous: false` too: while a patched write settles,
-  `DataView` skips `loading.dart`. Then the server's value shows. A write that is not patched
-  shows `loading.dart` as configured.
-- **Concurrent writes** apply oldest first; a failure removes only its own patch.
-- **Which reads are patched**: `DataView`, `SectionView` (a section's layout and every page
-  below it that takes the section's data by type), and the typed `XRoute.watch` /
-  `XSection.watch`. **Not patched, the server's value**: `XRoute.data`, `read`, `refresh`,
-  `prefetch`, `preload`, `AppRoutes.dataAt`, and `ref.watch(XRoute.data)` anywhere. A
-  dependency-triggered reload (`AsyncLoading` with a value) is unpatched in `watch` only.
-- **The patch ends with the reload, not with a comparison**: a `data()` that returns the very same
-  object after loading still drops it. A patch that throws is reported through
-  `FlutterError.reportError` (`while applying an optimistic() patch`) and skipped.
-- The page can leave mid-write: the write still finishes and still invalidates.
 
 ## Testing a form
 
@@ -275,3 +273,7 @@ Hold the save on a `Completer` and `pump()`; no timer, no `runAsync` (the `// te
 `onPressed`, `null` while pending. For a section, `TeamsTeamIdSection.addMember(ref, ...)` from the
 page's element (`tester.element(find.byType(MembersPage)) as WidgetRef`), then pump in steps and
 assert the list never loses the new member.
+
+- **The package starts no timer, no microtask and reads no clock** (`test/no_timers_test.dart`
+  greps `lib/`); a test needs no `runAsync`. A form that is dropped with its page disposes its
+  controllers, so a `LeakTesting` run finds nothing left behind.

@@ -579,3 +579,97 @@ fn form_hook_name_collides() {
         "{e}"
     );
 }
+
+// --- the fespalier_forms package (since 0.11.0) -------------------------------------------------
+
+/// The files built with a pubspec that lists (or not) `fespalier_forms`, through `Config::load`.
+fn with_pubspec(pubspec: &str, files: &[(&str, &str)]) -> (String, Vec<String>) {
+    let dir = crate::action_tests::project(files);
+    std::fs::write(dir.path().join("pubspec.yaml"), pubspec).unwrap();
+    let cfg = crate::config::Config::load(dir.path()).unwrap();
+    let (code, diags, _) = crate::build(&dir.path().join("lib/app"), &cfg).unwrap();
+    let errors = diags
+        .0
+        .iter()
+        .map(ToString::to_string)
+        .filter(|d| d.starts_with('✗'))
+        .collect();
+    (code, errors)
+}
+
+const WITH_PACKAGE: &str = "name: demo\ndependencies:\n  fespalier:\n    path: ../fespalier\n  fespalier_forms:\n    path: ../fespalier_forms\n";
+const WITHOUT_PACKAGE: &str = "name: demo\ndependencies:\n  fespalier:\n    path: ../fespalier\n";
+
+#[test]
+fn the_generated_file_imports_the_forms_package_when_an_action_has_a_form() {
+    let c = code(&nickname(&all()));
+    has(
+        &c,
+        &["import 'package:fespalier_forms/fespalier_forms.dart';\n"],
+    );
+    // After fespalier's own, before Flutter's.
+    let at = |s: &str| c.find(s).unwrap();
+    assert!(
+        at("import 'package:fespalier/fespalier.dart';")
+            < at("import 'package:fespalier_forms/fespalier_forms.dart';")
+            && at("import 'package:fespalier_forms/fespalier_forms.dart';")
+                < at("import 'package:flutter/widgets.dart';")
+    );
+}
+
+#[test]
+fn an_app_without_a_form_does_not_import_it() {
+    let c = code(&nickname(&format!("{FIELDS}{VALIDATE}{ACTION}")));
+    lacks(&c, &["fespalier_forms"]);
+    let c = code(&[("page.dart", HOME)]);
+    lacks(&c, &["fespalier_forms"]);
+}
+
+#[test]
+fn a_form_needs_the_forms_package_in_the_pubspec() {
+    let (code, errors) = with_pubspec(WITH_PACKAGE, &nickname(&all()));
+    assert!(errors.is_empty(), "{errors:?}");
+    has(
+        &code,
+        &["import 'package:fespalier_forms/fespalier_forms.dart';"],
+    );
+
+    let (_, errors) = with_pubspec(WITHOUT_PACKAGE, &nickname(&all()));
+    assert_eq!(
+        errors,
+        [format!(
+            "✗ nickname/action.dart:2  {}",
+            crate::forms::MISSING_PACKAGE
+        )]
+    );
+    assert_eq!(
+        crate::forms::MISSING_PACKAGE,
+        "`form()` is the form of `action()`, and since 0.11.0 forms are in the fespalier_forms package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the same git `url` and `ref` as fespalier"
+    );
+}
+
+#[test]
+fn an_action_without_a_form_needs_no_package() {
+    let (code, errors) = with_pubspec(
+        WITHOUT_PACKAGE,
+        &nickname(&format!("{FIELDS}{VALIDATE}{OPTIMISTIC}{ACTION}")),
+    );
+    assert!(errors.is_empty(), "{errors:?}");
+    lacks(&code, &["fespalier_forms"]);
+}
+
+#[test]
+fn every_form_of_an_app_is_reported() {
+    let action = "typedef F = ({String note});\nF form() => (note: '');\nFuture<void> action(Ref ref, {required F input}) async {}\n";
+    let (_, errors) = with_pubspec(
+        WITHOUT_PACKAGE,
+        &[
+            ("page.dart", HOME),
+            ("a/page.dart", &widget("APage", "", "")),
+            ("a/action.dart", action),
+            ("b/page.dart", &widget("BPage", "", "")),
+            ("b/action.dart", action),
+        ],
+    );
+    assert_eq!(errors.len(), 2, "{errors:?}");
+}

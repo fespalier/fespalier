@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.10 to 0.11 (AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.10 to 0.11 (AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -30,10 +30,34 @@ flutter analyze && flutter test
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
 
-## 0.10 to 0.11: what to check (adapters)
+## 0.10 to 0.11: what to check
 
-Bump the `ref:` to the 0.11.0 tag and run the matching `fsp gen`. **For this change, an app without `fespalier: adapters:`
-regenerates byte for byte the same files** (later 0.11 changes may still touch `app.g.dart`). An app with `adapters:` regenerates two:
+0.11.0 is a **breaking** release for apps with forms (`form()` in an `action.dart`); an app with none changes nothing but
+what `fsp gen` writes for the other 0.11 changes below. Bump the `ref:` of `fespalier` (and every companion) to the 0.11.0
+tag, then:
+
+1. **Add `fespalier_forms`** under `dependencies:`, at the **same git `url` and `ref` as `fespalier`** (the block is in
+   `packages/fespalier_forms/README.md` and `docs/forms.md`), and run `fsp gen`. `app.g.dart` now imports
+   `package:fespalier_forms/fespalier_forms.dart`, **only in an app with a `form()`**. Until the dependency is there `fsp`
+   reports an error at each `form()`: `` `form()` is the form of `action()`, and since 0.11.0 forms are in the fespalier_forms
+package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the same git `url` and `ref` as fespalier ``.
+2. **Imports of the form types.** Code that names `ActionForm`, `ActionField`, `ActionTextField`, `ActionFormFields`,
+   `FieldCodec`, `ActionFormMessages`, `ActionFormValidation` or `useActionForm` imports
+   `package:fespalier_forms/fespalier_forms.dart`: `package:fespalier/fespalier.dart` no longer exports them (no shim and no
+   re-export). The names and the behaviour are the same, and a page that only calls the generated `useForm` needs no import.
+3. **What stays in `fespalier`**: `FieldErrors`, `validate()` and `optimistic()`. A test of an action's `FieldErrors` or of
+   `validate()` changes nothing; `fespalier_dio`, `fespalier_auth`, `fespalier_cratestack` and `fespalier_sentry` are
+   unchanged. A test file that was `packages/fespalier/test/action_form_test.dart` in a fork is
+   `packages/fespalier_forms/test/action_form_test.dart` now.
+4. **Floor and CI**: `fespalier_forms` claims Flutter 3.32 like the packages it follows; a repository that copies this
+   repository's `just floor` list adds it.
+5. Where the form is documented now: the forms and optimistic pages of [`fespalier-data`](../fespalier-data/SKILL.md)
+   (the one page it was part of is split in two).
+
+### Adapters
+
+**An app without `fespalier: adapters:`
+gets nothing from this part. An app with `adapters:` regenerates two files:**
 
 1. `lib/app.g.dart` gains `AppAdapters` and the adapters' imports (`package:<name>/fespalier_adapter.dart as _a0`), and
    `AppRoutes.attach` takes an optional `ProviderContainer` and runs each adapter's `attach` with it.

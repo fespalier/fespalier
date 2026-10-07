@@ -187,7 +187,10 @@ string). Never remove them by hand.
 Since 0.8.1, an `action.dart` with companions adds to this: `XRoute.useForm` (a real hook) for a `form()`,
 `validate:` and `optimistic:` arguments on the action's factory, and a private `_optimisticN` layer for each
 `data.dart` an `optimistic()` patches, which the `DataView`, `SectionView` and typed `watch` of that data
-read (`ref.watchOptimistic`). Nothing of it is generated for an app without companions.
+read (`ref.watchOptimistic`). Nothing of it is generated for an app without companions. Since 0.11.0 the
+file also has `import 'package:fespalier_forms/fespalier_forms.dart';` (after `fespalier/fespalier.dart`),
+only when some action has a `form()`; `ActionForm`, `useActionForm` and the rest of what `useForm` calls are
+the `fespalier_forms` package's, no longer `fespalier`'s.
 
 ## What the file does not do
 

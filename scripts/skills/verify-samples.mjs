@@ -23,6 +23,8 @@
 //     this checkout, and a `dependency_overrides:` block pointing `fespalier` and the
 //     companions at it: the companions pin fespalier by repository tag, which a path
 //     dependency of the app cannot be resolved against.
+//     A block that writes a `form()` gets `fespalier_forms` the same way (since 0.11.0): the
+//     generated file imports it.
 //   - The scratch app is a copy of the fespalier checkout's `examples/minimal`
 //     (the checkout is never modified): renamed `my_app` (the package name the
 //     skills' imports use), depending on the checkout's packages/fespalier by
@@ -237,12 +239,19 @@ for (const file of files) {
   // A page that imports the companion packages gets them as path dependencies of this checkout,
   // and `fespalier` overridden to the checkout's too: the companions pin it by repository tag,
   // which a path dependency of the app cannot be resolved against.
+  // A block that writes a `form()` (a top-level `NicknameFields form(...)` or `approveForm(...)`)
+  // makes the generated file import fespalier_forms (since 0.11.0), so that package is a
+  // dependency whether or not the block imports it.
+  const writesForm = [...written.values()].some((body) =>
+    /^\w[^\n(]*\s(?:form|\w+Form)\(/m.test(body),
+  );
   const companions = [
-    ...new Set(
-      [...written.values()].flatMap((body) =>
+    ...new Set([
+      ...(writesForm ? ["fespalier_forms"] : []),
+      ...[...written.values()].flatMap((body) =>
         [...body.matchAll(/package:(fespalier_[a-z0-9_]+)\//g)].map((m) => m[1]),
       ),
-    ),
+    ]),
   ].filter((name) => existsSync(join(checkout, "packages", name, "pubspec.yaml")));
   const depLines = [
     ...companions.map((name) => `  ${name}:\n    path: ${join(checkout, "packages", name)}`),

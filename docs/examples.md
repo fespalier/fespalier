@@ -63,7 +63,7 @@ a server each photo fails and shows the product's initial.
   page.
 - `test/action_test.dart` holds a refund pending on a `Completer`, so nothing waits for time.
 
-**Forms and optimistic updates** (since 0.8.1).
+**Forms and optimistic updates** (since 0.8.1; forms are the `fespalier_forms` package since 0.11.0, which `examples/features` and `examples/auth` depend on).
 
 - `(account)/nickname/` is a `HookConsumerWidget` on `NicknameRoute.useForm`: a `form()`, `validate()`
   and `optimistic()` beside its `action()`. It has errors per field, a save button that disables itself,

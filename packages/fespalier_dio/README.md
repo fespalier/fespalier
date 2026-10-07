@@ -72,7 +72,8 @@ Future<Profile> action(Ref ref, {required NicknameFields input}) async {
 ```
 
 A 400 or 422 whose body is RFC 9457 or RFC 7807 problem details, ASP.NET Core, Laravel, Rails, Spring, JSON:API,
-FastAPI or Django REST framework is thrown as the `FieldErrors` a form shows under its fields. Anything else is
+FastAPI or Django REST framework is thrown as the `FieldErrors` a
+[`fespalier_forms`](https://github.com/fespalier/fespalier/blob/main/docs/forms.md) form shows under its fields. Anything else is
 rethrown as it was. It is an extension on the `Future`, not an interceptor: a form reads a `FieldErrors`, and
 an interceptor can only reject with a `DioException`.
 

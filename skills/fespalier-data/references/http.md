@@ -204,7 +204,7 @@ that started this request was disposed`. `package:http`: `RequestAbortedExceptio
 
 ## Server validation errors on forms
 
-A form shows the [`FieldErrors`](forms-and-optimistic.md) its action threw under the field of the same name, and
+A form (`fespalier_forms`, [`forms.md`](forms.md)) shows the [`FieldErrors`](optimistic.md) its action threw under the field of the same name, and
 `form.error` shows `FieldErrors.message` and the messages of keys that are no field. `withFieldErrors()` on the
 action's own `Future` turns a validation answer into that exception. The keys must be the **record's field names**:
 `fieldName` renames the server's.

@@ -75,7 +75,8 @@ sections' above it are invalidated, or what `const invalidates = [...]` lists. C
 `fespalier-data` (`references/actions.md`). With no page or layout beside it, it is an error.
 Since 0.8.1 the file may also hold the action's companions, `form()`, `validate()` and
 `optimistic()` (`approveForm`... beside `approve`): they are not actions and not a file kind
-(`fespalier-data`, `references/forms-and-optimistic.md`).
+(`fespalier-data`, `references/forms.md` and `references/optimistic.md`). Since 0.11.0 a `form()`
+needs the `fespalier_forms` package.
 
 **`loading.dart`** and **`error.dart`** show while `data.dart` first loads and
 when it fails. They are inherited by every folder below, bound separately for

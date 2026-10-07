@@ -6,7 +6,10 @@
 //! This module holds what the resolver needs to read them: the names, the field kinds a text
 //! field can take, and how the fields of an action's input record are read.
 
+use crate::config::Config;
 use crate::dart::{Ty, Typedef};
+use crate::diag::Diags;
+use crate::resolve::App;
 
 /// What a companion function is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +62,25 @@ pub fn companion(action: &str, role: Companion) -> String {
         format!("{action}{}", role.suffix())
     }
 }
+
+/// `form()` needs the `fespalier_forms` package (since 0.11.0): the generated file imports it. An
+/// error at each `form()` of an app that does not list it under `dependencies:`.
+pub fn check_dependency(app: &App, cfg: &Config, diags: &mut Diags) {
+    if cfg.forms_dependency {
+        return;
+    }
+    for form in app
+        .routes
+        .iter()
+        .flat_map(|r| &r.actions)
+        .filter_map(|a| a.form.as_ref())
+    {
+        diags.error(&form.file, Some(&form.span), MISSING_PACKAGE);
+    }
+}
+
+/// The message of [`check_dependency`].
+pub const MISSING_PACKAGE: &str = "`form()` is the form of `action()`, and since 0.11.0 forms are in the fespalier_forms package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the same git `url` and `ref` as fespalier";
 
 /// The `FieldCodec` a text field of this exact type is read with, or `None` for a field of
 /// another type (a `bool`, an enum, a date...), which is a plain value field.

@@ -268,6 +268,10 @@ pub struct Config {
     /// `adapters:`: Dart packages, in order, that plug into the generated `main()` through
     /// `package:<name>/fespalier_adapter.dart` (see `adapters.rs`, since 0.9.0).
     pub adapters: Vec<String>,
+    /// `fespalier_forms` is under `dependencies:` (since 0.11.0): `form()` needs it, and the
+    /// generated file imports it. `true` without a pubspec, so a test needs none; the output
+    /// still depends on the pubspec alone.
+    pub forms_dependency: bool,
 }
 
 impl Default for Config {
@@ -298,6 +302,7 @@ impl Default for Config {
             tasks: None,
             main: MainMode::Auto,
             adapters: vec![],
+            forms_dependency: true,
         }
     }
 }
@@ -1158,6 +1163,10 @@ impl Pubspec {
         }
         let has_dependency =
             matches!(&raw.dependencies, Some(Value::Mapping(m)) if m.contains_key("fespalier"));
+        // A pubspec with no `dependencies:` at all (a test's) says nothing, so it keeps the default.
+        if let Some(Value::Mapping(m)) = &raw.dependencies {
+            config.forms_dependency = m.contains_key("fespalier_forms");
+        }
         Ok(Pubspec {
             name: raw.name,
             has_dependency,

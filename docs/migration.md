@@ -45,6 +45,8 @@ What changed between releases, newest first, each with a link to the reference s
   `DraftCodec`. A key of an action with a form can no longer be called `draft`. Drafts go to `formDraftStorage`, which
   is your `dataCacheStorage` unless you override it; call `clearFormDrafts` when somebody signs out.
 
+- **A guard above a tab layout runs once, on the tab shell** (`StatefulShellRoute.redirect`), instead of being copied into each tab's route. What it decides is the same (it still runs for every location under the tabs, before the tab's own guards), but its telemetry and DevTools site is now one, named after the tab folder (`g<guard>@<tab folder>`: the `fespalier.route` of its spans is the folder's pattern, `/` for a group, not each tab's), so a dashboard that groups guard outcomes by `fespalier.route` sees the tabs merged. Run `fsp gen`; an app with no guard above its tabs changes nothing.
+
 - **`observe.dart`'s `onEnter` can take a `RouteScope`** ([The page's scope](observability.md#the-pages-scope-routescope)).
   `RouteHooks.onEnter` is `void Function(Ref ref, RouteScope scope)?` now: every app with an `observe.dart`
   regenerates (`fsp gen`), because the generated closures read `onEnter: (ref, scope) => ...`. A hook

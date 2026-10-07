@@ -85,6 +85,9 @@ pub fn markers(r: &Route, root: bool, guarded: bool) -> Vec<&'static str> {
     if r.page.is_some() && !r.observers.is_empty() {
         out.push("observe");
     }
+    if r.page.is_some() && r.leave.is_some() {
+        out.push("leave");
+    }
     if r.present.is_some() {
         out.push("present");
     }
@@ -189,7 +192,9 @@ impl Builder {
                     items: self.items(app, children),
                 })
             }
-            Frame::Tabs { id, root, branches } => {
+            Frame::Tabs {
+                id, root, branches, ..
+            } => {
                 let r = &app.routes[*id];
                 let marks = layout_marks(r, *root);
                 let title = with_marks(format!("tabs {}", file(&r.dir, "layout.dart")), &marks);

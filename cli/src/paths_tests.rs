@@ -476,6 +476,7 @@ fn fsp_new_writes_catch_all_folders() {
             transition: false,
             nav: false,
             observe: false,
+            leave: false,
         };
         scaffold::new_route(d.path(), &args).unwrap();
         let folder = d.path().join("lib/app").join(dir);

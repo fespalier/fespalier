@@ -124,4 +124,4 @@ void onEnter(Ref ref, {required int id, required RouteScope scope}) {
 ## Not built
 
 No hook for layouts or sections, no `onCover`/`onBlur`, and no veto: `onLeave` cannot stop a navigation
-(that is go_router's `GoRoute.onExit`, which fespalier does not wrap).
+(asking before a page goes is [`leave.dart`](../../fespalier-routing/references/leaving-a-page.md), since 0.11.0).

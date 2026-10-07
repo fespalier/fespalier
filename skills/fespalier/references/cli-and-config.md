@@ -354,7 +354,7 @@ fsp new 'docs/[...rest]'            # $$rest; 'docs/[[...rest]]' is $$$rest
 ```
 
 Flags: `--name`, `--function`, `--data`, `--action` (`action.dart`, since 0.5.0),
-`--loading`, `--error`, `--layout`, `--not-found`, `--guard`, `--observe` (`observe.dart`, since 0.8.1), `--transition`, `--no-page`. A `(group)` target gets no
+`--loading`, `--error`, `--layout`, `--not-found`, `--guard`, `--observe` (`observe.dart`, since 0.8.1), `--leave` (`leave.dart`, since 0.11.0), `--transition`, `--no-page`. A `(group)` target gets no
 `page.dart`, and with nothing left to write it fails with `nothing to create`.
 `--name` is the class-name stem (default: from the path, `ProductsId`), and with
 `--function` the `routeName` (UpperCamelCase). **Every new segment is a

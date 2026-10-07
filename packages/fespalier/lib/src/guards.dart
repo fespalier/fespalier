@@ -122,6 +122,32 @@ final class _RouterGuards {
   final GoRouter _router;
   final _live = <String, _Live>{};
 
+  /// The container the guards of this router run in, as the last one that ran saw it.
+  ProviderContainer? container;
+
+  var _inFlight = 0;
+  final _idleWaiters = <Completer<void>>[];
+
+  /// An asynchronous evaluation started (+1) or ended (-1).
+  void _evaluating(int delta) {
+    _inFlight += delta;
+    if (_inFlight == 0) {
+      final waiters = [..._idleWaiters];
+      _idleWaiters.clear();
+      for (final waiter in waiters) {
+        waiter.complete();
+      }
+    }
+  }
+
+  /// Completes when no asynchronous evaluation is in flight; null when none is now.
+  Future<void>? idle() {
+    if (_inFlight == 0) return null;
+    final waiter = Completer<void>();
+    _idleWaiters.add(waiter);
+    return waiter.future;
+  }
+
   /// The sites evaluated since the router last committed a location.
   final _touched = <String>{};
 
@@ -131,7 +157,8 @@ final class _RouterGuards {
     String site,
     GuardResult Function(Ref ref) guard,
   ) {
-    final live = _Live(context);
+    this.container = container;
+    final live = _Live(context, owner: this);
     final GuardResult result;
     try {
       live.sub = container.listen(
@@ -186,7 +213,12 @@ final class _RouterGuards {
     }
     // The router is about to ask again, so the newest answer is the one it uses.
     live.acceptLatest();
-    _router.refresh();
+    final hook = guardRefreshHooks[_router];
+    if (hook == null) {
+      _router.refresh();
+    } else {
+      hook(_router.refresh);
+    }
   }
 
   /// The router committed a location: guards it did not run are not its any more.
@@ -212,7 +244,10 @@ final class _RouterGuards {
 
 /// One evaluation of a guard site and its subscription.
 final class _Live {
-  _Live(this.context);
+  _Live(this.context, {this.owner});
+
+  /// The router's guards, told when an evaluation starts and ends.
+  final _RouterGuards? owner;
 
   /// Where the guard last ran: when it is gone, so is the app.
   final BuildContext context;
@@ -257,6 +292,7 @@ final class _Live {
     void Function()? onError,
   }) {
     _pending++;
+    owner?._evaluating(1);
     answer
         .then<void>(
           then,
@@ -267,6 +303,7 @@ final class _Live {
         .whenComplete(() {
           _pending--;
           if (_closing && _pending == 0) sub?.close();
+          owner?._evaluating(-1);
         });
   }
 
@@ -277,3 +314,17 @@ final class _Live {
     if (_pending == 0) sub?.close();
   }
 }
+
+/// The container the guards of [router] last ran in, for `leaveWithoutAsking`; null when none ran.
+ProviderContainer? guardsContainer(GoRouter router) =>
+    _guardsOf[router]?.container;
+
+/// Completes when no asynchronous guard of [router] is being evaluated; null when none is now.
+/// What `leaveWithoutAsking` waits for before it closes its window.
+Future<void>? guardsIdle(GoRouter router) => _guardsOf[router]?.idle();
+
+/// Runs the refresh a guard asks for in `leaveWithoutAsking`'s window, when one is open for the
+/// router: the hook runs it with the bypass on.
+final guardRefreshHooks = Expando<void Function(void Function() refresh)>(
+  'fespalier guard refresh',
+);

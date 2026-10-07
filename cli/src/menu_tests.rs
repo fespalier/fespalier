@@ -625,6 +625,7 @@ fn new_nav_writes_a_label_from_the_folder() {
             guard: false,
             transition: false,
             observe: false,
+            leave: false,
             nav: true,
         };
         let created = scaffold::new_route(dir.path(), &args).unwrap();

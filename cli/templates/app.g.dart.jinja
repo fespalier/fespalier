@@ -60,6 +60,9 @@ guardWithParams(
   (v) => {{ call }},
 )
 {%- endmacro %}
+{% macro leave_scope(page) -%}
+leaveScope(state, {{ page }})
+{%- endmacro %}
 {% macro scroll_memory(page) -%}
 RouteScrollMemory(
   state: state,
@@ -104,6 +107,15 @@ StatefulShellRoute.indexedStack(
 {% endif %}
 {% if r.root %}
   parentNavigatorKey: rootNavigatorKey,
+{% endif %}
+{% if r.redirects | length == 1 %}
+  redirect: (context, state) => {{ redirect_call(r.redirects[0]) | indent(2) }},
+{% elif r.redirects %}
+  redirect: (context, state) => firstRedirect([
+{% for c in r.redirects %}
+    () => {{ redirect_call(c) | indent(4) }},
+{% endfor %}
+  ]),
 {% endif %}
   pageBuilder: (context, state, navigationShell) => namedPage({{ r.layout.page_name }}, () => {{ layout_page(r.layout) | indent(2) }}),
   branches: [
@@ -157,8 +169,12 @@ GoRoute(
 {% endfor %}
   ]),
 {% endif %}
+{% if r.leave %}
+  onExit: (context, state) => {{ r.leave | indent(2) }},
+{% endif %}
 {% if r.page %}
-{% set page = with_segments(r.seg_fn, view(r), r.not_found) if r.seg_fn else view(r) %}
+{% set body = leave_scope(view(r)) if r.leave else view(r) %}
+{% set page = with_segments(r.seg_fn, body, r.not_found) if r.seg_fn else body %}
 {% if scroll_restoration %}
 {% set page = scroll_memory(page) %}
 {% endif %}

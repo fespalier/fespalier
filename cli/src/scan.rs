@@ -39,10 +39,12 @@ pub enum Kind {
     Splash,
     /// `observe.dart`: hooks that run when a page is entered, focused and left.
     Observe,
+    /// `leave.dart`: asked before the folder's page goes (since 0.11.0).
+    Leave,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 20] = [
+    pub const ALL: [Kind; 21] = [
         Kind::Page,
         Kind::Data,
         Kind::Action,
@@ -63,6 +65,7 @@ impl Kind {
         Kind::Startup,
         Kind::Splash,
         Kind::Observe,
+        Kind::Leave,
     ];
 
     pub fn file(self) -> &'static str {
@@ -87,6 +90,7 @@ impl Kind {
             Kind::Startup => "startup.dart",
             Kind::Splash => "splash.dart",
             Kind::Observe => "observe.dart",
+            Kind::Leave => "leave.dart",
         }
     }
 

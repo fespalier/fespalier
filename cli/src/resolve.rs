@@ -74,6 +74,8 @@ pub enum Bind {
     Route,
     /// An observe.dart `onEnter`'s `RouteScope scope`: the page instance's scope.
     Scope,
+    /// A leave.dart `leave()`'s `PageLeave page`: what it learns about the page that is going.
+    PageLeave,
 }
 
 #[derive(Debug, Clone)]
@@ -451,6 +453,35 @@ impl Observe {
     }
 }
 
+/// A folder's `leave.dart` (since 0.11.0): `LeaveResult leave(BuildContext context, Ref ref,
+/// {...})`, asked before the folder's page goes. It is the `onExit` of the folder's `GoRoute`.
+#[derive(Debug, Clone)]
+pub struct Leave {
+    pub import: usize,
+    /// Whether it takes the leading `BuildContext`: the root navigator's, `go_router`'s.
+    pub takes_context: bool,
+    /// Whether it takes a `Ref` (after the context, when it takes one).
+    pub takes_ref: bool,
+    /// The named arguments: segments, then query parameters (each in path or declaration
+    /// order), then `uri`, `extra` and `page`.
+    pub args: Vec<Arg>,
+    /// The `extra` parameter, when it takes one.
+    pub extra: Option<HookExtra>,
+    /// The function, for a diagnostic that points at it.
+    pub span: Span,
+}
+
+impl Leave {
+    /// The segments and query parameters it reads from the URL.
+    pub fn keys(&self) -> Vec<String> {
+        self.args
+            .iter()
+            .filter(|a| matches!(a.bind, Bind::Segment(_) | Bind::Query(_)))
+            .map(|a| a.name.clone())
+            .collect()
+    }
+}
+
 /// One tab of a tab layout.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Branch {
@@ -512,6 +543,9 @@ pub struct Route {
     /// The folders (route ids) whose observe.dart applies to this page, outermost first: this
     /// folder's own last. Only for pages: a redirect.dart route never stays on screen.
     pub observers: Vec<usize>,
+    /// This folder's own `leave.dart`, when it has a valid one and a page: not inherited, as
+    /// `go_router` asks a parent's `onExit` when the parent's own match exits.
+    pub leave: Option<Leave>,
     /// A `redirect.dart` in place of a page: the route only redirects.
     pub redirect: Option<Guard>,
     /// The nearest transition.dart at or above this folder; only for pages, and
@@ -995,6 +1029,7 @@ impl Resolver<'_> {
             guard: None,
             observe: None,
             observers: vec![],
+            leave: None,
             redirect: None,
             transition: None,
             present: None,
@@ -1383,6 +1418,10 @@ impl Resolver<'_> {
                 (redirect, name, page_span) = (Some(r), Some(n), Some(span));
             }
         }
+        // leave.dart: asked before this folder's page goes; not inherited.
+        let leave = modules
+            .get(&Kind::Leave)
+            .and_then(|m| self.leave(m, node, &segs, id));
         // not_found.dart: the root's is the fallback for everything; one further down covers
         // its folder, for unknown URLs under it and for unparsable segments in its routes.
         let mut not_found = up.not_found.clone();
@@ -1487,6 +1526,7 @@ impl Resolver<'_> {
             .filter(|_| has_page && present.is_none());
         let shell_transition = here.transition.clone().filter(|_| layout.is_some());
         self.app.routes[id].observe = observe;
+        self.app.routes[id].leave = leave;
         if has_page {
             self.app.routes[id].observers = here.observers.clone();
         }
@@ -1567,7 +1607,8 @@ impl Resolver<'_> {
         let bare = !node.files.contains_key(&Kind::Page)
             && !node.files.contains_key(&Kind::Guard)
             && !node.files.contains_key(&Kind::Nav)
-            && !node.files.contains_key(&Kind::Observe);
+            && !node.files.contains_key(&Kind::Observe)
+            && !node.files.contains_key(&Kind::Leave);
         if !any_route && node.children.is_empty() && !node.dir.is_empty() && bare {
             self.diags.warn(
                 &node.dir,
@@ -2643,7 +2684,7 @@ impl Resolver<'_> {
                 Some(QueryTy::Is(t)) => *t,
                 Some(QueryTy::Broken) => return None,
                 _ => {
-                    let hooks = what == "guard()" || what == "redirect()";
+                    let hooks = matches!(what, "guard()" | "redirect()" | "leave()");
                     // Already optional with a type, so "make it optional and nullable" would
                     // send the reader round in a circle: it is the type that isn't a query type.
                     let hint = match p.ty.as_ref().filter(|_| !p.required) {
@@ -3777,6 +3818,104 @@ impl Resolver<'_> {
         Some(Observe { import, hooks })
     }
 
+    /// `LeaveResult leave(BuildContext context, Ref ref, {...})` in a leave.dart (since 0.11.0):
+    /// asked before the folder's page goes, so it is the `onExit` of the folder's `GoRoute`. It
+    /// belongs to this folder's own page and is not inherited.
+    fn leave(
+        &mut self,
+        m: &Module,
+        node: &Node,
+        segs: &[(String, usize)],
+        route: usize,
+    ) -> Option<Leave> {
+        let file = node.rel(Kind::Leave);
+        if node.files.contains_key(&Kind::Redirect) {
+            let msg = "a redirect.dart route never stays on screen, so there is nothing to leave: remove leave.dart";
+            self.diags.error(&file, None, msg);
+            return None;
+        }
+        if !node.files.contains_key(&Kind::Page) {
+            let msg = "leave.dart is asked before this folder's page goes, and this folder has no page.dart (a layout's shell has no onExit in go_router: put a leave.dart beside each page that needs one)";
+            self.diags.error(&file, None, msg);
+            return None;
+        }
+        let Some(f) = m.functions.iter().find(|f| f.name == "leave") else {
+            let msg = "expected `LeaveResult leave(BuildContext context, Ref ref, {...})`: true lets the page go, false keeps it";
+            self.diags.error(&file, None, msg);
+            return None;
+        };
+        let ok_ret = f.ret.as_ref().is_some_and(|r| {
+            ["LeaveResult", "FutureOr<bool>", "Future<bool>", "bool"].contains(&r.text.as_str())
+        });
+        if !ok_ret {
+            let msg = "leave() must return `LeaveResult` (`FutureOr<bool>`): true lets the page go, false keeps it";
+            self.diags.error(&file, Some(&f.span), msg);
+        }
+        let (mut takes_context, mut takes_ref) = (false, false);
+        let mut positional = 0;
+        let mut rest = vec![];
+        let mut page = None;
+        for p in &f.params {
+            let is = |name: &str| p.ty.as_ref().is_some_and(|t| t.is(name));
+            if !p.named {
+                if is("WidgetRef") {
+                    let msg = "leave() runs outside the page's widget tree (go_router hands it the root navigator's context): take `Ref`";
+                    self.diags.error(&file, Some(&p.span), msg);
+                } else if is("ProviderContainer") {
+                    let msg = "leave() takes `Ref ref`; `ProviderContainer` is the older form of guards, not of leave()";
+                    self.diags.error(&file, Some(&p.span), msg);
+                } else if is("BuildContext") && positional == 0 {
+                    takes_context = true;
+                } else if is("Ref") && (positional == 0 || (positional == 1 && takes_context)) {
+                    takes_ref = true;
+                } else {
+                    let msg = "leave()'s positional parameters are `BuildContext context` then `Ref ref`, each optional; the rest are named";
+                    self.diags.error(&file, Some(&p.span), msg);
+                }
+                positional += 1;
+            } else if is("PageLeave") {
+                if p.name == "page" {
+                    page = Some(Arg {
+                        name: "page".into(),
+                        named: true,
+                        bind: Bind::PageLeave,
+                    });
+                } else {
+                    let msg =
+                        "the page that is going is `PageLeave page`; name the parameter `page`";
+                    self.diags.error(&file, Some(&p.span), msg);
+                }
+            } else {
+                rest.push(p);
+            }
+        }
+        let mut args = self.hook_args(
+            &file,
+            rest.into_iter(),
+            segs,
+            Scope::Route(route),
+            "leave()",
+        );
+        args.extend(page);
+        let import = self.import(&file);
+        let extra = extra_of(
+            &f.params,
+            &args,
+            node.files.get(&Kind::Leave),
+            &file,
+            import,
+            &format!("e{route}"),
+        );
+        Some(Leave {
+            import,
+            takes_context,
+            takes_ref,
+            args,
+            extra,
+            span: f.span.clone(),
+        })
+    }
+
     /// `String redirect({...})` in a folder in place of page.dart.
     fn redirect(
         &mut self,
@@ -4016,11 +4155,21 @@ impl Resolver<'_> {
                     .map(|e| ("guard", id, e)),
             );
             readers.extend(r.layout_extra.clone().map(|e| ("layout", id, e)));
+            readers.extend(
+                r.leave
+                    .as_ref()
+                    .and_then(|l| l.extra.clone())
+                    .map(|e| ("leave", id, e)),
+            );
         }
         if readers.is_empty() {
             return;
         }
-        let covers = |folder: &Route, r: &Route| {
+        // A leave.dart is asked about its folder's own page, and nothing below it.
+        let covers = |kind: &str, folder: &Route, r: &Route| {
+            if kind == "leave" {
+                return r.dir == folder.dir;
+            }
             folder.dir.is_empty()
                 || r.dir == folder.dir
                 || r.dir
@@ -4039,7 +4188,7 @@ impl Resolver<'_> {
             // Every guard above the route, and the layouts when it is a page: a redirect shows none.
             let chain: Vec<usize> = (0..readers.len())
                 .filter(|&i| {
-                    covers(&self.app.routes[readers[i].1], r)
+                    covers(readers[i].0, &self.app.routes[readers[i].1], r)
                         && (readers[i].0 == "guard" || r.page.is_some())
                 })
                 .collect();
@@ -4268,6 +4417,10 @@ fn mismatch(name: &str, bind: &Bind, ty: &Ty) -> Option<String> {
         Bind::Uri => ("the requested Uri", &["Uri"]),
         Bind::Route => ("the page's typed route", &["TypedLocation"]),
         Bind::Scope => ("the page's scope", &["RouteScope"]),
+        Bind::PageLeave => (
+            "what leave() learns about the page that is going",
+            &["PageLeave"],
+        ),
         Bind::Child => ("the page as a Widget", &["Widget"]),
         Bind::Shell => (
             "the StatefulNavigationShell",

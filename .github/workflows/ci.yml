@@ -235,7 +235,7 @@ jobs:
         working-directory: examples/features
         run: |
           fsp() { cargo run --quiet --manifest-path ../../cli/Cargo.toml -- "$@"; }
-          fsp new 'invoices/[invoiceId]' --data --action --loading --error --layout --guard --transition --nav
+          fsp new 'invoices/[invoiceId]' --data --action --loading --error --layout --guard --transition --nav --leave
           fsp new 'shops/:shop/items/:id/reviews'
           fsp new 'plain' --data
           fsp new '(admin)/users' --layout

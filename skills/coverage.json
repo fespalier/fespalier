@@ -220,7 +220,8 @@
         "docs/getting-started.md#go_router 18 and Material",
         "docs/troubleshooting.md#Things to know",
         "docs/troubleshooting.md#Known limitations",
-        "docs/troubleshooting.md#Symptoms"
+        "docs/troubleshooting.md#Symptoms",
+        "kind:leave.dart"
       ]
     },
     "fespalier-routing": {
@@ -295,7 +296,11 @@
         "docs/faq.md#Is it on pub.dev?",
         "docs/faq.md#What does it cost in a release build?",
         "docs/navigation.md#Typed navigation at a glance",
-        "docs/i18n-tolgee.md#Locales and the URL"
+        "docs/i18n-tolgee.md#Locales and the URL",
+        "kind:leave.dart",
+        "docs/navigation.md#Leaving a page: `leave.dart`",
+        "packages/fespalier/lib/src/leave.dart",
+        "cli/templates/new/leave.dart.jinja"
       ]
     },
     "fespalier-data": {

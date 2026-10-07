@@ -102,6 +102,10 @@ gets nothing from this part. An app with `adapters:` regenerates two files:**
    apply its redirect limit, so it is generated only with adapters.
 6. Moving from `main: auto` to `manual`: delete `lib/app.main.g.dart`. Each adapter's top-level `adapter` is read once, at the first `AppAdapters` call. `attach` runs after the first frame that shows the router.
 
+### Guards above tabs (0.11.0)
+
+A guard above a tab layout (the tabs folder's own, or a page-less folder over it) is now generated once, on the `StatefulShellRoute`'s `redirect:`, not copied into each tab's route (`fsp gen`). Behaviour is the same; its telemetry and DevTools site is one, with the tab folder's pattern as `fespalier.route` (`/` for a group), so dashboards grouping guard outcomes by route see the tabs merged. A tab's own `guard.dart` stays on its route.
+
 ### Telemetry (0.11.0)
 
 `TelemetryOp` gains `custom`, for a package's own operation (`FespalierTelemetry.begin` and `finish`; `TelemetryStart` has

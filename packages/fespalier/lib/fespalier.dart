@@ -45,6 +45,18 @@ export 'src/guards.dart';
 export 'src/heroes.dart';
 export 'src/inbound.dart' show InboundLaunch, InboundNavigation, launchRouter;
 export 'src/layout_page.dart';
+// leave.dart (since 0.11.0): what a generated app.g.dart builds from it, and what a page and a form
+// use to be asked about before they go.
+export 'src/leave.dart'
+    show
+        LeaveResult,
+        LeaveScope,
+        LeaveSource,
+        PageLeave,
+        leaveExit,
+        leaveScope,
+        leaveWithParams,
+        leaveWithoutAsking;
 // Route lifecycle (since 0.8.1): what a generated app.g.dart builds from observe.dart files.
 export 'src/lifecycle.dart' show RouteHooks, observeAttach;
 // The page instance's scope an observe.dart onEnter takes (since 0.11.0).

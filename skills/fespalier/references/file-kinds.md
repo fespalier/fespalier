@@ -1,6 +1,6 @@
 # The file kinds
 
-Twenty kinds, as of 0.8.1 (`Kind::ALL` in `cli/src/scan.rs`; `action.dart` is new in 0.5.0, and `nav.dart`, `app.dart`, `startup.dart`, `splash.dart` and `observe.dart` in 0.8.1). `fsp` reads a
+Twenty-one kinds, as of 0.11.0 (`Kind::ALL` in `cli/src/scan.rs`; `action.dart` is new in 0.5.0, `nav.dart`, `app.dart`, `startup.dart`, `splash.dart` and `observe.dart` in 0.8.1, and `leave.dart` in 0.11.0). `fsp` reads a
 file by its **name**; nothing else marks a route. Each view file exports one
 public widget class, **or** one top-level function named after the file, never
 both.
@@ -16,6 +16,7 @@ both.
 | `guard.dart`       | every route at and below its folder                                                                         | `uri`; segments at or above; query; `extra`                                          |
 | `redirect.dart`    | its own folder's URL, in place of `page.dart`                                                               | `uri`; segments; query; `extra`; optional `Ref ref` first (or `ProviderContainer c`) |
 | `observe.dart`     | every page at and below its folder (since 0.8.1)                                                            | `Ref ref`; segments at or above; query; `uri`; `TypedLocation route`                 |
+| `leave.dart`       | its own folder's page only, not inherited (since 0.11.0)                                                    | `BuildContext`, `Ref`; segments at or above; query; `uri`; `extra`; `PageLeave page` |
 | `transition.dart`  | its folder and below; layout shells too                                                                     | `key`, `child`, `state`, `shell` (a `bool`)                                          |
 | `present.dart`     | its own folder only                                                                                         | `key`, `child`, `state`                                                              |
 | `navigator.dart`   | its folder and below (nearest wins)                                                                         | nothing: it is data                                                                  |
@@ -101,6 +102,11 @@ its path (`OldProductsIdRoute`). A tab layout's own folder cannot hold one.
 `void onLeave(...)`: hooks that run, after the frame, when a page at or below its folder becomes the one on
 screen, is on top again and is gone. They bind like a guard's parameters, plus `Uri uri` and
 `TypedLocation route`. Covered by `fespalier-observability`.
+
+**`leave.dart`** (since 0.11.0) is `LeaveResult leave(BuildContext context, Ref ref, {...})`, asked before its
+folder's page goes: `true` lets it go, `false` keeps it. It is the `onExit` of the folder's `GoRoute`, and the page is wrapped
+so the Android back and the iOS swipe ask too. It needs a `page.dart` and is not inherited. Covered by
+`fespalier-routing` (`references/leaving-a-page.md`).
 
 **`transition.dart`** and **`present.dart`** return a `Page`. See
 `fespalier-layouts` (transitions) and `fespalier-routing` (`present.dart`).

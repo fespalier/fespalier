@@ -34,6 +34,7 @@ fsp new 'kyc/shop/name' --function --name KycShopName
 fsp new 'shop' --not-found      # not_found.dart (not-found.dart with `file_style: kebab`)
 fsp new 'orders' --nav          # nav.dart: how the folder shows in the generated menus (since 0.8.1)
 fsp new 'orders/[id]' --observe # observe.dart: onEnter, onFocus and onLeave (since 0.8.1)
+fsp new 'orders/[id]/edit' --leave # leave.dart: asked before this page goes; true lets it go (since 0.11.0)
 ```
 
 All commands take `--project <dir>` (default: the nearest folder with a `pubspec.yaml`). `fsp` is one native binary, fast enough to run on every save (a full scan, check and emit of an example takes a few milliseconds). Install it as described in [Installation and setup](getting-started.md#install-fsp); to build it from source, see [Development](development.md).
@@ -60,6 +61,7 @@ All commands take `--project <dir>` (default: the nearest folder with a `pubspec
 The tags are `redirect`, `data`, `action`, `guard`, `layout`, `transition`, `present`, and:
 
 - `observe` (since 0.8.1): an [`observe.dart`](observability.md#route-lifecycle-observedart) at or above the page;
+- `leave` (since 0.11.0): a [`leave.dart`](navigation.md#leaving-a-page-leavedart) in the page's own folder;
 - `root`;
 - `sibling`: a route with [`nest = false`](routing.md#a-sibling-with-a-compound-path);
 - `remount`: the page [starts again when its URL changes](navigation.md#remounting-a-page-remount);

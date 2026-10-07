@@ -47,6 +47,10 @@ abstract final class RouteScope {
   /// `observe.dart` `onLeave` hooks and before the held providers are released. A callback
   /// that throws is reported and the others still run.
   ///
+  /// When the page ends because its container is disposed, Riverpod disposes the container's
+  /// providers in an order of its own, so a held provider may already be disposed when the
+  /// callbacks run.
+  ///
   /// Throws a [StateError] once the page has left.
   void onLeave(void Function() callback);
 }

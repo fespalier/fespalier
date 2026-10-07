@@ -41,8 +41,8 @@ report, not something to accept.
 1. **The documentation moved.** The long README is now a short one, and the reference is one-topic pages under `docs/`
    (`docs/routing.md`, `docs/data.md`, `docs/i18n-tolgee.md`, ...). The old README anchors still work (the README keeps one
    per old heading, and `docs/README.md` maps them). **Some `fsp` messages cite a page now**, where 0.9 cited the README:
-   `fsp init`'s pointer (`see docs/app-startup.md`), the `fsp run` and `tasks:` messages (`docs/cli.md, "Tasks: commands
-around `flutter run`"`) and the warning `⚠ this app sends no fespalier spans yet ... (docs/observability.md,
+   `fsp init`'s pointer (`see docs/app-startup.md`), the `fsp run` and `tasks:` messages (``docs/cli.md, "Tasks: commands
+around `flutter run`"``) and the warning `⚠ this app sends no fespalier spans yet ... (docs/observability.md,
 "Telemetry")`. A CI step or a script that greps for the old `(README, "...")` text must follow; the message's meaning is
    the same.
 2. **Two new, opt-in companion packages** with **no generator change** (no file kind, `fespalier:` key or `fsp` command):

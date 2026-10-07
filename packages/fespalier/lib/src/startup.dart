@@ -11,6 +11,15 @@ import 'package:hooks_riverpod/misc.dart' show Override;
 /// with the overrides it returned around [app] and the router [router] makes. What the
 /// generated `AppMain.root()` returns (since 0.8.1).
 ///
+/// With startup.dart's `ready(container)` (since 0.12.0) the gate makes the `ProviderContainer`
+/// itself, with the same overrides, observers and retry policy, runs [ready] on it, and only then
+/// hosts it (`UncontrolledProviderScope`) and builds the router. The order is `startup()`, the
+/// container, `ready`, the router, then the `attach` callbacks after the router's first frame.
+/// [ready] gets the same treatment as `startup()`: a sync one is done before the first frame, an
+/// async one shows [splash] (or defers the first frame), and one that throws is reported and
+/// shown with a retry, which disposes that container, makes a fresh one and runs [ready] again
+/// (`startup()` is not run again: it had succeeded).
+///
 /// Sync stays sync: a `startup()` that does not return a `Future` is done before the first
 /// frame, which is the app. A `Future` costs a frame, so with a [splash] it is shown meanwhile;
 /// without one the first frame is deferred (`WidgetsBinding.deferFirstFrame`), so the native
@@ -29,7 +38,9 @@ class StartupGate extends StatefulWidget {
     this.splash,
     this.observers,
     this.retry,
+    this.ready,
     this.attach,
+    this.appAttach,
     required this.router,
     required this.app,
   }) : assert(
@@ -61,10 +72,20 @@ class StartupGate extends StatefulWidget {
   /// The `ProviderScope`'s retry policy.
   final Duration? Function(int retryCount, Object error)? retry;
 
+  /// startup.dart's `ready(container)` (since 0.12.0): run on the app's own container, which
+  /// the gate then makes itself, before the router is built. A `Future` shows [splash] meanwhile;
+  /// an error is reported and shown with a retry, which runs it on a fresh container.
+  final FutureOr<void> Function(ProviderContainer container)? ready;
+
   /// Called once, right after [router] made the router, with the app's `ProviderContainer`: the
   /// generated `AppRoutes.attach`, which runs each adapter's `attach` (since 0.11.0). An error
   /// is reported and the app still shows.
   final void Function(GoRouter router, ProviderContainer container)? attach;
+
+  /// startup.dart's `attach(router, container)` (since 0.12.0): called in the same post-frame
+  /// callback as [attach], after it. An error is reported (and does not stop the rest), and the
+  /// app still shows.
+  final void Function(GoRouter router, ProviderContainer container)? appAttach;
 
   /// Called once, after `startup()`, inside the `ProviderScope`; the router is disposed with
   /// the gate.
@@ -87,6 +108,12 @@ class _StartupGateState extends State<StartupGate> {
   List<Override> _overrides = const [];
   List<ProviderObserver>? _observers;
 
+  /// `startup()` has succeeded, so a retry runs [StartupGate.ready] alone.
+  bool _startupDone = false;
+
+  /// The container the gate owns, made after `startup()` when there is a `ready`.
+  ProviderContainer? _container;
+
   @override
   void initState() {
     super.initState();
@@ -107,18 +134,15 @@ class _StartupGateState extends State<StartupGate> {
       return;
     }
     if (result is! Future<Object?>) {
-      _succeeded(result, direct: first);
+      _succeeded(result, direct: first, first: first);
       return;
     }
-    final binding = WidgetsBinding.instance;
-    if (first && widget.splash == null && !binding.firstFrameRasterized) {
-      // The native splash stays until the app is ready.
-      binding.deferFirstFrame();
-      _deferred = true;
-    }
+    _deferFirstFrame(first);
     result.then<void>(
       (value) {
-        if (mounted && run == _run) _succeeded(value, direct: false);
+        if (mounted && run == _run) {
+          _succeeded(value, direct: false, first: first);
+        }
       },
       onError: (Object error, StackTrace stackTrace) {
         if (mounted && run == _run) _failed(error, stackTrace, direct: false);
@@ -126,7 +150,19 @@ class _StartupGateState extends State<StartupGate> {
     );
   }
 
-  void _succeeded(Object? value, {required bool direct}) {
+  /// Without a splash, the native one stays until the app is ready.
+  void _deferFirstFrame(bool first) {
+    final binding = WidgetsBinding.instance;
+    if (first &&
+        !_deferred &&
+        widget.splash == null &&
+        !binding.firstFrameRasterized) {
+      binding.deferFirstFrame();
+      _deferred = true;
+    }
+  }
+
+  void _succeeded(Object? value, {required bool direct, required bool first}) {
     final List<Override> overrides;
     final List<ProviderObserver>? observers;
     try {
@@ -138,9 +174,77 @@ class _StartupGateState extends State<StartupGate> {
       _failed(error, stackTrace, direct: direct);
       return;
     }
+    _overrides = overrides;
+    _observers = observers;
+    _startupDone = true;
+    if (widget.ready == null) {
+      _show(direct);
+    } else {
+      _runReady(direct: direct, first: first);
+    }
+  }
+
+  /// Makes the container (as a `ProviderScope` would: same parent, overrides, observers and
+  /// retry, and errors reported through `FlutterError`) and runs `ready` on it.
+  void _runReady({required bool direct, required bool first}) {
+    final run = _run;
+    final FutureOr<void> result;
+    try {
+      final container = _newContainer();
+      _container = container;
+      result = widget.ready!(container);
+    } catch (error, stackTrace) {
+      _failed(error, stackTrace, direct: direct, inReady: true);
+      return;
+    }
+    if (result is! Future<void>) {
+      _show(direct);
+      return;
+    }
+    _deferFirstFrame(first);
+    result.then<void>(
+      (_) {
+        if (mounted && run == _run) _show(false);
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (mounted && run == _run) {
+          _failed(error, stackTrace, direct: false, inReady: true);
+        }
+      },
+    );
+  }
+
+  ProviderContainer _newContainer() {
+    ProviderContainer? parent;
+    try {
+      parent = ProviderScope.containerOf(context, listen: false);
+    } on StateError {
+      // No ProviderScope above the gate.
+    }
+    return ProviderContainer(
+      parent: parent,
+      overrides: _overrides,
+      observers: _observers,
+      retry: widget.retry,
+      // ignore: invalid_use_of_internal_member
+      onError: (error, stackTrace) => FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'riverpod',
+        ),
+      ),
+    );
+  }
+
+  void _disposeContainer() {
+    final container = _container;
+    _container = null;
+    container?.dispose();
+  }
+
+  void _show(bool direct) {
     _set(direct, () {
-      _overrides = overrides;
-      _observers = observers;
       _error = null;
       _stackTrace = null;
       _ready = true;
@@ -148,13 +252,24 @@ class _StartupGateState extends State<StartupGate> {
     _allowFirstFrame();
   }
 
-  void _failed(Object error, StackTrace stackTrace, {required bool direct}) {
+  void _failed(
+    Object error,
+    StackTrace stackTrace, {
+    required bool direct,
+    bool inReady = false,
+  }) {
+    if (!inReady) _startupDone = false;
+    _disposeContainer();
     FlutterError.reportError(
       FlutterErrorDetails(
         exception: error,
         stack: stackTrace,
         library: 'fespalier',
-        context: ErrorDescription('while running startup() in startup.dart'),
+        context: ErrorDescription(
+          inReady
+              ? 'while running ready() in startup.dart'
+              : 'while running startup() in startup.dart',
+        ),
       ),
     );
     _set(direct, () {
@@ -178,7 +293,13 @@ class _StartupGateState extends State<StartupGate> {
       _error = null;
       _stackTrace = null;
     });
-    _start(first: false);
+    if (_startupDone) {
+      // startup() succeeded: only ready() failed, on a container that is gone now.
+      ++_run;
+      _runReady(direct: false, first: false);
+    } else {
+      _start(first: false);
+    }
   }
 
   void _allowFirstFrame() {
@@ -190,21 +311,28 @@ class _StartupGateState extends State<StartupGate> {
   @override
   void dispose() {
     _allowFirstFrame();
+    _disposeContainer();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     if (_ready) {
+      final host = _RouterHost(
+        router: widget.router,
+        attach: widget.attach,
+        appAttach: widget.appAttach,
+        app: widget.app,
+      );
+      final container = _container;
+      if (container != null) {
+        return UncontrolledProviderScope(container: container, child: host);
+      }
       return ProviderScope(
         overrides: _overrides,
         observers: _observers,
         retry: widget.retry,
-        child: _RouterHost(
-          router: widget.router,
-          attach: widget.attach,
-          app: widget.app,
-        ),
+        child: host,
       );
     }
     final error = _error;
@@ -227,10 +355,16 @@ class _StartupGateState extends State<StartupGate> {
 
 /// Makes the router once, after `startup()`, and disposes it with the app.
 class _RouterHost extends StatefulWidget {
-  const _RouterHost({required this.router, this.attach, required this.app});
+  const _RouterHost({
+    required this.router,
+    this.attach,
+    this.appAttach,
+    required this.app,
+  });
 
   final GoRouter Function() router;
   final void Function(GoRouter router, ProviderContainer container)? attach;
+  final void Function(GoRouter router, ProviderContainer container)? appAttach;
   final Widget Function(GoRouter router) app;
 
   @override
@@ -253,17 +387,33 @@ class _RouterHostState extends State<_RouterHost> {
   /// frame being built, so no extra frame is scheduled.
   void _attach() {
     final attach = widget.attach;
-    if (attach == null) return;
+    final appAttach = widget.appAttach;
+    if (attach == null && appAttach == null) return;
     final container = ProviderScope.containerOf(context, listen: false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _runAttach(attach, container);
+      // The adapters' first, then the app's; one that throws does not stop the other.
+      if (attach != null) {
+        _runAttach(
+          attach,
+          container,
+          'while attaching the adapters to the router',
+        );
+      }
+      if (appAttach != null) {
+        _runAttach(
+          appAttach,
+          container,
+          'while running attach() in startup.dart',
+        );
+      }
     });
   }
 
   void _runAttach(
     void Function(GoRouter router, ProviderContainer container) attach,
     ProviderContainer container,
+    String what,
   ) {
     try {
       attach(_router, container);
@@ -273,9 +423,7 @@ class _RouterHostState extends State<_RouterHost> {
           exception: error,
           stack: stackTrace,
           library: 'fespalier',
-          context: ErrorDescription(
-            'while attaching the adapters to the router',
-          ),
+          context: ErrorDescription(what),
         ),
       );
     }

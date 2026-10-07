@@ -179,9 +179,7 @@ and what it returns is returned. **The first navigation it starts takes the mark
 closure returns**, so it cannot reach a later one (a closure that starts nothing, or goes where the router
 already is, leaves nothing). Telemetry reports it as `TelemetryStart.source` and `FespalierOtel` as
 `fespalier.navigation.source` on the `navigate` span; `fespalier.navigation.kind` still says how the stack
-changed (a cold start is `initial` with a source). **fespalier never calls it by itself**: a platform deep
-link and the browser's back button look like any other navigation, and the bridge that knows (a
-notification handler) does. Another value asserts in debug, ``navigateFrom: `banner` is not a
+changed (a cold start is `initial` with a source). **fespalier calls it by itself only for a platform link** (since 0.11.0, `launchRouter(links: true)`: `link`, cold start and warm, never on the web); the browser's back button looks like any other navigation, and the bridge that knows (a notification handler) calls `navigateFrom`. Another value asserts in debug, ``navigateFrom: `banner` is not a
 NavigationSource value (notification, shortcut, widget or link)``.
 
 ## `TelemetryOp.custom`: a package's own operation (since 0.11.0)

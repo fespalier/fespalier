@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show Override;
 
 import 'adapter.dart';
+import 'inbound.dart';
+import 'telemetry.dart' show navigateFrom;
 
 /// The adapters of `fespalier: adapters:`, in the pubspec's order, as one (since 0.11.0). What
 /// the generated `AppAdapters` (in `lib/app.g.dart`) forwards to, whatever `fespalier: main:` says:
@@ -91,5 +95,175 @@ final class FespalierAdapters {
         );
       }
     }
+  }
+
+  /// Where the app was opened from: every adapter's `launch()` is asked once, in order, and the
+  /// first non-null answer wins (null when none has one, and always null on the web). Sync when
+  /// every answer is, a `Future` from the first one that is. An adapter that throws is reported and
+  /// the others still run.
+  FutureOr<InboundLaunch?> launch() {
+    if (inboundIsWeb) return null;
+    return _launchFrom(0, null);
+  }
+
+  FutureOr<InboundLaunch?> _launchFrom(int from, InboundLaunch? found) {
+    for (var i = from; i < _adapters.length; i++) {
+      final adapter = _adapters[i];
+      try {
+        final answer = adapter.launch();
+        if (answer is Future<InboundLaunch?>) {
+          final next = i + 1;
+          return answer.then<InboundLaunch?>(
+            (launch) => _launchFrom(next, found ?? launch),
+            onError: (Object error, StackTrace stackTrace) {
+              _report(
+                error,
+                stackTrace,
+                'while asking $adapter for the launch',
+              );
+              return _launchFrom(next, found);
+            },
+          );
+        }
+        found ??= answer;
+      } catch (error, stackTrace) {
+        _report(error, stackTrace, 'while asking $adapter for the launch');
+      }
+    }
+    return found;
+  }
+
+  /// go_router's `onEnter` (`AppRoutes.onEnter`): each adapter's `onEnter`, in order. The first
+  /// `Block` wins and is returned as it is (the `then`s of the `Allow`s before it are dropped: the
+  /// navigation did not happen); otherwise the `Allow.then` callbacks are run in order as one
+  /// `Allow(then:)`, and when no adapter has a say the answer is `Allow()`. Sync stays sync: a
+  /// `Future` appears only if an adapter's answer is one. Blocking the initial navigation is
+  /// refused (allowed, and reported in debug). An adapter that throws is reported and counts as
+  /// no say.
+  FutureOr<OnEnterResult> onEnter(
+    BuildContext context,
+    GoRouterState current,
+    GoRouterState next,
+    GoRouter router,
+  ) {
+    // go_router hands the very same state as current and next when the router has no route yet.
+    final initial = identical(current, next);
+    final navigation = InboundNavigation(
+      context: context,
+      current: current,
+      next: next,
+      router: router,
+      initial: initial,
+      source: takePlatformLink(next.uri, router),
+    );
+    return _enter(navigation, 0, const []);
+  }
+
+  FutureOr<OnEnterResult> _enter(
+    InboundNavigation navigation,
+    int from,
+    List<OnEnterThenCallback> thens,
+  ) {
+    for (var i = from; i < _adapters.length; i++) {
+      final adapter = _adapters[i];
+      final FutureOr<OnEnterResult>? answer;
+      try {
+        answer = adapter.onEnter(navigation);
+      } catch (error, stackTrace) {
+        _report(error, stackTrace, 'in $adapter.onEnter');
+        continue;
+      }
+      if (answer == null) continue;
+      if (answer is Future<OnEnterResult>) {
+        final next = i + 1;
+        return answer.then<OnEnterResult>(
+          (raw) {
+            final result = _withSource(navigation, raw);
+            final done = _take(navigation, result, thens);
+            return done ?? _enter(navigation, next, [...thens, ?result.then]);
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            _report(error, stackTrace, 'in $adapter.onEnter');
+            return _enter(navigation, next, thens);
+          },
+        );
+      }
+      final result = _withSource(navigation, answer);
+      final done = _take(navigation, result, thens);
+      if (done != null) return done;
+      if (result.then != null) thens = [...thens, result.then!];
+    }
+    return thens.isEmpty ? const Allow() : Allow(then: _runAll(thens));
+  }
+
+  /// The block that ends the composition, or null to go on (an `Allow`, or a refused block of
+  /// the initial navigation).
+  OnEnterResult? _take(
+    InboundNavigation navigation,
+    OnEnterResult result,
+    List<OnEnterThenCallback> thens,
+  ) {
+    if (result is! Block) return null;
+    if (!navigation.initial) return result;
+    // Reported in every mode (no timer, no microtask): a release build should hear of it too.
+    _report(
+      StateError(
+        'an adapter blocked the initial navigation, which go_router answers '
+        "with its error page; fespalier allowed it (the block's then still "
+        "runs). Answer the adapter's launch() instead",
+      ),
+      StackTrace.current,
+      'in onEnter',
+    );
+    return null;
+  }
+
+  /// A `Block.then` for a platform link keeps the link's mark: the `go` inside it (a rewritten
+  /// custom-scheme link) starts a navigation that telemetry reports with `source=link`.
+  OnEnterResult _withSource(
+    InboundNavigation navigation,
+    OnEnterResult result,
+  ) {
+    final source = navigation.source;
+    final then = result.then;
+    if (source == null || then == null || result is! Block) return result;
+    return Block.then(() => navigateFrom<FutureOr<void>>(source, then));
+  }
+
+  /// One callback that runs [thens] in order, each reported (not thrown) when it fails: sync
+  /// while they are, a `Future` from the first that is.
+  static OnEnterThenCallback _runAll(List<OnEnterThenCallback> thens) {
+    FutureOr<void> run(int from) {
+      for (var i = from; i < thens.length; i++) {
+        try {
+          final result = thens[i]();
+          if (result is Future<void>) {
+            final next = i + 1;
+            return result.then<void>(
+              (_) => run(next),
+              onError: (Object error, StackTrace stackTrace) {
+                _report(error, stackTrace, 'in an onEnter callback');
+                return run(next);
+              },
+            );
+          }
+        } catch (error, stackTrace) {
+          _report(error, stackTrace, 'in an onEnter callback');
+        }
+      }
+    }
+
+    return () => run(0);
+  }
+
+  static void _report(Object error, StackTrace stackTrace, String context) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'fespalier',
+        context: ErrorDescription(context),
+      ),
+    );
   }
 }

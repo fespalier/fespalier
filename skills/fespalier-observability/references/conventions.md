@@ -87,7 +87,7 @@ enter, focus events     fespalier.route
   its children. A `data` span starts before `data()` runs, so its duration includes the sync part.
 - **`fespalier.navigation.source`** (since 0.9.0, within version 1: a new key) is where a navigation came
   from when the app's own code did not start it: `notification`, `shortcut`, `widget` or `link`, set by
-  `navigateFrom`. It is **absent** otherwise, and fespalier never sets it by itself. A cold-start launch
+  `navigateFrom`. It is **absent** otherwise, and, since 0.11.0, fespalier sets only `link`, for a platform link (never on the web). A cold-start launch
   is `kind = initial` with a source, not a new kind: a dashboard that counts `initial` as "App start"
   still does.
 - **Never recorded**: segment and query values (unless `recordLocations: true`), family keys, `extra`,

@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show Override;
+
+import 'inbound.dart';
 
 /// What a package plugs into the generated `main()` when an app lists it under
 /// `fespalier: adapters:` (since 0.9.0). The package exports one, a top-level named `adapter`,
@@ -56,4 +60,23 @@ abstract class FespalierAdapter {
   /// subscribe in a provider of [container] (`container.listen`), so it goes with the
   /// `ProviderScope`. No timer. An adapter that throws here is reported and the app still runs.
   void attach(GoRouter router, ProviderContainer container) {}
+
+  /// Where the app was opened from (since 0.11.0), asked once after [beforeRun] and before the
+  /// router is built, never on the web: a notification tap that cold-started the app, a
+  /// home-screen shortcut. Null (sync) when this adapter did not open it; every adapter is asked,
+  /// in the pubspec's order, so each can clear its pending state, and the first answer wins. A
+  /// `Future` delays the first frame like [beforeRun], so keep it to a local read.
+  FutureOr<InboundLaunch?> launch() => null;
+
+  /// A navigation is about to be parsed (go_router's `onEnter`, since 0.11.0): null to have no
+  /// say, `Allow(then: ...)` to run something after it, `Block.then(...)` to stop it (rewriting a
+  /// custom-scheme link: `Block.then(() => router.go('/orders/42'))`, which keeps the link's
+  /// `source`). The first adapter to block wins. Never block [InboundNavigation.initial]
+  /// (go_router has no route yet and shows an error page): fespalier allows it, reports it with
+  /// `FlutterError.reportError`, and still runs the block's `then`; answer [launch] instead.
+  ///
+  /// A `then` runs after the navigation commits on go_router 17.2 and later; on 17.0 and 17.1
+  /// (what Flutter 3.32 resolves) it runs inside the parse, before the commit, and may be lost.
+  /// Any `onEnter` makes go_router parse every navigation asynchronously.
+  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) => null;
 }

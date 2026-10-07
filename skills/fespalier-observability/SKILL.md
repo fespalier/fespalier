@@ -65,7 +65,7 @@ Since 0.9.0, three more things, all in that page:
   An app made with `telemetry: true` calls `data()` through `traceDataCall(..., () => data(...))` for it.
 - **`navigateFrom(NavigationSource.notification, () => router.go(...))`** marks the navigation it starts, and
   telemetry reports `fespalier.navigation.source` (`notification`, `shortcut`, `widget`, `link`). fespalier
-  never sets it by itself.
+  sets only `link` by itself, for a platform link (since 0.11.0).
 
 Since 0.10.0 (`fespalier_tolgee`, `fespalier_cratestack`): **no new `TelemetryOp` and no new convention** (0.11.0 adds
 `TelemetryOp.custom`, below), so an exhaustive sink still compiled on 0.10. A read through `ref.serve` and an action that calls `intentQueue.submit` run inside the existing

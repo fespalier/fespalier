@@ -303,6 +303,45 @@ See [Precaching an image behind a link](responsive-images.md#precaching-an-image
 
 `RouteLink` needs the app's `ProviderScope` above it, like every fespalier page, even when it preloads nothing. It depends on `package:url_launcher` (only its `Link`; nothing is launched, though pub resolves url_launcher's platform packages).
 
+## Opening the app: launches and platform links
+
+_Since 0.11.0._ Two things start a navigation that the app's own code did not: a package that knows where the app was
+opened from (a notification tap that cold-started it, a home-screen shortcut), and the platform handing over a link
+(an App Link, a Universal Link, a custom scheme).
+
+**A launch.** An adapter's `launch()` answers an `InboundLaunch`:
+
+```dart
+InboundLaunch('/orders/42', source: NavigationSource.notification);
+InboundLaunch.to(OrderRoute(id: 42), source: NavigationSource.shortcut, extra: payload);
+```
+
+`launchRouter(launch, (launch) => GoRouter(...), links: true)` builds the router. `make` receives the launch that applies
+(null on the web, where the address bar is the launch and a launch is never used). A launch wins over the platform's
+initial route (go_router lets a cold-start deep link beat `initialLocation`, unless `overridePlatformDefaultLocation` is
+set, which a launch sets) and the first navigation is marked with `launch.source`.
+
+**A platform link.** With `links: true` (an app with telemetry or adapters), `launchRouter` registers one binding
+observer before go_router's provider does, launch or not. Each link the running app receives is marked
+`NavigationSource.link`, and so is a deep link in the platform's initial route; an in-app `go` to the same location is
+not. Links are matched the way go_router reads them (a full URL, a trailing slash or none). The observer only stores the
+location: no timer, no frame, no listener on the router. An app with neither telemetry nor adapters adds nothing, and a
+router made with `links: false` is never marked. Never on the web.
+
+- **Android** hands a cold-start link to Flutter as the initial route, so it is the router's first navigation
+  (`InboundNavigation.initial`), marked `link`.
+- **iOS** delivers the link after the first frame, as a link received while running: the router first shows
+  `initialLocation` (or the launch), and the link follows as a warm navigation, not `initial`. An adapter cannot rewrite it
+  in `launch()`; `onEnter` sees it.
+- A host that drives `NavigationChannel.pushRoute` (add-to-app) is marked `link` too.
+
+An adapter's `onEnter` sees the same mark as `InboundNavigation.source`. Any `onEnter` makes go_router parse every
+navigation asynchronously and applies its redirect limit to each. `InboundNavigation.initial` is true when go_router has no
+route yet, and that navigation must not be blocked (fespalier allows it and reports it).
+
+The generated `AppRoutes.router(launch:)` and `AppRoutes.onEnter` that call these arrive with the generator's
+change in the same release; until then an app calls `launchRouter` itself.
+
 ## Deferred routes: a page's code on demand
 
 _Since 0.7.0._ A Flutter web app is one JavaScript bundle: every page's code is downloaded before the first frame. Dart can split it: a library imported `deferred as` is compiled to a file of its own that the browser fetches when `loadLibrary()` is called. fespalier does that for a route's `page.dart`, and loads the code the way it loads data: when the page is built, or ahead of time (see [Preloading](#preloading-the-data-behind-a-link)).

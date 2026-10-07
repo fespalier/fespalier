@@ -31,18 +31,20 @@ class MyToolsAdapter extends FespalierAdapter {
 ```
 
 The adapters on the [roadmap](../ROADMAP.md) (error reporting, analytics, notification and shortcut
-launches, ...) are packages of this kind. `FespalierAdapter` has seven members, each with a default that
+launches, ...) are packages of this kind. `FespalierAdapter` has nine members, each with a default that
 adds nothing, so an adapter overrides what it needs:
 
-| Member                      | When it runs                                                                                                   | What it is for                                                                                                                          |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `zone(body)`                | Around **all** of `main()`, outside startup.dart's `zone()`; before the binding exists                         | An SDK that wraps the app (`SentryFlutter.init(..., appRunner: body)`). Call `body` once                                                |
-| `beforeRun()`               | In `main()` after `WidgetsFlutterBinding.ensureInitialized()`, before `runApp`                                 | Installing a telemetry sink (`FespalierTelemetry.add`), opening a store. Return `null` for nothing to wait for                          |
-| `overrides()`               | Once, after `startup()` succeeded, **before** `startup()`'s own overrides                                      | `dataCacheStorage`, `reconnectSignal`, a flag source                                                                                    |
-| `providerObservers()`       | With `startup()`'s `providerObservers`, the adapters' first                                                    | A `ProviderObserver`                                                                                                                    |
-| `routerObservers()`         | When the router is built, before startup.dart's `routerObservers`                                              | A `NavigatorObserver` (a new one on each call: an observer belongs to one navigator)                                                    |
-| `wrap(root)`                | Around the root widget, outside the `ProviderScope` and the splash too                                         | `SentryWidget`, `PostHogWidget`                                                                                                         |
-| `attach(router, container)` | Once per router (since 0.11.0), after the first frame that shows the router (the app's `ProviderScope` exists) | Subscribing to something that outlives a screen (a notification tap, a shortcut) with `container.listen`. Do not navigate synchronously |
+| Member                      | When it runs                                                                                                   | What it is for                                                                                                                                     |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zone(body)`                | Around **all** of `main()`, outside startup.dart's `zone()`; before the binding exists                         | An SDK that wraps the app (`SentryFlutter.init(..., appRunner: body)`). Call `body` once                                                           |
+| `beforeRun()`               | In `main()` after `WidgetsFlutterBinding.ensureInitialized()`, before `runApp`                                 | Installing a telemetry sink (`FespalierTelemetry.add`), opening a store. Return `null` for nothing to wait for                                     |
+| `overrides()`               | Once, after `startup()` succeeded, **before** `startup()`'s own overrides                                      | `dataCacheStorage`, `reconnectSignal`, a flag source                                                                                               |
+| `providerObservers()`       | With `startup()`'s `providerObservers`, the adapters' first                                                    | A `ProviderObserver`                                                                                                                               |
+| `routerObservers()`         | When the router is built, before startup.dart's `routerObservers`                                              | A `NavigatorObserver` (a new one on each call: an observer belongs to one navigator)                                                               |
+| `wrap(root)`                | Around the root widget, outside the `ProviderScope` and the splash too                                         | `SentryWidget`, `PostHogWidget`                                                                                                                    |
+| `attach(router, container)` | Once per router (since 0.11.0), after the first frame that shows the router (the app's `ProviderScope` exists) | Subscribing to something that outlives a screen (a notification tap, a shortcut) with `container.listen`. Do not navigate synchronously            |
+| `launch()`                  | Once, after `beforeRun()`, before the router is built (since 0.11.0); never on the web                         | Where the app was opened from: a notification tap that cold-started it, a shortcut. Return `null` when this adapter did not; the first answer wins |
+| `onEnter(navigation)`       | For every navigation go_router parses, the first one included (since 0.11.0)                                   | Rewriting a custom-scheme link, a push payload link. `null` for no say, `Allow(then:)` or `Block.then(...)`; never block `navigation.initial`      |
 
 Write adapters with `extends FespalierAdapter`, never `implements`: a member added later (`attach` is
 one, since 0.11.0) has a default for a subclass and breaks a class that implements all of them.
@@ -126,6 +128,13 @@ after the first frame that shows the router (an adapter may change a provider th
 DevTools, observe.dart and telemetry. Each adapter is attached once per router, in the pubspec's order, and
 one that throws is reported with `FlutterError.reportError` while the others still run. `pumpRouter` does not
 attach adapters, so a widget test of a page never runs them.
+
+**`launch` and `onEnter` (since 0.11.0).** `FespalierAdapters.launch()` asks every adapter once, in order, and the
+first non-null answer (an `InboundLaunch`) wins; it is `null` on the web and sync unless an adapter answers with a
+`Future`. `FespalierAdapters.onEnter` (what the generated `AppRoutes.onEnter` forwards to) composes the adapters'
+answers: the first `Block` wins, the `Allow.then` callbacks run in order as one, and no say is `Allow()`. Blocking
+the initial navigation is refused: it is allowed, reported with `FlutterError.reportError` in every mode, and the block's `then` still runs; answer `launch()` instead. `InboundNavigation.initial` is true when go_router has no route yet (it hands the same state as current and next). A `Block.then` for a platform link keeps the link's mark: the `go` inside it is reported with `source=link`. See
+[Opening the app](navigation.md#opening-the-app-launches-and-platform-links).
 
 **Two things to check.**
 

@@ -15,6 +15,7 @@ import 'package:flutter/widgets.dart' show BuildContext, ErrorDescription;
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'inbound.dart' show clearPlatformLink, platformLinkSource;
 import 'navigation_kind.dart';
 import 'route_info.dart' show pathTemplate;
 import 'telemetry.dart';
@@ -205,10 +206,7 @@ final class RouterWatch {
       // Not parsed yet: this is the initial navigation, and it starts now.
       if (telemetryOn) {
         final uri = router.routeInformationProvider.value.uri;
-        _nav = _Nav(
-          telemetryNavigationStart(uri, source: takeNavigationSource()),
-          uri,
-        );
+        _nav = _Nav(telemetryNavigationStart(uri, source: _sourceOf(uri)), uri);
       }
     } else {
       // Attached late: the router already shows its first location.
@@ -232,12 +230,12 @@ final class RouterWatch {
       final uri = router.routeInformationProvider.value.uri;
       // The same location as the one committed: `GoRouter.refresh()` only notifies again, and a
       // `go` to where you are commits nothing. Not a new navigation.
-      if (uri == router.routerDelegate.currentConfiguration.uri) return;
+      if (uri == router.routerDelegate.currentConfiguration.uri) {
+        clearPlatformLink();
+        return;
+      }
       _endPending();
-      _nav = _Nav(
-        telemetryNavigationStart(uri, source: takeNavigationSource()),
-        uri,
-      );
+      _nav = _Nav(telemetryNavigationStart(uri, source: _sourceOf(uri)), uri);
     } catch (e) {
       telemetryAttachError(e);
     }
@@ -261,7 +259,13 @@ final class RouterWatch {
     _endNavigation(nav, config, walk.instances.lastOrNull);
   }
 
+  /// What marks a navigation to [uri]: `navigateFrom`'s source, else `link` for a platform link
+  /// (since 0.11.0; a peek, `onEnter` uses the link up, and the commit forgets it).
+  String? _sourceOf(Uri uri) =>
+      takeNavigationSource() ?? platformLinkSource(uri, router);
+
   void _committed() {
+    clearPlatformLink();
     if (_telemetry) _committedForTelemetry();
     _schedule();
   }

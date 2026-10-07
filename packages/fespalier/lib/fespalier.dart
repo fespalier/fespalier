@@ -43,6 +43,7 @@ export 'src/field_errors.dart';
 export 'src/freshness.dart';
 export 'src/guards.dart';
 export 'src/heroes.dart';
+export 'src/inbound.dart' show InboundLaunch, InboundNavigation, launchRouter;
 export 'src/layout_page.dart';
 // Route lifecycle (since 0.8.1): what a generated app.g.dart builds from observe.dart files.
 export 'src/lifecycle.dart' show RouteHooks, observeAttach;

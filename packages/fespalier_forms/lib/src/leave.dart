@@ -17,7 +17,7 @@ enum LeaveChoice {
 
 /// Asks the user about the changes on the page that is going (since 0.11.0): the question
 /// `leaveIfClean` puts when a form has unsaved changes. [context] is the root navigator's (a
-/// sheet opens above every layout), [page] says whether a draft can be [PageLeave.canKeep]t.
+/// sheet opens above every layout), [page] says whether a draft can be kept ([PageLeave.canKeep]).
 ///
 /// May answer at once or later. A prompt that is dismissed answers [LeaveChoice.stay].
 typedef LeavePrompt =

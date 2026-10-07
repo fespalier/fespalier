@@ -358,6 +358,9 @@ final class _Drafts {
   /// What was last written, to write nothing twice.
   String? lastSaved;
 
+  /// What the last save returned: what `keep()` waits for when nothing changed since.
+  FutureOr<void> pending;
+
   /// Whether a draft is known to be in the storage.
   bool stored = false;
 
@@ -534,12 +537,22 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier
 
   // ---- leaving ---------------------------------------------------------------------------
 
-  /// Whether [keep] writes a draft: the form was given a `draft:` and there is a storage.
+  /// Whether [keep] would keep something: the form was given a `draft:`, there is a storage, and
+  /// a changed field is one the draft holds (not excluded, and of a type a draft can keep). A
+  /// form whose only changes are in a field the draft leaves out cannot keep.
   @override
-  bool get canKeep => _drafts?.hasStorage ?? false;
+  bool get canKeep {
+    final drafts = _drafts;
+    return drafts != null &&
+        !_disposed &&
+        drafts.hasStorage &&
+        drafts.generation == draftClearGeneration &&
+        _draftFields().isNotEmpty;
+  }
 
-  /// Saves what the form holds as its draft, and completes when it is written. What `leave()`
-  /// asks through `PageLeave.keep` when the user chooses to keep the changes (since 0.11.0).
+  /// Saves what the form holds as its draft, and completes when it is written, including a write
+  /// an earlier save started on a storage that answers later. What `leave()` asks through
+  /// `PageLeave.keep` when the user chooses to keep the changes (since 0.11.0).
   @override
   FutureOr<void> keep() {
     if (_disposed) return null;
@@ -547,8 +560,8 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier
     return _saveDraft();
   }
 
-  /// Drops the draft, and the form writes none when the page goes (since 0.11.0): the user
-  /// chose to lose what they typed. The fields are left as they are (the page is going); typing
+  /// Drops the draft, and the form writes none when the page goes or the app goes to the
+  /// background (since 0.11.0): the user chose to lose what they typed. The fields are left as they are (the page is going); typing
   /// again keeps the form as it was.
   @override
   void discard() {
@@ -580,12 +593,12 @@ final class ActionForm<I, T, F extends Record> extends ChangeNotifier
     }
     if (drafts.generation != draftClearGeneration) return null;
     final text = jsonEncode(fields);
-    if (text == drafts.lastSaved) return null;
+    if (text == drafts.lastSaved) return drafts.pending;
     // What is known of the storage changes now, whenever the storage answers.
     drafts
       ..lastSaved = text
       ..stored = true;
-    return drafts.use(
+    return drafts.pending = drafts.use(
       (storage, {required deferred}) => saveDraft(
         storage,
         drafts.key,
@@ -876,7 +889,7 @@ final class _ActionFormState<I, T, F extends Record>
               case AppLifecycleState.paused ||
                   AppLifecycleState.hidden ||
                   AppLifecycleState.detached) {
-            _let(_form._saveDraft());
+            if (!_form._discarded) _let(_form._saveDraft());
           }
         },
       );

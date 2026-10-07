@@ -10,9 +10,9 @@ import 'package:fespalier_forms/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-typedef Fields = ({String nickname});
+typedef Fields = ({String nickname, String password});
 
-Fields form() => (nickname: 'ann');
+Fields form() => (nickname: 'ann', password: '');
 
 String action(Ref ref, {required Fields input}) => input.nickname;
 
@@ -26,17 +26,21 @@ final _action = actionProvider<Fields, String>(
 );
 
 /// What `fsp` generates, by hand.
-ActionForm<Fields, String, ({ActionTextField<String> nickname})> useForm(
-  WidgetRef ref, {
-  FormDraft? draft,
-}) => useActionForm(
+ActionForm<
+  Fields,
+  String,
+  ({ActionTextField<String> nickname, ActionTextField<String> password})
+>
+useForm(WidgetRef ref, {FormDraft? draft}) => useActionForm(
   ref,
   _action,
   data: null,
   initial: form,
-  fields: (ActionFormFields<Fields> f) =>
-      (nickname: f.text('nickname', (v) => v.nickname, FieldCodec.text)),
-  input: (f) => (nickname: f.nickname.value),
+  fields: (ActionFormFields<Fields> f) => (
+    nickname: f.text('nickname', (v) => v.nickname, FieldCodec.text),
+    password: f.text('password', (v) => v.password, FieldCodec.text),
+  ),
+  input: (f) => (nickname: f.nickname.value, password: f.password.value),
   id: actionId,
   key: const [],
   shape: shape,
@@ -53,9 +57,17 @@ class EditPage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final f = useForm(ref, draft: draftOf).fields;
     return Scaffold(
-      body: TextField(
-        key: const Key('nickname'),
-        controller: f.nickname.controller,
+      body: Column(
+        children: [
+          TextField(
+            key: const Key('nickname'),
+            controller: f.nickname.controller,
+          ),
+          TextField(
+            key: const Key('password'),
+            controller: f.password.controller,
+          ),
+        ],
       ),
     );
   }
@@ -127,8 +139,10 @@ Future<void> goBack(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-String shownText(WidgetTester tester) =>
-    tester.widget<TextField>(find.byType(TextField)).controller!.text;
+String shownText(WidgetTester tester) => tester
+    .widget<TextField>(find.byKey(const Key('nickname')))
+    .controller!
+    .text;
 
 PopScope<Object?> popScope(WidgetTester tester) =>
     tester.widget<PopScope<Object?>>(
@@ -255,6 +269,31 @@ void main() {
       expect(find.text('Keep as draft'), findsNothing);
       expect(find.text('Keep editing'), findsOneWidget);
       expect(find.text('Discard'), findsOneWidget);
+    });
+
+    testWidgets('changed only in an excluded field: nothing to keep', (
+      tester,
+    ) async {
+      draftOf = const FormDraft(exclude: {'password'});
+      final container = await boot(tester);
+      await tester.enterText(find.byKey(const Key('password')), 'hunter2');
+      await tester.pump();
+      await goBack(tester);
+      expect(find.text('Discard your changes?'), findsOneWidget);
+      expect(find.text('Keep as draft'), findsNothing);
+      expect(find.text('Keep editing'), findsOneWidget);
+      expect(find.text('Discard'), findsOneWidget);
+      await tester.tap(find.text('Keep editing'));
+      await tester.pumpAndSettle();
+      // With a kept field changed as well, a draft can be kept again.
+      await type(tester, 'bob');
+      await goBack(tester);
+      expect(find.text('Keep as draft'), findsOneWidget);
+      await tester.tap(find.text('Keep as draft'));
+      await tester.pumpAndSettle();
+      expect(await readFormDraft(container, id: actionId, shape: shape), {
+        'nickname': 'bob',
+      });
     });
 
     testWidgets('the messages are the app\'s own', (tester) async {

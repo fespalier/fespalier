@@ -302,7 +302,8 @@ The question is the page's [`leave.dart`](../../fespalier-routing/references/lea
 is a `LeaveSource` that `useActionForm` registers with `LeaveScope.maybeOf(context)` when the page is
 below a `leaveScope` (a folder with a `leave.dart`), and unregisters with the page. Nothing in the page
 changes. `page.isDirty` is "a form on the page differs from where it started" (a success makes the
-fields the new baseline), `page.canKeep` is "a form has a `draft:` and a storage".
+fields the new baseline), `page.canKeep` is "a form has a `draft:`, a storage and a changed field the draft keeps" (not excluded, of a
+type a draft can keep).
 
 ```dart
 // lib/app/(account)/nickname/leave.dart
@@ -321,7 +322,9 @@ LeaveResult leave(BuildContext context, Ref ref, {required PageLeave page}) =>
 - **`discard()`** on a form deletes its draft and **prevents the draft write at dispose** (until the
   user changes a field again, so a discard whose page stayed does not silence the form for good). **`keep()`**
   writes the draft through the same serialized, generation-checked path as dispose, and completes when the
-  storage has it (a storage that answers later is awaited).
+  storage has it (a storage that answers later is awaited, an earlier pending write included). Navigate after
+  `await form.submit()`, never from inside the action body. A discard that a parent route's `leave()` overruled
+  leaves the text but no draft until the next edit.
 - **The sheet**: `askToLeaveSheet({LeaveSheetMessages messages})`, the default of `leavePrompt`, is
   Flutter's `showModalBottomSheet` on the root navigator: "Keep editing", "Discard" and, when
   `page.canKeep`, "Keep as draft"; a dismissed sheet is `stay`. Translate it with

@@ -173,6 +173,16 @@ final class FespalierOtel extends FespalierTelemetry {
             FespalierConventions.imagePreload: start.imagePreload,
           },
         ),
+        // The package's own name and attributes (validated in debug by `begin`); an error's text
+        // is never recorded for it, see [end].
+        TelemetryOp.custom => (
+          '${start.name}',
+          <String, Object>{
+            FespalierConventions.operation: FespalierConventions.opCustom,
+            FespalierConventions.customName: ?start.name,
+            ...?start.attributes,
+          },
+        ),
       };
       final parent = start.parent;
       final span = tracer.startSpan(
@@ -233,9 +243,11 @@ final class FespalierOtel extends FespalierTelemetry {
       final error = end.error;
       if (end.outcome == TelemetryOutcome.error &&
           error != null &&
-          (token.op == TelemetryOp.auth || token.op == TelemetryOp.image)) {
-        // An auth error's text may name a host or an endpoint, an image error's the URL: the class
-        // is all that is kept.
+          (token.op == TelemetryOp.auth ||
+              token.op == TelemetryOp.image ||
+              token.op == TelemetryOp.custom)) {
+        // An auth error's text may name a host or an endpoint, an image error's the URL, a custom
+        // operation's anything: the class is all that is kept.
         span.setStringAttribute<String>(
           FespalierConventions.errorType,
           error.runtimeType.toString(),
@@ -312,6 +324,25 @@ final class FespalierOtel extends FespalierTelemetry {
         final status = end.imageStatus;
         if (status != null) {
           span.setIntAttribute(FespalierConventions.imageStatus, status);
+        }
+      case TelemetryOp.custom:
+        span.setStringAttribute<String>(
+          FespalierConventions.customResult,
+          end.outcome,
+        );
+        span.setBoolAttribute(FespalierConventions.isAsync, end.isAsync);
+        for (final MapEntry(:key, :value)
+            in (end.attributes ?? const {}).entries) {
+          switch (value) {
+            case final String v:
+              span.setStringAttribute<String>(key, v);
+            case final int v:
+              span.setIntAttribute(key, v);
+            case final double v:
+              span.setDoubleAttribute(key, v);
+            case final bool v:
+              span.setBoolAttribute(key, v);
+          }
         }
     }
   }

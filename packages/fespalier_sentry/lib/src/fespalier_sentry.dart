@@ -320,7 +320,8 @@ final class FespalierSentry extends FespalierTelemetry {
         TelemetryOp.guard ||
         TelemetryOp.redirect ||
         TelemetryOp.deferred ||
-        TelemetryOp.image => _startChild(start, spans),
+        TelemetryOp.image ||
+        TelemetryOp.custom => _startChild(start, spans),
       };
     } catch (_) {
       return null;
@@ -454,6 +455,7 @@ final class FespalierSentry extends FespalierTelemetry {
       TelemetryOp.deferred => 'deferred ${s.file}',
       TelemetryOp.auth => 'auth ${s.authStep}',
       TelemetryOp.image => 'image ${s.imageCdn}',
+      TelemetryOp.custom => '${s.name}',
     };
   }
 
@@ -485,10 +487,13 @@ final class FespalierSentry extends FespalierTelemetry {
         if (cdn != null) span.setData(SentryKeys.imageCdn, cdn);
         if (width != null) span.setData(SentryKeys.imageWidth, width);
         span.setData(SentryKeys.imagePreload, s.imagePreload);
+      // A custom operation's own attributes are never sent: only its name (the span's
+      // description) and the operation.
       case TelemetryOp.navigate ||
           TelemetryOp.guard ||
           TelemetryOp.redirect ||
-          TelemetryOp.deferred:
+          TelemetryOp.deferred ||
+          TelemetryOp.custom:
         break;
     }
   }
@@ -729,6 +734,7 @@ final class FespalierSentry extends FespalierTelemetry {
       TelemetryOp.deferred => SentryKeys.deferredResult,
       TelemetryOp.auth => SentryKeys.authResult,
       TelemetryOp.image => SentryKeys.imageResult,
+      TelemetryOp.custom => SentryKeys.customResult,
       TelemetryOp.navigate => null,
     };
     if (outcomeKey != null) span.setData(outcomeKey, e.outcome);
@@ -771,9 +777,10 @@ final class FespalierSentry extends FespalierTelemetry {
   // ---------------------------------------------------------------------------------------------
   // Errors
 
-  /// What names an operation in a breadcrumb or a key: its file, its auth step or its image CDN.
+  /// What names an operation in a breadcrumb or a key: its file, its auth step, its image CDN or
+  /// its custom name.
   static String _label(TelemetryStart s) =>
-      s.site?.file ?? s.file ?? s.authStep ?? s.imageCdn ?? '';
+      s.site?.file ?? s.file ?? s.authStep ?? s.imageCdn ?? s.name ?? '';
 
   void _error(OpToken t, TelemetryEnd e) {
     final error = e.error;
@@ -901,7 +908,10 @@ final class FespalierSentry extends FespalierTelemetry {
             level: SentryLevel.warning,
           ),
         );
-      case TelemetryOp.navigate || TelemetryOp.data || TelemetryOp.deferred:
+      case TelemetryOp.navigate ||
+          TelemetryOp.data ||
+          TelemetryOp.deferred ||
+          TelemetryOp.custom:
         break;
     }
   }

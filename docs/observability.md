@@ -218,6 +218,30 @@ fespalier never sets it itself: a platform deep link and the browser's back butt
 is not a NavigationSource value (notification, shortcut, widget or link)``.
 - `RecordingTelemetry` writes it as `source=notification` on the start line of the navigation, and only when it is set.
 
+### Operations of your own: TelemetryOp.custom
+
+Since 0.11.0. A package that is not fespalier's own reports an operation through the same two calls as `fespalier_auth` and `fespalier_image`, with `TelemetryOp.custom`: `TelemetryStart.name` says which, and the package's own attributes ride along.
+
+```dart
+final token = FespalierTelemetry.begin(
+  const TelemetryStart(
+    TelemetryOp.custom,
+    name: 'fespalier.push.open',
+    attributes: {'fespalier.push.kind': 'alert'},
+  ),
+);
+FespalierTelemetry.finish(
+  token,
+  const TelemetryEnd(TelemetryOutcome.ok, attributes: {'fespalier.push.fresh': true}),
+);
+```
+
+- `name` is `fespalier.<pkg>.<op>` (lowercase letters, digits and underscores, at least three segments), and every key of `attributes` starts with the name's first two segments and a dot (`fespalier.push.`). A value is a `String`, an `int`, a `double` or a `bool`. `begin` asserts all of it in debug: `TelemetryOp.custom needs a name like fespalier.<pkg>.<op>, got ...`, `TelemetryOp.custom attribute "..." must start with "fespalier.push."` and `TelemetryOp.custom attribute "..." must be a String, int, double or bool, got ...`.
+- `FespalierOtel` makes a span named `name` with `fespalier.operation = custom`, `fespalier.custom.name`, `fespalier.custom.result` (the outcome) and `fespalier.async`, plus the package's own attributes from the start and the end. A failed one has the status and `error.type`, never the exception's text. The package's own `fespalier.<pkg>.*` keys are that package's contract, not contract version 1's; `fespalier.custom.name` and `fespalier.custom.result` are version 1's (new keys within the version).
+- `FespalierSentry` reports a custom operation as a span `fespalier.custom` described by its name (with `tracing: true`) and as an event or breadcrumb when it fails, and **never sends its attributes**.
+- `RecordingTelemetry` writes `#1 start custom fespalier.push.open fespalier.push.kind=alert` (the attributes sorted by key) and `#1 end custom ok fespalier.push.fresh=true`.
+- A sink of your own with an exhaustive `switch` on `TelemetryOp` needs a `TelemetryOp.custom` case.
+
 ### Testing telemetry
 
 `package:fespalier/testing.dart` has `RecordingTelemetry`, a sink that keeps what it is told as lines to compare. Install it in `setUp` and uninstall it in `tearDown`:

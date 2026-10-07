@@ -197,6 +197,7 @@ final class RecordingTelemetry extends FespalierTelemetry {
       TelemetryOp.image =>
         '${start.imageCdn} w=${start.imageWidth}'
             '${start.imagePreload ? ' preload' : ''}',
+      TelemetryOp.custom => _custom(start.name, start.attributes),
       _ => '${start.site?.file}${start.keyed ? ' keyed' : ''}',
     };
     final parent = start.parent == null ? '' : ' parent=#${start.parent}';
@@ -221,6 +222,8 @@ final class RecordingTelemetry extends FespalierTelemetry {
         if (end.location != null) 'at=${end.location}',
       ],
       if (end.imageStatus != null) 'status=${end.imageStatus}',
+      if (op == TelemetryOp.custom && end.attributes != null)
+        _sorted(end.attributes!),
       if (end.error != null) 'error=${end.error}',
     ];
     log.add(parts.join(' '));
@@ -245,6 +248,14 @@ final class RecordingTelemetry extends FespalierTelemetry {
     }
   }
 }
+
+String _sorted(Map<String, Object> attributes) {
+  final keys = attributes.keys.toList()..sort();
+  return keys.map((k) => '$k=${attributes[k]}').join(' ');
+}
+
+String _custom(String? name, Map<String, Object>? attributes) =>
+    '$name${attributes == null || attributes.isEmpty ? '' : ' ${_sorted(attributes)}'}';
 
 /// The page of the route whose pattern is [pattern] (`/products/:id`), found by the
 /// `Semantics(identifier: 'route:<pattern>')` that `semantics_ids: true` gives it. Needs no

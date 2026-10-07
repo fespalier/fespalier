@@ -30,6 +30,8 @@
     "fespalier_image_preload",
     "fespalier_image_result",
     "fespalier_image_status",
+    "fespalier_custom_name",
+    "fespalier_custom_result",
     "service_name",
     "operation_name",
     "span_status",

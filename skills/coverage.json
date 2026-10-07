@@ -574,6 +574,7 @@
         "docs/observability.md#Several sinks: combine and add",
         "docs/observability.md#Spans around data() and actions",
         "docs/observability.md#Where a navigation came from: navigateFrom",
+        "docs/observability.md#Operations of your own: TelemetryOp.custom",
         "docs/observability.md#Sentry: fespalier_sentry",
         "docs/observability.md#What Sentry gets from fespalier",
         "docs/observability.md#Wiring Sentry",

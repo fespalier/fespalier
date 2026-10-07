@@ -944,6 +944,10 @@
                       "image": {
                         "text": "Image load",
                         "index": 7
+                      },
+                      "custom": {
+                        "text": "Package operation",
+                        "index": 8
                       }
                     }
                   }

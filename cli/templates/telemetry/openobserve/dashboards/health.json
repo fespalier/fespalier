@@ -919,6 +919,11 @@
                 "type": "value",
                 "value": "image",
                 "text": "Image load"
+              },
+              {
+                "type": "value",
+                "value": "custom",
+                "text": "Package operation"
               }
             ],
             "drilldown": [

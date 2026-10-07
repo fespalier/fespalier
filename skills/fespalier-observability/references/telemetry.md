@@ -184,6 +184,30 @@ link and the browser's back button look like any other navigation, and the bridg
 notification handler) does. Another value asserts in debug, ``navigateFrom: `banner` is not a
 NavigationSource value (notification, shortcut, widget or link)``.
 
+## `TelemetryOp.custom`: a package's own operation (since 0.11.0)
+
+A package that is not fespalier's own reports an operation with `FespalierTelemetry.begin` and `finish`:
+
+```dart
+final token = FespalierTelemetry.begin(
+  const TelemetryStart(
+    TelemetryOp.custom,
+    name: 'fespalier.push.open',
+    attributes: {'fespalier.push.kind': 'alert'},
+  ),
+);
+FespalierTelemetry.finish(
+  token,
+  const TelemetryEnd(TelemetryOutcome.ok, attributes: {'fespalier.push.fresh': true}),
+);
+```
+
+`name` is `fespalier.<pkg>.<op>`, every attribute key starts with `fespalier.<pkg>.` and a value is a String, an
+int, a double or a bool; `begin` asserts it in debug (`TelemetryOp.custom needs a name like
+fespalier.<pkg>.<op>, got ...`). `FespalierOtel` makes a span named `name`; `FespalierSentry` a span described
+by it and never sends the attributes. A sink of your own with an exhaustive `switch` on `TelemetryOp` needs a
+`TelemetryOp.custom` case. docs/observability.md, "Operations of your own: TelemetryOp.custom".
+
 ## Testing
 
 ```dart
@@ -206,6 +230,8 @@ inside `data()` or an action, so a line the code under test adds to `recording.l
 operation. An `image` operation (since 0.9.0, `fespalier_image`) is `#4 start image emgr w=640 preload`, then
 `#4 end image ok async` or `#5 end image error async status=404`: the builder's name and the width, never the URL.
 Image spans follow the installed sink and need no `telemetry: true`, like `auth` spans.
+A `custom` operation (since 0.11.0) is `#6 start custom fespalier.push.open fespalier.push.kind=alert`, then
+`#6 end custom ok fespalier.push.fresh=true`: the attributes sorted by key.
 Two sinks next to each other, and a sink of your own that makes its operation current:
 
 ```dart

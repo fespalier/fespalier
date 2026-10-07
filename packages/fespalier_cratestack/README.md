@@ -43,12 +43,12 @@ Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `clock`, `dio` (`^5.7.0`
 
 ## Four libraries
 
-| Library | For | What is in it |
-| --- | --- | --- |
+| Library                                                  | For                                | What is in it                                                                                                                                |
+| -------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `package:fespalier_cratestack/fespalier_cratestack.dart` | everything that is not Dio or Hive | the transport seam, errors, `Served` and `ref.serve`, `LocalStore`, `ReadCache`, intents, owned rows and the merge, `SyncEngine`, `autoSync` |
-| `package:fespalier_cratestack/dio.dart` | Dio | `ref.cancellable`, `CrateStackCancelInterceptor`, `CrateStackPortalInterceptor`, `DioFailures` |
-| `package:fespalier_cratestack/hive.dart` | a durable store | `HiveLocalStore`, a hive_ce box that never evicts |
-| `package:fespalier_cratestack/testing.dart` | tests | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides` |
+| `package:fespalier_cratestack/dio.dart`                  | Dio                                | `ref.cancellable`, `CrateStackCancelInterceptor`, `CrateStackPortalInterceptor`, `DioFailures`                                               |
+| `package:fespalier_cratestack/hive.dart`                 | a durable store                    | `HiveLocalStore`, a hive_ce box that never evicts                                                                                            |
+| `package:fespalier_cratestack/testing.dart`              | tests                              | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides`                                                    |
 
 ## Wire it
 

@@ -349,7 +349,7 @@ ProductRoute(id: product.id).hero('avatar', child: CircleAvatar(radius: 40, chil
 - `route.heroTag(name)` is the tag alone (a `RouteHeroTag`), for a `Hero` of your own.
 - Nothing is generated: `app.g.dart` doesn't change.
 
-`hero` builds a `RouteHero`, which is Flutter's `Hero` with one difference: it stays out of flights while its tab is not shown (`TickerMode` is off for it, as go*router's tab container and `examples/tabs`' set it on the tabs they hide). Two tabs can then show the same tag, and a route on the [root navigator](navigation.md#the-root-navigator-navigatordart) that opens over the tab bar flies from the tab that is shown. With a plain `Hero`, that is Flutter's *"There are multiple heroes that share the same tag within a subtree"\_ assertion in debug.
+`hero` builds a `RouteHero`, which is Flutter's `Hero` with one difference: it stays out of flights while its tab is not shown (`TickerMode` is off for it, as go_router's tab container and `examples/tabs`' set it on the tabs they hide). Two tabs can then show the same tag, and a route on the [root navigator](navigation.md#the-root-navigator-navigatordart) that opens over the tab bar flies from the tab that is shown. With a plain `Hero`, that is Flutter's "There are multiple heroes that share the same tag within a subtree" assertion in debug.
 
 **The flight style** is declared in `transition.dart`: `Transitions.fade`, `slide`, `none`, `material`, `cupertino` and `fullscreenDialog` take `heroes:`, a `Heroes` with three options.
 

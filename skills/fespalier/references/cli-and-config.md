@@ -103,6 +103,11 @@ fespalier:
     android_package: com.example.shop      # with android_sha256: the Android files
     android_sha256: ["AB:CD:...:EF"]       # 32 hex pairs each; the signing certificates
     ios_app_id: ABCDE12345.com.example.shop  # Team ID, a dot, the bundle id: the iOS files
+    scheme_host: true                      # since 0.11.0; false: myshop:///orders/2, no host (needs scheme)
+    paths: [/, /orders/*]                  # since 0.11.0; default: every linkable route
+    # flavors:                             # since 0.11.0, instead of the three platform keys
+    #   prod:  {android_package: ..., android_sha256: [...], ios_app_id: ...}
+    #   debug: {android_package: ..., android_sha256: [...], ios_app_id: ...}
     out: links                             # default; relative to the project, no `..`
 ```
 
@@ -118,6 +123,24 @@ and, with `scheme`, `ios/info-url-types.xml` (iOS, when `ios_app_id` is set); an
   `applinks:` lines to `Runner.entitlements`, and copy `web/` into the Flutter project's
   `web/` (or serve it from the domain). Android verifies only an `assetlinks.json` served
   over HTTPS at `/.well-known/assetlinks.json` with no redirect.
+- **Flavours (since 0.11.0).** `flavors:` maps a name (letters, digits, `_`, starting lower-case: `prod`, `devStaging`) to
+  `android_package` (with `android_sha256`) and/or `ios_app_id`, instead of the flat keys (both
+  is an error; the flat keys stay valid as one unnamed app and give the output they always did).
+  `assetlinks.json` has one statement per package, the association file one `details` entry with
+  every app id in `appIDs`; domains and the scheme are shared (a flavour with `domains:` is
+  rejected); `info-url-types.xml` takes the bundle id of the first iOS app.
+- **`scheme_host: false` (since 0.11.0)** writes the scheme filter with the scheme only (no
+  host, no path) and makes the default `fsp maestro` link `myshop://`, so a flow opens
+  `myshop:///orders/42`. Prefer it: the router matches the path only, so `myshop://orders/42`
+  reaches `/42`.
+- **`paths:` (since 0.11.0)** replaces the route-derived Android `<data>` paths and AASA
+  components: `/x` is `android:path="/x"` and `/x`, `/x/*` is `pathPrefix="/x/"` and `/x/*`, `*`
+  only as the whole last segment, never `:id` or `$id`. A case-insensitive route an entry
+  meets gives it `caseSensitive: false` in the association file. The sitemap still comes from
+  the routes, and `fsp maestro` still writes a flow for every route, so one `paths:` leaves out
+  can't open with a hosted link. A linkable route no entry covers (the warning suggests `/x`
+  for a static route, `/x/*` below a dynamic segment, both for `$$$x`), and an entry no route
+  matches, are warnings (never a `--check` failure).
 - **What is listed.** Every route in a folder not marked `const linkable = false;` (a
   `route.dart`, nearest wins, inherited like `caseSensitive`; see
   [`route-dart.md`](../../fespalier-routing/references/route-dart.md)), one entry per
@@ -166,7 +189,7 @@ fespalier:
   user of that web build** for good: say so before enabling the key in an app whose web build ships.
 - **`app_id`, `url` and `link`** may each be one whole Maestro variable (`app_id: ${APP_ID}`), copied
   through as written. **`link` defaults** to the `url` on the web, and for an app to `<scheme>://<first
-domain>` (else `https://<first domain>`) of `links:`; an app with neither is an error. A Flutter web
+domain>` (`<scheme>://` with `scheme_host: false`; else `https://<first domain>`) of `links:`; an app with neither is an error. A Flutter web
   app on the default **hash** strategy needs `link: http://localhost:8080/#`.
 - **`samples`** keys are folders as `fsp routes` prints them, without `/page.dart` (`products/$id`,
   `(members)/notes/$id`), each a `$x`, `$$x` or `$$$x` folder. Values are text, numbers, booleans

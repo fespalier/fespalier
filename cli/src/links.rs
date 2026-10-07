@@ -5,11 +5,17 @@
 //!
 //! - **Android**: `<intent-filter android:autoVerify="true">` elements (one per domain, and one
 //!   for a custom scheme) to paste into the main activity of `AndroidManifest.xml`, which `fsp`
-//!   never edits, and `assetlinks.json`.
-//! - **iOS**: `apple-app-site-association` (`components`), the `applinks:` entitlement entries
-//!   and, for a custom scheme, the `CFBundleURLTypes` entry.
+//!   never edits, and `assetlinks.json` (a statement per app).
+//! - **iOS**: `apple-app-site-association` (`components`, every app id in `appIDs`), the
+//!   `applinks:` entitlement entries and, for a custom scheme, the `CFBundleURLTypes` entry.
+//!
 //! - **Web**: `sitemap.xml` with every static route as an absolute URL on the first domain, and
 //!   `hreflang` alternates from the locale spellings of a [localized](crate::locale) path.
+//!
+//! Since 0.11.0 the apps are the flat keys' one app or the `flavors:` of the pubspec, a scheme
+//! can be written without a host (`scheme_host: false`: `myshop:///orders/2`, which the router
+//! matches on its path alone) and `paths:` lists what the platforms open instead of every
+//! linkable route ([`warnings`] tells where the two disagree).
 //!
 //! Everything is a function of the tree and the pubspec: stable order, no dates, so `--check`
 //! can compare the files on disk byte for byte.
@@ -27,7 +33,7 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use serde_json::json;
 
-use crate::config::{Config, Links};
+use crate::config::{AndroidApp, Config, IosApp, LinkPath, Links};
 use crate::locale::{self, Localized};
 use crate::resolve::App;
 use crate::scan::Seg;
@@ -65,6 +71,8 @@ pub struct Link {
     pub case_sensitive: bool,
     /// A `redirect.dart`: the app opens it, but a sitemap doesn't list a URL that redirects.
     pub redirect: bool,
+    /// The route's canonical pattern, as the diagnostics write it (`/orders/:id`).
+    pub pattern: String,
 }
 
 /// The path of `url` with the spellings of `locale` (the canonical ones for `None`): one piece
@@ -111,6 +119,7 @@ pub fn collect(app: &App) -> Vec<Link> {
                 locales,
                 case_sensitive: r.case_sensitive,
                 redirect: r.page.is_none(),
+                pattern: crate::resolve::pattern(&r.url),
             }
         })
         .collect()
@@ -214,8 +223,21 @@ fn xml_attr(s: &str) -> String {
     out
 }
 
-/// The paths of all links as `<data>` paths, each once, in route order.
-fn android_data(links: &[Link]) -> Vec<AndroidPath> {
+/// An Android `<data>` path of a `paths:` entry: `/x` is `path`, `/x/*` is `pathPrefix="/x/"`.
+fn android_listed(path: &LinkPath) -> AndroidPath {
+    let join = |segs: &[String]| segs.iter().map(|s| format!("/{s}")).collect::<String>();
+    match path {
+        LinkPath::Exact(segs) if segs.is_empty() => AndroidPath::Exact("/".into()),
+        LinkPath::Exact(segs) => AndroidPath::Exact(join(segs)),
+        LinkPath::Prefix(segs) => AndroidPath::Prefix(format!("{}/", join(segs))),
+    }
+}
+
+/// The paths of all links as `<data>` paths, each once, in route order; `paths:` replaces them.
+fn android_data(links: &[Link], cfg: &Links) -> Vec<AndroidPath> {
+    if let Some(paths) = &cfg.paths {
+        return paths.iter().map(android_listed).collect();
+    }
     let mut seen = BTreeSet::new();
     let mut out = vec![];
     for path in links.iter().flat_map(|l| &l.spellings) {
@@ -229,14 +251,18 @@ fn android_data(links: &[Link]) -> Vec<AndroidPath> {
 }
 
 fn android_filters(links: &[Link], cfg: &Links) -> String {
-    let data = android_data(links);
+    let data = android_data(links, cfg);
     let mut out = String::new();
     out.push_str(
         "<!-- Written by `fsp links` from lib/app: don't edit it, run `fsp links` again.\n\
          \x20    Paste these elements into the <activity> of android/app/src/main/AndroidManifest.xml\n\
          \x20    that has the MAIN/LAUNCHER intent filter, replacing the ones pasted before. -->\n",
     );
-    let filter = |out: &mut String, verify: bool, schemes: &[&str], hosts: &[String]| {
+    let filter = |out: &mut String,
+                  verify: bool,
+                  schemes: &[&str],
+                  hosts: &[String],
+                  paths: &[AndroidPath]| {
         if verify {
             out.push_str("<intent-filter android:autoVerify=\"true\">\n");
         } else {
@@ -251,31 +277,47 @@ fn android_filters(links: &[Link], cfg: &Links) -> String {
         for h in hosts {
             let _ = writeln!(out, "    <data android:host=\"{}\" />", xml_attr(h));
         }
-        for p in &data {
+        for p in paths {
             let (attr, value) = p.attr();
             let _ = writeln!(out, "    <data android:{attr}=\"{}\" />", xml_attr(value));
         }
         out.push_str("</intent-filter>\n");
     };
     for domain in &cfg.domains {
-        filter(&mut out, true, &["https"], std::slice::from_ref(domain));
+        filter(
+            &mut out,
+            true,
+            &["https"],
+            std::slice::from_ref(domain),
+            &data,
+        );
     }
     if let Some(scheme) = &cfg.scheme {
-        filter(&mut out, false, &[scheme.as_str()], &cfg.domains);
+        if cfg.scheme_host {
+            filter(&mut out, false, &[scheme.as_str()], &cfg.domains, &data);
+        } else {
+            // No host, so no path: Android ignores the path attributes of a filter without one.
+            filter(&mut out, false, &[scheme.as_str()], &[], &[]);
+        }
     }
     out
 }
 
-fn asset_links(package: &str, fingerprints: &[String]) -> String {
-    let doc = json!([{
-        "relation": ["delegate_permission/common.handle_all_urls"],
-        "target": {
-            "namespace": "android_app",
-            "package_name": package,
-            "sha256_cert_fingerprints": fingerprints,
-        },
-    }]);
-    json_text(&doc)
+fn asset_links(apps: &[AndroidApp]) -> String {
+    let doc: Vec<_> = apps
+        .iter()
+        .map(|a| {
+            json!({
+                "relation": ["delegate_permission/common.handle_all_urls"],
+                "target": {
+                    "namespace": "android_app",
+                    "package_name": a.package,
+                    "sha256_cert_fingerprints": a.sha256,
+                },
+            })
+        })
+        .collect();
+    json_text(&json!(doc))
 }
 
 fn json_text(v: &serde_json::Value) -> String {
@@ -327,10 +369,37 @@ pub fn aasa_paths(path: &[Piece]) -> Vec<String> {
     }
 }
 
-fn aasa(links: &[Link], app_id: &str) -> String {
+/// The `components` path of a `paths:` entry: `/x`, or `/x/*` for everything below it.
+fn aasa_listed(path: &LinkPath) -> String {
+    let join = |segs: &[String]| -> String {
+        segs.iter()
+            .map(|s| format!("/{}", url_segment(s)))
+            .collect()
+    };
+    match path {
+        LinkPath::Exact(segs) if segs.is_empty() => "/".to_string(),
+        LinkPath::Exact(segs) => join(segs),
+        LinkPath::Prefix(segs) => format!("{}/*", join(segs)),
+    }
+}
+
+fn aasa(links: &[Link], cfg: &Links, apps: &[IosApp]) -> String {
     let mut seen = BTreeSet::new();
     let mut components = vec![];
-    for l in links {
+    if let Some(paths) = &cfg.paths {
+        for p in paths {
+            // A case-insensitive route an entry meets must keep opening on any case.
+            let insensitive = links
+                .iter()
+                .any(|l| !l.case_sensitive && l.spellings.iter().any(|sp| entry_meets(p, sp)));
+            components.push(if insensitive {
+                json!({"/": aasa_listed(p), "caseSensitive": false})
+            } else {
+                json!({"/": aasa_listed(p)})
+            });
+        }
+    }
+    for l in links.iter().filter(|_| cfg.paths.is_none()) {
         for path in &l.spellings {
             for p in aasa_paths(path) {
                 if seen.insert((p.clone(), l.case_sensitive)) {
@@ -343,9 +412,10 @@ fn aasa(links: &[Link], app_id: &str) -> String {
             }
         }
     }
+    let ids: Vec<&str> = apps.iter().map(|a| a.app_id.as_str()).collect();
     json_text(&json!({
         "applinks": {
-            "details": [{"appIDs": [app_id], "components": components}],
+            "details": [{"appIDs": ids, "components": components}],
         },
     }))
 }
@@ -447,6 +517,142 @@ fn sitemap(links: &[Link], domain: &str) -> String {
     out
 }
 
+// --- `paths:` against the routes ----------------------------------------------
+
+/// Whether a path piece can be the `seg` a `paths:` entry spells: a `$dynamic` segment takes
+/// any one.
+fn piece_fits(piece: &Piece, seg: &str) -> bool {
+    match piece {
+        Piece::Lit(s) => s == seg,
+        Piece::Any | Piece::Rest { .. } => true,
+    }
+}
+
+/// Whether some URL is both in the `paths:` entry and a path of the route.
+fn entry_meets(entry: &LinkPath, route: &[Piece]) -> bool {
+    if matches!(entry, LinkPath::Prefix(segs) if segs.is_empty()) {
+        return true;
+    }
+    let (segs, prefix) = match entry {
+        LinkPath::Exact(segs) => (segs, false),
+        LinkPath::Prefix(segs) => (segs, true),
+    };
+    let (head, rest) = match route.split_last() {
+        Some((Piece::Rest { optional }, head)) => (head, Some(*optional)),
+        _ => (route, None),
+    };
+    let common = head.len().min(segs.len());
+    if !head[..common]
+        .iter()
+        .zip(segs)
+        .all(|(p, s)| piece_fits(p, s))
+    {
+        return false;
+    }
+    match (head.len().cmp(&segs.len()), prefix, rest) {
+        // The route is longer than the entry's segments: only a prefix reaches that far.
+        (std::cmp::Ordering::Greater, p, _) => p,
+        (std::cmp::Ordering::Equal, false, Some(false)) => false,
+        (std::cmp::Ordering::Equal, false, _) => true,
+        // A prefix needs at least one more segment, which the route has when it ends in a rest.
+        (std::cmp::Ordering::Equal, true, r) => r.is_some(),
+        // The entry is longer: the route's rest segments can take the difference.
+        (std::cmp::Ordering::Less, _, r) => r.is_some(),
+    }
+}
+
+/// Whether the entry opens every URL of the route, so the route needs no other entry.
+fn entry_covers(entry: &LinkPath, route: &[Piece]) -> bool {
+    match entry {
+        LinkPath::Exact(segs) => {
+            segs.len() == route.len()
+                && route
+                    .iter()
+                    .zip(segs)
+                    .all(|(p, s)| matches!(p, Piece::Lit(l) if l == s))
+        }
+        // `/*` opens everything. `/x/*` needs a segment after `/x`, which an optional rest
+        // right there may not have.
+        LinkPath::Prefix(segs) => {
+            segs.is_empty()
+                || (route.len() > segs.len()
+                    && !matches!(route[segs.len()], Piece::Rest { optional: true })
+                    && route
+                        .iter()
+                        .zip(segs)
+                        .all(|(p, s)| matches!(p, Piece::Lit(l) if l == s)))
+        }
+    }
+}
+
+/// The entry to suggest for a route no entry covers: the exact path of a static route, else
+/// everything below its literal prefix (and the prefix itself for an optional catch-all).
+fn suggestion(route: &[Piece]) -> String {
+    let lits: Vec<&str> = route
+        .iter()
+        .map_while(|p| match p {
+            Piece::Lit(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    let base: String = lits.iter().map(|s| format!("/{s}")).collect();
+    let exact = if base.is_empty() { "/" } else { &base };
+    if lits.len() == route.len() {
+        format!("`{exact}`")
+    } else if lits.len() + 1 == route.len()
+        && matches!(route[lits.len()], Piece::Rest { optional: true })
+    {
+        format!("`{exact}` and `{base}/*`")
+    } else {
+        format!("`{base}/*`")
+    }
+}
+
+/// What `paths:` and the routes disagree about, as warnings (`fsp links` prints them; `--check`
+/// does not fail on them): a linkable route no entry covers, and an entry no route matches.
+pub fn warnings(app: &App, cfg: &Links) -> Vec<String> {
+    let Some(paths) = &cfg.paths else {
+        return vec![];
+    };
+    let links = collect(app);
+    let mut out = vec![];
+    for l in &links {
+        let covered = l
+            .spellings
+            .iter()
+            .all(|sp| paths.iter().any(|p| entry_covers(p, sp)));
+        if covered {
+            continue;
+        }
+        out.push(format!(
+            "`{}` is linkable, and no `fespalier.links.paths` entry covers it: add {}, or `const linkable = false;` in its route.dart",
+            l.pattern,
+            suggestion(&l.spellings[0])
+        ));
+    }
+    for p in paths {
+        let hit = links
+            .iter()
+            .any(|l| l.spellings.iter().any(|sp| entry_meets(p, sp)));
+        if !hit {
+            let text = match p {
+                LinkPath::Exact(segs) if segs.is_empty() => "/".to_string(),
+                LinkPath::Exact(segs) => segs.iter().map(|s| format!("/{s}")).collect(),
+                LinkPath::Prefix(segs) => {
+                    format!(
+                        "{}/*",
+                        segs.iter().map(|s| format!("/{s}")).collect::<String>()
+                    )
+                }
+            };
+            out.push(format!(
+                "`fespalier.links.paths`: `{text}` matches no linkable route"
+            ));
+        }
+    }
+    out
+}
+
 // --- The files --------------------------------------------------------------
 
 /// One file of the output: its path below `out`, and its text, or `None` when this config
@@ -465,25 +671,23 @@ pub fn files(app: &App, cfg: &Links) -> Result<Vec<OutFile>> {
             "no route can be linked: the app has no page, or every folder says `const linkable = false;`"
         );
     }
-    let android = cfg.android.as_ref();
-    let ios = cfg.ios_app_id.as_deref();
+    let android = (!cfg.apps_android.is_empty()).then_some(&cfg.apps_android);
+    // The bundle id of the first iOS app names the URL type, as every flavour shares the scheme.
+    let ios = cfg.apps_ios.first();
     let file = |path, text: Option<String>| OutFile { path, text };
     Ok(vec![
         file(
             ANDROID_FILTERS,
             android.map(|_| android_filters(&links, cfg)),
         ),
-        file(
-            ASSET_LINKS,
-            android.map(|a| asset_links(&a.package, &a.sha256)),
-        ),
+        file(ASSET_LINKS, android.map(|a| asset_links(a))),
         file(IOS_ENTITLEMENTS, ios.map(|_| entitlements(&cfg.domains))),
         file(
             IOS_URL_TYPES,
             ios.zip(cfg.scheme.as_deref())
-                .map(|(id, scheme)| url_types(scheme, id)),
+                .map(|(app, scheme)| url_types(scheme, &app.app_id)),
         ),
-        file(AASA, ios.map(|id| aasa(&links, id))),
+        file(AASA, ios.map(|_| aasa(&links, cfg, &cfg.apps_ios))),
         file(SITEMAP, Some(sitemap(&links, &cfg.domains[0]))),
     ])
 }
@@ -518,6 +722,9 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
         }
     };
     let outputs = files(&app, &links)?;
+    for w in warnings(&app, &links) {
+        eprintln!("warning: {w}");
+    }
     let count = outputs.iter().filter(|f| f.text.is_some()).count();
     let folder = if out.is_empty() { "." } else { out.as_str() };
     let (mut written, mut stale) = (0, vec![]);

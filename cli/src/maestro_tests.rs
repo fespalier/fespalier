@@ -187,7 +187,7 @@ fn a_url_is_checked() {
 fn a_link_is_checked() {
     for bad in [
         "shop.example.com",
-        "myshop://",
+        "http://",
         "myshop://a b",
         "myshop://shop?x=1",
         "myshop://shop/#/x",
@@ -212,6 +212,9 @@ fn a_link_loses_one_trailing_slash_and_keeps_a_hash() {
         link("myshop://shop.example.com"),
         "myshop://shop.example.com"
     );
+    // A custom scheme may stand alone: `myshop:///orders/42` is `myshop://` and a path.
+    assert_eq!(link("myshop://"), "myshop://");
+    assert_eq!(link("myshop:///"), "myshop://");
 }
 
 #[test]
@@ -267,6 +270,24 @@ fn the_link_of_an_app_defaults_from_links() {
     // A `link:` of its own wins, and `links:` is not even checked.
     let m = parsed(&["links:", "  domains: []"], &[APP, LINK]).unwrap();
     assert_eq!(m.link, "myshop://shop.example.com");
+}
+
+#[test]
+fn a_hostless_scheme_gives_a_link_without_the_host() {
+    let m = parsed(
+        &[
+            "links:",
+            "  domains: [shop.example.com]",
+            "  scheme: myshop",
+            "  scheme_host: false",
+            "  ios_app_id: ABCDE12345.com.example.shop",
+        ],
+        &[APP],
+    )
+    .unwrap();
+    // A route's path goes after it: `myshop:///orders/42`.
+    assert_eq!(m.link, "myshop://");
+    assert!(!m.https_app_link);
 }
 
 #[test]

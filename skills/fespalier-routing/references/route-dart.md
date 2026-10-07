@@ -399,6 +399,8 @@ effect on routing, `fsp gen` or the manifest.
   one-segment path through the wildcard Android and iOS get for it, `/admin` included; Android has
   no way to exclude a path, so use a more specific tree (or `linkable = false` on the `$slug` folder
   too).
+- `fespalier: links: paths:` (since 0.11.0) lists what the platforms open **instead of** the route-derived entries; a
+  linkable route no entry covers is a warning from `fsp links` that suggests the entry or `const linkable = false;`.
 - If nothing is linkable, `fsp links` fails with ``no route can be linked: the app has no page, or
 every folder says `const linkable = false;` ``.
 

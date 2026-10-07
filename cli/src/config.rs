@@ -22,9 +22,11 @@
 //!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
 //!     domains: [shop.example.com]
 //!     scheme: myshop
+//!     scheme_host: true     # since 0.11.0; `false`: myshop:///path, no host
+//!     paths: [/, /orders/*] # since 0.11.0; default: every linkable route
 //!     android_package: com.example.shop
 //!     android_sha256: ["AB:CD:..."]
-//!     ios_app_id: TEAMID.com.example.shop
+//!     ios_app_id: TEAMID.com.example.shop   # or `flavors:` (since 0.11.0), one app per flavour
 //!     out: links            # default
 //!   lints:                  # one level per lint (see `lint.rs`)
 //!     unknown_path: warning # default; `error` fails `gen` and `check`, `off` skips the check
@@ -358,19 +360,78 @@ struct RawConfig {
 pub struct LinksConfig {
     domains: Option<Vec<String>>,
     scheme: Option<String>,
+    scheme_host: Option<bool>,
+    paths: Option<Vec<String>>,
     android_package: Option<String>,
     android_sha256: Option<Vec<String>>,
     ios_app_id: Option<String>,
+    flavors: Option<Flavors>,
     out: Option<String>,
 }
 
-/// The Android half of the `links:` section.
+/// One entry of `links: flavors:` (since 0.11.0): the apps of one build flavour.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FlavorConfig {
+    android_package: Option<String>,
+    android_sha256: Option<Vec<String>>,
+    ios_app_id: Option<String>,
+}
+
+/// `links: flavors:` in the order the pubspec writes it (a map would sort it).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AndroidLinks {
+pub struct Flavors(Vec<(String, FlavorConfig)>);
+
+impl<'de> Deserialize<'de> for Flavors {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> serde::de::Visitor<'de> for V {
+            type Value = Flavors;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a map from a flavour name to its apps")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<Flavors, A::Error> {
+                let mut out = vec![];
+                while let Some(entry) = map.next_entry::<String, FlavorConfig>()? {
+                    out.push(entry);
+                }
+                Ok(Flavors(out))
+            }
+        }
+        d.deserialize_map(V)
+    }
+}
+
+/// One Android app of the `links:` section: a flavour's, or the flat keys' (no name).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AndroidApp {
+    /// The flavour's name; `None` for the flat `android_package` key.
+    pub flavor: Option<String>,
     /// The application id: `com.example.shop`.
     pub package: String,
     /// The signing certificates' SHA-256 fingerprints, upper-case, each once.
     pub sha256: Vec<String>,
+}
+
+/// One iOS app of the `links:` section: a flavour's, or the flat key's (no name).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IosApp {
+    /// The flavour's name; `None` for the flat `ios_app_id` key.
+    pub flavor: Option<String>,
+    /// `TEAMID.com.example.shop`.
+    pub app_id: String,
+}
+
+/// One entry of `links: paths:`: what a platform opens, instead of every linkable route.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkPath {
+    /// `/about`: this path alone. The segments, none for `/`.
+    Exact(Vec<String>),
+    /// `/orders/*`: everything below `/orders/`. The segments before the `*`, none for `/*`.
+    Prefix(Vec<String>),
 }
 
 /// The `links:` section, checked: what `fsp links` writes files for.
@@ -380,13 +441,128 @@ pub struct Links {
     pub domains: Vec<String>,
     /// A custom URL scheme, besides `https`.
     pub scheme: Option<String>,
-    /// Set with `android_package`: the Android files are written.
-    pub android: Option<AndroidLinks>,
-    /// Set with `ios_app_id` (`TEAMID.com.example.shop`): the iOS files are written.
-    pub ios_app_id: Option<String>,
+    /// Whether the scheme's filter and the default Maestro link have the domain as the host
+    /// (`myshop://shop.example.com/orders/2`, the default) or none (`myshop:///orders/2`).
+    pub scheme_host: bool,
+    /// The paths the platforms open; `None` lists every linkable route.
+    pub paths: Option<Vec<LinkPath>>,
+    /// The Android apps, in the order the pubspec has them; `assetlinks.json` has one each.
+    pub apps_android: Vec<AndroidApp>,
+    /// The iOS apps, in the order the pubspec has them; the association file lists all.
+    pub apps_ios: Vec<IosApp>,
     /// Normalized, `/`-separated, no trailing slash, relative to the project root; empty for
     /// the root itself.
     pub out: String,
+}
+
+/// A flavour name as Gradle takes it (`prod`, `devStaging`): letters, digits and `_`, starting
+/// with a lower-case letter.
+fn is_flavor_name(s: &str) -> bool {
+    s.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Why a `paths:` entry is refused.
+enum PathError {
+    /// Not a path pattern at all.
+    Shape,
+    /// A `:id` or `$id` segment, which a platform would read as those characters.
+    Dynamic(String),
+}
+
+/// One `paths:` entry: `/about`, `/orders/*`, `/`.
+fn link_path(raw: &str) -> Result<LinkPath, PathError> {
+    let rest = raw.strip_prefix('/').ok_or(PathError::Shape)?;
+    if rest.is_empty() {
+        return Ok(LinkPath::Exact(vec![]));
+    }
+    let mut segs: Vec<String> = vec![];
+    let parts: Vec<&str> = rest.split('/').collect();
+    let mut prefix = false;
+    for (i, part) in parts.iter().enumerate() {
+        if *part == "*" && i + 1 == parts.len() {
+            prefix = true;
+            continue;
+        }
+        if part.starts_with([':', '$']) {
+            return Err(PathError::Dynamic((*part).to_string()));
+        }
+        if part.is_empty()
+            || matches!(*part, "." | "..")
+            || part.contains(['*', '?', '#', '\\', '%'])
+            || part.chars().any(char::is_whitespace)
+        {
+            return Err(PathError::Shape);
+        }
+        segs.push((*part).to_string());
+    }
+    Ok(if prefix {
+        LinkPath::Prefix(segs)
+    } else {
+        LinkPath::Exact(segs)
+    })
+}
+
+/// The fingerprints of `key`, upper-case, each once.
+fn fingerprints(key: &str, raw: Option<&[String]>) -> Result<Vec<String>> {
+    let mut out: Vec<String> = vec![];
+    for raw in raw.unwrap_or_default() {
+        let f = raw.trim().to_ascii_uppercase();
+        if !is_fingerprint(&f) {
+            bail!(
+                "`{key}.android_sha256`: `{raw}` is not a SHA-256 fingerprint; write 32 hex pairs separated by `:`, as `keytool -list -v` prints them (`AB:CD:...`)"
+            );
+        }
+        if !out.contains(&f) {
+            out.push(f);
+        }
+    }
+    Ok(out)
+}
+
+/// The Android app of one set of keys (`key` is where they are in the pubspec), if any.
+fn android_app(
+    key: &str,
+    flavor: Option<&str>,
+    package: Option<&str>,
+    sha256: Option<&[String]>,
+) -> Result<Option<AndroidApp>> {
+    let sha = fingerprints(key, sha256)?;
+    match (package, sha.is_empty()) {
+        (Some(package), false) => {
+            if !is_application_id(package) {
+                bail!(
+                    "`{key}.android_package` must be an Android application id like `com.example.shop` (two or more parts separated by dots, each starting with a letter, with letters, digits and `_`), got `{package}`"
+                );
+            }
+            Ok(Some(AndroidApp {
+                flavor: flavor.map(str::to_string),
+                package: package.to_string(),
+                sha256: sha,
+            }))
+        }
+        (Some(_), true) => bail!(
+            "`{key}.android_package` needs `android_sha256`: assetlinks.json lists the fingerprints of the certificates the app is signed with (`keytool -list -v -keystore <keystore>`; with Play App Signing, the one in the Play Console)"
+        ),
+        (None, false) => bail!(
+            "`{key}.android_sha256` needs `android_package`: the application id assetlinks.json is for"
+        ),
+        (None, true) => Ok(None),
+    }
+}
+
+/// The iOS app of one set of keys, if any.
+fn ios_app(key: &str, flavor: Option<&str>, id: Option<&str>) -> Result<Option<IosApp>> {
+    let Some(id) = id else { return Ok(None) };
+    if !is_app_id(id) {
+        bail!(
+            "`{key}.ios_app_id` must be the Team ID, a dot and the bundle id, like `ABCDE12345.com.example.shop` (the Team ID is 10 upper-case letters and digits), got `{id}`"
+        );
+    }
+    Ok(Some(IosApp {
+        flavor: flavor.map(str::to_string),
+        app_id: id.to_string(),
+    }))
 }
 
 impl LinksConfig {
@@ -414,61 +590,119 @@ impl LinksConfig {
             );
         }
 
-        let sha: Vec<String> = {
-            let mut out: Vec<String> = vec![];
-            for raw in self.android_sha256.as_deref().unwrap_or_default() {
-                let f = raw.trim().to_ascii_uppercase();
-                if !is_fingerprint(&f) {
-                    bail!(
-                        "`fespalier.links.android_sha256`: `{raw}` is not a SHA-256 fingerprint; write 32 hex pairs separated by `:`, as `keytool -list -v` prints them (`AB:CD:...`)"
-                    );
-                }
-                if !out.contains(&f) {
-                    out.push(f);
-                }
-            }
-            out
-        };
-        let android = match (&self.android_package, sha.is_empty()) {
-            (Some(package), false) => {
-                if !is_application_id(package) {
-                    bail!(
-                        "`fespalier.links.android_package` must be an Android application id like `com.example.shop` (two or more parts separated by dots, each starting with a letter, with letters, digits and `_`), got `{package}`"
-                    );
-                }
-                Some(AndroidLinks {
-                    package: package.clone(),
-                    sha256: sha,
-                })
-            }
-            (Some(_), true) => bail!(
-                "`fespalier.links.android_package` needs `android_sha256`: assetlinks.json lists the fingerprints of the certificates the app is signed with (`keytool -list -v -keystore <keystore>`; with Play App Signing, the one in the Play Console)"
-            ),
-            (None, false) => bail!(
-                "`fespalier.links.android_sha256` needs `android_package`: the application id assetlinks.json is for"
-            ),
-            (None, true) => None,
-        };
-
-        if let Some(id) = &self.ios_app_id
-            && !is_app_id(id)
-        {
-            bail!(
-                "`fespalier.links.ios_app_id` must be the Team ID, a dot and the bundle id, like `ABCDE12345.com.example.shop` (the Team ID is 10 upper-case letters and digits), got `{id}`"
-            );
+        if self.flavors.as_ref().is_some_and(|f| f.0.is_empty()) {
+            bail!("`fespalier.links.flavors` is empty: list a flavour, or leave it out");
         }
+        let flavors = self.flavors.as_ref();
+        let (mut apps_android, mut apps_ios) = (vec![], vec![]);
+        match flavors {
+            None => {
+                apps_android.extend(android_app(
+                    "fespalier.links",
+                    None,
+                    self.android_package.as_deref(),
+                    self.android_sha256.as_deref(),
+                )?);
+                apps_ios.extend(ios_app(
+                    "fespalier.links",
+                    None,
+                    self.ios_app_id.as_deref(),
+                )?);
+            }
+            Some(Flavors(list)) => {
+                if self.android_package.is_some()
+                    || self.android_sha256.is_some()
+                    || self.ios_app_id.is_some()
+                {
+                    bail!(
+                        "`fespalier.links` takes `android_package`, `android_sha256` and `ios_app_id` for one app, or `flavors:` for several, not both"
+                    );
+                }
+                for (i, (name, f)) in list.iter().enumerate() {
+                    if !is_flavor_name(name) {
+                        bail!(
+                            "`fespalier.links.flavors`: `{name}` is not a flavour name; use letters, digits and `_`, starting with a lower-case letter (the name Gradle gives it, like `prod` or `devStaging`)"
+                        );
+                    }
+                    if list[..i].iter().any(|(n, _)| n == name) {
+                        bail!("`fespalier.links.flavors`: `{name}` is listed twice");
+                    }
+                    if f.android_package.is_none()
+                        && f.android_sha256.is_none()
+                        && f.ios_app_id.is_none()
+                    {
+                        bail!(
+                            "`fespalier.links.flavors.{name}` sets neither `android_package` nor `ios_app_id`"
+                        );
+                    }
+                    let key = format!("fespalier.links.flavors.{name}");
+                    if let Some(a) = android_app(
+                        &key,
+                        Some(name),
+                        f.android_package.as_deref(),
+                        f.android_sha256.as_deref(),
+                    )? {
+                        if let Some(other) = apps_android.iter().find(|o| o.package == a.package) {
+                            bail!(
+                                "`fespalier.links.flavors`: `{}` is the `android_package` of both `{}` and `{name}`",
+                                a.package,
+                                other.flavor.as_deref().unwrap_or_default()
+                            );
+                        }
+                        apps_android.push(a);
+                    }
+                    if let Some(a) = ios_app(&key, Some(name), f.ios_app_id.as_deref())? {
+                        if let Some(other) = apps_ios.iter().find(|o| o.app_id == a.app_id) {
+                            bail!(
+                                "`fespalier.links.flavors`: `{}` is the `ios_app_id` of both `{}` and `{name}`",
+                                a.app_id,
+                                other.flavor.as_deref().unwrap_or_default()
+                            );
+                        }
+                        apps_ios.push(a);
+                    }
+                }
+            }
+        }
+
         if let Some(scheme) = &self.scheme {
             if !is_scheme(scheme) {
                 bail!(
                     "`fespalier.links.scheme` must be a custom URL scheme in lower case, like `myshop` (letters, digits, `+`, `-` and `.`, starting with a letter), not `http` or `https`, got `{scheme}`"
                 );
             }
-            if android.is_none() && self.ios_app_id.is_none() {
+            if apps_android.is_empty() && apps_ios.is_empty() {
                 bail!(
                     "`fespalier.links.scheme` is written into the Android and iOS files: set `android_package` (with `android_sha256`) or `ios_app_id` too"
                 );
             }
+        } else if self.scheme_host.is_some() {
+            bail!("`fespalier.links.scheme_host` needs `scheme`");
         }
+        let paths = match &self.paths {
+            None => None,
+            Some(raw) if raw.is_empty() => {
+                bail!("`fespalier.links.paths` is empty: leave it out to list every linkable route")
+            }
+            Some(raw) => {
+                let mut out: Vec<LinkPath> = vec![];
+                for entry in raw {
+                    let p = match link_path(entry) {
+                        Ok(p) => p,
+                        Err(PathError::Dynamic(seg)) => bail!(
+                            "`fespalier.links.paths`: `{entry}` has the segment `{seg}`; `paths:` takes no `:name` or `$name` segment, so write `*` for everything below a path (`/orders/*`)"
+                        ),
+                        Err(PathError::Shape) => bail!(
+                            "`fespalier.links.paths`: `{entry}` is not a path pattern; write `/about` (that path) or `/orders/*` (everything below `/orders/`), starting with `/`, with `*` only as the whole last segment and no empty, `.` or `..` segment, no `?`, `#`, `%`, `\\` and no whitespace"
+                        ),
+                    };
+                    if !out.contains(&p) {
+                        out.push(p);
+                    }
+                }
+                Some(out)
+            }
+        };
         let out = match &self.out {
             None => DEFAULT_LINKS_OUT.to_string(),
             Some(raw) => project_folder("links.out", raw)?,
@@ -476,8 +710,10 @@ impl LinksConfig {
         Ok(Links {
             domains,
             scheme: self.scheme.clone(),
-            android,
-            ios_app_id: self.ios_app_id.clone(),
+            scheme_host: self.scheme_host.unwrap_or(true),
+            paths,
+            apps_android,
+            apps_ios,
             out,
         })
     }
@@ -578,7 +814,7 @@ fn is_link_prefix(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
     let body = rest.strip_suffix('#').unwrap_or(rest);
     scheme_ok
-        && !rest.is_empty()
+        && (!rest.is_empty() || !matches!(scheme, "http" | "https"))
         && !s.contains(char::is_whitespace)
         && !s.contains('?')
         && !body.contains('#')
@@ -624,7 +860,12 @@ impl MaestroConfig {
                         "`fespalier.maestro.link` must be a URL like `myshop://shop.example.com` or `http://localhost:8080/#`, with no query, or a Maestro variable like `${{LINK}}`, got `{raw}`"
                     );
                 }
-                raw.strip_suffix('/').unwrap_or(raw).to_string()
+                // `myshop://` stands alone: its slashes are the scheme's.
+                if raw.ends_with("://") {
+                    raw.clone()
+                } else {
+                    raw.strip_suffix('/').unwrap_or(raw).to_string()
+                }
             }
             None => match (&target, links) {
                 (Target::Web(url), _) => url.strip_suffix('/').unwrap_or(url).to_string(),
@@ -632,6 +873,7 @@ impl MaestroConfig {
                     let links = links.validate()?;
                     let host = links.domains.first().cloned().unwrap_or_default();
                     match links.scheme {
+                        Some(scheme) if !links.scheme_host => format!("{scheme}://"),
                         Some(scheme) => format!("{scheme}://{host}"),
                         None => format!("https://{host}"),
                     }

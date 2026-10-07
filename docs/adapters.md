@@ -31,7 +31,7 @@ class MyToolsAdapter extends FespalierAdapter {
 ```
 
 The adapters on the [roadmap](../ROADMAP.md) (error reporting, analytics, notification and shortcut
-launches, ...) are packages of this kind. `FespalierAdapter` has nine members, each with a default that
+launches, ...) are packages of this kind; `fespalier_push` (since 0.13.0) is the first, see [Push notifications](push.md). `FespalierAdapter` has nine members, each with a default that
 adds nothing, so an adapter overrides what it needs:
 
 | Member                      | When it runs                                                                                                   | What it is for                                                                                                                                     |

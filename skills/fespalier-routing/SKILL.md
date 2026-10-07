@@ -1,6 +1,6 @@
 ---
 name: fespalier-routing
-description: "How a fespalier folder tree becomes URLs and typed routes — static, dynamic ($id), catch-all ($$rest, $$$rest) and (group) folders, _private folders, typed and enum segments, query parameters, sibling order and unreachable routes, not_found.dart, route.dart (caseSensitive, localized paths, nest = false for a sibling with a compound path, linkable = false to keep a folder out of fsp links, remount to start a page again when its URL changes, and deferred to load a page's code on demand on the web), navigator.dart and present.dart for the root navigator, the generated typed routes (.go, .push, .location, locationFor), RouteLink (a typed link that is a real anchor on the web and can preload its page's data), typed extra with extra_codec.dart, and the route manifest with meta.dart. The texts in the route's language, with a $lang folder and a language menu, are fespalier-i18n (since 0.10.0). Load before adding or renaming a route folder, changing a segment's type, writing a link between pages (RouteLink), or when a URL shows not_found.dart instead of its page."
+description: "How a fespalier folder tree becomes URLs and typed routes — static, dynamic ($id), catch-all ($$rest, $$$rest) and (group) folders, _private folders, typed and enum segments, query parameters, sibling order and unreachable routes, not_found.dart, route.dart (caseSensitive, localized paths, nest = false for a sibling with a compound path, linkable = false to keep a folder out of fsp links, remount to start a page again when its URL changes, and deferred to load a page's code on demand on the web), navigator.dart and present.dart for the root navigator, the generated typed routes (.go, .push, .location, locationFor), RouteLink (a typed link that is a real anchor on the web and can preload its page's data), typed extra with extra_codec.dart, and the route manifest with meta.dart. The texts in the route's language, with a $lang folder and a language menu, are fespalier-i18n (since 0.10.0). Notification taps that open routes are fespalier_push (since 0.13.0). Load before adding or renaming a route folder, changing a segment's type, writing a link between pages (RouteLink), or when a URL shows not_found.dart instead of its page."
 ---
 
 # fespalier-routing
@@ -127,6 +127,15 @@ a widget test calls `sendPlatformLink(tester, Uri.parse(url))` from `package:fes
 link: an adapter of your own answers `launch()` from `getInitialLink()` and forwards warm links with
 `navigateFrom(NavigationSource.link, ...)`. Recipe: [`references/links.md`](references/links.md), "Platform links end to end".
 
+**Notification taps (since 0.13.0).** `fespalier_push` is an adapter (`adapters: [fespalier_push]`): the tap that cold-starts the
+app is answered in `launch()` and opens the route as the initial location, a tap while the app runs is a `go` (or `push`) in
+`attach`, both marked `notification`; the guards still run, and a tap delivered twice (same message id) opens once. The
+package depends on no push SDK (Firebase Messaging is a recipe), has no HTTP code, never posts the token (`onToken` is
+yours) and never shows the permission prompt. The app writes a `PushSource`, a `PushRoute` (`linkRoute(hosts:, matches:)`
+refuses `//x`, backslashes, foreign hosts) and **one call in `main()` before `AppMain.run()`**:
+`FespalierPush.configure(source:, route:, onToken:)`; unconfigured, it reports once and does nothing. Details and the testing
+recipe: [`references/push.md`](references/push.md); the vendor recipes: [`references/push-sources.md`](references/push-sources.md).
+
 ## Not-found views
 
 A `not_found.dart` at the root is the app-wide one (without it users see a plain
@@ -147,20 +156,21 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
 
 ## The other routing files
 
-| Need                                                                         | File and reference                                                                                         |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Paths match in any case, or one folder stays exact                           | `route.dart` with `caseSensitive`: [`references/route-dart.md`](references/route-dart.md)                  |
-| `/produits` and `/produkte` for `/products`, one route                       | `route.dart` with `paths`, `locationFor`, `locale:`: same reference                                        |
-| Texts in the URL's language, a language menu (`fespalier_tolgee`, 0.10.0)    | [`fespalier-i18n`](../fespalier-i18n/SKILL.md)                                                             |
-| A page must start again (fresh state) when its URL changes, not keep it      | `route.dart` with `const remount = Remount.onSegments;` or the pubspec's `remount` (0.6.0): same reference |
-| A page's code must be a chunk of its own on the web, loaded on demand        | `route.dart` with `const deferred = true;` or the pubspec's `deferred` (0.7.0): same reference             |
-| A deep link must not build the page above (`refund` under `refund/confirm`)  | `route.dart` with `const nest = false;` (0.4.0): a sibling with a compound path, same reference            |
-| A page full-screen above the tab bar, URL still under its parent             | `navigator.dart`: [`references/navigators-and-present.md`](references/navigators-and-present.md)           |
-| A sheet or dialog page class of your own, with a URL                         | `present.dart`: same reference                                                                             |
-| Ask before a page goes (unsaved changes), Android back and the iOS swipe too | `leave.dart` (0.11.0): [`references/leaving-a-page.md`](references/leaving-a-page.md)                      |
-| A route that only forwards (`/old-products/3` to `/products/3`)              | `redirect.dart` (`fespalier-guards`)                                                                       |
-| Every route's path, groups, layouts, params and your own metadata at runtime | `meta.dart` and `AppManifest`: [`references/manifest-and-meta.md`](references/manifest-and-meta.md)        |
-| A link that shows its URL, opens in a tab, and preloads the page's data      | `RouteLink`, `RouteLinkScope` (0.5.0): [`references/links.md`](references/links.md)                        |
+| Need                                                                         | File and reference                                                                                                                |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Paths match in any case, or one folder stays exact                           | `route.dart` with `caseSensitive`: [`references/route-dart.md`](references/route-dart.md)                                         |
+| `/produits` and `/produkte` for `/products`, one route                       | `route.dart` with `paths`, `locationFor`, `locale:`: same reference                                                               |
+| Texts in the URL's language, a language menu (`fespalier_tolgee`, 0.10.0)    | [`fespalier-i18n`](../fespalier-i18n/SKILL.md)                                                                                    |
+| A page must start again (fresh state) when its URL changes, not keep it      | `route.dart` with `const remount = Remount.onSegments;` or the pubspec's `remount` (0.6.0): same reference                        |
+| A page's code must be a chunk of its own on the web, loaded on demand        | `route.dart` with `const deferred = true;` or the pubspec's `deferred` (0.7.0): same reference                                    |
+| A deep link must not build the page above (`refund` under `refund/confirm`)  | `route.dart` with `const nest = false;` (0.4.0): a sibling with a compound path, same reference                                   |
+| A page full-screen above the tab bar, URL still under its parent             | `navigator.dart`: [`references/navigators-and-present.md`](references/navigators-and-present.md)                                  |
+| A sheet or dialog page class of your own, with a URL                         | `present.dart`: same reference                                                                                                    |
+| Ask before a page goes (unsaved changes), Android back and the iOS swipe too | `leave.dart` (0.11.0): [`references/leaving-a-page.md`](references/leaving-a-page.md)                                             |
+| A route that only forwards (`/old-products/3` to `/products/3`)              | `redirect.dart` (`fespalier-guards`)                                                                                              |
+| Every route's path, groups, layouts, params and your own metadata at runtime | `meta.dart` and `AppManifest`: [`references/manifest-and-meta.md`](references/manifest-and-meta.md)                               |
+| A notification tap that opens a route, cold start and warm                   | `fespalier_push` (0.13.0): [`references/push.md`](references/push.md), [`references/push-sources.md`](references/push-sources.md) |
+| A link that shows its URL, opens in a tab, and preloads the page's data      | `RouteLink`, `RouteLinkScope` (0.5.0): [`references/links.md`](references/links.md)                                               |
 
 ## Behaviours worth knowing before you debug
 

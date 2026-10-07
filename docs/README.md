@@ -22,6 +22,7 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 | [Images](responsive-images.md)                                     | Responsive CDN images with `fespalier_image`                                                          |
 | [Translations](i18n-tolgee.md)                                     | Tolgee texts with `fespalier_tolgee`: offline, over the air, language from the URL                    |
 | [Maps](maps.md)                                                    | A pin picker that returns a place with `fespalier_maps`: MapLibre, geocoder, position                 |
+| [Push notifications](push.md)                                      | Notification taps open typed routes with `fespalier_push`: cold start, warm taps, tokens              |
 | [Observability](observability.md)                                  | Lifecycle hooks, telemetry, OpenTelemetry, Sentry, Crashlytics                                        |
 | [Telemetry conventions](telemetry-conventions.md)                  | Span, event and attribute names: contract version 1                                                   |
 | [Dashboards on your computer](telemetry-dashboards.md)             | `fsp telemetry`: OpenObserve and Grafana                                                              |
@@ -53,6 +54,7 @@ An older link such as `github.com/fespalier/fespalier#telemetry`, or a message t
 - [http.md](http.md): HTTP clients: fespalier_dio · Cancelling a load whose page is gone · Server validation errors on forms · Writes are never retried, over HTTP too
 - [app-startup.md](app-startup.md): `main()`: app.dart, startup.dart and splash.dart
 - [adapters.md](adapters.md): Adapters in the generated `main()`
+- [push.md](push.md): Push notifications: fespalier_push · Install · Configure · Mapping a payload · Cold start and taps · Tokens and permission · Testing
 - [route-tests.md](route-tests.md): Maestro flows (`fsp maestro`) · Route smoke tests (`fsp test`)
 - [auth.md](auth.md): Authentication · Installing fespalier_auth · The session · Restoring at startup · Guarding signed-in routes · Signing in and out · Calling your API · OpenID Connect and Keycloak · Firebase, Supabase and your own API · Device-bound tokens: DPoP with fespalier_sign_keypair · Testing signed-in routes
 - [telemetry-conventions.md](telemetry-conventions.md): Telemetry conventions

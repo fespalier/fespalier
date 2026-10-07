@@ -12,89 +12,123 @@ import 'fespalier_maps.dart';
 /// The key of the box a [FakeMapSurface] builds.
 const Key fakeMapKey = ValueKey<String>('fespalier_maps.fake_map');
 
-/// A [MapSurface] that is a box. Like the real map it keeps the camera callbacks of the build that
-/// mounted it, and like [MapLibreSurface] it can have several maps mounted at once (a picker
-/// pushed over a picker): the test's [startMove], [idleAt] and [moveTo] reach the one mounted
-/// last, and the one under it again when that one goes. The test plays the map: [startMove] and
-/// [idleAt] are what a real map reports, and [moves] is what the pickers asked of it.
+/// A [MapSurface] that is a box, and like [MapLibreSurface] it holds no state about a picker:
+/// each map it builds is a [FakeMapMount] bound to the picker's [MapBinding], and a move reaches
+/// only the mount of the binding that made it. The test plays the map through a mount
+/// ([FakeMapMount.startMove], [FakeMapMount.idleAt]) or, for the one mounted last, through the
+/// surface's own [startMove] and [idleAt].
 class FakeMapSurface extends MapSurface {
-  /// A fake. With [idleOnMove], [moveTo] ends with an idle event at the point it was given, the
-  /// way a real map comes to rest after an animation.
+  /// A fake. With [idleOnMove], a move ends with an idle event at the point it moved to, on the
+  /// mount that moved, the way a real map comes to rest after an animation.
   FakeMapSurface({this.idleOnMove = false});
 
-  /// Whether [moveTo] reports an idle event at the new centre.
+  /// Whether a move reports an idle event at the new centre.
   final bool idleOnMove;
 
-  /// The moves the pickers asked for, in order.
+  /// Every move any mount received, in order.
   final List<({GeoPoint center, double? zoom})> moves = [];
 
   /// The camera the last map was built with, or null before one was.
   MapCamera? shown;
 
-  final List<_FakeMapState> _mounted = [];
+  /// The maps mounted now, in the order they were mounted.
+  final List<FakeMapMount> mounts = [];
 
   /// How many maps are mounted now.
-  int get mountedCount => _mounted.length;
+  int get mountedCount => mounts.length;
+
+  /// Mounts a fake map for [binding] without a widget, the way [build] does when its widget is
+  /// mounted: for a test of a picker's model alone.
+  FakeMapMount mount(MapBinding binding) {
+    final mount = FakeMapMount._(this, binding);
+    mounts.add(mount);
+    binding.attach(mount._move);
+    return mount;
+  }
 
   @override
-  Widget build(
-    BuildContext context,
-    MapCamera initial, {
-    required void Function(GeoPoint center) onIdle,
-    required VoidCallback onMove,
-  }) {
+  Widget build(BuildContext context, MapCamera initial, MapBinding binding) {
     shown = initial;
-    return _FakeMap(surface: this, onIdle: onIdle, onMove: onMove);
+    return _FakeMap(
+      key: ValueKey<MapBinding>(binding),
+      surface: this,
+      binding: binding,
+    );
   }
 
   /// The camera of the map mounted last starts to move (a drag).
   void startMove() {
-    if (_mounted.isNotEmpty) _mounted.last.onMove();
+    if (mounts.isNotEmpty) mounts.last.startMove();
   }
 
   /// The camera of the map mounted last comes to rest with [center] under the pin.
   void idleAt(GeoPoint center) {
-    if (_mounted.isNotEmpty) _mounted.last.onIdle(center);
+    if (mounts.isNotEmpty) mounts.last.idleAt(center);
+  }
+}
+
+/// One fake map, bound to one picker.
+final class FakeMapMount {
+  FakeMapMount._(this.surface, this.binding);
+
+  /// The surface that built it.
+  final FakeMapSurface surface;
+
+  /// The picker's binding.
+  final MapBinding binding;
+
+  /// The moves this map received, in order.
+  final List<({GeoPoint center, double? zoom})> moves = [];
+
+  /// For each move, whether it animated (a parked move applied on arrival does not).
+  final List<bool> animated = [];
+
+  /// The camera starts to move (a drag).
+  void startMove() => binding.move();
+
+  /// The camera comes to rest with [center] under the pin.
+  void idleAt(GeoPoint center) => binding.idle(center);
+
+  /// Takes the map away, as unmounting its widget does: the binding is detached.
+  void unmount() {
+    surface.mounts.remove(this);
+    binding.detach();
   }
 
-  @override
-  Future<void> moveTo(GeoPoint center, {double? zoom}) async {
+  Future<void> _move(
+    GeoPoint center,
+    double? zoom, {
+    required bool animate,
+  }) async {
     moves.add((center: center, zoom: zoom));
-    if (idleOnMove) idleAt(center);
+    animated.add(animate);
+    surface.moves.add((center: center, zoom: zoom));
+    if (surface.idleOnMove) idleAt(center);
   }
 }
 
 class _FakeMap extends StatefulWidget {
-  const _FakeMap({
-    required this.surface,
-    required this.onIdle,
-    required this.onMove,
-  });
+  const _FakeMap({super.key, required this.surface, required this.binding});
 
   final FakeMapSurface surface;
-  final void Function(GeoPoint center) onIdle;
-  final VoidCallback onMove;
+  final MapBinding binding;
 
   @override
   State<_FakeMap> createState() => _FakeMapState();
 }
 
 class _FakeMapState extends State<_FakeMap> {
-  // Captured once, as MapLibreMap does when its platform view is created.
-  late final void Function(GeoPoint center) onIdle;
-  late final VoidCallback onMove;
+  late final FakeMapMount _mount;
 
   @override
   void initState() {
     super.initState();
-    onIdle = widget.onIdle;
-    onMove = widget.onMove;
-    widget.surface._mounted.add(this);
+    _mount = widget.surface.mount(widget.binding);
   }
 
   @override
   void dispose() {
-    widget.surface._mounted.remove(this);
+    _mount.unmount();
     super.dispose();
   }
 

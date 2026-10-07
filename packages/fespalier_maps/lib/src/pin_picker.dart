@@ -46,8 +46,9 @@ class PinPicker extends HookWidget {
   });
 
   /// The map under the pin: `MapLibreSurface` from `package:fespalier_maps/maplibre.dart`.
-  /// Keep one instance for the life of the page (a `final` field or a provider), not one per
-  /// build: a new [map] makes a new picker state. A surface may serve several pickers; `moveTo` reaches the one mounted last.
+  /// A surface is configuration, shared freely (a `const`, a `final`, one built in `build`
+  /// when it has value equality, as `MapLibreSurface` does). A [map] that is not equal to the
+  /// last one makes a new picker state, with a new map.
   final MapSurface map;
 
   /// The geocoder; the app's choice and the app's terms of use.
@@ -142,12 +143,7 @@ class PinPicker extends HookWidget {
     return Stack(
       children: [
         Positioned.fill(
-          child: map.build(
-            context,
-            model.initialCamera,
-            onIdle: model.onIdle,
-            onMove: model.onMove,
-          ),
+          child: map.build(context, model.initialCamera, model.binding),
         ),
         Center(
           child: IgnorePointer(

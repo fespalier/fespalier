@@ -38,30 +38,69 @@ void main() {
     expect(() => GeoPoint(double.nan, 0), throwsA(isA<AssertionError>()));
   });
 
-  testWidgets('FakeMapSurface builds a box, records moves and plays the map', (
-    tester,
-  ) async {
-    final map = FakeMapSurface(idleOnMove: true);
-    final events = <String>[];
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => map.build(
-            context,
-            const MapCamera(home, zoom: 9),
-            onIdle: (c) => events.add('idle'),
-            onMove: () => events.add('move'),
+  testWidgets(
+    'FakeMapSurface builds a box bound to a picker, records moves and plays the map',
+    (tester) async {
+      final map = FakeMapSurface(idleOnMove: true);
+      final events = <String>[];
+      final binding = MapBinding(
+        onIdle: (c) => events.add('idle'),
+        onMove: () => events.add('move'),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) =>
+                map.build(context, const MapCamera(home, zoom: 9), binding),
           ),
         ),
-      ),
-    );
-    expect(find.byKey(fakeMapKey), findsOneWidget);
-    expect(map.shown, const MapCamera(home, zoom: 9));
-    map.startMove();
-    await map.moveTo(home, zoom: 12);
-    expect(events, ['move', 'idle']);
-    expect(map.moves, [(center: home, zoom: 12.0)]);
-  });
+      );
+      expect(find.byKey(fakeMapKey), findsOneWidget);
+      expect(map.shown, const MapCamera(home, zoom: 9));
+      expect(map.mountedCount, 1);
+      map.startMove();
+      await binding.moveTo(home, zoom: 12);
+      expect(events, ['move', 'idle']);
+      expect(map.moves, [(center: home, zoom: 12.0)]);
+      expect(map.mounts.single.moves, [(center: home, zoom: 12.0)]);
+      await tester.pumpWidget(const SizedBox());
+      expect(map.mountedCount, 0);
+      expect(binding.isAttached, isFalse);
+    },
+  );
+
+  test(
+    'MapBinding parks a move until the map exists, and applies it without animation',
+    () async {
+      final applied = <String>[];
+      final binding = MapBinding(onIdle: (_) {}, onMove: () {});
+      await binding.moveTo(home, zoom: 5);
+      await binding.moveTo(const GeoPoint(1, 1), zoom: 6);
+      expect(binding.isAttached, isFalse);
+      binding.attach((center, zoom, {required animate}) async {
+        applied.add('${center.latitude}:$zoom:$animate');
+      });
+      await Future<void>.value();
+      expect(applied, [
+        '1.0:6.0:false',
+      ], reason: 'only the latest parked move, not animated');
+      await binding.moveTo(home);
+      expect(applied.last, '4.05:null:true');
+      binding.detach();
+      expect(binding.isAttached, isFalse);
+      await binding.moveTo(home);
+      expect(applied, hasLength(2), reason: 'parked again after detach');
+      binding.dispose();
+      binding.attach(
+        (center, zoom, {required animate}) async => applied.add('late'),
+      );
+      expect(
+        applied,
+        hasLength(2),
+        reason: 'a disposed binding attaches nothing',
+      );
+    },
+  );
 
   test('FakeGeocoder answers from its tables, or holds, or throws', () async {
     final geocoder = FakeGeocoder(

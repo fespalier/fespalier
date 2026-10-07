@@ -68,9 +68,9 @@ The page, the push, the three widgets and a test that runs the whole round trip 
   field with it). The picker lays out your three builders at its bottom edge: `guess`, then `searchField` (with its
   results), then `confirm`. The `confirm` callback is **null** until the pin has a point and the map is at rest: pass it
   straight to a button's `onPressed`.
-- **Keep one `MapLibreSurface`, not one per build** (a top-level `final` or a provider; reusing it on a second visit, or
-  for a picker pushed over a picker, is fine). Each mounted map keeps its own controller and callbacks, and `moveTo` reaches
-  the one mounted last; a new instance per build loses the controller, and a new `map:` makes a new picker state. A new geocoder or locale in a rebuild is fine: the picker keeps its
+- **A `MapLibreSurface` is configuration** with value equality (a `const`, a top-level `final`, or one built in `build`),
+  shared freely, also by a picker pushed over a picker. Each map it builds belongs to its picker's `MapBinding`: a move made
+  for one picker reaches only its map. A `map:` that is not equal to the last makes a new picker state. A new geocoder or locale in a rebuild is fine: the picker keeps its
   model.
 - **Nothing opens over the page**: no dialog, no sheet, no menu, no snack bar (the permission prompt is the platform's own).
   A refusal is a value, `PinGuess.fix` (`Denied`, `ServiceOff`, `Unavailable`): render a hint, not an error page.
@@ -96,8 +96,10 @@ The page, the push, the three widgets and a test that runs the whole round trip 
   `onPicked:` for that case.
 - **A picked result is not re-geocoded.** `pick` shows the result's label as the guess and the map's rest at that point
   asks the geocoder nothing; a nudge of more than about a metre does.
-- **The map's callbacks are the only source of the centre.** A `MapSurface` of your own must call `onMove` when the camera
-  starts moving and `onIdle(center)` when it stops; the picker never reads the camera itself.
+- **The map's callbacks are the only source of the centre.** A `MapSurface` of your own must key its map by the
+  `MapBinding` it is given, call `binding.attach(mover)` when the map exists (and `binding.detach()` when it goes), and
+  forward the camera to `binding.move()` when it starts moving and `binding.idle(center)` when it stops; the picker never
+  reads the camera itself.
 - **The map is a platform view and cannot render in a widget test.** `MapLibreSurface` and `GeolocatorPositionSource` in a
   test reach a platform channel and fail; use the fakes. The default style is MapLibre's **demo** style: use your own tiles
   and their attribution.

@@ -25,6 +25,7 @@ class Rig {
       initial: initial,
       locale: locale,
     );
+    this.map.mount(model.binding);
     addTearDown(model.dispose);
   }
 

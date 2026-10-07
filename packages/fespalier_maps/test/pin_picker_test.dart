@@ -404,6 +404,105 @@ void main() {
     },
   );
 
+  testWidgets(
+    'swapping the map: of a mounted picker leaks nothing and lands the seed on the new map',
+    (tester) async {
+      final a = FakeMapSurface();
+      final b = FakeMapSurface();
+      Widget app(FakeMapSurface map) => host(
+        PinPicker(
+          map: map,
+          geocoder: FakeGeocoder(),
+          position: FakePositionSource(const Fixed(home)),
+          guess: (context, g) => const SizedBox.shrink(),
+          searchField: (context, s) => const SizedBox.shrink(),
+          confirm: (context, confirm) => const SizedBox.shrink(),
+        ),
+      );
+      await tester.pumpWidget(app(a));
+      await tester.pump();
+      expect(a.mountedCount, 1);
+      expect(a.mounts.single.moves.single.center, home);
+      await tester.pumpWidget(app(b));
+      await tester.pump();
+      expect(
+        a.mountedCount,
+        0,
+        reason: 'the old surface keeps no disposed mount',
+      );
+      expect(b.mountedCount, 1);
+      expect(
+        b.mounts.single.moves.single.center,
+        home,
+        reason: 'the new picker seeded the new map',
+      );
+      expect(a.moves, hasLength(1), reason: 'and the old map got nothing more');
+      await tester.pumpWidget(const SizedBox());
+      expect(b.mountedCount, 0);
+    },
+  );
+
+  testWidgets(
+    'a fix that arrives for the lower picker moves the lower map, not the one above',
+    (tester) async {
+      final map = FakeMapSurface();
+      final lowerPosition = FakePositionSource(const Fixed(home), hold: true);
+      Widget picker(
+        String name, {
+        PositionSource? position,
+        MapCamera? initial,
+      }) => PinPicker(
+        map: map,
+        geocoder: FakeGeocoder(),
+        position: position,
+        initial: initial,
+        guess: (context, g) =>
+            Text('$name:${g.center?.latitude}', key: Key('card:$name')),
+        searchField: (context, s) => const SizedBox.shrink(),
+        confirm: (context, confirm) => const SizedBox.shrink(),
+      );
+      late BuildContext below;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              below = context;
+              return Scaffold(body: picker('A', position: lowerPosition));
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      unawaited(
+        Navigator.of(below).push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                Scaffold(body: picker('B', initial: const MapCamera(there))),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(map.mountedCount, 2);
+      lowerPosition.release();
+      await tester.pump();
+      expect(
+        map.mounts[0].moves.single.center,
+        home,
+        reason: 'the lower picker asked for it',
+      );
+      expect(
+        map.mounts[1].moves,
+        isEmpty,
+        reason: 'the upper map is untouched',
+      );
+      expect(
+        find.text('B:4.06'),
+        findsOneWidget,
+        reason: 'and the upper picker kept its place',
+      );
+    },
+  );
+
   testWidgets('nothing opens over the page, whatever the person does', (
     tester,
   ) async {

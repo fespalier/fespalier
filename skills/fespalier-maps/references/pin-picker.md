@@ -106,8 +106,8 @@ import 'package:flutter/material.dart';
 import 'package:my_app/places/no_geocoder.dart';
 import 'package:my_app/places/place_widgets.dart';
 
-// One surface for the life of the page: it holds the map's controller.
-final _map = MapLibreSurface(styleString: 'https://tiles.example.com/style.json');
+// Configuration only (a style): share it, it holds no state about a picker.
+const _map = MapLibreSurface(styleString: 'https://tiles.example.com/style.json');
 
 /// -> /pick-place, and PickPlaceRoute
 class PickPlacePage extends StatelessWidget {

@@ -110,6 +110,10 @@ class PinPickerModel extends ChangeNotifier {
   /// The map under the pin.
   final MapSurface map;
 
+  /// The link to the map built for this picker: the model moves the map through it and the map
+  /// reports to the model through it. One for the life of the model.
+  late final MapBinding binding = MapBinding(onIdle: onIdle, onMove: onMove);
+
   /// The geocoder. Assigned again by [PinPicker] on every build, so a new geocoder or locale
   /// takes effect without a new model: the map captured this model's callbacks once.
   Geocoder geocoder;
@@ -192,6 +196,7 @@ class PinPickerModel extends ChangeNotifier {
   void dispose() {
     if (_disposed) return;
     _disposed = true;
+    binding.dispose();
     super.dispose();
   }
 
@@ -447,7 +452,7 @@ class PinPickerModel extends ChangeNotifier {
     _center = point;
     notifyListeners();
     try {
-      await map.moveTo(point, zoom: focusZoom);
+      await binding.moveTo(point, zoom: focusZoom);
     } catch (_) {
       // A map that is not there costs the move, never the picker.
     }
@@ -464,6 +469,8 @@ class PinPickerModel extends ChangeNotifier {
   }
 
   /// More than about a kilometre (0.01 degree) from where the map started: a rest the person made.
+  /// Only asked while the fix is awaited, which is only without an `initial:` camera, so the start
+  /// is always [MapCamera.world] (0, 0 at zoom 1) and the rule never applies with `initial:`.
   bool _farFromStart(GeoPoint point) {
     final start = initialCamera.center;
     return (point.latitude - start.latitude).abs() >= 0.01 ||

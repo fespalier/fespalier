@@ -138,18 +138,22 @@ is overridden by the fix.
 
 ## The map
 
-`MapSurface` is the map under the pin: `build(context, camera, onIdle:, onMove:)` and `moveTo(point, zoom:)`.
-`MapLibreSurface` in `package:fespalier_maps/maplibre.dart` is the one that draws:
+`MapSurface` is the map under the pin: `build(context, camera, binding)`. The `MapBinding` is the picker's own link to the
+map built for it: the map reports its camera to the binding (`move()`, `idle(center)`), and the picker moves the map
+through it (`binding.moveTo`), so **a move can only reach the map it was made for**. `MapLibreSurface` in
+`package:fespalier_maps/maplibre.dart` is the one that draws:
 
 ```dart
-final _map = MapLibreSurface(styleString: 'https://tiles.example.com/style.json');
+const _map = MapLibreSurface(styleString: 'https://tiles.example.com/style.json');
 ```
 
-One surface can serve several pickers (a top-level `final` is fine), one after the other or stacked, a pickup picker that
-pushes a drop-off picker: each mounted map keeps its own controller, pending move and callbacks, `moveTo` reaches the one
-mounted last, and when that one goes the one under it is the target again. `maplibre_gl` keeps the camera callbacks of the
-build that created the platform view, so the map gets forwarders that read the latest ones of its own picker, and the picker
-keeps one model across rebuilds (a new geocoder or locale is assigned to it). It rotates and tilts nothing by default (`rotateGesturesEnabled: false`, `tiltGesturesEnabled:
+A surface is configuration, with value equality, and holds no state about a picker: share it freely (a `const`, a top-level
+`final`, or one built inside `build`), among pickers one after the other or stacked, a pickup picker that pushes a drop-off
+picker. Each map it builds has its own controller and receives only the moves of its own picker's binding. A move made before
+the platform view exists is parked and applied without animation when it does; when the map is disposed the binding is
+detached. `maplibre_gl` keeps the camera callbacks of the build that created the platform view, which is why they call the
+binding, and why the picker keeps one model, and one binding, across rebuilds (a new geocoder or locale is assigned to it; a
+`map:` that is not equal to the last makes a new picker with a new map). It rotates and tilts nothing by default (`rotateGesturesEnabled: false`, `tiltGesturesEnabled:
 false`, no compass), and it listens to nothing: the camera events are the widget's own callbacks. The default style is
 MapLibre's demo style, for trying things out; an app uses its own tiles and follows their attribution.
 
@@ -177,7 +181,9 @@ it feeds the picker appears in what a sink hears. With no sink installed, nothin
 channel:
 
 - `FakeMapSurface({idleOnMove})`: a box with `fakeMapKey`; `startMove()` and `idleAt(point)` are what a real map reports,
-  `moves` is what the picker asked for, `shown` the camera it was built with.
+  `moves` is what the pickers asked for, `shown` the camera it was built with. Each mounted map is a `FakeMapMount` in
+  `mounts` (its own `moves`, and `startMove()` and `idleAt` for that picker), so a test can stack two pickers on one surface
+  and see that a move reaches only its own map.
 - `FakeGeocoder({places, reverseAnswer, hold})`: answers from tables; with `hold: true` every call waits in `searchCalls` or
   `reverseCalls` until the test completes or fails it, which is how to order two answers and see the stale one dropped;
   `error` makes every call throw.
@@ -215,6 +221,6 @@ arithmetic, `tileCount(bounds, minZoom:, maxZoom:)`, is tested against values wo
 
 Offline region packs (download, progress, pause, resume, storage) and PMTiles file packs (resumable over HTTP Range) are
 planned as separate releases of this package; this one has only the seam they will use: the map is a `MapSurface` with a
-style string, and `tileCount` sizes a region before anything is fetched. Also not built: markers, routes and other
+style string and a `MapBinding`, and `tileCount` sizes a region before anything is fetched. Also not built: markers, routes and other
 overlays, clustering, search-as-you-type, a geocoder of the package's own, and a web-specific surface (`maplibre_gl`
 has a web implementation, but nothing here has run on it).

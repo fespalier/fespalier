@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.10.0](https://github.com/fespalier/fespalier/compare/v0.9.1...v0.10.0) (2026-10-07)
+
+
+### Features
+
+* fespalier_cratestack, offline-first reads, intents and sync for CrateStack clients ([#90](https://github.com/fespalier/fespalier/issues/90)) ([95fc0c6](https://github.com/fespalier/fespalier/commit/95fc0c62de3e3646186fdc6bbcb4e3dbb7bd0f88))
+* fespalier_tolgee, translations from Tolgee's CDN with a bundled fallback and route locales ([#89](https://github.com/fespalier/fespalier/issues/89)) ([9178376](https://github.com/fespalier/fespalier/commit/9178376152372166cb2c0f6a7002862e1661ad66))
+
+
+### Bug Fixes
+
+* **release:** release-please no longer rewrites third-party version ranges in READMEs ([#86](https://github.com/fespalier/fespalier/issues/86)) ([d194156](https://github.com/fespalier/fespalier/commit/d194156a95587138c1217ce8e6ce4d8d3325683c))
+
+
+### Documentation
+
+* a five-minute README, and the reference in one-topic pages under docs/ ([#91](https://github.com/fespalier/fespalier/issues/91)) ([bfbbf87](https://github.com/fespalier/fespalier/commit/bfbbf87f8aa3531004a1362ec1cf472e5d174e65))
+
 ## [0.9.1](https://github.com/fespalier/fespalier/compare/v0.9.0...v0.9.1) (2026-10-04)
 
 

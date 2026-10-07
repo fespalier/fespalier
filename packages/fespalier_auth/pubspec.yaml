@@ -1,6 +1,6 @@
 name: fespalier_auth
 description: Signed-in routes for fespalier — a session provider, guards, token storage, lazy single-flight refresh and an authenticated HTTP client, with pluggable backends.
-version: 0.9.1 # x-release-please-version
+version: 0.10.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -27,7 +27,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.9.1 # x-release-please-version
+      ref: v0.10.0 # x-release-please-version
   # SecureTokenStore. Both majors: only read/write/delete and the Apple accessibility option are used.
   flutter_secure_storage: ">=10.0.0 <12.0.0"
   # 1.5.0: Abortable requests, which a replayed request keeps (the abort trigger is copied).

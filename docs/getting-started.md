@@ -1,8 +1,6 @@
 # Installation and setup
 
-The [README](../README.md#getting-started) has the 60-second path: install `fsp`, add the package, run
-`fsp init`. This page has the rest: every way to install `fsp`, the companion packages, what `fsp init`
-writes, how to keep `app.g.dart` in CI, and platform notes.
+The [README](../README.md#getting-started) has the 60-second path: install `fsp`, add the package, run `fsp init`. This page has the rest: every way to install `fsp`, the companion packages, what `fsp init` writes, how to keep `app.g.dart` in CI, and platform notes.
 
 ## Requirements
 
@@ -39,17 +37,14 @@ in the [README](../README.md#getting-started).
 
 ### Homebrew and Scoop
 
-Homebrew (macOS, Linux) and Scoop (Windows) install from the tap and the bucket that releases push to
-(see [Releasing](releasing.md)):
+Homebrew (macOS, Linux) and Scoop (Windows) install from the tap and the bucket that releases push to:
 
 ```sh
 brew tap fespalier/tap && brew install fsp   # or in one go: brew install fespalier/tap/fsp
 scoop bucket add fespalier https://github.com/fespalier/scoop-bucket && scoop install fsp
 ```
 
-They hold the latest release only once it has pushed to them. Until then, or without the bucket, Scoop
-can install the `fsp.json` that every release attaches (it names that release's archives and their
-SHA-256s):
+They hold the latest release only once it has pushed to them. Until then, or without the bucket, Scoop can install the `fsp.json` that every release attaches (it names that release's archives and their SHA-256s):
 
 ```powershell
 scoop install https://github.com/fespalier/fespalier/releases/latest/download/fsp.json
@@ -57,10 +52,7 @@ scoop install https://github.com/fespalier/fespalier/releases/latest/download/fs
 
 To update that one, `scoop uninstall fsp` and run it again.
 
-Homebrew has no such fallback: `brew install` reads formulae from taps only (a path such as
-`brew install ./fsp.rb` is refused by default, see `HOMEBREW_FORBID_PACKAGES_FROM_PATHS`, and a URL is
-no longer accepted), so `fsp.rb` is only useful to a tap. Where the tap has no release yet, macOS users
-use the install script above.
+Homebrew has no such fallback (`brew install` reads formulae from taps only, and refuses a path or URL), so where the tap has no release yet, macOS users use the install script above.
 
 ### Without installing: dart run fespalier
 
@@ -73,17 +65,12 @@ dart run fespalier watch
 dart run fespalier check
 ```
 
-- **First run.** It downloads the `fsp` release that matches the package's version and keeps it in your
-  user cache (`~/.cache/fespalier` on Linux, `~/Library/Caches/fespalier` on macOS,
-  `%LOCALAPPDATA%\fespalier` on Windows; `FSP_CACHE_DIR` moves it). Later runs start at once.
+- **First run.** It downloads the `fsp` release that matches the package's version and keeps it in your user cache (`~/.cache/fespalier` on Linux, `~/Library/Caches/fespalier` on macOS, `%LOCALAPPDATA%\fespalier` on Windows; `FSP_CACHE_DIR` moves it). Later runs start at once.
 - **Checksum.** The download is checked against the SHA-256 that the package carries for its own version,
   so a tampered release is refused. A package built from a branch has no pins yet: it checks the
   release's `.sha256` file instead and says so.
-- **Offline.** With an empty cache it stops with one line naming the missing version; with a warm cache
-  it never uses the network.
-- **Requirements.** `tar`, which macOS, Linux and Windows 10+ include.
-- **Your own binary.** Set `FSP_BINARY=/path/to/fsp`, for example a build from source. An `fsp` on your
-  `PATH` is used too when its version is the package's, so nothing is downloaded when you have both.
+- **Offline.** With an empty cache it stops with one line naming the missing version; with a warm cache it never uses the network. It needs `tar`, which macOS, Linux and Windows 10+ include.
+- **Your own binary.** Set `FSP_BINARY=/path/to/fsp`, for example a build from source. An `fsp` on your `PATH` is used too when its version is the package's.
 
 The package and the binary are versioned together, and this is what keeps them in step.
 
@@ -98,10 +85,7 @@ The package and the binary are versioned together, and this is what keeps them i
 
 ## Companion packages
 
-`fespalier_otel`, `fespalier_sentry`, `fespalier_auth`, `fespalier_sign_keypair`, `fespalier_flags`,
-`fespalier_storage`, `fespalier_connectivity`, `fespalier_adaptive`, `fespalier_image` and `fespalier_dio` are
-not published to a registry: an app uses each as a git dependency at the same release tag as `fespalier`.
-Each package's own section shows the block to copy, and the package's README links back here.
+`fespalier_otel`, `fespalier_sentry`, `fespalier_auth`, `fespalier_sign_keypair`, `fespalier_flags`, `fespalier_storage`, `fespalier_connectivity`, `fespalier_adaptive`, `fespalier_image`, `fespalier_dio` and `fespalier_tolgee` (since 0.10.0) are not published to a registry: an app uses each as a git dependency at the same release tag as `fespalier`. None of them changes `fsp`, the `fespalier:` keys or `app.g.dart`, and an app that does not depend on one pays nothing for it. Each package's own section shows the block to copy, and the package's README links back here.
 
 Add a companion next to `fespalier`, with the same `url` and the same `ref`: pub resolves the two to one
 package only if they are the same repository dependency. A mismatch fails like this (the form it takes
@@ -145,9 +129,7 @@ it starts the app inside a `ProviderScope`, builds the router once and runs `run
 [`main()`: app.dart, startup.dart and splash.dart](app-startup.md). `main: manual` keeps a `main()` that
 builds the `ProviderScope` and the `MaterialApp.router` itself.
 
-A plain `flutter create` (not `flutter create --empty`) also wrote `test/widget_test.dart`, which refers
-to the `MyApp` you just replaced, so `flutter analyze` fails on it. Delete it, or rewrite it (see
-[Testing](testing.md)).
+A plain `flutter create` (not `--empty`) also wrote `test/widget_test.dart`, which refers to the `MyApp` you just replaced, so `flutter analyze` fails on it: delete it, or rewrite it (see [Testing](testing.md)).
 
 ## Day to day
 
@@ -158,8 +140,7 @@ fsp new 'orders/[id]' --data --loading    # scaffold a route, then regenerate ap
 fsp new 'orders/[id]/refund' --action     # a write beside the page (action.dart)
 ```
 
-`fsp new` runs `gen` right away, so the new route is usable as soon as it returns. See
-"The generator" for all flags, and [Running your app](cli.md#running-your-app-fsp-dev) for `fsp dev`.
+`fsp new` runs `gen` right away, so the new route is usable as soon as it returns. All the flags are in [The generator](cli.md#the-generator), and `fsp dev` in [Running your app](cli.md#running-your-app-fsp-dev).
 
 ## Keeping app.g.dart
 
@@ -201,16 +182,11 @@ Generate it wherever the app is analyzed, tested or built: on a fresh clone, and
 - run: flutter test
 ```
 
-- **No version pin.** `dart run fespalier` runs the `fsp` release that matches the `fespalier` package
-  your `pubspec.lock` resolved, so the generator and the runtime `app.g.dart` imports can't drift
-  apart, and bumping the package bumps the generator.
+- **No version pin.** `dart run fespalier` runs the `fsp` release that matches the `fespalier` package your `pubspec.lock` resolved, so the generator and the runtime `app.g.dart` imports can't drift apart.
 - **Caching.** The first run downloads it (SHA-256 pinned in the package, see
   [above](#without-installing-dart-run-fespalier)) into the user cache. To skip that, keep
   `~/.cache/fespalier` (`FSP_CACHE_DIR`) between CI runs with `actions/cache`, keyed on `pubspec.lock`.
-- **Your own binary.** Set `FSP_BINARY` to use one you built.
-- **Locally**, `dart run fespalier watch` keeps the file current.
-- **`fsp check`** still works in this mode (it checks the routing and writes nothing), and doesn't need
-  the generated file to exist.
+- **Your own binary.** Set `FSP_BINARY` to use one you built. Locally, `dart run fespalier watch` keeps the file current; `fsp check` still works in this mode and doesn't need the generated file to exist.
 
 ### Failing CI on a stale file
 

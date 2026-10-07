@@ -52,7 +52,8 @@ What does work is to split what the caller sees from what runs. The public `copy
 type is `SearchRoute Function({String? q, int? page, Sort? sort})`, the fields' own types, and what it
 returns is a private method that takes `Object?` with a private `const` sentinel (`_keep`) as each
 default. A caller passes a `String?` or nothing; calling the function through its type, an argument that
-is left out takes the private default and one that is `null` is `null`.
+is left out takes the private default and one that is `null` is `null`. Callers see the clean signature;
+the sentinel lives only in `app.g.dart`, and no caller can pass it.
 
 Nothing is `dynamic`, a segment is not nullable (`copyWith(id: null)` doesn't compile), the route
 constructors stay `const`, and the sentinel is one `const` object.
@@ -99,7 +100,30 @@ the route one thing.
    `initialLocation`, which `fsp gen` writes.
 
 The typed side takes the locale as an argument (`locationFor(locale)`, `go(context, locale:)`) rather
-than from a global, so that a route stays a value: see [Localized paths](routing.md#localized-paths).
+than from a global (an `AppRoutes.locale` the typed routes read). A global would make
+`ProductRoute(id: 2).go(context)` and `context.go(ProductRoute(id: 2).location)` differ, make
+`.location` depend on when it is read, and make every test depend on what the last one left in a
+static. A `locale:` argument keeps a route a value, and the app, which owns its locale, decides where to
+pass it: see [Localized paths](routing.md#localized-paths).
+
+### Why string paths are checked by fsp, not an analyzer plugin
+
+`fsp` already has the route tree, parses Dart, and reports diagnostics that both editor plugins show, so
+`fsp check` in CI and `fsp watch` get the lint with nothing for an app to add. An analyzer plugin would
+need `analysis_options.yaml`, which takes a package from pub.dev or a `path:` and not a git dependency
+(fespalier is one), would pin an `analyzer` major that moves several times a year, and would need its own
+copy of the matcher. The cost of a syntax tree is that `fsp` can't know that `context` is a
+`BuildContext`: it only reads string literals in the call shapes listed in
+[Checking string paths](cli.md#checking-string-paths).
+
+### Why fsp watch doesn't cache per route
+
+A full resolve is 30 ms at 5,000 routes, a tenth of a save that changes output. Resolving one route reads
+the folders above it and shares state with the others (names claimed, query types settled), so a per-route
+cache would have to replay those effects for a saving smaller than its bookkeeping. The folder walk is
+80 ms at 5,000 routes, and reading the files a small part of it: a cache keyed on modification times would
+save less than it risks (an edit in the same timestamp tick, a file replaced by one with the same size and
+time). See [Performance](cli.md#performance).
 
 ## Short answers
 

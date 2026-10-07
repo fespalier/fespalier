@@ -184,6 +184,8 @@
         "docs/faq.md#Why `watch` and `read` are static",
         "docs/faq.md#Why forms are companions of `action.dart`, not a `form.dart`",
         "docs/faq.md#Why `copyWith` is a getter of a function type",
+        "docs/faq.md#Why string paths are checked by fsp, not an analyzer plugin",
+        "docs/faq.md#Why fsp watch doesn't cache per route",
         "docs/faq.md#Why an action's `submit` is static, and its input is typed",
         "docs/faq.md#Why a localized path is one route with an alternation",
         "docs/faq.md#Short answers",

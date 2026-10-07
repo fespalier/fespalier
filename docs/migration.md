@@ -2,12 +2,10 @@
 
 ## Adopting fespalier in a go_router app
 
-You do not have to move everything at once. fespalier can mount its generated routes inside the `GoRouter`
-you already have, so you can bring one section of the app over at a time.
+You do not have to move everything at once: fespalier can mount its generated routes inside the `GoRouter` you already have, so you can bring one section of the app over at a time.
 
 1. Install `fsp` and add the package ([Installation and setup](getting-started.md)).
-2. Set `main: manual` in the `fespalier:` section of `pubspec.yaml`, so that `fsp` writes no `main()` of
-   its own and your `main()` stays as it is ([`main()`](app-startup.md)).
+2. Set `main: manual` in the `fespalier:` section of `pubspec.yaml`, so that `fsp` writes no `main()` of its own and your `main()` stays as it is ([`main()`](app-startup.md)).
 3. Put the first routes under `lib/app/` and run `fsp gen` (or keep `fsp watch` running).
 4. Mount the generated routes in your router. `at` is the URL prefix:
 
@@ -25,11 +23,7 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 ## Upgrading
 
-What changed between releases, newest first, each with a link to the reference section that describes the
-behavior today.
-
-There is no 0.8.0 release: it was tagged but never published (its binaries were built before the last
-change), and the wave it carried ships as 0.8.1.
+What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
 ### 0.9.x
 
@@ -37,16 +31,10 @@ change), and the wave it carried ships as 0.8.1.
   is wrapped in `namedPage('/products/:id', () => ...)`, so a `NavigatorObserver` sees the pattern
   instead of `null` (a `remount` page used to be `:id`). Regenerate with `fsp gen`: every app's
   `app.g.dart` changes.
-- **Telemetry** ([Spans around data() and actions](observability.md#spans-around-data-and-actions)).
-  With `telemetry: true` the data provider calls
-  `traceDataCall(ref, 'd4', id, () => data(ref, id: id), telemetry: ...)`.
-  - A `data` span's duration includes the synchronous part of `data()`.
+  **Telemetry** ([Spans around data() and actions](observability.md#spans-around-data-and-actions)). With `telemetry: true` the data provider calls `traceDataCall(ref, 'd4', id, () => data(ref, id: id), telemetry: ...)` (one closure per provider build, no `Future` and no microtask); regenerate with `fsp gen`. An app without `telemetry: true` keeps `traceData(...)`, and its file does not change.
+  - A `data` span starts before `data()` runs, so its duration includes the synchronous part.
   - A `data()` that throws before it returns has a `data` span (before 0.9.0 it had none).
-  - `FespalierOtel` makes data and action spans current. A sink with a member named `within` of another
-    signature must rename it.
-- **Hero shared elements** ([Shared elements (heroes)](layouts.md#shared-elements-heroes)): before 0.8.1 a
-  `transition.dart` left the tree as it was; `heroes:` is opt-in.
-- **Apps made with `fsp init` before 0.9.0**: see 0.8.1 for the `main()` change.
+  - `FespalierOtel` makes data and action spans current, so the HTTP spans of `otel_http` and `otel_dio` are their children. A sink with a member named `within` of another signature must rename it.
 
 ### 0.8.1
 
@@ -54,10 +42,7 @@ change), and the wave it carried ships as 0.8.1.
   `fsp init` printed a `main()` that built the `ProviderScope` and the `MaterialApp.router` itself. That
   still works, and it is what `main: manual` keeps. Nothing changes until you opt in; the table in
   [app-startup.md](app-startup.md) shows where each line of a hand-written `main()` goes.
-- **Telemetry**: without `telemetry: true`, the generated file is exactly what it was before 0.8.1
-  ([Turning it on](observability.md#turning-it-on)).
-- **Heroes**: a layout's shell and a page keep the tree as it was before 0.8.1 unless a `transition.dart`
-  passes `heroes:` ([Shared elements (heroes)](layouts.md#shared-elements-heroes)).
+  **Telemetry** ([Turning it on](observability.md#turning-it-on)): without `telemetry: true` nothing is generated for it.
 
 ### 0.7.0
 
@@ -69,9 +54,8 @@ change), and the wave it carried ships as 0.8.1.
 - **`remount`** ([Remounting a page](navigation.md#remounting-a-page-remount)). `never` is what
   fespalier generated before 0.6.0, and the generated code keys a page by the URL where it used to use
   go_router's `state.pageKey`.
-- **`disposeRouter`** ([pumpRouter and currentLocation](testing.md#pumprouter-and-currentlocation)): a
-  test that disposes the router itself with an `addTearDown` registered before the call, as tests
-  written for 0.4.x do, passes `disposeRouter: false`.
+  **`disposeRouter`** ([pumpRouter and currentLocation](testing.md#pumprouter-and-currentlocation)): a test that disposes the router itself with an `addTearDown` registered before the call, as tests written for 0.4.x do, passes `disposeRouter: false`.
+- **`replace`** ([The URL as state](navigation.md#the-url-as-state-of-and-copywith)) now shows its location in the address bar and replaces the history entry; on 0.5.0 it was go_router's in every case (the address bar followed it only when no page was below it), so use `go` for URL state there.
 
 ### 0.5.0
 
@@ -86,9 +70,7 @@ change), and the wave it carried ships as 0.8.1.
 - **Layout restoration** ([State restoration](layouts.md#state-restoration)): a layout's page used the
   route object's hash code as its key, so a router built again by a hot reload or a test replaced the
   layout and lost its state. Since 0.5.0 it uses a `ValueKey` made of its restoration id.
-- **Prefetch** ([From a location to its data](data.md#typed-helpers-on-the-route)): a prefetch used to
-  lapse after 30 seconds without a `keepFor`, and now lasts until closed; `prefetchKeepAlive` is gone.
-  `ref`, `keepFor`, `preload`, `of`, `maybeOf` and `copyWith` can no longer be segment or query names.
+  **Prefetch** ([Typed helpers on the route](data.md#typed-helpers-on-the-route)): a prefetch used to lapse after 30 seconds without a `keepFor`, and now lasts until closed; `prefetchKeepAlive` is gone. `ref`, `keepFor`, `preload`, `of`, `maybeOf` and `copyWith` can no longer be segment or query names.
 - **`pumpRouter`** ([pumpRouter and currentLocation](testing.md#pumprouter-and-currentlocation))
   disposes the router when the test ends, and the generated `AppRoutes` makes a fresh `navigatorKey` on
   each `router()` or `mount()` call without one.

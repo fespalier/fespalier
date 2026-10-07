@@ -213,7 +213,6 @@ The sign-in button calls `ref.read(authSession.notifier).signIn(const BrowserSig
 - **The issuer is Keycloak's configured hostname.** With `--hostname=http://10.0.2.2:8080` every token says `http://10.0.2.2:8080/realms/...`, so an app that reaches the same Keycloak as `localhost` gets `the ID token was
 issued by ..., not ...`. On an Android emulator, use `adb reverse tcp:8080 tcp:8080` and `localhost`, or give Keycloak the `10.0.2.2` hostname.
 - **A single-sign-on cookie signs the user in again silently** after a sign-out, unless the browser session is ephemeral (`preferEphemeral: true`) or the sign-in asks `BrowserSignIn(prompt: 'login')`.
-- `examples/auth` has the Docker command and the `--dart-define=OIDC_ISSUER=...` that runs the example against it.
 
 ## Firebase, Supabase and your own API
 

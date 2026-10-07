@@ -52,7 +52,7 @@ lib/app/(tabs)/
     authors/page.dart        /library/authors
 ```
 
-Each layout has its own `tabs` list, stacks and `StatefulNavigationShell`, and the outer layout keeps the whole inner one alive, so an inner tab's state survives switching outer tabs. The rules above apply at each level. `library/` has no page of its own here, so its inner layout is what the outer tab shows; give it a `page.dart` and that page becomes the inner layout's first tab. `examples/tabs` builds Library this way.
+Each layout has its own `tabs` list, stacks and `StatefulNavigationShell`, and the outer layout keeps the whole inner one alive, so an inner tab's state survives switching outer tabs. The rules above apply at each level. `library/` has no page of its own here, so its inner layout is what the outer tab shows; give it a `page.dart` and that page becomes the inner layout's first tab.
 
 **Tab options.** A tab layout can set go_router's `StatefulShellBranch` options per tab in a top-level `const tabOptions` map, next to `tabs`. Keys are the tab names `tabs` uses (`'.'` for the layout's own page); each value is a `TabOptions` from `package:fespalier/fespalier.dart`:
 
@@ -82,8 +82,6 @@ The generated route is then `StatefulShellRoute(navigatorContainerBuilder: _i1.c
 - `children` holds one navigator per tab, in tab order. Keep them all in the tree (`Offstage`, `Opacity` or a `Stack`, as `IndexedStack` does) or the tabs lose their state.
 - Wrap the ones you don't show in `TickerMode(enabled: false)`, as go_router's container does: that is how a [shared element](#shared-elements-heroes) (since 0.8.1) knows its tab is hidden.
 - A `container` in a layout that isn't a tab layout is ignored with a warning.
-
-`examples/tabs` cross-fades.
 
 ## Menus and breadcrumbs: `nav.dart`
 
@@ -170,7 +168,7 @@ Text(AppMenu.breadcrumbs(ref).map((c) => c.label(context)).join(' › '));
 
 **Labels.** `label()` gets the `BuildContext`, so it can read `AppLocalizations`, the locale or a provider-backed setting, and the segments it names (`required int id`), typed like any other file in the folder. It is not given data: a breadcrumb that shows a product's name reads the product in the widget (`ProductRoute.watch(ref, id: item.params['id'] as int)`).
 
-Not built: more than one menu per app (use `under:` and `inMenu`), labels from `data.dart`. `fsp new orders --nav` writes a `nav.dart` for a folder, and `fsp routes --json` has a `nav` key on the routes whose folder has one (`file`, `label` when it is a string literal, `order`). `examples/features` has a menu, a team sub-menu and breadcrumbs.
+Not built: more than one menu per app (use `under:` and `inMenu`), labels from `data.dart`. `fsp new orders --nav` writes a `nav.dart` for a folder, and `fsp routes --json` has a `nav` key on the routes whose folder has one (`file`, `label` when it is a string literal, `order`).
 
 ### A bar, a rail or a drawer: fespalier_adaptive
 
@@ -217,7 +215,7 @@ class TabsLayout extends StatelessWidget {
 }
 ```
 
-`tabs`, `tabOptions` and `container` stay as they are. A plain layout (one that takes a `Widget child`) passes `child: child` instead of `shell:`, and exactly one of the two is asserted. `examples/tabs` is this, with its six `nav.dart` files.
+`tabs`, `tabOptions` and `container` stay as they are. A plain layout (one that takes a `Widget child`) passes `child: child` instead of `shell:`, and exactly one of the two is asserted.
 
 **Breakpoints.** The component follows the window's width in logical pixels (`MediaQuery.sizeOf(context).width`):
 
@@ -351,7 +349,7 @@ ProductRoute(id: product.id).hero('avatar', child: CircleAvatar(radius: 40, chil
 - `route.heroTag(name)` is the tag alone (a `RouteHeroTag`), for a `Hero` of your own.
 - Nothing is generated: `app.g.dart` doesn't change.
 
-`hero` builds a `RouteHero`, which is Flutter's `Hero` with one difference: it stays out of flights while its tab is not shown (`TickerMode` is off for it, as go_router's tab container and `examples/tabs`' set it on the tabs they hide). Two tabs can then show the same tag, and a route on the [root navigator](navigation.md#the-root-navigator-navigatordart) that opens over the tab bar flies from the tab that is shown. With a plain `Hero`, that is Flutter's _"There are multiple heroes that share the same tag within a subtree"_ assertion in debug.
+`hero` builds a `RouteHero`, which is Flutter's `Hero` with one difference: it stays out of flights while its tab is not shown (`TickerMode` is off for it, as go*router's tab container and `examples/tabs`' set it on the tabs they hide). Two tabs can then show the same tag, and a route on the [root navigator](navigation.md#the-root-navigator-navigatordart) that opens over the tab bar flies from the tab that is shown. With a plain `Hero`, that is Flutter's *"There are multiple heroes that share the same tag within a subtree"\_ assertion in debug.
 
 **The flight style** is declared in `transition.dart`: `Transitions.fade`, `slide`, `none`, `material`, `cupertino` and `fullscreenDialog` take `heroes:`, a `Heroes` with three options.
 
@@ -477,5 +475,3 @@ await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
 );
 await tester.pumpAndSettle();
 ```
-
-`examples/features` has `/feed` with two keyed lists.

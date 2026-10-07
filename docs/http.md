@@ -5,9 +5,7 @@ Since 0.9.0. `package:fespalier_dio` helps the two clients most apps use,
 fespalier's promises: **a load whose page is gone stops**, **a server's validation error lands under its form
 field**, and **a write is never sent twice**.
 
-fespalier's core has no HTTP client and gains none: no file kind, no `fespalier:` key, no `fsp` command, and
-`app.g.dart` is the same bytes. An app that does not depend on the package is unchanged, and the package starts no
-timer and no listener.
+The package starts no timer and no listener.
 
 Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
@@ -29,8 +27,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-It needs Dart 3.8 and Flutter 3.32 or newer, and depends on `dio` (`^5.7.0`) and `http` (`^1.5.0`, the first
-release with abortable requests). It is three libraries; import only the one you use:
+It depends on `dio` (`^5.7.0`) and `http` (`^1.5.0`, the first release with abortable requests), in three libraries; import only the one you use:
 
 | Library                                    | For            | What is in it                                                                                                     |
 | ------------------------------------------ | -------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -38,16 +35,11 @@ release with abortable requests). It is three libraries; import only the one you
 | `package:fespalier_dio/http.dart`          | `package:http` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `WriteGuardClient`                            |
 | `package:fespalier_dio/problem.dart`       | no client      | `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf`: for chopper, or a client of your own (both above export it) |
 
-Nothing here retries, logs or traces by itself. It has no retry policy of its own (a backoff needs a timer, and
-fespalier has none), and the HTTP spans and trace headers come from the instrumentation you add to the client
-(`otel_dio`, `sentry_dio`).
+Nothing here retries, logs or traces by itself: it has no retry policy of its own (a backoff needs a timer), and the HTTP spans and trace headers come from the instrumentation you add to the client (`otel_dio`, `sentry_dio`).
 
 ## Cancelling a load whose page is gone
 
-A `data.dart` runs again when its provider is rebuilt (an invalidation, a changed key) and is dropped when its page
-is left. The old build's result is thrown away either way, but its request goes on to the end. `ref.cancelToken()`
-(Dio) and `ref.abortTrigger()` or `ref.abortable(client)` (`package:http`) tie the request to the build that made
-it. They fire in `ref.onDispose`, which runs when the provider is disposed **and** before it rebuilds.
+A `data.dart` runs again when its provider is rebuilt (an invalidation, a changed key) and is dropped when its page is left. The old build's result is thrown away either way, but its request goes on to the end. `ref.cancelToken()` (Dio) and `ref.abortTrigger()` or `ref.abortable(client)` (`package:http`) tie the request to the build that made it. They fire in `ref.onDispose`, which runs when the provider is disposed **and** before it rebuilds.
 
 ```dart
 // lib/app/products/$id/data.dart
@@ -68,9 +60,7 @@ Future<Product> data(Ref ref, {required int id}) async {
 // or one request: http.AbortableRequest('GET', url, abortTrigger: ref.abortTrigger())
 ```
 
-- **Ask before the first `await`.** After the provider is gone (a stale `ref`) `onDispose` would throw, so the token
-  comes back already cancelled and the trigger already fired: the request fails at once instead of running for a
-  page nobody sees.
+- **Ask before the first `await`.** After the provider is gone (a stale `ref`) `onDispose` would throw, so the token comes back already cancelled and the trigger already fired: the request fails at once instead of running for a page nobody sees.
 - **One token serves every request of the build**, and a request that a retrier or an authentication refresh sends
   again keeps it (same options).
 - **What the request fails with.** Dio: a `DioException` of type `cancel` whose `error` is `fespalier_dio: the
@@ -102,10 +92,7 @@ Future<Profile> action(Ref ref, {required NicknameFields input}) async {
 }
 ```
 
-It is an extension on the `Future`, **not an interceptor**: an interceptor can only reject with a `DioException`,
-and a form reads a `FieldErrors`. So it works on any `Future<T>` (a retrofit client's
-`api.updateProfile(...).withFieldErrors()` too), and `package:http` has one on `Future<http.Response>` (it returns
-the response when there is nothing to throw).
+It is an extension on the `Future`, **not an interceptor** (an interceptor can only reject with a `DioException`, and a form reads a `FieldErrors`), so it works on any `Future<T>` (a retrofit client's `api.updateProfile(...).withFieldErrors()` too), and `package:http` has one on `Future<http.Response>` (it returns the response when there is nothing to throw).
 
 - Use it in an `action.dart`. A `data.dart` that gets a 422 wants its `error.dart`.
 - For a client with no `Future` to extend (chopper), `fieldErrorsOf(response.statusCode, response.body)` returns the
@@ -142,10 +129,7 @@ hand, as in the sample. A decoder of your own is a `FieldErrors? Function(Object
 
 ## Writes are never retried, over HTTP too
 
-fespalier promises [a write is never retried](actions.md#actiondart-typed-writes): its generated provider does not use
-Riverpod's retry. A client's retry layer would break that from below (`dio_smart_retry` retries every method by
-default, and `package:http`'s `RetryClient` retries a 503 for every method). `WriteGuard` (Dio) and
-`WriteGuardClient` (`package:http`) keep the promise.
+fespalier promises [a write is never retried](actions.md#actiondart-typed-writes): its generated provider does not use Riverpod's retry. A client's retry layer would break that from below (`dio_smart_retry` retries every method by default, and `package:http`'s `RetryClient` retries a 503 for every method). `WriteGuard` (Dio) and `WriteGuardClient` (`package:http`) keep the promise.
 
 ```dart
 final dio = Provider<Dio>((ref) {
@@ -198,7 +182,4 @@ final httpClient = Provider<http.Client>((ref) {
   and which errors came from a write; `readsOnly()` and `readErrorsOnly(whenError)` consult that. Put it inside the
   `RetryClient`, and give the retry client **both** predicates: `RetryClient` retries a 503 for any method otherwise.
   A response that says nothing about its request, and went through no `WriteGuardClient`, is not retried.
-- **Two retry layers multiply.** fespalier already retries a failing `data.dart` (Riverpod's retry, see
-  [Retries and reloads](data.md#retries-and-reloads)), and an HTTP retrier under it multiplies the attempts. Keep one:
-  either the data retry with no HTTP retrier, or an HTTP retrier for reads with `data_retry: none` (or a
-  `ProviderScope(retry:)` that returns null).
+- **Two retry layers multiply.** fespalier already retries a failing `data.dart` ([Retries and reloads](data.md#retries-and-reloads)), and an HTTP retrier under it multiplies the attempts. Keep one: the data retry with no HTTP retrier, or an HTTP retrier for reads with `data_retry: none` (or a `ProviderScope(retry:)` that returns null).

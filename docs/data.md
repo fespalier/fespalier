@@ -49,7 +49,7 @@ fespalier:
   keep_previous: true # true | false
 ```
 
-**`keep_previous: true` (the default).** `loading.dart` is only for the first load. Once the provider has a value or an error, a reload (`ref.invalidate`, `refresh`, the section's dependencies changing) keeps rendering it: the old page stays until the new value arrives, instead of blinking to `loading.dart` and back. `error.dart`'s `retry` still invalidates the provider, and the error stays up until the new run has an answer. This is `skipLoadingOnReload` and `skipLoadingOnRefresh` on Riverpod's `AsyncValue.when`, and it applies to a route's `data.dart` and a section's, including a provider you write yourself. With `false`, `loading.dart` shows whenever the provider is loading (a refresh included), except while a write whose [`optimistic()`](actions.md#optimistic-updates-optimistic) patched the data settles (since 0.8.1).
+**`keep_previous: true` (the default).** `loading.dart` is only for the first load. Once the provider has a value or an error, a reload (`ref.invalidate`, `refresh`, the section's dependencies changing) keeps rendering it: the old page stays until the new value arrives, instead of blinking to `loading.dart` and back, and `error.dart`'s `retry` keeps the error up until the new run answers. This is `skipLoadingOnReload` and `skipLoadingOnRefresh` of Riverpod's `AsyncValue.when`, for a route's `data.dart` and a section's, your own providers included. With `false`, `loading.dart` shows whenever the provider is loading, except while a write whose [`optimistic()`](actions.md#optimistic-updates-optimistic) patched the data settles (since 0.8.1).
 
 **`data_retry: inherit` (the default).** Riverpod 3 retries a failed provider on its own, with backoff, and the app's `ProviderScope(retry: ...)` or `ProviderContainer(retry: ...)` decides how. The providers fespalier generates for `data()` functions don't set their own policy, so the app's applies (Riverpod's own default, 10 retries with doubling delays and none for an `Error`, when the app sets none). To have a failure settle into `error.dart` after a few attempts:
 
@@ -87,7 +87,7 @@ Future<Product> data(Ref ref, {required int id}) =>
     ref.watch(apiProvider).product(id);
 ```
 
-`freshness` is a top-level variable of exactly that name, `const` or `final`, whose initializer is a `Freshness(...)` call (`const Freshness(...)` and `prefix.Freshness(...)` are fine). fsp does not read the duration: the generated file refers to `_i13.freshness`, and the Dart analyzer checks it. It applies to the **function form** that returns a `Future<T>`, a `FutureOr<T>` or a plain `T`. In a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider it is an error that says what to do instead.
+`freshness` is a top-level `const` or `final` variable of exactly that name, initialized with a `Freshness(...)` call (`const Freshness(...)` and `prefix.Freshness(...)` are fine). fsp does not read the duration: the generated file refers to `_i13.freshness`, and the Dart analyzer checks it. It applies to the **function form** returning a `Future<T>`, a `FutureOr<T>` or a plain `T`; in a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider it is an error that says what to do instead.
 
 **A folder's default.** The same constant in a `route.dart` is the default of every `data()` function at and below that folder (a [section's](#section-data) included). The nearest `route.dart` wins, and a `data.dart`'s own `freshness` wins over all of them. A root `lib/app/route.dart` is the app-wide default.
 
@@ -101,7 +101,7 @@ const freshness = Freshness(staleTime: Duration(seconds: 30));
 
 The cascade is a default, not a demand: a selector, a provider form or a `Stream` below is skipped without a word. A `route.dart` whose `freshness` applies to no `data.dart` is a warning.
 
-**What "stale" means.** A value is stale once it has been in memory for `staleTime` since it _arrived_ (the `Future` completed; for a synchronous `data()`, the microtask after it was built). A value that is still loading, or an error, is never stale: Riverpod's retry and `error.dart`'s retry handle those. Nothing polls: no timer starts, and stale data on screen stays as it is until something reads it. A stale value is loaded again **when something reads it**:
+**What "stale" means.** A value is stale once it has been in memory for `staleTime` since it _arrived_ (the `Future` completed; for a synchronous `data()`, the microtask after it was built). A loading value or an error is never stale: Riverpod's retry and `error.dart`'s retry handle those. Nothing polls, and stale data on screen stays as it is until something reads it. A stale value is loaded again **when something reads it**:
 
 1. **A new listener.** A page opening on it (`DataView`), a `SectionView` of a page that opens below a section, `XRoute.watch` in a widget that mounts, `prefetch` / `preload` / `AppRoutes.preload`, a [`RouteLink`](navigation.md#preloading-the-data-behind-a-link) preloading on hover, `XRoute.read`.
 2. **A listener coming back.** A page uncovered by a pop, a tab shown again: Flutter turns `TickerMode` back on, and Riverpod resumes the subscription.
@@ -114,16 +114,16 @@ Things to know:
 - **Every new reader counts.** With a small `staleTime`, a section's data loads again each time a page below it opens, because that page's `SectionView` is a new listener. `Duration.zero` loads on every open, and a prefetch is then only a head start for the first paint.
 - **`read` returns what is in memory**, stale or not, and starts the reload. Use `refresh` for a value that is surely fresh: it waits for the network.
 - **An invalidation is not a read.** `ref.invalidate`, `XRoute.refresh` and an [`action.dart`](actions.md#actiondart-typed-writes)'s `invalidates` load at once, whatever the `staleTime`.
-- **`keepFor` is another thing.** `prefetch(ref, keepFor: …)` is how long a handle keeps a value in memory with nothing on screen; `staleTime` is how long it counts as fresh. With a ten minute `keepFor` and a one minute `staleTime`, opening the page five minutes later shows the kept value at once and loads it again. A handle still alive across an app resume loads under `refetchOnResume` too (it is alive, so it listens); `staleTime` bounds that.
+- **`keepFor` is another thing.** `prefetch(ref, keepFor: …)` is how long a handle keeps a value in memory with nothing on screen; `staleTime` is how long it counts as fresh. With a ten minute `keepFor` and a one minute `staleTime`, opening the page five minutes later shows the kept value at once and loads it again. A handle still alive across an app resume loads under `refetchOnResume` too; `staleTime` bounds that.
 
-**Resume and reconnect.** `refetchOnResume: true` loads the value again when the app comes back to the foreground (`AppLifecycleListener.onResume`), and `refetchOnReconnect: true` when `reconnectSignal` fires. Both use the threshold `staleTime ?? Duration.zero`: without a `staleTime`, every signal loads again, so set one with `refetchOnResume` unless every focus should reload (an iOS notification shade or a browser window regaining focus is a resume too). Each signal is a Riverpod provider holding a count, a `RefetchSignal`, that the data provider listens to:
+**Resume and reconnect.** `refetchOnResume: true` loads the value again when the app returns to the foreground (`AppLifecycleListener.onResume`), `refetchOnReconnect: true` when `reconnectSignal` fires. Both use the threshold `staleTime ?? Duration.zero`: without a `staleTime` every signal loads again, so set one with `refetchOnResume` unless every focus should reload (an iOS notification shade or a regained browser focus is a resume too). Each signal is a Riverpod provider holding a count, a `RefetchSignal`, that the data provider listens to:
 
 - `appResumeSignal` fires on resume. It is created only while a provider with `refetchOnResume` listens to it, and its `AppLifecycleListener` goes with it.
 - `reconnectSignal` **never fires by itself**: Flutter has no API for "the network is back". Override it with a `RefetchSignal` of your own that listens to your connectivity source, or call `ref.read(reconnectSignal.notifier).fire()` where you know. `fespalier_connectivity` (since 0.9.0, [below](#reconnects-fespalier_connectivity)) is that signal from `connectivity_plus`: `reconnectSignal.overrideWith(ConnectivitySignal.new)` in `startup()`.
 
 **Your own provider.** `freshData(ref, const Freshness(...), value)` is what the generated provider wraps its value in. It returns `value` itself (a `Future` stays the `Future`, a value stays a value), so a selector's target or a provider-form `data.dart` can give itself the same rules: `Future<Product> build() => freshData(ref, const Freshness(…), _fetch());`.
 
-**A failed reload keeps the page.** A route whose `data.dart` has a `freshness` or a `dataCache` (or inherits one) gets `keepDataOnError: true` on its `DataView`: a reload that fails (a stale value loaded again, a start offline) leaves the page on its data, and `error.dart` only shows when there is nothing to show. The cost is that a failed `refresh()` is hidden behind the old page: `refresh()` completes with the error (show a snackbar), and `XRoute.watch(ref).hasError` is there for a banner.
+**A failed reload keeps the page.** A route whose `data.dart` has a `freshness` or a `dataCache` (or inherits one) gets `keepDataOnError: true` on its `DataView`: a reload that fails (a stale value loaded again, a start offline) leaves the page on its data, and `error.dart` only shows when there is nothing to show. The cost: a failed `refresh()` is hidden behind the old page. It completes with the error (show a snackbar), and `XRoute.watch(ref).hasError` is there for a banner.
 
 **Testing.** `testWidgets` runs in fake async and ages data by `clock.now()`, so `await tester.pump(const Duration(minutes: 6))` makes a value stale without waiting and without a timer.
 
@@ -131,9 +131,7 @@ Things to know:
 - A test that builds a `refetchOnResume` provider in a bare `ProviderContainer`, with no binding, throws when the signal is built: use `testWidgets`, or override `appResumeSignal.overrideWith(RefetchSignal.new)`.
 - A reload starts on a frame and its value shows on the next, so `pump()` a few times (or `pumpAndSettle` when nothing waits on a real delay).
 
-`examples/shop` carries `freshness` on `products/$id/data.dart`, `examples/features` the `route.dart` default on `teams/$teamId/`.
-
-**Diagnostics.** Errors that say what to write instead: a `freshness` that is not a `Freshness(...)` call, a second one, one in a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider, and a `dataCache` in a `route.dart` ([messages](../skills/fespalier-troubleshooting/references/diagnostics-data-and-hooks.md)). `freshness` and `dataCache` are names fsp reads in a `data.dart`, so an app with a public top-level variable of one of those names and another type gets the first error: rename it (a private `_freshness` is never read).
+**Diagnostics.** Errors that say what to write instead: a `freshness` that is not a `Freshness(...)` call, a second one, one in a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider, and a `dataCache` in a `route.dart` ([messages](../skills/fespalier-troubleshooting/references/diagnostics-data-and-hooks.md)). `freshness` and `dataCache` are names fsp reads in a `data.dart`: a public top-level variable of one of those names with another type gets the first error, so rename it (a private `_freshness` is never read).
 
 ### Reconnects: fespalier_connectivity
 
@@ -168,7 +166,7 @@ List<Override> startup() => [reconnectSignal.overrideWith(ConnectivitySignal.new
 const freshness = Freshness(staleTime: Duration(seconds: 30), refetchOnReconnect: true);
 ```
 
-**What fires and what does not.** `ConnectivitySignal` fires when the device goes **from no network to a network** (`[none]` to anything else). It does not fire on the first answer, and not on a Wi-Fi to mobile switch. Every data provider that listens loads again if its value is at least `staleTime` old (the old value stays on screen, and `keepDataOnError` keeps the page if the reload fails); within `staleTime` nothing loads. A reload already under way is not repeated, so a flapping network needs no debounce timer: it fires each time and loads once. The signal exists while a `data.dart` with `refetchOnReconnect` is alive, and so does its subscription to `connectivity_plus`: an app with no such data subscribes to nothing.
+**What fires and what does not.** `ConnectivitySignal` fires when the device goes **from no network to a network** (`[none]` to anything else), not on the first answer and not on a Wi-Fi to mobile switch. Every data provider that listens loads again if its value is at least `staleTime` old (the old value stays on screen, and `keepDataOnError` keeps the page if the reload fails); within `staleTime` nothing loads. A reload already under way is not repeated, so a flapping network needs no debounce: it fires each time and loads once. The signal, and its subscription to `connectivity_plus`, exist only while a `data.dart` with `refetchOnReconnect` is alive.
 
 **A banner.** `hasNetwork` is a `bool` provider: `false` only once the device has said "no network", and `true` before the first answer, so nothing flashes offline at start. It pairs with `XRoute.watch(ref).isFromCache` ("offline copy"):
 
@@ -178,7 +176,7 @@ if (!ref.watch(hasNetwork)) const Text('No network')
 
 `networkConnectivity` is the `List<ConnectivityResult>?` behind it (null until the first answer), for an app that shows the kind of network.
 
-**Connectivity versus reachability.** This package, like `navigator.onLine` on the web, answers "is a network interface up?". Whether the server answers, only a request can tell: a captive portal, a router with no uplink, a VPN that is down or the server being down all look connected. So `refetchOnReconnect` can fire on a captive portal (the reload fails and `keepDataOnError` keeps the page), `hasNetwork == false` is reliable ("no network at all") and `true` promises nothing: an offline banner should say "No network", and a failed load should show its own error. fespalier ships no reachability check (it would need a request to your own server, and any polling is a timer); a compiled recipe in [`skills/fespalier-data/references/reconnect-and-network.md`](../skills/fespalier-data/references/reconnect-and-network.md) asks your own API once per connectivity change and per resume, never on a timer, and turns that into a `RefetchSignal`.
+**Connectivity versus reachability.** This package, like `navigator.onLine` on the web, answers "is a network interface up?". Only a request tells whether the server answers: a captive portal, a router with no uplink, a VPN that is down or a dead server all look connected. So `refetchOnReconnect` can fire on a captive portal (the reload fails and `keepDataOnError` keeps the page); `hasNetwork == false` is reliable ("no network at all") and `true` promises nothing, so an offline banner should say "No network" and a failed load should show its own error. fespalier ships no reachability check (it needs a request to your own server, and polling is a timer); a recipe in [`skills/fespalier-data/references/reconnect-and-network.md`](../skills/fespalier-data/references/reconnect-and-network.md) asks your own API once per connectivity change and per resume, never on a timer, and turns that into a `RefetchSignal`.
 
 **Two platform repairs.** The web sends no first state (only `online` and `offline` events), so the first state is asked with `check()`; an event that arrives before that answer wins. iOS drops connectivity events while the app is in the background, so `networkConnectivity` asks `check()` again on each resume, through `appResumeSignal`. Neither starts a timer.
 
@@ -200,7 +198,7 @@ fake.online(); // a reconnect: the team loads again, once
 await tester.pumpAndSettle();
 ```
 
-A widget test that reaches the plugin without that override **fails**, with Flutter's report `while activating platform stream on channel dev.fluttercommunity.plus/connectivity_status` and `MissingPluginException(No implementation found for method listen on channel dev.fluttercommunity.plus/connectivity_status)` (a test that shows `hasNetwork`, or builds a `refetchOnReconnect` provider with the package's signal, and no `FakeConnectivity`). `examples/features` carries it: `teams/$teamId/route.dart` has `refetchOnReconnect: true`, and `test/offline_test.dart` flaps the network.
+A widget test that reaches the plugin without that override **fails**, with Flutter's report `while activating platform stream on channel dev.fluttercommunity.plus/connectivity_status` and `MissingPluginException(No implementation found for method listen on channel dev.fluttercommunity.plus/connectivity_status)` (a test that shows `hasNetwork`, or builds a `refetchOnReconnect` provider with the package's signal, and no `FakeConnectivity`).
 
 In debug (`debugPrint`, nothing in a release build) it prints `fespalier_connectivity: the connectivity stream reported an error: <error>` and `fespalier_connectivity: checking connectivity failed: <error>`, and both leave the state as it was ([causes](../skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md)).
 
@@ -222,7 +220,7 @@ Future<Product> data(Ref ref, {required int id}) =>
     ref.watch(apiProvider).product(id);
 ```
 
-`dataCache` is a top-level variable of exactly that name, `const` or `final`, whose initializer is `DataCache(...)`, `DataCache<T>(...)`, `DataCache.json(...)` or `DataCache<T>.json(...)`. `.json` saves `jsonEncode(toJson(value))` and reads back `fromJson(jsonDecode(saved))`; the plain constructor takes `encode` and `decode` between your value and a `String`. `maxAge` (default two days) is how long a saved value may be shown at a start, and `version` is a string you change when what `encode` writes changes shape: values saved under another version are dropped, not decoded. Like `freshness` it applies to the function form that loads once, and a `route.dart` can't have one (each data type has its own encode and decode).
+`dataCache` is a top-level `const` or `final` variable of exactly that name, initialized with `DataCache(...)`, `DataCache<T>(...)`, `DataCache.json(...)` or `DataCache<T>.json(...)`. `.json` saves `jsonEncode(toJson(value))` and reads back `fromJson(jsonDecode(saved))`; the plain constructor takes `encode` and `decode` between your value and a `String`. `maxAge` (default two days) is how long a saved value may be shown at a start; `version` is a string you change when what `encode` writes changes shape (values saved under another version are dropped, not decoded). Like `freshness` it applies to the function form that loads once, and a `route.dart` can't have one (each data type has its own encode and decode).
 
 **Where it is saved.** `dataCacheStorage` is a provider that is `null` by default, so **nothing is saved** until the app gives one in its `ProviderScope`:
 
@@ -248,7 +246,7 @@ A storage whose `read` is synchronous gives the saved value on the first frame. 
 
 In debug (`debugPrint`, nothing in a release build) it prints `fespalier: dataCache of <name> could not read a saved value, dropped it: <error>` and `fespalier: dataCache of <name> could not save: <error>`.
 
-The key a value is saved under is `fespalier:<folder>` plus the route's keys in path order as JSON, e.g. `fespalier:products/$id[42]`. The folder is the `data.dart`'s folder relative to the app folder, so it is stable across `fsp gen`. An enum key is saved by its `name`, a `DateTime` as ISO 8601, a list as a list, and anything else by its `toString()`, which is how a custom segment type is spelled in a URL: keep that stable (a web release build that minifies class names would change it).
+The key a value is saved under is `fespalier:<folder>` plus the route's keys in path order as JSON, e.g. `fespalier:products/$id[42]` (the folder is the `data.dart`'s, relative to the app folder, so it is stable across `fsp gen`). An enum key is saved by its `name`, a `DateTime` as ISO 8601, a list as a list, anything else by its `toString()`, which is how a custom segment type is spelled in a URL: keep that stable (a web release build that minifies class names would change it).
 
 Don't write an optimistic value with `state =` on this provider's notifier: Riverpod saves every `AsyncData` it sets, so the guess would be saved. Keep optimistic values in a layer above the data provider.
 
@@ -264,7 +262,7 @@ await pumpRouter(tester, AppRoutes.router(initialLocation: '/products/1'),
 expect(find.text('Coffee beans, 500 g'), findsOneWidget); // the saved product, not error.dart
 ```
 
-`MemoryDataStorage` is synchronous, so a test leaves no pending future, and `await tester.pump(const Duration(days: 3))` expires a value under the fake clock. `examples/shop` has the two tests.
+`MemoryDataStorage` is synchronous, so a test leaves no pending future, and `await tester.pump(const Duration(days: 3))` expires a value under the fake clock.
 
 ### A cache on disk: fespalier_storage
 
@@ -297,7 +295,7 @@ Future<List<Override>> startup() async => [
 ];
 ```
 
-`open()` is awaited there, so the first frame is the app: `startup()` costs one frame behind `splash.dart` (or the native splash), and no more. `read()` is then a synchronous map lookup and a header parse, so Riverpod's `persist` gives the saved value to the first `build`. A `startup()` that prefers no extra frame can pass the `Future` itself (`dataCacheStorage.overrideWithValue(PrefsDataStorage.open())`): one `loading.dart` frame, then the saved value. `open()` returns `null` (and prints a debug line) when the store cannot open, and `dataCacheStorage` takes `null` as "save nothing": a cache never stops an app from starting.
+`open()` is awaited there, so the first frame is the app: `startup()` costs one frame behind `splash.dart` (or the native splash), and `read()` is then a synchronous lookup, so Riverpod's `persist` gives the saved value to the first `build`. A `startup()` that prefers no extra frame can pass the `Future` itself (`dataCacheStorage.overrideWithValue(PrefsDataStorage.open())`): one `loading.dart` frame, then the saved value. `open()` returns `null` (and prints a debug line) when the store cannot open, and `dataCacheStorage` takes `null` as "save nothing": a cache never stops an app from starting.
 
 | What           | `PrefsDataStorage`                                                           | `HiveDataStorage`                                                                    |
 | -------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
@@ -308,7 +306,7 @@ Future<List<Override>> startup() async => [
 | Where on disk  | the platform's preferences, beside the app's own keys                        | `getApplicationCacheDirectory()` (OS-purgeable, not backed up), none on the web      |
 | Pick it when   | a few small values; on the web localStorage is about 5 MB per origin, shared | more or larger values; opening reads the whole box, so `maxSize` also bounds startup |
 
-**The budget.** `maxSize` is in `String.length` units (UTF-16 code units, what browsers count localStorage in), keys and headers included, and `maxEntries` is a count. Over either, the entries **written longest ago** go first, ties by key (deterministic, with no timer and no background sweep). A route's value is written each time it is fetched fresh, so what is read is rewritten; reads never write. A value too large for `maxSize` is not saved: it fails with `DataEntryTooLarge`, which fespalier prints after `could not save`, and the route works. Expired and unreadable entries are deleted once, when the storage is made. A web `localStorage` that is full is a `QuotaExceededError` on the write: the entry is dropped and fespalier prints "could not save"; keep `maxSize` well below, or use Hive.
+**The budget.** `maxSize` is in `String.length` units (UTF-16 code units, what browsers count localStorage in), keys and headers included; `maxEntries` is a count. Over either, the entries **written longest ago** go first, ties by key (no timer, no background sweep). A route's value is written each time it is fetched fresh; reads never write. A value too large for `maxSize` is not saved: it fails with `DataEntryTooLarge`, which fespalier prints after `could not save`, and the route works. Expired and unreadable entries are deleted once, when the storage is made. A full web `localStorage` is a `QuotaExceededError` on the write: the entry is dropped and fespalier prints "could not save"; keep `maxSize` well below, or use Hive.
 
 **Versioning, corrupt entries, sign-out.**
 
@@ -347,7 +345,7 @@ testWidgets('the saved team is on the first frame of the next start', (tester) a
 });
 ```
 
-Without `fakePrefsStore()`, `open()` finds no platform and returns `null` (a debug line says `Bad state: The SharedPreferencesAsyncPlatform instance must be set.`): the cache is silently off. `examples/features` carries it: `teams/$teamId/data.dart` has a `dataCache`, and `test/offline_test.dart` is this test.
+Without `fakePrefsStore()`, `open()` finds no platform and returns `null` (a debug line says `Bad state: The SharedPreferencesAsyncPlatform instance must be set.`): the cache is silently off.
 
 **Not built.** A storage-wide version key; a byte-exact size (units are `String.length`); multi-isolate safety; encryption (open your own Hive box with a cipher and pass it to `HiveDataStorage(box)`).
 
@@ -404,7 +402,7 @@ handle.close();
 - `null` when no route fits the location, or when a segment doesn't parse (`/products/abc` where the id is an `int`): the rule that shows `not_found.dart`;
 - empty for a route without data (a page, or a catch-all with nothing behind it): a match, with nothing to warm.
 
-The key is built by the same parser the route uses, so `dataAt(Uri.parse('/products/42')).single == ProductRoute.data(42)`, and for a `data.dart` that [selects a provider](#datadart-a-function-a-selector-or-a-provider) it is the selected provider itself (your own `productProvider('42')`). Query-keyed data is keyed by the query of the location (`/search?q=ap&page=2` is `SearchRoute.data((q: 'ap', page: 2, …))`, lists as the `QueryList` the page's key uses), a [catch-all](routing.md#catch-all-segments) by its decoded path. The mount point (`AppRoutes.mount(at: '/shop')`) is taken off first, a location outside it is `null`, and each route matches its path by its own case setting. A [typed catch-all](routing.md#typed-catch-alls) (`List<int>`) parses each part like the page does, so one that fails is no match. Nothing else runs: no `guard.dart`, no `redirect.dart`, no widget (a guard may send the user elsewhere when they arrive; prefetching what they asked for is your queue's call).
+The key is built by the parser the route uses, so `dataAt(Uri.parse('/products/42')).single == ProductRoute.data(42)`; for a `data.dart` that [selects a provider](#datadart-a-function-a-selector-or-a-provider) it is the selected provider itself (your own `productProvider('42')`). Query-keyed data is keyed by the location's query (`/search?q=ap&page=2` is `SearchRoute.data((q: 'ap', page: 2, …))`, lists as the `QueryList` the page's key uses), a [catch-all](routing.md#catch-all-segments) by its decoded path. The mount point (`AppRoutes.mount(at: '/shop')`) is taken off first and a location outside it is `null`; each route matches by its own case setting, and a [typed catch-all](routing.md#typed-catch-alls) part that does not parse is no match. Nothing else runs: no `guard.dart`, no `redirect.dart`, no widget (prefetching what the user asked for is your queue's call, even if a guard sends them elsewhere).
 
 `AppRoutes.preload(ref, uri)` (since 0.5.0) is `ref.prefetchAll(dataAt(uri) ?? const [])`: one handle for everything the page at `uri` reads, a closed one when nothing fits or there is nothing to warm. It never navigates and runs no guard. In an app with a [deferred route](navigation.md#deferred-routes-a-pages-code-on-demand) (since 0.7.0) it is `matchUrl(uri)?.route.preload(ref)` instead, which also starts the page's code.
 
@@ -419,7 +417,7 @@ m.data;      // the providers, as dataAt returns them
 m.uri;       // the location it was given
 ```
 
-Routes are tried most specific first (static parts, then `:param`s, then catch-alls), the order go_router uses. `match` lives on the manifest (`AppManifest.match`, forwarded by `AppRoutes`), so with [`output_manifest:`](routing.md#route-manifest-and-metadart) it is in the manifest library; `AppRoutes.dataAt` and `AppRoutes.matchUrl` (a `UrlMatch`: the route, params and data without the `RouteInfo`) stay in `app.g.dart`, which never imports a `meta.dart`. `RouteMatch` is fespalier's: `package:fespalier/fespalier.dart` hides go_router's own `RouteMatch` to make room for it, so import `package:go_router/go_router.dart` if you need that one.
+Routes are tried most specific first (static parts, then `:param`s, then catch-alls), the order go_router uses. `match` lives on the manifest (`AppManifest.match`, forwarded by `AppRoutes`), so with [`output_manifest:`](routing.md#route-manifest-and-metadart) it is in the manifest library; `AppRoutes.dataAt` and `AppRoutes.matchUrl` (a `UrlMatch`: the route, params and data without the `RouteInfo`) stay in `app.g.dart`, which never imports a `meta.dart`. `RouteMatch` is fespalier's: `package:fespalier/fespalier.dart` hides go_router's own, so import `package:go_router/go_router.dart` for that one.
 
 ## Section data
 
@@ -447,8 +445,8 @@ class MembersPage extends StatelessWidget {
 
 - **Loading and errors.** While the section loads, the nearest `loading.dart` (inherited as usual) replaces the layout _and_ the pages inside it, and a failure shows the nearest `error.dart` with its `retry`. Nothing below is built until the data is there.
 - **Sharing.** The layout watches the provider and the pages below read the same one, so `data()` runs once however many of them take it, and moving between the section's pages doesn't load it again. When the data reloads (`retry`, an invalidation), the section keeps showing what it has (`keep_previous`; with `keep_previous: false` it shows loading again).
-- **Which one.** A parameter called `data` gets the nearest data: the route's own `data.dart`, then the section's, then the next section up. By type, a parameter gets the data.dart that yields that type, and it is an error if two do (a page's own and a section's, or two sections'): name the parameter `data` for the nearest, or give one of them another type. A page can have its own `data.dart` and take a section's by type.
-- **Keys.** A section's `data()` takes segments (at or above its folder) and, like a page's, query parameters: `Future<Report> data(Ref ref, {String? period})` keys the section by `?period=` of the location. The layout reads it from the URL like any layout query parameter. Every route below the section is then keyed by it too: `period` becomes a query parameter of each of their typed routes (`MonthlyReportRoute(period: '2026-01')` writes `/reports/monthly?period=2026-01`), so the pages below read the same provider the layout loaded. A page that declares the same name with another type is an error, as anywhere.
+  **Which one.** A parameter called `data` gets the nearest data: the route's own `data.dart`, then the section's, then the next section up. By type, a parameter gets the `data.dart` that yields that type; it is an error if two do (a page's own and a section's, or two sections'), so name the parameter `data` for the nearest or give one of them another type. A page can have its own `data.dart` and take a section's by type.
+  **Keys.** A section's `data()` takes segments (at or above its folder) and, like a page's, query parameters: `Future<Report> data(Ref ref, {String? period})` keys the section by `?period=` of the location, which the layout reads from the URL like any layout query parameter. Every route below the section is keyed by it too: `period` becomes a query parameter of each of their typed routes (`MonthlyReportRoute(period: '2026-01')` writes `/reports/monthly?period=2026-01`), so the pages read the same provider the layout loaded. A page that declares the same name with another type is an error.
 - **Typed handle.** A section has no route of its own, so it gets a class named after its folder, with `Section` on the end (`teams/$teamId` is `TeamsTeamIdSection`, `(shop)` is `ShopSection`, the app folder `RootSection`; two folders that name the same class are an error). Its members are static and take the section's keys as named arguments, like a route's:
 
   ```dart

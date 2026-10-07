@@ -31,7 +31,7 @@ void onLeave(Ref ref, {required int id}) => ref.read(log).info('left product $id
 
 - `onEnter`: the first time a page instance is the page the user sees.
 - `onFocus`: an entered page is on top again (a page above it was popped, or its tab was shown).
-`onLeave`: an entered page is on no navigator any more. A page in a tab that is not current is _parked_, not gone: it leaves when it is gone from its branch or the whole tab layout leaves.
+  `onLeave`: an entered page is on no navigator any more. A page in a tab that is not current is _parked_, not gone: it leaves when it is gone from its branch or the whole tab layout leaves.
 
 `onEnter` and `onLeave` come in pairs, and `onFocus` falls between them. On one frame the `onLeave`s run first, newest first, then the `onEnter` or `onFocus` of the page on top.
 
@@ -148,7 +148,7 @@ Future<void> guarded(Future<void> Function() body) =>
 
 - `FespalierOtel(isReady:)` emits nothing until the SDK is up; an app that starts the SDK itself leaves it out.
 - `recordLocations: true` adds the committed location and a guard's redirect target to the spans (segment and query values are app data, so it is off).
-`FespalierOtel.endpoint()` is the `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` value when there is one. Without it a debug build exports to `http://10.0.2.2:4318` on Android (the emulator's host) and `http://localhost:4318` elsewhere; a release build gets `''`, which `otel_zone` takes as "telemetry off", so a store build never sends to a developer's computer.
+  `FespalierOtel.endpoint()` is the `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` value when there is one. Without it a debug build exports to `http://10.0.2.2:4318` on Android (the emulator's host) and `http://localhost:4318` elsewhere; a release build gets `''`, which `otel_zone` takes as "telemetry off", so a store build never sends to a developer's computer.
 
 **Known limitation on the web (since 0.8.1).** `OtelZone.runGuarded` never runs its body there, so the app stays blank: it builds a `ReceivePort`, which `dart:isolate` does not support on the web (`start()` works). Until `otel_zone` guards that call, run the body as it is on the web, as `guarded` above does; the error hooks `runGuarded` installs are then missing there.
 
@@ -185,9 +185,10 @@ void within(Object? token, Object? Function() body) => body();
 
 Call `body` once, synchronously, before you return. It returns what the operation returned (null when it threw, which `end` says), so you may observe it, e.g. hand a `Future` to a vendor API that ends a span when it settles. It never throws; fespalier rethrows what the operation threw after your method returns.
 fespalier returns the operation's **own** result, the very object, whatever `within` does: a sync `data()` is never made a `Future`, no microtask is scheduled, and a sink cannot replace the `Future` Riverpod awaits. `body` runs exactly once, even for a sink that never calls it, calls it twice or throws.
+
 - Run `body` in a zone you make with zone values only (`runZoned(body, zoneValues: {...})`). **Never give that zone an error handler** (`runZonedGuarded`, `onError:`, a `ZoneSpecification` with `handleUncaughtError`): a `Future` that fails in another error zone never reaches Riverpod, and the page would stay on its loading view. fespalier refuses such a zone at run time: it runs `body` in the caller's zone instead and prints, once, `fespalier telemetry: <Sink>.within changed the error zone, so
 data() and actions run outside it (use runZoned with zoneValues, not runZonedGuarded) (not shown again)`.
-Behind a `combine`, each sink's `within` runs the next one's, so every sink's scope wraps `data()`. Guards and deferred loads do not get `within`: a guard must stay cheap and a deferred load runs no app code.
+  Behind a `combine`, each sink's `within` runs the next one's, so every sink's scope wraps `data()`. Guards and deferred loads do not get `within`: a guard must stay cheap and a deferred load runs no app code.
 
 `FespalierTelemetry.run(token, body)` is the same for an adapter package that starts operations of its own with `FespalierTelemetry.begin`: `body` runs once, synchronously, and what it returns or throws comes back (with no sink or a null token, it is `body()`).
 
@@ -212,6 +213,7 @@ final router = navigateFrom(
 
 The closure runs once, synchronously, and what it returns is returned. The **first** navigation it starts takes the mark, which is dropped when the closure returns, so it cannot reach a later one; a closure that starts no navigation leaves nothing behind.
 fespalier never sets it itself: a platform deep link and the browser's back button look like any other navigation. The bridge that knows (a notification handler) calls `navigateFrom`.
+
 - A source that is not one of the four values is an `AssertionError` in debug: ``navigateFrom: `banner`
 is not a NavigationSource value (notification, shortcut, widget or link)``.
 - `RecordingTelemetry` writes it as `source=notification` on the start line of the navigation, and only when it is set.
@@ -459,8 +461,6 @@ testWidgets('a refused refund is an event on its route and its file', (tester) a
 - `breadcrumbs`, `tags` and `transactionName` read the scope.
 - `RecordingSentry(configure: (options) => ...)` runs after the test defaults (a made-up DSN, `tracesSampleRate` 1.0): run `FespalierSentry.configure` in it to test the defaults.
 - A test of `tracing: true` navigates after the first screen, because on Android and iOS Sentry's app start owns that one (pass `platform: TargetPlatform.linux` to `FespalierSentry`, a `@visibleForTesting` parameter, to avoid it).
-
-`examples/telemetry/test/sentry_test.dart` does this next to the OpenTelemetry SDK's in-memory exporter.
 
 ## Crashlytics
 

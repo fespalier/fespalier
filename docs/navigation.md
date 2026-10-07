@@ -61,15 +61,13 @@ SearchRoute(q: 'ap').copyWith(page: 2).location;                   // '/search?q
 - Everything here is synchronous and uses no timer or microtask.
 - **The page's own state.** A `copyWith` that only changes query parameters keeps the page and its widget state under `never` (the default) and `onSegments`, and starts the page again under `onLocation`. To keep that state across `page: 2` and still start fresh for another product, say `Remount.onSegments`: see [Remounting a page](#remounting-a-page-remount).
 
-`examples/shop` keeps the list's sort and page this way (`products/page.dart`); `examples/features` has the enum, list, catch-all and localized cases and `examples/tabs` the tabs.
-
 ## Remounting a page: `remount`
 
 _Since 0.6.0._ go_router keys a page by its path template, so `/products/1` to `/products/2` is the same page: its widget is built again with the new `id`, but its `State` (a scroll position, a text field, a hook's `useState`) lives on. Some apps want that, others want a fresh page, so it is a setting. `Remount` is an enum fespalier exports, with three values:
 
 | Value                 | The page starts again (a fresh state) when             | It keeps its state when            |
 | --------------------- | ------------------------------------------------------ | ---------------------------------- |
-| `never` (the default) | never: what fespalier generated before 0.6.0           | anything changes in the URL        |
+| `never` (the default) | never                                                  | anything changes in the URL        |
 | `onSegments`          | the value of a segment changes (`/products/1` to `/2`) | only the query changes (`?page=2`) |
 | `onLocation`          | anything changes in the location, the query included   | the location is the same           |
 
@@ -109,8 +107,6 @@ A layout is not remounted, whatever its folder says: its page is keyed by its fo
 - Use `Transitions.none` for a page that should start again without animating.
 
 **Not what it is for.** It restarts the page's widgets, not its data: a `data.dart` provider is keyed by the segments and the query already, and reloads (see [Retries and reloads](data.md#retries-and-reloads)) whether the page remounts or not. And it does not change which route matches or what `XRoute.of(context)` reads.
-
-`examples/features` has all three, under `remount/`.
 
 ## Typed `extra`
 
@@ -192,8 +188,6 @@ It never breaks navigation: an object whose type isn't registered is saved as `n
 - `AppRoutes.mount()` doesn't take it: a router you build yourself passes `extraCodec: extraCodec` (imported from that file) to `GoRouter`. A router restores only what it is given a `restorationScopeId` for (see [State restoration](layouts.md#state-restoration)).
 - `extra_codec.dart` in a subfolder is a warning, and a file without an `extraCodec` is an error.
 
-`examples/tabs` does this for a `ProfileDraft` passed to its edit page; `examples/features` has a layout and a guard that read a `Note?` extra.
-
 ## The root navigator (`navigator.dart`)
 
 A route's URL and the navigator it renders on are two decisions. A tab layout puts every route in its folder on a tab's navigator, under the navigation bar. `navigator.dart` puts a folder on the **root** navigator instead, above every layout and tab bar, without moving its URL:
@@ -203,7 +197,7 @@ A route's URL and the navigator it renders on are two decisions. A tab layout pu
 const navigator = RouteNavigator.root;
 ```
 
-`/profile/edit` is still under `/profile` (a deep link builds the Profile tab beneath it, and back returns to it, with its state), and the page covers the whole screen. The declaration applies to its folder's routes and to **every folder below it**, and the nearest one wins, like `transition.dart`; a page-less `(group)` folder can hold it too, for the routes inside. `fsp gen` emits `parentNavigatorKey: rootNavigatorKey` on the route and on all its descendants (go_router puts a route on its enclosing shell's navigator unless told otherwise, so a child pushed from the page would land _under_ it), and the route table marks them `(root)`.
+`/profile/edit` is still under `/profile` (a deep link builds the Profile tab beneath it, and back returns to it, with its state), and the page covers the whole screen. The declaration applies to its folder's routes and to **every folder below it**, and the nearest one wins, like `transition.dart`; a page-less `(group)` folder can hold it too, for the routes inside. `fsp gen` emits `parentNavigatorKey: rootNavigatorKey` on the route and on all its descendants (go*router puts a route on its enclosing shell's navigator unless told otherwise, so a child pushed from the page would land \_under* it), and the route table marks them `(root)`.
 
 The generated file owns the key:
 
@@ -217,8 +211,6 @@ Rules:
 - **A layout is a navigator of its own.** A `layout.dart` below a root folder becomes a `ShellRoute(parentNavigatorKey: rootNavigatorKey, …)` (or the `StatefulShellRoute`); the routes inside it sit on its own navigator, since go_router doesn't allow a key other than the shell's there. Below a layout nothing is inherited, and `RouteNavigator.shell` is how a folder says so explicitly. Below a root route with **no** layout in between, `.shell` is an error: go_router only lets a descendant use the root navigator or a navigator above it.
 - **A root route can't be a direct child of a shell.** go_router lifts a route out of its shell only from below another route, so a root route that is the first route of a tab, or sits beside others directly in a layout, is an error (put it below a `page.dart` that stays in the layout, or move its folder out of the layout's folder).
 - The typed route is unchanged: `EditProfileRoute().push(context)` and `.go(context)` as before.
-
-`examples/tabs` does this for `/profile/edit`.
 
 ## `present.dart`: a page of your own
 
@@ -235,7 +227,7 @@ It is bound like `transition.dart` (`key`, `child`, `state`), and what it return
 - it puts the route on the **root navigator**, over a tab bar and any `layout.dart`, and its descendants too (the [`navigator.dart`](#the-root-navigator-navigatordart) rules, so a child of a sheet renders above it, never under it, and go_router never builds the shell twice). A `navigator.dart` in the same folder overrides that (`RouteNavigator.shell` keeps a sheet in a tab);
 - it needs a `page.dart` (a warning and no effect otherwise), and, to have a parent underneath on a deep link, the sheet's folder should sit below the parent page's folder.
 
-The route table marks it `(present, root)`, and the manifest's `presentation` is `RoutePresentation.custom` (fespalier can't know it is a sheet: say so in a `meta.dart` if you want to). `examples/features` has `/photos/share`, with an app-owned `SheetPage` in `lib/`.
+The route table marks it `(present, root)`, and the manifest's `presentation` is `RoutePresentation.custom` (fespalier can't know it is a sheet: say so in a `meta.dart` if you want to).
 
 ## Links: `RouteLink`
 

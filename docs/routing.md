@@ -38,11 +38,9 @@ const ShopRoute(category: Category.hats, sort: Sort.price).go(context);   // →
 - **Read by name.** A value is the one whose `name` the text spells (`Category.values.byName`). A segment or catch-all part that names no value is a bad segment ([Segment types](#segment-types)). A query parameter that names none is `null`, or left out of a list.
 - **Case follows the route.** Names match exactly by default. Where the route's paths match in any case ([`case_sensitive: false`, or a `route.dart`](#case-and-trailing-slashes)), `/shop/SHOES` is `Category.shoes` too. A name that matches exactly always wins, so an enum with `a` and `A` still tells them apart.
 - **Written by name.** `.location` writes `.name` for a segment, each part of a catch-all and a query parameter. The typed route's field has the enum's type.
-- **Finding the enum.** `fsp gen` reads the declaration from the file that names the type (`page.dart`, `data.dart`, `guard.dart`, ...) or from a file it imports, through `export`s too. It follows relative imports and `package:` imports of your own package (files under `lib/`), not `dart:` or other packages; an import prefix (`m.Category`) is followed through that import only. A type it finds no enum for (a class, one from another package, one not imported) and a private enum (`_Mode`) are errors at the parameter, which suggests taking a `String` and parsing it in the page.
-- **Imports in `app.g.dart`.** The type is named the way a [typed `extra`](navigation.md#typed-extra) is: from the declaring file's own import when the enum is in the view file, otherwise through `import '…' show Category;` (or `as _es2_m` for a prefixed one).
+  **Finding the enum.** `fsp gen` reads the declaration from the file that names the type or a file it imports (through `export`s too): relative imports and `package:` imports of your own package, not `dart:` or other packages; an import prefix (`m.Category`) is followed through that import only. A type with no enum found (a class, one from another package, one not imported) and a private enum (`_Mode`) are errors at the parameter, which suggests taking a `String` and parsing it in the page.
 - **The type must agree across files.** `Category` in `page.dart` and `Size` in `data.dart` is the error a mismatched `int` is (`` `$category` is Size in data.dart:1 but Category here ``). `Category` and `m.Category` are the same type when they name the same enum; two enums that share a name are not.
 - **`data.dart` can be keyed by an enum.** `{required Category category}` keys the provider by the enum, and `ShopRoute.watch(ref, category: Category.hats)` takes it. A `List<Category>` catch-all is keyed by its path and `data()` gets the list back; a `List<Category>` query parameter is keyed by a `QueryList`. `AppRoutes.match(uri).params` and `AppRoutes.dataAt` have the enum values.
-- **The manifest and `fsp routes --json`** show the type by name (`Category`, `List<Category>`, `Sort?`), without the prefix or alias.
 
 **Limits.**
 
@@ -51,8 +49,6 @@ const ShopRoute(category: Category.hats, sort: Sort.price).go(context);   // →
 - An _optional_ nullable parameter of a type `fsp` finds no enum for keeps its default (it may be plain widget configuration, `Color? color`); the error comes when a `data.dart`, `guard.dart` or `redirect.dart` asks for it.
 - `fsp watch` also watches the rest of `lib/`, so an enum added or edited there regenerates (outside `lib/`, run `fsp gen`).
 - `fsp new` below an enum segment writes its type name into the new files; you add the import.
-
-`examples/features` has `shop/$category` and `browse/$$categories` (a `List<Category>` catch-all through an import prefix).
 
 ## Catch-all segments
 
@@ -76,7 +72,7 @@ const DocsRoute(rest: ['guide', 'a b']).go(context);   // → /docs/guide/a%20b,
 const FilesRoute().location;                            // '/files'
 ```
 
-A catch-all becomes a go_router route with a `:rest(.+)` pattern, so deep links, redirects and `go` use go_router's normal matching. `$$$rest` is two routes with one builder: the folder's path (`/files`) and the same with `:path(.+)`. Parts are read from the decoded string taken apart _by the requested location_, so an encoded slash survives (`/docs/a%2Fb/c` is `['a/b', 'c']`).
+A catch-all becomes a go*router route with a `:rest(.+)` pattern, so deep links, redirects and `go` use go_router's normal matching (`$$$rest` is two routes with one builder: `/files` and `:path(.+)`). Parts are read from the decoded string taken apart \_by the requested location*, so an encoded slash survives (`/docs/a%2Fb/c` is `['a/b', 'c']`).
 
 - Siblings are tried in this order whatever the folder order: static, then dynamic (`docs/$id`), then the catch-all. A page that another route always catches first is reported as unreachable, including by a catch-all (`(wiki)/docs/$$rest` behind `$a/$$rest`).
 - `guard.dart`, `redirect.dart`, `layout.dart`, `loading.dart` and `error.dart` can take the parts like any segment (`{required List<String> rest}`).
@@ -107,8 +103,6 @@ const CompareRoute(ids: [3, 7, 12]).go(context);   // → /compare/3/7/12
 - **`.location` joins the encoded parts**, each on its own (`restPath`), whatever their type. `$$$rest` is an empty list when the path has no part.
 - **The type must agree across files**: a `page.dart` with `List<int> ids` and a `data.dart` with `List<String> ids` is an error with a code frame at the second, naming the first (`` `$ids` is List<String> in data.dart:1 but List<int> here ``). Anything else (`List<Object>`, `List<int?>`, `Set<int>`) is an error that lists what a catch-all can be.
 - **`data.dart`** takes the typed list too: the provider is keyed by the encoded path, and `data()` gets the list back as a `List<int>`.
-
-`examples/features` has one at `compare/$$ids`.
 
 ## Query parameters
 
@@ -163,7 +157,7 @@ const caseSensitive = true;
 
 It works both ways: `false` in one folder of an otherwise exact app, or `true` in one folder of a `case_sensitive: false` one (`examples/features` does the second).
 
-go_router has one flag per route, and a folder with no page above one that has (`docs/` above `docs/guide/page.dart`) is part of that route: the flag is the one in effect at the page's folder, for the whole path. The nearest-`not_found.dart` lookup compares each folder by that folder's own setting, and the mount point (`AppRoutes.mount(at: '/Shop')`) by the root's.
+go_router has one case flag per route, so a folder with no page above one that has (`docs/` above `docs/guide/page.dart`) takes the flag in effect at the page's folder, for the whole path. The nearest-`not_found.dart` lookup compares each folder by its own setting, and the mount point (`AppRoutes.mount(at: '/Shop')`) by the root's.
 
 **The requested case is kept.** go_router matches a case-insensitive route in any case and leaves the location as it was asked for.
 
@@ -188,7 +182,7 @@ const paths = {'fr': 'produits', 'de': 'produkte'};
 The folder's name stays the canonical spelling: it is what `.location`, the route table and `AppManifest.byPath` say, and what a locale with no entry gets. `paths` is read from the source, so it must be a map literal of string literals.
 
 - **Only its own segment.** `paths` spells the one static folder it sits in. Folders below have their own `route.dart` (or none), and each level is spelled on its own, so `/aide/routing/exemples` (`help/` → `aide`, `$topic/examples/` → `exemples`) is a nested child under the localized parent. It is an error in the `route.dart` of a `$dynamic`, a `$$catch-all` or a `(group)` folder or of the app folder itself (none has a word to spell). A `route.dart` may hold `paths` alone.
-- **What a spelling can be.** One URL segment: letters and digits, `- _ . ~`, and letters beyond ASCII (`'über'`, `'продукты'`, `'製品'`; see [below](#non-ascii-spellings)). A key is a locale tag (`fr`, `pt-BR`), each tag once (`fr` and `FR` are the same). A value that is empty, `.` or `..`, or has a `/`, `?`, `#`, `%`, whitespace, a control character, or any of `: | ( ) [ ] { } ' " $ \ * =` is an error at the value (write the letter, not its `%` encoding). Two locales may share a spelling, and a spelling may equal the folder's own name. An entry with an error is left out, and the rest of the map still takes part in the collision check below.
+- **What a spelling can be.** One URL segment: letters and digits, `- _ . ~`, and letters beyond ASCII (`'über'`, `'продукты'`; see [below](#non-ascii-spellings)). A key is a locale tag (`fr`, `pt-BR`), each once (`fr` and `FR` are the same). A value that is empty, `.` or `..`, or has a `/`, `?`, `#`, `%` (write the letter, not its encoding), whitespace, a control character, or any of `: | ( ) [ ] { } ' " $ \ * =` is an error at the value. Two locales may share a spelling, and a spelling may equal the folder's own name. An entry with an error is left out, and the rest of the map still takes part in the collision check.
 - **Collisions are errors, with a code frame on each side.** A spelling that makes a URL another route serves is reported at the entry and at the route it collides with (or at both entries, when both are spellings). Two [`not_found.dart`](#not-found-views) files that would cover one URL through a spelling collide the same way:
 
   ```text
@@ -228,11 +222,11 @@ ProductRoute(id: 2).go(context, locale: 'de');  // → /produkte/2; also push<T>
     de  /produkte/:id
   ```
 
-**How it is routed.** A localized folder is _one_ `GoRoute` whose segment is a path parameter with its own pattern (like the catch-all's `:rest(.+)`): the route for `products/$id` is `path: ':_l0(products|produits|produkte)/:id'`, its first alternative the folder's name. go_router matches it with one regular expression (identical in 17.5 and 18.0), so a deep link, a redirect and `go` take any spelling. Everything below the folder (nested routes, layout, guards, `not_found.dart`) is the same route as without `paths`. Because it is one route, `state.pageKey` is the same for every spelling (navigating from `/products/2` to `/produits/2` updates the page instead of building another), and the restoration ids are unchanged. The alternatives are in [Design notes](faq.md#why-a-localized-path-is-one-route-with-an-alternation).
+**How it is routed.** A localized folder is _one_ `GoRoute` whose segment is a path parameter with its own pattern (like the catch-all's `:rest(.+)`): `products/$id` is `path: ':_l0(products|produits|produkte)/:id'`, so a deep link, a redirect and `go` take any spelling, and everything below the folder (nested routes, layout, guards, `not_found.dart`) is the same route as without `paths`. `state.pageKey` is the same for every spelling (navigating from `/products/2` to `/produits/2` updates the page instead of building another), and restoration ids are unchanged. [Why not the alternatives](faq.md#why-a-localized-path-is-one-route-with-an-alternation).
 
 Things to know:
 
-- The parameter is named `_l<n>` after the segment's place in the URL (`_l0`, `_l1`). It shows up in `GoRouterState.pathParameters` and `fullPath`, which fespalier's own readers ignore; don't read it. `state.matchedLocation` is spelled as requested (`/produits/2`).
+- The parameter is named `_l<n>` after the segment's place in the URL (`_l0`, `_l1`) and shows up in `GoRouterState.pathParameters` and `fullPath`; don't read it. `state.matchedLocation` is spelled as requested (`/produits/2`).
 - Spellings also match when mixed (`/help/routing/exemples`, `/aide/routing/examples`): each level is its own alternation. A typed route never writes one; to refuse or redirect mixed URLs, a `guard.dart` can read the `uri`.
 - **A tab's first route.** go_router opens a tab on its first route and asserts that it has no path parameter, which a localized segment is. `fsp gen` writes the tab's `initialLocation` for you (the canonical one, `/search`), unless you gave one in `tabOptions` (which can be a spelling: `'/recherche'`). The one place that can't be written down is a localized first tab route below a `:segment` (the location would need a value): that is an error that says so.
 - A localized static folder still sorts before dynamic siblings, so `/produits` isn't caught by a `/:slug`.
@@ -245,8 +239,6 @@ Things to know:
 - **The runtime helpers compare decoded segments,** so `AppRoutes.match`, `dataAt` and `nearestNotFound` (and the manifest, `fsp routes` and diagnostics) have the word as written: `'shop|über|продукты'`.
 - **`locationFor` writes it encoded,** as `Uri` would: `ProductsRoute().locationFor('de')` is `/%C3%BCber`, the same URL as `Uri.parse('/über')`. `.location` (canonical) is always ASCII.
 - **Case and normalization.** With [`caseSensitive: false`](#case-and-trailing-slashes), go_router's match is on the encoded text: it folds `A-Z` and the hex digits, but `/ÜBER` is not `/über` (different bytes). `AppRoutes.match` lowercases Unicode, so it may say a route fits where go_router's own matching would not; list the capital spelling in `paths` if you need it. A letter written two ways (`ü` as one character, or `u` plus a combining diaeresis) is two spellings to go_router: write the precomposed form browsers send.
-
-`examples/features` has `help/` (`aide`, `hilfe`) with a dynamic child, a nested localized child and a `not_found.dart`; `examples/tabs` localizes the Search tab.
 
 ## `(group)` folders
 
@@ -317,7 +309,7 @@ so the stack is `/orders/1`, `/orders/1/refund/confirm`, and the `refund` page i
 
 **`caseSensitive`.** One go_router path is one flag, so the whole compound path matches by the route's own setting: the nearest `route.dart` at or above it, its own included.
 
-**Order.** go_router takes the first route that matches the whole URL, depth first, and goes on to the next sibling when a route's children don't match the rest, so `refund` and `refund/confirm` can come in either order. Static routes come before `:param` ones and catch-alls as always. fespalier puts a static `refund/confirm` before `refund` when something below `refund` (a `$step`, a `$$rest`) would match `confirm` first, as it would nest; otherwise it follows the page, so a tab still opens on it. A route that something earlier still catches is the usual [unreachable error](#group-folders).
+**Order.** go_router takes the first route that matches the whole URL, depth first, so `refund` and `refund/confirm` can come in either order. Static routes come before `:param` ones and catch-alls as always; fespalier puts a static `refund/confirm` before `refund` when something below `refund` (a `$step`, a `$$rest`) would match `confirm` first, and otherwise follows the page, so a tab still opens on it. A route that something earlier still catches is the usual [unreachable error](#group-folders).
 
 **Errors, each with a code frame on the declaration.**
 
@@ -325,8 +317,6 @@ so the stack is `/orders/1`, `/orders/1/refund/confirm`, and the `refund` page i
 - A `layout.dart` in the page's folder or in a page-less folder between: the route would leave its shell, so move the layout above the page, or drop `nest`.
 - A value that isn't a `true` or `false` literal, or two of them.
 - A route on the root navigator (`navigator.dart`, `present.dart`) that would become a direct child of a layout: the existing [root navigator](navigation.md#the-root-navigator-navigatordart) error.
-
-`examples/features` has `orders/$id/refund/confirm` (and `refund/receipt`, which nests), with a guard on `refund/`.
 
 ## Not-found views
 
@@ -390,7 +380,7 @@ const meta = PageMeta(code: 'B04', slug: 'product-detail', title: 'Product');
 - **It is per route, not inherited.** A route gets its own folder's `meta.dart` or none, so `photos/sort/` doesn't see `photos/meta.dart`. To share something (a role, say), keep it in the group: `info.groups` already lists it.
 - **It must be `const`.** The manifest is a `const` list. A `meta` that is `final`, `var` or a getter is an error at its declaration, and so is a `meta.dart` that declares no `meta`. A `meta.dart` in a folder with no `page.dart` or `redirect.dart` is a warning: it describes no route.
 - **It can be required.** With `fespalier: { meta: required }` in `pubspec.yaml`, a route without a `meta.dart` is an error that names its folder: `` `products/$id/` has no meta.dart ``. fespalier never numbers, derives or defaults anything in it.
-- **Its values can be unique.** `meta_unique: [code, slug]` in the same section makes a duplicate an error. It reads the _literal_ named arguments of `meta`'s constructor call (`const meta = PageMeta(code: 'B04', slug: 'product-detail')`; a string, number or bool) in every route's `meta.dart` and reports a value that two routes share, naming both files (`` `code: 'B04'` is also in products/meta.dart ``). An argument that is an expression, or that a route leaves out, is skipped, and a listed name no `meta.dart` gives a literal is a warning, in case it is a typo. Anything more (a pattern for the code, unique across tabs only) is a few lines in a test over `AppRoutes.all` and `metaAs`.
+- **Its values can be unique.** `meta_unique: [code, slug]` in the same section makes a duplicate an error. It reads the _literal_ named arguments of `meta`'s constructor call (`const meta = PageMeta(code: 'B04', slug: 'product-detail')`; a string, number or bool) in every route's `meta.dart` and reports a value two routes share, naming both files (`` `code: 'B04'` is also in products/meta.dart ``). An argument that is an expression, or that a route leaves out, is skipped, and a listed name no `meta.dart` gives a literal is a warning (a typo, maybe). Anything more is a few lines in a test over `AppRoutes.all` and `metaAs`.
 - **Read it typed** with `info.metaAs<PageMeta>()` (null when the route has none, or it is another type), or check `info.meta is PageMeta`. The list holds `RouteInfo<Object?>`.
 
 **A library of its own.** `meta.dart` files pull whatever they import into `app.g.dart`, and so into your app. To keep review-only metadata out of production code, write the manifest to a second file:

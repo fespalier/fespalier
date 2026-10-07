@@ -17,7 +17,7 @@ Nobody bumps a version by hand, edits `.release-please-manifest.json`, or runs a
    - To force a version, put a `Release-As: X.Y.Z` footer in a commit.
 2. **The release PR.** Every push to `main` updates one standing pull request from the branch
    `release-please--branches--main`. It bumps the version in `cli/Cargo.toml`,
-   `packages/fespalier/pubspec.yaml`, the `ref:` that `fsp init` prints, both READMEs' install snippets
+   `packages/fespalier/pubspec.yaml`, the `ref:` that `fsp init` prints, the READMEs' and docs pages' install snippets
    and `.release-please-manifest.json`, and it writes the root `CHANGELOG.md` above the hand-written
    history. The `release-please` workflow refreshes `cli/Cargo.lock` on the branch, because the build is
    `--locked`.

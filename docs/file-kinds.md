@@ -46,14 +46,7 @@ lib/app/
   _components/           private: never routes
 ```
 
-Each view file exports one widget class, of any kind (`StatelessWidget`, `ConsumerWidget`,
-`HookConsumerWidget` and so on), or a [top-level function](#function-views) that returns a widget.
-Function files export one top-level function.
-
-Other public classes may sit in the file as long as exactly one of them extends a `…Widget` class (a
-`class Helper {}` beside a `StatelessWidget` is fine). When `fsp` can't tell which is the view it says
-"expected one public widget class" and lists them. Make helpers private (`_Name`) rather than lean on
-that.
+Each view file exports one widget class, of any kind (`StatelessWidget`, `ConsumerWidget`, `HookConsumerWidget` and so on), or a [top-level function](#function-views) that returns a widget; function files export one top-level function. Other public classes may sit in the file as long as exactly one of them extends a `…Widget` class (a `class Helper {}` beside a `StatelessWidget` is fine). When `fsp` can't tell which is the view it says "expected one public widget class" and lists them: make helpers private (`_Name`) rather than lean on that.
 
 | File               | Exports                                                                                                                                                                                                                                                                                                                                                                                               | Its constructor / signature can ask for                                                                                                                                           |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -78,22 +71,13 @@ that.
 | `route.dart`       | constants, in any folder: `caseSensitive`, `paths`, `nest`, `linkable`, `remount`, `deferred`, `freshness` (see below). Read from the source, never imported                                                                                                                                                                                                                                          | nothing: it is data                                                                                                                                                               |
 | `nav.dart`         | in any folder (since 0.8.1): `const nav = Nav(label: 'Products', order: 1);` — how the folder shows in the generated [menus and breadcrumbs](layouts.md#menus-and-breadcrumbs-navdart) (`AppMenu`) — and optionally `String label(BuildContext context, {…})`, the label shown, localized. Read from the source (its `order` and the segments `label()` asks for); a folder with no page is a heading | nothing: it is data; `label()` takes a `BuildContext` and the segments of its folder and above (named, `required`)                                                                |
 
-**What `route.dart` can hold.** Each constant is optional, and the file is read from the source, never imported:
-
-- `const caseSensitive = <true or false>;`: whether paths match by case in this folder and below, [the nearest one winning](routing.md#case-and-trailing-slashes) over the pubspec's `case_sensitive`.
-- `const paths = {'fr': 'produits'};` in a static folder: [its other spellings per locale](routing.md#localized-paths).
-- `const nest = false;` beside a `page.dart` or `redirect.dart`: [its route is a sibling of the page above, not a child](routing.md#a-sibling-with-a-compound-path).
-- `const linkable = false;` (since 0.5.0): [`fsp links`](cli.md#deep-links-and-a-sitemap-fsp-links) leaves this folder's routes and those below it out, [the nearest one winning](routing.md#case-and-trailing-slashes).
-- `const remount = Remount.onSegments;` (since 0.6.0): [when the pages in this folder and below get a fresh state because their URL changed](navigation.md#remounting-a-page-remount), the nearest one winning over the pubspec's `remount`.
-- `const deferred = true;` (since 0.7.0): [the pages in this folder and below load their code on demand](navigation.md#deferred-routes-a-pages-code-on-demand), the nearest one winning over the pubspec's `deferred`.
-- `const freshness = Freshness(staleTime: Duration(minutes: 5));` (since 0.8.1): [the default for when the data.dart functions in this folder and below load again](data.md#freshness-staletime-resume-and-reconnect), the nearest one winning, a data.dart's own over all.
+**What `route.dart` can hold.** Each constant is optional: `caseSensitive`, `paths`, `nest`, `linkable`, `remount`, `deferred` and `freshness`. [Configuration](configuration.md#per-folder-settings-routedart) lists each one with its rules.
 
 Since 0.8.1 an `action.dart` may also hold the companions of an action: its [`form()`, `validate()`](actions.md#forms-form-and-validate) and [`optimistic()`](actions.md#optimistic-updates-optimistic). They are functions in that file, not a file kind.
 
 ## Function views
 
-`page.dart`, `loading.dart`, `error.dart`, `layout.dart` and `not_found.dart` can export a
-top-level function named after the file, returning a `Widget`, instead of a widget class:
+`page.dart`, `loading.dart`, `error.dart`, `layout.dart` and `not_found.dart` can export a top-level function named after the file, returning a `Widget`, instead of a widget class:
 
 ```dart
 // lib/app/(kyc)/shop/name/page.dart
@@ -108,12 +92,7 @@ Widget page({required String orderId, String? back}) =>
     CancelOrderScreen(orderId: orderId, back: back);
 ```
 
-That is one route per file, however many routes build the same screen, and the screen can stay where it
-is (`lib/screens/…`) instead of moving into `lib/app/`. The function's parameters are filled exactly
-like a constructor's ([below](#how-parameters-are-filled)): segments and query parameters by name,
-`data` by name or by type, `child` or a shell for a `layout()`, `error`, `stackTrace` and `retry` for
-an `error()`, `uri` for a `notFound()`. Named and positional parameters both work, and a binding error
-points at the parameter.
+That is one route per file, however many routes build the same screen, and the screen can stay where it is (`lib/screens/…`) instead of moving into `lib/app/`. The function's parameters are filled exactly like a constructor's ([below](#how-parameters-are-filled)): segments and query parameters by name, `data` by name or by type, `child` or a shell for a `layout()`, `error`, `stackTrace` and `retry` for an `error()`, `uri` for a `notFound()`. Named and positional parameters both work, and a binding error points at the parameter.
 
 - **Names.** `page()`, `loading()`, `error()`, `layout()` and `notFound()` (`not_found()`
   too). Other functions in the file are helpers and are ignored.
@@ -142,9 +121,7 @@ points at the parameter.
 - **`export` isn't followed.** `page.dart` has to hold the function itself, so it stays the
   source of truth for the route.
 
-`fsp new 'shop/name' --function` scaffolds the function form (`--name KycShopName` writes the
-`routeName`). `examples/features` has two routes, `(plans)/free` and `(plans)/pro`, serving one
-screen with different constants.
+`fsp new 'shop/name' --function` scaffolds the function form (`--name KycShopName` writes the `routeName`).
 
 ## File names
 

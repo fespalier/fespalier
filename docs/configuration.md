@@ -206,15 +206,21 @@ found by its name, like the other files.
 
 ## Per-folder settings: route.dart
 
-A `route.dart` in any folder sets, for that folder and below, what the pubspec sets for the whole app. It is read
-from the source, never imported. Its constants:
+A `route.dart` in any folder sets, for that folder and below, what the pubspec sets for the whole app. Each constant is optional:
 
-- `const caseSensitive = <true or false>;`: whether paths match by case, [the nearest one winning](routing.md#case-and-trailing-slashes) over the pubspec's `case_sensitive`. See [Case and trailing slashes](routing.md#case-and-trailing-slashes).
+- `const caseSensitive = <true or false>;`: whether paths match by case. See [Case and trailing slashes](routing.md#case-and-trailing-slashes).
 - `const paths = {'fr': 'produits'};` in a static folder: its other spellings per locale. See [Localized paths](routing.md#localized-paths).
 - `const nest = false;` beside a `page.dart` or `redirect.dart`: its route is a sibling of the page above, not a child. See [A sibling with a compound path](routing.md#a-sibling-with-a-compound-path).
 - `const linkable = false;` (since 0.5.0): `fsp links` leaves this folder's routes and those below it out. See [Deep links and a sitemap](cli.md#deep-links-and-a-sitemap-fsp-links).
 - `const remount = Remount.onSegments;` (since 0.6.0): when the pages in this folder and below get a fresh state because their URL changed. See [Remounting a page](navigation.md#remounting-a-page-remount).
 - `const deferred = true;` (since 0.7.0): the pages in this folder and below load their code on demand. See [Deferred routes](navigation.md#deferred-routes-a-pages-code-on-demand).
 - `const freshness = Freshness(staleTime: Duration(minutes: 5));` (since 0.8.1): the default for when the `data.dart` functions in this folder and below load again, a `data.dart`'s own over all. See [Freshness](data.md#freshness-staletime-resume-and-reconnect).
+
+**Rules for every constant.**
+
+- The file is read from the source, never imported or run, so a value must be a literal (`true` or `false`, a map literal of string literals, `Remount.…` written out, a `Freshness(...)` call). Anything else, or the same constant twice, is an error with a code frame.
+- The nearest `route.dart` wins over the parent's and over the pubspec. `(group)` folders and folders without a page pass a value on, and the file needs no page beside it (unlike `meta.dart`, which is per route and never inherited).
+- It can sit at the root of the app folder, where it replaces the pubspec's value for the whole app.
+- It adds or removes no route: `paths` only spells a folder's URL more than one way.
 
 The full table of file kinds, with this row, is in [File kinds](file-kinds.md).

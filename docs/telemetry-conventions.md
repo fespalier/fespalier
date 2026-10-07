@@ -65,15 +65,15 @@ A span's status is `Error` (with the exception's text) exactly when its outcome 
 
 **On a `navigate` span:**
 
-| Key (`navigate`)                  | Type   | Values and meaning                                                                                                                                                                                        |
-| --------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fespalier.navigation.kind`       | string | `initial`, `go`, `push`, `pop`, `replace` or `refresh` (the classification DevTools shows); absent when superseded                                                                                        |
-| `fespalier.navigation.outcome`    | string | `ok`, `not_found` or `superseded`                                                                                                                                                                         |
-| `fespalier.navigation.from`       | string | the pattern of the page that was on top before (absent at the start)                                                                                                                                      |
-| `fespalier.navigation.redirected` | bool   | the committed path differs from the requested one: a guard or a `redirect.dart` sent it elsewhere                                                                                                         |
-| `fespalier.navigation.depth`      | int    | how many pushed pages the stack holds after the commit (0 for a plain `go`)                                                                                                                               |
+| Key (`navigate`)                  | Type   | Values and meaning                                                                                                                                                                                                        |
+| --------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fespalier.navigation.kind`       | string | `initial`, `go`, `push`, `pop`, `replace` or `refresh` (the classification DevTools shows); absent when superseded                                                                                                        |
+| `fespalier.navigation.outcome`    | string | `ok`, `not_found` or `superseded`                                                                                                                                                                                         |
+| `fespalier.navigation.from`       | string | the pattern of the page that was on top before (absent at the start)                                                                                                                                                      |
+| `fespalier.navigation.redirected` | bool   | the committed path differs from the requested one: a guard or a `redirect.dart` sent it elsewhere                                                                                                                         |
+| `fespalier.navigation.depth`      | int    | how many pushed pages the stack holds after the commit (0 for a plain `go`)                                                                                                                                               |
 | `fespalier.navigation.source`     | string | since 0.9.0: where it came from when the app's own code did not start it: `notification`, `shortcut`, `widget` or `link` ([`navigateFrom`](observability.md#where-a-navigation-came-from-navigatefrom)); absent otherwise |
-| `url.path`, `url.query`           | string | semconv: the committed location, mount prefix included. Only with `recordLocations: true`                                                                                                                 |
+| `url.path`, `url.query`           | string | semconv: the committed location, mount prefix included. Only with `recordLocations: true`                                                                                                                                 |
 
 **On the other spans and events:**
 

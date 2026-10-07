@@ -1,8 +1,6 @@
 # DevTools extension
 
-Since 0.7.0, fespalier has an extension for [Flutter DevTools](https://docs.flutter.dev/tools/devtools): a
-`fespalier` tab that shows, in a running app, what the router is doing and which file each route comes
-from.
+Since 0.7.0, fespalier has an extension for [Flutter DevTools](https://docs.flutter.dev/tools/devtools): a `fespalier` tab that shows, in a running app, what the router is doing and which file each route comes from.
 
 ## What it shows
 
@@ -27,7 +25,7 @@ from.
 
 ## How to see it
 
-Run the app in debug or profile mode and open DevTools: the `fespalier` tab is there when the app is connected. DevTools asks once per project before it loads an extension (the Extensions button), or you commit a `devtools_options.yaml` next to the `pubspec.yaml`:
+Run the app in debug or profile mode and open DevTools: the `fespalier` tab is there when the app is connected. DevTools finds the extension in every package the app depends on (git and path dependencies too) and asks once per project before it loads one (the Extensions button), or you commit a `devtools_options.yaml` next to the `pubspec.yaml`:
 
 ```yaml
 description: This file stores settings for Dart & Flutter DevTools.
@@ -35,8 +33,6 @@ documentation: https://docs.flutter.dev/tools/devtools/extensions#configure-exte
 extensions:
   - fespalier: true
 ```
-
-DevTools finds the extension in every package the app depends on, a git or a path dependency included.
 
 `AppRoutes.router()` hands its router to the extension itself. An app that
 [mounts](migration.md#adopting-fespalier-in-a-go_router-app) the routes into a `GoRouter` of its own attaches it once:
@@ -58,7 +54,7 @@ traceData(ref, 'd37', id, data(...))
 watchData(ref, 'd37', provider)
 ```
 
-In a release build they are the identity (`watchData` is exactly `ref.watch`) and the compiler inlines them away. CI builds an app with a guard, a `data.dart` and an action for profile and for release and checks that the release build has none of it. What stays in a release build is one short string per action (its site, an argument of the generated action provider).
+In a release build they are the identity (`watchData` is exactly `ref.watch`) and the compiler inlines them away. What stays is one short string per action (its site, an argument of the generated action provider).
 
 **In a debug or profile build** it adds:
 
@@ -66,11 +62,9 @@ In a release build they are the identity (`watchData` is exactly `ref.watch`) an
 - an `onDispose`, an `onAddListener` and an `onRemoveListener` callback per build of a `data.dart` provider (the last two count its listeners; since 0.8.1);
 - lists of what happened, which stop at 100 locations, 200 guard decisions, 100 action runs, and the providers that are alive plus the last 50 disposed. The views, the prefetch handles and the `RouteLink` preloads it lists as holders are held weakly.
 
-There is no timer, no frame, no read of a provider, no listener on a provider, and nothing that answers unless DevTools asks. (`ProviderContainer.exists`, which reads nothing, is asked of a container for an app's own provider only when DevTools asks for a snapshot or for holders, and before the 101st live one is recorded. `_devToolsProviders` in `app.g.dart` is a function that is called once, when DevTools first needs it.)
+There is no timer, no frame, no read of a provider, no listener on a provider, and nothing that answers unless DevTools asks.
 
-**A guard or a data function that answers at once still does:** the wrapper returns the very object it was given, so a synchronous guard stays synchronous and a `Future` is the `Future` go_router or Riverpod awaits. The only thing added to a `Future` is a side `then` that records how it ended and handles its own errors. A `Stream` is not listened to. A bug in any of it is printed once and dropped; it never changes what a navigation, a guard, a provider or an action does.
-
-`--dart-define=fespalier.devtools=false` takes it out of a debug build too.
+**A guard or a data function that answers at once still does:** the wrapper returns the very object it was given, so a synchronous guard stays synchronous and a `Future` is the `Future` go_router or Riverpod awaits. The only thing added to a `Future` is a side `then` that records how it ended and handles its own errors. A `Stream` is not listened to. A bug in any of it is printed once and dropped; it never changes what a navigation, a guard, a provider or an action does. `--dart-define=fespalier.devtools=false` takes it out of a debug build too.
 
 ## Limits
 
@@ -80,22 +74,19 @@ There is no timer, no frame, no read of a provider, no listener on a provider, a
 - The route class a location is matched to is the class's `runtimeType` name. A profile build on the web minifies class names, so the tab finds the route by its path template instead, which a [localized path](routing.md#localized-paths) may not match.
 - An app provider (a `data.dart` that returns or selects one) is seen through fespalier's views: its state is what the last page or section that watched it got, it has no build count, and its other listeners are not visible. A `.select(...)` can't be invalidated or checked for being alive. Until a page, a section or a preload watches it, its file is listed under _Not watched yet_ (since 0.8.1).
 - A guard or a data function that throws before it returns anything shows nothing in the tab: go_router or Riverpod get the error as they always did.
-- **Holders** are the ones fespalier creates (views, prefetches, `RouteLink` preloads). Anything else is counted, for a provider fespalier built, as other listeners, and not named. Riverpod 3.4 does not export who listens to a provider (`ProviderElement` and its dependents are internal; its own DevTools tab reads them through internals), and fespalier does not add a `ProviderObserver`: it does not own your `ProviderScope`. A prefetch made before any page watched a selector's provider with parameters is attached when a page first does.
+- **Holders** are the ones fespalier creates (views, prefetches, `RouteLink` preloads). Anything else is counted, for a provider fespalier built, as other listeners, and not named: Riverpod does not export who listens to a provider, and fespalier does not add a `ProviderObserver` (it does not own your `ProviderScope`). A prefetch made before any page watched a selector's provider with parameters is attached when a page first does.
 - A provider that returns a `Stream` shows the state `stream` and no value: nothing listens to it on the tab's behalf.
 - **Open in IDE** posts a `navigate` event on the `ToolEvent` stream with a `package:` URI of the file, the way Riverpod's DevTools extension opens a file. Whether VS Code and IntelliJ open a `package:` URI from it is **unverified**; it needs the IDE's DevTools integration to be listening.
 
 ## Protocol for tool authors
 
-The extension and the app talk through `dart:developer`'s service extensions and
-events, protocol 1.
+The extension and the app talk through `dart:developer`'s service extensions and events, protocol 1.
 
 - Every response and event has `"protocol": 1`, and events an `"event"` number (one counter for all kinds: a number that skips means events were missed, and `snapshot` has the state).
 - A change that only adds is not a new protocol: a reader ignores keys it does not know, and `hello` lists what the app can answer in `features`.
 - A user value, like an `extra`, is never sent as it is but as `{"type", "text"}`: its runtime type and its text cut to 200 characters.
 
-The records are in
-[`packages/fespalier/lib/src/devtools/protocol.dart`](../packages/fespalier/lib/src/devtools/protocol.dart),
-which imports nothing.
+The records are in [`packages/fespalier/lib/src/devtools/protocol.dart`](../packages/fespalier/lib/src/devtools/protocol.dart), which imports nothing.
 
 | Service extension          | Parameters                                                               | Answers                                                                                   |
 | -------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |

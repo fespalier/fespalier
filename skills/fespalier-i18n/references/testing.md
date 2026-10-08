@@ -140,7 +140,8 @@ void main() {
   It is all `Future.value`, so it leaves no timer pending.
 - **Strict.** `FakeTranslations.strict()` (or `fakeTranslations(strict: true)`) turns every key `tr` cannot find into a
   `FlutterError.reportError`, so a typo fails the test with
-  `No translation for "<key>" in <locale> or its fallbacks`. Use it by default.
+  `No translation for "<key>" in <locale> or its fallbacks`. Use it by default. Each missing key is reported on its own, so a test that asserts one
+  missing key gives the catalog every other key the page asks for (`takeException` would otherwise say "Multiple exceptions").
 - **A restart** is the same `MemoryDataStorage` as `dataCacheStorage` in two `pumpRouter` calls.
 - A **malformed message** (a bad ICU string in a catalog) is reported through `FlutterError.reportError` in debug, so a
   `testWidgets` fails on it as well.

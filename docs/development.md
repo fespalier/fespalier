@@ -38,6 +38,7 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 examples/telemetry/  the route lifecycle, OpenTelemetry and Sentry, with widget tests
 examples/auth/       fespalier_auth: sign-in, guards, refresh and Keycloak, with widget tests
 examples/plugins/    fespalier_push and fespalier_analytics through adapters, with widget tests
+examples/i18n/       fespalier_tolgee: a $lang segment, bundled catalogs, a language switch, with widget tests
 skills/              agent skills: how to write lib/app/ and read fsp's errors (skills/README.md);
                      scripts/skills/ checks them against the code
 ```

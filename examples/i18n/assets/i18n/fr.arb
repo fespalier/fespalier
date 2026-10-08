@@ -1,0 +1,11 @@
+{
+  "@@locale": "fr",
+  "app.title": "Traductions",
+  "home.title": "Bonjour",
+  "home.intro": "Ce texte vient de assets/i18n/fr.arb.",
+  "home.products": "Voir les produits",
+  "products.title": "Produits",
+  "products.stock": "{count, plural, =0 {Épuisé} one {# article en stock} other {# articles en stock}}",
+  "products.more": "En ajouter un",
+  "products.less": "En retirer un"
+}

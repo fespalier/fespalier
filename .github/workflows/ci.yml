@@ -61,6 +61,7 @@ jobs:
           cargo run --quiet -- check --project ../examples/telemetry
           cargo run --quiet -- check --project ../examples/auth
           cargo run --quiet -- check --project ../examples/plugins
+          cargo run --quiet -- check --project ../examples/i18n
           cargo run --quiet -- maestro --check --project ../examples/shop
       # Licences, advisories, duplicate versions, sources: cli/deny.toml.
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
@@ -106,6 +107,7 @@ jobs:
           - examples/telemetry
           - examples/auth
           - examples/plugins
+          - examples/i18n
     defaults:
       run:
         working-directory: ${{ matrix.dir }}

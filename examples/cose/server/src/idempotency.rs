@@ -34,6 +34,21 @@ pub struct MemoryIdempotency {
 }
 
 impl MemoryIdempotency {
+    /// How many keys are held (live or not yet swept).
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
+    }
+
+    /// Whether no key is held.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// An empty store.
     #[must_use]
     pub fn new() -> Self {

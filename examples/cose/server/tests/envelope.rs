@@ -470,6 +470,8 @@ async fn unverified_callers_cannot_fill_the_idempotency_store() {
         );
         send(&world.router, request).await;
     }
+    // The flood went through the unsigned op and was refused a key: nothing is held.
+    assert_eq!(world.built.idempotency.len(), 0);
     let write = device
         .call(
             "procedure.addNote",

@@ -24,7 +24,7 @@ use cratestack::axum::middleware::Next;
 use cratestack::axum::response::{IntoResponse, Response};
 use cratestack::cose::{CoseEnvelope, CoseMode, CoseVerifyKey, P256Signer};
 use cratestack::envelope_layer::{EnvelopeMode, PolicyRequest};
-use cratestack::idempotency::IdempotencyLayer;
+use cratestack::idempotency::{IdempotencyLayer, IdempotencyStore};
 use cratestack::ratelimit::VerifiedPrincipal;
 use cratestack::{
     AuthProvider, CratestackContext, CratestackError, InMemoryNonceStore, RequestContext, Value,
@@ -74,6 +74,8 @@ pub struct Built {
     pub devices: DeviceKeys,
     /// The server's response key, to verify its answers in tests.
     pub server_key: CoseVerifyKey,
+    /// The idempotency store, to count its keys in tests.
+    pub idempotency: Arc<MemoryIdempotency>,
 }
 
 /// Whether `op` (an op id, or `batch`) travels as a signed message: all but the registration.
@@ -276,6 +278,7 @@ pub fn build(audience: &str, server_scalar: &[u8; 32]) -> Result<Built, Cratesta
         devices: devices.clone(),
         notes: Arc::default(),
     };
+    let idempotency = Arc::new(MemoryIdempotency::new());
     let router = cratestack_schema::axum::rpc_router(
         Cratestack::builder().build(),
         procedures,
@@ -288,7 +291,7 @@ pub fn build(audience: &str, server_scalar: &[u8; 32]) -> Result<Built, Cratesta
     // every attempt) and the verified device as its principal, so a retry under the same key is
     // replayed, and sealed anew by the envelope layer for the request that asked.
     .layer(IdempotencyLayer::new(
-        Arc::new(MemoryIdempotency::new()),
+        Arc::clone(&idempotency) as Arc<dyn IdempotencyStore>,
         IDEMPOTENCY_TTL,
     ))
     // Only a verified device may hold a key: for anyone else the header is dropped, so the store
@@ -312,6 +315,7 @@ pub fn build(audience: &str, server_scalar: &[u8; 32]) -> Result<Built, Cratesta
         },
         devices,
         server_key,
+        idempotency,
     })
 }
 

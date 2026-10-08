@@ -98,9 +98,10 @@ final class CoseConfig {
 final class CoseTransport implements CrateStackTransport {
   /// A transport for [config] sealing with [sealer].
   ///
-  /// [beforeSigned] runs before every signed call and may throw a [CrateStackFailure] to stop
-  /// it: the app uses it to register the device key before the first one. [ops] is the
-  /// contract table; the default is the generated one.
+  /// [beforeSigned] runs before every signed call and may throw to stop it: the app uses it to
+  /// register the device key before the first one. **Anything it throws becomes a
+  /// [CrateStackOffline]** (same key; the call was never sent), whatever its type or status.
+  /// [ops] is the contract table; the default is the generated one.
   CoseTransport({
     required this.config,
     required this.sealer,

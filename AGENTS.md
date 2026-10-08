@@ -110,6 +110,10 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   and the body must parse. Do not bump versions or edit `CHANGELOG.md` or
   `.release-please-manifest.json` by hand: release-please does (see `docs/releasing.md`).
 - **Squash merges**, so cite "PR #N" rather than a branch commit.
+- **What only a device can show gets a beginner-friendly issue.** A behaviour no test can see (a platform
+  view drawing, a system prompt, a notification tap, a hardware key) is not claimed as verified: file a
+  `good first issue` with step-by-step setup, the cases to try, what "works" looks like and what to report
+  (device, OS, versions), as #130–#133 do.
 - **Actions are pinned to a full commit SHA** with a `# vX.Y.Z` comment, resolved with
   `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>` (add `^{}` for an annotated
   tag), preferring the versions the org repositories already pin. Workflows declare

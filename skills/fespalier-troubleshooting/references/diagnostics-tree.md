@@ -1,6 +1,6 @@
 # Diagnostics: the tree, the files and the routes
 
-As of v0.4.0. Every message below is the text `fsp` prints (from `cli/src/scan.rs`,
+As of v0.13.0. Every message below is the text `fsp` prints (from `cli/src/scan.rs`,
 `resolve.rs` and `emit.rs`, and run against small trees with `fsp check --json`),
 followed by the cause and the fix. Errors leave `lib/app.g.dart` untouched; warnings
 do not stop generation. In the rendered output a message is preceded by

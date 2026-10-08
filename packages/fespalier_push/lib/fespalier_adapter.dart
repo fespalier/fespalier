@@ -103,18 +103,24 @@ final class PushAdapter extends FespalierAdapter {
           break;
       }
     });
+    // The callbacks hear events, not state: the public providers hold the last value and Riverpod
+    // drops a state equal to the previous one, so they are fed from private providers that wrap
+    // each event in a fresh object. A token is told once per kind until that kind is revoked.
     final onToken = config.onToken;
+    final onRevoked = config.onTokenRevoked;
+    final last = <String, PushToken>{};
     if (onToken != null) {
-      container.listen<AsyncValue<PushToken>>(pushToken, (previous, next) {
+      container.listen<AsyncValue<_TokenEvent>>(_tokenEvents, (previous, next) {
         switch (next) {
           case AsyncError(:final error, :final stackTrace):
             _report(error, stackTrace, 'in the stream of push tokens');
           case AsyncData(:final value):
-            if (previous is AsyncData<PushToken> && previous.value == value) {
-              return;
-            }
+            if (identical(previous?.value, value)) return;
+            final token = value.token;
+            if (last[token.kind] == token) return;
+            last[token.kind] = token;
             try {
-              onToken(value);
+              onToken(token);
             } catch (error, stack) {
               _report(error, stack, 'in the onToken callback');
             }
@@ -123,9 +129,9 @@ final class PushAdapter extends FespalierAdapter {
         }
       }, fireImmediately: true);
     }
-    final onRevoked = config.onTokenRevoked;
-    if (onRevoked != null) {
-      container.listen<AsyncValue<PushTokenRevoked>>(pushTokenRevoked, (
+    if (onRevoked != null || onToken != null) {
+      // No fireImmediately: a revocation read before attach is stale, never replayed.
+      container.listen<AsyncValue<_RevocationEvent>>(_revocationEvents, (
         previous,
         next,
       ) {
@@ -137,19 +143,18 @@ final class PushAdapter extends FespalierAdapter {
               'in the stream of push token revocations',
             );
           case AsyncData(:final value):
-            if (previous is AsyncData<PushTokenRevoked> &&
-                identical(previous.value, value)) {
-              return;
-            }
+            if (identical(previous?.value, value)) return;
+            last.remove(value.revoked.kind);
+            if (onRevoked == null) return;
             try {
-              onRevoked(value);
+              onRevoked(value.revoked);
             } catch (error, stack) {
               _report(error, stack, 'in the onTokenRevoked callback');
             }
           case AsyncLoading():
             break;
         }
-      }, fireImmediately: true);
+      });
     }
   }
 
@@ -215,6 +220,28 @@ final class _Tap {
 
 final _taps = StreamProvider<_Tap>(
   (ref) => ref.watch(pushSource).taps.map(_Tap.new),
+  retry: (_, _) => null,
+);
+
+/// One token, wrapped so that an equal token delivered again is a new event.
+final class _TokenEvent {
+  const _TokenEvent(this.token);
+  final PushToken token;
+}
+
+/// One revocation, wrapped like [_TokenEvent].
+final class _RevocationEvent {
+  const _RevocationEvent(this.revoked);
+  final PushTokenRevoked revoked;
+}
+
+final _tokenEvents = StreamProvider<_TokenEvent>(
+  (ref) => ref.watch(pushSource).tokens.map(_TokenEvent.new),
+  retry: (_, _) => null,
+);
+
+final _revocationEvents = StreamProvider<_RevocationEvent>(
+  (ref) => ref.watch(pushSource).revocations.map(_RevocationEvent.new),
   retry: (_, _) => null,
 );
 

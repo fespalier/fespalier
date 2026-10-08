@@ -326,6 +326,65 @@ void main() {
       expect(tokens, [_t('t1')]);
     });
 
+    testWidgets('revoke, the same token again, revoke: every event is heard', (
+      tester,
+    ) async {
+      await start(tester, onToken: true, onRevoked: true);
+      await tester.pump();
+      expect(tokens, [_t('t1')]);
+      source.revokeToken('fcm');
+      await tester.pump();
+      source.emitToken(_t('t1'));
+      await tester.pump();
+      source.revokeToken('fcm');
+      await tester.pump();
+      source.revokeToken('fcm');
+      await tester.pump();
+      expect(tokens, [_t('t1'), _t('t1')]);
+      expect(revoked, hasLength(3));
+    });
+
+    testWidgets('an equal token of the same kind is told once', (tester) async {
+      await start(tester, onToken: true);
+      await tester.pump();
+      source.emitToken(_t('t1'));
+      await tester.pump();
+      source.emitToken(PushToken(kind: 'hms', value: 't1'));
+      await tester.pump();
+      expect(tokens, [_t('t1'), PushToken(kind: 'hms', value: 't1')]);
+    });
+
+    testWidgets('a revocation read before attach is not replayed', (
+      tester,
+    ) async {
+      captureReports();
+      source = FakePushSource();
+      revoked = [];
+      FespalierPush.configure(
+        source: source,
+        route: _route,
+        onTokenRevoked: revoked.add,
+      );
+      router = _router();
+      addTearDown(router.dispose);
+      container = ProviderContainer(overrides: adapter.overrides());
+      addTearDown(container.dispose);
+      final sub = container.listen(pushTokenRevoked, (_, _) {});
+      addTearDown(sub.close);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      source.revokeToken('fcm');
+      await tester.pump();
+      expect(container.read(pushTokenRevoked).value?.kind, 'fcm');
+      adapter.attach(router, container);
+      await tester.pump();
+      expect(revoked, isEmpty);
+    });
+
     testWidgets('pushTokenRevoked is a provider of the same events', (
       tester,
     ) async {

@@ -59,8 +59,7 @@ What changed between releases, newest first, each with a link to the reference s
   ```
 
   A test: `FakePushSource(token: PushToken(kind: PushTokenKind.fcm, value: 't'))`, `emitToken(PushToken(...))`.
-  Only an app with its own `PushSource` or a token callback changes; one that uses `fespalier_push` for taps alone
-  has nothing to do except implement `tokens` as a `Stream<PushToken>`.
+  Every `PushSource` changes its `tokens` type; an app with no token callback changes nothing else.
 
 ### 0.12.0
 

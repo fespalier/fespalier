@@ -5,7 +5,7 @@ description: "Moving to fespalier and between its versions — upgrading an app 
 
 # fespalier-migration
 
-> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
+> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
@@ -33,8 +33,8 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 ## 0.13 to 0.14: what to check
 
-0.14.0 is a **breaking** release for an app that reads a `fespalier_push` token; an app that uses the package for taps alone
-changes nothing, unless it wrote its own `PushSource`. Bump the `ref:` of `fespalier` and every companion to the 0.14.0 tag, then:
+0.14.0 is a **breaking** release for `fespalier_push`: every `PushSource` changes its `tokens` type, and an app with no token
+callback changes nothing else. Bump the `ref:` of `fespalier` and every companion to the 0.14.0 tag, then:
 
 - `PushSource.tokens` is a `Stream<PushToken>` (it was `Stream<String>`). Wrap the vendor's string:
   `PushToken(kind: PushTokenKind.fcm, value: token)`; `kind` is an open string (`PushTokenKind.fcm`, `apns`, `hms`,

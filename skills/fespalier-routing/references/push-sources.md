@@ -108,7 +108,15 @@ final class FirebasePushSource extends PushSource {
       token = null; // iOS: the APNs token is not there yet; onTokenRefresh brings it
     }
     if (token != null) yield PushToken(kind: PushTokenKind.fcm, value: token);
-    yield* messaging.onTokenRefresh.map((value) => PushToken(kind: PushTokenKind.fcm, value: value));
+    // Refreshes and the token [register] asks for share one stream.
+    final refreshes = messaging.onTokenRefresh.listen(
+      (value) => _registered.add(PushToken(kind: PushTokenKind.fcm, value: value)),
+    );
+    try {
+      yield* _registered.stream;
+    } finally {
+      await refreshes.cancel();
+    }
   }
 
   // Firebase has no "token invalidated" callback (a dead token is the send API's `UNREGISTERED`): a revocation is the
@@ -118,11 +126,20 @@ final class FirebasePushSource extends PushSource {
   @override
   Stream<PushTokenRevoked> get revocations => _revoked.stream;
 
-  /// Deletes the token, then reports the revocation. A new token is made on the next `getToken`.
+  /// Deletes the token, then reports the revocation.
   Future<void> revoke() async {
     await (await _messaging).deleteToken();
     _revoked.add(PushTokenRevoked(kind: PushTokenKind.fcm));
   }
+
+  /// After [revoke] (a new sign-in): asks Firebase for a new token, which `tokens` then delivers. Firebase
+  /// makes none by itself after `deleteToken`: the app must call this.
+  Future<void> register() async {
+    final value = await (await _messaging).getToken();
+    if (value != null) _registered.add(PushToken(kind: PushTokenKind.fcm, value: value));
+  }
+
+  final StreamController<PushToken> _registered = StreamController<PushToken>.broadcast();
 
   @override
   Future<PushPermission> permission() async =>
@@ -305,8 +322,10 @@ override func application(_ application: UIApplication,
   #else
   let environment = "production"
   #endif
-  apnsSink?(["token": hex, "environment": environment])   // the EventChannel's sink, kept from onListen
+  lastToken = ["token": hex, "environment": environment]  // kept: the token can arrive before Dart listens
+  apnsSink?(lastToken!)                                    // the EventChannel's sink, kept from onListen
 }
+// StreamHandler.onListen(arguments:eventSink:): apnsSink = eventSink; if let t = lastToken { eventSink(t) }
 // MethodChannel "unregister": UIApplication.shared.unregisterForRemoteNotifications()
 // MethodChannel "register":   UIApplication.shared.registerForRemoteNotifications()
 ```
@@ -501,6 +520,20 @@ final class OneSignalPushSource extends PushSource {
   final StreamController<PushTokenRevoked> _revoked = StreamController<PushTokenRevoked>.broadcast();
   bool _observing = false;
 
+  // Once, from both `tokens` and `revocations`: an app with only onTokenRevoked must hear a revocation too.
+  void _observe() {
+    if (_observing) return;
+    _observing = true;
+    OneSignal.User.pushSubscription.addObserver((changes) {
+      final now = _tokenOf(changes.current);
+      if (now != null) {
+        _tokens.add(now);
+      } else if (_tokenOf(changes.previous) case final before?) {
+        _revoked.add(PushTokenRevoked(kind: before.kind, properties: before.properties));
+      }
+    });
+  }
+
   Stream<PushMessage> _listenTaps() {
     final controller = StreamController<PushMessage>.broadcast();
     OneSignal.Notifications.addClickListener((event) => controller.add(_message(event.notification)));
@@ -527,18 +560,8 @@ final class OneSignalPushSource extends PushSource {
 
   @override
   Stream<PushToken> get tokens async* {
+    _observe();
     final subscription = OneSignal.User.pushSubscription;
-    if (!_observing) {
-      _observing = true;
-      subscription.addObserver((changes) {
-        final now = _tokenOf(changes.current);
-        if (now != null) {
-          _tokens.add(now);
-        } else if (_tokenOf(changes.previous) case final before?) {
-          _revoked.add(PushTokenRevoked(kind: before.kind, properties: before.properties));
-        }
-      });
-    }
     final token = subscription.token;
     if (token != null && (subscription.optedIn ?? false)) {
       yield PushToken(
@@ -551,7 +574,10 @@ final class OneSignalPushSource extends PushSource {
   }
 
   @override
-  Stream<PushTokenRevoked> get revocations => _revoked.stream;
+  Stream<PushTokenRevoked> get revocations {
+    _observe();
+    return _revoked.stream;
+  }
 
   @override
   Future<PushPermission> permission() async => switch (await OneSignal.Notifications.permissionNative()) {
@@ -574,8 +600,9 @@ final class OneSignalPushSource extends PushSource {
 `kind: PushTokenKind.jpush`, `value`: the **registration id** JPush assigns (`getRegistrationID()`; it is JPush's own id, not
 an APNs or vendor token, and an empty string before the SDK has connected), no `properties` needed. It arrives after `onConnected`.
 Two traps of the plugin (3.5.8): `addEventHandler` stores each handler and the plugin calls it with `!`, so **an event
-whose handler you left out throws a null-check error when it arrives**: pass a handler for each event the app can get, a no-op
-if it ignores it. And `JPush.newJPush()` makes a new object: keep one. There is no invalidation callback; `stopPush()` is the
+whose handler you left out throws a null-check error when it arrives**, and the native side sends `onReceiveDeviceToken`,
+`onReceiveNotificationAuthorization`, `onCommandResult` and `onNotifyMessageUnShow` besides the obvious ones: pass a handler for every
+parameter of `addEventHandler`, a no-op for those the app ignores. And `JPush.newJPush()` makes a new object: keep one. There is no invalidation callback; `stopPush()` is the
 app's own, and the recipe reports a revocation then.
 
 ```dart
@@ -613,10 +640,19 @@ final class JPushTokens implements TokenFeed {
     _started = true;
     _jpush.addEventHandler(
       onConnected: (event) async => _publish(),
-      // The plugin calls these with `!`: leave none out that can arrive.
+      // The plugin calls every handler with `!`, and the native side sends all of these: pass one for each
+      // parameter, a no-op for those the app ignores.
       onReceiveNotification: (event) async {},
       onOpenNotification: (event) async {},
       onReceiveMessage: (event) async {},
+      onReceiveNotificationAuthorization: (event) async {},
+      onNotifyMessageUnShow: (event) async {},
+      onInAppMessageClick: (event) async {},
+      onInAppMessageShow: (event) async {},
+      onNotifyButtonClick: (event) async {},
+      onCommandResult: (event) async {},
+      onReceiveDeviceToken: (event) async {},
+      onVoipMessage: (event) async {},
     );
     _jpush.setup(appKey: _appKey, production: _production);
   }
@@ -650,7 +686,7 @@ pinned Flutter (3.47.5) builds it, and this recipe is compiled by `just skill-sa
 fails and the recipe is prose only. The vendor keys are Gradle manifest placeholders (`MI_APP_ID`, `OPPO_APP_KEY`, ...: the
 plugin's README), and a vendor without one is skipped. The plugin reports **no revocation** (no unregister event), so
 `revocations` is empty. It has no read-only permission query, so `permission()` answers `notDetermined` until
-`requestPermission()` ran (that is the app's moment to call it). The payload is the vendor message's `payload` string, JSON by
+`requestPermission()` ran (that is the app's moment to call it). **Call `MixPushSource.start()` once at launch** (it is `FlutterMixPush.register()`; the source does not do it from `tokens`, which an app with no token callback never listens to). The payload is the vendor message's `payload` string, JSON by
 convention: the source decodes it into `PushMessage.data`.
 
 ```dart
@@ -711,20 +747,23 @@ final class MixPushSource extends PushSource {
     final controller = StreamController<PushToken>();
     StreamSubscription<MixPushPlatformInfo>? subscription;
     controller.onListen = () {
-      // The event channel first: a token that arrives during register() must not be missed.
+      // The event channel first, then the id read: whichever answers first, the package drops an equal repeat.
       subscription = FlutterMixPush.onRegisterSucceed.listen(
         (info) => controller.add(_token(info)),
         onError: controller.addError,
       );
-      unawaited(_register(controller));
+      unawaited(_ask(controller));
     };
     controller.onCancel = () => subscription?.cancel();
     return controller.stream;
   }
 
-  Future<void> _register(StreamController<PushToken> controller) async {
+  /// Registers with the vendor channels. **Call it once, at launch** (before or after the token is listened to): `tokens`
+  /// only reads the id, so an app that never calls it gets no push.
+  Future<void> start() => FlutterMixPush.register();
+
+  Future<void> _ask(StreamController<PushToken> controller) async {
     try {
-      await FlutterMixPush.register();
       final info = await FlutterMixPush.getRegisterId();
       if (info != null && !controller.isClosed) controller.add(_token(info));
     } on Object catch (error, stack) {

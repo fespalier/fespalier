@@ -16,6 +16,10 @@ final pushSource = Provider<PushSource>(
 
 /// The current token, then each refresh, for an app that prefers Riverpod to `onToken`. A
 /// [PushToken] since 0.14.0 (it was a `String`).
+///
+/// This is state, not an event log: it holds the last value (it keeps answering a token that was
+/// revoked), and an equal repeat does not notify. For every event, including the same token
+/// again after a revocation, use `onToken`.
 final pushToken = StreamProvider<PushToken>(
   (ref) => ref.watch(pushSource).tokens,
   retry: (_, _) => null,
@@ -23,6 +27,9 @@ final pushToken = StreamProvider<PushToken>(
 
 /// A token that stopped being valid (since 0.14.0), for an app that prefers Riverpod to
 /// `onTokenRevoked`. Not a null [pushToken]: it is an event of its own.
+///
+/// As state it holds the last revocation, and an equal repeat does not notify: use `onTokenRevoked`
+/// to hear every one.
 final pushTokenRevoked = StreamProvider<PushTokenRevoked>(
   (ref) => ref.watch(pushSource).revocations,
   retry: (_, _) => null,

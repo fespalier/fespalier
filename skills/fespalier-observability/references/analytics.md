@@ -57,14 +57,15 @@ Future<void> main() {
   have no pattern and are skipped.
 - **`source`** is a `NavigationSource` (`notification`, `shortcut`, `widget`, `link`) when the navigation was not the app's own; send it
   as a property. **`returning`** is a page that is the visible one again (a tab, a pop); `returningViews: false` drops those.
+- **Add sinks with `FespalierTelemetry.add`, never `install` after `AppMain.run()` started**: the sink is added in `beforeRun()`, and `install` in `startup()` replaces the slot and drops it. `attach` checks `FespalierTelemetry.contains(sink)` (since 0.13.0) and reports once when it is gone.
 - **Time on screen** (`screenTime: true`) is reported when a page is left, covered time included, and only for a page whose view was
-  sent. A page under a pushed page, or a kept-alive tab, is not left yet. `/orders/:id` under `/` leaves `/` covered, not left.
+  sent. Leaves are paired with views by pattern, by count: two instances of one pattern open at once may swap their times. A page under a pushed page, or a kept-alive tab, is not left yet. `/orders/:id` under `/` leaves `/` covered, not left.
 - **Without `telemetry: true` nothing is recorded**: the adapter's `attach` asks `telemetryFollows(router)` and reports one
   `FlutterError` (``fespalier_analytics records no screen: ... Set `telemetry: true` ...``). Run `fsp gen` after turning it on.
 - **Unconfigured**: one `FlutterError` reports ``fespalier_analytics is listed under `fespalier: adapters:` but was never configured``
   and the adapter does nothing, never throws. `AppMain.root()` in a widget test runs no `main()`: call `configure` in the test.
 - **A backend method returns at once.** The sink calls it synchronously from the router. A vendor `Future` is ignored with its own
-  `onError` (`ignoreFuture`, in the backends page), never awaited; a backend that throws is isolated by `combine` and printed once.
+  `onError` (`ignoreFuture`, in the backends page), never awaited; a backend that throws in `screenView` or `screenTime` is isolated by `combine` and printed once (and that view is not timed), while one that throws in `consentChanged` is reported with `FlutterError.reportError` and the decision stands.
 - **Switch the vendor's own screen tracking off** (Firebase's and Amplitude's observers, PostHog's `PosthogObserver`), or a screen
   is counted twice.
 - Telemetry: `fespalier.analytics.consent` with `fespalier.analytics.state` (`undecided`, `granted`, `denied`), nothing else

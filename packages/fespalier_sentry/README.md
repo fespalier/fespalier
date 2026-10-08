@@ -65,7 +65,7 @@ Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
 );
 
 /// Before the router is built, so the first navigation is reported.
-void startup() => FespalierTelemetry.install(FespalierSentry());
+void startup() => FespalierTelemetry.add(FespalierSentry()); // add, not install: install replaces a sink an adapter added
 
 /// Release health on the web needs it; it makes no transaction.
 List<NavigatorObserver> get routerObservers => [

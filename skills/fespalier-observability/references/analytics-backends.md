@@ -67,7 +67,11 @@ void ignoreFuture(Future<void> call, String what) {
 `setAnalyticsCollectionEnabled`. Collection starts off with `firebase_analytics_collection_enabled` set to `false` in the Android
 manifest (`<meta-data android:name="firebase_analytics_collection_enabled" android:value="false" />`), `FIREBASE_ANALYTICS_COLLECTION_ENABLED`
 set to `NO` in `Info.plist`, and, on the web, `setAnalyticsCollectionEnabled(false)` right after `Firebase.initializeApp`. Google's
-consent mode (`setConsent`) is set to the same answer. Firebase's automatic screen reporting on iOS and Android is for native
+consent mode (`setConsent`) gets the same answer for `analytics_storage` **only**: `ad_storage`, `ad_user_data` and
+`ad_personalization` need their own question, so this recipe leaves them alone. Their defaults are `google_analytics_default_allow_ad_storage`,
+`..._ad_user_data` and `..._ad_personalization` (Android manifest, `false` to deny) and the `GOOGLE_ANALYTICS_DEFAULT_ALLOW_AD_STORAGE`,
+`..._AD_USER_DATA` and `..._AD_PERSONALIZATION` keys of `Info.plist` (`NO` to deny), next to `google_analytics_default_allow_analytics_storage`
+and `GOOGLE_ANALYTICS_DEFAULT_ALLOW_ANALYTICS_STORAGE`. Firebase's automatic screen reporting on iOS and Android is for native
 view controllers and activities: it sees one screen in a Flutter app, so it does not count twice, but turn it off with
 `FirebaseAutomaticScreenReportingEnabled` (`false`) and `google_analytics_automatic_screen_reporting_enabled` (`false`) if you want the
 numbers clean.
@@ -120,12 +124,8 @@ class FirebaseAnalyticsBackend extends AnalyticsBackend {
       'setAnalyticsCollectionEnabled',
     );
     ignoreFuture(
-      _analytics.setConsent(
-        analyticsStorageConsentGranted: on,
-        adStorageConsentGranted: on,
-        adUserDataConsentGranted: on,
-        adPersonalizationSignalsConsentGranted: on,
-      ),
+      // Analytics storage only: the ad_* flags are a separate question, asked and stored apart.
+      _analytics.setConsent(analyticsStorageConsentGranted: on),
       'setConsent',
     );
   }

@@ -4,6 +4,7 @@
 /// ```dart
 /// final analytics = RecordingAnalytics();
 /// FespalierAnalytics.configure(analytics, consent: AnalyticsConsent.granted);
+/// await AppAdapters.beforeRun(); // what main() does before runApp
 /// await tester.pumpWidget(AppMain.root());
 /// expect(analytics.views.single.pattern, '/');
 /// ```
@@ -29,8 +30,9 @@ class RecordingAnalytics extends AnalyticsBackend {
   /// Every [AnalyticsBackend.consentChanged], in order.
   final List<AnalyticsConsent> consents = [];
 
-  /// What happened, in order, one line each: `view /products/:id`, `view /tab returning`,
-  /// `time /products/:id 1s` and `consent granted`.
+  /// What happened, in order, one line each: `view <name>`, with ` source=<source>` and
+  /// ` returning` when they apply (`view Order source=notification`), `time <name> <n>ms` and
+  /// `consent <state>`.
   final List<String> log = [];
 
   /// Everything the backend was given, as strings: for a test that asserts no URL, query or

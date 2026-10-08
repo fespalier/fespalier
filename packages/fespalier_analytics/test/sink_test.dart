@@ -304,6 +304,54 @@ void main() {
   });
 
   group('privacy', () {
+    test(
+      'a navigation source that is not a NavigationSource value is dropped',
+      () {
+        FespalierAnalytics.configure(
+          backend,
+          consent: AnalyticsConsent.granted,
+        );
+        final sink = FespalierAnalytics.sink!;
+        for (final source in [
+          'banner',
+          'user@example.com',
+          NavigationSource.link,
+        ]) {
+          final token = sink.start(
+            TelemetryStart(TelemetryOp.navigate, source: source),
+          );
+          sink.page(token, const TelemetryPage(TelemetryPageKind.enter, '/a'));
+        }
+        expect(backend.views.map((v) => v.source), [
+          null,
+          null,
+          NavigationSource.link,
+        ]);
+      },
+    );
+
+    test('a view whose backend threw is not timed', () {
+      FespalierAnalytics.configure(
+        RecordingAnalytics(throwing: true),
+        consent: AnalyticsConsent.granted,
+      );
+      final sink = FespalierAnalytics.sink!;
+      expect(
+        () =>
+            sink.page(null, const TelemetryPage(TelemetryPageKind.enter, '/a')),
+        throwsStateError,
+      );
+      sink.page(
+        null,
+        const TelemetryPage(
+          TelemetryPageKind.leave,
+          '/a',
+          duration: Duration(seconds: 1),
+        ),
+      );
+      expect((sink.backend as RecordingAnalytics).times, isEmpty);
+    });
+
     testWidgets(
       'no URL, query, fragment or segment value ever reaches a backend',
       (tester) async {

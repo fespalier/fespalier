@@ -99,7 +99,7 @@ trace. **No transaction is sent by default**: screen-load transactions, spans an
 Sentry.
 
 ```dart
-FespalierTelemetry.install(FespalierSentry()); // in startup(), before the router; Sentry starts in zone()
+FespalierTelemetry.add(FespalierSentry()); // in startup(), before the router; add keeps an adapter's sink (analytics); Sentry starts in zone()
 ```
 
 Read [`references/sentry.md`](references/sentry.md) for the wiring (Sentry is the outermost zone: no

@@ -93,6 +93,7 @@ void main() {
       // The old one is retired: it ignores a page event, and a consent change.
       old.page(null, const TelemetryPage(TelemetryPageKind.enter, '/a'));
       expect(first.views, isEmpty);
+      expect(old.start(const TelemetryStart(TelemetryOp.navigate)), isNull);
       old.consent = AnalyticsConsent.denied;
       expect(first.consents, isEmpty);
       fresh.page(null, const TelemetryPage(TelemetryPageKind.enter, '/a'));
@@ -104,6 +105,7 @@ void main() {
     test('reports once when the router does not follow telemetry', () {
       captureReports();
       FespalierAnalytics.configure(RecordingAnalytics());
+      adapter.beforeRun();
       final container = ProviderContainer();
       addTearDown(container.dispose);
       adapter.attach(_router(telemetry: false), container);
@@ -118,6 +120,34 @@ void main() {
     test('says nothing when the router follows telemetry', () {
       captureReports();
       FespalierAnalytics.configure(RecordingAnalytics());
+      adapter.beforeRun();
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      adapter.attach(_router(telemetry: true), container);
+      expect(reported, isEmpty);
+    });
+
+    test('reports once when a later install dropped the sink', () {
+      captureReports();
+      FespalierAnalytics.configure(RecordingAnalytics());
+      adapter.beforeRun();
+      FespalierTelemetry.install(RecordingTelemetry());
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      adapter.attach(_router(telemetry: true), container);
+      adapter.attach(_router(telemetry: true), container);
+      expect(reported, hasLength(1));
+      expect(
+        '${reported.single.exception}',
+        allOf(contains('FespalierTelemetry.add'), contains('not installed')),
+      );
+    });
+
+    test('a sink added with add survives next to another', () {
+      captureReports();
+      FespalierAnalytics.configure(RecordingAnalytics());
+      adapter.beforeRun();
+      FespalierTelemetry.add(RecordingTelemetry());
       final container = ProviderContainer();
       addTearDown(container.dispose);
       adapter.attach(_router(telemetry: true), container);

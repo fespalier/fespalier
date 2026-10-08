@@ -99,8 +99,16 @@ final class AnalyticsSink extends FespalierTelemetry {
   }
 
   @override
-  Object? start(TelemetryStart start) =>
-      start.op == TelemetryOp.navigate ? _Navigation(start.source) : null;
+  Object? start(TelemetryStart start) {
+    if (_retired || start.op != TelemetryOp.navigate) return null;
+    // Only the values fespalier defines are passed on: a source is a constant, never free text.
+    final source = start.source;
+    return _Navigation(
+      source != null && NavigationSource.values.contains(source)
+          ? source
+          : null,
+    );
+  }
 
   @override
   void page(Object? navigation, TelemetryPage page) {
@@ -112,10 +120,11 @@ final class AnalyticsSink extends FespalierTelemetry {
     final source = navigation is _Navigation ? navigation.source : null;
     switch (page.kind) {
       case TelemetryPageKind.enter:
-        _open[pattern] = (_open[pattern] ?? 0) + 1;
         backend.screenView(
           ScreenView(name: name, pattern: pattern, source: source),
         );
+        // After the backend answered: a view that threw was not sent, so it is not timed.
+        _open[pattern] = (_open[pattern] ?? 0) + 1;
       case TelemetryPageKind.focus:
         if (!returningViews) return;
         backend.screenView(
@@ -154,10 +163,12 @@ final class AnalyticsSink extends FespalierTelemetry {
 /// }
 /// ```
 ///
-/// Calling it twice replaces (a hot restart runs `main()` again): the earlier sink stops
-/// reporting and the new one takes its place. Load the stored decision in `startup()`, which
+/// Calling it twice replaces (a test, or an app that changes backend): the earlier sink stops
+/// reporting and the new one takes its place. (A hot restart resets static state, so it starts
+/// from nothing.) Load the stored decision in `startup()`, which
 /// runs before the router, so the first screen is not lost: `FespalierAnalytics.sink?.consent =
-/// stored`.
+/// stored`. The `consent:` argument of [configure] is the sink's starting state and is **not**
+/// announced to the backend; a stored answer goes through `sink?.consent`, which is.
 abstract final class FespalierAnalytics {
   /// Makes the sink that reports to [backend]. See [AnalyticsSink] for [screenName],
   /// [returningViews], [screenTime] and [consent]. The backend is not told the initial
@@ -180,6 +191,7 @@ abstract final class FespalierAnalytics {
     _sink = next;
     _reportedMissing = false;
     _reportedNoTelemetry = false;
+    _reportedDropped = false;
     // The earlier sink is in the telemetry slot: the new one takes its place there.
     if (_installed != null) {
       _installed = next;
@@ -206,24 +218,40 @@ abstract final class FespalierAnalytics {
     return true;
   }
 
-  /// Reports, once, that the app's router does not report its page events to telemetry: the app
-  /// was generated without `telemetry: true`, so no screen is ever recorded. What the adapter's
-  /// `attach` calls, with the router it was given.
+  /// Reports, once each, the two reasons no screen would be recorded: the app's router does not
+  /// report its page events to telemetry (generated without `telemetry: true`), or the sink is no
+  /// longer in the telemetry slot (a later `FespalierTelemetry.install` replaced it: use `add`).
+  /// What the adapter's `attach` calls, with the router it was given.
   static void verifyTelemetry(GoRouter router) {
-    if (_sink == null || _reportedNoTelemetry || telemetryFollows(router)) {
-      return;
-    }
-    _reportedNoTelemetry = true;
-    FlutterError.reportError(
-      FlutterErrorDetails(
-        exception: StateError(
-          "fespalier_analytics records no screen: this app's router does not report page "
-          'events to telemetry. Set `telemetry: true` under `fespalier:` in pubspec.yaml and '
-          'run `fsp gen`.',
+    final sink = _sink;
+    if (sink == null) return;
+    if (!_reportedNoTelemetry && !telemetryFollows(router)) {
+      _reportedNoTelemetry = true;
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: StateError(
+            "fespalier_analytics records no screen: this app's router does not report page "
+            'events to telemetry. Set `telemetry: true` under `fespalier:` in pubspec.yaml and '
+            'run `fsp gen`.',
+          ),
+          library: 'fespalier_analytics',
         ),
-        library: 'fespalier_analytics',
-      ),
-    );
+      );
+    }
+    if (!_reportedDropped && !FespalierTelemetry.contains(sink)) {
+      _reportedDropped = true;
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: StateError(
+            'fespalier_analytics records no screen: its sink is not installed in '
+            'FespalierTelemetry any more. A FespalierTelemetry.install(...) after '
+            'AppMain.run() started (in startup(), say) replaces the slot: use '
+            'FespalierTelemetry.add(sink) there, or install in main() before AppMain.run().',
+          ),
+          library: 'fespalier_analytics',
+        ),
+      );
+    }
   }
 
   /// Reports, once, that the package is used without [configure]. The adapter, the consent
@@ -252,10 +280,12 @@ abstract final class FespalierAnalytics {
     _installed = null;
     _reportedMissing = false;
     _reportedNoTelemetry = false;
+    _reportedDropped = false;
   }
 
   static AnalyticsSink? _sink;
   static AnalyticsSink? _installed;
   static bool _reportedMissing = false;
   static bool _reportedNoTelemetry = false;
+  static bool _reportedDropped = false;
 }

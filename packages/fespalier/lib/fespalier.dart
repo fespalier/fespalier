@@ -12,9 +12,14 @@ export 'package:flutter_hooks/flutter_hooks.dart';
 export 'package:go_router/go_router.dart' hide RouteMatch;
 export 'package:hooks_riverpod/hooks_riverpod.dart';
 // What a `data.dart` that selects a provider names in its return type, and (since 0.13.0, for
-// fespalier_frb's InvalidationTable) what `ref.invalidate` takes.
+// fespalier_frb's InvalidationTable) what `ref.invalidate` takes, and (for fespalier_riverpod's
+// page families) the types of a family's result.
 export 'package:hooks_riverpod/misc.dart'
-    show ProviderListenable, ProviderOrFamily;
+    show
+        NotifierProviderFamily,
+        ProviderFamily,
+        ProviderListenable,
+        ProviderOrFamily;
 
 export 'src/action.dart';
 // The cache of a data.dart's value for the next start (since 0.8.1).

@@ -14,7 +14,8 @@ const String frbResultAttribute = 'fespalier.frb.result';
 /// ```
 ///
 /// [init] is the generated `RustLib.init` (or a closure around it, for its arguments). The span
-/// `fespalier.frb.init` ends `ok` or `error` and carries nothing else: never the error's text. A
+/// `fespalier.frb.init` ends `ok` or `error` and carries nothing else: not the error, its text or
+/// its stack trace (a sink such as `FespalierOtel` would record the message). A
 /// failure is rethrown unchanged, so the startup gate reports it, shows `splash.dart`'s error and
 /// can retry it. With no telemetry sink installed this is one null check around `init`.
 Future<void> initRustCore(Future<void> Function() init) async {
@@ -26,15 +27,13 @@ Future<void> initRustCore(Future<void> Function() init) async {
       : null;
   try {
     await init();
-  } catch (error, stackTrace) {
+  } catch (_) {
     if (traced) {
       FespalierTelemetry.finish(
         token,
         TelemetryEnd(
           TelemetryOutcome.error,
           isAsync: true,
-          error: error,
-          stackTrace: stackTrace,
           attributes: const {frbResultAttribute: 'error'},
         ),
       );

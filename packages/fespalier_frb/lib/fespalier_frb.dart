@@ -5,6 +5,7 @@
 /// There is no flutter_rust_bridge dependency here: the generated bindings pin their own runtime.
 library;
 
-export 'src/change_feed.dart' show Change, ChangeFeed, ChangeTopic;
+export 'src/change_feed.dart'
+    show Change, ChangeFeed, ChangeTopic, changeLogCapacity;
 export 'src/invalidation.dart' show InvalidationRule, InvalidationTable;
 export 'src/telemetry.dart' show frbInitOp, frbResultAttribute, initRustCore;

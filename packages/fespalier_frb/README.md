@@ -50,9 +50,9 @@ Future<void> startup() => initRustCore(RustLib.init);
 ```
 
 - `ChangeFeed.latest` is the one subscription (never auto-disposed, cancelled with the container); `topic(key)` moves only on a
-  matching event; `any` counts every event.
+  matching event (none of a burst is lost: the feed logs the last 64); `any` counts every event.
 - `InvalidationTable` is the pure form, for an app that owns its subscription: `table.apply(event, container.invalidate)`.
-- `initRustCore` reports `fespalier.frb.init` (`ok` or `error`, never the error's text) and rethrows, so `startup()` shows
+- `initRustCore` reports `fespalier.frb.init` (`ok` or `error`; not the error, its text or its stack trace) and rethrows, so `startup()` shows
   `splash.dart`'s error and can retry.
 - `package:fespalier_frb/testing.dart` has `FakeChangeSource`, a stream the test feeds.
 

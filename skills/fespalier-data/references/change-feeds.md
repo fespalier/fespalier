@@ -1,9 +1,9 @@
 # `fespalier_frb`: providers rebuilt by a Rust core's change stream
 
-Since 0.13.0. A Rust core behind flutter*rust_bridge (or any core) answers calls and **says what changed** on a `Stream`. A
+Since 0.13.0. A Rust core behind `flutter_rust_bridge` (or any core) answers calls and **says what changed** on a `Stream`. A
 `data.dart` that reads the core is stale the moment the core says something changed, and nothing in fespalier knew: the
 usual answers were a `Timer`, a `ref.listen` in every page, or an `invalidate` call in the code that happened to hold the
-stream. `package:fespalier_frb` is the Riverpod-shaped answer: the stream is held **once**, a \_topic* is a provider whose
+stream. `package:fespalier_frb` is the Riverpod-shaped answer: the stream is held **once**, a `topic` is a provider whose
 value moves only on a matching event, and a `data.dart` that **watches** the topic is rebuilt exactly then. It changes no
 generated code and adds no file kind, key or command; an app that does not depend on it pays nothing.
 
@@ -126,11 +126,15 @@ class OrderPage extends StatelessWidget {
   rebuilds the revision but returns the same number, and Riverpod does not notify the dependents of an unchanged value. The
   first watch counts nothing: an event older than the watcher is history.
 - **Equal events are still two changes.** Riverpod 3 drops a state equal to the last, so `latest` carries `Change(event, seq)`
-  and `Change` is never `==`. Events that arrive before the dependents rebuild share one rebuild (coalesced, like any
-  provider change). Do not "fix" this with a debounce: a debounce is a timer.
+  and `Change` is never `==`. Riverpod rebuilds lazily and hands a burst to a dependent a change at a time, so a burst can
+  take a few rounds, but **no event is lost**: the feed keeps a log of the last 64 events of its subscription
+  (`changeLogCapacity`) and a topic scans every event it missed (`[7, 42, 7]` rebuilds the watcher of 42; a paused page
+  catches up on resume). A watcher that missed more than the log holds, or whose core was restarted, rebuilds anyway.
+  Do not "fix" a burst with a debounce: a debounce is a timer.
 - **A stream error** stays in `changes.latest` as an `AsyncError` (watch it for a "live updates stopped" banner); no topic
   rebuilds on it, and the next event works.
-- **`changes.any`** is a topic of every event (an `int` count), for a provider that depends on the whole core.
+- **`changes.any`** is a topic of every event (an `int` that counts each event, a burst included), for a provider that depends on
+  the whole core.
 - **Cost.** Each watched key runs its matcher once per event. Tens or hundreds of keys: nothing. A core that emits thousands of
   events a second should emit coarser ones (a table, not a row) or use an `InvalidationTable`.
 - **Hidden tabs.** A page in a hidden tab has its watchers paused by Riverpod and catches up when it is shown _(not checked on a
@@ -185,7 +189,7 @@ listed whole invalidates every member; `orderProvider(e.id)` only that one.
 
 `RustLib.init` is the generated bindings' and a generic package cannot name it, so there is **no adapter** and no
 `beforeRun`: call it from `startup()` through `initRustCore` (above). It reports one span, `fespalier.frb.init`, ending `ok` or
-`error` (the attribute `fespalier.frb.result`; never the error's text), and rethrows the failure unchanged. `startup()` runs
+`error` (the attribute `fespalier.frb.result`; not the error, its text or its stack trace), and rethrows the failure unchanged. `startup()` runs
 before the router, behind `splash.dart`; a failure there is shown with `retry`, and a `beforeRun` failure would have no UI.
 
 Which of `startup()` and `ready(container)` (since 0.12.0, [app-main](../../fespalier/references/app-main.md))?
@@ -195,8 +199,11 @@ Which of `startup()` and `ready(container)` (since 0.12.0, [app-main](../../fesp
 | started by `RustLib.init` alone, and read lazily by providers                                                                                       | `startup()`                                                   |
 | opened on the container before the first route (a database at the app directory, a session to restore, `await container.read(coreProvider.future)`) | `RustLib.init` in `startup()`, the open in `ready(container)` |
 
-A retry of `startup()` runs `init` again; a retry of `ready()` does not. FRB's `init` is not meant to run twice, so do any other
-fallible work in `startup()` **before** `initRustCore`, and everything after the init in `ready()`. With `main: manual` you call
+A retry of `startup()` runs `init` again; a retry of `ready()` does not. FRB's `init` throws `StateError('Should not initialize flutter_rust_bridge twice')` the second time (check the message in your
+version), so do any other fallible work in `startup()` **before** `initRustCore`, and everything after the init in `ready()`.
+If that cannot be ordered, guard the retry with `if (!RustLib.instance.initialized) await initRustCore(RustLib.init);`; the
+caveat is that `initialized` can already be true when the Rust initializer that `init` runs last is what failed, and the
+guard then skips a core that never started. With `main: manual` you call
 both yourself, in that order.
 
 ## Test it

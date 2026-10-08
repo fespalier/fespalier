@@ -1,5 +1,5 @@
 // The rule, in code: the package starts no timer, schedules nothing for later and listens to
-// nothing; the relock on resume is a watch of core's appShowSignal. This reads every file under lib/
+// nothing; an event is delivered by a stream that Riverpod owns. This reads every file under lib/
 // and fails on the constructs that would break the rule, naming the file and the line.
 import 'dart:io';
 

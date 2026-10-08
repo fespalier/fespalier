@@ -16,6 +16,14 @@ class CartCleared extends CoreEvent {
   const CartCleared();
 }
 
+/// Riverpod hands a burst to a dependent one change at a time, round after round: pump until
+/// nothing is left.
+Future<void> settle(ProviderContainer container) async {
+  for (var i = 0; i < 400; i++) {
+    await container.pump();
+  }
+}
+
 void main() {
   for (final broadcast in [true, false]) {
     group(broadcast ? 'a broadcast stream' : 'a single-subscription stream', () {
@@ -80,6 +88,56 @@ void main() {
         core.emit(const OrderChanged(42));
         core.emit(const OrderChanged(42));
         await container.pump();
+        expect(builds[42], 2);
+      });
+
+      test('a matching event inside a burst is not lost', () async {
+        container.listen(order(42), (_, _) {});
+        await settle(container);
+        core.emit(const OrderChanged(7));
+        core.emit(const OrderChanged(42));
+        core.emit(const OrderChanged(7));
+        await settle(container);
+        expect(builds[42], 2);
+        expect(builds[7] ?? 0, 0);
+      });
+
+      test('a paused watcher catches up on every event it missed', () async {
+        final sub = container.listen(order(42), (_, _) {});
+        await settle(container);
+        sub.pause();
+        core.emit(const OrderChanged(42));
+        core.emit(const OrderChanged(7));
+        await settle(container);
+        expect(builds[42], 1);
+        sub.resume();
+        await settle(container);
+        expect(builds[42], 2);
+      });
+
+      test('any counts every event of a burst', () async {
+        final seen = <int>[];
+        container.listen(feed.any, (_, next) => seen.add(next));
+        await settle(container);
+        core.emit(const OrderChanged(1));
+        core.emit(const OrderChanged(2));
+        core.emit(const CartCleared());
+        await settle(container);
+        expect(seen, [1, 2, 3]);
+      });
+
+      test('a match after a burst longer than the log is not lost', () async {
+        final sub = container.listen(order(42), (_, _) {});
+        await settle(container);
+        sub.pause();
+        for (var i = 0; i < changeLogCapacity + 10; i++) {
+          core.emit(const OrderChanged(7));
+        }
+        core.emit(const OrderChanged(42));
+        await settle(container);
+        expect(builds[42], 1);
+        sub.resume();
+        await settle(container);
         expect(builds[42], 2);
       });
 

@@ -36,7 +36,7 @@ type, no `Ref`. It patches **one `data.dart` the action invalidates**, found by 
 
 - **The target is searched among what the action invalidates**: this folder's own data first, then
   the sections above it (innermost first), then the rest of `invalidates` in the order listed.
-  Nothing of type `T` there is an error (O3a, O3b). So `const invalidates = <Object>[]` beside an
+  Nothing of type `T` there is an error (``<o>() patches a `T`, and no data.dart that <name>() invalidates gives one`` or `... but <name>() invalidates no data.dart`, in `fespalier-troubleshooting`, `diagnostics-data-and-hooks.md`). So `const invalidates = <Object>[]` beside an
   `optimistic()` is an error, and a custom `invalidates` must list the target. Only the target is
   patched.
 - **The sequence.** The patch shows from the start of the write. A failure removes it (the

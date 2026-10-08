@@ -33,12 +33,12 @@ in `tasks: dev:` starts it with the app: it starts its stack and returns, so it 
 ```yaml
 dependencies:
   fespalier:
-    git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier, ref: v0.8.1 }
+    git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier, ref: v0.13.0 }
   fespalier_otel:
-    git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier_otel, ref: v0.8.1 }
+    git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier_otel, ref: v0.13.0 }
 ```
 
-Use the **same `url` spelling (no `.git`) and the same `ref`** for both, or pub fails with `Because ...
+Use the **same `url` spelling (no `.git`) and the same `ref`** (the tag your app pins; `v0.13.0` here) for both, or pub fails with `Because ...
 depends on fespalier from git ... is forbidden`. `otel_zone` pulls `otel_go_router`, which declares
 `go_router: ^17.0.0`: the app resolves go_router 17.5.0 (fespalier accepts 17 and 18), and an app that
 needs 18 adds `dependency_overrides: go_router: ^18.0.0`.

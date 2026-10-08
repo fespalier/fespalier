@@ -230,7 +230,7 @@ void main() {
 - **The input must be a record type with named fields**, spelled inline (`required ({int amount,
 String note}) input`) or as a `typedef` **declared in the same `action.dart`**: `fsp` reads the
   field names and types from this file and from no other, so a typedef imported from elsewhere,
-  a class or `(int, String)` is an error (F4a, F4b below).
+  a class or `(int, String)` is an error (``the form of <name>() needs the fields of its input, and `<input>` is not a record type declared here``, in `fespalier-troubleshooting`, `diagnostics-data-and-hooks.md`).
 - **`form()` returns the input's type as written** (the same text: `NicknameFields`, not the
   record spelled out when the input is the typedef) and takes **no `Ref`**. It takes nothing, or
   one positional, required, **typed** parameter: the value the form starts from.
@@ -306,7 +306,7 @@ fields the new baseline), `page.canKeep` is "a form has a `draft:`, a storage an
 type a draft can keep).
 
 ```dart
-// lib/app/(account)/nickname/leave.dart
+// lib/app/nickname/leave.dart
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_forms/fespalier_forms.dart';
 import 'package:flutter/widgets.dart';

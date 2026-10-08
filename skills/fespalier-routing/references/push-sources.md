@@ -114,6 +114,7 @@ final class FirebasePushSource extends PushSource {
       messaging.onTokenRefresh.listen(_publish, onError: _tokens.addError);
       await register();
     } on Object catch (error, stack) {
+      _tokens.reset(); // the next listen of `tokens` starts again
       _tokens.addError(error, stack);
     }
   }
@@ -284,6 +285,8 @@ abstract interface class TokenFeed {
 /// Flutter's `EventChannel.receiveBroadcastStream()` makes a new controller per call, and two of them on one channel
 /// replace each other's handler, so either cancel silences both. The first listen opens the vendor side ([source] and/or
 /// [onFirstListen]); each listener then gets the current token first and every later one.
+///
+/// One per source, living as long as the app.
 final class SharedTokens {
   SharedTokens({this.source, this.onFirstListen});
 
@@ -301,14 +304,22 @@ final class SharedTokens {
   Stream<PushToken> get stream => Stream.multi((listener) {
     if (!_opened) {
       _opened = true;
-      source?.call().listen(add, onError: addError);
-      onFirstListen?.call();
+      try {
+        source?.call().listen(add, onError: addError);
+        onFirstListen?.call();
+      } on Object {
+        _opened = false; // the next listen retries
+        rethrow;
+      }
     }
     final current = _current;
     if (current != null) listener.add(current);
     final subscription = _out.stream.listen(listener.add, onError: listener.addError);
     listener.onCancel = subscription.cancel;
   });
+
+  /// The vendor side failed to start (an `onFirstListen` that works asynchronously): the next listen starts it again.
+  void reset() => _opened = false;
 
   /// A token from the vendor: the new current one.
   void add(PushToken token) {
@@ -462,6 +473,10 @@ final class HmsTokens implements TokenFeed {
 
   @override
   Stream<PushTokenRevoked> get revocations => _revoked.stream;
+
+  /// Asks Push Kit for a token again; it arrives on `tokens`. `_open` ran once, so after [deleteToken] the app must call
+  /// this (a new sign-in): Push Kit makes no token by itself.
+  void register() => Push.getToken('');
 
   /// Deletes the token (the app's sign-out), then reports the revocation.
   Future<void> deleteToken() async {
@@ -746,7 +761,9 @@ pinned Flutter (3.47.5) builds it, and this recipe is compiled by `just skill-sa
 fails and the recipe is prose only. The vendor keys are Gradle manifest placeholders (`MI_APP_ID`, `OPPO_APP_KEY`, ...: the
 plugin's README), and a vendor without one is skipped. The plugin reports **no revocation** (no unregister event), so
 `revocations` is empty. It has no read-only permission query, so `permission()` answers `notDetermined` until
-`requestPermission()` ran (that is the app's moment to call it). **Call `MixPushSource.start()` once at launch** (it is `FlutterMixPush.register()`; the source does not do it from `tokens`, which an app with no token callback never listens to). The payload is the vendor message's `payload` string, JSON by
+`requestPermission()` ran (that is the app's moment to call it). **Call `MixPushSource.start()` once at launch** (it is `FlutterMixPush.register()`; the source does not do it from `tokens`, which an app with no token callback never listens to), within 60 seconds of the first listen of `tokens` or followed by `refresh()`: the native `getRegisterId` polls for up to 60 seconds, then answers null.
+
+**Three trade-offs of the plugin's design (1.0.0).** `onRegisterSucceed`, `onMessage` and `onNotificationClicked` each open their own listener on one EventChannel, and a second listener replaces the first one's handler, so only one of them can be used. The recipe keeps `onNotificationClicked`, for `taps`. So: there is **no foreground `received`** (it stays at the default, none); **a changed `regId` is not pushed**, so the app calls `refresh()` (on resume, for example) to read it again; and the app must **not listen to `FlutterMixPush.onMessage` or `onRegisterSucceed` anywhere else**, or taps stop arriving. The alternative is one `EventChannel('flutter_mix_push/events').receiveBroadcastStream()` of the app's own, split by `event['type']` (`notificationClicked`, `messageArrived`, `registerSucceed`): it recovers all three event kinds, at the cost of depending on the plugin's private channel name. The payload is the vendor message's `payload` string, JSON by
 convention: the source decodes it into `PushMessage.data`.
 
 ```dart
@@ -801,17 +818,15 @@ final class MixPushSource extends PushSource {
   @override
   Stream<PushMessage> get taps => FlutterMixPush.onNotificationClicked.map(_message);
 
-  // `received` is left at the default (none), and `tokens` reads the id with a method call, on purpose: in 1.0.0 each of
-  // `onRegisterSucceed`, `onMessage` and `onNotificationClicked` opens its own EventChannel listener on the same channel,
-  // and a second one replaces the first one's handler, so listening to `taps` and one of the others loses events.
-  // `taps` keeps the one stream; a refreshed id is not pushed: call [refresh] (on resume, say) to read it again.
+  // `received` is left at the default and `tokens` reads the id with a method call, on purpose: see the trade-offs above.
   late final SharedTokens _tokens = SharedTokens(onFirstListen: () => unawaited(refresh()));
 
   @override
   Stream<PushToken> get tokens => _tokens.stream;
 
-  /// Registers with the vendor channels. **Call it once, at launch** (before or after the token is listened to): `tokens`
-  /// only reads the id, so an app that never calls it gets no push.
+  /// Registers with the vendor channels. **Call it once, at launch**: `tokens` only reads the id, so an app that never
+  /// calls it gets no push. Call it within 60 seconds of the first listen of `tokens`, or call [refresh] after it: the native
+  /// `getRegisterId` polls for up to 60 seconds, then answers null.
   Future<void> start() => FlutterMixPush.register();
 
   /// Reads the registration id (a method call, up to 60 seconds) and delivers it to `tokens`. `onToken` drops an equal

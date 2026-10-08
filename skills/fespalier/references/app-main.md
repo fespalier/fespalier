@@ -58,7 +58,10 @@ class App extends StatelessWidget {
 ```
 
 It may also export `GoRouter router()` (no parameters) to say how the router is built, once,
-after `startup()`; it has to return `AppRoutes.router(...)`. Without it the router is
+after `startup()`. `fsp` checks only the signature (`GoRouter router()`, no parameters): return
+`AppRoutes.router(...)`, or a hand-built `GoRouter` with `...AppRoutes.mount(at: ...)` among its routes
+(adopting fespalier in a go_router app, `fespalier-migration`; `examples/adopt`), and `ready()` and
+`attach()` still run around it. Without it the router is
 `AppRoutes.router()`, with startup.dart's `routerObservers` if there are any.
 
 ## `startup.dart`

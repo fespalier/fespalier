@@ -141,6 +141,13 @@ void main() =>
     runApp(ProviderScope(child: MaterialApp.router(routerConfig: _router)));
 ```
 
+Under the default `main: auto` the router above goes in `lib/app/app.dart` as `GoRouter router() =>
+buildRouter();` (`fsp` checks only that signature), so the generated `main()` builds it once and
+`startup.dart`'s `ready()` and `attach()` (since 0.12.0) run around it. With `main: manual` neither
+file is read and you call them yourself. `examples/adopt` is the worked move of a 0.11-style `main()`
+into `ready()` and `attach()`, with the old router kept compiled beside a test that opens the same
+URLs in both.
+
 What `mount` changes:
 
 - **`AppRoutes.base` becomes `'/shop'`** (`mount` stores `at` in a static field), every typed

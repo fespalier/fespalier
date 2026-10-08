@@ -43,11 +43,11 @@ class App extends StatelessWidget {
   );
 }
 
-/// Optional: how the router is built. Called once, after startup(). Call AppRoutes.router().
+/// Optional: how the router is built. Called once, after startup(). Return AppRoutes.router(), or your own GoRouter.
 GoRouter router() => AppRoutes.router(restorationScopeId: 'router');
 ```
 
-Without `router()` the router is `AppRoutes.router()`, with the `routerObservers` of startup.dart if it
+`fsp` checks only the signature (`GoRouter router()`, no parameters), not the body, so an app that is adopting fespalier can return a `GoRouter` of its own with `...AppRoutes.mount(at: '/shop', navigatorKey: key)` among its routes ([Migration](migration.md#adopting-fespalier-in-a-go_router-app); `examples/adopt`). `ready()` and `attach()` run around it as around any other. Without `router()` the router is `AppRoutes.router()`, with the `routerObservers` of startup.dart if it
 has any. Without an `app.dart` (with `main: generated`) the app is `MaterialApp.router(routerConfig: router)`.
 
 **`startup.dart`** exports, by name, any of:

@@ -70,7 +70,7 @@ class ChatPage extends HookConsumerWidget {
       body: Column(
         children: [
           TextField(onChanged: (text) => ref.read(chatDraft(page).notifier).set(text)),
-          const DraftBadge(),
+          const _DraftBadge(),
         ],
       ),
     );
@@ -78,8 +78,8 @@ class ChatPage extends HookConsumerWidget {
 }
 
 /// A widget below the page reaches the same state with `PageInstance.of`: it is equal by id.
-class DraftBadge extends ConsumerWidget {
-  const DraftBadge({super.key});
+class _DraftBadge extends ConsumerWidget {
+  const _DraftBadge();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -166,6 +166,7 @@ void main() {
     final container = await pumpRouter(tester, router);
 
     await tester.enterText(find.byType(TextField), 'hello');
+    await tester.pump(); // enterText does not pump
     expect(find.text('draft: hello'), findsOneWidget);
 
     router.go('/chats/1?q=2'); // the same instance

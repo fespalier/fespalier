@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.13.1](https://github.com/fespalier/fespalier/compare/v0.13.0...v0.13.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* a refusal is never hidden behind data kept on error ([#136](https://github.com/fespalier/fespalier/issues/136)) ([80476a2](https://github.com/fespalier/fespalier/commit/80476a2b221a548ea7151c73474b5fd2698dcc4e))
+* **otel:** cap dartastic_opentelemetry_api below 1.0.0-rc.4 ([#135](https://github.com/fespalier/fespalier/issues/135)) ([feb5b0f](https://github.com/fespalier/fespalier/commit/feb5b0f5c287501cc1b2a912fd121ff249383c8c))
+
+
+### Documentation
+
+* a full-stack cose example, a fespalier app and a CrateStack server signing every request with COSE_Sign1 ([#129](https://github.com/fespalier/fespalier/issues/129)) ([fdaad6b](https://github.com/fespalier/fespalier/commit/fdaad6b8a01d98ef228dee27e8e36ce0c54b860f))
+* a maps example, a pin picker and an offline pack with fespalier_maps ([#126](https://github.com/fespalier/fespalier/issues/126)) ([b03d87d](https://github.com/fespalier/fespalier/commit/b03d87d34ad8d3790a86bd4f7441199087710689))
+* an adopt example, a go_router app moving to fespalier ([#127](https://github.com/fespalier/fespalier/issues/127)) ([1bf244d](https://github.com/fespalier/fespalier/commit/1bf244d83979a4d73612562e7f12edd27c491143))
+* an i18n example, translated routes with fespalier_tolgee ([#125](https://github.com/fespalier/fespalier/issues/125)) ([879760b](https://github.com/fespalier/fespalier/commit/879760b8019f7bcad3dacc6c8c540a74a5eee2d2))
+* an offline example, reads, intents and owned rows with fespalier_cratestack ([#128](https://github.com/fespalier/fespalier/issues/128)) ([12403f9](https://github.com/fespalier/fespalier/commit/12403f99bd48d287c73e4195bb13209cdcd7fb94))
+* list every example and point skills at the examples that show them ([#122](https://github.com/fespalier/fespalier/issues/122)) ([6688fa7](https://github.com/fespalier/fespalier/commit/6688fa76237602c4c7461d18a71338596217a795))
+* re-verify every skill against 0.13 ([#137](https://github.com/fespalier/fespalier/issues/137)) ([92aa0a0](https://github.com/fespalier/fespalier/commit/92aa0a0ef15701e7bd20a849cfffa5ea877c6a61))
+* re-verify the troubleshooting skill against 0.13 ([#134](https://github.com/fespalier/fespalier/issues/134)) ([589cf39](https://github.com/fespalier/fespalier/commit/589cf3917c4de168f746c51a9f58e33a030a9e2a))
+
+
+### Tests
+
+* golden fsp diagnostics for broken trees, the troubleshooting skill's example ([#124](https://github.com/fespalier/fespalier/issues/124)) ([10997ac](https://github.com/fespalier/fespalier/commit/10997acff4c9e3a6085b54e2a660bcb2d7414aa8))
+
 ## [0.13.0](https://github.com/fespalier/fespalier/compare/v0.12.0...v0.13.0) (2026-10-08)
 
 

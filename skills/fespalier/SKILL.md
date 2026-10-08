@@ -107,7 +107,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.13.0
+      ref: v0.13.1
 ```
 
 <!-- x-release-please-end -->
@@ -129,7 +129,7 @@ Get `fsp` one of these ways (details in
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 dart run fespalier <command>      # installs nothing: downloads the matching release, SHA-256 pinned
-cargo install --git https://github.com/fespalier/fespalier --tag v0.13.0 fespalier
+cargo install --git https://github.com/fespalier/fespalier --tag v0.13.1 fespalier
 ```
 
 <!-- x-release-please-end -->

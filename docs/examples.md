@@ -175,6 +175,23 @@ provider with device-bound tokens (DPoP), and its tests check every proof the wa
 - tests through `AppMain.root()`: a cold start from a notification, a tap while the app runs, a guard on a tapped page, a foreign link refused, a tap delivered twice and the token callback, with `source=notification` read from `RecordingTelemetry`.
 - analytics tests through `AppMain.root()` ([Analytics](analytics.md)): the first screen as a view named by `screenName`, nothing sent while undecided or after a refusal, a notification tap as a view with its source, a screen named `null` skipped, and no segment value in anything the backend is given.
 
+## cose
+
+[`examples/cose`](../examples/cose) is a full stack: a [`fespalier_cratestack`](../packages/fespalier_cratestack) app and the CrateStack server it talks to, in which every request is a **COSE_Sign1** message signed by a device key ([`fespalier_sign_keypair`](../packages/fespalier_sign_keypair)) and every answer is a COSE_Sign1 message signed by the server. Its [README](../examples/cose/README.md) has the design as built, a sequence diagram of a signed call, the life of the device key, and every status the server answers with.
+
+- a `CoseTransport` that signs at send time, so an [intent](cratestack.md#5-actions)'s retries are new messages (a fresh `iat` and `cti`) over the same payload under the same `Idempotency-Key`, and a sealed answer that does not open is `CrateStackOffline` (the same key, never the next);
+- a notes page whose read is `ref.serve` and whose write is an intent, with widget tests over `FakeCrateStackTransport`;
+- a Dart COSE sealer and opener checked byte for byte against `cratestack-cose`'s own test vectors;
+- a Rust server (`examples/cose/server`, no database, its own `Cargo.lock`) and an end-to-end test that starts its binary and drives the app's transport: registration, a signed write and read, and each refusal (unregistered key, tampered payload, plain CBOR, replay, a COSE body to the plain operation).
+
+```sh
+cd examples/cose/server && cargo run --locked -- --listen 127.0.0.1:8787   # prints the key to pin
+cd examples/cose && flutter pub get && flutter test                         # the end-to-end test skips without COSE_SERVER_BIN
+just cose                                                                   # the server's gates, then the app's with the server required
+```
+
+`SignKeypairSigner` (the hardware key) is not run by any test: they use a software key.
+
 ## i18n
 
 [`examples/i18n`](../examples/i18n) is [`fespalier_tolgee`](../packages/fespalier_tolgee) with no network and no key (see [i18n with Tolgee](i18n-tolgee.md)):

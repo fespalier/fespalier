@@ -1,0 +1,12 @@
+These JSON files are copied unchanged from the cratestack-cose 0.15.3 crate,
+tests/vectors/ (https://github.com/cratestack/cratestack, tag v0.15.3,
+crates.io: cratestack-cose). They pin the COSE_Sign1 wire format of binding version 2
+byte for byte (protected headers, external AAD, to-be-signed structures, signatures)
+and the negative cases a verifier must refuse. The Rust server's tests and the Dart sealer
+(lib/src/cose/, checked in test/cose/) both read this one copy.
+
+cratestack is MIT licensed; its licence is in LICENSE next to this file.
+keys.json holds TEST KEYS, published upstream: never use them outside tests.
+
+To refresh: copy the same four files from the cratestack-cose release that
+examples/cose/server/Cargo.toml pins.

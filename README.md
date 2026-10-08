@@ -239,6 +239,7 @@ Following a link to an old README section? [docs/README.md](docs/README.md) maps
 - [`examples/telemetry`](examples/telemetry): the route lifecycle, OpenTelemetry and Sentry.
 - [`examples/auth`](examples/auth): `fespalier_auth` on an in-process demo API, with a Keycloak realm.
 - [`examples/plugins`](examples/plugins): notification taps (`fespalier_push`) and screen views with consent (`fespalier_analytics`) through `fespalier: adapters:`.
+- [`examples/cose`](examples/cose): a full stack. A `fespalier_cratestack` app and a Rust CrateStack server that signs both ways: every request a COSE_Sign1 message from a device key, every answer sealed by the server.
 - [`examples/i18n`](examples/i18n): translated routes with `fespalier_tolgee`: a `$lang` segment, bundled catalogs, a language switch, ICU plurals.
 - [`examples/maps`](examples/maps): a pin picker that returns a place and one offline map pack (`fespalier_maps`), with a fixed gazetteer and fakes.
 - [`examples/adopt`](examples/adopt): a go_router app half-way through adopting fespalier: the old routes stay, the new pages are mounted under `/shop`, with `ready()` and `attach()` in `startup.dart`.

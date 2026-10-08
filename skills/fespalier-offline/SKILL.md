@@ -312,6 +312,7 @@ Future<List<Override>> startup() async => [
 | The clock, per-field merge, writing a `RowSync`, `SyncEngine` and the triggers            | [`references/owned-rows-and-sync.md`](references/owned-rows-and-sync.md)                                    |
 | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides` | [`references/testing.md`](references/testing.md)                                                            |
 | Wiring a CrateStack client, Dio, the server's idempotency contract                        | [`fespalier-cratestack`](../fespalier-cratestack/SKILL.md)                                                  |
+| A signed transport under intents and `ref.serve`, with a server to run it against         | [`examples/cose`](../../examples/cose/README.md)                                                            |
 | A message from the package                                                                | [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its `diagnostics-cratestack.md` page) |
 
 ## Where the code is

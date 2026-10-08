@@ -861,3 +861,42 @@ fn the_pinned_checksums_are_none_or_belong_to_a_version_up_to_this_one() {
         );
     }
 }
+
+/// The `channel = "..."` of a `rust-toolchain.toml`.
+fn toolchain_channel(rel: &str) -> String {
+    read(rel)
+        .lines()
+        .find_map(|l| {
+            let value = l.trim().strip_prefix("channel")?.trim().strip_prefix('=')?;
+            Some(value.trim().trim_matches('"').to_string())
+        })
+        .unwrap_or_else(|| panic!("{rel} has no `channel = ` line"))
+}
+
+#[test]
+fn the_cose_example_server_builds_with_the_generators_rust() {
+    // examples/cose/server is a crate of its own (its own Cargo.lock), so it has its own
+    // rust-toolchain.toml, which the `cose` job reads: it must not drift from the one every other
+    // job builds with, or the example is proven on a compiler nobody else uses.
+    assert_eq!(
+        toolchain_channel("examples/cose/server/rust-toolchain.toml"),
+        toolchain_channel("cli/rust-toolchain.toml"),
+        "examples/cose/server/rust-toolchain.toml (left) and cli/rust-toolchain.toml (right) differ"
+    );
+    let ci = read(".github/workflows/ci.yml");
+    assert!(
+        ci.contains("\n  cose:\n"),
+        "ci.yml has no `cose` job (examples/cose)"
+    );
+    for needle in [
+        "examples/cose/server/rust-toolchain.toml",
+        "COSE_SERVER_BIN",
+        "FSP_REQUIRE_COSE_SERVER",
+    ] {
+        assert!(
+            ci.contains(needle),
+            "the cose job must mention `{needle}`: it builds the server with the pinned toolchain \
+             and requires the end-to-end test to run against it"
+        );
+    }
+}

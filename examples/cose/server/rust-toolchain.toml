@@ -1,0 +1,9 @@
+# The same channel as cli/rust-toolchain.toml (cli/tests/versions.rs fails when they differ), pinned
+# here too because this crate has its own Cargo.lock and is built from its own directory: rustup
+# honours the file next to where cargo runs. CI's `cose` job reads this file ("Read the Rust
+# toolchain"), so a bump is one PR that touches this file and cli/rust-toolchain.toml (and
+# `rust-version` in Cargo.toml when the minimum itself moves).
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -380,7 +380,10 @@ that uses them leaves nothing pending. `ManualSyncTicker`, `FakeRowServer` and `
 ## 11. Not built
 
 - **Signed intents** (a re-confirmation, a device-bound proof of possession on a queued call). The intent is the
-  stored call; a proof tied to a moment cannot be replayed from a queue.
+  stored call; a proof tied to a moment cannot be replayed from a queue. Signing **each attempt** at send time is
+  another thing, and works: a `CrateStackTransport` that seals the call with a device key when `send` runs, so an
+  intent's retries are new messages over the same payload under the same key. [`examples/cose`](../examples/cose/README.md)
+  does it with COSE_Sign1, against a CrateStack server that verifies every request and seals every answer.
 - **Paging helpers** for pulls beyond the cursor loop of `RowSync`.
 - **Sync telemetry spans.** A data read through `serve` and an action that calls `submit` already run inside
   fespalier's data and action spans. A sync span (`TelemetryOp.sync`) is a planned, additive change to the

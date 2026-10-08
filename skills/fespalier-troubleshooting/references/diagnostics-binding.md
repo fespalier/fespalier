@@ -1,6 +1,6 @@
 # Diagnostics: binding parameters and types
 
-As of v0.4.0 (`cli/src/resolve.rs`, `enums.rs`, `extra.rs`). `fsp` fills each
+As of v0.13.0 (`cli/src/resolve.rs`, `enums.rs`, `extra.rs`). `fsp` fills each
 constructor or function parameter by **name**, then as a **query** parameter, then
 by **type** (`fespalier/references/binding-rules.md`). These are the messages when
 that fails. The general rule: they point at the **parameter**, with a code frame.
@@ -31,7 +31,7 @@ defaults, run `fsp routes --json` and read `params` (`in: path` or `query`).
 
 | Message                                                                                                                                                                 | Cause and fix                                                                                                                               |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `` `$id` is String in p/$id/data.dart:2 but int here ``                                                                                                                 | Every file that asks for `$id` must agree. Change the parameter in the named file (line given) or here                                      |
+| `` `$id` is String in p/$id/data.dart:3 but int here ``                                                                                                                 | Every file that asks for `$id` must agree. Change the parameter in the named file (line given) or here                                      |
 | `` `?page` is String? in s/data.dart:2 but int? here ``                                                                                                                 | The same for a query parameter of one route (a layout's, a section's and a guard's are separate scopes)                                     |
 | `` `Uri id`: segments are String, int, double or bool, or an enum ``                                                                                                    | A segment of another type. Take a `String` and parse it in the page                                                                         |
 | `` `List<Object> rest`: a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime, or of an enum ``                           | A catch-all must be a `List` of one of those                                                                                                |
@@ -60,7 +60,7 @@ another file run `fsp gen` (or keep `fsp watch` running: it watches `lib/` since
 
 | Message                                                                                                                                                                                                                                                   | Cause and fix                                                             |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `` `extra` gets the object passed on navigation, but it isn't in the URL: a deep link or a reload leaves it null, so declare it nullable, e.g. `Note? extra` ``                                                                                           | Make it `Note?`, `Object?` or `dynamic`                                   |
+| `` `extra` gets the object passed on navigation, but it isn't in the URL: a deep link or a reload leaves it null, so declare it nullable, e.g. `String? extra` ``                                                                                         | Make it `Note?`, `Object?` or `dynamic`                                   |
 | `` `extra` is `String?` here, but the routes it covers take other types: `/n/a` (n/a/page.dart takes `int?`); a layout sees the extra of every route it covers, so declare it as `Object?` to accept any of them, or as their type when they share one `` | A layout or guard above routes with different extra types: take `Object?` |
 | `` guard() takes `extra` as a named parameter, e.g. `{Object? extra}` `` (and `redirect()`)                                                                                                                                                               | `extra` in a guard or redirect is a **named** parameter                   |
 | ``expected a top-level `extraCodec`: ...`` (error), `extra_codec.dart is only read at the root of the app folder, so this one is ignored` (warning)                                                                                                       | See `diagnostics-config-and-meta.md`                                      |

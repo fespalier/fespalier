@@ -166,6 +166,8 @@ class Splash extends StatelessWidget {
   (see `fespalier-testing`).
 - `AppMain.routerObservers()` (since 0.9.0, only with `adapters:`): the adapters' router observers, then
   startup.dart's `routerObservers`. An app.dart `router()` passes it on (below).
+- `AppMain.launch` (since 0.11.0, only with `adapters:`): the `InboundLaunch?` the adapters answered, asked once in `run()`
+  (null on the web); an app.dart `router()` passes it on as `launch:` (below).
 
 ## Adapters: `fespalier: adapters:` (since 0.9.0)
 

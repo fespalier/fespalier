@@ -1,6 +1,6 @@
 # Adopting fespalier in an existing go_router app
 
-As of v0.4.0. You do not have to rewrite the router. fespalier's tree mounts **inside**
+As of v0.13.0. You do not have to rewrite the router. fespalier's tree mounts **inside**
 your `GoRouter` under a URL prefix, so you can move routes across one folder at a time
 and keep the rest as they are.
 
@@ -168,7 +168,11 @@ What `mount` changes:
   router too, with no `refreshListenable` (`fespalier-guards`); a host `refreshListenable`
   is only for a change that is not a provider (and for 0.4.1 and earlier).
 - `AppRoutes.router()` is what you **stop** calling: it is `mount()` inside a router of its
-  own.
+  own. What `router()` does besides, you now do for your router: when `app.g.dart` has `AppRoutes.attach` (an app with an
+  `observe.dart`, `telemetry: true` or `adapters:`), call `AppRoutes.attach(router)` once with your router, or the hooks,
+  telemetry and DevTools never follow it; with `adapters:` also pass `onEnter: AppRoutes.onEnter` to your `GoRouter`
+  (the generated main calls `AppRoutes.attach(router, container)` itself, as it does with an app.dart `router()`; a
+  `main: manual` app does it once the container exists). A plain app with none of these has neither member.
 
 ## 3. Move routes over, one at a time
 

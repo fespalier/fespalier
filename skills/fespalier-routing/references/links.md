@@ -1,6 +1,6 @@
 # Links: `RouteLink`
 
-As of v0.5.0. `RouteLink` is the widget for a link **between pages**: a typed
+As of v0.13.0. `RouteLink` is the widget for a link **between pages**: a typed
 route (or a location string) with a child you draw. On the web it is a real
 `<a href>`; everywhere, a plain click goes through go_router. Reach for it
 instead of `onTap: () => XRoute(...).go(context)` when a link should show its

@@ -1,6 +1,6 @@
 # Transitions, shells, dialogs and state restoration
 
-As of v0.4.0.
+As of v0.13.0.
 
 ## `transition.dart`
 

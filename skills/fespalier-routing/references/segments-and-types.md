@@ -1,6 +1,6 @@
 # Segments, query parameters and their types
 
-As of v0.4.0. The type of a segment or query parameter comes from the
+As of v0.13.0. The type of a segment or query parameter comes from the
 parameters that ask for it; nobody declares it in the folder name.
 
 ## Dynamic segments

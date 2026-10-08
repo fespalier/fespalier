@@ -1,6 +1,6 @@
 # What `lib/app.g.dart` contains
 
-As of v0.4.0 (`cli/templates/app.g.dart.jinja`). One plain go_router plus
+As of v0.13.0 (`cli/templates/app.g.dart.jinja`). One plain go_router plus
 Riverpod file, meant to be read and committed. It never names your types
 except for a typed `extra` and enum segments or query parameters, which it
 imports by name (`import '...' show Category;`). Everything else flows through
@@ -21,16 +21,18 @@ as `_i0`, `_i1`, ...; a `$` in a path is escaped (`items/\$id/page.dart`).
 
 ## `AppRoutes`
 
-| Member                                                                   | What it is                                                                                                                                                                            |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `router({initialLocation, observers, restorationScopeId, navigatorKey})` | A whole `GoRouter` for `MaterialApp.router(routerConfig:)`. Passes `extraCodec:` when `extra_codec.dart` exists, and `errorBuilder` shows `notFound(uri)`. **No `refreshListenable`** |
-| `mount({at = '/', navigatorKey})`                                        | The routes alone (`List<RouteBase>`), to put inside your own `GoRouter`                                                                                                               |
-| `base`                                                                   | Where the tree is mounted: `'/'`, or the `at` given to `mount`. Typed routes read it, so `.location` stays right under a prefix                                                       |
-| `rootNavigatorKey`                                                       | The root navigator's `GlobalKey<NavigatorState>`: the one you supplied to the last `router()` or `mount()`, else a fresh one that call made                                           |
-| `notFound(uri)`                                                          | The nearest `not_found.dart` to `uri` (what `errorBuilder` calls)                                                                                                                     |
-| `matchUrl(uri)` / `dataAt(uri)`                                          | A `UrlMatch?` / the data providers, outermost first. No guard runs, no widget is built. `null`: no route, or a segment did not parse                                                  |
-| `deferred`, `loadDeferred()`                                             | Only in an app with a deferred route (since 0.7.0): the `DeferredLibrary` of each, and a call that loads them all (see "Deferred pages")                                              |
-| `all`, `byType`, `byPath`, `match(uri)`                                  | Forwarded from `AppManifest` (see below)                                                                                                                                              |
+| Member                                                                           | What it is                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `router({initialLocation, launch, observers, restorationScopeId, navigatorKey})` | A whole `GoRouter` for `MaterialApp.router(routerConfig:)`. Passes `extraCodec:` when `extra_codec.dart` exists, and `errorBuilder` shows `notFound(uri)`. **No `refreshListenable`**. `launch` (an `InboundLaunch`, since 0.11.0) is where the app was opened from; the router is built inside `launchRouter` |
+| `mount({at = '/', navigatorKey})`                                                | The routes alone (`List<RouteBase>`), to put inside your own `GoRouter`                                                                                                                                                                                                                                        |
+| `base`                                                                           | Where the tree is mounted: `'/'`, or the `at` given to `mount`. Typed routes read it, so `.location` stays right under a prefix                                                                                                                                                                                |
+| `rootNavigatorKey`                                                               | The root navigator's `GlobalKey<NavigatorState>`: the one you supplied to the last `router()` or `mount()`, else a fresh one that call made                                                                                                                                                                    |
+| `notFound(uri)`                                                                  | The nearest `not_found.dart` to `uri` (what `errorBuilder` calls)                                                                                                                                                                                                                                              |
+| `matchUrl(uri)` / `dataAt(uri)`                                                  | A `UrlMatch?` / the data providers, outermost first. No guard runs, no widget is built. `null`: no route, or a segment did not parse                                                                                                                                                                           |
+| `deferred`, `loadDeferred()`                                                     | Only in an app with a deferred route (since 0.7.0): the `DeferredLibrary` of each, and a call that loads them all (see "Deferred pages")                                                                                                                                                                       |
+| `preload(ref, uri, {keepFor})`                                                   | The page's data (and, when deferred, its code) behind one `PrefetchHandle`; a location that matches no route gets a closed handle                                                                                                                                                                              |
+| `attach(router[, container])`, `onEnter(...)`                                    | Only in an app with `observe.dart`, `telemetry: true` or `adapters:` (`attach`), and with `adapters:` (`onEnter`, go_router's, since 0.11.0): see "Pieces that depend on the app" below                                                                                                                        |
+| `all`, `byType`, `byPath`, `match(uri)`                                          | Forwarded from `AppManifest` (see below)                                                                                                                                                                                                                                                                       |
 
 `mount` **stores** `at` and `navigatorKey` in static fields, so the last call
 wins. `router()` calls `mount()` itself. **Since 0.5.0 a call without a
@@ -38,6 +40,20 @@ wins. `router()` calls `mount()` itself. **Since 0.5.0 a call without a
 stored (on 0.4.x and earlier it kept it, so a test could see another test's key),
 and a bare `AppRoutes.mount()` therefore restores both defaults (`base` `'/'`, a
 new key): end a test that mounted under a prefix with `addTearDown(AppRoutes.mount)`.
+
+## Pieces that depend on the app
+
+- **`AppAdapters`** (a class beside `AppRoutes`, only with `adapters:`, since 0.11.0): `zone`, `beforeRun`, `launch`,
+  `overrides`, `providerObservers`, `routerObservers` and `wrap`, each forwarding to the `FespalierAdapters` the pubspec's
+  list builds; `main: manual` apps call it (`app-main.md`).
+- **`AppRoutes.attach(router[, container])`** (only with `observe.dart`, `telemetry: true` or `adapters:`): `router()` calls
+  it without a container, and it makes `devToolsAttach`, the `observe.dart` hooks (`observeAttach`, with the container),
+  `telemetryAttach` and each adapter's `attach` (with the container, once per router) follow that router. An app
+  that builds its own `GoRouter` calls it once with that router (`fespalier-migration`).
+- **`AppRoutes.onEnter`** (only with `adapters:`): go_router's `onEnter`, each adapter's in the pubspec's order; an app with
+  a router of its own passes `onEnter: AppRoutes.onEnter`. Without adapters it does not exist, so an app keeps
+  go_router's simplest path (any `onEnter` makes go_router parse every navigation asynchronously).
+- **`enum <Name>Step`** (since 0.11.0): the steps of a multi-page form, one per step folder (`fespalier-data`).
 
 ## `AppManifest`
 
@@ -159,7 +175,7 @@ Off, the file has no `RouteScrollMemory`. See `fespalier-layouts`.
 
 The file calls the runtime's DevTools support in three places, all under `if (kFespalierDevTools)`:
 `mount()` ends its setup with `devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl)`, `router()` builds the
-`GoRouter`, passes it to `devToolsAttach(router)` and returns it, and `String _devToolsTree()` at the end of the
+`GoRouter`, passes it to `devToolsAttach(router)` (through `AppRoutes.attach`, when the app has one) and returns it, and `String _devToolsTree()` at the end of the
 file returns the route tree (`fsp routes --graph json`) as one string. `kFespalierDevTools` is a `const` that
 is false in release builds (and with `--dart-define=fespalier.devtools=false`), so the compiler removes the
 calls, the string and the code behind them: a release build has none of it. **Never remove these lines by hand**
@@ -200,9 +216,11 @@ the `fespalier_forms` package's, no longer `fespalier`'s.
   `ProviderContainer` as `_i8.guard(ProviderScope.containerOf(context, listen: false), ...)`,
   as before 0.5.0. The string is a constant naming that guard on that route. Since 0.7.0 each call sits
   inside `traceGuard(state, 'g8@3', ...)`, which returns it unchanged (see above).
-- No `redirect` on a `ShellRoute` or `StatefulShellRoute`; guards hang on each
-  page's `GoRoute`, and go_router runs a matched route's redirect for deep links
-  and navigation inside shells, tabs included.
+- No `redirect` on a plain `ShellRoute`; guards hang on each page's `GoRoute`, and
+  go_router runs a matched route's redirect for deep links and navigation inside
+  shells, tabs included. The one exception (since 0.11.0): the guards above a tab
+  layout run once on its `StatefulShellRoute`'s `redirect:`, not copied into each
+  tab's route (a tab's own guard stays on its route).
 - A segment that does not parse shows `not_found.dart` and skips the guards that
   read segments or query parameters; a guard that takes neither still runs first.
 - Static routes are sorted before dynamic ones before catch-alls at each level,

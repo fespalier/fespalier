@@ -80,6 +80,7 @@ How it behaves, each point pinned by a test:
   (`PinGuess.center` is null, and `confirm` is null) until a fix lands, a result is picked, or the person moves the map.
   A pan that comes to rest while the fix is still awaited is the person's choice: it is adopted at once and the fix, when
   it arrives, is dropped. Picking a result does the same.
+  A rest is the person's choice only after the map reported that its camera started to move (`MapBinding.move()`, the map's camera-move event): a rest with no move before it is ignored while nothing has been chosen, so a map or a test that only reports `idle` never gives the pin a point. While the fix is awaited the rest must also be away from where the map started (about 0.01 degree, see [Where the device is](#where-the-device-is)).
 - **Reverse geocoding runs when the map comes to rest**, on the map's idle event, never while it moves, and there is no
   debounce timer. **At most one reverse request is in flight**: the newest rest waits (replacing an older one that was
   waiting) until the answer on its way returns, and that answer, made for a point the pin has left, is dropped. A rest at

@@ -434,6 +434,85 @@ expect(fake.listenCount, 1);
 
 A widget test never runs `startup()` (`pumpRouter` does not), so it needs no `RustLib.init` and no native library: the fake core is a provider override.
 
+### Providers per page instance: fespalier_riverpod
+
+Since 0.13.0. A `data.dart` is keyed by a **location**: `/c/1` is one provider however many times it is on screen. State that belongs to **one page on a navigator** (a draft being typed, a selection, a filter sheet's choice, a form step) is not that: `/c/1` pushed twice is two pages and should be two states, while `/c/1?q=2` after `/c/1`, or a [remount](navigation.md#remounting-a-page-remount) of the page, is the same page and keeps its state. `package:fespalier_riverpod` keys a provider by the page instance, using the identity core already computes for the route lifecycle (`pageInstanceId`, the same string as `RouteScope.id`). It adds no key, command or file kind, starts no timer and listens to nothing. Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.12.0
+  fespalier_riverpod:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_riverpod
+      ref: v0.12.0
+```
+
+<!-- x-release-please-end -->
+
+**The key and the providers.** A `PageInstance<R>` is the instance's id plus its typed route, equal **by id** (the route is not part of equality). `pageProvider` and `pageNotifierProvider` are auto-dispose families keyed by it (Riverpod 3 has no separate auto-dispose family type: the results are a `ProviderFamily` and a `NotifierProviderFamily`):
+
+```dart
+// lib/core/chat_draft.dart
+class ChatDraft extends Notifier<String> {
+  ChatDraft(this.page);
+  final PageInstance<ChatRoute> page;
+
+  @override
+  String build() => '';
+
+  void set(String text) => state = text;
+}
+
+final chatDraft = pageNotifierProvider<ChatDraft, String, ChatRoute>(ChatDraft.new);
+
+// lib/app/chats/$id/page.dart
+class ChatPage extends ConsumerWidget {
+  const ChatPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final page = PageInstance.of(context, ChatRoute.of); // or usePageInstance(ChatRoute.of) in a hook widget
+    final draft = ref.watch(chatDraft(page)); // watched, so the state is kept while the page is shown
+    return Scaffold(
+      body: Column(
+        children: [
+          TextField(onChanged: (text) => ref.read(chatDraft(page).notifier).set(text)),
+          Text('draft: $draft'),
+        ],
+      ),
+    );
+  }
+}
+```
+
+`PageInstance.of(context, ChatRoute.of)` reads the page's `GoRouterState` and the generated `XRoute.of`; call it in the page or below it. `usePageInstance(ChatRoute.of)` (a `flutter_hooks` hook, which fespalier already exports) is the same instance made once per page instance, so a query change gives the same object. The provider keeps the route the key was **first** made with: what depends on the query belongs to the page's `data.dart`, which is keyed by the whole location. The state lives as long as something watches it (a `read` alone does not keep an auto-dispose provider, so the page **watches**), and is disposed after the page's last widget goes (a pop, a `go` to another instance).
+
+**Keeping it while no widget watches.** Riverpod 3 counts a paused subscription, so a parked tab or a covered page that **watches** its state keeps it without any hold. The hold is for state the page reads but does not watch, or that must outlive its widgets' watches. From an `observe.dart`, `holdForPage` ties it to the page's `RouteScope` (`scope.hold` under a name that says why); `onEnter` fires when a page first becomes the top page, so a page under a deep-linked stack is held only once it is on top. It lives from `onEnter` until the page leaves, and the page and the hook share it because `PageInstance.ofScope(scope, route)` and `PageInstance.of` give equal keys for one instance:
+
+```dart
+// lib/app/chats/$id/observe.dart
+void onEnter(Ref ref, {required int id, required RouteScope scope}) {
+  holdForPage(scope, chatDraft(PageInstance.ofScope(scope, ChatRoute(id: id))));
+}
+```
+
+**Testing.** `package:fespalier_riverpod/testing.dart` has `TestPageInstance(route, id:)`, a key for a test without a router (the default `id` is `'test'`; the same `id` is the same key). With a router, the instance is what the page builds, so `pumpRouter` and `go`/`push` are the test; in a widget test call `await tester.runAsync(container.pump)` after a navigation before you count disposals, because Riverpod disposes an unlistened provider in a task of its own.
+
+```dart
+final one = TestPageInstance(const ChatRoute(id: 1), id: 'first push');
+final two = TestPageInstance(const ChatRoute(id: 1), id: 'second push');
+expect(container.read(chatDraft(one)), isNot(same(container.read(chatDraft(two)))));
+```
+
+What it does not do. It keeps nothing across a restart (a draft that must survive is [`dataCache`](#a-cache-that-survives-a-restart-datacache) or the form drafts of [Forms](forms.md)), and a state is per container, so a second `ProviderScope` has its own.
+
 ## Typed helpers on the route
 
 A route with a `data.dart` has three more helpers next to `.data` and `.refresh` (and every route below a [section](#section-data) with data has `preload`, below):

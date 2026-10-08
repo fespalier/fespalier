@@ -221,6 +221,14 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier_riverpod/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_riverpod/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier/extension/devtools/config.yaml"
         },
         {

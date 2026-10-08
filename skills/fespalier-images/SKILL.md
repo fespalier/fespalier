@@ -5,7 +5,7 @@ description: "Responsive CDN images in a fespalier app with fespalier_image (sin
 
 # fespalier-images
 
-> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
@@ -80,7 +80,7 @@ class HomePage extends StatelessWidget {
 ```
 
 `imageCdnProvider` holds an `ImageCdn`: the `builder`, the `buckets` (Next.js 16's `32 … 3840`), the `format`
-(`webp`), the `quality`, `maxPixelRatio` (3), a `providerFactory` (a disk cache goes here), and the defaults
+(`webp`), the `quality`, `maxPixelRatio` (3), a `providerFactory` (a disk cache goes here), `webHtmlElementStrategy` (`never`) and the defaults
 of the placeholder, the error view and the fade. Every argument of `ResponsiveImage` overrides the CDN's for
 that image. Without an override the provider holds `const ImageCdn()`, which is **no CDN**: a source is a URL,
 fetched as it is. A nested `ProviderScope` can override it for a subtree.
@@ -115,7 +115,7 @@ question, and `references/integration.md` precache, heroes, the web, caching, te
 
 - **An unconfigured app fetches `products/3.jpg` as a URL**, fails as a network error, and prints once in a debug build: `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it is fetched as it is. Override imageCdnProvider in startup() (docs/responsive-images.md, "Images").` The fix is the `startup()` override.
 - **It chooses once and only grows.** An animated box (`AnimatedSize`, a hero) asks for one width; a smaller
-  box never asks again. For a box that really should get a sharper image as it grows, `growWithBox: true`.
+  box never asks again (a change of the view's size or of the device pixel ratio also grows it). For a box that really should get a sharper image as it grows, `growWithBox: true`.
   "It loads twice" is a box that grew with `growWithBox`, or a precache at another width than the page
   (a different bucket: say it with one constant).
 - **While a variant loads it shows the widest loaded one of the same picture**, not the placeholder: a
@@ -149,7 +149,7 @@ endpoint belongs in `data.dart`); no `fsp` lint for a raw `Image.network` and no
 
 `packages/fespalier_image/`: `lib/src/responsive_image.dart` (the widget, `precache`, the flight shuttle),
 `cdn.dart` (`ImageCdn`, `imageCdnProvider`), `buckets.dart`, `request.dart`, `builder.dart` and
-`builders/` (one file per CDN), `variants.dart` (the loaded-variant registry), `heroes.dart`
+`builders/` (one file per CDN), `variants.dart` (the loaded-variant registry), `warnings.dart` (the debug-only "not a URL" message and the reported builder errors), `heroes.dart`
 (`imageHero`), `telemetry.dart` (the image span), and `lib/testing.dart` (`FakeImages`). The tests pin each
 builder's URL against the providers' published examples (`test/builders_test.dart`, `signing_test.dart`).
 `examples/shop` shows the product photos through EmgR, with a precache behind each row's link and an image

@@ -1,0 +1,38 @@
+name: cose_example
+description: fespalier example — CrateStack calls sealed as COSE_Sign1 by a device key (fespalier_sign_keypair), against a server that checks them.
+publish_to: none
+version: 0.1.0
+
+environment:
+  # fespalier_sign_keypair needs Dart 3.12 (Flutter 3.44).
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  # SHA-256 for the thumbprint, the request digest and the Sig_structure's hash.
+  crypto: ^3.0.6
+  flutter:
+    sdk: flutter
+  fespalier_sign_keypair:
+    path: ../../packages/fespalier_sign_keypair
+  # ESP256 verification of sealed responses (the signing is the device key's).
+  pointycastle: ^4.0.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  # The test keys of the vectors are imported into its software signer. The same commit as
+  # fespalier_sign_keypair's pin.
+  flutter_sign_keypair:
+    git:
+      url: https://github.com/vaam-apps/flutter-sign-keypair
+      ref: c6a513781a3d11fd453268b0776447a45c679b32
+  flutter_test:
+    sdk: flutter
+
+# fespalier_sign_keypair depends on fespalier_auth, and that on fespalier, by git as an app does;
+# here all are the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+  fespalier_auth:
+    path: ../../packages/fespalier_auth

@@ -241,6 +241,7 @@ Following a link to an old README section? [docs/README.md](docs/README.md) maps
 - [`examples/plugins`](examples/plugins): notification taps (`fespalier_push`) and screen views with consent (`fespalier_analytics`) through `fespalier: adapters:`.
 - [`examples/i18n`](examples/i18n): translated routes with `fespalier_tolgee`: a `$lang` segment, bundled catalogs, a language switch, ICU plurals.
 - [`examples/maps`](examples/maps): a pin picker that returns a place and one offline map pack (`fespalier_maps`), with a fixed gazetteer and fakes.
+- [`examples/adopt`](examples/adopt): a go_router app half-way through adopting fespalier: the old routes stay, the new pages are mounted under `/shop`, with `ready()` and `attach()` in `startup.dart`.
 
 How to run them: [Run the examples](docs/examples.md).
 

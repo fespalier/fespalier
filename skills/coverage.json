@@ -615,7 +615,9 @@
         "docs/migration.md#0.8.1",
         "docs/migration.md#0.6.0",
         "docs/migration.md#0.7.0",
-        "docs/migration.md#0.5.0"
+        "docs/migration.md#0.5.0",
+        "docs/examples.md#adopt",
+        "examples/adopt"
       ]
     },
     "fespalier-observability": {
@@ -764,6 +766,8 @@
         "docs/offline-first.md#Freshness in the UI",
         "docs/offline-first.md#Testing offline",
         "docs/offline-first.md#Limits",
+        "docs/examples.md#offline",
+        "examples/offline",
         "examples/cose",
         "packages/fespalier_cratestack/lib/fespalier_cratestack.dart",
         "packages/fespalier_cratestack/lib/hive.dart",
@@ -803,6 +807,8 @@
         "docs/cratestack.md#9. Test it",
         "docs/cratestack.md#10. Debug messages",
         "docs/cratestack.md#11. Not built",
+        "docs/examples.md#offline",
+        "examples/offline",
         "docs/examples.md#cose",
         "examples/cose",
         "packages/fespalier_cratestack/README.md",
@@ -828,6 +834,8 @@
         "docs/maps.md#Testing",
         "docs/maps.md#Rules and what it costs",
         "docs/maps.md#Not built yet",
+        "docs/examples.md#maps",
+        "examples/maps",
         "packages/fespalier_maps/README.md",
         "packages/fespalier_maps/lib/fespalier_maps.dart",
         "packages/fespalier_maps/lib/geolocator.dart",

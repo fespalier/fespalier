@@ -5,7 +5,7 @@
 You do not have to move everything at once: fespalier can mount its generated routes inside the `GoRouter` you already have, so you can bring one section of the app over at a time.
 
 1. Install `fsp` and add the package ([Installation and setup](getting-started.md)).
-2. Set `main: manual` in the `fespalier:` section of `pubspec.yaml`, so that `fsp` writes no `main()` of its own and your `main()` stays as it is ([`main()`](app-startup.md)).
+2. Keep the default `main: auto` and put the router in `lib/app/app.dart`: a `GoRouter router()` that returns your own `GoRouter` with `...AppRoutes.mount(at: ...)` among its routes (step 4). The generated `main()` calls it once, so `startup.dart`'s `ready()` and `attach()` (since 0.12.0) still run around it ([`main()`](app-startup.md)). Set `main: manual` only if you want to keep your own `main()` as it is: `fsp` then writes no `main()` and reads neither `app.dart` nor `startup.dart`, so you call `ready` and `attach` yourself. [`examples/adopt`](../examples/adopt) is the worked case, including a 0.11-style `main()` moved into `ready()` and `attach()`.
 3. Put the first routes under `lib/app/` and run `fsp gen` (or keep `fsp watch` running).
 4. Mount the generated routes in your router. `at` is the URL prefix:
 
@@ -15,6 +15,8 @@ GoRouter(
   routes: [...yourRoutes, ...AppRoutes.mount(at: '/x', navigatorKey: rootKey)],
 )
 ```
+
+Under `main: auto`, that `GoRouter(...)` is what `router()` in `lib/app/app.dart` returns. [`examples/adopt`](../examples/adopt) shows it, with `ready()` and `attach()` in `startup.dart` in place of a hand-written `main()`.
 
 Pass `mount` your `GoRouter`'s own `navigatorKey`: routes that render on the
 [root navigator](navigation.md#the-root-navigator-navigatordart) name it as their `parentNavigatorKey`,

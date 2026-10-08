@@ -197,3 +197,5 @@ here has run on it). It starts no timer and adds no listener of its own.
 `lib/geolocator.dart`, `lib/testing.dart`; `test/no_timers_test.dart` greps `lib/` for timers, listeners and for anything
 that opens a dialog, and `test/telemetry_test.dart` pins the names. The guide is
 [`docs/maps.md`](https://github.com/fespalier/fespalier/blob/main/docs/maps.md).
+
+`examples/maps` is the running version (since 0.13.0): `PinPicker` returning a `PickedPlace` to the page that pushed it, a fixed in-app gazetteer as the `Geocoder` (no network), `GeolocatorPositionSource`, and one region pack with progress, pause, resume and delete. Read `test/pick_place_test.dart` for the round trip and the late fix that does not override a pan, and `test/offline_test.dart` for the pack on `FakeOfflineTiles`. A map does not draw in `flutter test`; its README says how to run it on a device.

@@ -131,8 +131,8 @@ class OrdersPage extends ConsumerWidget {
 
 The rules that keep it honest:
 
-- **Only `CrateStackOffline` falls back.** A refusal (`403`) is the answer and goes to `error.dart`: last week's copy
-  of something you may no longer see would be a leak. An error no reader in `crateStackErrors` knows is rethrown too.
+- **Only `CrateStackOffline` falls back.** A refusal (`403`) is the answer and goes to `error.dart` (on a first load): last week's copy
+  of something you may no longer see would be a leak. An error no reader in `crateStackErrors` knows is rethrown too. **Except on a route with a `freshness`:** its `DataView` gets `keepDataOnError`, so a refusal on a _reload_ leaves the old `Served` copy on screen and `error.dart` does not show (only a first load reaches it). Watch `reconnectSignal` in `data.dart` instead of declaring `freshness` (`examples/offline` does).
 - **An empty list offline is an answer**: `neverFetched` is true, so the page can say "not loaded on this phone yet".
   A **single row** with nothing saved is `CrateStackNoLocalData`, shown by `error.dart` with a retry; pass `empty:` for
   a list only.
@@ -281,7 +281,7 @@ Future<List<Override>> startup() async => [
   `pushed`, `pulled`, `rolledBack` and the drain's `DrainReport`.
 - **Save locally, then sync best-effort**: an action edits the row, calls `engine.sync(SyncReason.manual)` and ignores
   the failure. **Push before a server decision that names a local row**: `await ref.read(syncEngine).push()` throws when
-  it fails, where `sync` does not, so you do not send a decision about a row the server has never seen.
+  it fails, where `sync` does not, so you do not send a decision about a row the server has never seen. The report of a sync an action starts does not reach `autoSync`'s state, so its `rolledBack` is not shown by a banner on `autoSync` alone: keep it yourself (`examples/offline`'s `lastSync` notifier).
 
 ## Golden rules and traps
 
@@ -322,3 +322,8 @@ Future<List<Override>> startup() async => [
 `scope.dart`, `errors.dart`, `transport.dart`; `test/intents_test.dart` pins the answer table and
 `test/no_timers_test.dart` greps `lib/` for timers. The guide is
 [`docs/offline-first.md`](https://github.com/fespalier/fespalier/blob/main/docs/offline-first.md).
+
+`examples/offline` (in the fespalier repository) is a running app of the sample above: an orders list read with
+`ref.serve`, a cancel as an intent, notes as owned rows with a `RowSync`, `autoSync` in the root layout with the app's
+own ticker, the sign-out wipe and a switch that plays the network, all on an in-process demo server. Its
+`test/support.dart` is `references/testing.md` applied to a whole app.

@@ -383,6 +383,11 @@ The step-by-step guide, with a compiled, tested host router, the mapping table a
 things `mount` does not carry, is in
 [`references/go-router-adoption.md`](references/go-router-adoption.md).
 
+`examples/adopt` is that guide as a running app: the old routes beside `AppRoutes.mount(at: '/shop')`
+in an `app.dart` `router()` under `main: auto`, the old URLs redirected to the typed routes,
+`ready()` and `attach()` in `startup.dart`, the pre-adoption version kept compiled in `lib/before/`,
+and `test/parity_test.dart`, which opens the same URLs in both. Read it next to the guide.
+
 ## Also
 
 - `fsp init` in an existing project **never overwrites** a file: it prints `skip  ... (exists)`.

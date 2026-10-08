@@ -63,6 +63,9 @@ jobs:
           cargo run --quiet -- check --project ../examples/plugins
           cargo run --quiet -- check --project ../examples/cose
           cargo run --quiet -- check --project ../examples/i18n
+          cargo run --quiet -- check --project ../examples/maps
+          cargo run --quiet -- check --project ../examples/adopt
+          cargo run --quiet -- check --project ../examples/offline
           cargo run --quiet -- maestro --check --project ../examples/shop
       # Licences, advisories, duplicate versions, sources: cli/deny.toml.
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
@@ -110,6 +113,9 @@ jobs:
           - examples/plugins
           - examples/cose
           - examples/i18n
+          - examples/maps
+          - examples/adopt
+          - examples/offline
     defaults:
       run:
         working-directory: ${{ matrix.dir }}

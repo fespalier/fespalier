@@ -41,6 +41,9 @@ examples/plugins/    fespalier_push and fespalier_analytics through adapters, wi
 examples/cose/       a full stack: a fespalier_cratestack app with a COSE_Sign1 transport, and server/, the Rust
                      CrateStack server it talks to (its own Cargo.lock); `just cose` runs both
 examples/i18n/       fespalier_tolgee: a $lang segment, bundled catalogs, a language switch, with widget tests
+examples/maps/       fespalier_maps: a pin picker and one offline pack, with fakes and widget tests
+examples/adopt/      a go_router app half-way through adopting fespalier (AppRoutes.mount, ready/attach), with a before/after parity test
+examples/offline/    fespalier_cratestack offline-first: reads, intents and owned rows on a demo server, with widget tests
 skills/              agent skills: how to write lib/app/ and read fsp's errors (skills/README.md);
                      scripts/skills/ checks them against the code
 ```

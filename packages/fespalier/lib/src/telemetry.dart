@@ -86,6 +86,17 @@ abstract class FespalierTelemetry {
   static void add(FespalierTelemetry sink) =>
       _current = combine([?_current, sink]);
 
+  /// Whether [sink] is the installed sink or one of the sinks combined into it (since 0.13.0).
+  /// An adapter that installed a sink in `beforeRun` asks it from `attach` to find out whether a
+  /// later `install` replaced the slot and dropped it. Compares by identity; reads nothing else.
+  static bool contains(FespalierTelemetry sink) {
+    final current = _current;
+    if (current == null) return false;
+    if (identical(current, sink)) return true;
+    return current is _Combined &&
+        current._children.any((child) => identical(child.sink, sink));
+  }
+
   /// Runs [body] within the operation [token] came from, as fespalier does around `data()`
   /// (since 0.9.0): for adapter packages that start operations of their own with [begin]. [body]
   /// runs once, synchronously; what it returns (the very object) or throws comes back. With no

@@ -640,7 +640,19 @@
         "packages/fespalier_sentry/lib/src/scrub.dart",
         "packages/fespalier_sentry/lib/src/tokens.dart",
         "docs/observability.md",
-        "docs/telemetry-conventions.md"
+        "docs/telemetry-conventions.md",
+        "docs/analytics.md",
+        "docs/analytics.md#Install",
+        "docs/analytics.md#Screen names",
+        "docs/analytics.md#Consent",
+        "docs/analytics.md#Time on screen",
+        "docs/analytics.md#Backends",
+        "docs/analytics.md#Testing",
+        "packages/fespalier_analytics/README.md",
+        "packages/fespalier_analytics/lib/fespalier_analytics.dart",
+        "packages/fespalier_analytics/lib/fespalier_adapter.dart",
+        "packages/fespalier_analytics/lib/testing.dart",
+        "packages/fespalier_analytics/lib/src/sink.dart"
       ]
     },
     "fespalier-images": {

@@ -41,7 +41,6 @@ Flutter 3.32, with the lowest dependencies it allows.
     `tracing: true` makes no spans yet) and HTTP spans under the data span in Sentry's own tracing.
   - `fespalier_dio`, the rest: composed with `fespalier_auth` (DPoP and refresh under a retry
     layer) and OpenTelemetry trace headers on each request.
-  - `fespalier_analytics`: screen views and time on screen, named from `meta.dart`, with consent.
 - **`fespalier_biometrics`, the rest.** The unlock guard ships in 0.13.0 (docs/guards.md). Not built: a lock
   screen widget, an idle lock on a timer, and a secret kept behind the biometric (a keystore's job).
 - **`fespalier_maps`, the rest.** The pin picker ships in 0.13.0 (docs/maps.md). Still to come:

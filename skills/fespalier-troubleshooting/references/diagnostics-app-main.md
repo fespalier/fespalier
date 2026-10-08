@@ -41,6 +41,12 @@ Not an `fsp` diagnostic: a `FlutterError` printed once when the app runs. An ada
   started (`launch()` has run by then), or a widget test boots `AppMain.root()` (which runs no `main()`) without calling
   it. Taps then open the app and navigate nowhere, and `pushSource` throws `pushSource: no PushSource`. Fix: call it
   first thing in `main()` (with `main: manual`, before `AppAdapters.zone`), or in the test's `setUp`.
+- ``fespalier_analytics is listed under `fespalier: adapters:` but was never configured: call FespalierAnalytics.configure(backend) in main() before AppMain.run()`` (since 0.13.0):
+  the same cause for `fespalier_analytics`: no `FespalierAnalytics.configure` before `AppMain.run()` (the sink is added to
+  telemetry in `beforeRun()`, so a later call installs nothing the first navigation sees). Nothing is recorded until it is called.
+- ``fespalier_analytics records no screen: this app's router does not report page events to telemetry. Set `telemetry: true`under`fespalier:`in pubspec.yaml and run`fsp gen```(since 0.13.0):
+the app was generated without`telemetry: true`, so no page event reaches the sink (`telemetryFollows(router)`is false). Turn
+it on and run`fsp gen`. A backend that never gets a call while consent is `undecided`or`denied` is not this: that is the rule.
 
 ## Root files
 

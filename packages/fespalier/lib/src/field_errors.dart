@@ -21,3 +21,14 @@ final class FieldErrors implements Exception {
     for (final e in fields.entries) '${e.key}: ${e.value}',
   ].join('; ');
 }
+
+/// An error the server decided, which a page never hides behind data it kept (since 0.13.1).
+///
+/// A route whose `data.dart` has a `freshness` or a `dataCache` keeps its page on the value it
+/// had when a reload fails (`DataView.keepDataOnError`): right for a lost connection or a 5xx,
+/// wrong for an answer. A refusal (a `403`, a failed authorization) means the person may no
+/// longer see what is on screen, so a failure that implements this goes to `error.dart` even
+/// when there is a value. Implement it on the error a data function throws; core knows no
+/// client, so `fespalier_cratestack` marks `CrateStackRefused` and `fespalier_auth` marks
+/// `AuthRejected`. A plain error stays kept. Checking it never makes a `Future`.
+abstract interface class DataRefusal {}

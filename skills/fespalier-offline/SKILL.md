@@ -132,7 +132,7 @@ class OrdersPage extends ConsumerWidget {
 The rules that keep it honest:
 
 - **Only `CrateStackOffline` falls back.** A refusal (`403`) is the answer and goes to `error.dart` (on a first load): last week's copy
-  of something you may no longer see would be a leak. An error no reader in `crateStackErrors` knows is rethrown too. **Except on a route with a `freshness`:** its `DataView` gets `keepDataOnError`, so a refusal on a _reload_ leaves the old `Served` copy on screen and `error.dart` does not show (only a first load reaches it). Watch `reconnectSignal` in `data.dart` instead of declaring `freshness` (`examples/offline` does).
+  of something you may no longer see would be a leak. An error no reader in `crateStackErrors` knows is rethrown too. That holds on a route with a `freshness` too (since 0.13.1): `CrateStackRefused` is a `DataRefusal`, so `keepDataOnError` keeps the page for an offline reload but shows `error.dart` over the old copy for a refusal. Before 0.13.1 the old copy stayed on screen: watch `reconnectSignal` in `data.dart` instead of declaring `freshness` there.
 - **An empty list offline is an answer**: `neverFetched` is true, so the page can say "not loaded on this phone yet".
   A **single row** with nothing saved is `CrateStackNoLocalData`, shown by `error.dart` with a retry; pass `empty:` for
   a list only.

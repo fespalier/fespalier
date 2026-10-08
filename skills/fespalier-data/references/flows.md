@@ -13,7 +13,7 @@ A flow is a **section**: a folder with a `layout.dart` and no `page.dart`, with 
 `const steps`. Each step is a **direct** child folder with a `page.dart`.
 
 ```dart
-// lib/app/signup/action.dart
+// signup/action.dart
 typedef SignupFields = ({String name, bool business, String? company, String email});
 
 SignupFields form() => (name: '', business: false, company: null, email: '');

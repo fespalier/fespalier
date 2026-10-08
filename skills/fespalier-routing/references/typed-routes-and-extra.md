@@ -1,6 +1,6 @@
 # Typed routes, `extra` and `extra_codec.dart`
 
-As of v0.4.0.
+As of v0.13.0.
 
 ## Typed routes
 

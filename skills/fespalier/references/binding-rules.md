@@ -1,6 +1,6 @@
 # How parameters are filled
 
-As of v0.4.0 (`cli/src/resolve.rs`, `cli/src/scan.rs`). `fsp` reads every
+As of v0.13.0 (`cli/src/resolve.rs`, `cli/src/scan.rs`). `fsp` reads every
 constructor (or view function), named or positional, `this.x` or typed, and
 fills each parameter in this order. The first rule that applies wins.
 

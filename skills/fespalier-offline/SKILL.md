@@ -5,7 +5,7 @@ description: "Offline-first fespalier apps (since 0.10.0, the pure-Dart core of 
 
 # fespalier-offline
 
-> **Verified against fespalier `bfbbf87f` (2026-10-07), release v0.9.1.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
@@ -300,7 +300,8 @@ Future<List<Override>> startup() async => [
 - **No timers, no background isolate.** Sync runs while the app is open; a `testWidgets` that ends with a timer pending
   is your own ticker.
 - **Not built:** signed intents (a queued call cannot carry a proof tied to the moment it was made: keep those calls
-  online-only), paging helpers beyond `RowSync`'s cursor loop, a background sync, sync telemetry spans. On the web use
+  online-only; a `CrateStackTransport` that seals each attempt when `send` runs is another thing and works, see
+  `examples/cose`), paging helpers beyond `RowSync`'s cursor loop, a background sync, sync telemetry spans. On the web use
   `InMemoryLocalStore` (nothing outlives the tab) or `HiveLocalStore` on IndexedDB.
 
 ## References

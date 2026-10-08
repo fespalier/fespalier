@@ -5,7 +5,7 @@ description: "Layouts and shells in fespalier — layout.dart (a ShellRoute arou
 
 # fespalier-layouts
 
-> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
@@ -62,8 +62,8 @@ ColoredBox`. Give the page a surface of its own:
 Material(type: MaterialType.transparency, child: ListView(children: [...]))
 ```
 
-This is a documented gotcha of the project (`docs/troubleshooting.md`, "Things to know"), and
-it is reproduced and fixed this way in a test against v0.3.0.
+This is a documented gotcha of the project (`docs/troubleshooting.md`, "Things to know"); the
+wrapper is what `examples/shop`'s `products/page.dart` uses.
 
 ## Tabs
 

@@ -289,5 +289,5 @@ Future<List<Override>> startup() async => [
 `FakeBiometricPrompt` answers from a queue (`outcomes:`, then `fallback`, default `success`), counts `prompts` and records
 `reasons`; `hold()` keeps the next sheet "up" until `release([outcome])`, so a test can call `unlock` twice. In a
 `pumpRouter` test pass `biometricTestOverrides(prompt, policy: ...)`; with a `ProviderContainer`, the same list, and fire
-the resume yourself: `container.read(appResumeSignal.notifier).fire()` inside `withClock(Clock.fixed(...))`. Without
+the resume yourself: `container.read(appShowSignal.notifier).fire()` inside `withClock(Clock.fixed(...))` (`appShowSignal`, not `appResumeSignal`). Without
 overriding `biometricPrompt`, reading it throws `fespalier_biometrics: override biometricPrompt in startup()`.

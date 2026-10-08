@@ -5,7 +5,7 @@ description: "Wiring a CrateStack backend into a fespalier app with fespalier_cr
 
 # fespalier-cratestack
 
-> **Verified against fespalier `bfbbf87f` (2026-10-07), release v0.9.1.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
@@ -344,8 +344,10 @@ end-to-end test that starts the server's binary.
 - **A sealed answer that does not open is `CrateStackOffline`, never `CrateStackUnavailable`.** The write may have landed;
   `Unavailable` moves the intent to the next key and risks a second write.
 - **A read is still `ref.serve`**: only `CrateStackOffline` serves the copy, and a `401` is the answer.
-- The key is registered by a plain call before the first signed one (a request signed by an unknown key is a `401`), which
-  the transport's `beforeSigned` hook runs once per run.
+- The key is registered by a plain call before the first signed one (a request signed by an unknown key is a `401`). The
+  transport's `beforeSigned` hook runs before **every** signed call (the example's registrar makes the registration happen
+  once, and `onUnauthenticated` forgets it after an unsigned `401`); whatever the hook throws is `CrateStackOffline`, same
+  key, because the call was never sent.
 - A server must answer the refusals it makes from the headers (a content type, a contract selector) as answers: read the
   body first, or the connection is closed with it unread and the client sometimes sees the reset before the answer (a
   `426` as `Offline`). `examples/cose/server` does, and its README says how it was measured.
@@ -368,7 +370,7 @@ namespace rule above).
 
 Signed intents, paging helpers beyond `RowSync`'s cursor loop, sync telemetry spans (a data read through `serve` and an
 action that calls `submit` already run inside fespalier's data and action spans; a sync span is planned as a custom op
-(`fespalier.cratestack.sync`; a new `TelemetryOp` value would break an exhaustive sink), and nothing from an intent, a row, a subject or a server message would ever be sent), and a background
+(`TelemetryOp.custom`, since 0.11.0, named `fespalier.cratestack.sync`; no new `TelemetryOp` value, so no exhaustive sink breaks), and nothing from an intent, a row, a subject or a server message would ever be sent), and a background
 isolate.
 
 ## References

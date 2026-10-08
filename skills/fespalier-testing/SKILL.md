@@ -5,13 +5,13 @@ description: "Testing an app built with fespalier — package:fespalier/testing.
 
 # fespalier-testing
 
-> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
 > [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
-`package:fespalier/testing.dart` has two helpers (and, since 0.12.0, `sendPlatformLink(tester, Uri)`: a warm platform link, as the engine sends it, pumped until idle; see the platform links section of the `fespalier-routing` skill). It is a **separate library**, so
+`package:fespalier/testing.dart` has two helpers, `pumpRouter` and `currentLocation`, and, around them, `sendPlatformLink(tester, Uri)` (since 0.12.0: a warm platform link, as the engine sends it, pumped until idle; see the platform links section of the `fespalier-routing` skill), `RecordingTelemetry`, `TestRouteScope` (since 0.11.0, for an `observe.dart` hook that takes a `RouteScope`) and the `fsp test` pieces `smokeTestRoute` and `findRoutePage`. It is a **separate library**, so
 `package:fespalier/fespalier.dart` never imports `flutter_test`; the package lists
 `flutter_test` (an SDK package) as a dependency, which your app already has as a dev
 dependency.
@@ -197,8 +197,9 @@ question, and the traps (empty dashboards, `otel_zone`'s `runGuarded` blanking a
 
 ## Examples
 
-`examples/minimal`, `examples/shop`, `examples/features`, `examples/auth`, `examples/telemetry`, `examples/plugins` and `examples/maps` test
-their routes with `pumpRouter` from `package:fespalier/testing.dart`. `examples/shop` also carries what `fsp test` and
+`examples/minimal`, `examples/shop`, `examples/features`, `examples/auth`, `examples/telemetry`, `examples/adopt`, `examples/cose`, `examples/i18n`,
+`examples/maps` and `examples/offline` test their routes with `pumpRouter` from `package:fespalier/testing.dart`; `examples/plugins` pumps
+`AppMain.root()` (and uses `pumpRouter` in its push test), and `examples/tabs` builds its own `MaterialApp.router`. `examples/shop` also carries what `fsp test` and
 `fsp maestro` write (`test/routes/`, `.maestro/routes/`);
 the `fespalier` skill lists every example.
 

@@ -5,7 +5,7 @@ description: "Guarding and redirecting routes in fespalier — guard.dart (a fun
 
 # fespalier-guards
 
-> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
@@ -131,14 +131,14 @@ token storage, **lazy single-flight refresh with no timer**, guard helpers and a
 session to your API. It changes no generated code, adds no file kind, key or command.
 
 ```dart
-// lib/app/(signed-in)/guard.dart: the group needs a session; sign-in/ sits BESIDE it
+// app/(signed-in)/guard.dart: the group needs a session; sign-in/ sits BESIDE it
 GuardResult guard(Ref ref, {required Uri uri}) =>
     requireSignedIn(ref, uri, signIn: (from) => SignInRoute(from: from));
 
-// lib/app/sign-in/guard.dart: the trap. Without it, signing in changes the session and nothing moves
+// app/sign-in/guard.dart: the trap. Without it, signing in changes the session and nothing moves
 GuardResult guard(Ref ref, {String? from}) => redirectIfSignedIn(ref, from: from);
 
-// lib/app/startup.dart
+// app/startup.dart
 FutureOr<List<Override>> startup() => restoreAuth(authSetup());
 ```
 
@@ -188,13 +188,13 @@ same `ref`**) is a guard with a source of values. It adds no dependency beyond f
 changes no generated code.
 
 ```dart
-// lib/flags.dart
+// flags.dart
 const labs = BoolFlag('labs');
 
-// lib/app/labs/guard.dart: /labs is there while the flag is on; a nav.dart beside it is hidden while it is off
+// app/labs/guard.dart: /labs is there while the flag is on; a nav.dart beside it is hidden while it is off
 GuardResult guard(Ref ref) => flagGuard(ref, labs, orElse: const HomeRoute().location);
 
-// lib/app/startup.dart
+// app/startup.dart
 Future<List<Override>> startup() async => [
   flagSource.overrideWithValue(const ConstFlags({'labs': bool.fromEnvironment('LABS')})),
 ];

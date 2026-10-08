@@ -1,33 +1,33 @@
 # The file kinds
 
-Twenty-one kinds, as of 0.11.0 (`Kind::ALL` in `cli/src/scan.rs`; `action.dart` is new in 0.5.0, `nav.dart`, `app.dart`, `startup.dart`, `splash.dart` and `observe.dart` in 0.8.1, and `leave.dart` in 0.11.0). `fsp` reads a
+Twenty-one kinds, as of 0.13.0 (`Kind::ALL` in `cli/src/scan.rs`; `action.dart` is new in 0.5.0, `nav.dart`, `app.dart`, `startup.dart`, `splash.dart` and `observe.dart` in 0.8.1, and `leave.dart` in 0.11.0). `fsp` reads a
 file by its **name**; nothing else marks a route. Each view file exports one
 public widget class, **or** one top-level function named after the file, never
 both.
 
-| File               | Applies to                                                                                                  | Can ask for                                                                          |
-| ------------------ | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `page.dart`        | its own folder's URL                                                                                        | segments; query; `data`; `extra`                                                     |
-| `data.dart`        | the page beside it, or a section                                                                            | segments; query (a section's: segments and query too since 0.3.0)                    |
-| `action.dart`      | the page beside it, or a section (since 0.5.0)                                                              | segments; query; the one `input`                                                     |
-| `loading.dart`     | its folder and below (inherited, nearest wins)                                                              | segments; query                                                                      |
-| `error.dart`       | its folder and below (inherited, nearest wins)                                                              | segments; query; `error`, `stackTrace`, `retry`                                      |
-| `layout.dart`      | its folder and below                                                                                        | `child` or `navigationShell`; segments at or above; query; section data; `extra`     |
-| `guard.dart`       | every route at and below its folder                                                                         | `uri`; segments at or above; query; `extra`                                          |
-| `redirect.dart`    | its own folder's URL, in place of `page.dart`                                                               | `uri`; segments; query; `extra`; optional `Ref ref` first (or `ProviderContainer c`) |
-| `observe.dart`     | every page at and below its folder (since 0.8.1)                                                            | `Ref ref`; segments at or above; query; `uri`; `TypedLocation route`                 |
-| `leave.dart`       | its own folder's page only, not inherited (since 0.11.0)                                                    | `BuildContext`, `Ref`; segments at or above; query; `uri`; `extra`; `PageLeave page` |
-| `transition.dart`  | its folder and below; layout shells too                                                                     | `key`, `child`, `state`, `shell` (a `bool`)                                          |
-| `present.dart`     | its own folder only                                                                                         | `key`, `child`, `state`                                                              |
-| `navigator.dart`   | its folder and below (nearest wins)                                                                         | nothing: it is data                                                                  |
-| `not_found.dart`   | unknown URLs under its folder; bad segments                                                                 | `uri`; its own path's segments, as `String`s                                         |
-| `meta.dart`        | its own route only (not inherited)                                                                          | nothing: it is data                                                                  |
-| `route.dart`       | `caseSensitive`, `linkable`, `remount`, `deferred`, `freshness`: folder and below; `paths`: its own segment | nothing: it is data                                                                  |
-| `extra_codec.dart` | the app root only                                                                                           | nothing: it is data                                                                  |
-| `app.dart`         | the app root only (since 0.8.1)                                                                             | `router` (a `GoRouter`); everything else optional                                    |
-| `startup.dart`     | the app root only (since 0.8.1)                                                                             | nothing: `startup()` takes no parameters                                             |
-| `splash.dart`      | the app root only (since 0.8.1)                                                                             | `error`, `stackTrace`, `retry`, each nullable                                        |
-| `nav.dart`         | its own folder's menu entry (since 0.8.1)                                                                   | `label()`: a `BuildContext` and the segments at or above (named, `required`)         |
+| File               | Applies to                                                                                                   | Can ask for                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `page.dart`        | its own folder's URL                                                                                         | segments; query; `data`; `extra`                                                                                   |
+| `data.dart`        | the page beside it, or a section                                                                             | segments; query (a section's: segments and query too since 0.3.0)                                                  |
+| `action.dart`      | the page beside it, or a section (since 0.5.0)                                                               | segments; query; the one `input`                                                                                   |
+| `loading.dart`     | its folder and below (inherited, nearest wins)                                                               | segments; query                                                                                                    |
+| `error.dart`       | its folder and below (inherited, nearest wins)                                                               | segments; query; `error`, `stackTrace`, `retry`                                                                    |
+| `layout.dart`      | its folder and below                                                                                         | `child` or `navigationShell`; segments at or above; query; section data; `extra`                                   |
+| `guard.dart`       | every route at and below its folder                                                                          | `uri`; segments at or above; query; `extra`                                                                        |
+| `redirect.dart`    | its own folder's URL, in place of `page.dart`                                                                | `uri`; segments; query; `extra`; optional `Ref ref` first (or `ProviderContainer c`)                               |
+| `observe.dart`     | every page at and below its folder (since 0.8.1)                                                             | `Ref ref`; segments at or above; query; `uri`; `TypedLocation route`; `RouteScope scope` (`onEnter`, since 0.11.0) |
+| `leave.dart`       | its own folder's page only, not inherited (since 0.11.0); beside a flow section's `layout.dart`, each step's | `BuildContext`, `Ref`; segments at or above; query; `uri`; `extra`; `PageLeave page`                               |
+| `transition.dart`  | its folder and below; layout shells too                                                                      | `key`, `child`, `state`, `shell` (a `bool`)                                                                        |
+| `present.dart`     | its own folder only                                                                                          | `key`, `child`, `state`                                                                                            |
+| `navigator.dart`   | its folder and below (nearest wins)                                                                          | nothing: it is data                                                                                                |
+| `not_found.dart`   | unknown URLs under its folder; bad segments                                                                  | `uri`; its own path's segments, as `String`s                                                                       |
+| `meta.dart`        | its own route only (not inherited)                                                                           | nothing: it is data                                                                                                |
+| `route.dart`       | `caseSensitive`, `linkable`, `remount`, `deferred`, `freshness`: folder and below; `paths`: its own segment  | nothing: it is data                                                                                                |
+| `extra_codec.dart` | the app root only                                                                                            | nothing: it is data                                                                                                |
+| `app.dart`         | the app root only (since 0.8.1)                                                                              | `router` (a `GoRouter`); everything else optional                                                                  |
+| `startup.dart`     | the app root only (since 0.8.1)                                                                              | nothing: `startup()` takes no parameters                                                                           |
+| `splash.dart`      | the app root only (since 0.8.1)                                                                              | `error`, `stackTrace`, `retry`, each nullable                                                                      |
+| `nav.dart`         | its own folder's menu entry (since 0.8.1)                                                                    | `label()`: a `BuildContext` and the segments at or above (named, `required`)                                       |
 
 `not_found.dart` also reads as `not-found.dart` (kebab), whatever `file_style`
 says; `file_style` only picks what `fsp init` and `fsp new` write.
@@ -100,12 +100,13 @@ its path (`OldProductsIdRoute`). A tab layout's own folder cannot hold one.
 
 **`observe.dart`** (since 0.8.1) is any of `void onEnter(Ref ref, {...})`, `void onFocus(...)` and
 `void onLeave(...)`: hooks that run, after the frame, when a page at or below its folder becomes the one on
-screen, is on top again and is gone. They bind like a guard's parameters, plus `Uri uri` and
-`TypedLocation route`. Covered by `fespalier-observability`.
+screen, is on top again and is gone. They bind like a guard's parameters, plus `Uri uri`,
+`TypedLocation route` and, for `onEnter` only (since 0.11.0), `RouteScope scope`. Covered by `fespalier-observability`.
 
 **`leave.dart`** (since 0.11.0) is `LeaveResult leave(BuildContext context, Ref ref, {...})`, asked before its
 folder's page goes: `true` lets it go, `false` keeps it. It is the `onExit` of the folder's `GoRoute`, and the page is wrapped
-so the Android back and the iOS swipe ask too. It needs a `page.dart` and is not inherited. Covered by
+so the Android back and the iOS swipe ask too. It needs a `page.dart` (the one exception: beside the `layout.dart` of a
+flow section, a multi-page form, where it is each step's) and is not inherited. Covered by
 `fespalier-routing` (`references/leaving-a-page.md`).
 
 **`transition.dart`** and **`present.dart`** return a `Page`. See
@@ -147,7 +148,7 @@ root only**: below it they are ignored with a warning (`app.dart is only read at
 app folder, so this one is ignored`). They make `fsp` write `lib/app.main.g.dart` (class `AppMain`)
 unless `main: manual` is set, in which case they are not read at all. `app.dart` and `splash.dart`
 are view files (a class or `Widget app(...)` / `Widget splash(...)`); `startup.dart` exports
-`startup()`, `zone()`, `providerObservers`, `routerObservers` and `retry()` by name. All of it is in
+`startup()`, `zone()`, `providerObservers`, `routerObservers`, `retry()` and, since 0.12.0, `ready()` and `attach()` by name. All of it is in
 [`app-main.md`](app-main.md).
 
 ## Folder names

@@ -1,6 +1,6 @@
 # `route.dart`: case, trailing slashes, localized paths, `nest`, `linkable`, `remount`, `deferred` and `freshness`
 
-As of v0.4.0 (`linkable` since 0.5.0, `remount` since 0.6.0, `deferred` since 0.7.0, `freshness` since 0.8.1).
+As of v0.13.0 (`linkable` since 0.5.0, `remount` since 0.6.0, `deferred` since 0.7.0, `freshness` since 0.8.1).
 A `route.dart` holds up to seven declarations, and `fsp` reads them **from the source**; it never imports or runs the file, so
 each must be a literal:
 

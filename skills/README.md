@@ -61,7 +61,7 @@ if the two differ: a skill describes the code beside it.
 Every `SKILL.md` is stamped, under its title, with the commit it was last verified
 against and the release that commit belongs to:
 
-> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 
 - **The skills follow `main`.** A change to the generator, the runtime or the docs (README.md and docs/)
   updates the skills in the same pull request, and the coverage gate (below) fails it

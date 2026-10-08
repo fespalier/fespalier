@@ -138,7 +138,8 @@ A value is stale once it has been in memory for `staleTime` **since it arrived**
 - **Stale-while-revalidate.** The old value is on the first frame (no `Future`, no blank frame). With `keep_previous: true`
   the page stays until the new value arrives; with `false`, `loading.dart` shows meanwhile.
 - **A failed reload keeps the page.** A route with a `freshness` or a `dataCache` gets `keepDataOnError: true` on its
-  `DataView`, so `error.dart` only shows when there is nothing to show. The error is in `XRoute.watch(ref).error`, and
+  `DataView`, so `error.dart` only shows when there is nothing to show, or (since 0.13.1) when the error is a
+  `DataRefusal` (`CrateStackRefused`, an unwrapped `AuthRejected`), which replaces the page instead of hiding behind it. The error is in `XRoute.watch(ref).error`, and
   `XRoute.refresh(ref)` completes with it. A failed user `refresh()` is therefore hidden behind the old page: show a
   snackbar from its error.
 - **Every new reader counts.** A small `staleTime` makes each page that opens below a section load the section again;

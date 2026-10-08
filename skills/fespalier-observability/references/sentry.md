@@ -118,7 +118,7 @@ FespalierTelemetry.install(FespalierSentry(tracing: true));
 ```
 
 Each navigation is a `ui.load` transaction named by the pattern (started as `navigate`, renamed at the commit),
-with child spans `fespalier.guard`, `.redirect`, `.data`, `.deferred`, `.action`, `.auth` and `.image`, the
+with child spans `fespalier.guard`, `.redirect`, `.data`, `.deferred`, `.action`, `.auth` and `.image` (and, since 0.11.0, one described by a package's own `custom` operation, `fespalier.push.open`, without its attributes), the
 spans `ui.load.initial_display` and `ui.load.full_display`, and the measurements `time_to_initial_display` and
 `time_to_full_display` (what Sentry's Screen Loads view reads). It ends when the screen's last data load
 does (TTFD), or when the next navigation starts (the old screen's TTFD is then `deadline_exceeded`, no
@@ -149,8 +149,8 @@ Sentry to sample transactions, and tracesSampleRate is not set, so no transactio
 
 `FespalierSentry({hub, tracing = false, transactions = true, fullDisplay = true, breadcrumbs = true,
 routeTag = true, recordLocations = false, capture = FespalierSentry.unexpected, repeatWindow = 30 s})`.
-`capture(error, start)` decides which failures are events (the default: all but a `FieldErrors` and an `auth`
-step); a failure of the same operation, file and exception type inside `repeatWindow` (read from
+`capture(error, start)` decides which failures are events (the default, `FespalierSentry.unexpected`: all but a `FieldErrors`, an `auth`
+step and a package's own `custom` operation, which is a breadcrumb with the class only); a failure of the same operation, file and exception type inside `repeatWindow` (read from
 `package:clock`) is a breadcrumb `... again`, since Riverpod retries a failing `data()` up to ten times.
 `FespalierSentry.configure(options, {dsn, tracing = false, tracesSampleRate, propagateTraceTo = [],
 recordQueries = false, observerBreadcrumbs = false})`: see the defaults table in [`docs/observability.md`](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#sentry-fespalier_sentry). `tracesSampleRate`

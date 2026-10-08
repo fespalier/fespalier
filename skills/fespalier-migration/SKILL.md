@@ -1,11 +1,11 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.11 to 0.12 (opt-in ready(container) and attach(router, container) in startup.dart: the gate makes the app's ProviderContainer, runs ready before the router and attach after the adapters'; no change for an app that exports neither), 0.10 to 0.11 (an app with an observe.dart regenerates: RouteHooks.onEnter takes a RouteScope, the generated main passes the container to AppRoutes.attach, and a replace of a tree page keeps its page instance; a third-party telemetry sink with an exhaustive switch on TelemetryOp needs a TelemetryOp.custom case; AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay; form drafts, opt-in, regenerate every app with a form and reserve the key name draft; multi-page forms, opt-in: a const steps map in a section's action.dart, and only a map literal called steps beside a form() is read as one), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.12 to 0.13 (nothing to change: app.g.dart is unchanged, and the new packages are opt-in), 0.11 to 0.12 (opt-in ready(container) and attach(router, container) in startup.dart: the gate makes the app's ProviderContainer, runs ready before the router and attach after the adapters'; no change for an app that exports neither), 0.10 to 0.11 (an app with an observe.dart regenerates: RouteHooks.onEnter takes a RouteScope, the generated main passes the container to AppRoutes.attach, and a replace of a tree page keeps its page instance; a third-party telemetry sink with an exhaustive switch on TelemetryOp needs a TelemetryOp.custom case; AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay; form drafts, opt-in, regenerate every app with a form and reserve the key name draft; multi-page forms, opt-in: a const steps map in a section's action.dart, and only a map literal called steps beside a form() is read as one), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.6 to 0.7 (the unknown_path warnings), 0.5 to 0.6 (remount, replace in the address bar), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
 
-> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
@@ -15,7 +15,8 @@ description: "Moving to fespalier and between its versions — upgrading an app 
 
 **The package and `fsp` move together, and `lib/app.g.dart` is regenerated every time.**
 The generated code relies on runtime additions of its own release; the upgrade notes of
-0.1.1, 0.2 and 0.3 each say "regenerate", and so does every release since.
+0.1.1, 0.2 and 0.3 each say "regenerate", and the rule stays even for a release that leaves the file unchanged
+(0.10 and 0.13): regenerate and read the diff of `lib/app.g.dart`.
 
 ```sh
 # 1. pubspec.yaml: bump `ref:` on the git dependency to the release tag, then
@@ -29,6 +30,19 @@ flutter analyze && flutter test
 `fsp --version` must print the package's version (`ref: vX.Y.Z` needs `fsp X.Y.Z`); an `fsp` of another
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
+
+## 0.12 to 0.13: what to check
+
+Bump the `ref:` of `fespalier` and every companion to the 0.13.0 tag and run the matching `fsp gen`; **`lib/app.g.dart` and
+`lib/app.main.g.dart` come out unchanged** (no emitter or template changed since 0.12.0 but the version `fsp init` prints), and
+`docs/migration.md` has no 0.13.0 entry because there is nothing to change. What is new is additive and opt-in: the companion
+packages `fespalier_maps`, `fespalier_push`, `fespalier_biometrics`, `fespalier_analytics`, `fespalier_frb` and
+`fespalier_riverpod` (each in the skill that owns its topic; they take the same `url` and `ref` as `fespalier`), and in
+`package:fespalier`: `appShowSignal` (a `RefetchSignal` that fires when the app is shown again after it was hidden, not when
+it only went inactive), `FespalierTelemetry.contains(sink)` (whether a sink is installed, alone or inside a `combine`), and
+`package:fespalier/fespalier.dart` also exports Riverpod's `NotifierProviderFamily`, `ProviderFamily` and
+`ProviderOrFamily`. No `TelemetryOp`, file kind, `fespalier:` key or command was added, so an exhaustive telemetry sink
+still compiles.
 
 ## 0.11 to 0.12: what to check
 
@@ -285,6 +299,27 @@ Bump to `v0.8.1`, regenerate, and look at these:
     `traceGuard` and `traceData` take an optional `telemetry:`; nothing to do unless you call them yourself.
     An app with no `observe.dart` and no `telemetry: true` gets none of items 7 to 11 in `app.g.dart`:
     no `TelemetrySite`, no `AppRoutes.attach`, no `observe:` (the generator's `no_companions` test pins it).
+
+## 0.6 to 0.7: what to check
+
+Bump to `v0.7.0` and regenerate. A route that is not deferred generates exactly what it did before. The one visible change is
+new **warnings**: `fsp gen`, `check` and `watch` now read the string paths in `lib/` and warn about one that matches no route
+(``no route matches `/nope`, so it shows not-found [unknown_path]``; the severity is the pubspec's `lints: unknown_path`, and
+`error` makes the commands exit 1). Fix the path, use the typed route, `// fsp:ignore unknown_path`, or set `off`. New and
+opt-in: `deferred` (a page's code loads on demand), `fsp maestro` with `semantics_ids`, the DevTools extension,
+`TypedLocation.pushReplacement` and `RouteInfo.sibling`.
+
+## 0.5 to 0.6: what to check
+
+Bump to `v0.6.0`, regenerate, and look at these:
+
+1. **`remount: never` is what fespalier generated before 0.6.0** (a page keeps its state when its URL changes), and the generated
+   code keys a page by the URL where it used go_router's `state.pageKey`. A route that should start again when its URL changes
+   opts in with `remount` (`fespalier-routing`).
+2. **`replace` now shows its location in the address bar and replaces the history entry** on the web; on 0.5.0 it was go_router's
+   in every case (the address bar followed it only when no page was below it), so use `go` for URL state there.
+3. **`pumpRouter(disposeRouter: false)`** is the way to keep a test's own `addTearDown(router.dispose)` (item 1 of
+   "0.4 to 0.5").
 
 ## 0.4 to 0.5: what to check
 

@@ -1,6 +1,6 @@
 # The `fsp` CLI, its config, and how to run it
 
-As of v0.4.0 (`fsp --version` prints `fsp` and the version, e.g. `fsp 0.4.0`).
+As of v0.13.0 (`fsp --version` prints `fsp` and the version, e.g. `fsp 0.13.0`).
 
 ## Commands
 
@@ -10,7 +10,6 @@ above; pass --project`).
 
 | Command                                      | What it does                                                                                                                                                                                                                                                                                                   |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| -------------------------------------------  | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------                         |
 | `fsp init`                                   | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` and, since 0.8.1, `app.dart` (not with `main: manual`) under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do (the `main.dart` that runs `AppMain`, since 0.8.1)                         |
 | `fsp gen [--format] [--json]`                | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                                                                                                                       |
 | `fsp check [--json]`                         | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                                                                                                                |
@@ -54,16 +53,19 @@ What they print, to stderr unless noted:
   diagnostic that is not about a place in a file; `severity` is `error` or
   `warning`). Stdout is empty when there is nothing to report.
 - `routes` prints `pattern  RouteClass  file  (tags)` per route. The tags are
-  `redirect`, `data`, `action` (since 0.5.0), `guard`, `layout`, `present` or `transition`, `root`,
+  `redirect`, `data`, `action` (since 0.5.0), `guard`, `observe` (an `observe.dart` at or above the page, since 0.8.1),
+  `leave` (a `leave.dart` in the page's own folder, since 0.11.0), `flow` (a step of a multi-page form, since 0.11.0),
+  `layout`, `present` or `transition`, `root`,
   `sibling` (a [`nest = false`](../../fespalier-routing/references/route-dart.md) route,
   since 0.4.0), `remount` (a page that starts again when its URL changes, since 0.6.0) and `deferred` (a page whose code loads on demand,
   since 0.7.0), in that order; `fresh` (its data has a `freshness`) and `cached` (a `dataCache`), since 0.8.1, follow `data`. `routes --json` prints, per line, in
   this order: `pattern`, `route`, `file`, `tags`, `params` (`{name, type, in}`
   with `in` of `path` or `query`), `folder`, `presentation` (`page`, `redirect`,
   `root`, `custom`), `groups`, `layouts`, `tabs`, `data_keys`, `meta`,
-  `catch_all`, then `remount` (`on_segments` or `on_location`, since 0.6.0) **only** for a route
-  that remounts, then `deferred` (`true`, since 0.7.0) **only** for a route whose page is deferred, and `paths` **only** for a route with
-  localized segments.
+  `catch_all`, then, each **only** for a route that has it: `remount` (`on_segments` or `on_location`, since 0.6.0),
+  `deferred` (`true`, since 0.7.0), `freshness` (the file whose `Freshness` applies to the route's own `data.dart`, since 0.8.1),
+  `cache` (`true` for a `dataCache`, since 0.8.1), `paths` (localized segments) and `nav` (`{file, label, order}` of the
+  folder's `nav.dart`, since 0.8.1). `file` and `meta` are relative to the project root.
 
 ### `fsp routes --graph` (since 0.5.0)
 
@@ -73,8 +75,9 @@ fsp routes --graph dot | dot -Tsvg > routes.svg
 ```
 
 The tree as `app.g.dart` hands it to go_router, not the folders. A node is a route (its
-URL pattern, route class, each localized spelling, and the markers `redirect`, `data`,
-`action`, `guard`, `present`, `root`, `sibling`); an edge is nesting, so a `nest = false` route hangs
+URL pattern, route class, each localized spelling, and the markers `redirect`, `data`, `fresh`, `cached`,
+`action`, `guard`, `observe`, `leave`, `flow`, `present`, `root`, `sibling`, `deferred`: `fsp routes`' tags, without `layout`,
+`transition` and `remount`); an edge is nesting, so a `nest = false` route hangs
 from the page above its parent, not from the page above it; a box is a navigator: the root
 navigator, a `layout.dart` shell (marked `data` for a section, `guard`) and each tab
 branch. The output is deterministic (no timestamps, a fixed order), so it can be
@@ -354,7 +357,7 @@ fsp new 'docs/[...rest]'            # $$rest; 'docs/[[...rest]]' is $$$rest
 ```
 
 Flags: `--name`, `--function`, `--data`, `--action` (`action.dart`, since 0.5.0),
-`--loading`, `--error`, `--layout`, `--not-found`, `--guard`, `--observe` (`observe.dart`, since 0.8.1), `--leave` (`leave.dart`, since 0.11.0), `--transition`, `--no-page`. A `(group)` target gets no
+`--loading`, `--error`, `--layout`, `--not-found`, `--guard`, `--nav` (`nav.dart`, since 0.8.1), `--observe` (`observe.dart`, since 0.8.1), `--leave` (`leave.dart`, since 0.11.0), `--transition`, `--no-page`. A `(group)` target gets no
 `page.dart`, and with nothing left to write it fails with `nothing to create`.
 `--name` is the class-name stem (default: from the path, `ProductsId`), and with
 `--function` the `routeName` (UpperCamelCase). **Every new segment is a
@@ -594,7 +597,7 @@ file to exist.
   `Theme` and localizations: do not mix) or pinning `go_router: ^17.0.0`.
 - **Editors.** `editors/vscode/` and `editors/intellij/` show `fsp check --json`
   diagnostics in the editor and offer generate and check commands. Neither is
-  on a marketplace as of v0.4.0; build them from source. Both run `fsp` from
+  on a marketplace yet; build them from source. Both run `fsp` from
   `PATH`, else `dart run fespalier`. Since 0.7.0 both also check again when any Dart
   file under `lib/` is saved (not `*.g.dart`), and show a string-path warning in that file,
   because `fsp check` now reports on files outside the app folder.

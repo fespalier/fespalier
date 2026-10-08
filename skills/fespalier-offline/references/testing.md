@@ -119,7 +119,10 @@ void main() {
 - **No timers.** The package starts none, so a `testWidgets` that ends with "A Timer is still pending" has your own
   (an un-overridden `ForegroundTicker`, a `Timer.periodic` in a fake). Override `syncTicker` with `ManualSyncTicker`.
 - To test a page, use `pumpRouter` with `crateStackTestOverrides(...)` plus your fake client, as in
-  [`fespalier-testing`](../../fespalier-testing/SKILL.md).
+  [`fespalier-testing`](../../fespalier-testing/SKILL.md). **Not together with your own overrides of the same
+  providers:** it overrides `crateStackTransport`, `crateStackScope` and (with `rowServer`) `rowSync`, and a provider
+  cannot be overridden twice in one container. Then write the list by hand: `localStore.overrideWithValue(InMemoryLocalStore())`,
+  `appResumeSignal.overrideWith(RefetchSignal.new)`, your app's wiring, and the fakes (`examples/offline/test/support.dart`).
 
 ## Where the code is
 

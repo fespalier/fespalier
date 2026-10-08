@@ -43,7 +43,7 @@ The rules that keep it honest:
 
 - **Only a connection failure falls back.** A refusal is the answer: a `403` is not "the network is down", and
   showing last week's copy of something you may no longer see would be a leak. The refusal is rethrown to
-  `error.dart`.
+  `error.dart`. **Except on a route with a `freshness`:** its `DataView` gets `keepDataOnError`, so a refusal on a _reload_ leaves the old `Served` copy on screen and `error.dart` does not show (only a first load reaches it). Watch `reconnectSignal` in `data.dart` instead of declaring `freshness` (the [offline example](examples.md#offline) does).
 - **An empty list offline is an answer.** `Served` says `neverFetched`, and the page can say "not loaded on this phone
   yet" instead of "you have no orders".
 - **A single row with nothing saved is an error.** `CrateStackNoLocalData`, shown with a retry. There is no empty row
@@ -189,7 +189,7 @@ It is `autoDispose` and watched only by `autoSync`, so the timer exists only whi
 Two patterns around the triggers:
 
 - **Save locally, then sync best-effort.** An action edits the row, then calls `engine.sync(SyncReason.manual)` and
-  ignores a failure: the triggers will try again. The person never waits for the network to save.
+  ignores a failure: the triggers will try again. The person never waits for the network to save. That report does not reach `autoSync`'s state, so to tell the person about a `rolledBack` row keep it yourself (the [offline example](examples.md#offline) does, in a `lastSync` notifier).
 - **Push before a server decision that depends on a local row.** An action that asks the server to act on a row made
   offline calls `await ref.read(syncEngine).push()` first. Unlike `sync`, `push()` throws: if the rows are not on the
   server, say so rather than send a decision that names a row the server has never seen.

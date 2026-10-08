@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/foundation.dart' show immutable;
 
@@ -13,7 +15,8 @@ const int changeLogCapacity = 64;
 /// [Change] does not override `==`, so no two are ever equal.
 @immutable
 final class Change<E> {
-  /// Creates the [seq]th change, carrying [event]. A change made by hand belongs to no feed.
+  /// Creates the [seq]th change, carrying [event]. A change made by hand belongs to no feed's log (for a test that overrides `latest`): a topic
+  /// counts it when it differs from the last one it saw and matches.
   const Change(this.event, this.seq) : _log = null;
 
   const Change._(this.event, this.seq, this._log);
@@ -30,10 +33,10 @@ final class Change<E> {
 /// The last [changeLogCapacity] changes of one subscription. Riverpod rebuilds a provider lazily,
 /// so a watcher sees only the newest change of a burst; the log is how it finds the others.
 final class _ChangeLog<E> {
-  final List<Change<E>> _ring = [];
+  final ListQueue<Change<E>> _ring = ListQueue();
 
   void add(Change<E> change) {
-    if (_ring.length == changeLogCapacity) _ring.removeAt(0);
+    if (_ring.length == changeLogCapacity) _ring.removeFirst();
     _ring.add(change);
   }
 
@@ -176,6 +179,9 @@ class _Revision<E, K> extends Notifier<int> {
 
   bool _started = false;
 
+  /// The last change made by hand (it belongs to no log): told apart by identity.
+  Change<E>? _handMade;
+
   @override
   int build() {
     final change = ref.watch(_latest).value;
@@ -184,7 +190,15 @@ class _Revision<E, K> extends Notifier<int> {
       _started = true;
       _log = change?._log;
       _seen = change?.seq ?? 0;
-    } else if (change != null && change._log != null) {
+      _handMade = change != null && change._log == null ? change : null;
+    } else if (change != null && change._log == null) {
+      // A `Change(event, seq)` made by hand (a test overriding `latest`): no log to scan, so
+      // a different change than the last seen counts if it matches.
+      if (!identical(change, _handMade)) {
+        _handMade = change;
+        if (_countAll || _matches(change.event, _key)) _revision++;
+      }
+    } else if (change != null) {
       // Started before the first event: every event of the subscription is news.
       if (_log == null) {
         _log = change._log;

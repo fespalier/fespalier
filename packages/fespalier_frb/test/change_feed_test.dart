@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_frb/fespalier_frb.dart';
 import 'package:fespalier_frb/testing.dart';
@@ -16,8 +18,8 @@ class CartCleared extends CoreEvent {
   const CartCleared();
 }
 
-/// Riverpod hands a burst to a dependent one change at a time, round after round: pump until
-/// nothing is left.
+/// Riverpod may deliver a burst to a dependent in one rebuild or in several: pump until nothing
+/// is left.
 Future<void> settle(ProviderContainer container) async {
   for (var i = 0; i < 400; i++) {
     await container.pump();
@@ -92,8 +94,12 @@ void main() {
       });
 
       test('a matching event inside a burst is not lost', () async {
+        container.listen(
+          feed.latest,
+          (_, _) {},
+        ); // latest active: the burst collapses
         container.listen(order(42), (_, _) {});
-        await settle(container);
+        await container.pump();
         core.emit(const OrderChanged(7));
         core.emit(const OrderChanged(42));
         core.emit(const OrderChanged(7));
@@ -103,8 +109,9 @@ void main() {
       });
 
       test('a paused watcher catches up on every event it missed', () async {
+        container.listen(feed.latest, (_, _) {});
         final sub = container.listen(order(42), (_, _) {});
-        await settle(container);
+        await container.pump();
         sub.pause();
         core.emit(const OrderChanged(42));
         core.emit(const OrderChanged(7));
@@ -116,27 +123,25 @@ void main() {
       });
 
       test('any counts every event of a burst', () async {
+        container.listen(feed.latest, (_, _) {});
         final seen = <int>[];
         container.listen(feed.any, (_, next) => seen.add(next));
-        await settle(container);
+        await container.pump();
         core.emit(const OrderChanged(1));
         core.emit(const OrderChanged(2));
         core.emit(const CartCleared());
         await settle(container);
-        expect(seen, [1, 2, 3]);
+        expect(seen.last, 3);
       });
 
-      test('a match after a burst longer than the log is not lost', () async {
-        final sub = container.listen(order(42), (_, _) {});
-        await settle(container);
-        sub.pause();
+      test('a match before a burst longer than the log is not lost', () async {
+        container.listen(feed.latest, (_, _) {});
+        container.listen(order(42), (_, _) {});
+        await container.pump();
+        core.emit(const OrderChanged(42));
         for (var i = 0; i < changeLogCapacity + 10; i++) {
           core.emit(const OrderChanged(7));
         }
-        core.emit(const OrderChanged(42));
-        await settle(container);
-        expect(builds[42], 1);
-        sub.resume();
         await settle(container);
         expect(builds[42], 2);
       });
@@ -279,6 +284,30 @@ void main() {
         const OrderChanged(1),
       ); // numbered 1 again: still a change
       await container.pump();
+      expect(values, [1, 2]);
+    },
+  );
+
+  test(
+    'a change made by hand moves a matching topic, once per change',
+    () async {
+      final feed = ChangeFeed<CoreEvent>((ref) => const Stream.empty());
+      final topic = feed.topic<int>((e, id) => e is OrderChanged && e.id == id);
+      final handMade = StreamController<Change<CoreEvent>>();
+      addTearDown(handMade.close);
+      final container = ProviderContainer(
+        overrides: [feed.latest.overrideWith((ref) => handMade.stream)],
+      );
+      addTearDown(container.dispose);
+      final values = <int>[];
+      container.listen(topic(42), (_, next) => values.add(next));
+      await container.pump();
+      handMade.add(const Change(OrderChanged(7), 1));
+      await settle(container);
+      handMade.add(const Change(OrderChanged(42), 2));
+      await settle(container);
+      handMade.add(Change(const OrderChanged(42), 3));
+      await settle(container);
       expect(values, [1, 2]);
     },
   );

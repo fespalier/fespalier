@@ -126,8 +126,7 @@ class OrderPage extends StatelessWidget {
   rebuilds the revision but returns the same number, and Riverpod does not notify the dependents of an unchanged value. The
   first watch counts nothing: an event older than the watcher is history.
 - **Equal events are still two changes.** Riverpod 3 drops a state equal to the last, so `latest` carries `Change(event, seq)`
-  and `Change` is never `==`. Riverpod rebuilds lazily and hands a burst to a dependent a change at a time, so a burst can
-  take a few rounds, but **no event is lost**: the feed keeps a log of the last 64 events of its subscription
+  and `Change` is never `==`. Riverpod rebuilds lazily and may deliver a burst to a dependent in one rebuild or in several, but **no event is lost**: the feed keeps a log of the last 64 events of its subscription
   (`changeLogCapacity`) and a topic scans every event it missed (`[7, 42, 7]` rebuilds the watcher of 42; a paused page
   catches up on resume). A watcher that missed more than the log holds, or whose core was restarted, rebuilds anyway.
   Do not "fix" a burst with a debounce: a debounce is a timer.

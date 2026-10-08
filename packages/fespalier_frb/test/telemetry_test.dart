@@ -40,6 +40,7 @@ void main() {
       expect(sink.log.first, '#1 start custom fespalier.frb.init');
       expect(sink.log.last, startsWith('#1 end custom error async'));
       expect(sink.log.last, contains('fespalier.frb.result=error'));
+      expect(sink.log.last, isNot(contains('error=')));
     },
   );
 

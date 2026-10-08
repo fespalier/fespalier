@@ -38,13 +38,23 @@ fespalier:
 ```dart
 // lib/main.dart: configure before the adapters run
 Future<void> main() {
-  FespalierPush.configure(source: MyPushSource(), route: pushRoute, onToken: sendToBackend);
+  FespalierPush.configure(source: MyPushSource(), route: pushRoute, onToken: sendToBackend,
+    onTokenRevoked: dropFromBackend);
   return AppMain.run();
 }
 
 // where a tap goes: the payload's `link`, kept only when one of your routes matches it
 final pushRoute = linkRoute(hosts: {'shop.example.com'}, matches: (uri) => AppRoutes.matchUrl(uri) != null);
 ```
+
+## Tokens (since 0.14.0)
+
+`onToken` and the `pushToken` provider hand over a `PushToken`: an open `kind` (`PushTokenKind.fcm`, `apns`,
+`hms`, `unifiedpush`, `onesignal`, ... or your own string), a non-null `value` and `properties` for what a
+backend needs beyond it (OneSignal's subscription id, a UnifiedPush instance). Its `toString` prints the kind
+only. A token that stops being valid arrives separately, as a `PushTokenRevoked` (`PushSource.revocations`,
+`pushTokenRevoked`, `onTokenRevoked`), never as a null token. Before 0.14.0 the token was a `String`: see
+[Migration](https://github.com/fespalier/fespalier/blob/main/docs/migration.md).
 
 ## Test it
 

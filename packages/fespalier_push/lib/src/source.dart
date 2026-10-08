@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'message.dart';
 import 'permission.dart';
+import 'token.dart';
 
 /// What a push provider gives fespalier_push (since 0.13.0). One per app, handed over with
 /// `FespalierPush.configure`; `package:fespalier_push/testing.dart` has `FakePushSource`. The
@@ -27,8 +28,19 @@ abstract class PushSource {
   /// `pushReceived`, for an app that updates a badge or its own list.
   Stream<PushMessage> get received => const Stream.empty();
 
-  /// The current token, then each refresh.
-  Stream<String> get tokens;
+  /// The current token, then each refresh (a [PushToken] since 0.14.0: it was a `String`).
+  ///
+  /// It may be listened to more than once: the `pushToken` provider and the adapter (for `onToken`)
+  /// each listen. Every listen must get the current token first, then the refreshes. A source on a
+  /// platform channel must open the native stream once, not per listen: two
+  /// `EventChannel.receiveBroadcastStream()` on one channel replace each other's handler, and either
+  /// cancel silences both.
+  Stream<PushToken> get tokens;
+
+  /// A token that stopped being valid (since 0.14.0): the vendor's unregister or invalidation
+  /// callback. The default never revokes, so a source without one leaves it out. Make it a
+  /// broadcast stream, like [taps].
+  Stream<PushTokenRevoked> get revocations => const Stream.empty();
 
   /// What the user has answered so far. Never asks.
   Future<PushPermission> permission();

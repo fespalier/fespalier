@@ -172,7 +172,7 @@ provider with device-bound tokens (DPoP), and its tests check every proof the wa
 - `telemetry: true` and `adapters: [fespalier_push, fespalier_analytics]`; `main.dart` calls `FespalierPush.configure(...)` and `FespalierAnalytics.configure(...)` before `AppMain.run()`;
 - a `FakePushSource` in place of Firebase Messaging, and debug buttons on the home page that simulate a tap on a notification, a `RecordingAnalytics` in place of the analytics SDK, and the consent buttons of a banner (`analyticsConsent`);
 - an order page, a page behind a session guard and a login page that sends the person back;
-- tests through `AppMain.root()`: a cold start from a notification, a tap while the app runs, a guard on a tapped page, a foreign link refused, a tap delivered twice and the token callback, with `source=notification` read from `RecordingTelemetry`.
+- tests through `AppMain.root()`: a cold start from a notification, a tap while the app runs, a guard on a tapped page, a foreign link refused, a tap delivered twice and the token and revocation callbacks, with `source=notification` read from `RecordingTelemetry`.
 - analytics tests through `AppMain.root()` ([Analytics](analytics.md)): the first screen as a view named by `screenName`, nothing sent while undecided or after a refusal, a notification tap as a view with its source, a screen named `null` skipped, and no segment value in anything the backend is given.
 
 ## cose

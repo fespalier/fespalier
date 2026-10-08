@@ -15,6 +15,7 @@ Future<void> main() {
     source: demoPush,
     route: pushRoute,
     onToken: sendToken,
+    onTokenRevoked: dropToken,
   );
   FespalierAnalytics.configure(demoAnalytics, screenName: screenName);
   return AppMain.run();

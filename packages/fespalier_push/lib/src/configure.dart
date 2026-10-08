@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import 'route.dart';
 import 'source.dart';
+import 'token.dart';
 
 /// The message id that cold-started the app, so the same tap seen again on `taps` is dropped
 /// once. Internal: `lib/src` is not exported.
@@ -11,7 +12,7 @@ String? pushColdStartId;
 /// What `FespalierPush.configure` stored.
 final class PushConfig {
   /// Made by [FespalierPush.configure].
-  const PushConfig(this.source, this.route, this.onToken);
+  const PushConfig(this.source, this.route, this.onToken, this.onTokenRevoked);
 
   /// The push provider.
   final PushSource source;
@@ -20,7 +21,10 @@ final class PushConfig {
   final PushRoute route;
 
   /// The app's token callback; null when it reads `pushToken` itself.
-  final void Function(String token)? onToken;
+  final void Function(PushToken token)? onToken;
+
+  /// The app's revocation callback (since 0.14.0); null when it reads `pushTokenRevoked` itself.
+  final void Function(PushTokenRevoked revoked)? onTokenRevoked;
 }
 
 /// Configures fespalier_push before the adapters run (since 0.13.0). The adapter in
@@ -29,21 +33,24 @@ final class PushConfig {
 ///
 /// ```dart
 /// Future<void> main() {
-///   FespalierPush.configure(source: MyPushSource(), route: pushRoute, onToken: sendToBackend);
+///   FespalierPush.configure(source: MyPushSource(), route: pushRoute, onToken: sendToBackend,
+///     onTokenRevoked: dropFromBackend);
 ///   return AppMain.run();
 /// }
 /// ```
 ///
 /// Calling it twice replaces (a hot restart runs `main()` again). The package never posts the
-/// token anywhere: it has no HTTP code, and [onToken] is the app's.
+/// token anywhere: it has no HTTP code, and [onToken] and [onTokenRevoked] are the app's. The
+/// callbacks take a [PushToken] and a [PushTokenRevoked] since 0.14.0 (they took a `String`).
 abstract final class FespalierPush {
   /// Stores the push provider, the mapping and the optional token callback.
   static void configure({
     required PushSource source,
     required PushRoute route,
-    void Function(String token)? onToken,
+    void Function(PushToken token)? onToken,
+    void Function(PushTokenRevoked revoked)? onTokenRevoked,
   }) {
-    _config = PushConfig(source, route, onToken);
+    _config = PushConfig(source, route, onToken, onTokenRevoked);
     _reported = false;
   }
 

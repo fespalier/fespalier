@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.0](https://github.com/fespalier/fespalier/compare/v0.12.0...v0.13.0) (2026-10-08)
+
+
+### Features
+
+* **analytics:** fespalier_analytics, screen views with consent ([#118](https://github.com/fespalier/fespalier/issues/118)) ([e1c0abb](https://github.com/fespalier/fespalier/commit/e1c0abb8ca776d389ab7185de2b90cda5e38fcd1))
+* **biometrics:** fespalier_biometrics, an unlock guard that never prompts twice ([#116](https://github.com/fespalier/fespalier/issues/116)) ([b3d22c1](https://github.com/fespalier/fespalier/commit/b3d22c13382bd2c529feed24bf6e7bb72f8b9141))
+* **frb:** fespalier_frb, providers rebuilt by a Rust core's change stream ([#119](https://github.com/fespalier/fespalier/issues/119)) ([5f9407e](https://github.com/fespalier/fespalier/commit/5f9407edc9130c1d8ae35691c5ffe3f6b418fa88))
+* **maps:** fespalier_maps, a pin picker that returns a place ([#113](https://github.com/fespalier/fespalier/issues/113)) ([d5be9b0](https://github.com/fespalier/fespalier/commit/d5be9b0b58873215ba65aa0ea127fbe39562a30f))
+* **maps:** file packs (PMTiles), resumable over HTTP Range ([#120](https://github.com/fespalier/fespalier/issues/120)) ([265a43e](https://github.com/fespalier/fespalier/commit/265a43e3aacb2df553736202e58cdd138665d0f7))
+* **maps:** offline region packs with progress, pause, resume and storage ([#117](https://github.com/fespalier/fespalier/issues/117)) ([ea4cf43](https://github.com/fespalier/fespalier/commit/ea4cf433a0f0c688cc52891ec4abc24ef1706f28))
+* **push:** fespalier_push, notification taps open typed routes ([#115](https://github.com/fespalier/fespalier/issues/115)) ([6b0525f](https://github.com/fespalier/fespalier/commit/6b0525f3f81407e4667757b155642f549e677b81))
+* **riverpod:** fespalier_riverpod, providers per page instance ([#121](https://github.com/fespalier/fespalier/issues/121)) ([4c903b4](https://github.com/fespalier/fespalier/commit/4c903b46cd8fe847d60f7e162c666d63800d1fdf))
+
 ## [0.12.0](https://github.com/fespalier/fespalier/compare/v0.11.0...v0.12.0) (2026-10-07)
 
 

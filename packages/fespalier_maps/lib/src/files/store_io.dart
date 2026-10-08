@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart' as crypto;
 
@@ -52,8 +53,11 @@ final class _IoFiles implements PackFileStore {
 
   @override
   Future<String> sha256(String path) async {
-    final digest = await crypto.sha256.bind(File(path).openRead()).first;
-    return digest.toString();
+    // In another isolate: hashing a large archive must not take frames from the app.
+    return Isolate.run(() async {
+      final digest = await crypto.sha256.bind(File(path).openRead()).first;
+      return digest.toString();
+    });
   }
 }
 

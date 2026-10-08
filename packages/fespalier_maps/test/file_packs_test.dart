@@ -94,6 +94,7 @@ void main() {
 
     test('the first progress report starts at the partial size', () async {
       files.putBytes(part, body.sublist(0, 225));
+      files.putText(tag, '"v1"');
       final gate = Completer<void>();
       server.beforeChunk = (i) => gate.future;
       final c = make();
@@ -164,7 +165,7 @@ void main() {
         // Without a size to compare: the server's file is shorter than the partial.
         files.putBytes(part, List<int>.filled(900, 1));
         final c = make();
-        await c.read(filePacks.notifier).start(request());
+        await c.read(filePacks.notifier).start(request(sha256: sha256Of(body)));
         expect(server.requests.map((r) => r['range']), ['bytes=900-', null]);
         expect(files.bytesOf(dest), body);
       },
@@ -196,7 +197,7 @@ void main() {
       files.putBytes(part, body.sublist(0, 10));
       server.forceStatus = 416;
       final c = make();
-      await c.read(filePacks.notifier).start(request());
+      await c.read(filePacks.notifier).start(request(sha256: sha256Of(body)));
       expect(
         c.read(filePackStatus('douala')),
         const Failed(PackFailure.rejected),
@@ -208,6 +209,7 @@ void main() {
       'a 206 that starts somewhere else than asked restarts from 0',
       () async {
         files.putBytes(part, body.sublist(0, 100));
+        files.putText(tag, '"v1"');
         var first = true;
         final odd = http.StreamedResponse(
           Stream.value(body.sublist(300)),
@@ -473,7 +475,13 @@ void main() {
         addTearDown(c.dispose);
         await expectLater(
           c.read(filePacks.notifier).start(request()),
-          throwsA(isA<Object>()),
+          throwsA(
+            predicate(
+              (Object e) =>
+                  e.runtimeType.toString() == 'ProviderException' &&
+                  e.toString().contains('packHttpClient has no default'),
+            ),
+          ),
         );
       },
     );
@@ -495,13 +503,13 @@ void main() {
         await paused;
         await done;
         final status = c.read(filePackStatus('douala')) as Paused;
-        expect(status.bytes, 200);
-        expect(status.progress, closeTo(200 / 450, 1e-9));
-        expect(files.bytesOf(part), body.sublist(0, 200));
+        expect(status.bytes, 100, reason: 'the request was aborted at chunk 1');
+        expect(status.progress, closeTo(100 / 450, 1e-9));
+        expect(files.bytesOf(part), body.sublist(0, 100));
         expect(files.bytesOf(dest), isNull);
         server.beforeChunk = null;
         await packs.resume('douala');
-        expect(server.requests.last['range'], 'bytes=200-');
+        expect(server.requests.last['range'], 'bytes=100-');
         expect(c.read(filePackStatus('douala')), const Complete(bytes: 450));
         expect(files.bytesOf(dest), body);
       },
@@ -539,13 +547,12 @@ void main() {
     test(
       'a pause asked while the request is in flight pauses before the first byte',
       () async {
-        final answer = Completer<void>();
-        final c = make(client: _Switch(null, server, hold: answer.future));
+        server.hold = Completer<void>().future;
+        final c = make();
         final packs = c.read(filePacks.notifier);
         final done = packs.start(request());
         await pumpEventQueue();
         final paused = packs.pause('douala');
-        answer.complete();
         await paused;
         await done;
         expect(c.read(filePackStatus('douala')), const Paused());
@@ -692,10 +699,7 @@ void main() {
         packs.remove('douala'),
         throwsA(isA<FileSystemException>()),
       );
-      expect(
-        c.read(filePackStatus('douala')),
-        const Failed(PackFailure.storage),
-      );
+      expect(c.read(filePackStatus('douala')), const Failed(PackFailure.other));
     });
 
     test('a start during a remove takes the key over', () async {
@@ -714,6 +718,185 @@ void main() {
       expect(files.bytesOf(dest), body);
     });
   });
+
+  group('a changed file is never spliced onto an old partial', () {
+    test(
+      'a 206 from a server that ignores If-Range, with a new ETag, restarts',
+      () async {
+        server.ignoreIfRange = true;
+        files.putBytes(part, List<int>.filled(120, 9));
+        files.putText(tag, '"old"');
+        final c = make();
+        await c.read(filePacks.notifier).start(request(bytes: 450));
+        expect(server.requests.map((r) => r['range']), ['bytes=120-', null]);
+        expect(files.bytesOf(dest), body);
+        expect(files.textOf(tag), isNull);
+      },
+    );
+
+    test('a 206 with the same validator is continued', () async {
+      server.ignoreIfRange = true;
+      files.putBytes(part, body.sublist(0, 120));
+      files.putText(tag, '"v1"');
+      final c = make();
+      await c.read(filePacks.notifier).start(request(bytes: 450));
+      expect(server.requests.map((r) => r['range']), ['bytes=120-']);
+      expect(files.bytesOf(dest), body);
+    });
+
+    test(
+      'no validator and no hash: the file may have changed, so it starts from 0',
+      () async {
+        files.putBytes(part, List<int>.filled(120, 9));
+        final c = make();
+        await c.read(filePacks.notifier).start(request(bytes: 450));
+        expect(server.requests.single.containsKey('range'), isFalse);
+        expect(server.requests.single.containsKey('if-range'), isFalse);
+        expect(files.bytesOf(dest), body);
+      },
+    );
+
+    test(
+      'no validator but a hash: the continuation is checked at the end',
+      () async {
+        files.putBytes(part, body.sublist(0, 120));
+        final c = make();
+        await c.read(filePacks.notifier).start(request(sha256: sha256Of(body)));
+        expect(server.requests.single['range'], 'bytes=120-');
+        expect(files.bytesOf(dest), body);
+      },
+    );
+
+    test('a spliced file the hash catches is deleted', () async {
+      files.putBytes(part, List<int>.filled(120, 9));
+      final c = make();
+      await c.read(filePacks.notifier).start(request(sha256: sha256Of(body)));
+      expect(
+        c.read(filePackStatus('douala')),
+        const Failed(PackFailure.hashMismatch),
+      );
+      expect(files.paths, isEmpty);
+    });
+
+    test('the old validator is gone before a new file starts', () async {
+      files.putBytes(part, body.sublist(0, 50));
+      files.putText(tag, '"old"');
+      server.honourRange = false;
+      server.etag = null;
+      final c = make();
+      await c.read(filePacks.notifier).start(request(bytes: 450));
+      expect(files.bytesOf(dest), body);
+      expect(files.textOf(tag), isNull);
+    });
+  });
+
+  group('a connection that sends nothing cannot hold the pack', () {
+    test('pause and resume while a chunk never comes', () async {
+      server.beforeChunk = (i) =>
+          i == 1 ? Completer<void>().future : Future<void>.value();
+      final c = make();
+      final packs = c.read(filePacks.notifier);
+      final done = packs.start(request(bytes: 450));
+      await pumpEventQueue();
+      await packs.pause('douala');
+      await done;
+      expect(c.read(filePackStatus('douala')), isA<Paused>());
+      expect(files.bytesOf(part), body.sublist(0, 100));
+      server.beforeChunk = null;
+      await packs.resume('douala');
+      expect(c.read(filePackStatus('douala')), const Complete(bytes: 450));
+    });
+
+    test('remove while a chunk never comes, and a start after it', () async {
+      server.beforeChunk = (i) =>
+          i == 1 ? Completer<void>().future : Future<void>.value();
+      final c = make();
+      final packs = c.read(filePacks.notifier);
+      final done = packs.start(request());
+      await pumpEventQueue();
+      await packs.remove('douala');
+      await done;
+      expect(files.paths, isEmpty);
+      server.beforeChunk = null;
+      await packs.start(request());
+      expect(c.read(filePackStatus('douala')), isA<Complete>());
+    });
+
+    test('remove while the server never answers', () async {
+      server.hold = Completer<void>().future;
+      final c = make();
+      final packs = c.read(filePacks.notifier);
+      final done = packs.start(request());
+      await pumpEventQueue();
+      await packs.remove('douala');
+      await done;
+      expect(c.read(filePacks), isEmpty);
+    });
+
+    test('ending the provider aborts the request', () async {
+      server.beforeChunk = (i) =>
+          i == 1 ? Completer<void>().future : Future<void>.value();
+      final c = ProviderContainer(
+        overrides: [
+          packHttpClient.overrideWithValue(server.client),
+          packFileStore.overrideWithValue(files),
+        ],
+      );
+      final done = c.read(filePacks.notifier).start(request());
+      await pumpEventQueue();
+      c.dispose();
+      await done;
+      expect(files.bytesOf(part), body.sublist(0, 100));
+    });
+  });
+
+  group('a body nobody reads is cancelled', () {
+    for (final code in [404, 500]) {
+      test('a $code error page', () async {
+        server.forceStatus = code;
+        server.forceBody = sampleBody(300);
+        final c = make();
+        await c.read(filePacks.notifier).start(request());
+        await pumpEventQueue();
+        expect(server.cancelled, 1);
+      });
+    }
+
+    test('a 416 that restarts, and a 206 at another offset', () async {
+      files.putBytes(part, List<int>.filled(900, 1));
+      final c = make();
+      await c.read(filePacks.notifier).start(request(sha256: sha256Of(body)));
+      expect(files.bytesOf(dest), body);
+      expect(
+        server.cancelled,
+        0,
+        reason: 'the 416 had no body; the restart read all of its',
+      );
+    });
+
+    test('a size mismatch announced before the bytes', () async {
+      final c = make();
+      await c.read(filePacks.notifier).start(request(bytes: 300));
+      await pumpEventQueue();
+      expect(server.cancelled, 1);
+    });
+  });
+
+  test(
+    'a start over a file of another size keeps it until the new one is whole',
+    () async {
+      files.putBytes(dest, [1, 2, 3]);
+      final gate = Completer<void>();
+      server.beforeChunk = (i) => i == 1 ? gate.future : Future<void>.value();
+      final c = make();
+      final done = c.read(filePacks.notifier).start(request(bytes: 450));
+      await pumpEventQueue();
+      expect(files.bytesOf(dest), [1, 2, 3]);
+      gate.complete();
+      await done;
+      expect(files.bytesOf(dest), body);
+    },
+  );
 
   group('storage', () {
     test(
@@ -811,17 +994,15 @@ void main() {
 }
 
 /// A client that answers with [answer] when it returns a response, and otherwise lets [inner]
-/// (a `PackServer`'s client) answer; [hold] delays the answer.
+/// (a `PackServer`'s client) answer.
 class _Switch extends http.BaseClient {
-  _Switch(this.answer, this.server, {this.hold});
+  _Switch(this.answer, this.server);
 
   final http.StreamedResponse? Function(http.BaseRequest request)? answer;
   final PackServer server;
-  final Future<void>? hold;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    await hold;
     final own = answer?.call(request);
     if (own != null) {
       server.requests.add({...request.headers});

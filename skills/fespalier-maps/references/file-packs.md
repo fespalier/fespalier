@@ -16,7 +16,7 @@ the request: the package depends on no `path_provider`), and, only in tests, the
 owns (its application-support directory); it is a `String`, not a `File`, so the library compiles for the web. Give `bytes`
 and `sha256` whenever the server's release notes or a manifest say them: `bytes` makes progress start at the first byte and
 catches a wrong file before the transfer ends, `sha256` is the integrity check (hex, either case; a large file is hashed after
-its last byte, which takes a moment). Two packs must not share a destination (`Failed(invalidRequest)`).
+its last byte, in a background isolate). Two packs must not share a destination (`Failed(invalidRequest)`).
 
 ```dart
 // lib/offline/douala_file.dart
@@ -42,12 +42,12 @@ FilePackRequest doualaFilePack(String supportDirectory) => FilePackRequest(
 ## Wire the client
 
 `packHttpClient` has no default: override it once with the client the app already has (its timeouts, proxy and
-certificates apply to the download). The package never closes it. `start` without the override throws a
-`StateError` that says so.
+certificates apply to the download). The package never closes it. `start` without the override throws the
+`ProviderException` Riverpod wraps the explaining `StateError` in.
 
 ```yaml
 # pubspec.yaml dependencies
-  http: ">=1.2.0 <2.0.0"
+  http: ">=1.5.0 <2.0.0"
   crypto: ">=3.0.6 <4.0.0"
 ```
 
@@ -188,7 +188,10 @@ file is **deleted**: it is not the file the app expects), `storage` (the device 
 Resuming needs a server that honours `Range` (static hosting and CDNs do; most object stores do). One that does not is not
 an error: it answers 200 with the whole body and the transfer **starts again from the first byte**. The package sends
 `If-Range` with the `ETag` (or `Last-Modified`) it saw, so a file replaced on the server is fetched whole instead of being
-glued onto the old bytes, and `Accept-Encoding: identity`, because a byte offset counts the bytes on the wire. A 416 to a
+glued onto the old bytes, and `Accept-Encoding: identity`, because a byte offset counts the bytes on the wire (a client on the
+platform's own stack, such as `cupertino_http` or `cronet_http`, may decompress anyway). A CDN that ignores `If-Range` is caught
+too: a 206 whose validator is not the stored one restarts from zero, and a partial file with no stored validator and no `sha256`
+is not continued blindly (it starts from byte 0). `pause` and `remove` abort the request, so a stalled connection does not hold them. A 416 to a
 partial file that is longer than the server's file gets one restart from zero. To publish a newer archive, change its
 URL and the pack's `destination`, or `remove` the pack first: a file already at the destination is taken as `Complete`
 without a request.

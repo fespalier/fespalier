@@ -56,6 +56,34 @@ enum _Step { verify, stop, restart }
 
 final class _Run {
   final Completer<void> done = Completer<void>();
+
+  // Completes to abort the request in flight (a pause, a removal, the end of the provider): a
+  // connection that sends nothing cannot hold them up.
+  final Completer<void> abort = Completer<void>();
+
+  void stop() {
+    if (!abort.isCompleted) abort.complete();
+  }
+}
+
+// The body of a response and whether the transfer took it: a body nobody reads is cancelled.
+final class _Body {
+  _Body(this.response);
+
+  final http.StreamedResponse response;
+  bool taken = false;
+}
+
+// Cancels a response body that is not wanted (an error status, a restart) after its first event,
+// without waiting for the rest. No `listen` here: `await for` is the subscription.
+Future<void> _abandon(http.StreamedResponse response) async {
+  try {
+    await for (final _ in response.stream) {
+      break;
+    }
+  } catch (_) {
+    // The connection is being thrown away anyway.
+  }
 }
 
 /// The file packs of the app: one file each, downloaded over HTTP with `Range` requests so that
@@ -106,7 +134,10 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
   Map<String, PackStatus> build() {
     _files = ref.read(packFileStore);
     ref.onDispose(() {
-      // The transfers see the unmounted notifier at their next chunk and close their files.
+      // The transfers are aborted, see the unmounted notifier and close their files.
+      for (final run in _runs.values) {
+        run.stop();
+      }
       for (final token in _spans.values) {
         mapsFinish(
           token,
@@ -153,15 +184,18 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
   /// Downloads [request], continuing a partial file of an earlier attempt. Does nothing while a
   /// download of the same key is running or paused. A pack whose file is already at the
   /// destination (with the size the request names) becomes [Complete] without a request: to get a
-  /// newer file, [remove] the pack first or give the new one another destination.
+  /// newer file, [remove] the pack first or give the new one another destination. A file of
+  /// another size than the request names stays where it is until the new one is whole and checked,
+  /// and is then replaced by the move.
   ///
   /// An invalid request (see [FilePackRequest.isValid]), or one whose destination another key
   /// uses, ends in [Failed] with [PackFailure.invalidRequest], and nothing is read or sent.
   ///
   /// **Completes when the transfer stops**: with the pack [Complete], [Failed], [Paused] (see
-  /// [pause]) or removed. Never throws for a failure of the transfer; throws a [StateError] when
-  /// [packHttpClient] was not overridden. Do not `await` it in a button handler that has to
-  /// stay responsive; the state is what the page watches.
+  /// [pause]) or removed. Never throws for a failure of the transfer; when [packHttpClient] was
+  /// not overridden it throws the `ProviderException` Riverpod wraps the explaining `StateError`
+  /// in. Do not `await` it in a button handler that has to stay responsive; the state is what
+  /// the page watches.
   Future<void> start(FilePackRequest request) async {
     if (_isActive(state[request.key]) && !_removing.contains(request.key)) {
       return;
@@ -249,7 +283,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
           _set(key, Complete(bytes: done));
           return;
         }
-        await _files.delete(r.destination);
+        // The file of another size stays: the move at the end replaces it atomically.
       }
       offset = await _files.length(r.partial) ?? 0;
     } catch (error) {
@@ -316,8 +350,17 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
         if (_current(key, generation)) _fail(key, _storeFailure(error));
         return _Step.stop;
       }
+      // Without a validator nothing says the partial file belongs to the file the server has
+      // now: only a hash (checked at the end) makes a blind continuation safe. Otherwise the
+      // transfer starts from the first byte and the partial file is emptied when it begins.
+      if (validator == null && r.sha256 == null) offset = 0;
     }
-    final request = http.Request('GET', r.url);
+    final run = _runs[key]!;
+    final request = http.AbortableRequest(
+      'GET',
+      r.url,
+      abortTrigger: run.abort.future,
+    );
     request.headers.addAll(r.headers);
     request.headers.remove('range');
     request.headers.remove('if-range');
@@ -331,9 +374,31 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
     try {
       response = await client.send(request);
     } catch (_) {
-      if (_current(key, generation)) _fail(key, PackFailure.network);
+      if (!_current(key, generation)) return _Step.stop;
+      if (_pausing.remove(key)) {
+        _setPaused(key, offset, r.bytes);
+      } else {
+        _fail(key, PackFailure.network);
+      }
       return _Step.stop;
     }
+    final body = _Body(response);
+    try {
+      return await _handle(r, generation, offset, validator, body);
+    } finally {
+      if (!body.taken) unawaited(_abandon(response));
+    }
+  }
+
+  Future<_Step> _handle(
+    FilePackRequest r,
+    int generation,
+    int offset,
+    String? validator,
+    _Body body,
+  ) async {
+    final key = r.key;
+    final response = body.response;
     if (!_current(key, generation)) return _Step.stop;
     if (_pausing.remove(key)) {
       _setPaused(key, offset, r.bytes);
@@ -357,6 +422,13 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
           response.headers['content-range'] ?? '',
         );
         if (range == null || int.parse(range.group(1)!) != offset) {
+          return _Step.restart;
+        }
+        // A server or CDN that ignored If-Range may be sending another file's tail: the
+        // validator of this answer must be the one the partial file was started with.
+        if (offset > 0 &&
+            validator != null &&
+            _validatorOf(response.headers) != validator) {
           return _Step.restart;
         }
         total = int.tryParse(range.group(3)!);
@@ -386,19 +458,19 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
     var paused = false;
     PackFileSink? sink;
     try {
+      // A new file starts: the old validator goes first, so a crash leaves no validator that
+      // belongs to bytes of another file.
+      if (!append) await _files.delete(r.validator);
       sink = await _files.open(r.partial, append: append);
       if (!append) {
         final tag = _validatorOf(response.headers);
-        if (tag != null) {
-          await _files.writeText(r.validator, tag);
-        } else {
-          await _files.delete(r.validator);
-        }
+        if (tag != null) await _files.writeText(r.validator, tag);
       }
     } catch (error) {
       failure = _storeFailure(error);
     }
     if (failure == null && _current(key, generation)) {
+      body.taken = true;
       _set(
         key,
         Downloading(progress: _fraction(received, expected), bytes: received),
@@ -440,6 +512,11 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
       await sink?.close();
     } catch (error) {
       failure ??= _storeFailure(error);
+    }
+    // A pause aborts the request: the error that reads as a broken connection is a pause.
+    if (_pausing.contains(key) && failure == PackFailure.network) {
+      failure = null;
+      paused = true;
     }
     if (!_current(key, generation)) return _Step.stop;
     if (paused) {
@@ -522,14 +599,15 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
     }
   }
 
-  /// Pauses a running transfer: it stops at the next chunk, keeps the partial file, and the pack
-  /// becomes [Paused]. Completes when the transfer has stopped. Does nothing when the pack is not
+  /// Pauses a running transfer: the request is aborted (so a connection that sends nothing cannot
+  /// hold it), the partial file is kept, and the pack becomes [Paused]. Completes when the transfer has stopped. Does nothing when the pack is not
   /// [Downloading]. A transfer that is already checking its file finishes instead.
   Future<void> pause(String key) async {
     if (state[key] is! Downloading) return;
     final run = _runs[key];
     if (run == null) return;
     _pausing.add(key);
+    run.stop();
     await run.done.future;
   }
 
@@ -550,7 +628,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
 
   /// Deletes a pack: stops its transfer if one runs, then deletes the finished file, the partial
   /// file and the validator, and forgets the pack. When a file cannot be deleted the pack becomes
-  /// [Failed] with [PackFailure.storage] and the error is rethrown. A [start] of the same key while
+  /// [Failed] with [PackFailure.other] (as a region pack does) and the error is rethrown. A [start] of the same key while
   /// this runs takes the key over. A pack this notifier has no request for has no files it can
   /// name: [refresh] with its request first.
   Future<void> remove(String key) async {
@@ -563,7 +641,8 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
       outcome: TelemetryOutcome.superseded,
     );
     final run = _runs[key];
-    // The transfer sees the new generation at its next chunk and closes its file first.
+    // The request is aborted; the transfer closes its file before the files are deleted.
+    run?.stop();
     if (run != null) await run.done.future;
     if (_generation[key] != generation) return;
     final request = _requests[key];
@@ -584,7 +663,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
     if (_generation[key] != generation) return;
     _removing.remove(key);
     if (failure != null) {
-      _set(key, const Failed(PackFailure.storage));
+      _set(key, const Failed(PackFailure.other));
       throw failure;
     }
     _requests.remove(key);

@@ -35,7 +35,7 @@ then. The tag must be a release that contains the package (0.13.0 or later). The
 release-please keeps current, is in [the package's README](../packages/fespalier_maps/README.md#install).
 
 The package depends on `maplibre_gl` (`>=0.27.1 <0.28.0`), `geolocator` (`>=14.0.0 <15.0.0`) and, for the file packs,
-`http` (`>=1.2.0 <2.0.0`) and `crypto` (`>=3.0.6 <4.0.0`), two pure Dart packages with no platform side. An app
+`http` (`>=1.5.0 <2.0.0`, the first release with abortable requests) and `crypto` (`>=3.0.6 <4.0.0`), two pure Dart packages with no platform side. An app
 that lists the package links the two plugins: each is imported by one library only (`maplibre.dart`, `geolocator.dart`), but a platform plugin is linked
 whether or not it is imported. Both ranges resolve on Flutter 3.32, fespalier's floor, with the lowest versions they
 allow (CI's `floor` job runs `flutter pub downgrade`, `flutter analyze` and `flutter test` on the package). Two things
@@ -281,36 +281,41 @@ final status = ref.watch(filePackStatus('douala'));
 How a download goes:
 
 - **The file at the destination is always whole and checked.** The bytes are written to `<destination>.part`; when the transfer
-  ends, the size is compared with `bytes`, the SHA-256 with `sha256` (computed from the file, after the last byte: a large file
-  takes a moment), and only then is the file renamed into place. A size or a hash that does not match **deletes the partial
+  ends, the size is compared with `bytes`, the SHA-256 with `sha256` (computed from the file, after the last byte, in a background
+  isolate: a large file takes a moment, not frames), and only then is the file renamed into place. A size or a hash that does not match **deletes the partial
   file** (`Failed(sizeMismatch)` or `Failed(hashMismatch)`): it is not the file the app expects, and appending to it would
   not help. Without `bytes` and `sha256` the pack is trusted as the server sent it.
-- **Resuming is a new request with `Range`.** `pause` stops the transfer at the next chunk and keeps the partial file
+- **Resuming is a new request with `Range`.** `pause` aborts the request (so a connection that sends nothing cannot hold it) and keeps the partial file
   (`Paused`); `resume` asks for the bytes from its size on. The same call after an error (`Failed(network)`), and after a restart
   (`refresh` found the `.part` file and reports `Interrupted(bytes:, progress:)`), continues from the last byte on disk, so
   the label is "Resume", unlike a region pack's "Download again".
 - **The server may not cooperate, and the package copes.** One that ignores `Range` answers 200 with the whole body: the transfer
   starts again from the first byte (the partial file is emptied, never appended to). The package sends `If-Range` with the
   `ETag` (or else `Last-Modified`) the first response had, kept in `<destination>.part.etag`, so a file replaced on the
-  server is fetched whole instead of being glued onto old bytes. A 416 to a partial file the server's copy is shorter than gets
+  server is fetched whole instead of being glued onto old bytes. A CDN may ignore `If-Range`, so a 206 whose validator is not
+  the stored one is dropped and the transfer restarts from zero; and a partial file with **no stored validator** (and no `sha256`
+  to catch a splice at the end) is not continued blindly: the transfer starts from the first byte. A 416 to a partial file the server's copy is shorter than gets
   one restart from zero (a 416 that says the partial file is the whole file finishes it); a 206 that starts at another offset
   than asked does the same; a second failure is `Failed(rejected)`. Any other status (a 404, a 403, a 5xx) is
   `Failed(rejected)` and the partial file stays. The package asks for `Accept-Encoding: identity`, because offsets count the
-  bytes on the wire.
+  bytes on the wire (a client built on the platform's own stack, such as `cupertino_http` or `cronet_http`, may decompress
+  anyway: use the default `dart:io` client, or a server that does not compress archives). Bodies the transfer does not
+  read (an error page, a restart) are cancelled.
 - **`start` and `resume` return when the transfer stops**, not when it begins (unlike `TilePacks.start`): `unawaited(...)` them in
-  a handler, or `await` them in a test. They never throw for a failure of the transfer, only a `StateError` when `packHttpClient`
-  is not overridden. `start` of a key that is `Downloading` or `Paused` does nothing; of one whose file is already at the
-  destination (with the size the request names) makes it `Complete` with no request, so to publish a newer archive give it
+  a handler, or `await` them in a test. They never throw for a failure of the transfer, only the `ProviderException` (Riverpod wraps the `StateError` that
+  explains it) when `packHttpClient` is not overridden. `start` of a key that is `Downloading` or `Paused` does nothing; of one whose file is already at the
+  destination (with the size the request names) makes it `Complete` with no request (a file of another size stays until the new
+  one is whole, and the move replaces it), so to publish a newer archive give it
   another URL **and** destination, or `remove` the pack first.
-- **`remove` waits for the transfer to close its file**, then deletes the finished file, the partial file and the validator.
-  A `start` of the same key while a remove runs takes the key over. A pack of an earlier session is known to `remove` and
+- **`remove` aborts the request and waits for the transfer to close its file**, then deletes the finished file, the partial file and the validator.
+  If a file cannot be deleted the pack becomes `Failed(other)`, as a region pack does, and the error is thrown. A `start` of the same key while a remove runs takes the key over. A pack of an earlier session is known to `remove` and
   `resume` only after `refresh` has been given its request: the registry of which packs exist is the app's.
 - **Nothing is read at startup, and disk is the state of record.** `refresh(requests)` reads each destination and `.part`
   file: `Complete`, `Interrupted` or nothing. A pack that is downloading in this session is left alone.
 - **On the web a file pack ends in `Failed(unsupported)`** before any request (there are no files); the `dart:io` part is behind
   a conditional import.
 - **No timer, no listener, no microtask.** The response body is read with `await for`, which ends when the transfer does; a
-  pause or a removal is noticed at the next chunk.
+  pause, a removal and the end of the provider abort the request (`http` 1.5's `abortTrigger`), and the transfer closes its file.
 
 **Drawing from the file.** A finished PMTiles archive is read directly by MapLibre: a style's vector source whose `url` is
 `pmtilesSourceUrl(path)` (`pmtiles://file:///data/.../douala.pmtiles`). In the style JSON you pass to

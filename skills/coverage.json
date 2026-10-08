@@ -2,11 +2,11 @@
   "//": "The docs<->skills parity map. Checked in BOTH directions by scripts/skills/verify-coverage.mjs: a fespalier feature that no skill claims fails the gate — a README or docs/ section (README.md#<heading>, docs/<page>.md#<heading>), a docs/ page (docs/<page>.md), a file kind (kind:<file>), a pubspec config key (config:<key>), an fsp command (command:<name>), a runtime library file, a generator source file, a scaffold template, an example or editor directory, or a root document — and so does an id claimed here that no longer exists in fespalier. The kind, config and command ids are the load-bearing half: a fifteenth file kind, an eleventh config key or a seventh command fails the gate by name until some skill covers it. See skills/README.md.",
   "baseline": {
     "//": "A skill is true of *a* fespalier, not of fespalier. The project tags releases (v0.4.0), but a skill describes the tree, and the tree moves between tags — so the honest version identity is a commit and a date, with the release named beside it. Every SKILL.md is stamped with this ref (or a descendant of it) and the gate refuses one stamped otherwise. See \"Versions\" in skills/README.md.",
-    "fespalierRef": "122cb07fef6745935b922db1a3c547dcd2bf15cb",
-    "fespalierRefShort": "122cb07f",
-    "fespalierCommitDate": "2026-10-01",
-    "verifiedAt": "2026-10-01",
-    "release": "v0.4.0"
+    "fespalierRef": "fdaad6b8a01d98ef228dee27e8e36ce0c54b860f",
+    "fespalierRefShort": "fdaad6b8",
+    "fespalierCommitDate": "2026-10-08",
+    "verifiedAt": "2026-10-08",
+    "release": "v0.13.0"
   },
   "skills": {
     "fespalier": {

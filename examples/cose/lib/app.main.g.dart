@@ -28,13 +28,12 @@ abstract final class AppMain {
   /// The widget [run] gives `runApp`: startup() (splash.dart while it runs, and if it fails),
   /// then a `ProviderScope` with the overrides it returned around app.dart, which gets
   /// [router]'s router. [router] is called once, after startup().
-  static Widget root({GoRouter Function() router = AppRoutes.router}) =>
-      StartupGate(
-        overrides: _i1.startup,
-        splash: _splash,
-        router: router,
-        app: app,
-      );
+  static Widget root({GoRouter Function() router = AppRoutes.router}) => StartupGate(
+    overrides: _i1.startup,
+    splash: _splash,
+    router: router,
+    app: app,
+  );
 
   /// app.dart's widget around [router]. Tests boot the app as it runs, theme and
   /// localizations included: `pumpRouter(tester, router, app: AppMain.app)`.

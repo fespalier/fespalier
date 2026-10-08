@@ -83,13 +83,13 @@ the package's.
   **same key**, which the signature binds. A message signed once and stored would be a replay, and a 401, from its second
   attempt on. `registerDevice` is a direct call: it must succeed before anything is signed.
 
-| The transport throws                    | When                                                                                                       | What the intent does               |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `CrateStackUnauthenticated`             | an unsigned `401`                                                                                          | stays pending, **same key**        |
-| `CrateStackRefused` (status, wire code) | an unsigned `400`, `413`, `415` or `426` (code `HTTP_<status>`, its body ignored); a sealed `4xx` other than `409` | thrown to the person; nothing kept |
-| `CrateStackInFlight` / `CrateStackConflict` | a sealed `409` with / without `Retry-After` (the idempotency layer: the first attempt is still being answered) | pending, **same key** / kept for the person |
-| `CrateStackOffline`                     | no answer; **any other unsigned answer** (`5xx`, `409`, `2xx`, a page); a sealed answer that does not open | stays pending, **same key**        |
-| `CrateStackUnavailable`                 | a **sealed** `5xx`                                                                                         | pending, **next key**              |
+| The transport throws                        | When                                                                                                               | What the intent does                        |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| `CrateStackUnauthenticated`                 | an unsigned `401`                                                                                                  | stays pending, **same key**                 |
+| `CrateStackRefused` (status, wire code)     | an unsigned `400`, `413`, `415` or `426` (code `HTTP_<status>`, its body ignored); a sealed `4xx` other than `409` | thrown to the person; nothing kept          |
+| `CrateStackInFlight` / `CrateStackConflict` | a sealed `409` with / without `Retry-After` (the idempotency layer: the first attempt is still being answered)     | pending, **same key** / kept for the person |
+| `CrateStackOffline`                         | no answer; **any other unsigned answer** (`5xx`, `409`, `2xx`, a page); a sealed answer that does not open         | stays pending, **same key**                 |
+| `CrateStackUnavailable`                     | a **sealed** `5xx`                                                                                                 | pending, **next key**                       |
 
 Only a sealed answer is the server's word on a call. An unsigned one is believed for the refusals the envelope layer makes
 **before the handler runs**, and only by its status: its body is ignored, so nothing on the path can choose the code that

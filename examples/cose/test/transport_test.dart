@@ -221,18 +221,21 @@ void main() {
     },
   );
 
-  test('a sealed 503 (a full idempotency store) is Unavailable, never a refusal', () async {
-    final server = FakeCoseServer();
-    final app = await _app(server);
-    server.override = (request) => server.sealed(request, 503, {
-      'code': 'unavailable',
-      'message': 'too many idempotency keys held',
-    });
-    await expectLater(
-      app.transport.send(_add, idempotencyKey: 'a#0'),
-      throwsA(isA<CrateStackUnavailable>()),
-    );
-  });
+  test(
+    'a sealed 503 (a full idempotency store) is Unavailable, never a refusal',
+    () async {
+      final server = FakeCoseServer();
+      final app = await _app(server);
+      server.override = (request) => server.sealed(request, 503, {
+        'code': 'unavailable',
+        'message': 'too many idempotency keys held',
+      });
+      await expectLater(
+        app.transport.send(_add, idempotencyKey: 'a#0'),
+        throwsA(isA<CrateStackUnavailable>()),
+      );
+    },
+  );
 
   test('a server that forgot the device is healed by the next call', () async {
     final server = FakeCoseServer();

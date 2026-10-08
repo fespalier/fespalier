@@ -74,12 +74,7 @@ abstract final class AppRoutes {
   }) {
     _base = at;
     _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();
-    if (kFespalierDevTools)
-      devToolsRegister(
-        tree: _devToolsTree,
-        matchUrl: matchUrl,
-        providers: _devToolsProviders,
-      );
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return [
       GoRoute(
         path: joinLocation(at, '/'),
@@ -99,10 +94,7 @@ abstract final class AppRoutes {
 
   /// Every route as [matchUrl] tries it, most specific first.
   static final List<RouteMatcher> _matchers = [
-    RouteMatcher(
-      [],
-      (s) => UrlMatch(s.uri, const HomeRoute(), const {}, [_data0]),
-    ),
+    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, [_data0])),
   ];
 
   /// [uri] matched to its route: the typed route, the parameters parsed from the URL and
@@ -116,15 +108,13 @@ abstract final class AppRoutes {
   /// of `/products/42` is `[ProductRoute.data(42)]`), so warming them, with
   /// `ref.prefetchAll(AppRoutes.dataAt(uri) ?? [])`, warms the page. Empty for a route
   /// without data; null when no route fits or a segment doesn't parse.
-  static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) =>
-      matchUrl(uri)?.data;
+  static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
 
   /// Starts loading everything the page at [uri] reads, `ref.prefetchAll(dataAt(uri) ?? [])`: one
   /// handle keeps it all alive until it is closed (or `keepFor` passes). A location that matches no
   /// route, or a route without data, has nothing to warm and gets a closed handle. It never
   /// navigates and runs no guard.
-  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) =>
-      ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);
+  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);
 
   /// Every route with its path, folder, groups, layouts and meta: [AppManifest.all].
   static List<RouteInfo<Object?>> get all => AppManifest.all;
@@ -145,7 +135,12 @@ abstract final class AppRoutes {
 abstract final class AppManifest {
   /// Every route, in the order of the table at the top of the file.
   static const List<RouteInfo<Object?>> all = [
-    RouteInfo(type: HomeRoute, path: '/', folder: '', dataKeys: []),
+    RouteInfo(
+      type: HomeRoute,
+      path: '/',
+      folder: '',
+      dataKeys: [],
+    ),
   ];
 
   /// Each route by its typed-route class: `AppManifest.byType[ProductRoute]`.
@@ -185,12 +180,10 @@ final class HomeRoute extends TypedLocation {
 
   /// The HomeRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static HomeRoute of(BuildContext context) =>
-      routeOf<HomeRoute>(context, AppRoutes.matchUrl);
+  static HomeRoute of(BuildContext context) => routeOf<HomeRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static HomeRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<HomeRoute>(context, AppRoutes.matchUrl);
+  static HomeRoute? maybeOf(BuildContext context) => maybeRouteOf<HomeRoute>(context, AppRoutes.matchUrl);
 
   /// Watches data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref) => ref.watch(data);
@@ -199,23 +192,20 @@ final class HomeRoute extends TypedLocation {
   static final read = (WidgetRef ref) => ref.readData(data);
 
   /// Starts loading data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
-  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) =>
-      ref.prefetchData(data, keepFor: keepFor);
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
 
   /// Re-runs data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) =>
-      ref.prefetchAll([_data0], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data0], keepFor: keepFor);
 
   /// The state of `action()` (action.dart): `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
   static final action = _action0_0;
 
   /// Runs `action()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
-  static final submit = (WidgetRef ref, {required String input}) =>
-      ref.runAction(action, input);
+  static final submit = (WidgetRef ref, {required String input}) => ref.runAction(action, input);
 
   /// Watches the state of `action()` and gives `call(input)` to run it, for `build`. A failed run is in `state`, not thrown.
   static final useAction = (WidgetRef ref) => ref.watchAction(action);
@@ -234,10 +224,11 @@ final _action0_0 = actionProvider(
 );
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
-Map<Object, String> _devToolsProviders() => {_data0: 'd0'};
+Map<Object, String> _devToolsProviders() => {
+      _data0: 'd0',
+    };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() =>
-    '{"protocol":1,"package":"cose_example","appDir":"lib/app","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":["data","action"],"params":[],"redirect":false,"children":[]}],"sites":{"a0_0":{"kind":"action","file":"action.dart","name":"action","route":"HomeRoute"},"d0":{"kind":"data","file":"data.dart","route":"HomeRoute","section":null,"traced":true}}}';
+String _devToolsTree() => '{"protocol":1,"package":"cose_example","appDir":"lib/app","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":["data","action"],"params":[],"redirect":false,"children":[]}],"sites":{"a0_0":{"kind":"action","file":"action.dart","name":"action","route":"HomeRoute"},"d0":{"kind":"data","file":"data.dart","route":"HomeRoute","section":null,"traced":true}}}';

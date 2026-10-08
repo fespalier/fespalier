@@ -1,0 +1,48 @@
+// The cose example's contract. No database: the notes live in memory.
+//
+// Every op travels as CBOR inside a COSE_Sign1 message, except `registerDevice`,
+// which is the one plain (unsigned) op: a request signed by a key the server does
+// not know yet is a 401, so the key has to arrive some other way first
+// (src/lib.rs, `mode_of`).
+
+transport rpc
+
+datasource db {
+  provider = "none"
+}
+
+type RegisterArgs {
+  x String
+  y String
+}
+
+type DeviceView {
+  kid String
+  thumbprint String
+}
+
+type ListArgs {
+  limit Int?
+}
+
+type NoteArgs {
+  text String
+}
+
+type Note {
+  id Int
+  text String
+}
+
+type NoteList {
+  notes Note[]
+}
+
+mutation procedure registerDevice(args: RegisterArgs): DeviceView
+  @allow(true)
+
+procedure listNotes(args: ListArgs): NoteList
+  @allow(auth() != null)
+
+mutation procedure addNote(args: NoteArgs): Note
+  @allow(auth() != null)

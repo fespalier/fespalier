@@ -197,6 +197,17 @@ intellij:
 web-chunks:
     scripts/check-deferred-chunks.sh examples/shop '/checkout=Place order' '/products/:id=Add to cart'
 
+# The cose example's server (examples/cose/server, a standalone Rust crate on cratestack-api 0.15.3):
+# fmt, clippy, tests (incl. the committed contracts.json), a locked build and cargo-deny. A cold build compiles
+# cratestack and takes a couple of minutes, so it is not part of `just ci`.
+[working-directory: 'examples/cose/server']
+cose-server:
+    cargo fmt --check
+    cargo clippy --all-targets -- -D warnings
+    cargo test
+    cargo build --locked
+    cargo deny --config deny.toml check
+
 # The committed Maestro flows of examples/shop open their routes in Chromium (Playwright, pinned in
 # ci/web-routes/package-lock.json) against a release web build; every non-local request is blocked.
 # Needs Flutter and Node; about two minutes, and not part of `just ci` (CI runs it as `web-routes`)

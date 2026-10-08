@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/page.dart","line":4,"column":39,"severity":"error","message":"can't fill `label`: it isn't a segment of this path (it has none) or a query parameter (optional and nullable)"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

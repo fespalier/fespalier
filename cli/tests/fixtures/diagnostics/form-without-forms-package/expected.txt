@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/action.dart","line":7,"column":6,"severity":"error","message":"`form()` is the form of `action()`, and since 0.11.0 forms are in the fespalier_forms package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the same git `url` and `ref` as fespalier"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

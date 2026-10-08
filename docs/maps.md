@@ -5,7 +5,8 @@ moves under it, a search field sits at the bottom, and a name for the point unde
 Confirming pops a `PickedPlace` to the page that asked for it. The map is [MapLibre](https://maplibre.org) through
 `maplibre_gl`, the device position is `geolocator`, and the geocoder is yours. The same package downloads **offline
 region packs** (a rectangle, a style and a zoom range stored in MapLibre's database) with progress, pause, resume,
-deletion and a storage report.
+deletion and a storage report, and **file packs**: one PMTiles file per pack, downloaded over HTTP with `Range`
+requests so that a download **resumes after the app was closed**.
 
 fespalier itself has no map feature: no file kind, no `fespalier:` key, no `fsp` command, and `app.g.dart` is the same
 bytes. The package is a companion, installed like `fespalier_flags`. It cannot add a route (`fsp` scans your `lib/app/`):
@@ -23,7 +24,8 @@ if (place != null) {
 
 Contents: [Install](#install), [Picking a place](#picking-a-place), [Search and guesses](#search-and-guesses),
 [Where the device is](#where-the-device-is), [The map](#the-map), [Offline packs](#offline-packs),
-[Downloading a region](#downloading-a-region), [Storage](#storage), [Telemetry](#telemetry), [Testing](#testing),
+[Downloading a region](#downloading-a-region), [File packs](#file-packs), [Storage](#storage),
+[Telemetry](#telemetry), [Testing](#testing),
 [Rules and what it costs](#rules-and-what-it-costs), [Not built yet](#not-built-yet).
 
 ## Install
@@ -32,8 +34,9 @@ Add the package next to fespalier with the **same `url` and the same `ref`**: pu
 then. The tag must be a release that contains the package (0.13.0 or later). The install block, with the version
 release-please keeps current, is in [the package's README](../packages/fespalier_maps/README.md#install).
 
-The package depends on `maplibre_gl` (`>=0.27.1 <0.28.0`) and `geolocator` (`>=14.0.0 <15.0.0`), and so does every app
-that lists it: each is imported by one library only (`maplibre.dart`, `geolocator.dart`), but a platform plugin is linked
+The package depends on `maplibre_gl` (`>=0.27.1 <0.28.0`), `geolocator` (`>=14.0.0 <15.0.0`) and, for the file packs,
+`http` (`>=1.2.0 <2.0.0`) and `crypto` (`>=3.0.6 <4.0.0`), two pure Dart packages with no platform side. An app
+that lists the package links the two plugins: each is imported by one library only (`maplibre.dart`, `geolocator.dart`), but a platform plugin is linked
 whether or not it is imported. Both ranges resolve on Flutter 3.32, fespalier's floor, with the lowest versions they
 allow (CI's `floor` job runs `flutter pub downgrade`, `flutter analyze` and `flutter test` on the package). Two things
 are **not** checked by any CI job here and need a device or a build of your app: that the map draws, and that your
@@ -204,7 +207,7 @@ by itself after a restart, silently, since there is no event channel to Dart for
 already be running (also not verified on a device).
 Android's native side also answers "Region is no longer actively tracked" to a `resume` it has lost, which `TilePacks`
 turns into `Interrupted` as well. A download that resumes from a byte offset needs a file the package controls: the PMTiles
-file packs of a later release are that (HTTP Range).
+[file packs](#file-packs) are that (HTTP Range).
 
 ## Downloading a region
 
@@ -236,6 +239,109 @@ final status = ref.watch(tilePackStatus('douala'));
 - **`refresh()` keeps the complete region** of a key whatever the ids (iOS ids are not ordered) and deletes its other
   regions; with none complete it keeps the highest id, and a `resume` replaces them.
 
+## File packs
+
+A file pack is **one file**, a [PMTiles](https://docs.protomaps.com/pmtiles/) archive (any single file works), fetched over
+HTTP into a directory your app owns (since 0.13.0). Where a MapLibre region cannot continue after a restart, **a file pack
+does**: the bytes arrive in `<destination>.part`, a transfer that stops leaves them, and the next attempt asks the server
+for the rest with `Range: bytes=<size of the partial file>-`. Pieces:
+
+- `FilePackRequest(key:, url:, destination:, sha256:, bytes:, headers:)`. `destination` is a **path** (a `String`, so the library
+  compiles for the web) in a directory the app got itself, typically its application-support directory: the package
+  depends on no `path_provider`. `bytes` and `sha256` are the integrity checks; give them whenever the server's release notes or a
+  manifest say them. `headers` carries an `Authorization` header if the server wants one. `isValid` is false for an empty key,
+  a URL that is not `http` or `https`, a size of zero or less and a hash that is not 64 hexadecimal digits.
+- `FilePacks`, the notifier behind the `filePacks` provider: `start`, `pause`, `resume`, `remove`, `refresh(requests)`, `storage`.
+  Its state is the same `Map<String, PackStatus>` as region packs, with `filePackStatus(key)` for one pack, so a page
+  that shows both kinds reads one vocabulary. The `PackFailure`s a file pack ends in are `network`, `rejected`, `sizeMismatch`,
+  `hashMismatch`, `storage`, `invalidRequest` and `unsupported`.
+- `packHttpClient`, the provider of the `http.Client` the download uses. It has **no default**: override it with the app's
+  client (its timeouts, proxy and certificates then apply), and a test with `package:http/testing.dart`'s `MockClient`.
+  The package never closes it. `packFileStore` is the provider of the files (`dart:io`; `FakePackFiles` in tests).
+
+```dart
+ProviderScope(
+  overrides: [packHttpClient.overrideWithValue(http.Client())],
+  child: const MyApp(),
+)
+
+final pack = FilePackRequest(
+  key: 'douala',
+  url: Uri.parse('https://tiles.example.com/douala-2026-10.pmtiles'),
+  destination: '${supportDirectory.path}/packs/douala.pmtiles',
+  bytes: 48213377,
+  sha256: 'ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12',
+);
+final packs = ref.read(filePacks.notifier);
+await packs.refresh([pack]);      // once, when the page opens: disk tells what an earlier session left
+unawaited(packs.start(pack));     // returns when the transfer stops; the state is Complete, Failed or Paused
+final status = ref.watch(filePackStatus('douala'));
+```
+
+How a download goes:
+
+- **The file at the destination is always whole and checked.** The bytes are written to `<destination>.part`; when the transfer
+  ends, the size is compared with `bytes`, the SHA-256 with `sha256` (computed from the file, after the last byte: a large file
+  takes a moment), and only then is the file renamed into place. A size or a hash that does not match **deletes the partial
+  file** (`Failed(sizeMismatch)` or `Failed(hashMismatch)`): it is not the file the app expects, and appending to it would
+  not help. Without `bytes` and `sha256` the pack is trusted as the server sent it.
+- **Resuming is a new request with `Range`.** `pause` stops the transfer at the next chunk and keeps the partial file
+  (`Paused`); `resume` asks for the bytes from its size on. The same call after an error (`Failed(network)`), and after a restart
+  (`refresh` found the `.part` file and reports `Interrupted(bytes:, progress:)`), continues from the last byte on disk, so
+  the label is "Resume", unlike a region pack's "Download again".
+- **The server may not cooperate, and the package copes.** One that ignores `Range` answers 200 with the whole body: the transfer
+  starts again from the first byte (the partial file is emptied, never appended to). The package sends `If-Range` with the
+  `ETag` (or else `Last-Modified`) the first response had, kept in `<destination>.part.etag`, so a file replaced on the
+  server is fetched whole instead of being glued onto old bytes. A 416 to a partial file the server's copy is shorter than gets
+  one restart from zero (a 416 that says the partial file is the whole file finishes it); a 206 that starts at another offset
+  than asked does the same; a second failure is `Failed(rejected)`. Any other status (a 404, a 403, a 5xx) is
+  `Failed(rejected)` and the partial file stays. The package asks for `Accept-Encoding: identity`, because offsets count the
+  bytes on the wire.
+- **`start` and `resume` return when the transfer stops**, not when it begins (unlike `TilePacks.start`): `unawaited(...)` them in
+  a handler, or `await` them in a test. They never throw for a failure of the transfer, only a `StateError` when `packHttpClient`
+  is not overridden. `start` of a key that is `Downloading` or `Paused` does nothing; of one whose file is already at the
+  destination (with the size the request names) makes it `Complete` with no request, so to publish a newer archive give it
+  another URL **and** destination, or `remove` the pack first.
+- **`remove` waits for the transfer to close its file**, then deletes the finished file, the partial file and the validator.
+  A `start` of the same key while a remove runs takes the key over. A pack of an earlier session is known to `remove` and
+  `resume` only after `refresh` has been given its request: the registry of which packs exist is the app's.
+- **Nothing is read at startup, and disk is the state of record.** `refresh(requests)` reads each destination and `.part`
+  file: `Complete`, `Interrupted` or nothing. A pack that is downloading in this session is left alone.
+- **On the web a file pack ends in `Failed(unsupported)`** before any request (there are no files); the `dart:io` part is behind
+  a conditional import.
+- **No timer, no listener, no microtask.** The response body is read with `await for`, which ends when the transfer does; a
+  pause or a removal is noticed at the next chunk.
+
+**Drawing from the file.** A finished PMTiles archive is read directly by MapLibre: a style's vector source whose `url` is
+`pmtilesSourceUrl(path)` (`pmtiles://file:///data/.../douala.pmtiles`). In the style JSON you pass to
+`MapLibreSurface(styleString: ...)`:
+
+```json
+{
+  "version": 8,
+  "sources": {
+    "basemap": {
+      "type": "vector",
+      "url": "pmtiles://file:///data/user/0/app/files/packs/douala.pmtiles"
+    }
+  },
+  "layers": [
+    {
+      "id": "water",
+      "type": "fill",
+      "source": "basemap",
+      "source-layer": "water"
+    }
+  ]
+}
+```
+
+`maplibre_gl` 0.27.1 lists "GeoJSON, vector, raster & PMTiles sources" for Android, iOS and the web, and bundles MapLibre
+Native Android 13.5 and iOS 6.28 (its changelog says PMTiles support came in with Native Android 11.9 and iOS 6.14). What was **not** checked here is that a `pmtiles://file://` source draws on a device: no CI job renders a
+map. Two caveats are certain: an archive holds tiles only, so the style's `glyphs` and `sprite` must be reachable offline too
+(bundled with the app, or inside a region pack) or labels do not draw; and the web has no local files, so on the web the
+archive stays a remote `pmtiles://https://...` source, which is not a pack.
+
 ## Storage
 
 `await ref.read(tilePacks.notifier).storage()` answers a `StorageUse`: `perPack` (the bytes each pack's resources take,
@@ -245,7 +351,9 @@ MapLibre's ambient cache (the tiles the map cached while it was browsed). Show e
 do not add the rows up as if they were the file.
 
 `onDisk` is the size of the file `getOfflineDatabasePath` names (the file only, not the journal beside it); it is null on
-the web and wherever the plugin does not know the path. The `dart:io` part sits behind a conditional import, so a web build
+the web and wherever the plugin does not know the path. For [file packs](#file-packs) `FilePacks.storage()` answers the same
+`StorageUse`, but **the rows add up**: `perPack` is each pack's bytes (finished or partial) and `onDisk` the sum of the files on
+disk of the packs this session knows; null where there are no files. The `dart:io` part sits behind a conditional import, so a web build
 does not compile it.
 
 ## Telemetry
@@ -258,11 +366,11 @@ package's own contract, pinned by `test/telemetry_test.dart`: a name is added, n
 | `fespalier.maps.geocode`  | `fespalier.maps.direction`: `search` or `reverse`                       | `fespalier.maps.result`: `found`, `empty`, `error`, `stale`         |
 | `fespalier.maps.locate`   | none                                                                    | `fespalier.maps.result`: `fixed`, `off`, `denied`, `error`, `stale` |
 | `fespalier.maps.pick`     | `fespalier.maps.guessed`: whether a guess came with the confirmed place | (starts and ends in the same call)                                  |
-| `fespalier.maps.download` | `fespalier.maps.kind`: `region`                                         | `fespalier.maps.result`: `complete`, `failed`, `cancelled`          |
+| `fespalier.maps.download` | `fespalier.maps.kind`: `region` or `file`                               | `fespalier.maps.result`: `complete`, `failed`, `cancelled`          |
 
 A dropped answer ends with outcome `superseded` and result `stale`. A download is one operation from `start` (or the restart
 that `resume` makes) to its end: a pause leaves it open, `remove` or the end of the provider's life ends it as `cancelled`
-(outcome `superseded`), and a failure ends it with outcome `error`. It never carries the pack's key, bounds, style or progress. **A value is never a coordinate, a label, a query,
+(outcome `superseded`), and a failure ends it with outcome `error`. A file pack's operation stays open across `pause` and `resume`. It never carries the pack's key, bounds, style, URL, path, hash or progress. **A value is never a coordinate, a label, a query,
 an address or an error's text**: the attributes are constants and a boolean, and the test asserts that none of the strings
 it feeds the picker appears in what a sink hears. With no sink installed, nothing is started.
 
@@ -279,6 +387,10 @@ channel:
   `reverseCalls` until the test completes or fails it, which is how to order two answers and see the stale one dropped;
   `error` makes every call throw.
 - `FakePositionSource(fix, {hold})`: answers with `answer`, counts `calls`, and with `hold` waits for `release()`.
+- `FakePackFiles({files, texts})`: the files of a file pack in memory (override `packFileStore` with it), with `bytesOf`, `textOf`,
+  `putBytes` and `putText` to seed what an earlier session left and read what a transfer wrote, `failWrites`, `failRename`
+  and `failDelete`, `unsupported` (the web) and `renames`. The server is `package:http/testing.dart`'s `MockClient.streaming`
+  behind `packHttpClient`: answer `Range` with a 206 and a `Content-Range`, or ignore it with a 200, to play both servers.
 - `FakeOfflineTiles({holdDownloads, databaseSize})`: the offline database in memory; override `offlineTiles` with it. The
   test plays MapLibre with `progress(key, fraction, ...)`, `finish(key)` and `fail(key, reason)`; `seed(request, complete:)`
   puts a region there as an earlier session left it, `restart()` plays the app being reopened (old downloads are no longer
@@ -308,19 +420,20 @@ arithmetic, `tileCount(bounds, minZoom:, maxZoom:)`, is tested against values wo
   greps `lib/` for timers, delays, `.listen(`, `addListener(`, frame callbacks and `DateTime.now()`.
 - **A geocoder error, a query, a label and a coordinate never leave the picker** through telemetry, and an error's text is
   never kept.
-- **Downloads add no timer, no listener and no stream of their own.** MapLibre's download callback is the only source of
+- **Downloads add no timer, no listener and no stream of their own** (a file pack reads its response with `await for`). MapLibre's download callback is the only source of
   progress, `TilePacks` writes it into provider state, and a stale event (of a pack removed or started again) is dropped by
   a generation number.
-- **No HTTP, no `path_provider`, no secret.** The package takes no API key; a style URL with a key in
-  it is public once it is in a build.
+- **HTTP only in file packs, and only through the client you provide; no `path_provider`, no secret.** The package takes no
+  API key and no CDN secret: a style or archive URL with a key in it is public once it is in a build, and the URL, the
+  paths and the headers of a file pack never reach telemetry.
 - **It links two plugins into every app that depends on it**, and a MapLibre native library with them. An app that wants a
   map but not this picker can use `maplibre_gl` directly; an app that wants this picker's model on another map writes a
   `MapSurface`.
 
 ## Not built yet
 
-PMTiles file packs (one file per pack, resumable over HTTP Range, verified and moved into place only when complete) are
-planned as a separate release of this package; they are how a download will survive an app restart. Also not built:
-markers, routes and other overlays, clustering, search-as-you-type, a geocoder of the package's own, a download that
-continues in the background when the app is closed, and a web-specific surface (`maplibre_gl` has a web implementation,
-but nothing here has run on it, and it has no offline regions).
+Markers, routes and other overlays, clustering, search-as-you-type, a geocoder of the package's own, a download that
+continues in the background when the app is closed (a file pack resumes when the app is opened and starts it again), a
+retry policy with backoff (it would need a timer: the app decides when to call `resume`), several files for one pack, and
+a web-specific surface (`maplibre_gl` has a web implementation, but nothing here has run on it, and it has no offline
+regions and no local files).

@@ -27,11 +27,14 @@ abstract final class MapsTelemetry {
   /// kind of pack, [result] how it ended. Never the pack's key, bounds, style or name.
   static const String download = 'fespalier.maps.download';
 
-  /// Attribute of [download]: the kind of pack, [kindRegion].
+  /// Attribute of [download]: the kind of pack, [kindRegion] or [kindFile].
   static const String kind = 'fespalier.maps.kind';
 
-  /// A MapLibre region pack (the only kind in this release).
+  /// A MapLibre region pack.
   static const String kindRegion = 'region';
+
+  /// A file pack (since 0.13.0): one file fetched over HTTP, resumable by byte offset.
+  static const String kindFile = 'file';
 
   /// Attribute of [geocode]: [directionSearch] or [directionReverse].
   static const String direction = 'fespalier.maps.direction';

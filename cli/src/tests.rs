@@ -134,6 +134,7 @@ fn committed_output_is_up_to_date() {
         "i18n",
         "maps",
         "adopt",
+        "offline",
     ] {
         // The examples' own pubspec.yaml: `output_manifest:` and `meta:` change what is written.
         let cfg = Config::load(&examples(name)).unwrap();
@@ -205,6 +206,7 @@ fn examples_have_no_unknown_paths() {
         "i18n",
         "maps",
         "adopt",
+        "offline",
     ] {
         let cfg = Config::load(&examples(name)).unwrap();
         let (_, diags, app) = crate::analyze(&examples(name).join("lib/app"), &cfg).unwrap();

@@ -357,3 +357,7 @@ isolate.
 `failures.dart`), `hive.dart`, `testing.dart`, and `src/transport.dart` (`CrateStackTransport`, `RpcCall`, `RestCall`,
 `crateStackTransport`). The guide is
 [`docs/cratestack.md`](https://github.com/fespalier/fespalier/blob/main/docs/cratestack.md).
+
+`examples/offline` (in the fespalier repository) is the wiring without a CrateStack server to start: `lib/wiring.dart`
+overrides the transport, the error reader (`lib/errors.dart`), `crateStackScope` and the `RowSync`, over a demo server
+in process that plays the part of the generated client.

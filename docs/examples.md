@@ -218,3 +218,12 @@ Add the location strings `geolocator` needs first (`NSLocationWhenInUseUsageDesc
 - `app.dart`'s `router()` returns that hand-built `GoRouter` under the default `main: auto`, so `startup.dart` can have `ready(container)` and `attach(router, container)` ([`main()`](app-startup.md), since 0.12.0): the move of a 0.11-style `main()` that built its own `ProviderContainer`;
 - `lib/before/` keeps the app as it was (a pure go_router version of the same screens, and its old `main()`), compiled, and `test/parity_test.dart` opens the same URLs in both and checks they show the same screens;
 - tests for the mounted tree, the redirects, a typed route taken from a legacy page, and the order `ready()`, the router, `attach()` through `AppMain.root()`.
+
+## offline
+
+`examples/offline` (since 0.10.0) is [`fespalier_cratestack`](../packages/fespalier_cratestack) with no server to start: two screens, and a switch in the app bar that plays the device's network.
+
+- `/orders` reads with `ref.serve` (the `networkFirst` policy): with the switch off the list is the copy this phone last loaded, with its time, or "not loaded on this phone yet". Cancelling an order is an **intent** (`IntentQueue.submit`): saved, sent once under the key `<id>#<attempt>`, shown as "Cancelling, will send when back online" while queued, and sent when the network is back. A refusal (order 3 is already shipped) is shown and never retried.
+- `/notes` are owned rows (`OwnedRows` and a `RowSync` the app writes): edited offline, merged with another phone's edit field by field, and rolled back out loud when the server refuses one.
+- `autoSync` is watched once in the root `layout.dart`; the tick is a timer the app owns (`lib/foreground_ticker.dart`), and signing out wipes the account's queue first.
+- The server is an in-process demo (`lib/demo/demo_server.dart`) behind the transport seam, so `flutter run` needs no backend; the tests use `FakeCrateStackTransport`, `FakeRowServer` and `ManualSyncTicker`, with no timer. Read it with [Offline-first](offline-first.md) and [CrateStack with fespalier](cratestack.md).

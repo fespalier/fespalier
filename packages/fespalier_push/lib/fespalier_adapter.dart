@@ -14,6 +14,7 @@ import 'src/configure.dart';
 import 'src/message.dart';
 import 'src/providers.dart';
 import 'src/route.dart';
+import 'src/token.dart';
 import 'src/telemetry.dart';
 
 /// What the generated `AppAdapters` forwards to.
@@ -104,18 +105,46 @@ final class PushAdapter extends FespalierAdapter {
     });
     final onToken = config.onToken;
     if (onToken != null) {
-      container.listen<AsyncValue<String>>(pushToken, (previous, next) {
+      container.listen<AsyncValue<PushToken>>(pushToken, (previous, next) {
         switch (next) {
           case AsyncError(:final error, :final stackTrace):
             _report(error, stackTrace, 'in the stream of push tokens');
           case AsyncData(:final value):
-            if (previous is AsyncData<String> && previous.value == value) {
+            if (previous is AsyncData<PushToken> && previous.value == value) {
               return;
             }
             try {
               onToken(value);
             } catch (error, stack) {
               _report(error, stack, 'in the onToken callback');
+            }
+          case AsyncLoading():
+            break;
+        }
+      }, fireImmediately: true);
+    }
+    final onRevoked = config.onTokenRevoked;
+    if (onRevoked != null) {
+      container.listen<AsyncValue<PushTokenRevoked>>(pushTokenRevoked, (
+        previous,
+        next,
+      ) {
+        switch (next) {
+          case AsyncError(:final error, :final stackTrace):
+            _report(
+              error,
+              stackTrace,
+              'in the stream of push token revocations',
+            );
+          case AsyncData(:final value):
+            if (previous is AsyncData<PushTokenRevoked> &&
+                identical(previous.value, value)) {
+              return;
+            }
+            try {
+              onRevoked(value);
+            } catch (error, stack) {
+              _report(error, stack, 'in the onTokenRevoked callback');
             }
           case AsyncLoading():
             break;

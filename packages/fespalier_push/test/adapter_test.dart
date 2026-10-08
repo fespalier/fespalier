@@ -156,16 +156,23 @@ void main() {
     late FakePushSource source;
     late ProviderContainer container;
     late GoRouter router;
-    late List<String> tokens;
+    late List<PushToken> tokens;
+    late List<PushTokenRevoked> revoked;
 
-    Future<void> start(WidgetTester tester, {bool onToken = false}) async {
+    Future<void> start(
+      WidgetTester tester, {
+      bool onToken = false,
+      bool onRevoked = false,
+    }) async {
       captureReports();
-      source = FakePushSource(token: 't1');
+      source = FakePushSource(token: _t('t1'));
       tokens = [];
+      revoked = [];
       FespalierPush.configure(
         source: source,
         route: _route,
         onToken: onToken ? tokens.add : null,
+        onTokenRevoked: onRevoked ? revoked.add : null,
       );
       router = _router();
       addTearDown(router.dispose);
@@ -252,7 +259,7 @@ void main() {
       source.tokenError(StateError('token plugin'));
       await tester.pumpAndSettle();
       expect(here(), '/');
-      expect(tokens, ['t1']);
+      expect(tokens, [_t('t1')]);
       expect(reported.map((d) => '${d.exception}'), [
         contains('plugin'),
         contains('token plugin'),
@@ -291,19 +298,81 @@ void main() {
     ) async {
       await start(tester, onToken: true);
       await tester.pump();
-      expect(tokens, ['t1']);
-      source.emitToken('t2');
+      expect(tokens, [_t('t1')]);
+      source.emitToken(_t('t2'));
       await tester.pump();
-      source.emitToken('t2');
+      source.emitToken(_t('t2'));
       await tester.pump();
-      source.emitToken('t3');
+      source.emitToken(_t('t3'));
       await tester.pump();
-      expect(tokens, ['t1', 't2', 't3']);
+      expect(tokens, [_t('t1'), _t('t2'), _t('t3')]);
+    });
+
+    testWidgets('onTokenRevoked gets each revocation, with its properties', (
+      tester,
+    ) async {
+      await start(tester, onToken: true, onRevoked: true);
+      await tester.pump();
+      expect(revoked, isEmpty);
+      source.revokeToken('unifiedpush', properties: {'instance': 'a'});
+      await tester.pump();
+      source.revokeToken('fcm');
+      await tester.pump();
+      expect(revoked, [
+        PushTokenRevoked(kind: 'unifiedpush', properties: {'instance': 'a'}),
+        PushTokenRevoked(kind: 'fcm'),
+      ]);
+      // A revocation is not a token: the token callback heard only the first.
+      expect(tokens, [_t('t1')]);
+    });
+
+    testWidgets('pushTokenRevoked is a provider of the same events', (
+      tester,
+    ) async {
+      await start(tester);
+      final seen = <PushTokenRevoked>[];
+      final sub = container.listen<AsyncValue<PushTokenRevoked>>(
+        pushTokenRevoked,
+        (_, next) {
+          if (next case AsyncData(:final value)) seen.add(value);
+        },
+      );
+      addTearDown(sub.close);
+      source.revokeToken('hms');
+      await tester.pump();
+      expect(seen, [PushTokenRevoked(kind: 'hms')]);
+    });
+
+    testWidgets('a throwing onTokenRevoked is reported, not thrown', (
+      tester,
+    ) async {
+      captureReports();
+      source = FakePushSource();
+      FespalierPush.configure(
+        source: source,
+        route: _route,
+        onTokenRevoked: (_) => throw StateError('backend'),
+      );
+      router = _router();
+      addTearDown(router.dispose);
+      container = ProviderContainer(overrides: adapter.overrides());
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      adapter.attach(router, container);
+      await tester.pump();
+      source.revokeToken('fcm');
+      await tester.pump();
+      expect(reported, isNotEmpty);
     });
 
     testWidgets('a throwing onToken is reported, not thrown', (tester) async {
       captureReports();
-      source = FakePushSource(token: 't');
+      source = FakePushSource(token: _t('t'));
       FespalierPush.configure(
         source: source,
         route: _route,
@@ -346,10 +415,12 @@ void main() {
       await start(tester, onToken: true);
       container.dispose();
       source.tap(const PushMessage(data: {'link': '/a'}));
-      source.emitToken('late');
+      source.emitToken(_t('late'));
       await tester.pumpAndSettle();
       expect(here(), '/');
-      expect(tokens, isNot(contains('late')));
+      expect(tokens, isNot(contains(_t('late'))));
     });
   });
 }
+
+PushToken _t(String value) => PushToken(kind: PushTokenKind.fcm, value: value);

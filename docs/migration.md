@@ -27,6 +27,41 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.14.0
+
+- **`fespalier_push` hands the app a `PushToken`, not a `String`** ([Tokens and permission](push.md#tokens-and-permission)).
+  **Breaking, for an app that reads a push token.** The `String` tied the package to FCM and APNs. A `PushToken`
+  has a `kind` (an open string; `PushTokenKind.fcm`, `apns`, `hms`, `unifiedpush`, `onesignal`, `mipush`, `oppo`,
+  `vivo`, `honor`, `jpush` name the usual ones), a non-null `value` and `properties`, an unmodifiable
+  `Map<String, String>` for what a backend needs beyond the token (OneSignal's subscription id, a UnifiedPush
+  instance). It has value equality, and its `toString` prints the kind only, never the value or the properties.
+  `PushSource.tokens` is a `Stream<PushToken>`, `pushToken` a `StreamProvider<PushToken>`, `onToken` takes a
+  `PushToken` and `FakePushSource(token:)` and `emitToken` take one. A **revocation** (the vendor's unregister or
+  token-invalidated callback) is a separate event, not a null token: `PushSource.revocations`
+  (a `Stream<PushTokenRevoked>`, empty by default, so a source that never revokes changes nothing), the
+  `pushTokenRevoked` provider, `onTokenRevoked` in `FespalierPush.configure` and `FakePushSource.revokeToken(kind)`.
+  Telemetry is unchanged: no token event is reported, and the value and the properties never are.
+
+  ```dart
+  // Before (0.13.0)
+  FespalierPush.configure(source: MyPushSource(), route: pushRoute, onToken: (String token) => api.register(token));
+  // Stream<String> get tokens => messaging.onTokenRefresh;
+
+  // After (0.14.0)
+  FespalierPush.configure(
+    source: MyPushSource(),
+    route: pushRoute,
+    onToken: (PushToken token) => api.register(token.kind, token.value, token.properties),
+    onTokenRevoked: (PushTokenRevoked revoked) => api.unregister(revoked.kind, revoked.properties),
+  );
+  // Stream<PushToken> get tokens => messaging.onTokenRefresh.map(
+  //   (value) => PushToken(kind: PushTokenKind.fcm, value: value));
+  ```
+
+  A test: `FakePushSource(token: PushToken(kind: PushTokenKind.fcm, value: 't'))`, `emitToken(PushToken(...))`.
+  Only an app with its own `PushSource` or a token callback changes; one that uses `fespalier_push` for taps alone
+  has nothing to do except implement `tokens` as a `Stream<PushToken>`.
+
 ### 0.12.0
 
 - **`ready()` and `attach()` in startup.dart** ([`main()`](app-startup.md)). Opt-in, and an app that exports

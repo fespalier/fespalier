@@ -17,6 +17,7 @@ void main() {
   setUp(() {
     FespalierPush.debugReset();
     sentTokens.clear();
+    revokedTokens.clear();
     rec = RecordingTelemetry();
     FespalierTelemetry.install(rec);
   });
@@ -29,11 +30,17 @@ void main() {
   Future<void> boot(
     WidgetTester tester,
     FakePushSource source, {
-    void Function(String)? onToken,
+    void Function(PushToken)? onToken,
+    void Function(PushTokenRevoked)? onTokenRevoked,
   }) async {
     push = source;
     addTearDown(push.close);
-    FespalierPush.configure(source: push, route: pushRoute, onToken: onToken);
+    FespalierPush.configure(
+      source: push,
+      route: pushRoute,
+      onToken: onToken,
+      onTokenRevoked: onTokenRevoked,
+    );
     final launch = await AppAdapters.launch();
     await tester.pumpWidget(
       AppMain.root(
@@ -164,11 +171,24 @@ void main() {
   testWidgets('onToken gets the token and its refresh; nothing is requested', (
     tester,
   ) async {
-    final tokens = <String>[];
-    await boot(tester, FakePushSource(token: 't1'), onToken: tokens.add);
-    push.emitToken('t2');
+    final tokens = <PushToken>[];
+    final revoked = <PushTokenRevoked>[];
+    await boot(
+      tester,
+      FakePushSource(token: _fcm('t1')),
+      onToken: tokens.add,
+      onTokenRevoked: revoked.add,
+    );
+    push.emitToken(_fcm('t2'));
     await tester.pump();
-    expect(tokens, ['t1', 't2']);
+    expect(tokens, [_fcm('t1'), _fcm('t2')]);
+    push.revokeToken(PushTokenKind.fcm);
+    await tester.pump();
+    expect(revoked, [PushTokenRevoked(kind: PushTokenKind.fcm)]);
+    expect(tokens, hasLength(2));
     expect(push.permissionRequests, 0);
   });
 }
+
+PushToken _fcm(String value) =>
+    PushToken(kind: PushTokenKind.fcm, value: value);

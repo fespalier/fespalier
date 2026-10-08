@@ -131,9 +131,9 @@ link: an adapter of your own answers `launch()` from `getInitialLink()` and forw
 app is answered in `launch()` and opens the route as the initial location, a tap while the app runs is a `go` (or `push`) in
 `attach`, both marked `notification`; the guards still run, and a tap delivered twice (same message id) opens once. The
 package depends on no push SDK (Firebase Messaging is a recipe), has no HTTP code, never posts the token (`onToken` is
-yours) and never shows the permission prompt. The app writes a `PushSource`, a `PushRoute` (`linkRoute(hosts:, matches:)`
+yours; since 0.14.0 a `PushToken` with a `kind`, a `value` and `properties`, and a revoked one is a `PushTokenRevoked` through `onTokenRevoked`, never a null) and never shows the permission prompt. The app writes a `PushSource`, a `PushRoute` (`linkRoute(hosts:, matches:)`
 refuses `//x`, backslashes, foreign hosts) and **one call in `main()` before `AppMain.run()`**:
-`FespalierPush.configure(source:, route:, onToken:)`; unconfigured, it reports once and does nothing. Details and the testing
+`FespalierPush.configure(source:, route:, onToken:, onTokenRevoked:)`; unconfigured, it reports once and does nothing. Details and the testing
 recipe: [`references/push.md`](references/push.md); the vendor recipes: [`references/push-sources.md`](references/push-sources.md).
 
 ## Not-found views

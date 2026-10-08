@@ -3,6 +3,7 @@ import 'package:fespalier/fespalier.dart';
 import 'message.dart';
 import 'permission.dart';
 import 'source.dart';
+import 'token.dart';
 
 /// The app's push provider. The adapter's `overrides()` binds it to the one handed to
 /// `FespalierPush.configure`; a test overrides it with `pushTestOverrides`.
@@ -13,9 +14,17 @@ final pushSource = Provider<PushSource>(
   ),
 );
 
-/// The current token, then each refresh, for an app that prefers Riverpod to `onToken`.
-final pushToken = StreamProvider<String>(
+/// The current token, then each refresh, for an app that prefers Riverpod to `onToken`. A
+/// [PushToken] since 0.14.0 (it was a `String`).
+final pushToken = StreamProvider<PushToken>(
   (ref) => ref.watch(pushSource).tokens,
+  retry: (_, _) => null,
+);
+
+/// A token that stopped being valid (since 0.14.0), for an app that prefers Riverpod to
+/// `onTokenRevoked`. Not a null [pushToken]: it is an event of its own.
+final pushTokenRevoked = StreamProvider<PushTokenRevoked>(
+  (ref) => ref.watch(pushSource).revocations,
   retry: (_, _) => null,
 );
 

@@ -13,7 +13,9 @@ export 'src/providers.dart'
         pushReceived,
         pushSource,
         pushToken,
+        pushTokenRevoked,
         requestPushPermission;
 export 'src/route.dart' show PushOpen, PushRoute, PushTarget, linkRoute;
 export 'src/source.dart' show PushSource;
+export 'src/token.dart' show PushToken, PushTokenKind, PushTokenRevoked;
 export 'src/telemetry.dart' show FespalierPushConventions;

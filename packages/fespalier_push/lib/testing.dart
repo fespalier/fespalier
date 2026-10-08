@@ -22,16 +22,17 @@ class FakePushSource extends PushSource {
   /// and whose permission is [permissionAnswer].
   FakePushSource({
     PushMessage? initial,
-    String? token,
+    PushToken? token,
     this.permissionAnswer = PushPermission.notDetermined,
   }) : _initial = initial,
        _token = token;
 
   PushMessage? _initial;
-  String? _token;
+  PushToken? _token;
   final _taps = StreamController<PushMessage>.broadcast();
   final _received = StreamController<PushMessage>.broadcast();
-  final _tokens = StreamController<String>.broadcast();
+  final _tokens = StreamController<PushToken>.broadcast();
+  final _revoked = StreamController<PushTokenRevoked>.broadcast();
 
   /// What [permission] answers, and what [requestPermission] answers and then keeps.
   PushPermission permissionAnswer;
@@ -53,11 +54,14 @@ class FakePushSource extends PushSource {
   Stream<PushMessage> get received => _received.stream;
 
   @override
-  Stream<String> get tokens async* {
+  Stream<PushToken> get tokens async* {
     final current = _token;
     if (current != null) yield current;
     yield* _tokens.stream;
   }
+
+  @override
+  Stream<PushTokenRevoked> get revocations => _revoked.stream;
 
   @override
   Future<PushPermission> permission() => Future.value(permissionAnswer);
@@ -84,14 +88,25 @@ class FakePushSource extends PushSource {
   void deliver(PushMessage message) => _received.add(message);
 
   /// A new token (a refresh); it is also the current one for a later listener.
-  void emitToken(String token) {
+  void emitToken(PushToken token) {
     _token = token;
     _tokens.add(token);
   }
 
+  /// The current token stopped being valid (since 0.14.0): [revocations] emits it, and the
+  /// current token is forgotten, so a later listener of `tokens` does not get it again.
+  void revokeToken(String kind, {Map<String, String> properties = const {}}) {
+    _token = null;
+    _revoked.add(PushTokenRevoked(kind: kind, properties: properties));
+  }
+
   /// Closes the streams.
-  Future<void> close() =>
-      Future.wait([_taps.close(), _received.close(), _tokens.close()]);
+  Future<void> close() => Future.wait([
+    _taps.close(),
+    _received.close(),
+    _tokens.close(),
+    _revoked.close(),
+  ]);
 }
 
 /// The overrides that bind [pushSource] to [source], for `ProviderScope(overrides: ...)` or

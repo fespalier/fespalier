@@ -37,14 +37,14 @@ Future<void> main() {
 
 A `PushSource` is what a push provider gives the package:
 
-| Member                                   | What it is                                                                                                                                                                       |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initialTap()`                           | The tap that cold-started the app, answered once. A local read (`getInitialMessage`): it runs before the first frame, so a `Future` delays that frame by one channel round trip. |
-| `taps`                                   | Taps while the app runs or is in the background.                                                                                                                                 |
-| `received`                               | Messages delivered in the foreground (default: none). Nothing is shown for them; `pushReceived` exposes them.                                                                    |
-| `tokens`                                 | The current token, then each refresh, as a `PushToken` (a `String` before 0.14.0).                                                                                               |
-| `revocations`                            | A token that stopped being valid, as a `PushTokenRevoked` (since 0.14.0; default: none). A source maps the vendor's unregister or invalidation callback to it.                   |
-| `permission()` and `requestPermission()` | The platform's answer, and its prompt. The package never calls `requestPermission`.                                                                                              |
+| Member                                   | What it is                                                                                                                                                                                                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `initialTap()`                           | The tap that cold-started the app, answered once. A local read (`getInitialMessage`): it runs before the first frame, so a `Future` delays that frame by one channel round trip.                                                                                                     |
+| `taps`                                   | Taps while the app runs or is in the background.                                                                                                                                                                                                                                     |
+| `received`                               | Messages delivered in the foreground (default: none). Nothing is shown for them; `pushReceived` exposes them.                                                                                                                                                                        |
+| `tokens`                                 | The current token, then each refresh, as a `PushToken` (a `String` before 0.14.0). Listened to more than once (the `pushToken` provider and the adapter): each listen gets the current token first, and a source on a platform channel opens the native stream once, not per listen. |
+| `revocations`                            | A token that stopped being valid, as a `PushTokenRevoked` (since 0.14.0; default: none). A source maps the vendor's unregister or invalidation callback to it.                                                                                                                       |
+| `permission()` and `requestPermission()` | The platform's answer, and its prompt. The package never calls `requestPermission`.                                                                                                                                                                                                  |
 
 ## Mapping a payload
 

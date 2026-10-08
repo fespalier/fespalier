@@ -54,6 +54,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:fespalier_push/fespalier_push.dart';
 
+import 'with_tokens.dart';
+
 PushMessage _message(RemoteMessage m) =>
     PushMessage(id: m.messageId, data: {...m.data}, category: m.category, raw: m);
 
@@ -98,26 +100,25 @@ final class FirebasePushSource extends PushSource {
   ).asyncExpand((_) => FirebaseMessaging.onMessage.map(_message)).asBroadcastStream();
 
   // kind `fcm` on every platform: Firebase hands out its own token on iOS too (the APNs one stays inside it).
+  // `tokens` is listened to more than once (the pushToken provider and the adapter): SharedTokens (with_tokens.dart)
+  // opens Firebase's refresh stream once and gives every listener the current token first.
+  late final SharedTokens _tokens = SharedTokens(onFirstListen: () => unawaited(_begin()));
+
   @override
-  Stream<PushToken> get tokens async* {
-    final messaging = await _messaging;
-    String? token;
+  Stream<PushToken> get tokens => _tokens.stream;
+
+  Future<void> _begin() async {
     try {
-      token = await messaging.getToken();
-    } on FirebaseException {
-      token = null; // iOS: the APNs token is not there yet; onTokenRefresh brings it
-    }
-    if (token != null) yield PushToken(kind: PushTokenKind.fcm, value: token);
-    // Refreshes and the token [register] asks for share one stream.
-    final refreshes = messaging.onTokenRefresh.listen(
-      (value) => _registered.add(PushToken(kind: PushTokenKind.fcm, value: value)),
-    );
-    try {
-      yield* _registered.stream;
-    } finally {
-      await refreshes.cancel();
+      final messaging = await _messaging;
+      // Refreshes first, so one that arrives between getToken() and the first listener is not lost.
+      messaging.onTokenRefresh.listen(_publish, onError: _tokens.addError);
+      await register();
+    } on Object catch (error, stack) {
+      _tokens.addError(error, stack);
     }
   }
+
+  void _publish(String value) => _tokens.add(PushToken(kind: PushTokenKind.fcm, value: value));
 
   // Firebase has no "token invalidated" callback (a dead token is the send API's `UNREGISTERED`): a revocation is the
   // app's own call to [revoke], on sign-out.
@@ -129,17 +130,20 @@ final class FirebasePushSource extends PushSource {
   /// Deletes the token, then reports the revocation.
   Future<void> revoke() async {
     await (await _messaging).deleteToken();
+    _tokens.forget();
     _revoked.add(PushTokenRevoked(kind: PushTokenKind.fcm));
   }
 
-  /// After [revoke] (a new sign-in): asks Firebase for a new token, which `tokens` then delivers. Firebase
-  /// makes none by itself after `deleteToken`: the app must call this.
+  /// Asks Firebase for the token and delivers it to `tokens`. Done once at start; after [revoke] (a new sign-in) the app
+  /// must call it: Firebase makes no token by itself after `deleteToken`.
   Future<void> register() async {
-    final value = await (await _messaging).getToken();
-    if (value != null) _registered.add(PushToken(kind: PushTokenKind.fcm, value: value));
+    try {
+      final value = await (await _messaging).getToken();
+      if (value != null) _publish(value);
+    } on FirebaseException {
+      // iOS: the APNs token is not there yet; onTokenRefresh brings it
+    }
   }
-
-  final StreamController<PushToken> _registered = StreamController<PushToken>.broadcast();
 
   @override
   Future<PushPermission> permission() async =>
@@ -275,6 +279,50 @@ abstract interface class TokenFeed {
   Stream<PushTokenRevoked> get revocations;
 }
 
+/// A token stream that every listener may join (since 0.14.0). `PushSource.tokens` is listened to more than once (the
+/// `pushToken` provider and the adapter each listen), and a vendor stream on a platform channel must be opened once:
+/// Flutter's `EventChannel.receiveBroadcastStream()` makes a new controller per call, and two of them on one channel
+/// replace each other's handler, so either cancel silences both. The first listen opens the vendor side ([source] and/or
+/// [onFirstListen]); each listener then gets the current token first and every later one.
+final class SharedTokens {
+  SharedTokens({this.source, this.onFirstListen});
+
+  /// Opens the vendor's stream; called once, on the first listen.
+  final Stream<PushToken> Function()? source;
+
+  /// Called once, on the first listen, to start the vendor side that feeds [add].
+  final void Function()? onFirstListen;
+
+  final StreamController<PushToken> _out = StreamController<PushToken>.broadcast();
+  PushToken? _current;
+  bool _opened = false;
+
+  /// The tokens, for `PushSource.tokens`.
+  Stream<PushToken> get stream => Stream.multi((listener) {
+    if (!_opened) {
+      _opened = true;
+      source?.call().listen(add, onError: addError);
+      onFirstListen?.call();
+    }
+    final current = _current;
+    if (current != null) listener.add(current);
+    final subscription = _out.stream.listen(listener.add, onError: listener.addError);
+    listener.onCancel = subscription.cancel;
+  });
+
+  /// A token from the vendor: the new current one.
+  void add(PushToken token) {
+    _current = token;
+    _out.add(token);
+  }
+
+  /// A vendor error, for every listener.
+  void addError(Object error, [StackTrace? stack]) => _out.addError(error, stack);
+
+  /// The token was revoked: a later listener must not get it first.
+  void forget() => _current = null;
+}
+
 /// [base]'s taps, messages and permission, with [feed]'s tokens and revocations.
 final class WithTokens extends PushSource {
   const WithTokens(this.base, this.feed);
@@ -346,15 +394,20 @@ final class ApnsTokens implements TokenFeed {
 
   final StreamController<PushTokenRevoked> _revoked = StreamController<PushTokenRevoked>.broadcast();
 
+  // The native stream is opened once, on the first listen; every listener gets the current token first.
+  late final SharedTokens _tokens = SharedTokens(
+    source: () => _events.receiveBroadcastStream().map((event) {
+      final map = Map<String, String>.from(event as Map);
+      return PushToken(
+        kind: PushTokenKind.apns,
+        value: map['token']!,
+        properties: {'environment': map['environment'] ?? 'production'},
+      );
+    }),
+  );
+
   @override
-  Stream<PushToken> get tokens => _events.receiveBroadcastStream().map((event) {
-    final map = Map<String, String>.from(event as Map);
-    return PushToken(
-      kind: PushTokenKind.apns,
-      value: map['token']!,
-      properties: {'environment': map['environment'] ?? 'production'},
-    );
-  });
+  Stream<PushToken> get tokens => _tokens.stream;
 
   /// APNs has no client-side invalidation callback: a revocation is the app's own call (sign-out).
   @override
@@ -366,6 +419,7 @@ final class ApnsTokens implements TokenFeed {
   /// Unregisters from APNs, then reports the revocation.
   Future<void> unregister() async {
     await _methods.invokeMethod<void>('unregister');
+    _tokens.forget();
     _revoked.add(PushTokenRevoked(kind: PushTokenKind.apns));
   }
 }
@@ -394,12 +448,17 @@ import 'with_tokens.dart';
 final class HmsTokens implements TokenFeed {
   final StreamController<PushTokenRevoked> _revoked = StreamController<PushTokenRevoked>.broadcast();
 
-  @override
-  Stream<PushToken> get tokens async* {
+  // `Push.getTokenStream` makes a new platform stream per call: SharedTokens opens it once.
+  late final SharedTokens _tokens = SharedTokens(source: _open);
+
+  Stream<PushToken> _open() async* {
     // The answer comes on the stream one event-loop turn after this call, and `yield*` subscribes in this one.
     Push.getToken('');
     yield* Push.getTokenStream.map((value) => PushToken(kind: PushTokenKind.hms, value: value));
   }
+
+  @override
+  Stream<PushToken> get tokens => _tokens.stream;
 
   @override
   Stream<PushTokenRevoked> get revocations => _revoked.stream;
@@ -407,6 +466,7 @@ final class HmsTokens implements TokenFeed {
   /// Deletes the token (the app's sign-out), then reports the revocation.
   Future<void> deleteToken() async {
     await Push.deleteToken('');
+    _tokens.forget();
     _revoked.add(PushTokenRevoked(kind: PushTokenKind.hms));
   }
 }
@@ -697,6 +757,8 @@ import 'dart:convert';
 import 'package:fespalier_push/fespalier_push.dart';
 import 'package:flutter_mix_push/flutter_mix_push.dart';
 
+import 'with_tokens.dart';
+
 PushMessage _message(MixPushMessage message) {
   var data = const <String, Object?>{};
   final payload = message.payload;
@@ -739,35 +801,27 @@ final class MixPushSource extends PushSource {
   @override
   Stream<PushMessage> get taps => FlutterMixPush.onNotificationClicked.map(_message);
 
-  @override
-  Stream<PushMessage> get received => FlutterMixPush.onMessage.map(_message);
+  // `received` is left at the default (none), and `tokens` reads the id with a method call, on purpose: in 1.0.0 each of
+  // `onRegisterSucceed`, `onMessage` and `onNotificationClicked` opens its own EventChannel listener on the same channel,
+  // and a second one replaces the first one's handler, so listening to `taps` and one of the others loses events.
+  // `taps` keeps the one stream; a refreshed id is not pushed: call [refresh] (on resume, say) to read it again.
+  late final SharedTokens _tokens = SharedTokens(onFirstListen: () => unawaited(refresh()));
 
   @override
-  Stream<PushToken> get tokens {
-    final controller = StreamController<PushToken>();
-    StreamSubscription<MixPushPlatformInfo>? subscription;
-    controller.onListen = () {
-      // The event channel first, then the id read: whichever answers first, the package drops an equal repeat.
-      subscription = FlutterMixPush.onRegisterSucceed.listen(
-        (info) => controller.add(_token(info)),
-        onError: controller.addError,
-      );
-      unawaited(_ask(controller));
-    };
-    controller.onCancel = () => subscription?.cancel();
-    return controller.stream;
-  }
+  Stream<PushToken> get tokens => _tokens.stream;
 
   /// Registers with the vendor channels. **Call it once, at launch** (before or after the token is listened to): `tokens`
   /// only reads the id, so an app that never calls it gets no push.
   Future<void> start() => FlutterMixPush.register();
 
-  Future<void> _ask(StreamController<PushToken> controller) async {
+  /// Reads the registration id (a method call, up to 60 seconds) and delivers it to `tokens`. `onToken` drops an equal
+  /// repeat through the adapter's per-kind dedupe, and the `pushToken` provider through Riverpod's state equality.
+  Future<void> refresh() async {
     try {
       final info = await FlutterMixPush.getRegisterId();
-      if (info != null && !controller.isClosed) controller.add(_token(info));
+      if (info != null) _tokens.add(_token(info));
     } on Object catch (error, stack) {
-      if (!controller.isClosed) controller.addError(error, stack);
+      _tokens.addError(error, stack);
     }
   }
 

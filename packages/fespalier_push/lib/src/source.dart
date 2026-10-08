@@ -29,6 +29,12 @@ abstract class PushSource {
   Stream<PushMessage> get received => const Stream.empty();
 
   /// The current token, then each refresh (a [PushToken] since 0.14.0: it was a `String`).
+  ///
+  /// It may be listened to more than once: the `pushToken` provider and the adapter (for `onToken`)
+  /// each listen. Every listen must get the current token first, then the refreshes. A source on a
+  /// platform channel must open the native stream once, not per listen: two
+  /// `EventChannel.receiveBroadcastStream()` on one channel replace each other's handler, and either
+  /// cancel silences both.
   Stream<PushToken> get tokens;
 
   /// A token that stopped being valid (since 0.14.0): the vendor's unregister or invalidation

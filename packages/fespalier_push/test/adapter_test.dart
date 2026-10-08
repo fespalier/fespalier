@@ -326,6 +326,46 @@ void main() {
       expect(tokens, [_t('t1')]);
     });
 
+    testWidgets(
+      'tokens is listened to twice: pushToken and onToken both hear',
+      (tester) async {
+        captureReports();
+        final counting = _Counting(token: _t('t1'));
+        source = counting;
+        tokens = [];
+        FespalierPush.configure(
+          source: counting,
+          route: _route,
+          onToken: tokens.add,
+        );
+        router = _router();
+        addTearDown(router.dispose);
+        container = ProviderContainer(overrides: adapter.overrides());
+        addTearDown(container.dispose);
+        final seen = <PushToken>[];
+        final sub = container.listen<AsyncValue<PushToken>>(pushToken, (
+          _,
+          next,
+        ) {
+          if (next case AsyncData(:final value)) seen.add(value);
+        }, fireImmediately: true);
+        addTearDown(sub.close);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        adapter.attach(router, container);
+        await tester.pump();
+        counting.emitToken(_t('t2'));
+        await tester.pump();
+        expect(seen, [_t('t1'), _t('t2')]);
+        expect(tokens, [_t('t1'), _t('t2')]);
+        expect(counting.listens, 2);
+      },
+    );
+
     testWidgets('revoke, the same token again, revoke: every event is heard', (
       tester,
     ) async {
@@ -483,3 +523,16 @@ void main() {
 }
 
 PushToken _t(String value) => PushToken(kind: PushTokenKind.fcm, value: value);
+
+/// A source that counts how many times `tokens` is listened to.
+class _Counting extends FakePushSource {
+  _Counting({super.token});
+
+  int listens = 0;
+
+  @override
+  Stream<PushToken> get tokens async* {
+    listens++;
+    yield* super.tokens;
+  }
+}

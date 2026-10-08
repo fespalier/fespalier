@@ -24,6 +24,10 @@ dependencies:
   # The SDK otel_zone starts, with otel_zone's own lower bound: the 1.1 beta line is the current
   # one (otel_zone's pubspec explains why).
   dartastic_opentelemetry: ^1.1.0-beta.15
+  # Capped below rc.4: that release (2026-10-08) added `advisory` to the instrument interfaces,
+  # which the SDK's 1.1.0-beta.15 does not implement, and the SDK only asks for ^1.0.0-rc.3. Lift
+  # the cap with the SDK release that implements it.
+  dartastic_opentelemetry_api: ">=1.0.0-rc.3 <1.0.0-rc.4"
 
 dev_dependencies:
   flutter_lints: ^6.0.0

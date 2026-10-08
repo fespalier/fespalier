@@ -370,7 +370,7 @@ namespace rule above).
 
 Signed intents, paging helpers beyond `RowSync`'s cursor loop, sync telemetry spans (a data read through `serve` and an
 action that calls `submit` already run inside fespalier's data and action spans; a sync span is planned as a custom op
-(`fespalier.cratestack.sync`; a new `TelemetryOp` value would break an exhaustive sink), and nothing from an intent, a row, a subject or a server message would ever be sent), and a background
+(`TelemetryOp.custom`, since 0.11.0, named `fespalier.cratestack.sync`; no new `TelemetryOp` value, so no exhaustive sink breaks), and nothing from an intent, a row, a subject or a server message would ever be sent), and a background
 isolate.
 
 ## References

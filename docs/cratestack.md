@@ -386,6 +386,6 @@ that uses them leaves nothing pending. `ManualSyncTicker`, `FakeRowServer` and `
   does it with COSE_Sign1, against a CrateStack server that verifies every request and seals every answer.
 - **Paging helpers** for pulls beyond the cursor loop of `RowSync`.
 - **Sync telemetry spans.** A data read through `serve` and an action that calls `submit` already run inside
-  fespalier's data and action spans. A sync span (`TelemetryOp.sync`) is a planned, additive change to the
-  telemetry conventions; nothing from an intent, a row, a subject or a server message will ever be sent.
+  fespalier's data and action spans. A sync span is planned as a `TelemetryOp.custom` operation (since 0.11.0) named
+  `fespalier.cratestack.sync`, an additive change to the telemetry conventions with no new `TelemetryOp` value; nothing from an intent, a row, a subject or a server message will ever be sent.
 - **A background isolate.** Sync runs in the app's isolate while the app is open; a background sync is the app's.

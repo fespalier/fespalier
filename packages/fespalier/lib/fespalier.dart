@@ -11,8 +11,10 @@ export 'package:flutter_hooks/flutter_hooks.dart';
 // what `AppRoutes.match` returns. `import 'package:go_router/go_router.dart'` for that one.
 export 'package:go_router/go_router.dart' hide RouteMatch;
 export 'package:hooks_riverpod/hooks_riverpod.dart';
-// What a `data.dart` that selects a provider names in its return type.
-export 'package:hooks_riverpod/misc.dart' show ProviderListenable;
+// What a `data.dart` that selects a provider names in its return type, and (since 0.13.0, for
+// fespalier_frb's InvalidationTable) what `ref.invalidate` takes.
+export 'package:hooks_riverpod/misc.dart'
+    show ProviderListenable, ProviderOrFamily;
 
 export 'src/action.dart';
 // The cache of a data.dart's value for the next start (since 0.8.1).

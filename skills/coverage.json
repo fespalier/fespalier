@@ -615,7 +615,9 @@
         "docs/migration.md#0.8.1",
         "docs/migration.md#0.6.0",
         "docs/migration.md#0.7.0",
-        "docs/migration.md#0.5.0"
+        "docs/migration.md#0.5.0",
+        "docs/examples.md#adopt",
+        "examples/adopt"
       ]
     },
     "fespalier-observability": {

@@ -6,10 +6,10 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # The Dart package, the DevTools extension and every example: pub get, dart format, flutter analyze, flutter test.
-dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_image packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/i18n examples/maps"
+dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_image packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/i18n examples/maps examples/adopt"
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
-examples := "shop features tabs minimal telemetry auth plugins i18n maps"
+examples := "shop features tabs minimal telemetry auth plugins i18n maps adopt"
 
 # List recipes
 default:

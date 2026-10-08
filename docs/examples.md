@@ -209,3 +209,12 @@ flutter run                                  # a device or a simulator: a map do
 ```
 
 Add the location strings `geolocator` needs first (`NSLocationWhenInUseUsageDescription`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`; [Install](maps.md#install)). Its tests use `FakeMapSurface`, `FakePositionSource` and `FakeOfflineTiles` ([Testing](maps.md#testing)): pan, a guess and confirm; no name far from every city; a refused position as a hint; a late fix that does not override a pan; a search that is submitted, not sent per keystroke; and a pack's progress to complete, pause and resume.
+
+## adopt
+
+`examples/adopt` is a go_router app half-way through adopting fespalier, for [Migration](migration.md#adopting-fespalier-in-a-go_router-app):
+
+- the hand-written routes nobody has moved (`/`, `/legacy/orders/:id`) beside fespalier's tree mounted with `AppRoutes.mount(at: '/shop', navigatorKey: ...)`, and the old product URLs redirected to the typed routes (`/products/2` becomes `/shop/products/2`);
+- `app.dart`'s `router()` returns that hand-built `GoRouter` under the default `main: auto`, so `startup.dart` can have `ready(container)` and `attach(router, container)` ([`main()`](app-startup.md), since 0.12.0): the move of a 0.11-style `main()` that built its own `ProviderContainer`;
+- `lib/before/` keeps the app as it was (a pure go_router version of the same screens, and its old `main()`), compiled, and `test/parity_test.dart` opens the same URLs in both and checks they show the same screens;
+- tests for the mounted tree, the redirects, a typed route taken from a legacy page, and the order `ready()`, the router, `attach()` through `AppMain.root()`.

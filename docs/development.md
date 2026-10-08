@@ -40,6 +40,7 @@ examples/auth/       fespalier_auth: sign-in, guards, refresh and Keycloak, with
 examples/plugins/    fespalier_push and fespalier_analytics through adapters, with widget tests
 examples/i18n/       fespalier_tolgee: a $lang segment, bundled catalogs, a language switch, with widget tests
 examples/maps/       fespalier_maps: a pin picker and one offline pack, with fakes and widget tests
+examples/adopt/      a go_router app half-way through adopting fespalier (AppRoutes.mount, ready/attach), with a before/after parity test
 skills/              agent skills: how to write lib/app/ and read fsp's errors (skills/README.md);
                      scripts/skills/ checks them against the code
 ```

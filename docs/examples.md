@@ -190,3 +190,22 @@ cd examples/i18n
 flutter create . --platforms=android,ios,web
 flutter run
 ```
+
+## maps
+
+`examples/maps` (since 0.13.0) is [`fespalier_maps`](../packages/fespalier_maps): a pin picker that returns a place, and one offline map pack ([Maps](maps.md)).
+
+- `/` asks "Where should we deliver?" with `await PickPlaceRoute().push<PickedPlace>(context)` and shows the point it gets back and the name as a best guess;
+- `/pick-place` is `PinPicker` as the whole body, over `MapLibreSurface` and `GeolocatorPositionSource`, with the guess card, the search field and the confirm button as widgets of the app;
+- `/offline` is one region pack (`tilePacks`): download, progress, pause, resume and delete;
+- the geocoder is a fixed list of six cities in the app, so there is no geocoding service and no network call, in the app or in the tests;
+- the style is MapLibre's demo style, for trying things out; `--dart-define=MAP_STYLE_URL=...` points at your own tiles.
+
+```sh
+cd examples/maps
+flutter create . --platforms=android,ios   # adds platform folders only
+flutter pub get
+flutter run                                  # a device or a simulator: a map does not draw in `flutter test`
+```
+
+Add the location strings `geolocator` needs first (`NSLocationWhenInUseUsageDescription`, `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`; [Install](maps.md#install)). Its tests use `FakeMapSurface`, `FakePositionSource` and `FakeOfflineTiles` ([Testing](maps.md#testing)): pan, a guess and confirm; no name far from every city; a refused position as a hint; a late fix that does not override a pan; a search that is submitted, not sent per keystroke; and a pack's progress to complete, pause and resume.

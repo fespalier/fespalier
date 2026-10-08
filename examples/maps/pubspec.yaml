@@ -1,0 +1,30 @@
+name: maps
+description: fespalier example — a pin picker that returns a place, and one offline map pack, with fespalier_maps. A tiny in-app gazetteer instead of a geocoding service, and fakes for the map, the position and the offline database in the widget tests.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+  # The pin picker and the offline region packs (since 0.13.0). It brings maplibre_gl and geolocator,
+  # which are platform plugins: see the README for the permission strings.
+  fespalier_maps:
+    path: ../../packages/fespalier_maps
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# fespalier_maps depends on fespalier by repository, as an app does; here it is the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+
+flutter:
+  uses-material-design: true

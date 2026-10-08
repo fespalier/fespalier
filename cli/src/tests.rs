@@ -132,6 +132,7 @@ fn committed_output_is_up_to_date() {
         "auth",
         "plugins",
         "i18n",
+        "maps",
     ] {
         // The examples' own pubspec.yaml: `output_manifest:` and `meta:` change what is written.
         let cfg = Config::load(&examples(name)).unwrap();
@@ -201,6 +202,7 @@ fn examples_have_no_unknown_paths() {
         "auth",
         "plugins",
         "i18n",
+        "maps",
     ] {
         let cfg = Config::load(&examples(name)).unwrap();
         let (_, diags, app) = crate::analyze(&examples(name).join("lib/app"), &cfg).unwrap();

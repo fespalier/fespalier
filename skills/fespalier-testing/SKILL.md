@@ -197,7 +197,7 @@ question, and the traps (empty dashboards, `otel_zone`'s `runGuarded` blanking a
 
 ## Examples
 
-`examples/minimal`, `examples/shop`, `examples/features`, `examples/auth`, `examples/telemetry` and `examples/plugins` test
+`examples/minimal`, `examples/shop`, `examples/features`, `examples/auth`, `examples/telemetry`, `examples/plugins` and `examples/maps` test
 their routes with `pumpRouter` from `package:fespalier/testing.dart`. `examples/shop` also carries what `fsp test` and
 `fsp maestro` write (`test/routes/`, `.maestro/routes/`);
 the `fespalier` skill lists every example.

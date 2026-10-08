@@ -825,6 +825,8 @@
         "docs/maps.md#Testing",
         "docs/maps.md#Rules and what it costs",
         "docs/maps.md#Not built yet",
+        "docs/examples.md#maps",
+        "examples/maps",
         "packages/fespalier_maps/README.md",
         "packages/fespalier_maps/lib/fespalier_maps.dart",
         "packages/fespalier_maps/lib/geolocator.dart",

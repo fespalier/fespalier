@@ -4,7 +4,7 @@
 //   /           RootRoute      redirect.dart  (redirect, layout)
 //   /notes      NotesRoute     notes/page.dart  (data, action)
 //   /notes/:id  NoteEditRoute  notes/$id/page.dart  (data, action)
-//   /orders     OrdersRoute    orders/page.dart  (data, action)
+//   /orders     OrdersRoute    orders/page.dart  (data, fresh, action)
 
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/widgets.dart';
@@ -134,6 +134,7 @@ abstract final class AppRoutes {
               loading: () => const DefaultLoading(),
               error: (e, st, retry) => _i11.OrdersError(error: e, retry: retry),
               keepPrevious: true,
+              keepDataOnError: true,
             ),
           ),
         ],
@@ -424,7 +425,7 @@ final _data2 = FutureProvider.autoDispose.family(
 );
 
 final _data3 = FutureProvider.autoDispose(
-  (Ref ref) => traceData(ref, 'd3', null, _i8.data(ref)),
+  (Ref ref) => freshData(ref, _i8.freshness, traceData(ref, 'd3', null, _i8.data(ref))),
 );
 
 /// `add()` of notes/action.dart: its state, and what it invalidates after a success.
@@ -458,4 +459,4 @@ Map<Object, String> _devToolsProviders() => {
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"offline","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"RootRoute","file":"redirect.dart","folder":"","markers":["redirect"],"params":[],"redirect":true,"children":[]},{"type":"route","pattern":"/notes","route":"NotesRoute","file":"notes/page.dart","folder":"notes","markers":["data","action"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/notes/:id","route":"NoteEditRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["data","action"],"params":[{"name":"id","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders","route":"OrdersRoute","file":"orders/page.dart","folder":"orders","markers":["data","action"],"params":[],"redirect":false,"children":[]}]}],"sites":{"a1_0":{"kind":"action","file":"notes/action.dart","name":"add","route":"NotesRoute"},"a2_0":{"kind":"action","file":"notes/\$id/action.dart","name":"edit","route":"NoteEditRoute"},"a3_0":{"kind":"action","file":"orders/action.dart","name":"cancel","route":"OrdersRoute"},"d1":{"kind":"data","file":"notes/data.dart","route":"NotesRoute","section":null,"traced":true},"d2":{"kind":"data","file":"notes/\$id/data.dart","route":"NoteEditRoute","section":null,"traced":true},"d3":{"kind":"data","file":"orders/data.dart","route":"OrdersRoute","section":null,"traced":true},"r0":{"kind":"redirect","file":"redirect.dart","route":"RootRoute","pattern":"/"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"offline","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"RootRoute","file":"redirect.dart","folder":"","markers":["redirect"],"params":[],"redirect":true,"children":[]},{"type":"route","pattern":"/notes","route":"NotesRoute","file":"notes/page.dart","folder":"notes","markers":["data","action"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/notes/:id","route":"NoteEditRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["data","action"],"params":[{"name":"id","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders","route":"OrdersRoute","file":"orders/page.dart","folder":"orders","markers":["data","fresh","action"],"params":[],"redirect":false,"children":[]}]}],"sites":{"a1_0":{"kind":"action","file":"notes/action.dart","name":"add","route":"NotesRoute"},"a2_0":{"kind":"action","file":"notes/\$id/action.dart","name":"edit","route":"NoteEditRoute"},"a3_0":{"kind":"action","file":"orders/action.dart","name":"cancel","route":"OrdersRoute"},"d1":{"kind":"data","file":"notes/data.dart","route":"NotesRoute","section":null,"traced":true},"d2":{"kind":"data","file":"notes/\$id/data.dart","route":"NoteEditRoute","section":null,"traced":true},"d3":{"kind":"data","file":"orders/data.dart","route":"OrdersRoute","section":null,"traced":true},"r0":{"kind":"redirect","file":"redirect.dart","route":"RootRoute","pattern":"/"}}}';

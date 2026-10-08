@@ -542,6 +542,12 @@ void main() {
       await ms(tester, 20);
       expect(find.text('error refused'), findsOneWidget);
       expect(find.textContaining('data'), findsNothing);
+
+      // A reload that works brings the page back.
+      failure = null;
+      container.invalidate(p);
+      await ms(tester, 20);
+      expect(find.text('data 4'), findsOneWidget);
     });
 
     testWidgets('a value restored from the cache shows with keepPrevious: false, '

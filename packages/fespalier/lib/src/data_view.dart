@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'deferred.dart';
-import 'field_errors.dart' show DataRefusal;
+import 'data_refusal.dart';
 import 'optimistic.dart' show OptimisticLayer;
 
 /// Glue emitted around every route that has a `data.dart`:
@@ -93,7 +93,7 @@ class DataView<T> extends ConsumerWidget {
       // fresh one loads, whatever keep_previous says (since 0.8.1).
       skipLoadingOnReload: keep || value.isFromCache,
       skipLoadingOnRefresh: keep,
-      // A refusal is an answer, not a lost connection: it shows over the kept value.
+      // A refusal is an answer, not a lost connection: error shows instead of the kept value.
       skipError: keepDataOnError && value.error is! DataRefusal,
       data: lib == null
           ? page

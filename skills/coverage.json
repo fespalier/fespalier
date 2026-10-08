@@ -357,6 +357,7 @@
         "kind:error.dart",
         "config:data_retry",
         "config:keep_previous",
+        "packages/fespalier/lib/src/data_refusal.dart",
         "packages/fespalier/lib/src/data_view.dart",
         "packages/fespalier/lib/src/route_data.dart",
         "packages/fespalier/lib/src/route_match.dart",

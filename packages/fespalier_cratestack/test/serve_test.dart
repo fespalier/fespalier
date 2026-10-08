@@ -380,9 +380,10 @@ void main() {
       expect(find.textContaining('data'), findsNothing);
     });
 
-    testWidgets('offline on a reload still shows the page', (tester) async {
-      await reloadWith(tester, const CrateStackOffline());
+    testWidgets('a 503 on a reload keeps the page', (tester) async {
+      await reloadWith(tester, const CrateStackUnavailable(status: 503));
       expect(find.text('data [1, 2]'), findsOneWidget);
+      expect(find.textContaining('error'), findsNothing);
     });
   });
 }

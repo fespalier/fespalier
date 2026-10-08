@@ -43,7 +43,7 @@ The rules that keep it honest:
 
 - **Only a connection failure falls back.** A refusal is the answer: a `403` is not "the network is down", and
   showing last week's copy of something you may no longer see would be a leak. The refusal is rethrown to
-  `error.dart`. That holds on a route with a `freshness` too (since 0.13.1): `CrateStackRefused` is a `DataRefusal`, so the `DataView`'s `keepDataOnError` keeps the page for an offline reload but shows `error.dart` over the old copy for a refusal. Before 0.13.1 the old `Served` copy stayed on screen: watch `reconnectSignal` in `data.dart` instead of declaring `freshness` there.
+  `error.dart`. That holds on a route with a `freshness` too (since 0.13.1): `CrateStackRefused` is a `DataRefusal`, so the `DataView`'s `keepDataOnError` keeps the page for an offline reload but shows `error.dart` instead of the old copy for any refusal (a 404, 429 or 400 included: every `4xx` but 401 and 409). Before 0.13.1 the old `Served` copy stayed on screen: watch `reconnectSignal` in `data.dart` instead of declaring `freshness` there.
 - **An empty list offline is an answer.** `Served` says `neverFetched`, and the page can say "not loaded on this phone
   yet" instead of "you have no orders".
 - **A single row with nothing saved is an error.** `CrateStackNoLocalData`, shown with a retry. There is no empty row

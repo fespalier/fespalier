@@ -67,6 +67,42 @@ void main() {
     );
   });
 
+  group('a route with a freshness keeps its page, except for a refusal', () {
+    testWidgets('a reload the shop refuses (403) shows error.dart instead of '
+        'the page', (tester) async {
+      final shop = Harness();
+      await shop.open(tester);
+      expect(find.text('Order 1: Ceramic mug (placed)'), findsOneWidget);
+
+      shop.transport.refuse('listOrders', 403, 'FORBIDDEN', 'not yours');
+      await shop.setNetwork(tester, online: false);
+      await shop.setNetwork(tester, online: true);
+
+      expect(find.text('The shop refused this: FORBIDDEN'), findsOneWidget);
+      expect(find.text('Order 1: Ceramic mug (placed)'), findsNothing);
+
+      // The shop lets the account back in: a retry brings the page back.
+      shop.transport.heal('listOrders');
+      await tester.tap(find.byType(TextButton).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Order 1: Ceramic mug (placed)'), findsOneWidget);
+    });
+
+    testWidgets('a reload that fails with a 503 keeps the page', (
+      tester,
+    ) async {
+      final shop = Harness();
+      await shop.open(tester);
+
+      shop.transport.refuse('listOrders', 503, 'UNAVAILABLE', 'down');
+      await shop.setNetwork(tester, online: false);
+      await shop.setNetwork(tester, online: true);
+
+      expect(find.text('Order 1: Ceramic mug (placed)'), findsOneWidget);
+      expect(find.textContaining('refused'), findsNothing);
+    });
+  });
+
   group('a decision, as an intent', () {
     testWidgets('online, the server answers and the order is cancelled', (
       tester,

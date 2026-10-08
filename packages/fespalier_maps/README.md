@@ -86,8 +86,9 @@ once: `offlineTiles.overrideWithValue(const MapLibreOfflineTiles())` (from `mapl
 **A MapLibre download does not resume across an app restart**: pause and resume work while the app stays alive; after a
 restart the region is `Interrupted` and `resume` downloads it again. MapLibre also treats two regions with one definition
 as one, so two keys cannot share a rectangle, style and zoom range (`Failed(duplicateRegion)`), and a re-download replaces
-the old region when it begins. PMTiles file packs (a later release) are the
-resumable kind. See [docs/maps.md](https://github.com/fespalier/fespalier/blob/main/docs/maps.md#offline-packs).
+the old region when it begins. PMTiles **file packs** are the resumable kind: `FilePacks` downloads one file over HTTP
+into a directory the app passes, with `Range` requests, so a transfer continues after the app was closed, and moves it into place only when its
+size and SHA-256 match (`filePacks`, `FilePackRequest`, `packHttpClient` which the app provides; `FakePackFiles` in tests). See [docs/maps.md](https://github.com/fespalier/fespalier/blob/main/docs/maps.md#offline-packs).
 
 ## Test it
 
@@ -106,6 +107,6 @@ and `FakePositionSource`. The picker's state is a plain class, `PinPickerModel`,
   snack bar: `test/no_timers_test.dart` greps `lib/`.
 - **Telemetry carries kinds and results, never a place**: `fespalier.maps.geocode`, `fespalier.maps.locate` and
   `fespalier.maps.pick`, constants and a boolean only, pinned by `test/telemetry_test.dart`.
-- `fespalier.maps.download` reports a pack's download as one operation (`region`, then `complete`, `failed` or `cancelled`),
+- `fespalier.maps.download` reports a pack's download as one operation (`region` or `file`, then `complete`, `failed` or `cancelled`),
   never its key or rectangle.
-- Not built yet: PMTiles file packs (a later release), markers and overlays, search as you type.
+- Not built yet: markers and overlays, search as you type, a retry policy with backoff.

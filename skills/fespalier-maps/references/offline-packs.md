@@ -8,7 +8,7 @@ the database, `MapLibreOfflineTiles` the real one and `FakeOfflineTiles` the tes
 **A MapLibre download does not resume across an app restart.** Pause and resume work while the app stays alive. After a
 restart a half-done region is `Interrupted`; `resume` then downloads the same definition again (MapLibre replaces the
 old region when that download begins; resources it already stored may or may not be reused: not verified on a
-device). PMTiles file packs, resumable over HTTP Range, are the later release that fixes this.
+device). [File packs](file-packs.md) (PMTiles over HTTP Range) are the resumable kind.
 
 ## Choose a region and size it
 

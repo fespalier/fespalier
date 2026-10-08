@@ -24,7 +24,31 @@ enum PackFailure {
   replaced,
 
   /// Anything else.
-  other;
+  other,
+
+  /// A file pack's request cannot be downloaded: an empty key, a URL that is not `http` or
+  /// `https`, a hash that is not 64 hexadecimal digits, or a destination another pack uses
+  /// (since 0.13.0).
+  invalidRequest,
+
+  /// A file pack's transfer broke: no connection, a connection that dropped, a body that ended
+  /// short. What arrived is kept, and `resume` continues from it (since 0.13.0).
+  network,
+
+  /// The server refused: any answer but 200 or 206 (a 404, a 403, a 5xx, a 416 that a restart
+  /// from the first byte did not cure) (since 0.13.0).
+  rejected,
+
+  /// A file pack's size is not the one the request names (or, without it, the one the server
+  /// announced). The partial file is deleted (since 0.13.0).
+  sizeMismatch,
+
+  /// A file pack's SHA-256 is not the one the request names. The partial file is deleted: the
+  /// file at the URL is not the one the app expects (since 0.13.0).
+  hashMismatch,
+
+  /// The device refused to write: no room, no permission, a missing directory (since 0.13.0).
+  storage;
 
   /// The failure an error stands for: what the download call threw, or the error an event
   /// carried.

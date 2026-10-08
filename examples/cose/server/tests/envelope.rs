@@ -424,6 +424,89 @@ async fn a_retry_under_the_same_idempotency_key_is_one_note_and_is_sealed_for_th
     );
 }
 
+fn shared_key_write<'a>(device: &'a Device, text: &str) -> support::Call<'a> {
+    device
+        .call("procedure.addNote", &json!({ "args": { "text": text } }))
+        .header("idempotency-key", "shared-key")
+}
+
+#[tokio::test]
+async fn two_devices_using_one_idempotency_key_never_replay_each_other() {
+    let world = world();
+    let (alice, bob) = (Device::new(&world, 0x35, 0), Device::new(&world, 0x36, 0));
+    alice.register(&world).await;
+    bob.register(&world).await;
+    let a = shared_key_write(&alice, "alice's").send(&world).await;
+    let b = shared_key_write(&bob, "bob's").send(&world).await;
+    assert_eq!(a.answer.status, StatusCode::OK);
+    assert_eq!(b.answer.status, StatusCode::OK);
+    assert_eq!(b.open().await["text"], "bob's");
+    assert_eq!(
+        notes_of(&world, &bob).await.as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        notes_of(&world, &alice).await.as_array().map(Vec::len),
+        Some(1)
+    );
+}
+
+#[tokio::test]
+async fn unverified_callers_cannot_fill_the_idempotency_store() {
+    let world = world();
+    let device = Device::new(&world, 0x37, 0);
+    device.register(&world).await;
+    let (x, y) = device.xy();
+    let body = cbor(&json!({ "args": { "x": x, "y": y } }));
+    for i in 0..300 {
+        let mut request = plain("procedure.registerDevice", &body);
+        request.headers_mut().insert(
+            "idempotency-key",
+            format!("junk-{i}").parse().expect("value"),
+        );
+        request.headers_mut().insert(
+            header::AUTHORIZATION,
+            format!("Bearer junk-{i}").parse().expect("value"),
+        );
+        send(&world.router, request).await;
+    }
+    let write = device
+        .call(
+            "procedure.addNote",
+            &json!({ "args": { "text": "still works" } }),
+        )
+        .header("idempotency-key", "after-the-flood")
+        .send(&world)
+        .await;
+    assert_eq!(write.answer.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_full_idempotency_store_is_a_sealed_503_never_a_refusal_the_client_drops() {
+    let world = world();
+    let device = Device::new(&world, 0x38, 0);
+    device.register(&world).await;
+    let mut last = None;
+    for i in 0..220 {
+        let write = device
+            .call(
+                "procedure.addNote",
+                &json!({ "args": { "text": format!("n{i}") } }),
+            )
+            .header("idempotency-key", format!("k-{i}"))
+            .send(&world)
+            .await;
+        last = Some((write.answer.status, write.answer.is_sealed()));
+    }
+    // Past the per-device cap the reservation fails before the handler: 503, sealed, so the
+    // client keeps its queued write and moves to its next key.
+    assert_eq!(last, Some((StatusCode::SERVICE_UNAVAILABLE, true)));
+    assert_eq!(
+        notes_of(&world, &device).await.as_array().map(Vec::len),
+        Some(200)
+    );
+}
+
 #[tokio::test]
 async fn an_unmatched_method_is_not_a_signed_path() {
     let world = world();

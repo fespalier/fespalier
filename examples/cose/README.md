@@ -86,14 +86,17 @@ the package's.
 | The transport throws                    | When                                                                                                       | What the intent does               |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | `CrateStackUnauthenticated`             | an unsigned `401`                                                                                          | stays pending, **same key**        |
-| `CrateStackRefused` (status, wire code) | an unsigned `400`, `413`, `415` or `426` (code `HTTP_<status>`, its body ignored); a sealed `4xx`          | thrown to the person; nothing kept |
+| `CrateStackRefused` (status, wire code) | an unsigned `400`, `413`, `415` or `426` (code `HTTP_<status>`, its body ignored); a sealed `4xx` other than `409` | thrown to the person; nothing kept |
+| `CrateStackInFlight` / `CrateStackConflict` | a sealed `409` with / without `Retry-After` (the idempotency layer: the first attempt is still being answered) | pending, **same key** / kept for the person |
 | `CrateStackOffline`                     | no answer; **any other unsigned answer** (`5xx`, `409`, `2xx`, a page); a sealed answer that does not open | stays pending, **same key**        |
 | `CrateStackUnavailable`                 | a **sealed** `5xx`                                                                                         | pending, **next key**              |
 
 Only a sealed answer is the server's word on a call. An unsigned one is believed for the refusals the envelope layer makes
 **before the handler runs**, and only by its status: its body is ignored, so nothing on the path can choose the code that
-drops an intent. Everything else unsigned stays `Offline`, because it can be a forgery or a failure after the write
+drops an intent. (Anyone on the path can still choose _which_ of `400`, `413`, `415`, `426` a signed call is refused with, and so make a write fail: an accepted risk, since a path that can do that can also drop the connection.) Everything else unsigned stays `Offline`, because it can be a forgery or a failure after the write
 landed (the layer answers an unsigned `500` when it cannot seal the answer to a handler that already ran).
+
+A failure to register the device key before a signed call (an unsigned `4xx`, a full registry, a `5xx`) is also `Offline`: the signed call was never sent, and the registration's answer is not the server's word on this write.
 
 A sealed answer that fails to open is `Offline`, never `Unavailable`, on purpose: the write may have landed, and
 `Unavailable` would move the intent to the next idempotency key, risking a second write.
@@ -239,12 +242,13 @@ server does not say which check failed. `Accept: application/json` on a signed c
   inside the envelope layer, so it sees the plain CBOR the envelope unwrapped (the same bytes on every attempt) and the
   verified device as the principal: a write whose answer was lost and that is sent again under its key runs once, and the
   replay is sealed anew for the request that asked (`test/e2e_test.dart`, "a write whose answer was lost"). A restart
-  forgets the keys, and with them the guarantee; a real server uses `SqlxIdempotencyStore` or Redis.
+  forgets the keys, and with them the guarantee; a real server uses `SqlxIdempotencyStore` or Redis. Only a verified device holds keys (`keys_for_verified_callers_only` drops the header from anyone else, so a flood of junk keys and `Authorization` headers cannot fill the store), each device holds at most 200 live keys, and a full store answers a sealed `503`, which the app keeps its write through (`Unavailable`, the next key; safe because the reservation fails before the handler runs). The same key from two devices is two entries.
 - **Refusals from the headers.** The envelope layer refuses a wrong content type, a plain request to a signed operation and
   an unknown contract selector before it reads the body, and hyper then closes the connection with the body unread, which
   the OS turns into a reset the client could see before the answer (`CrateStackOffline` for a `426`, "update the client").
   The example's server reads the whole body first (`read_body_first`, the outermost layer in `server/src/lib.rs`), so every
-  refusal is an answer: 300 such refusals over one pooled client lose none (`test/e2e_test.dart`). A server without that
+  refusal is an answer (a body past the limit is read and discarded up to four limits further before the `413`, a read
+  error is a `400`): 300 such refusals over one pooled client lose none (`test/e2e_test.dart`). A server without that
   layer shows the race.
 - **No registration proof, rotation or revocation** (above), and the registry and notes are in memory.
 - **Plain HTTP on a local network.** The demo server speaks `http://`. The signature protects the messages, not their

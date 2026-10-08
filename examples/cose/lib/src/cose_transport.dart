@@ -144,7 +144,13 @@ final class CoseTransport implements CrateStackTransport {
     if (!contract.signed) {
       return await _plain(uri, contract, payload);
     }
-    await beforeSigned?.call();
+    try {
+      await beforeSigned?.call();
+    } on Object catch (error) {
+      // The signed call was never sent, and whatever registration answered (an unsigned 4xx or
+      // 5xx, a full registry) is not the server's word on this write: same key, try again.
+      throw CrateStackOffline('the device key could not be registered: $error');
+    }
 
     final bind = CoseBinding(
       audience: config.audience,
@@ -238,6 +244,8 @@ final class CoseTransport implements CrateStackTransport {
           status: response.statusCode,
           body: body,
           contentType: response.headers['content-type'],
+          // The idempotency layer's "still being answered": 409 with Retry-After, same key.
+          retryAfter: response.headers.containsKey('retry-after'),
         ) ??
         const CrateStackOffline(
           'a status that is neither a result nor an error',

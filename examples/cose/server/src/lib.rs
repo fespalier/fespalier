@@ -12,11 +12,12 @@
 //! - Registration and notes are in memory: a restart forgets both.
 
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use cratestack::axum::body::{Body, to_bytes};
+use cratestack::axum::body::{Body, HttpBody as _};
 use cratestack::axum::extract::Request;
 use cratestack::axum::http::StatusCode;
 use cratestack::axum::middleware::Next;
@@ -24,6 +25,7 @@ use cratestack::axum::response::{IntoResponse, Response};
 use cratestack::cose::{CoseEnvelope, CoseMode, CoseVerifyKey, P256Signer};
 use cratestack::envelope_layer::{EnvelopeMode, PolicyRequest};
 use cratestack::idempotency::IdempotencyLayer;
+use cratestack::ratelimit::VerifiedPrincipal;
 use cratestack::{
     AuthProvider, CratestackContext, CratestackError, InMemoryNonceStore, RequestContext, Value,
     VerifiedSigner, include_server_schema, serde_json,
@@ -289,6 +291,12 @@ pub fn build(audience: &str, server_scalar: &[u8; 32]) -> Result<Built, Cratesta
         Arc::new(MemoryIdempotency::new()),
         IDEMPOTENCY_TTL,
     ))
+    // Only a verified device may hold a key: for anyone else the header is dropped, so the store
+    // is never reached by a caller who can mint an identity (a junk `Authorization`, an
+    // unsigned call), and cannot be filled by one.
+    .layer(cratestack::axum::middleware::from_fn(
+        keys_for_verified_callers_only,
+    ))
     // The envelope layer next ...
     .layer(layer)
     // ... and outermost, one that reads the whole body first. The envelope layer refuses from
@@ -307,14 +315,42 @@ pub fn build(audience: &str, server_scalar: &[u8; 32]) -> Result<Built, Cratesta
     })
 }
 
+/// Drops the `Idempotency-Key` of a request no layer verified a device for.
+async fn keys_for_verified_callers_only(mut request: Request, next: Next) -> Response {
+    if request.extensions().get::<VerifiedPrincipal>().is_none() {
+        request.headers_mut().remove("idempotency-key");
+    }
+    next.run(request).await
+}
+
+/// How much past the limit is read and thrown away before answering `413`, so the answer is not
+/// cut off by a reset (an unbounded drain would defeat the limit).
+const DRAIN_PAST_LIMIT: usize = 4 * cratestack::DEFAULT_BODY_LIMIT_BYTES;
+
 /// Reads the request body (up to the codec's limit) before anything can answer.
 async fn read_body_first(request: Request, next: Next) -> Response {
-    let (parts, body) = request.into_parts();
-    match to_bytes(body, cratestack::DEFAULT_BODY_LIMIT_BYTES).await {
-        Ok(bytes) => {
-            next.run(Request::from_parts(parts, Body::from(bytes)))
-                .await
+    let (parts, mut body) = request.into_parts();
+    let limit = cratestack::DEFAULT_BODY_LIMIT_BYTES;
+    let (mut kept, mut seen) = (Vec::new(), 0_usize);
+    loop {
+        match std::future::poll_fn(|cx| Pin::new(&mut body).poll_frame(cx)).await {
+            None => break,
+            // The connection broke or the body was malformed: not a size problem.
+            Some(Err(_)) => return StatusCode::BAD_REQUEST.into_response(),
+            Some(Ok(frame)) => {
+                if let Some(data) = frame.data_ref() {
+                    seen = seen.saturating_add(data.len());
+                    if seen <= limit {
+                        kept.extend_from_slice(data);
+                    } else if seen > limit.saturating_add(DRAIN_PAST_LIMIT) {
+                        break;
+                    }
+                }
+            }
         }
-        Err(_) => StatusCode::PAYLOAD_TOO_LARGE.into_response(),
     }
+    if seen > limit {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+    next.run(Request::from_parts(parts, Body::from(kept))).await
 }

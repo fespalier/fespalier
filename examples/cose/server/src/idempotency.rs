@@ -16,8 +16,9 @@ use cratestack::envelope_layer::async_trait;
 use cratestack::idempotency::{IdempotencyRecord, IdempotencyStore, ReservationOutcome};
 use cratestack::uuid::Uuid;
 
-/// How many keys are kept at most; the oldest are dropped past it.
-const CAPACITY: usize = 10_000;
+/// How many live keys one device may hold, and how many the store holds in all.
+const PER_PRINCIPAL: usize = 200;
+const CAPACITY: usize = 50_000;
 
 struct Entry {
     token: Uuid,
@@ -54,13 +55,21 @@ impl IdempotencyStore for MemoryIdempotency {
         let id = (principal.to_owned(), key.to_owned());
         let reusable = entries.get(&id).is_none_or(|entry| entry.expires_at <= now);
         if reusable {
-            if entries.len() >= CAPACITY {
+            let mine = |entries: &HashMap<(String, String), Entry>| {
+                entries
+                    .keys()
+                    .filter(|(owner, _)| owner == principal)
+                    .count()
+            };
+            if entries.len() >= CAPACITY || mine(&entries) >= PER_PRINCIPAL {
                 entries.retain(|_, entry| entry.expires_at > now);
             }
-            if entries.len() >= CAPACITY {
-                // Still full of live keys: refuse rather than grow.
-                return Err(CratestackError::TooManyRequests(
-                    "too many idempotency keys".to_owned(),
+            if entries.len() >= CAPACITY || mine(&entries) >= PER_PRINCIPAL {
+                // Still full of live keys. This fails before the handler runs, so the write did
+                // not happen, and a 503 is the answer a client keeps its key through (a 4xx would
+                // drop its queued write): sealed, like any answer that passed the envelope.
+                return Err(CratestackError::Unavailable(
+                    "too many idempotency keys held".to_owned(),
                 ));
             }
             // A new key, or an expired one reclaimed under a fresh token.

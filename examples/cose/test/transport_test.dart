@@ -10,6 +10,7 @@ import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:fespalier_sign_keypair/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'fake_server.dart';
 
@@ -169,6 +170,69 @@ void main() {
       expect(server.seen.map((s) => s.idempotencyKey), ['a#0', 'a#0']);
     },
   );
+
+  test(
+    'a registration the server refuses never reaches a signed call as a decision',
+    () async {
+      for (final status in [400, 422, 429, 500, 503]) {
+        final server = FakeCoseServer();
+        final refusing = MockClient(
+          (_) async => http.Response.bytes(
+            encodePayload({'code': 'forged', 'message': 'no'}),
+            status,
+            headers: {'content-type': 'application/cbor'},
+          ),
+        );
+        final app = await _app(server, client: refusing);
+        // Offline, so the intent keeps its key: not Refused (dropped), not Unavailable (next key).
+        await expectLater(
+          app.transport.send(_add, idempotencyKey: 'a#0'),
+          throwsA(isA<CrateStackOffline>()),
+          reason: 'registration answered $status',
+        );
+      }
+    },
+  );
+
+  test(
+    'a sealed 409 is InFlight with Retry-After and a Conflict without',
+    () async {
+      final server = FakeCoseServer();
+      final app = await _app(server);
+      for (final retryAfter in [true, false]) {
+        server.override = (request) async {
+          final sealed = await server.sealed(request, 409, {
+            'code': 'conflict',
+            'message': 'busy',
+          });
+          return http.Response.bytes(
+            sealed.bodyBytes,
+            409,
+            headers: {...sealed.headers, if (retryAfter) 'retry-after': '1'},
+          );
+        };
+        await expectLater(
+          app.transport.send(_add, idempotencyKey: 'a#0'),
+          throwsA(
+            retryAfter ? isA<CrateStackInFlight>() : isA<CrateStackConflict>(),
+          ),
+        );
+      }
+    },
+  );
+
+  test('a sealed 503 (a full idempotency store) is Unavailable, never a refusal', () async {
+    final server = FakeCoseServer();
+    final app = await _app(server);
+    server.override = (request) => server.sealed(request, 503, {
+      'code': 'unavailable',
+      'message': 'too many idempotency keys held',
+    });
+    await expectLater(
+      app.transport.send(_add, idempotencyKey: 'a#0'),
+      throwsA(isA<CrateStackUnavailable>()),
+    );
+  });
 
   test('a server that forgot the device is healed by the next call', () async {
     final server = FakeCoseServer();

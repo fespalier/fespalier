@@ -622,11 +622,6 @@ jobs:
           COSE_SERVER_BIN: ${{ github.workspace }}/examples/cose/server/target/debug/cose-demo-server
           FSP_REQUIRE_COSE_SERVER: "1"
         run: flutter test
-      - name: Generated code is const-clean
-        working-directory: examples/cose
-        env:
-          WORKSPACE: ${{ github.workspace }}
-        run: '"$WORKSPACE/scripts/check-const-lints.sh" .'
 
   web:
     name: Deferred routes split on the web

@@ -60,6 +60,9 @@ final class FakeCoseServer {
   /// request landed, the answer did not.
   int dropAnswers = 0;
 
+  /// A restart: every registered device is forgotten.
+  void forget() => _devices.clear();
+
   /// The key the app pins.
   Future<CoseConfig> config() async {
     final key = await _sealer.identity();

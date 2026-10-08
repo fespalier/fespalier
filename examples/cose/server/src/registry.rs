@@ -11,6 +11,9 @@ use cratestack::CratestackError;
 use cratestack::cose::{CoseAlg, CoseVerifierResolver, CoseVerifyKey};
 use cratestack::envelope_layer::async_trait;
 
+/// How many device keys the registry holds at most.
+pub const MAX_DEVICES: usize = 10_000;
+
 /// Registered public keys by `kid` (the first 8 bytes of the RFC 9679 thumbprint).
 ///
 /// Eight bytes collide at about 2^32 keys, so a `kid` maps to a list, and the opener tries
@@ -28,15 +31,29 @@ impl DeviceKeys {
     }
 
     /// Remember `key`. Registering the same key twice keeps one copy.
-    pub fn register(&self, key: CoseVerifyKey) {
+    ///
+    /// Registration is the one unauthenticated call, so the registry is bounded: past
+    /// [`MAX_DEVICES`] keys a new one is refused (a restart empties it).
+    ///
+    /// # Errors
+    /// When the registry is full and `key` is not already in it.
+    pub fn register(&self, key: CoseVerifyKey) -> Result<(), CratestackError> {
         let mut keys = self
             .keys
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let slot = keys.entry(key.kid()).or_default();
-        if !slot.contains(&key) {
-            slot.push(key);
+        let known = keys.get(&key.kid()).is_some_and(|slot| slot.contains(&key));
+        if known {
+            return Ok(());
         }
+        let count: usize = keys.values().map(Vec::len).sum();
+        if count >= MAX_DEVICES {
+            return Err(CratestackError::TooManyRequests(
+                "the device registry is full".to_owned(),
+            ));
+        }
+        keys.entry(key.kid()).or_default().push(key);
+        Ok(())
     }
 
     /// How many distinct keys are registered.

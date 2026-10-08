@@ -140,55 +140,26 @@ class _Device {
     iat: iat,
   );
 
-  /// POST [body] to [op] as given, on a connection of its own: the server answers a refusal
-  /// without reading the body and closes the connection, and the next request on a pooled one
-  /// would fail with a broken pipe (a send the transport reports as Offline).
-  ///
-  /// [early] is for a refusal the layer makes from the headers alone (a content type, a contract
-  /// selector): see [_settled].
+  /// POST [body] to [op] as given, on a connection of its own.
   Future<http.Response> post(
     String op,
     List<int> body, {
     String contentType = '',
     Map<String, String> headers = const {},
-    bool early = false,
-  }) {
-    Future<http.Response> once() async {
-      final client = http.Client();
-      try {
-        return await client.post(
-          server.config.baseUrl.resolve('/rpc/$op'),
-          headers: {
-            'content-type': contentType.isEmpty ? coseContentType : contentType,
-            'accept': coseContentType,
-            ...headers,
-          },
-          body: body,
-        );
-      } finally {
-        client.close();
-      }
-    }
-
-    return early ? _settled(once) : once();
-  }
-}
-
-/// Runs [attempt] until the server's answer arrives.
-///
-/// A refusal the layer makes from the headers alone (plain CBOR to a signed op, COSE to the plain
-/// op, an unknown contract selector) is sent before the body is read, and the server then closes
-/// the connection with the body unread, which the OS turns into a reset. The client sometimes sees
-/// the reset before the answer (a `ClientException`, or the transport's `CrateStackOffline`).
-/// Such a request was refused, not processed, so sending it again is safe; a request the layer
-/// reads first (a 401 from a bad signature, any answer to a good one) never needs this.
-Future<T> _settled<T>(Future<T> Function() attempt) async {
-  for (var i = 1; ; i++) {
+  }) async {
+    final client = http.Client();
     try {
-      return await attempt();
-    } on Object catch (error) {
-      final lost = error is http.ClientException || error is CrateStackOffline;
-      if (!lost || i == 8) rethrow;
+      return await client.post(
+        server.config.baseUrl.resolve('/rpc/$op'),
+        headers: {
+          'content-type': contentType.isEmpty ? coseContentType : contentType,
+          'accept': coseContentType,
+          ...headers,
+        },
+        body: body,
+      );
+    } finally {
+      client.close();
     }
   }
 }
@@ -292,6 +263,76 @@ void main() {
     expect(notesFromWire(list), isEmpty);
   });
 
+  test(
+    'a write whose answer was lost, sent again under its key, is one note',
+    () async {
+      await device.register();
+      // The first attempt reaches the server, and the phone never reads the answer.
+      final lost = await device.seal(Ops.addNote, {
+        'text': 'once',
+      }, idempotencyKey: 'lost#0');
+      await device.post(
+        Ops.addNote,
+        lost,
+        headers: {'idempotency-key': 'lost#0'},
+      );
+      // The retry is the app's: a new message, the same payload and key.
+      final transport = device.transport();
+      final again = await transport.send(
+        _add('once'),
+        idempotencyKey: 'lost#0',
+      );
+      expect(again, {'id': 1, 'text': 'once'});
+      expect(notesFromWire(await transport.send(_list)), [
+        const Note(id: 1, text: 'once'),
+      ]);
+    },
+  );
+
+  test(
+    'early refusals over one pooled client lose none (the server reads the body first)',
+    () async {
+      await device.register();
+      final client = http.Client();
+      addTearDown(client.close);
+      final uri = server.config.baseUrl.resolve('/rpc/${Ops.listNotes}');
+      final sealed = await device.seal(Ops.listNotes, <String, Object?>{});
+      var lost = 0;
+      // Three refusals the envelope layer makes from the headers alone, 100 times each, all on
+      // the one connection pool the app's own transport has.
+      for (var i = 0; i < 100; i++) {
+        for (final (status, headers, body) in [
+          (401, {'content-type': 'application/cbor'}, sealed),
+          (
+            426,
+            {'content-type': coseContentType, contractHeader: 'AAAAAAAAAAA'},
+            sealed,
+          ),
+          (
+            415,
+            {'content-type': coseContentType},
+            await device.seal(Ops.registerDevice, {'x': 'a', 'y': 'b'}),
+          ),
+        ]) {
+          final target = status == 415
+              ? server.config.baseUrl.resolve('/rpc/${Ops.registerDevice}')
+              : uri;
+          try {
+            final response = await client.post(
+              target,
+              headers: headers,
+              body: body,
+            );
+            expect(response.statusCode, status);
+          } on http.ClientException {
+            lost++;
+          }
+        }
+      }
+      expect(lost, 0, reason: 'of 300 early refusals');
+    },
+  );
+
   group('refusals', () {
     test('a key nobody registered: 401, unsigned, Unauthenticated', () async {
       final sealed = await device.seal(Ops.listNotes, <String, Object?>{});
@@ -359,13 +400,26 @@ void main() {
       expect((await device.post(Ops.addNote, sealed)).statusCode, 200);
     });
 
+    test('a changed protected header, or a changed signature: 401', () async {
+      await device.register();
+      final sealed = await device.seal(Ops.addNote, {'text': 'abcdef'});
+      // d2 84 58 <len> <protected...>: byte 5 is inside the protected header; the last byte is
+      // inside the signature.
+      for (final at in [5, sealed.length - 1]) {
+        final tampered = Uint8List.fromList(sealed)..[at] ^= 0x01;
+        final response = await device.post(Ops.addNote, tampered);
+        expect(response.statusCode, 401, reason: 'byte $at');
+        expect(_isCose(response), isFalse);
+      }
+      expect((await device.post(Ops.addNote, sealed)).statusCode, 200);
+    });
+
     test('plain CBOR to a signed op: 401', () async {
       await device.register();
       final response = await device.post(
         Ops.listNotes,
         encodePayload({'args': <String, Object?>{}}),
         contentType: 'application/cbor',
-        early: true,
       );
       expect(response.statusCode, 401);
       expect(_isCose(response), isFalse);
@@ -376,11 +430,7 @@ void main() {
         'x': 'a',
         'y': 'b',
       });
-      final response = await device.post(
-        Ops.registerDevice,
-        sealed,
-        early: true,
-      );
+      final response = await device.post(Ops.registerDevice, sealed);
       expect(response.statusCode, 415);
       expect(_isCose(response), isFalse);
 
@@ -422,11 +472,12 @@ void main() {
         expect(second.statusCode, 401);
         expect(_isCose(second), isFalse);
 
-        // A retry through the transport is a new message (a fresh cti), so it is accepted.
+        // A retry through the transport is a new message (a fresh cti), so it is accepted, and the
+        // server runs the write once for the key (the first, raw attempt wrote the note).
         final transport = device.transport();
         await transport.send(_add('once'), idempotencyKey: 'r#0');
         await transport.send(_add('once'), idempotencyKey: 'r#0');
-        expect(notesFromWire(await transport.send(_list)), hasLength(3));
+        expect(notesFromWire(await transport.send(_list)), hasLength(1));
       },
     );
 
@@ -461,7 +512,6 @@ void main() {
         Ops.listNotes,
         sealed,
         headers: {contractHeader: 'AAAAAAAAAAA'},
-        early: true,
       );
       expect(response.statusCode, 426);
       expect(_isCose(response), isFalse);
@@ -475,7 +525,7 @@ void main() {
         ),
       });
       await expectLater(
-        _settled(() => outdated.send(_list)),
+        outdated.send(_list),
         throwsA(
           isA<CrateStackRefused>().having((e) => e.status, 'status', 426),
         ),

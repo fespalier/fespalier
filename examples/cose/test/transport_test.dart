@@ -36,6 +36,7 @@ Future<({CoseTransport transport, DeviceRegistrar registrar})> _app(
     sealer: sealer,
     client: client ?? server.client,
     beforeSigned: beforeSigned ?? (register ? registrar.ensure : null),
+    onUnauthenticated: registrar.reset,
   );
   return (transport: transport, registrar: registrar);
 }
@@ -162,12 +163,26 @@ void main() {
         app.transport.send(_add, idempotencyKey: 'a#0'),
         throwsA(isA<CrateStackOffline>()),
       );
-      // The retry opens (a fresh cti). The demo server has no idempotency store, so the note is
-      // written twice: the README says what a real server adds.
+      // The retry opens (a fresh cti). This fake server has no idempotency store, so the note is
+      // written twice: the real server's idempotency layer (e2e_test.dart) is what prevents that.
       await app.transport.send(_add, idempotencyKey: 'a#0');
       expect(server.seen.map((s) => s.idempotencyKey), ['a#0', 'a#0']);
     },
   );
+
+  test('a server that forgot the device is healed by the next call', () async {
+    final server = FakeCoseServer();
+    final app = await _app(server);
+    await app.transport.send(_list);
+    server.forget();
+    await expectLater(
+      app.transport.send(_list),
+      throwsA(isA<CrateStackUnauthenticated>()),
+    );
+    // The 401 made the app forget it was registered: the retry registers again, then reads.
+    await app.transport.send(_list);
+    expect(server.registrations, 2);
+  });
 
   test('an unsealed 200 to a signed call is not an answer', () async {
     final server = FakeCoseServer();
@@ -209,17 +224,21 @@ void main() {
       await expectLater(app.transport.send(_list), throwsA(matcher));
     }
 
-    await answers(
-      426,
-      isA<CrateStackRefused>().having((e) => e.status, 'status', 426),
-    );
-    await answers(
-      400,
-      isA<CrateStackRefused>().having((e) => e.code, 'code', 'X'),
-    );
-    await answers(500, isA<CrateStackUnavailable>());
+    // The layer's refusals from before the handler: believed by status, the body ignored.
+    for (final status in [400, 413, 415, 426]) {
+      await answers(
+        status,
+        isA<CrateStackRefused>()
+            .having((e) => e.status, 'status', status)
+            .having((e) => e.code, 'code', 'HTTP_$status'),
+      );
+    }
     await answers(401, isA<CrateStackUnauthenticated>());
-    await answers(503, isA<CrateStackUnavailable>());
+    // Anything else unsigned is not the server's word: the intent keeps its key. A 500 after the
+    // handler ran (the layer could not seal), a 409, a 422 with a forged code, a gateway's 503.
+    for (final status in [409, 422, 500, 503]) {
+      await answers(status, isA<CrateStackOffline>());
+    }
   });
 
   test(

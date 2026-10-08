@@ -16,22 +16,36 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use cratestack::axum::body::{Body, to_bytes};
+use cratestack::axum::extract::Request;
+use cratestack::axum::http::StatusCode;
+use cratestack::axum::middleware::Next;
+use cratestack::axum::response::{IntoResponse, Response};
 use cratestack::cose::{CoseEnvelope, CoseMode, CoseVerifyKey, P256Signer};
 use cratestack::envelope_layer::{EnvelopeMode, PolicyRequest};
+use cratestack::idempotency::IdempotencyLayer;
 use cratestack::{
     AuthProvider, CratestackContext, CratestackError, InMemoryNonceStore, RequestContext, Value,
     VerifiedSigner, include_server_schema, serde_json,
 };
 use cratestack_codec_cbor::CborCodec;
 
+pub mod idempotency;
 pub mod registry;
 
+use idempotency::MemoryIdempotency;
 use registry::DeviceKeys;
 
 include_server_schema!("schema.cstack", db = None);
 
 use cratestack_schema::procedures::{self as procs, ProcedureRegistry};
 use cratestack_schema::{Cratestack, DeviceView, Note, NoteList};
+
+/// How many notes a device may keep (the store is in memory).
+pub const MAX_NOTES: usize = 1_000;
+
+/// How long a stored answer is replayed for a retry under the same `Idempotency-Key`.
+const IDEMPOTENCY_TTL: std::time::Duration = std::time::Duration::from_hours(24);
 
 /// The op id of the one plain call.
 pub const REGISTER_OP: &str = "procedure.registerDevice";
@@ -127,7 +141,7 @@ impl ProcedureRegistry for Procedures {
             kid: hex(&key.kid()),
             thumbprint: hex(&key.thumbprint()),
         };
-        self.devices.register(key);
+        self.devices.register(key)?;
         Ok(view)
     }
 
@@ -162,6 +176,11 @@ impl ProcedureRegistry for Procedures {
         let device = signer_of(ctx)?;
         let mut notes = self.notes.lock().unwrap_or_else(PoisonError::into_inner);
         let mine = notes.entry(device).or_default();
+        if mine.len() >= MAX_NOTES {
+            return Err(CratestackError::Validation(
+                "this device has as many notes as the demo keeps".to_owned(),
+            ));
+        }
         let note = Note {
             id: i64::try_from(mine.len() + 1).unwrap_or(i64::MAX),
             text: args.args.text,
@@ -263,8 +282,20 @@ pub fn build(audience: &str, server_scalar: &[u8; 32]) -> Result<Built, Cratesta
         SignerAuth,
         cratestack::DEFAULT_BODY_LIMIT_BYTES,
     )
-    // The envelope layer is the router's last `.layer`, so it runs first.
-    .layer(layer);
+    // Inside the envelope layer: it sees the plain CBOR the envelope unwrapped (the same bytes on
+    // every attempt) and the verified device as its principal, so a retry under the same key is
+    // replayed, and sealed anew by the envelope layer for the request that asked.
+    .layer(IdempotencyLayer::new(
+        Arc::new(MemoryIdempotency::new()),
+        IDEMPOTENCY_TTL,
+    ))
+    // The envelope layer next ...
+    .layer(layer)
+    // ... and outermost, one that reads the whole body first. The envelope layer refuses from
+    // the headers alone (a content type, a contract selector) before it reads the body, and
+    // hyper then closes the connection with the body unread, which the OS turns into a reset
+    // that a client can see before the answer. Reading it first makes every refusal an answer.
+    .layer(cratestack::axum::middleware::from_fn(read_body_first));
     Ok(Built {
         router,
         hello: Hello {
@@ -274,4 +305,16 @@ pub fn build(audience: &str, server_scalar: &[u8; 32]) -> Result<Built, Cratesta
         devices,
         server_key,
     })
+}
+
+/// Reads the request body (up to the codec's limit) before anything can answer.
+async fn read_body_first(request: Request, next: Next) -> Response {
+    let (parts, body) = request.into_parts();
+    match to_bytes(body, cratestack::DEFAULT_BODY_LIMIT_BYTES).await {
+        Ok(bytes) => {
+            next.run(Request::from_parts(parts, Body::from(bytes)))
+                .await
+        }
+        Err(_) => StatusCode::PAYLOAD_TOO_LARGE.into_response(),
+    }
 }

@@ -210,7 +210,7 @@ cose-server:
 
 # What CI's `cose` job runs: the server (`cose-server`), then the app in examples/cose against the binary it
 # built: dart format, analyze and every test, with the end-to-end test required (it fails instead of skipping),
-# then the const lints on the generated code. Needs Rust (examples/cose/server/rust-toolchain.toml), cargo-deny
+# (the const lints on the generated code are the `dart` job's and `just flutter`'s). Needs Rust (examples/cose/server/rust-toolchain.toml), cargo-deny
 # and Flutter; not part of `just ci` (`just flutter` runs the app's tests too, the end-to-end one skipped)
 cose: cose-server
     #!/usr/bin/env bash
@@ -221,7 +221,6 @@ cose: cose-server
         | xargs -0 dart format --output=none --set-exit-if-changed
     flutter analyze
     COSE_SERVER_BIN="$PWD/server/target/debug/cose-demo-server" FSP_REQUIRE_COSE_SERVER=1 flutter test
-    ../../scripts/check-const-lints.sh .
 
 # The committed Maestro flows of examples/shop open their routes in Chromium (Playwright, pinned in
 # ci/web-routes/package-lock.json) against a release web build; every non-local request is blocked.

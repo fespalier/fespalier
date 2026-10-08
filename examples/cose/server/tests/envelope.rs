@@ -8,7 +8,7 @@ mod support;
 use cose_demo_server::cratestack_schema;
 use cratestack::axum::body::Body;
 use cratestack::axum::http::{Method, Request, StatusCode, header};
-use cratestack::serde_json::json;
+use cratestack::serde_json::{Value, json};
 use cratestack::{ContractSelector, find_contract};
 use support::{CBOR, Device, SIGN1, cbor, from_cbor, plain, send, world};
 
@@ -296,6 +296,132 @@ async fn registering_something_that_is_not_a_key_is_refused() {
     let answer = send(&world.router, plain("procedure.registerDevice", &payload)).await;
     assert!(answer.status.is_client_error(), "{}", answer.status);
     assert!(world.built.devices.is_empty());
+}
+
+fn frames(ops: &[(&str, Value)]) -> Value {
+    Value::Array(
+        ops.iter()
+            .enumerate()
+            .map(
+                |(id, (op, input))| json!({ "id": id + 1, "op": op, "input": input, "idem": null }),
+            )
+            .collect(),
+    )
+}
+
+async fn notes_of(world: &support::World, device: &Device) -> Value {
+    let read = device
+        .call("procedure.listNotes", &json!({ "args": {} }))
+        .send(world)
+        .await;
+    assert_eq!(read.answer.status, StatusCode::OK);
+    read.open().await["notes"].clone()
+}
+
+#[tokio::test]
+async fn a_plain_batch_of_writes_is_401_and_writes_nothing() {
+    let world = world();
+    let device = Device::new(&world, 0x31, 0);
+    device.register(&world).await;
+    let body = cbor(&frames(&[(
+        "procedure.addNote",
+        json!({ "args": { "text": "sneaked" } }),
+    )]));
+    let answer = send(&world.router, plain("batch", &body)).await;
+    assert_eq!(answer.status, StatusCode::UNAUTHORIZED);
+    assert!(!answer.is_sealed());
+    assert_eq!(notes_of(&world, &device).await, json!([]));
+}
+
+#[tokio::test]
+async fn a_plain_batch_of_only_the_registration_is_401_and_registers_nothing() {
+    let world = world();
+    let probe = Device::new(&world, 0x32, 0);
+    let (x, y) = probe.xy();
+    let body = cbor(&frames(&[(
+        "procedure.registerDevice",
+        json!({ "args": { "x": x, "y": y } }),
+    )]));
+    let answer = send(&world.router, plain("batch", &body)).await;
+    assert_eq!(answer.status, StatusCode::UNAUTHORIZED);
+    assert!(!answer.is_sealed());
+    assert!(
+        world.built.devices.is_empty(),
+        "the plain op must not be reachable through a batch"
+    );
+}
+
+#[tokio::test]
+async fn a_signed_batch_is_answered_sealed_and_runs_its_frames() {
+    let world = world();
+    let device = Device::new(&world, 0x33, 0);
+    device.register(&world).await;
+    let batch = device
+        .call(
+            "batch",
+            &frames(&[(
+                "procedure.addNote",
+                json!({ "args": { "text": "in a batch" } }),
+            )]),
+        )
+        .send(&world)
+        .await;
+    assert_eq!(
+        batch.answer.status,
+        StatusCode::OK,
+        "{:?}",
+        batch.answer.body
+    );
+    assert!(batch.answer.is_sealed());
+    let answered = batch.open().await;
+    assert_eq!(answered.as_array().map(Vec::len), Some(1), "{answered}");
+    assert_eq!(
+        notes_of(&world, &device).await.as_array().map(Vec::len),
+        Some(1)
+    );
+}
+
+#[tokio::test]
+async fn a_retry_under_the_same_idempotency_key_is_one_note_and_is_sealed_for_the_retry() {
+    let world = world();
+    let device = Device::new(&world, 0x34, 0);
+    device.register(&world).await;
+    let write = || {
+        device
+            .call("procedure.addNote", &json!({ "args": { "text": "once" } }))
+            .header("idempotency-key", "retry-1")
+    };
+    // Two messages (a fresh cti each), one payload, one key: the answer to the first is lost.
+    let first = write().send(&world).await;
+    let second = write().send(&world).await;
+    assert_eq!(first.answer.status, StatusCode::OK);
+    assert_eq!(second.answer.status, StatusCode::OK);
+    assert_ne!(first.sealed.bytes, second.sealed.bytes);
+    // The replayed answer is sealed for the second request (open() checks its digest).
+    assert_eq!(second.open().await, first.open().await);
+    assert_eq!(
+        notes_of(&world, &device).await.as_array().map(Vec::len),
+        Some(1)
+    );
+
+    // Another body under the same key is a conflict, not a second write.
+    let other = device
+        .call(
+            "procedure.addNote",
+            &json!({ "args": { "text": "different" } }),
+        )
+        .header("idempotency-key", "retry-1")
+        .send(&world)
+        .await;
+    assert!(
+        other.answer.status.is_client_error(),
+        "{}",
+        other.answer.status
+    );
+    assert_eq!(
+        notes_of(&world, &device).await.as_array().map(Vec::len),
+        Some(1)
+    );
 }
 
 #[tokio::test]

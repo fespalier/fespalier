@@ -85,10 +85,10 @@ final class CoseConfig {
 ///
 /// | The server says                                 | [send] throws                         |
 /// | ----------------------------------------------- | ------------------------------------- |
-/// | an unsigned `401` (any request it refuses)      | [CrateStackUnauthenticated]           |
-/// | `415` (a COSE body to the plain op), `426`, `4xx` | [CrateStackRefused] with its code   |
-/// | a sealed `4xx` (a registered device's refusal)  | [CrateStackRefused]                   |
-/// | `5xx`                                           | [CrateStackUnavailable]               |
+/// | an unsigned `401`                               | [CrateStackUnauthenticated]           |
+/// | an unsigned `400`, `413`, `415`, `426`          | [CrateStackRefused], code `HTTP_<n>`  |
+/// | any other unsigned answer (`5xx`, `409`, `2xx`) | [CrateStackOffline], the same key     |
+/// | a sealed `4xx` or `5xx` (opened, verified)      | by its status and wire code           |
 /// | a sealed answer that does not open              | [CrateStackOffline], the same key     |
 /// | no answer, or a page that is not the server's   | [CrateStackOffline]                   |
 ///
@@ -106,6 +106,7 @@ final class CoseTransport implements CrateStackTransport {
     required this.sealer,
     required this._client,
     this.beforeSigned,
+    this.onUnauthenticated,
     this._ops = coseOps,
     int Function()? nowSeconds,
   }) : _opener = CoseOpener([config.serverKey], nowSeconds: nowSeconds);
@@ -118,6 +119,11 @@ final class CoseTransport implements CrateStackTransport {
 
   /// Runs before every signed call.
   final Future<void> Function()? beforeSigned;
+
+  /// Called when a signed call is answered with an unsigned `401`: the app forgets that the key
+  /// is registered, so a server that restarted (and forgot every device) is healed by the next
+  /// call's registration.
+  final void Function()? onUnauthenticated;
 
   final http.Client _client;
   final Map<String, OpContract> _ops;
@@ -181,10 +187,21 @@ final class CoseTransport implements CrateStackTransport {
       }
       return _result(response, body);
     }
-    // Not sealed: the layer's own refusal. Whatever it says, it is not an answer to a signed call.
-    final failure = _refusal(response);
-    throw failure ??
-        const CrateStackOffline('an unsealed answer to a signed request');
+    // Not sealed. Only the envelope layer's refusals from before the handler runs are believed,
+    // and only by their status: anything else unsigned (a 5xx the layer makes when sealing fails
+    // after the handler ran, a 409, a 2xx, a proxy's page) is not the server's word on this call.
+    if (response.statusCode == 401) onUnauthenticated?.call();
+    throw switch (response.statusCode) {
+      401 => const CrateStackUnauthenticated(),
+      400 || 413 || 415 || 426 => CrateStackRefused(
+        status: response.statusCode,
+        code: 'HTTP_${response.statusCode}',
+        message: '',
+      ),
+      _ => CrateStackOffline(
+        'an unsealed ${response.statusCode} to a signed request',
+      ),
+    };
   }
 
   Future<Object?> _plain(

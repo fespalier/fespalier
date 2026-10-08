@@ -72,6 +72,9 @@ final class DeviceRegistrar {
   /// Whether the server has answered this run's registration.
   bool get isRegistered => _registered;
 
+  /// Forgets the registration: the server said it does not know the key (it may have restarted).
+  void reset() => _registered = false;
+
   /// Registers the key unless this run already did. A failure is not remembered: the next call
   /// tries again, and two callers that arrive together share one request.
   Future<void> ensure() {
@@ -114,6 +117,7 @@ final coseTransport = Provider<CoseTransport>((ref) {
     client: ref.watch(coseHttpClient),
     // Read lazily: the registrar sends through this very transport, for the plain call.
     beforeSigned: () => ref.read(deviceRegistrar).ensure(),
+    onUnauthenticated: () => ref.read(deviceRegistrar).reset(),
   );
 });
 

@@ -1,8 +1,8 @@
 # cose: every request signed, every answer sealed
 
 A small [fespalier](../../README.md) app and the [CrateStack](https://cratestack.dev) server it talks to, in which
-**every call is a COSE_Sign1 message** signed by a key that never leaves the phone, and every answer is a COSE*Sign1
-message signed by the server. The CBOR the unsigned codec would send travels \_inside* it.
+**every call is a `COSE_Sign1` message** signed by a key that never leaves the phone, and every answer to it is a
+`COSE_Sign1` message signed by the server. The CBOR the unsigned codec would send travels _inside_ it.
 
 It shows, end to end and with tests on both sides:
 
@@ -83,12 +83,17 @@ the package's.
   **same key**, which the signature binds. A message signed once and stored would be a replay, and a 401, from its second
   attempt on. `registerDevice` is a direct call: it must succeed before anything is signed.
 
-| The transport throws                    | When                                                                                   | What the intent does               |
-| --------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------- |
-| `CrateStackUnauthenticated`             | any unsigned `401`                                                                     | stays pending, **same key**        |
-| `CrateStackOffline`                     | no answer; an unsealed answer to a signed call; **a sealed answer that does not open** | stays pending, **same key**        |
-| `CrateStackRefused` (status, wire code) | `415`, `426`, other `4xx`, sealed or not                                               | thrown to the person; nothing kept |
-| `CrateStackUnavailable`                 | `5xx`                                                                                  | pending, **next key**              |
+| The transport throws                    | When                                                                                                       | What the intent does               |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `CrateStackUnauthenticated`             | an unsigned `401`                                                                                          | stays pending, **same key**        |
+| `CrateStackRefused` (status, wire code) | an unsigned `400`, `413`, `415` or `426` (code `HTTP_<status>`, its body ignored); a sealed `4xx`          | thrown to the person; nothing kept |
+| `CrateStackOffline`                     | no answer; **any other unsigned answer** (`5xx`, `409`, `2xx`, a page); a sealed answer that does not open | stays pending, **same key**        |
+| `CrateStackUnavailable`                 | a **sealed** `5xx`                                                                                         | pending, **next key**              |
+
+Only a sealed answer is the server's word on a call. An unsigned one is believed for the refusals the envelope layer makes
+**before the handler runs**, and only by its status: its body is ignored, so nothing on the path can choose the code that
+drops an intent. Everything else unsigned stays `Offline`, because it can be a forgery or a failure after the write
+landed (the layer answers an unsigned `500` when it cannot seal the answer to a handler that already ran).
 
 A sealed answer that fails to open is `Offline`, never `Unavailable`, on purpose: the write may have landed, and
 `Unavailable` would move the intent to the next idempotency key, risking a second write.
@@ -151,8 +156,9 @@ through an already-authenticated session.
 An intent is **deleted** when the server accepts it. If a `200` could be forged by anything between the phone and the
 server (a proxy, a captive portal, a misconfigured gateway), the app would drop a write the server never saw. So the app
 accepts only an answer signed by the pinned server key **and bound to this request** (its digest) and **this status**; the
-server seals every answer to a signed request, errors included. What it did not seal is the envelope layer's own refusal
-(below), which the app reads by its status and never as an answer.
+server seals every answer to a signed request that reached the handler, errors included. What it did not seal is the
+envelope layer's own refusals from before the handler (the `401`, `415`, `426` of the table below), which the app reads by
+status alone, and never as an answer to the write.
 
 ### The key's life
 
@@ -205,21 +211,21 @@ sequenceDiagram
 
 All of these are observed in `test/e2e_test.dart` against the real binary.
 
-| The request                                                       | Status | Sealed? | The app's `CrateStackFailure`                |
-| ----------------------------------------------------------------- | ------ | ------- | -------------------------------------------- |
-| registration, plain CBOR                                          | 200    | no      | (the answer)                                 |
-| a signed call by a registered key                                 | 200    | yes     | (the answer, verified)                       |
-| signed by an unregistered key                                     | 401    | no      | `CrateStackUnauthenticated`                  |
-| payload (or header, or signature) changed in transit              | 401    | no      | `CrateStackUnauthenticated`                  |
-| the same bytes twice (the second)                                 | 401    | no      | `CrateStackUnauthenticated`                  |
-| `iat` more than 300 seconds off                                   | 401    | no      | `CrateStackUnauthenticated`                  |
-| an `Idempotency-Key` header the signature does not cover          | 401    | no      | `CrateStackUnauthenticated`                  |
-| plain `application/cbor` to a signed operation                    | 401    | no      | `CrateStackUnauthenticated`                  |
-| a COSE body to `registerDevice` (it is the plain operation)       | 415    | no      | `CrateStackRefused`                          |
-| a `Cratestack-Contract` that names no contract the server accepts | 426    | no      | `CrateStackRefused` (update the client)      |
-| a registered device's bad input (`addNote` without `text`)        | 400    | yes     | `CrateStackRefused`, code `invalid_argument` |
-| a registration that is not a P-256 point                          | 422    | no      | `CrateStackRefused`                          |
-| a sealed answer that does not open (another server key)           | -      | -       | `CrateStackOffline`                          |
+| The request                                                       | Status | Sealed? | The app's `CrateStackFailure`                       |
+| ----------------------------------------------------------------- | ------ | ------- | --------------------------------------------------- |
+| registration, plain CBOR                                          | 200    | no      | (the answer)                                        |
+| a signed call by a registered key                                 | 200    | yes     | (the answer, verified)                              |
+| signed by an unregistered key                                     | 401    | no      | `CrateStackUnauthenticated`                         |
+| payload, protected header or signature changed in transit         | 401    | no      | `CrateStackUnauthenticated`                         |
+| the same bytes twice (the second)                                 | 401    | no      | `CrateStackUnauthenticated`                         |
+| `iat` more than 300 seconds off                                   | 401    | no      | `CrateStackUnauthenticated`                         |
+| an `Idempotency-Key` header the signature does not cover          | 401    | no      | `CrateStackUnauthenticated`                         |
+| plain `application/cbor` to a signed operation                    | 401    | no      | `CrateStackUnauthenticated`                         |
+| a COSE body to `registerDevice` (it is the plain operation)       | 415    | no      | `CrateStackRefused` (`HTTP_415`)                    |
+| a `Cratestack-Contract` that names no contract the server accepts | 426    | no      | `CrateStackRefused` (`HTTP_426`, update the client) |
+| a registered device's bad input (`addNote` without `text`)        | 400    | yes     | `CrateStackRefused`, code `invalid_argument`        |
+| a registration that is not a P-256 point                          | 422    | no      | `CrateStackRefused`                                 |
+| a sealed answer that does not open (another server key)           | -      | -       | `CrateStackOffline`                                 |
 
 Every unsigned `401` has the same body, `{"code": "unauthenticated", "message": "request could not be authenticated"}`: the
 server does not say which check failed. `Accept: application/json` on a signed call is not refused: it is answered sealed.
@@ -229,16 +235,17 @@ server does not say which check failed. `Accept: application/json` on a signed c
 - **Device runs.** `SignKeypairSigner` (the Secure Enclave, StrongBox or the TEE) is **not run by any test or by CI**:
   the tests use `FakeDpopSigner`, a software key that signs the same way, and the app has not been run on a phone. The
   [`fespalier_sign_keypair`](../../packages/fespalier_sign_keypair) package tests the signer itself.
-- **The server has no idempotency store.** The `Idempotency-Key` is bound into the signature, but the server keeps no
-  answers under it: a write that landed and whose answer was lost is written again by the retry
-  (`transport_test.dart`, "a lost answer"). CrateStack's idempotency layer, which a database-backed server uses, is what
-  closes that; the contract with the app (same key, new message) is the same.
-- **Refusals made from the headers race the connection.** The envelope layer refuses a wrong content type, a plain
-  request to a signed operation and an unknown contract selector _before reading the body_, and then closes the
-  connection with the body unread, which the OS turns into a reset. The client sometimes sees the reset before the
-  answer, and reports `CrateStackOffline`. A `426` ("update the client") can therefore surface as "offline" once; a retry
-  gets the answer. `e2e_test.dart` retries those requests (`_settled`); a request the layer reads first (a bad
-  signature, any answer to a good one) never needs it.
+- **The idempotency store is in memory.** The server runs CrateStack's `IdempotencyLayer` over `server/src/idempotency.rs`,
+  inside the envelope layer, so it sees the plain CBOR the envelope unwrapped (the same bytes on every attempt) and the
+  verified device as the principal: a write whose answer was lost and that is sent again under its key runs once, and the
+  replay is sealed anew for the request that asked (`test/e2e_test.dart`, "a write whose answer was lost"). A restart
+  forgets the keys, and with them the guarantee; a real server uses `SqlxIdempotencyStore` or Redis.
+- **Refusals from the headers.** The envelope layer refuses a wrong content type, a plain request to a signed operation and
+  an unknown contract selector before it reads the body, and hyper then closes the connection with the body unread, which
+  the OS turns into a reset the client could see before the answer (`CrateStackOffline` for a `426`, "update the client").
+  The example's server reads the whole body first (`read_body_first`, the outermost layer in `server/src/lib.rs`), so every
+  refusal is an answer: 300 such refusals over one pooled client lose none (`test/e2e_test.dart`). A server without that
+  layer shows the race.
 - **No registration proof, rotation or revocation** (above), and the registry and notes are in memory.
 - **Plain HTTP on a local network.** The demo server speaks `http://`. The signature protects the messages, not their
   privacy: put a real server behind TLS, and Android needs a cleartext allowance for `10.0.2.2` in debug.

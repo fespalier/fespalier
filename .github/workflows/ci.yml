@@ -61,6 +61,7 @@ jobs:
           cargo run --quiet -- check --project ../examples/telemetry
           cargo run --quiet -- check --project ../examples/auth
           cargo run --quiet -- check --project ../examples/plugins
+          cargo run --quiet -- check --project ../examples/cose
           cargo run --quiet -- maestro --check --project ../examples/shop
       # Licences, advisories, duplicate versions, sources: cli/deny.toml.
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
@@ -106,6 +107,7 @@ jobs:
           - examples/telemetry
           - examples/auth
           - examples/plugins
+          - examples/cose
     defaults:
       run:
         working-directory: ${{ matrix.dir }}
@@ -555,6 +557,76 @@ jobs:
         env:
           FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
         run: scripts/check-dev-e2e.sh
+
+  # examples/cose: a CrateStack server (a Rust crate of its own, examples/cose/server) that checks a
+  # COSE_Sign1 signature on every request, and the Flutter app that signs them. The `dart` job above
+  # already runs the app's tests (its end-to-end test skips there: no server binary); this job
+  # builds the server and runs that test against it with FSP_REQUIRE_COSE_SERVER=1, which fails the
+  # test instead of skipping it, so the job cannot go green by not running the server. It is not in
+  # the `floor` job: fespalier_sign_keypair needs Flutter 3.44. `just cose` runs the same steps.
+  cose:
+    name: COSE example (server and app, end to end)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The server crate pins its own toolchain (cli/tests/versions.rs checks it equals the
+      # generator's); this reads it from there.
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/examples/cose/server/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: examples/cose/server
+      # Tests include the two that fail when server/contracts.json or the app's
+      # lib/src/contracts.g.dart is stale against schema.cstack.
+      - name: Server (fmt, clippy, tests, locked build)
+        working-directory: examples/cose/server
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+      # Licences, advisories, sources: examples/cose/server/deny.toml (cratestack's graph brings a few
+      # more licences than the generator's).
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: examples/cose/server/Cargo.toml
+          command: check
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: App (pub get, dart format, analyze)
+        working-directory: examples/cose
+        run: |
+          flutter pub get
+          find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*' -print0 |
+            xargs -0 dart format --output=none --set-exit-if-changed
+          flutter analyze
+      # Plain `test`s over real sockets: register the device key, a signed write and read, and every
+      # refusal (unregistered key, tampered payload, plain CBOR, COSE to the plain op, replay).
+      - name: App tests, the end-to-end one against the server binary
+        working-directory: examples/cose
+        env:
+          COSE_SERVER_BIN: ${{ github.workspace }}/examples/cose/server/target/debug/cose-demo-server
+          FSP_REQUIRE_COSE_SERVER: "1"
+        run: flutter test
+      - name: Generated code is const-clean
+        working-directory: examples/cose
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: '"$WORKSPACE/scripts/check-const-lints.sh" .'
 
   web:
     name: Deferred routes split on the web

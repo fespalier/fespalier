@@ -38,6 +38,8 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 examples/telemetry/  the route lifecycle, OpenTelemetry and Sentry, with widget tests
 examples/auth/       fespalier_auth: sign-in, guards, refresh and Keycloak, with widget tests
 examples/plugins/    fespalier_push and fespalier_analytics through adapters, with widget tests
+examples/cose/       a full stack: a fespalier_cratestack app with a COSE_Sign1 transport, and server/, the Rust
+                     CrateStack server it talks to (its own Cargo.lock); `just cose` runs both
 skills/              agent skills: how to write lib/app/ and read fsp's errors (skills/README.md);
                      scripts/skills/ checks them against the code
 ```
@@ -50,6 +52,7 @@ just telemetry-smoke        # run the telemetry stack in Docker and check every 
 just devtools-build   # rebuild the DevTools extension after touching its source (see below)
 just web-routes  # the shop's Maestro flows open their routes in Chromium (needs Flutter and Node; not in `just ci`)
 just dev-e2e     # fsp dev against the real flutter in headless Chrome (needs Flutter and Chrome; CI's scaffold job runs it)
+just cose        # examples/cose: its Rust server's gates, then the app's tests against the binary it built (needs Rust, cargo-deny and Flutter; CI's cose job runs it)
 ```
 
 [AGENTS.md](../AGENTS.md) is the contributor and agent guide: the layout, the gate commands, how to run each suite, and the conventions (Conventional Commit PR titles, squash merges, SHA-pinned actions, regenerating the examples).
@@ -64,6 +67,7 @@ just dev-e2e     # fsp dev against the real flutter in headless Chrome (needs Fl
 - `dart format`, `flutter analyze` and `flutter test` on the package, the DevTools extension and every example.
 - A `devtools` job builds the extension again and fails when the committed build in `packages/fespalier/extension/devtools/build` is not what its source builds to, then runs `devtools_extensions validate` (`scripts/build-devtools-extension.sh --check`). After touching `packages/fespalier_devtools`, `lib/src/devtools/protocol.dart` or the Flutter version in `ci.yml`, run `just devtools-build` and commit the result.
 - A scaffold job writes every file kind with `fsp new` and `fsp init` and checks the result with `flutter analyze` and `dart format`. It gives that app a guarded route with a `data.dart` and an `action.dart`, builds it for profile and for release, and checks that the release build holds none of the DevTools code (the `traceGuard`, `traceData` and `watchData` wrappers included). It also runs `dart run fespalier` against a freshly built `fsp`.
+- A `cose` job builds the Rust server of `examples/cose` (a crate of its own: `cargo fmt`, clippy, tests, a locked build and `cargo deny` with `examples/cose/server/deny.toml`, on the toolchain in `examples/cose/server/rust-toolchain.toml`, which a test keeps equal to `cli/rust-toolchain.toml`) and runs the app's tests against the binary with `FSP_REQUIRE_COSE_SERVER=1`, so the end-to-end test cannot skip. `just cose` runs the same steps; `just ci` does not (a cold build compiles CrateStack). After changing `server/schema.cstack`, `FSP_UPDATE_GOLDEN=1 cargo test --test contracts` in `examples/cose/server` rewrites `contracts.json` and `lib/src/contracts.g.dart`.
 - The VS Code extension compiles and its tests run.
 - The Homebrew and Scoop rendering, checksum pinning and release staging are tested (`python3 scripts/test_packaging.py`, `python3 scripts/test_pin_checksums.py`, `python3 scripts/test_verify_staged.py`, `python3 scripts/test_release_assets.py`).
 - The telemetry stack's files and dashboards are checked (`python3 scripts/test_telemetry.py`): the generated dashboards are fresh, every query uses only the telemetry conventions, `compose.yaml` pins its images, and the dashboard importer runs against a fake OpenObserve.

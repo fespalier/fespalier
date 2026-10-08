@@ -11,10 +11,20 @@ environment:
 dependencies:
   # SHA-256 for the thumbprint, the request digest and the Sig_structure's hash.
   crypto: ^3.0.6
-  flutter:
-    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+  # The seam this example fills: a CrateStackTransport that seals every call
+  # (lib/src/cose_transport.dart), reads that say how current they are (ref.serve) and writes
+  # as intents (submit).
+  fespalier_cratestack:
+    path: ../../packages/fespalier_cratestack
+  # The device key: SignKeypairSigner (Secure Enclave, AndroidKeyStore) on a device, a software
+  # signer in tests (a DpopSigner, whose sign() is exactly ESP256's r||s).
   fespalier_sign_keypair:
     path: ../../packages/fespalier_sign_keypair
+  flutter:
+    sdk: flutter
+  http: ^1.5.0
   # ESP256 verification of sealed responses (the signing is the device key's).
   pointycastle: ^4.0.0
 
@@ -29,10 +39,16 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-# fespalier_sign_keypair depends on fespalier_auth, and that on fespalier, by git as an app does;
-# here all are the checkout's.
+# fespalier_sign_keypair and fespalier_cratestack depend on fespalier (the first through
+# fespalier_auth, the second through fespalier_dio) by repository tag, as an app does; here all
+# are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
   fespalier_auth:
     path: ../../packages/fespalier_auth
+  fespalier_dio:
+    path: ../../packages/fespalier_dio
+
+flutter:
+  uses-material-design: true

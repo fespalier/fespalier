@@ -325,6 +325,28 @@ off with a timer.
 - **`HiveLocalStore.open` needs a directory off the web**, a folder the system does not empty (the application support
   directory, not a cache directory).
 
+## A transport that signs each attempt
+
+When the server verifies a signature on every request, the signing goes **inside `CrateStackTransport.send`**, once per
+attempt, and nowhere earlier. An intent stores the call as JSON and sends it from the store on every attempt, so each
+attempt must be a new message (a fresh issue time and nonce, or the server's replay check refuses the second one) over the
+same payload under the same `Idempotency-Key` (which a signature can bind). `examples/cose` is the worked case: a
+COSE_Sign1 transport with a device key from `fespalier_sign_keypair`, a Rust CrateStack server that checks it, and an
+end-to-end test that starts the server's binary.
+
+- **An unsigned `401` is `CrateStackUnauthenticated`**: the intent stays pending under the same key. Do not turn it into a
+  retry inside the transport.
+- **A sealed answer that does not open is `CrateStackOffline`, never `CrateStackUnavailable`.** The write may have landed;
+  `Unavailable` moves the intent to the next key and risks a second write. An unsealed `200` to a signed call is not an
+  answer either.
+- **A read is still `ref.serve`**: only `CrateStackOffline` serves the copy, and a `401` is the answer.
+- The key is registered by a plain call before the first signed one (a request signed by an unknown key is a `401`), which
+  the transport's `beforeSigned` hook runs once per run.
+- A server that refuses from the headers alone (a content type, a contract selector) can close the connection with the body
+  unread, and the client sometimes sees the reset first: `Offline` once, then the answer. The example's README says so.
+
+This is not the "signed intents" below: a proof stored with a queued call, tied to the moment it was made.
+
 ## Messages and symptoms
 
 The package's debug messages and what each one means are catalogued in
@@ -350,6 +372,7 @@ isolate.
 | What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do | [`references/server-contract.md`](references/server-contract.md) |
 | Where CrateStack's embedded SQLite mode fits and where it does not                                    | [`references/embedded-mode.md`](references/embedded-mode.md)     |
 | Reads, intents, owned rows, sync, testing                                                             | [`fespalier-offline`](../fespalier-offline/SKILL.md)             |
+| A transport that signs every request and a server that checks it, end to end                          | [`examples/cose`](../../examples/cose/README.md)                 |
 
 ## Where the code is
 

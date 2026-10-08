@@ -239,6 +239,7 @@ Following a link to an old README section? [docs/README.md](docs/README.md) maps
 - [`examples/telemetry`](examples/telemetry): the route lifecycle, OpenTelemetry and Sentry.
 - [`examples/auth`](examples/auth): `fespalier_auth` on an in-process demo API, with a Keycloak realm.
 - [`examples/plugins`](examples/plugins): notification taps (`fespalier_push`) and screen views with consent (`fespalier_analytics`) through `fespalier: adapters:`.
+- [`examples/cose`](examples/cose): a full stack. A `fespalier_cratestack` app and a Rust CrateStack server that signs both ways: every request a COSE_Sign1 message from a device key, every answer sealed by the server.
 
 How to run them: [Run the examples](docs/examples.md).
 

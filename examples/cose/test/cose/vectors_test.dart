@@ -1,4 +1,4 @@
-// cratestack-cose's shared vectors (test_vectors/, MIT, see NOTICE.md) are the oracle: the Dart
+// cratestack-cose's shared vectors (test_vectors/, MIT, see NOTICE) are the oracle: the Dart
 // sealer must write the very bytes cratestack's Rust sealer wrote, and the opener must accept and
 // refuse what cratestack's verifier accepts and refuses.
 import 'dart:typed_data';

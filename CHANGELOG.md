@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.14.0](https://github.com/fespalier/fespalier/compare/v0.13.1...v0.14.0) (2026-10-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **push:** `PushSource.tokens` is a `Stream<PushToken>`, `pushToken` is a `StreamProvider<PushToken>`, and `onToken`, `FakePushSource(token:)` and `emitToken` take a `PushToken`. A `PushToken` has an open `String` kind (`PushTokenKind` constants), a non-null value and unmodifiable properties, and its `toString` prints the kind only. A revocation is a separate event, `PushTokenRevoked`, never a null token: `PushSource.revocations` (empty by default), the `pushTokenRevoked` provider, `onTokenRevoked` in `FespalierPush.configure`, and `FakePushSource.revokeToken`. See docs/migration.md, 0.14.0.
+
+### Features
+
+* **push:** hand the app a PushToken, not a String ([0d9cde8](https://github.com/fespalier/fespalier/commit/0d9cde8ab30abda7ce473806b2d8af5471d9224e))
+
 ## [0.13.1](https://github.com/fespalier/fespalier/compare/v0.13.0...v0.13.1) (2026-10-08)
 
 

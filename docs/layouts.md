@@ -182,12 +182,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.13.1
+      ref: v0.14.0
   fespalier_adaptive:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_adaptive
-      ref: v0.13.1
+      ref: v0.14.0
 ```
 
 <!-- x-release-please-end -->

@@ -97,6 +97,7 @@ jobs:
           - packages/fespalier_push
           - packages/fespalier_biometrics
           - packages/fespalier_analytics
+          - packages/fespalier_frb
           - examples/shop
           - examples/features
           - examples/tabs
@@ -175,6 +176,7 @@ jobs:
           - packages/fespalier_push
           - packages/fespalier_biometrics
           - packages/fespalier_analytics
+          - packages/fespalier_frb
           - examples/minimal
     defaults:
       run:

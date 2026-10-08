@@ -352,6 +352,88 @@ Without `fakePrefsStore()`, `open()` finds no platform and returns `null` (a deb
 
 **Not built.** A storage-wide version key; a byte-exact size (units are `String.length`); multi-isolate safety; encryption (open your own Hive box with a cipher and pass it to `HiveDataStorage(box)`).
 
+### A Rust core's changes: fespalier_frb
+
+Since 0.13.0. A Rust core behind [flutter_rust_bridge](https://github.com/fzyzcjy/flutter_rust_bridge) (or any other core) usually does two things: it answers calls (`core.order(42)`) and it **says what changed** on a `Stream` (`OrderChanged(42)`, `CartCleared`). The answers are a `data.dart`'s business; the stream is what keeps them current, and `package:fespalier_frb` is the part that wires the two without a listener of your own. It is a `Stream<E>` and Riverpod, so it has **no `flutter_rust_bridge` dependency**: the generated bindings pin their own runtime exactly (FRB 2.13 needs Dart 3.9.2, above the Flutter 3.32 floor), and a second pin could only conflict. Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.12.0
+  fespalier_frb:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_frb
+      ref: v0.12.0
+```
+
+<!-- x-release-please-end -->
+
+**The feed and its topics.** A `ChangeFeed` is your core's stream as a provider; a topic says which events concern a key; a `data.dart` **watches** the topic, and the watch is the invalidation:
+
+```dart
+// lib/core/changes.dart
+final changes = ChangeFeed<CoreEvent>((ref) => ref.watch(coreProvider).changes(), name: 'core');
+
+/// Rebuilds what watches it when order [id] changes, and on no other event.
+final orderChanged = changes.topic<int>((event, id) => event is OrderChanged && event.id == id);
+
+// lib/app/orders/$id/data.dart
+Future<Order> data(Ref ref, {required int id}) {
+  ref.watch(orderChanged(id));
+  return ref.read(coreProvider).order(id);
+}
+```
+
+`changes.latest` is the **one subscription**: a provider that is never auto-disposed, so it is opened by the first topic anyone watches (the function you gave it runs once per container, because a generated stream accepts one listener) and cancelled by the container's disposal. Ten thousand topics are still one subscription. A topic's value is a counter per key that moves **only** when a matching event arrives after the first watch, so `data()` is rebuilt exactly then and the screen shows the usual reload (the old value stays up, `keepDataOnError` keeps the page if the reload fails, and the rest of [freshness](#freshness-staletime-resume-and-reconnect) applies). `changes.any` is the topic of every event, for a provider that depends on the whole core (a badge count).
+
+What it does not do. It starts no timer, schedules nothing and has no `listen` of its own: `test/no_timers_test.dart` allows none in `lib/`. Events that arrive before the dependents rebuild are **coalesced** into one rebuild, like any provider change; two equal events one after the other are still two changes (`Change.seq` numbers them, because Riverpod drops a state equal to the last). A stream error stays in `changes.latest` as an `AsyncError` and rebuilds no topic. Every watched key evaluates its matcher once per event: fine for tens or hundreds of watchers, so give a core that emits thousands of events a second coarser events (one per table) or use the table below. A page that is hidden in a tab has its watchers paused by Riverpod; they catch up when it comes back _(not checked on a device)_. If `open` does `ref.watch(coreProvider)` and the core is restarted, the stream is opened again and the next event counts as a change.
+
+**A table, when you own the subscription.** If the app already has code that receives the events (or does not want to edit its `data.dart` files), an `InvalidationTable` is the pure form: rules from an event to the providers it makes stale, applied by a function you pass. It holds no container and no stream:
+
+```dart
+// lib/core/changes.dart
+final table = InvalidationTable<CoreEvent>([
+  InvalidationRule.on<OrderChanged, CoreEvent>((e) => [orderProvider(e.id), ordersProvider]),
+  InvalidationRule.on<CartCleared, CoreEvent>((_) => [cartProvider]),
+]);
+
+// lib/app/startup.dart, in ready(container): the app's own subscription, held in a provider of the container
+container.listen(changes.latest, (_, next) {
+  final change = next.value;
+  if (change != null) table.apply(change.event, container.invalidate);
+});
+```
+
+`apply` invalidates each provider once and returns how many it invalidated. The `container.listen` in the app's `ready()` is the app's listener, not the package's; it dies with the container.
+
+**Starting the core is the app's.** `RustLib.init` belongs to the generated bindings, which a generic package cannot name, so there is no adapter: call it from `startup()` through `initRustCore`, which reports one span, `fespalier.frb.init`, ending `ok` or `error` (the attribute `fespalier.frb.result`, never the error's text) and rethrows the failure unchanged:
+
+```dart
+// lib/app/startup.dart
+Future<void> startup() => initRustCore(RustLib.init);
+```
+
+`startup()` runs before the router exists, behind `splash.dart`; a failure there is reported and shown with `retry`, which runs `startup()` again. Use `ready(container)` ([App startup](app-startup.md)) **instead of or after** it when the core must be read on the app's own container before the first route: `startup()` has no container and can only return overrides, so a core that is a provider (a database to open from the app's directory, a session to restore) is awaited in `ready()`, after `RustLib.init` has run in `startup()`. The split also decides what a retry repeats: `startup()` retried runs `init` again, `ready()` retried does not. FRB's `init` is not meant to run twice, so if `startup()` does other fallible work, do it **before** `initRustCore`, and keep everything that comes after the init (opening the store) in `ready()`.
+
+**Testing.** `package:fespalier_frb/testing.dart` has `FakeChangeSource`, a stream you feed (`emit`, `emitError`, `close`) whose `listenCount` proves the single subscription; override the core provider, or build the feed over `fake.stream`:
+
+```dart
+final fake = FakeChangeSource<CoreEvent>(broadcast: false); // a generated stream is single-subscription
+final feed = ChangeFeed<CoreEvent>((ref) => fake.stream);
+// ... pump the page that watches feed.topic(...)(42)
+fake.emit(const OrderChanged(42));
+await tester.pump(); // the page reloads
+expect(fake.listenCount, 1);
+```
+
+A widget test never runs `startup()` (`pumpRouter` does not), so it needs no `RustLib.init` and no native library: the fake core is a provider override.
+
 ## Typed helpers on the route
 
 A route with a `data.dart` has three more helpers next to `.data` and `.refresh` (and every route below a [section](#section-data) with data has `preload`, below):

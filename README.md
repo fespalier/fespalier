@@ -240,6 +240,7 @@ Following a link to an old README section? [docs/README.md](docs/README.md) maps
 - [`examples/auth`](examples/auth): `fespalier_auth` on an in-process demo API, with a Keycloak realm.
 - [`examples/plugins`](examples/plugins): notification taps (`fespalier_push`) and screen views with consent (`fespalier_analytics`) through `fespalier: adapters:`.
 - [`examples/i18n`](examples/i18n): translated routes with `fespalier_tolgee`: a `$lang` segment, bundled catalogs, a language switch, ICU plurals.
+- [`examples/maps`](examples/maps): a pin picker that returns a place and one offline map pack (`fespalier_maps`), with a fixed gazetteer and fakes.
 
 How to run them: [Run the examples](docs/examples.md).
 

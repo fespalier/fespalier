@@ -231,6 +231,8 @@ void main() {
     FilledButton button() => tester.widget<FilledButton>(find.byType(FilledButton));
     expect(button().onPressed, isNull);
 
+    // A rest counts as a choice only after a move start (`startMove`, the map's camera-move event) and, while a fix is
+    // awaited, only when it is away from the start (about 0.01 degree): `idleAt` alone is ignored.
     map.startMove();
     map.idleAt(const GeoPoint(4.05, 9.7));
     await tester.pump();

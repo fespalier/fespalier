@@ -319,6 +319,9 @@
     },
     "fespalier-data": {
       "covers": [
+        "examples/features",
+        "examples/shop",
+        "examples/auth",
         "docs/data.md#`data.dart`: a function, a selector or a provider",
         "docs/data.md#Retries and reloads",
         "docs/data.md#Freshness: `staleTime`, resume and reconnect",
@@ -409,6 +412,8 @@
     },
     "fespalier-layouts": {
       "covers": [
+        "examples/tabs",
+        "examples/features",
         "docs/layouts.md#Tab layouts",
         "docs/layouts.md#Menus and breadcrumbs: `nav.dart`",
         "docs/layouts.md#Transitions",
@@ -478,6 +483,12 @@
     },
     "fespalier-testing": {
       "covers": [
+        "examples/minimal",
+        "examples/shop",
+        "examples/features",
+        "examples/auth",
+        "examples/telemetry",
+        "examples/plugins",
         "docs/testing.md",
         "docs/route-tests.md",
         "packages/fespalier/lib/testing.dart",
@@ -663,6 +674,7 @@
     },
     "fespalier-images": {
       "covers": [
+        "examples/shop",
         "docs/responsive-images.md",
         "docs/responsive-images.md#Installing `fespalier_image`",
         "docs/responsive-images.md#The image CDN: `imageCdnProvider`",

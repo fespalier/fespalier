@@ -195,6 +195,13 @@ endpoint an app on an emulator, a simulator, a phone or the web uses, which dash
 question, and the traps (empty dashboards, `otel_zone`'s `runGuarded` blanking a web app) are in
 [`references/observability.md`](references/observability.md).
 
+## Examples
+
+`examples/minimal`, `examples/shop`, `examples/features`, `examples/auth`, `examples/telemetry` and `examples/plugins` test
+their routes with `pumpRouter` from `package:fespalier/testing.dart`. `examples/shop` also carries what `fsp test` and
+`fsp maestro` write (`test/routes/`, `.maestro/routes/`);
+the `fespalier` skill lists every example.
+
 ## Three facts to keep in mind
 
 1. go_router **builds the whole matched stack**: a deep link to `/products/2` also runs

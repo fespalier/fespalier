@@ -174,3 +174,19 @@ provider with device-bound tokens (DPoP), and its tests check every proof the wa
 - an order page, a page behind a session guard and a login page that sends the person back;
 - tests through `AppMain.root()`: a cold start from a notification, a tap while the app runs, a guard on a tapped page, a foreign link refused, a tap delivered twice and the token callback, with `source=notification` read from `RecordingTelemetry`.
 - analytics tests through `AppMain.root()` ([Analytics](analytics.md)): the first screen as a view named by `screenName`, nothing sent while undecided or after a refusal, a notification tap as a view with its source, a screen named `null` skipped, and no segment value in anything the backend is given.
+
+## i18n
+
+[`examples/i18n`](../examples/i18n) is [`fespalier_tolgee`](../packages/fespalier_tolgee) with no network and no key (see [i18n with Tolgee](i18n-tolgee.md)):
+
+- the language is a `$lang` enum folder (`/en`, `/fr`; `/xx` is not found), read by `MaterialApp.router(routerConfig: TranslationScope.routerConfig(router, localeOf: localeSegment()))`;
+- `startup()` reads `assets/i18n/en.arb` and `fr.arb` while `splash.dart` shows, so the first frame is translated, and `fr.arb` lacks one key on purpose: the page shows the English text;
+- a layout with a button per language (no dropdown) that navigates with `relocate`, so `/en/products` becomes `/fr/produits` (a `route.dart` `paths` spelling);
+- an ICU plural (`=0`, `one`, `other`) in one string;
+- tests with `pumpRouter(app: ...)`, `FakeTranslations` as the over-the-air source and `fakeTranslations(...)` for a strict catalog: the first frame, a deep link in French, the switch changing the URL and the text, the fallback, a fetched text, an offline source and a missing key.
+
+```sh
+cd examples/i18n
+flutter create . --platforms=android,ios,web
+flutter run
+```

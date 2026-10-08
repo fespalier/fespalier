@@ -1,0 +1,34 @@
+name: i18n
+description: fespalier example — translated routes with fespalier_tolgee. The language comes from a $lang URL segment, the texts are bundled, and the tests use no network.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+  # Translated texts (since 0.10.0): bundled catalogs, the locale of the route, ICU plurals.
+  fespalier_tolgee:
+    path: ../../packages/fespalier_tolgee
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# The companions depend on fespalier by repository, as an app does; here it is the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+
+flutter:
+  uses-material-design: true
+  # The bundled catalogs: what the first frame shows, offline included.
+  assets:
+    - assets/i18n/

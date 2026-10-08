@@ -1,0 +1,7 @@
+exit: 1
+stdout:
+{"file":"lib/app/(g)/$b/page.dart","line":3,"column":7,"severity":"error","message":"/:b is unreachable: $a/page.dart (/:a) comes first and matches it; move one of them into or out of its (group)"}
+{"file":"lib/app/(g)/settings/page.dart","line":3,"column":7,"severity":"error","message":"/settings is unreachable: $a/page.dart (/:a) comes first and matches it; move one of them into or out of its (group)"}
+
+stderr:
+2 error(s); lib/app.g.dart left unchanged

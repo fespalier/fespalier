@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/p/$id/page.dart","line":4,"column":42,"severity":"error","message":"`$id` is String in p/$id/data.dart:3 but int here"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

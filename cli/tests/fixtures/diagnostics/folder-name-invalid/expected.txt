@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/Hello World","line":null,"column":null,"severity":"error","message":"`Hello World` is not a valid URL segment (use a-z, A-Z, 0-9, - _ . ~; `$name` for params, `(name)` for groups, `_name` for private folders)"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

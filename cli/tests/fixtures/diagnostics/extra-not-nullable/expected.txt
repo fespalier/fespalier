@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/note/page.dart","line":4,"column":39,"severity":"error","message":"`extra` gets the object passed on navigation, but it isn't in the URL: a deep link or a reload leaves it null, so declare it nullable, e.g. `String? extra`"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

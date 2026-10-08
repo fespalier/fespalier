@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/guard.dart","line":3,"column":5,"severity":"error","message":"guard() must return GuardResult (a location to redirect to, or null)"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

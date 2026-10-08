@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/page.dart","line":10,"column":7,"severity":"error","message":"expected one public widget class, found HomePage, Banner; make the others private (`_Name`)"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

@@ -2,6 +2,8 @@
 
 Start with [`examples/minimal`](../examples/minimal), then read on for what each of the others shows.
 
+Trees that `fsp` rejects are not examples: the smallest broken app folder for each of fifteen common diagnostics, with the output of `fsp check --json` beside it, is under [`cli/tests/fixtures/diagnostics/`](https://github.com/fespalier/fespalier/blob/main/cli/tests/fixtures/diagnostics/README.md). They are what the troubleshooting skill's messages are tested against.
+
 ## minimal
 
 [`examples/minimal`](../examples/minimal) is the smallest app: `flutter create` + `fsp init` and three

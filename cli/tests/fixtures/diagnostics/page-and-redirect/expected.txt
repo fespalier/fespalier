@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/old/redirect.dart","line":null,"column":null,"severity":"error","message":"a folder has a page.dart or a redirect.dart, not both"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

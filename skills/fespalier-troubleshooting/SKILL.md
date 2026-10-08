@@ -79,6 +79,14 @@ like any other.
 Each page lists the message text, the cause and the fix, taken from the source and
 confirmed by running `fsp` on a tree that triggers it.
 
+**Broken trees.** The messages of fifteen of the commonest diagnostics are pinned by
+trees that trigger them: the smallest app folder for each, with the output of
+`fsp check --json` as a golden, under
+[`cli/tests/fixtures/diagnostics/`](https://github.com/fespalier/fespalier/blob/main/cli/tests/fixtures/diagnostics/README.md).
+`cli/tests/diagnostics.rs` fails when `fsp` words one of them differently or
+when the reference page stops quoting it, so a quote on the pages named in that README is
+current. To see a message for yourself, copy a tree and run `fsp check` on it.
+
 | Area                                                                                                                                                                                                                                                                                      | Reference                                                                                              |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Folder names, view files, duplicate URLs, route names, unreachable routes                                                                                                                                                                                                                 | [`references/diagnostics-tree.md`](references/diagnostics-tree.md)                                     |

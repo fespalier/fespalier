@@ -47,7 +47,7 @@ NotifierProviderFamily<N, T, PageInstance<R>> pageNotifierProvider<
 
 /// Keeps [provider] (a [pageProvider] of this page, say `chatDraft(page)`) alive for the whole
 /// life of the page instance behind [scope] (since 0.13.0): a tab parked in the background, a
-/// page covered by another, a page no widget watches. It is `scope.hold`, typed; call it from an
+/// page covered by another, a page no widget watches. It is `scope.hold` under a name that says why; call it from an
 /// `observe.dart` `onEnter`.
 ///
 /// ```dart
@@ -55,6 +55,11 @@ NotifierProviderFamily<N, T, PageInstance<R>> pageNotifierProvider<
 ///   holdForPage(scope, chatDraft(PageInstance.ofScope(scope, ChatRoute(id: id))));
 /// }
 /// ```
+///
+/// A named pass-through of `scope.hold`. Needed for state the page reads but does not watch, or
+/// that must outlive its widgets' watches (Riverpod 3 counts a paused subscription, so a parked
+/// or covered page that watches keeps its state anyway). `onEnter` fires when a page first becomes
+/// the top page, so a page under a deep-linked stack is held once it is on top.
 ///
 /// The state is disposed when the page leaves. Throws a `StateError` once it has.
 void holdForPage<T>(RouteScope scope, ProviderListenable<T> provider) =>

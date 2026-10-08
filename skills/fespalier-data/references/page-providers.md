@@ -69,7 +69,7 @@ class ChatPage extends HookConsumerWidget {
       appBar: AppBar(title: Text('Chat $id')),
       body: Column(
         children: [
-          TextField(onChanged: ref.read(chatDraft(page).notifier).set),
+          TextField(onChanged: (text) => ref.read(chatDraft(page).notifier).set(text)),
           const DraftBadge(),
         ],
       ),
@@ -117,8 +117,10 @@ void onEnter(Ref ref, {required int id, required RouteScope scope}) {
 - **`pageProvider`** is the same family for a plain `Provider` (`T Function(Ref ref, PageInstance<R> page)`). Both are
   auto-dispose. Riverpod 3 has no `AutoDisposeProviderFamily`: the results are a `ProviderFamily` and a
   `NotifierProviderFamily`, both exported by `package:fespalier/fespalier.dart` since 0.13.0.
-- **Without `holdForPage`** the state lives only while something watches it. That is right for a page whose widgets always
-  watch it, and wrong for a tab that is parked with nothing watching: it is disposed, and the next read starts over.
+- **Without `holdForPage`** the state lives only while something watches it. Riverpod 3 counts a paused subscription, so a
+  parked tab or covered page whose widgets **watch** it keeps it anyway. The hold is for state the page reads but does not
+  watch (a `read` alone does not keep an auto-dispose provider), or that must outlive its widgets' watches. `onEnter` fires
+  when a page first becomes the top page, so a page under a deep-linked stack is held only once it is on top.
   `holdForPage` is `scope.hold` (see `fespalier-observability`, "The page's scope"): it ends with the page, not before.
   It throws a `StateError` once the page has left, like `scope.hold`.
 - **Not kept across a restart or between containers.** A draft that must survive is `dataCache` or the form drafts of

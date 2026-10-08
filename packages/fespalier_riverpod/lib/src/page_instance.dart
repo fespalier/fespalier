@@ -44,7 +44,9 @@ base class PageInstance<R extends TypedLocation> {
   /// The page instance's identity, as `pageInstanceId` and `RouteScope.id` spell it.
   final String id;
 
-  /// The typed route of the page when this key was made. Not part of equality.
+  /// The typed route of the page. Not part of equality: [PageInstance.of] returns a fresh one
+  /// each build, while [usePageInstance] and a family argument keep the first. It is reliable for
+  /// segment values only; what follows the query belongs to `data.dart`.
   final R route;
 
   @override
@@ -59,7 +61,7 @@ base class PageInstance<R extends TypedLocation> {
 
 /// The [PageInstance] of the page this widget is in (since 0.13.0), made once per instance: it
 /// is the same object while the page stays, whatever its query does, and a new one for another
-/// instance. [route] is the generated `XRoute.of`.
+/// instance. [routeOf] is the generated `XRoute.of`.
 ///
 /// ```dart
 /// class ChatPage extends HookConsumerWidget {
@@ -73,9 +75,9 @@ base class PageInstance<R extends TypedLocation> {
 /// }
 /// ```
 PageInstance<R> usePageInstance<R extends TypedLocation>(
-  R Function(BuildContext context) route,
+  R Function(BuildContext context) routeOf,
 ) {
   final context = useContext();
   final id = pageInstanceId(GoRouterState.of(context));
-  return useMemoized(() => PageInstance<R>(id, route(context)), [id]);
+  return useMemoized(() => PageInstance<R>(id, routeOf(context)), [id]);
 }

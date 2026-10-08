@@ -1,8 +1,8 @@
 # fespalier_riverpod
 
 Riverpod providers **per page instance** for [fespalier](https://github.com/fespalier/fespalier) (since 0.13.0): `/c/1` pushed
-twice is two states, `/c/1?q=2` after `/c/1` or a `remount` of the page is the same one, a pop disposes it, and a tab parked in
-the background can keep its state with `holdForPage`. The key is core's `pageInstanceId`, the identity the route lifecycle and
+twice is two states, `/c/1?q=2` after `/c/1` or a `remount` of the page is the same one, a pop disposes it, and state a page reads but does not watch can be kept with `holdForPage`; a parked tab that
+watches its state keeps it anyway. The key is core's `pageInstanceId`, the identity the route lifecycle and
 `RouteScope.id` already use. No dependency beyond fespalier (Riverpod, `flutter_hooks` and go_router come through it), no timer,
 no listener.
 

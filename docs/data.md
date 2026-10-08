@@ -479,14 +479,22 @@ class ChatPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final page = PageInstance.of(context, ChatRoute.of); // or usePageInstance(ChatRoute.of) in a hook widget
-    return TextField(onChanged: ref.read(chatDraft(page).notifier).set);
+    final draft = ref.watch(chatDraft(page)); // watched, so the state is kept while the page is shown
+    return Scaffold(
+      body: Column(
+        children: [
+          TextField(onChanged: (text) => ref.read(chatDraft(page).notifier).set(text)),
+          Text('draft: $draft'),
+        ],
+      ),
+    );
   }
 }
 ```
 
-`PageInstance.of(context, ChatRoute.of)` reads the page's `GoRouterState` and the generated `XRoute.of`; call it in the page or below it. `usePageInstance(ChatRoute.of)` (a `flutter_hooks` hook, which fespalier already exports) is the same instance made once per page instance, so a query change gives the same object. The provider keeps the route the key was **first** made with: what depends on the query belongs to the page's `data.dart`, which is keyed by the whole location. The state lives as long as something watches it, and is disposed after the page's last widget goes (a pop, a `go` to another instance).
+`PageInstance.of(context, ChatRoute.of)` reads the page's `GoRouterState` and the generated `XRoute.of`; call it in the page or below it. `usePageInstance(ChatRoute.of)` (a `flutter_hooks` hook, which fespalier already exports) is the same instance made once per page instance, so a query change gives the same object. The provider keeps the route the key was **first** made with: what depends on the query belongs to the page's `data.dart`, which is keyed by the whole location. The state lives as long as something watches it (a `read` alone does not keep an auto-dispose provider, so the page **watches**), and is disposed after the page's last widget goes (a pop, a `go` to another instance).
 
-**Keeping it while no widget watches.** A tab parked in the background, or a page covered by another, may have nothing watching, and the state would be disposed. From an `observe.dart`, `holdForPage` ties it to the page's `RouteScope` instead (`scope.hold`, typed): it lives from `onEnter` until the page leaves, and the page and the hook share it because `PageInstance.ofScope(scope, route)` and `PageInstance.of` give equal keys for one instance:
+**Keeping it while no widget watches.** Riverpod 3 counts a paused subscription, so a parked tab or a covered page that **watches** its state keeps it without any hold. The hold is for state the page reads but does not watch, or that must outlive its widgets' watches. From an `observe.dart`, `holdForPage` ties it to the page's `RouteScope` (`scope.hold` under a name that says why); `onEnter` fires when a page first becomes the top page, so a page under a deep-linked stack is held only once it is on top. It lives from `onEnter` until the page leaves, and the page and the hook share it because `PageInstance.ofScope(scope, route)` and `PageInstance.of` give equal keys for one instance:
 
 ```dart
 // lib/app/chats/$id/observe.dart
@@ -495,7 +503,7 @@ void onEnter(Ref ref, {required int id, required RouteScope scope}) {
 }
 ```
 
-**Testing.** `package:fespalier_riverpod/testing.dart` has `TestPageInstance(route, id:)`, a key for a test without a router (the default `id` is `'test'`; the same `id` is the same key). With a router, the instance is what the page builds, so `pumpRouter` and `go`/`push` are the test; call `await container.pump()` after a navigation before you count disposals, because Riverpod disposes an unlistened provider in a task of its own.
+**Testing.** `package:fespalier_riverpod/testing.dart` has `TestPageInstance(route, id:)`, a key for a test without a router (the default `id` is `'test'`; the same `id` is the same key). With a router, the instance is what the page builds, so `pumpRouter` and `go`/`push` are the test; in a widget test call `await tester.runAsync(container.pump)` after a navigation before you count disposals, because Riverpod disposes an unlistened provider in a task of its own.
 
 ```dart
 final one = TestPageInstance(const ChatRoute(id: 1), id: 'first push');

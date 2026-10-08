@@ -213,6 +213,11 @@ void main() {
     unawaited(r.push<void>('/c/1'));
     await settle(tester);
     expect(seen.map((p) => p.id).toSet(), hasLength(2));
+    // The scope's key is the page's key, for each pushed page.
+    expect(scoped.keys.toSet(), seen.map((p) => p.id).toSet());
+    for (final p in seen) {
+      expect(scoped[p.id], p);
+    }
     expect(find.textContaining('draft 2'), findsOneWidget);
     expect(find.textContaining('draft 1', skipOffstage: false), findsOneWidget);
     expect(builds, 2);
@@ -337,7 +342,7 @@ void main() {
       expect(container.read(draft(page)), isNot(value));
     });
 
-    test('is scope.hold, typed, and ends with the scope', () {
+    test('is scope.hold, and ends with the scope', () async {
       final c = ProviderContainer();
       addTearDown(c.dispose);
       final scope = TestRouteScope(c, id: 'p#/c/1');
@@ -347,7 +352,10 @@ void main() {
       disposes = 0;
       holdForPage(scope, draft(page));
       expect(c.read(draft(page)), 1);
+      expect(disposes, 0);
       scope.leave();
+      await c.pump();
+      expect(disposes, 1);
       expect(() => holdForPage(scope, draft(page)), throwsA(isA<StateError>()));
     });
   });

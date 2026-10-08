@@ -191,7 +191,7 @@ an error: it answers 200 with the whole body and the transfer **starts again fro
 glued onto the old bytes, and `Accept-Encoding: identity`, because a byte offset counts the bytes on the wire (a client on the
 platform's own stack, such as `cupertino_http` or `cronet_http`, may decompress anyway). A CDN that ignores `If-Range` is caught
 too: a 206 whose validator is not the stored one restarts from zero, and a partial file with no stored validator and no `sha256`
-is not continued blindly (it starts from byte 0). `pause` and `remove` abort the request, so a stalled connection does not hold them. A 416 to a
+is not continued blindly (it starts from byte 0). `pause` and `remove` abort the request, so a stalled connection does not hold them (if the client honours `http.Abortable`: `IOClient` does, a wrapper such as `RetryClient` must forward the request's `abortTrigger`). A 416 to a
 partial file that is longer than the server's file gets one restart from zero. To publish a newer archive, change its
 URL and the pack's `destination`, or `remove` the pack first: a file already at the destination is taken as `Complete`
 without a request.

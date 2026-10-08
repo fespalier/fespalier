@@ -250,7 +250,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
       // two never write the same one.
       if (earlier != null) await earlier.done.future;
       if (!_current(key, generation)) return;
-      await _work(request, generation, client);
+      await _work(request, generation, client, run);
     } catch (error) {
       if (_current(key, generation)) {
         _fail(
@@ -271,6 +271,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
     FilePackRequest r,
     int generation,
     http.Client client,
+    _Run run,
   ) async {
     final key = r.key;
     var offset = 0;
@@ -302,7 +303,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
         if (_current(key, generation)) _fail(key, _storeFailure(error));
         return;
       }
-      final step = await _fetch(r, generation, client, offset);
+      final step = await _fetch(r, generation, client, run, offset);
       if (!_current(key, generation)) return;
       switch (step) {
         case _Step.stop:
@@ -338,6 +339,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
     FilePackRequest r,
     int generation,
     http.Client client,
+    _Run run,
     int offset,
   ) async {
     final key = r.key;
@@ -355,11 +357,21 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
       // transfer starts from the first byte and the partial file is emptied when it begins.
       if (validator == null && r.sha256 == null) offset = 0;
     }
-    final run = _runs[key]!;
+    // This transfer's own run, passed down: after the awaits above a removal may have stopped it
+    // and a new start put another in the map, whose trigger must not be taken here. A request
+    // is never sent once its run was stopped.
+    if (!_current(key, generation)) return _Step.stop;
+    if (run.abort.isCompleted) {
+      if (_pausing.remove(key)) _setPaused(key, offset, r.bytes);
+      return _Step.stop;
+    }
+    // Aborted by the run (pause, removal, dispose) or, when the transfer is done with the
+    // response, by this request's own completer, so a body that never sends a byte is freed.
+    final done = Completer<void>();
     final request = http.AbortableRequest(
       'GET',
       r.url,
-      abortTrigger: run.abort.future,
+      abortTrigger: Future.any([run.abort.future, done.future]),
     );
     request.headers.addAll(r.headers);
     request.headers.remove('range');
@@ -387,6 +399,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
       return await _handle(r, generation, offset, validator, body);
     } finally {
       if (!body.taken) unawaited(_abandon(response));
+      if (!done.isCompleted) done.complete();
     }
   }
 
@@ -600,8 +613,9 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
   }
 
   /// Pauses a running transfer: the request is aborted (so a connection that sends nothing cannot
-  /// hold it), the partial file is kept, and the pack becomes [Paused]. Completes when the transfer has stopped. Does nothing when the pack is not
-  /// [Downloading]. A transfer that is already checking its file finishes instead.
+  /// hold it, provided [packHttpClient] honours `http.Abortable`), the partial file is kept, and
+  /// the pack becomes [Paused]. Completes when the transfer has stopped. Does nothing when the pack
+  /// is not [Downloading]. A transfer that is already checking its file finishes instead.
   Future<void> pause(String key) async {
     if (state[key] is! Downloading) return;
     final run = _runs[key];
@@ -628,8 +642,8 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
 
   /// Deletes a pack: stops its transfer if one runs, then deletes the finished file, the partial
   /// file and the validator, and forgets the pack. When a file cannot be deleted the pack becomes
-  /// [Failed] with [PackFailure.other] (as a region pack does) and the error is rethrown. A [start] of the same key while
-  /// this runs takes the key over. A pack this notifier has no request for has no files it can
+  /// [Failed] with [PackFailure.other] (as a region pack does) and the error is rethrown. A
+  /// [start] of the same key while this runs takes the key over. A pack this notifier has no request for has no files it can
   /// name: [refresh] with its request first.
   Future<void> remove(String key) async {
     final generation = _bump(key);

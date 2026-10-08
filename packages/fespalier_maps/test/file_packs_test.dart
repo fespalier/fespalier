@@ -833,6 +833,31 @@ void main() {
       expect(c.read(filePacks), isEmpty);
     });
 
+    for (final yields in [0, 1, 2, 3, 5, 8]) {
+      test(
+        'remove then start during the transfer\'s own awaits ($yields)',
+        () async {
+          files.putBytes(part, body.sublist(0, 100));
+          files.putText(tag, '"v1"');
+          server.hold = Completer<void>().future;
+          final c = make();
+          final packs = c.read(filePacks.notifier);
+          final first = packs.start(request());
+          for (var i = 0; i < yields; i++) {
+            await Future<void>.value();
+          }
+          final removed = packs.remove('douala');
+          final second = packs.start(request());
+          await removed;
+          await first;
+          await packs.remove('douala');
+          await second;
+          expect(c.read(filePacks), isEmpty);
+          expect(files.paths, isEmpty);
+        },
+      );
+    }
+
     test('ending the provider aborts the request', () async {
       server.beforeChunk = (i) =>
           i == 1 ? Completer<void>().future : Future<void>.value();

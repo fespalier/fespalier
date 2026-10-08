@@ -285,7 +285,7 @@ How a download goes:
   isolate: a large file takes a moment, not frames), and only then is the file renamed into place. A size or a hash that does not match **deletes the partial
   file** (`Failed(sizeMismatch)` or `Failed(hashMismatch)`): it is not the file the app expects, and appending to it would
   not help. Without `bytes` and `sha256` the pack is trusted as the server sent it.
-- **Resuming is a new request with `Range`.** `pause` aborts the request (so a connection that sends nothing cannot hold it) and keeps the partial file
+- **Resuming is a new request with `Range`.** `pause` aborts the request (so a connection that sends nothing cannot hold it; this needs a `packHttpClient` that honours `http.Abortable`: `IOClient` in `http` 1.5 does, a wrapper such as `RetryClient` must forward the request's `abortTrigger`) and keeps the partial file
   (`Paused`); `resume` asks for the bytes from its size on. The same call after an error (`Failed(network)`), and after a restart
   (`refresh` found the `.part` file and reports `Interrupted(bytes:, progress:)`), continues from the last byte on disk, so
   the label is "Resume", unlike a region pack's "Download again".
@@ -315,7 +315,7 @@ How a download goes:
 - **On the web a file pack ends in `Failed(unsupported)`** before any request (there are no files); the `dart:io` part is behind
   a conditional import.
 - **No timer, no listener, no microtask.** The response body is read with `await for`, which ends when the transfer does; a
-  pause, a removal and the end of the provider abort the request (`http` 1.5's `abortTrigger`), and the transfer closes its file.
+  pause, a removal and the end of the provider abort the request (`http` 1.5's `abortTrigger`, which the app's client must honour), and the transfer closes its file.
 
 **Drawing from the file.** A finished PMTiles archive is read directly by MapLibre: a style's vector source whose `url` is
 `pmtilesSourceUrl(path)` (`pmtiles://file:///data/.../douala.pmtiles`). In the style JSON you pass to

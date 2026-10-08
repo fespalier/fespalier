@@ -152,7 +152,7 @@ bytes go to `<destination>.part`, and the next attempt sends `Range: bytes=<size
   `.part` file is `Interrupted(bytes:, progress:)`, and `resume` goes on from the last byte (say "Resume"). The notifier
   can find a pack only through its request; `remove` and `resume` of an earlier session's pack need that `refresh` first.
 - **`start` and `resume` complete when the transfer stops**, not when it begins: `unawaited` them in a handler. `pause` aborts the
-  request and keeps the partial file (so does `remove`: a stalled connection holds neither); they never throw for a failed transfer.
+  request and keeps the partial file (so does `remove`: a stalled connection holds neither, if the app's client honours `http.Abortable`: `IOClient` does, a wrapper such as `RetryClient` must forward `abortTrigger`); they never throw for a failed transfer.
   Without `packHttpClient` the throw is a `ProviderException`.
 - **A server that ignores `Range`** answers 200: the transfer restarts from byte 0 (never appended). A 206 with another
   validator than the stored one restarts too, and a partial file with no stored validator and no `sha256` starts from 0. A 416 to a partial file
